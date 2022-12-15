@@ -43,7 +43,7 @@ For more information, refer to [IP allow list](../../cloud-secure-clusters/add-c
 
 If your cluster is deployed in a VPC, deploy your application in a VPC that is [peered](../../cloud-basics/cloud-vpcs/cloud-add-peering/) with your cluster's VPC, and add the application VPC to the cluster IP allow list.
 
-Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If you are connecting from a public IP address (for example, for testing, development, or running sample applications), enable Public Access on the cluster **Settings** tab. Then use the Public address in your application connection string. (This configuration is not recommended for production.)
+Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If you are connecting from a public IP address (for example, for testing, development, or running sample applications), enable Public Access on the cluster **Settings** tab. Then use the public address in your application connection string. (This configuration is not recommended for production.)
 
 #### Using smart drivers
 

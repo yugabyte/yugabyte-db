@@ -14,15 +14,15 @@ type: docs
 
 The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Managed or locally. Refer to [Quick start](../../../quick-start-yugabytedb-managed/).
 
-In addition, **if you are using YugabyteDB Managed**, you need the following to run the sample applications:
+In addition, if you are using YugabyteDB Managed, you need the following to run the sample applications:
 
-- The cluster CA certificate
-- Your computer added to the cluster IP allow list
-- If your cluster is deployed in a VPC, you need Public Access enabled if you want to connect your application from a public IP address (this doesn't apply if you are using a Sandbox cluster)
+- The cluster CA certificate.
+- Your computer added to the cluster IP allow list.
+- If your cluster is deployed in a VPC, you need Public Access enabled if you want to connect your application from a public IP address (this doesn't apply if you are using a Sandbox cluster).
 
 {{< note title="Note" >}}
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behaviour automatically.
 
