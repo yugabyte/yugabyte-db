@@ -269,6 +269,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
           createWaitForServersTasks(singletonNodeList, processType)
               .setSubTaskGroupType(subGroupType);
+          if (processType.equals(ServerType.TSERVER) && node.isYsqlServer) {
+            createWaitForServersTasks(singletonNodeList, ServerType.YSQLSERVER)
+                .setSubTaskGroupType(subGroupType);
+          }
           if (processType == ServerType.MASTER && context.reconfigureMaster) {
             // Add stopped master to the quorum.
             createChangeConfigTask(node, true /* isAdd */, subGroupType);
