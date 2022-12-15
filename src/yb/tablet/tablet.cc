@@ -375,7 +375,16 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       }
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
     }
+
+    // Collect min schema version from all DB entries. I.e. stored in memory and flushed to disk.
     std::unordered_map<Uuid, SchemaVersion, UuidHash> table_id_to_min_schema_version;
+    {
+      auto smallest = db->CalcMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+      if (smallest) {
+        down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
+            &table_id_to_min_schema_version);
+      }
+    }
     for (const auto& file : db->GetLiveFilesMetaData()) {
       if (!file.smallest.user_frontier) {
         continue;
