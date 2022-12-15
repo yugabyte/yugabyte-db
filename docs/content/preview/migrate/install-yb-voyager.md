@@ -88,7 +88,7 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="true">
+    <a href="#linux" class="nav-link active" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="true">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
@@ -100,7 +100,7 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
     </a>
   </li>
     <li >
-    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+    <a href="#macos" class="nav-link" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
@@ -120,13 +120,13 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
 </ul>
 
 <div class="tab-content">
-  <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
+  <div id="linux" class="tab-pane fade show active" role="tabpanel" aria-labelledby="linux-tab">
   {{% includeMarkdown "./linux.md" %}}
   </div>
   <div id="ubuntu" class="tab-pane fade" role="tabpanel" aria-labelledby="ubuntu-tab">
   {{% includeMarkdown "./ubuntu.md" %}}
   </div>
-  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
+  <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
   {{% includeMarkdown "./macos.md" %}}
   </div>
   <div id="airgapped" class="tab-pane fade" role="tabpanel" aria-labelledby="airgapped-tab">
