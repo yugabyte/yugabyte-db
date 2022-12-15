@@ -9,12 +9,17 @@ import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.Id;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
+import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YbcClientService;
@@ -26,6 +31,9 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+
+import io.ebean.annotation.EnumValue;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,6 +56,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.BackupServiceTaskExtendedArgs;
@@ -80,6 +89,18 @@ public class YbcBackupUtil {
 
   public static final Logger LOG = LoggerFactory.getLogger(BackupUtil.class);
 
+  public enum SnapshotObjectType {
+    @EnumValue("NAMESPACE")
+    NAMESPACE,
+    @EnumValue("TABLE")
+    TABLE;
+
+    public static class Constants {
+      public static final String NAMESPACE = "NAMESPACE";
+      public static final String TABLE = "TABLE";
+    }
+  }
+
   @JsonIgnoreProperties(ignoreUnknown = true)
   public static class YbcBackupResponse {
     @JsonAlias("backup_size")
@@ -93,6 +114,11 @@ public class YbcBackupUtil {
     @NotNull
     @Valid
     public ResponseCloudStoreSpec responseCloudStoreSpec;
+
+    @JsonAlias("snapshot_details")
+    @NotNull
+    @Valid
+    public List<SnapshotObjectDetails> snapshotObjectDetails;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ResponseCloudStoreSpec {
@@ -119,6 +145,48 @@ public class YbcBackupUtil {
 
         @JsonAlias("prev_cloud_dir")
         public String prevCloudDir;
+      }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class SnapshotObjectDetails {
+      @NotNull public SnapshotObjectType type;
+
+      @NotNull
+      @Valid
+      @JsonTypeInfo(use = Id.NAME, property = "type", include = As.EXTERNAL_PROPERTY)
+      @JsonSubTypes(
+          value = {
+            @JsonSubTypes.Type(value = TableData.class, name = SnapshotObjectType.Constants.TABLE),
+            @JsonSubTypes.Type(
+                value = NamespaceData.class,
+                name = SnapshotObjectType.Constants.NAMESPACE)
+          })
+      public SnapshotObjectData data;
+
+      @JsonIgnoreProperties(ignoreUnknown = true)
+      public abstract static class SnapshotObjectData {
+        @JsonAlias("name")
+        @NotNull
+        public String snapshotObjectName;
+      }
+
+      @JsonIgnoreProperties(ignoreUnknown = true)
+      public static class TableData extends SnapshotObjectData {
+        @JsonAlias("table_type")
+        @NotNull
+        public TableType snapshotNamespaceType;
+
+        @JsonAlias("namespace_name")
+        @NotNull
+        public String snapshotNamespaceName;
+      }
+
+      @JsonIgnoreProperties(ignoreUnknown = true)
+      public static class NamespaceData extends SnapshotObjectData {
+        @JsonAlias("database_type")
+        @NotNull
+        public YQLDatabase snapshotDatabaseType;
       }
     }
   }
@@ -151,7 +219,8 @@ public class YbcBackupUtil {
       }
     } catch (IOException e) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error parsing success marker string.");
+          INTERNAL_SERVER_ERROR,
+          String.format("Error parsing success marker string. %s", e.getMessage()));
     } catch (Exception e) {
       throw new PlatformServiceException(PRECONDITION_FAILED, e.getMessage());
     }
@@ -479,6 +548,45 @@ public class YbcBackupUtil {
     CloudStoreConfig.Builder csConfigBuilder =
         CloudStoreConfig.newBuilder().setDefaultSpec(defaultSpec);
     return csConfigBuilder.build();
+  }
+
+  public List<String> getTableListFromSuccessMarker(YbcBackupResponse successMarker) {
+    return getTableListFromSuccessMarker(successMarker, null);
+  }
+
+  public List<String> getTableListFromSuccessMarker(
+      YbcBackupResponse successMarker, TableType tableType) {
+    List<String> ycqlTableList =
+        successMarker
+            .snapshotObjectDetails
+            .stream()
+            .filter(
+                sOD ->
+                    sOD.type.equals(SnapshotObjectType.TABLE)
+                        && (tableType != null
+                            ? ((TableData) sOD.data).snapshotNamespaceType.equals(tableType)
+                            : true))
+            .map(sOD -> sOD.data.snapshotObjectName)
+            .collect(Collectors.toList());
+    return ycqlTableList;
+  }
+
+  public boolean validateYCQLTableListOverwrites(
+      YbcBackupResponse successMarker, UUID universeUUID, String keyspace) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    List<String> existentTables =
+        backupUtil
+            .getTableInfosOrEmpty(universe)
+            .stream()
+            .filter(
+                tIL ->
+                    tIL.getNamespace().getName().equals(keyspace)
+                        && tIL.getTableType().equals(TableType.YQL_TABLE_TYPE))
+            .map(tIL -> tIL.getName())
+            .collect(Collectors.toList());
+    List<String> restoreTables =
+        getTableListFromSuccessMarker(successMarker, TableType.YQL_TABLE_TYPE);
+    return !CollectionUtils.containsAny(existentTables, restoreTables);
   }
 
   public void validateConfigWithSuccessMarker(
