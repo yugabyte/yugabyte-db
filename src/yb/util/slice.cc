@@ -192,6 +192,14 @@ void Slice::AssignTo(std::string* out) const {
   out->assign(cdata(), size());
 }
 
+void Slice::AppendTo(faststring* out) const {
+  out->append(cdata(), size());
+}
+
+bool Slice::Contains(const Slice& rhs) const {
+  return std::string_view(*this).find(rhs) != std::string::npos;
+}
+
 std::string SliceParts::ToDebugHexString() const {
   std::string result;
   for (int i = 0; i != num_parts; ++i) {

@@ -19,7 +19,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
@@ -85,7 +85,7 @@ shared_ptr<vector<ColumnSchema>> GetColumnSchemasFromOp(const YBqlOp& op, const 
     case YBOperation::Type::QL_WRITE: {
       shared_ptr<vector<ColumnSchema>> column_schemas = make_shared<vector<ColumnSchema>>();
       const auto& write_op = static_cast<const YBqlWriteOp&>(op);
-      column_schemas->reserve(write_op.response().column_schemas_size());
+      column_schemas->reserve(write_op.response().column_schemas().size());
       for (const auto& column_schema : write_op.response().column_schemas()) {
         column_schemas->emplace_back(ColumnSchemaFromPB(column_schema));
       }
@@ -174,7 +174,7 @@ RowsResult::RowsResult(YBqlOp *op, const PTDmlStmt *tnode)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromOp(*op, tnode)),
       client_(GetClientFromOp(*op)),
-      rows_data_(std::move(*op->mutable_rows_data())) {
+      rows_data_(op->rows_data()) {
   if (column_schemas_ == nullptr) {
     column_schemas_ = make_shared<vector<ColumnSchema>>();
   }
@@ -183,7 +183,7 @@ RowsResult::RowsResult(YBqlOp *op, const PTDmlStmt *tnode)
 
 RowsResult::RowsResult(const YBTableName& table_name,
                        const shared_ptr<vector<ColumnSchema>>& column_schemas,
-                       const std::string& rows_data)
+                       const RefCntSlice& rows_data)
     : table_name_(table_name),
       column_schemas_(column_schemas),
       client_(QLClient::YQL_CLIENT_CQL),
@@ -234,7 +234,7 @@ void RowsResult::ClearPagingState() {
 }
 
 std::unique_ptr<QLRowBlock> RowsResult::GetRowBlock() const {
-  return CreateRowBlock(client_, Schema(*column_schemas_, 0), rows_data_);
+  return CreateRowBlock(client_, Schema(*column_schemas_, 0), rows_data_.AsSlice());
 }
 
 //------------------------------------------------------------------------------------------------

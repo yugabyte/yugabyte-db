@@ -79,6 +79,9 @@ class Slice {
   Slice(const std::basic_string<char, CharTraits, Allocator>& s) // NOLINT(runtime/explicit)
       : Slice(to_uchar_ptr(s.data()), s.size()) {}
 
+  Slice(const std::string_view& view) // NOLINT(runtime/explicit)
+      : begin_(to_uchar_ptr(view.begin())), end_(to_uchar_ptr(view.end())) {}
+
   // Create a slice that refers to s[0,strlen(s)-1]
   Slice(const char* s) // NOLINT(runtime/explicit)
       : Slice(to_uchar_ptr(s), strlen(s)) {}
@@ -154,6 +157,8 @@ class Slice {
   void AppendTo(std::string* out) const;
   void AssignTo(std::string* out) const;
 
+  void AppendTo(faststring* out) const;
+
   // Truncate the slice to "n" bytes
   void truncate(size_t n);
 
@@ -182,7 +187,11 @@ class Slice {
 
   void CopyToBuffer(std::string* buffer) const;
 
-  explicit operator std::string_view() const { return std::string_view(cdata(), size()); }
+  operator std::string_view() const { return AsStringView(); }
+
+  std::string_view AsStringView() const {
+    return std::string_view(cdata(), size());
+  }
 
   // Return a string that contains the copy of the referenced data.
   std::string ToBuffer() const;
@@ -253,6 +262,8 @@ class Slice {
   }
 
   size_t DynamicMemoryUsage() const { return 0; }
+
+  bool Contains(const Slice& rhs) const;
 
   // Return a Slice representing bytes for any type which is laid out contiguously in memory.
   template<class T, class = typename std::enable_if<std::is_pod<T>::value, void>::type>
