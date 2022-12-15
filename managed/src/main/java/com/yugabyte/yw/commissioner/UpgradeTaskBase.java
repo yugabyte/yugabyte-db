@@ -316,6 +316,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           } else {
             createWaitForServersTasks(singletonNodeList, processType)
                 .setSubTaskGroupType(subGroupType);
+            if (processType.equals(ServerType.TSERVER) && node.isYsqlServer) {
+              createWaitForServersTasks(singletonNodeList, ServerType.YSQLSERVER)
+                  .setSubTaskGroupType(subGroupType);
+            }
           }
 
           if (processType == ServerType.MASTER && context.reconfigureMaster) {
