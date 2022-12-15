@@ -338,41 +338,15 @@ Default: `60`
 
 ##### --post_split_trigger_compaction_pool_max_threads
 
-Deprecated. Use [`full_compaction_pool_max_threads`](#full-compaction-pool-max-threads).
-
-##### --post_split_trigger_compaction_pool_max_queue_size
-
-Deprecated. Use [`full_compaction_pool_max_queue_size`](#full-compaction-pool-max-queue-size).
-
-##### --full_compaction_pool_max_threads
-
-The maximum number of threads allowed for full compactions triggered internally by YugabyteDB. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+The maximum number of threads allowed for post-split compactions (that is, compactions that remove irrelevant data from new tablets after splits).
 
 Default: `1`
 
-##### --full_compaction_pool_max_queue_size
+##### --post_split_trigger_compaction_pool_max_queue_size
 
-The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+The maximum number of post-split compaction tasks that can be queued simultaneously (compactions that remove irrelevant data from new tablets after splits).
 
-Default: `200`
-
-##### --scheduled_full_compaction_frequency_hours
-
-The frequency with which full compactions should be scheduled on tablets. A value of 0 (zero) indicates that the feature is disabled. Recommended value is 720 hours (30 days) or greater.
-
-Note: this feature is currently in beta.
-
-Default: `0`
-
-##### --scheduled_full_compaction_jitter_factor_percentage
-
-Percentage of [`scheduled_full_compaction_frequency_hours`](#scheduled-full-compaction-frequency-hours) to be used as maximum jitter when determining full compaction schedule per tablet. Must be a value between 0 and 100. Jitter is random amount of time (ranging from 0 to maximum jitter) introduced to prevent many tablets from being scheduled for full compactions at the same time.
-
-Jitter is deterministically computed when scheduling a compaction as a function of the tablet-id and the last full compaction time. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time. If no data is available about the tablet's last full compaction, then the jitter is instead used to schedule a full compaction as soon as possible while still preventing too many simultaneous full compactions.
-
-For example, if `scheduled_full_compaction_frequency_hours` is 720 hours (30 days), and `scheduled_full_compaction_jitter_factor_percentage` is 33 percent, each tablet's compaction schedule can range from 482 to 720 hours, and will be pseudorandomly generated again after each full compaction.
-
-Default: `33`
+Default: `16`
 
 ##### --automatic_compaction_extra_priority
 
