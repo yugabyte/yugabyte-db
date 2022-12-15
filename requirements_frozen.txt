@@ -7,7 +7,7 @@ certifi==2021.5.30
 cffi==1.14.6
 charset-normalizer==2.0.6
 click==8.0.1
-codecheck==1.1.3
+codecheck==1.3.1
 compiledb==0.10.1
 compiler-identification==1.0.3
 Deprecated==1.2.13
@@ -16,7 +16,7 @@ downloadutil==1.0.2
 idna==3.2
 importlib-metadata==4.8.3
 iniconfig==1.1.1
-mypy==0.910
+mypy==0.991
 mypy-extensions==0.4.3
 overrides==6.1.0
 packaging==21.0

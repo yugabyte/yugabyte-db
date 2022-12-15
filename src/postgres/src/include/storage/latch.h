@@ -159,6 +159,7 @@ extern void InitLatch(volatile Latch *latch);
 extern void InitSharedLatch(volatile Latch *latch);
 extern void OwnLatch(volatile Latch *latch);
 extern void DisownLatch(volatile Latch *latch);
+extern void DisownLatchOnBehalfOfPid(volatile Latch *latch, int owner_pid);
 extern void SetLatch(volatile Latch *latch);
 extern void ResetLatch(volatile Latch *latch);
 

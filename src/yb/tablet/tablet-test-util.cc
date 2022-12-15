@@ -73,7 +73,8 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
   req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
   ChangeMetadataOperation operation(nullptr, nullptr, &req);
-  ASSERT_OK(tablet()->CreatePreparedChangeMetadata(&operation, &schema));
+  ASSERT_OK(tablet()->CreatePreparedChangeMetadata(
+      &operation, &schema, IsLeaderSide::kTrue));
   ASSERT_OK(tablet()->AlterSchema(&operation));
   operation.Release();
 }

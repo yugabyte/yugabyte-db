@@ -158,11 +158,13 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
             createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           }
         }
-        createTServerTaskForNode(currentNode, "stop")
+
+        createTServerTaskForNode(currentNode, "stop", true /*isIgnoreErrors*/)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
         if (universe.isYbcEnabled()) {
-          createStopYbControllerTasks(new HashSet<>(Arrays.asList(currentNode)))
+          createStopYbControllerTasks(
+                  new HashSet<>(Arrays.asList(currentNode)), true /*isIgnoreErrors*/)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
       }

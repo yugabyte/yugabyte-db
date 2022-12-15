@@ -3,7 +3,7 @@ title: Real-world example applications
 headerTitle: Real-world examples
 linkTitle: Real-world examples
 description: Run real-world YugabyteDB example applications for e-commerce and IoT.
-headcontent:
+headcontent: E-commerce and IoT sample applications
 image: /images/section_icons/index/develop.png
 menu:
   stable:
@@ -13,17 +13,17 @@ menu:
 type: indexpage
 ---
 
-The following examples illustrate how real-world, end-to-end applications can be built using YugabyteDB and its ecosystem integrations with Apache Spark, Apache Kafka, Spring Boot and KairosDB, just to name a few.
+The following examples illustrate how you can build real-world, end-to-end applications using YugabyteDB and its ecosystem integrations, including Apache Spark, Apache Kafka, Spring Boot, and KairosDB, just to name a few.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ecommerce-app/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/apps/e-commerce.png" aria-hidden="true" />
-        <div class="title">E-Commerce</div>
+        <div class="title">Yugastore</div>
       </div>
       <div class="body">
-          A distributed E-Commerce app using ReactJS, NodeJS Express, and YugabyteDB's YCQL and YEDIS APIs.
+          E-commerce application using ReactJS, NodeJS Express, and the YugabyteDB YCQL and YEDIS APIs.
       </div>
     </a>
   </div>
@@ -35,7 +35,7 @@ The following examples illustrate how real-world, end-to-end applications can be
         <div class="title">IoT Fleet Management</div>
       </div>
       <div class="body">
-          A real-time fleet-management app using Confluent Kafka, KSQL, Apache Spark, Spring Boot, and YugabyteDB's YCQL API.
+          Real-time application using Confluent Kafka, KSQL, Apache Spark, Spring Boot, and the YugabyteDB YCQL API.
       </div>
     </a>
   </div>

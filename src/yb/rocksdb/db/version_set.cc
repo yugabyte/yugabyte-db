@@ -2067,6 +2067,62 @@ std::string Version::DebugString(bool hex) const {
   return r;
 }
 
+namespace {
+
+struct MiddleKeyWithSize {
+  std::string middle_key;
+  uint64_t size;
+};
+
+static bool compareKeys(MiddleKeyWithSize f1,
+                        MiddleKeyWithSize f2) {
+  return f1.middle_key.compare(f2.middle_key) > 0;
+}
+
+} // namespace
+
+Result<std::string> Version::GetMiddleOfMiddleKeys() {
+  const auto level = storage_info_.num_levels_ - 1;
+  // Largest files are at lowest level.
+  std::vector <MiddleKeyWithSize> sst_files;
+  sst_files.reserve(storage_info_.files_[level].size());
+  uint64_t total_size = 0;
+  // Get middle key and file size for every file
+  for (const auto* file : storage_info_.files_[level]) {
+    TableCache::TableReaderWithHandle trwh = VERIFY_RESULT(table_cache_->GetTableReader(
+        vset_->env_options_, cfd_->internal_comparator(), file->fd, kDefaultQueryId,
+        /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(level),
+        IsFilterSkipped(level, /* is_file_last_in_level = */ true)));
+
+    const auto result_mkey = trwh.table_reader->GetMiddleKey();
+    if (!result_mkey.ok()) {
+      if (result_mkey.status().IsIncomplete()) {
+        continue;
+      }
+      return result_mkey;
+    }
+
+    const auto file_size = file->fd.GetTotalFileSize();
+    sst_files.push_back({*result_mkey, file_size});
+    total_size += file_size;
+  }
+
+  if (sst_files.size() == 0) {
+    return STATUS(Incomplete, "Either no SST file or too small SST files.");
+  }
+
+  std::sort(sst_files.begin(), sst_files.end(), compareKeys);
+  uint64_t sorted_size = 0;
+  // Weighted middle of middle based on file size
+  for (const auto& sst_file : sst_files) {
+    sorted_size += sst_file.size;
+    if (sorted_size > total_size/2) {
+      return sst_file.middle_key;
+    }
+  }
+  return STATUS(InternalError, "Unexpected error state.");
+}
+
 Result<TableCache::TableReaderWithHandle> Version::GetLargestSstTableReader() {
   // Largest files are at lowest level.
   const auto level = storage_info_.num_levels_ - 1;
@@ -2088,8 +2144,7 @@ Result<TableCache::TableReaderWithHandle> Version::GetLargestSstTableReader() {
 }
 
 Result<std::string> Version::GetMiddleKey() {
-  const auto trwh = VERIFY_RESULT(GetLargestSstTableReader());
-  return trwh.table_reader->GetMiddleKey();
+  return GetMiddleOfMiddleKeys();
 }
 
 Result<TableReader*> Version::TEST_GetLargestSstTableReader() {

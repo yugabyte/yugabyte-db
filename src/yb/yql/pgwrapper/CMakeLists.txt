@@ -18,6 +18,7 @@ set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
     yb_common
+    yb_ql_common
     yb_pggate_flags
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
@@ -114,6 +115,7 @@ ADD_YB_TEST(pg_explicit_lock-test)
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(pg_cache_refresh-test)
 ADD_YB_TEST(pg_ddl_atomicity-test)
+ADD_YB_TEST(colocation_concurrency-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

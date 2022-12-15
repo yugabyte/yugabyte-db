@@ -12,7 +12,6 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li>
     <a href="../aws/" class="nav-link">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>

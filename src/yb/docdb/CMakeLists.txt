@@ -113,6 +113,7 @@ set(DOCDB_DEPS
         yb_util
         yb_rocksutil
         yb_common
+        yb_ql_common
         docdb_proto
         server_common
         rpc_introspection_proto
@@ -160,6 +161,7 @@ ADD_YB_TEST(intent_iterator-test)
 ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(randomized_docdb-test)
+ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(subdocument-test)
 ADD_YB_TEST(consensus_frontier-test)

@@ -35,7 +35,7 @@ type: docs
 
 </ul>
 
-YugabyteDB universes and clusters are created and managed using YugabyteDB Anywhere. The default option is to install YugabyteDB Anywhere on a host machine that is connected to the Internet.
+<br>YugabyteDB universes and clusters are created and managed using YugabyteDB Anywhere. The default option is to install YugabyteDB Anywhere on a host machine that is connected to the Internet.
 
 ## Install Replicated
 

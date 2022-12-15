@@ -7,7 +7,7 @@ menu:
   stable_yugabyte-platform:
     identifier: create-multi-zone-universe-kubernetes
     parent: create-deployments
-    weight: 20
+    weight: 30
 type: docs
 ---
 
@@ -43,42 +43,46 @@ If no universes have been created yet, the **Dashboard** does not display any.
 
 To start, click **Create Universe** and complete the first two fields of the **Cloud Configuration** section:
 
-- In the **Name** field, enter the name for the YugabyteDB universe (for example, yb-k8s).
+- In the **Name** field, enter the name for the YugabyteDB universe using lowercase characters (for example, yb-k8s).
 
-- Use the **Provider** field to select the appropriate Kubernetes cloud (for example, K8s Provider). Notice that additional fields appear.
+- Use the **Provider** field to select the appropriate Kubernetes cloud (for example, multilane-k8s-portal-yb). Notice that additional fields appear.
 
 
 Complete the rest of the **Cloud Configuration** section as follows:
 
-- Use the **Region** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region.
+- Use the **Regions** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region.
 
-- Provide the value in the **Nodes** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
+- Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods (aslo known as nodes) are automatically placed across all the availability zones to guarantee the maximum availability.
 
-- In the **Replication Factor** field, define the replication factor, as per the following illustration:<br><br>
+- In the **Replication Factor** field, define the replication factor, as per the following illustration:<br>
 
-  ![img](/images/yb-platform/kubernetes-config5.png)
+  ![img](/images/yb-platform/kubernetes-config55.png)
 
 Complete the **Instance Configuration** section as follows:
 
 - Use the **Instance Type** field to select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones)).
 - In the **Volume Info** field, specify the number of volumes multiplied by size. The default is 1 x 100GB.
-- Select **Enable YSQL** to enable the YSQL API endpoint to run Postgres-compatible workloads. This setting is enabled by default.
-- Select **Enable YEDIS** to enable the YEDIS API endpoint to run Redis-compatible workloads. This setting is disabled by default.
-- Select **Enable Node-to-Node TLS** to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
-- Select **Enable Client-to-Node TLS** to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
-- Select **Enable Encryption at Rest** to enable encryption for data stored on the tablet servers. This setting is disabled by default.
+- Use the **Root Certificate** field to select an existing security certificate or create a new one.
+- Use the **Enable YSQL** field to specify whether or not to enable the YSQL API endpoint for running PostgreSQL-compatible workloads. This setting is enabled by default.
+- Use the **Enable YSQL Auth** field to specify whether or not to enable the YSQL password authentication.
+- Use the **Enable YCQL** field to specify whether or not to enable the YCQL API endpoint for running Cassandra-compatible workloads. This setting is enabled by default.
+- Use the **Enable YCQL Auth** field to specify whether or not to enable the YCQL password authentication.
+- Use the **Enable YEDIS** field to specify whether or not to enable the YEDIS API endpoint for running Redis-compatible workloads. This setting is disabled by default.
+- Use the **Enable Node-to-Node TLS** field to specify whether or not to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
+- Use the **Enable Client-to-Node TLS** field to specify whether or not to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
+- Use the **Enable Encryption at Rest** field to specify whether or not to enable encryption for data stored on the tablet servers. This setting is disabled by default.
 
 Complete the **Advanced** section as follows:
 
 - In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the YugabyteDB Anywhere version or the latest YugabyteDB version available for YugabyteDB Anywhere.
+- Use the **Enable IPV6** field to specify whether or not you want to use IPV6 networking for connections between database servers. This setting is disabled by default.
+- Use the **Enable Public Network Access** field to specify whether or not to assign a load balancer or nodeport for connecting to the database endpoints over the internet. This setting is disabled by default.
 
+Optionally, complete the **G-Flags** section as follows:
 
+- Click **Add Flags > Add to Master** to specify YB-Master servers parameters, one parameter per field.
 
-Complete the **G-Flags** section as follows:
-
-- Click **Add Flags > Add to Master** to specify YugabyteDB Masters parameters, one parameter per field.
-
-- Click **Add Flags > Add to T-Server** to specify the YugabyteDB T-Servers parameters, one parameter per field.<br>
+- Click **Add Flags > Add to T-Server** to specify YB-TServer servers parameters, one parameter per field.<br>
 
   For details, see the following:
 
@@ -88,7 +92,36 @@ Complete the **G-Flags** section as follows:
 
   - [YB T-Server Configuration Flags](/preview/reference/configuration/yb-tserver/#configuration-flags)
 
-Accept default values for all of the remaining fields.
+Optionally, use the **Helm Overrides** section as follows:
+
+- Click **Add Kubernetes Overrides** to open the **Kubernetes Overrides** dialog shown in the following illustration:
+
+  ![img](/images/yb-platform/kubernetes-config66.png)
+
+- Using the YAML format, which is sensitive to spacing and indentation, specify the universe-level overrides for YB-Master and YB-TServer, as per the following example:
+
+  ```yaml
+  master:
+    podLabels:
+      service-type: 'database'
+  ```
+
+- Add availability zone overrides, which only apply to pods that are deployed in that specific availability zone. For example, to define overrides for the availability zone us-west-2a, you would click **Add Availability Zone** and use the text area to insert YAML in the following form:
+
+  ```yaml
+  us-west-2a:
+    master:
+      podLabels:
+         service-type: 'database'
+  ```
+
+  If you specify conflicting overrides, YugabyteDB Anywhere would use the following order of precedence: universe availability zone-level overrides, universe-level overrides, provider overrides.
+
+- Select **Force Apply** if you want to override any previous overrides.
+
+- Click **Validate & Save**.
+
+  If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again. To save your Kubernetes overrides regardless of any validation errors, select **Force Apply**.
 
 The final step is to click **Create** and wait for the YugabyteDB cluster to appear.
 
@@ -103,6 +136,8 @@ The universe view consists of several tabs that provide different information ab
 The following illustration shows the **Overview** tab of a newly-created universe:
 
 ![img](/images/yb-platform/kubernetes-config11.png)
+
+If you have defined Helm overrides for your universe, you can modify them at any time through **Overview** by clicking **Actions > Edit Kubernetes Overrides**.
 
 The following illustration shows the **Nodes** tab that allows you to see a list of nodes with their addresses:
 

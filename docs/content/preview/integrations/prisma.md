@@ -14,10 +14,7 @@ type: docs
 
 This tutorial uses [Prisma 1](https://v1.prisma.io/docs/1.34/) which is in maintenance mode. If you are new to Prisma, check out the [Prisma ORM](https://www.prisma.io/).
 
-The following YugabyteDB documentation uses the current Prisma ORM:
-
-- [Hello World Example](../../drivers-orms/nodejs/prisma/)
-- [CRUD Example](../../develop/build-apps/nodejs/ysql-prisma/)
+The [Hello World Example](../../drivers-orms/nodejs/prisma/) uses the current Prisma ORM.
 
 {{< /warning >}}
 

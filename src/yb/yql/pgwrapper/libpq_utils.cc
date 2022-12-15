@@ -146,8 +146,66 @@ std::string GetPQErrorMessage(const PGconn* conn) {
   return FormPQErrorMessage(PQerrorMessage(conn));
 }
 
+Result<char*> GetValueWithLength(PGresult* result, int row, int column, size_t size) {
+  size_t len = PQgetlength(result, row, column);
+  if (len != size) {
+    return STATUS_FORMAT(Corruption, "Bad column length: $0, expected: $1, row: $2, column: $3",
+                         len, size, row, column);
+  }
+  return PQgetvalue(result, row, column);
+}
+
+template<class T>
+Result<T> GetValueImpl(PGresult* result, int row, int column) {
+  if constexpr (std::is_same_v<T, bool>) {
+    return *VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(bool)));
+  } else if constexpr (std::is_same_v<T, std::uint16_t>) {
+    return BigEndian::Load16(
+        VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(uint16_t))));
+  } else if constexpr (std::is_same_v<T, std::uint32_t>) {
+    return BigEndian::Load32(
+        VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(uint32_t))));
+  } else if constexpr (std::is_same_v<T, std::uint64_t>) {
+    return BigEndian::Load64(
+        VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(uint64_t))));
+  } else if constexpr (std::is_same_v<T, std::string>) {
+    return std::string(PQgetvalue(result, row, column), PQgetlength(result, row, column));
+  }
+}
+
+template<class F>
+struct FloatTraits {
+  using FloatType = F;
+  using IntType = uint32_t;
+};
+
+template<class F>
+requires(std::is_same_v<F, double>)
+struct FloatTraits<F> {
+  using FloatType = F;
+  using IntType = uint64_t;
+};
+
 }  // anonymous namespace
 
+template<class T>
+GetValueResult<T> GetValue(PGresult* result, int row, int column) {
+  if constexpr (IsPGNonNeg<T>) {
+    const auto value = VERIFY_RESULT(GetValue<typename T::Type>(result, row, column));
+    SCHECK_GE(value, 0, Corruption, "Bad narrow cast");
+    return value;
+  } if constexpr (IsPGFloatType<T>) {
+    using FloatType = typename FloatTraits<T>::FloatType;
+    using IntType = typename FloatTraits<T>::IntType;
+    static_assert(sizeof(FloatType) == sizeof(IntType), "Wrong sizes");
+    const auto value = VERIFY_RESULT(GetValueImpl<IntType>(result, row, column));
+    return *pointer_cast<const FloatType*>(&value);
+  } else if constexpr (IsPGIntType<T>) {
+    return GetValueImpl<std::make_unsigned_t<T>>(result, row, column);
+  } else {
+    return GetValueImpl<typename PGTypeTraits<T>::ReturnType>(result, row, column);
+  }
+}
 
 void PGConnClose::operator()(PGconn* conn) const {
   PQfinish(conn);
@@ -505,46 +563,18 @@ Result<PGResultPtr> PGConn::CopyEnd() {
   return PGResultPtr(PQgetResult(impl_.get()));
 }
 
-Result<char*> GetValueWithLength(PGresult* result, int row, int column, size_t size) {
-  size_t len = PQgetlength(result, row, column);
-  if (len != size) {
-    return STATUS_FORMAT(Corruption, "Bad column length: $0, expected: $1, row: $2, column: $3",
-                         len, size, row, column);
-  }
-  return PQgetvalue(result, row, column);
-}
-
-Result<bool> GetBool(PGresult* result, int row, int column) {
-  return *VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(bool)));
-}
-
-Result<int32_t> GetInt32(PGresult* result, int row, int column) {
-  return BigEndian::Load32(VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(int32_t))));
-}
-
-Result<int64_t> GetInt64(PGresult* result, int row, int column) {
-  return BigEndian::Load64(VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(int64_t))));
-}
-
-Result<double> GetDouble(PGresult* result, int row, int column) {
-  auto temp =
-      BigEndian::Load64(VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(int64_t))));
-  return *reinterpret_cast<double*>(&temp);
-}
-
-Result<std::string> GetString(PGresult* result, int row, int column) {
-  auto len = PQgetlength(result, row, column);
-  auto value = PQgetvalue(result, row, column);
-  return std::string(value, len);
-}
-
 Result<std::string> ToString(PGresult* result, int row, int column) {
+  constexpr Oid BOOLOID = 16;
   constexpr Oid INT8OID = 20;
+  constexpr Oid INT2OID = 21;
   constexpr Oid INT4OID = 23;
   constexpr Oid TEXTOID = 25;
+  constexpr Oid OIDOID = 26;
+  constexpr Oid FLOAT4OID = 700;
   constexpr Oid FLOAT8OID = 701;
   constexpr Oid BPCHAROID = 1042;
   constexpr Oid VARCHAROID = 1043;
+  constexpr Oid CSTRINGOID = 2275;
 
   if (PQgetisnull(result, row, column)) {
     return "NULL";
@@ -552,16 +582,25 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
 
   auto type = PQftype(result, column);
   switch (type) {
+    case BOOLOID:
+      return yb::ToString(VERIFY_RESULT(GetValue<bool>(result, row, column)));
     case INT8OID:
-      return std::to_string(VERIFY_RESULT(GetInt64(result, row, column)));
+      return yb::ToString(VERIFY_RESULT(GetValue<int64_t>(result, row, column)));
+    case INT2OID:
+      return yb::ToString(VERIFY_RESULT(GetValue<int16_t>(result, row, column)));
     case INT4OID:
-      return std::to_string(VERIFY_RESULT(GetInt32(result, row, column)));
+      return yb::ToString(VERIFY_RESULT(GetValue<int32_t>(result, row, column)));
+    case FLOAT4OID:
+      return yb::ToString(VERIFY_RESULT(GetValue<float>(result, row, column)));
     case FLOAT8OID:
-      return std::to_string(VERIFY_RESULT(GetDouble(result, row, column)));
+      return yb::ToString(VERIFY_RESULT(GetValue<double>(result, row, column)));
     case TEXTOID: FALLTHROUGH_INTENDED;
     case BPCHAROID: FALLTHROUGH_INTENDED;
-    case VARCHAROID:
-      return VERIFY_RESULT(GetString(result, row, column));
+    case VARCHAROID: FALLTHROUGH_INTENDED;
+    case CSTRINGOID:
+      return VERIFY_RESULT(GetValue<std::string>(result, row, column));
+    case OIDOID:
+      return yb::ToString(VERIFY_RESULT(GetValue<PGOid>(result, row, column)));
     default:
       return Format("Type not supported: $0", type);
   }
@@ -645,6 +684,18 @@ Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
   }
   return connection;
 }
+
+template GetValueResult<int16_t> GetValue<int16_t>(PGresult*, int, int);
+template GetValueResult<int32_t> GetValue<int32_t>(PGresult*, int, int);
+template GetValueResult<int64_t> GetValue<int64_t>(PGresult*, int, int);
+template GetValueResult<PGUint16> GetValue<PGUint16>(PGresult*, int, int);
+template GetValueResult<PGUint32> GetValue<PGUint32>(PGresult*, int, int);
+template GetValueResult<PGUint64> GetValue<PGUint64>(PGresult*, int, int);
+template GetValueResult<float> GetValue<float>(PGresult*, int, int);
+template GetValueResult<double> GetValue<double>(PGresult*, int, int);
+template GetValueResult<bool> GetValue<bool>(PGresult*, int, int);
+template GetValueResult<std::string> GetValue<std::string>(PGresult*, int, int);
+template GetValueResult<PGOid> GetValue<PGOid>(PGresult*, int, int);
 
 } // namespace pgwrapper
 } // namespace yb

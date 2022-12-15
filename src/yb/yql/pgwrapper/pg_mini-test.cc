@@ -2006,10 +2006,7 @@ class PgMiniRocksDbIteratorLoggingTest : public PgMiniSingleTServerTest {
       if (!is_warmup) {
         SetAtomicFlag(true, &FLAGS_rocksdb_use_logging_iterator);
       }
-      auto count_result = ASSERT_RESULT(conn.Fetch(count_stmt_str));
-      ASSERT_EQ(PQntuples(count_result.get()), 1);
-
-      auto actual_num_rows = ASSERT_RESULT(GetInt64(count_result.get(), 0, 0));
+      auto actual_num_rows = ASSERT_RESULT(conn.FetchValue<PGUint64>(count_stmt_str));
       const int expected_num_rows = config.last_row_to_scan - config.first_row_to_scan + 1;
       ASSERT_EQ(expected_num_rows, actual_num_rows);
     }

@@ -1351,8 +1351,11 @@ public class NodeManager extends DevopsBase {
       nodeAgentClient
           .maybeGetNodeAgentClient(nodeIp)
           .ifPresent(
-              nodeAgent ->
-                  NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, sensitiveArgs));
+              nodeAgent -> {
+                commandArgs.add("--ansible_connection_type");
+                commandArgs.add("node_agent_rpc");
+                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, sensitiveArgs);
+              });
     }
   }
 
@@ -2160,7 +2163,7 @@ public class NodeManager extends DevopsBase {
   public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
     KeyInfo keyInfo = params.accessKey.getKeyInfo();
     Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
-    Integer sshPort = keyInfo.sshPort == null ? provider.sshPort : keyInfo.sshPort;
+    Integer sshPort = keyInfo.sshPort == null ? provider.details.sshPort : keyInfo.sshPort;
     String sshUser = params.sshUser;
     String vaultPasswordFile = keyInfo.vaultPasswordFile;
     String vaultFile = keyInfo.vaultFile;

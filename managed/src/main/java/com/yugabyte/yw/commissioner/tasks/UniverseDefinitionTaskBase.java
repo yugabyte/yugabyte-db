@@ -600,6 +600,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createSoftwareInstallTasks(
         nodeAsList, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
 
+    // Copy the source root certificate to the node.
+    createTransferXClusterCertsCopyTasks(nodeAsList, universe, SubTaskGroupType.InstallingSoftware);
+
     // Update master configuration on the node.
     createConfigureServerTasks(
             nodeAsList,

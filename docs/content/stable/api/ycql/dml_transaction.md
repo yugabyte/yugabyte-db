@@ -22,32 +22,39 @@ Use the TRANSACTION statement block to make changes to multiple rows in one or m
 
 ### Grammar
 
-```
+```ebnf
 transaction_block ::= BEGIN TRANSACTION
                           ( insert | update | delete ) ';'
                           [ ( insert | update | delete ) ';' ...]
                       END TRANSACTION ';'
 ```
 
-Where
+Where `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update/), and [DELETE](../dml_delete/) statements.
 
-- `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update/), and [DELETE](../dml_delete/) statements.
+- When using `BEGIN TRANSACTION`, you don't use a semicolon. End the transaction block with `END TRANSACTION ;` (with a semicolon).
+- There is no `COMMIT` for transactions started using `BEGIN`.
 
-### ANSI SQL syntax
+### SQL syntax
 
-Alternatively, YugabyteDB supports ANSI SQL `START TRANSACTION` and `COMMIT` statements.
+YCQL also supports SQL `START TRANSACTION` and `COMMIT` statements.
 
-```
+```ebnf
 transaction_block ::= START TRANSACTION ';'
                       ( insert | update | delete ) ';'
                       [ ( insert | update | delete ) ';' ...]
                       COMMIT ';'
 ```
 
+- When using `START TRANSACTION`, you must use a semicolon. End the transaction block with `COMMIT ;`.
+- You can't use `END TRANSACTION` for transactions started using `START`.
+
 ## Semantics
 
 - An error is raised if transactions are not enabled in any of the tables inserted, updated, or deleted.
 - Currently, an error is raised if any of the `INSERT`, `UPDATE`, or `DELETE` statements contains an `IF` clause.
+- If transactions are enabled for a table, its indexes must have them enabled as well, and vice versa.
+- There is no explicit rollback.
+- DDLs are always executed outside of a transaction block, and like DMLs outside a transaction block, are committed immediately.
 
 ## Examples
 
@@ -78,7 +85,7 @@ ycqlsh:example> INSERT INTO accounts (account_name, account_type, balance)
 ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     100 |   1523313964356489
@@ -102,7 +109,7 @@ ycqlsh:example> BEGIN TRANSACTION
 ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     300 |   1523313983201270
@@ -124,7 +131,7 @@ ycqlsh:example> BEGIN TRANSACTION
 ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     100 |   1523314002218558
@@ -133,12 +140,9 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
         Smith |      savings |    2000 |   1523313964363056
 ```
 
-
-
 {{< note Type="Note" >}}
 `BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`.
 {{< /note >}}
-
 
 ## See also
 

@@ -26,9 +26,17 @@ type: docs
   </li>
 </ul>
 
-Point-in-time recovery (PITR) allows you to restore the state of your cluster's data and some types of metadata from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp. For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/#features). For details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
+Point-in-time recovery (PITR) allows you to restore the state of your cluster's data and some types of metadata from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
-You can try out PITR by creating a namespace and populating it, creating a snapshot schedule, and restoring from that schedule. 
+For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/#features). For details on the `yb-admin` commands, refer to [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands).
+
+You can try out PITR by creating a namespace and populating it, creating a snapshot schedule, and restoring from that schedule.
+
+{{< note title="Setup" >}}
+
+Local single-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
+
+{{< /note >}}
 
 {{< note title="Note" >}}
 

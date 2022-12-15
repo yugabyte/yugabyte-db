@@ -121,8 +121,8 @@ def init_logging(verbose: bool) -> None:
             # The same value of the verbose argument, skip.
             return
         logging.warning(
-            "init_logging(verbose=False) has already been called with verbose=%s, ignoring a "
-            "subsequent call with verbose=%s", g_init_logging_verbose_value, verbose
+            f"init_logging() has already been called with verbose={g_init_logging_verbose_value}, "
+            f"ignoring a subsequent call with verbose={verbose}"
         )
         return
 

@@ -1617,7 +1617,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     metadata.set_version(0);
 
     auto table_map_checkout = tables_.CheckOut();
-    table_map_checkout->AddTable(table);
+    table_map_checkout->AddOrReplace(table);
     sys_catalog_table = table;
     table_names_map_[{kSystemSchemaNamespaceId, kSysCatalogTableName}] = table;
     table->set_is_system();
@@ -4360,7 +4360,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
       << "Table: " << (**table).ToString() << ", create_tablets: " << (tablets ? "YES" : "NO");
 
   auto table_map_checkout = tables_.CheckOut();
-  table_map_checkout->AddTable(*table);
+  table_map_checkout->AddOrReplace(*table);
   // Do not add Postgres tables to the name map as the table name is not unique in a namespace.
   if (req.table_type() != PGSQL_TABLE_TYPE) {
     table_names_map_[{namespace_id, req.name()}] = *table;

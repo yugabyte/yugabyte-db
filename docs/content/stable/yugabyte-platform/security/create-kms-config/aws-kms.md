@@ -12,11 +12,23 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="{{< relref "./aws-kms.md" >}}" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS KMS
+    </a>
+  </li>
+  <li >
+    <a href="{{< relref "./google-kms.md" >}}" class="nav-link">
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
+      Google KMS
+    </a>
+  </li>
+
+  <li >
+    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
+      <i class="icon-azure" aria-hidden="true"></i>&nbsp;
+      &nbsp;&nbsp;Azure KMS
     </a>
   </li>
 
@@ -29,7 +41,7 @@ type: docs
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
+<br>Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
 The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
 

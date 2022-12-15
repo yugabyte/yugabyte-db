@@ -17,9 +17,9 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
@@ -160,6 +160,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // All necessary nodes are created. Data moving will coming soon.
       createSetNodeStateTasks(nodeSet, NodeDetails.NodeState.ToJoinCluster)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      // Copy the source root certificate to the newly added node.
+      createTransferXClusterCertsCopyTasks(
+          Collections.singleton(currentNode), universe, SubTaskGroupType.Provisioning);
 
       // Bring up any masters, as needed.
       boolean addMaster =

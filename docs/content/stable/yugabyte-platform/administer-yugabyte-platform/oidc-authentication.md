@@ -35,15 +35,15 @@ You can create an OIDC configuration as follows:
 
 - Navigate to **Admin > User Management > User Authentication**.
 
-- Select **OIDC Configuration** and complete the fields shown in the following illustration:<br><br>
+- Select **OIDC Configuration** and complete the fields shown in the following illustration:<br>
 
-  ![OIDC authentication](/images/yp/oidc-auth-1.png)<br><br>
+  ![OIDC authentication](/images/yp/oidc-auth.png)<br>
 
   - In the **Client ID** field, enter the unique identifier that you provided when you manually created the client application in the identity provider.
   - In the **Client Secret** field, enter the password or secret for authenticating your Yugabyte client application with your identity provider.
   - Use the **Discovery URL** field to provide the endpoint through which all authentication requests will be validated. You can find this information in the discovery document, which is a JSON file stored in a well-known location. This file contains key-value pairs with details about the OIDC provider's configuration, including uniform resource identifiers of the authorization, token, revocation, user information, and public-keys endpoints. [Google OIDC discovery endpoint](https://developers.google.com/identity/protocols/oauth2/openid-connect#an-id-tokens-payload) is an example of such file. For most identity providers, `/.well-known/openid-configuration` is appended to the issuer to generate the metadata URL for OIDC specifications.
-  - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested.
-  - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. The input into this field is case-sensitive.
+  - In the **Scope** field, enter your identity provider OIDC scope that is allowed to be requested. This field accepts a space-separated list of values. If left blank, all scopes will be considered.
+  - In the **Email Attribute** field, enter the OIDC scope containing the user email identifier. This field accepts a case-sensitive custom configuration. Typically, this field is left blank.
 
 - Click **Save**.
 

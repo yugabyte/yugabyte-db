@@ -12,9 +12,11 @@ import (
 	"github.com/spf13/viper"
 
 	"path/filepath"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
 // Component 1: Postgres
@@ -24,11 +26,11 @@ type Postgres struct {
 	ConfFileLocation    string
 	templateFileName    string
 	version             string
-	MountPath						string
-	dataDir							string
-	PgBin								string
-	LogFile							string
-	cronScript					string
+	MountPath           string
+	dataDir             string
+	PgBin               string
+	LogFile             string
+	cronScript          string
 }
 
 // NewPostgres creates a new postgres service struct at installRoot with specific version.
@@ -164,11 +166,11 @@ func (pg Postgres) Uninstall(removeData bool) {
 func (pg Postgres) extractPostgresPackage() {
 
 	// TODO: Replace with tar package
-  command1 := "bash"
-  arg1 := []string{"-c", "tar -zvxf " + common.BundledPostgresName + " -C " +
-    common.InstallRoot}
+	command1 := "bash"
+	arg1 := []string{"-c", "tar -zvxf " + common.BundledPostgresName + " -C " +
+		common.InstallRoot}
 
-  common.ExecuteBashCommand(command1, arg1)
+	common.ExecuteBashCommand(command1, arg1)
 
 	log.Debug(common.BundledPostgresName + " successfully extracted.")
 
@@ -185,13 +187,16 @@ func (pg Postgres) runInitDB() {
 
 		// Need to give the yugabyte user ownership of the entire postgres
 		// directory.
-		common.Chown(filepath.Dir(pg.ConfFileLocation), "yugabyte", "yugabyte", true)
-		common.Chown(filepath.Dir(pg.LogFile), "yugabyte", "yugabyte", true)
+		userName := viper.GetString("service_username")
+		common.Chown(filepath.Dir(pg.ConfFileLocation), userName, userName, true)
+		common.Chown(filepath.Dir(pg.LogFile), userName, userName, true)
 
 		command3 := "sudo"
-		arg3 := []string{"-u", "yugabyte", "bash", "-c",
-			pg.PgBin + "/initdb -U " + "yugabyte -D " + pg.ConfFileLocation}
-		common.ExecuteBashCommand(command3, arg3)
+		arg3 := []string{"-u", userName, "bash", "-c",
+			pg.PgBin + "/initdb -U " + userName + " -D " + pg.ConfFileLocation}
+		if _, err := common.ExecuteBashCommand(command3, arg3); err != nil {
+			log.Fatal("Failed to run initdb for postgres: " + err.Error())
+		}
 
 	} else {
 
@@ -200,10 +205,10 @@ func (pg Postgres) runInitDB() {
 		command1 := "bash"
 		arg1 := []string{"-c",
 			pg.PgBin + "/initdb -U " + currentUser + " -D " + pg.ConfFileLocation}
-		common.ExecuteBashCommand(command1, arg1)
-
+		if _, err := common.ExecuteBashCommand(command1, arg1); err != nil {
+			log.Fatal("Failed to run initdb for postgres: " + err.Error())
+		}
 	}
-
 }
 
 // Set the data directory in postgresql.conf
@@ -216,7 +221,7 @@ func (pg Postgres) modifyPostgresConf() {
 	}
 	defer confFile.Close()
 	if _, err := confFile.WriteString(
-			fmt.Sprintf("data_directory = '%s'\n", pg.dataDir)); err != nil {
+		fmt.Sprintf("data_directory = '%s'\n", pg.dataDir)); err != nil {
 		log.Fatal(fmt.Sprintf("Error: %s writing new data_directory to %s", err.Error(), pgConfPath))
 	}
 
@@ -225,16 +230,17 @@ func (pg Postgres) modifyPostgresConf() {
 // Move required files from initdb to the new data directory
 func (pg Postgres) setUpDataDir() {
 	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
 		// move init conf to data dir
 		common.ExecuteBashCommand("sudo",
-			[]string{"-u", "yugabyte", "mv", pg.ConfFileLocation, pg.dataDir})
+			[]string{"-u", userName, "mv", pg.ConfFileLocation, pg.dataDir})
 
 		// move conf files back to conf location
 		common.CreateDir(pg.ConfFileLocation, 0700)
-		common.Chown(pg.ConfFileLocation, "yugabyte", "yugabyte", false)
+		common.Chown(pg.ConfFileLocation, userName, userName, false)
 		common.ExecuteBashCommand(
 			"sudo",
-			[]string{"-u", "yugabyte", "find", pg.dataDir, "-iname", "*.conf", "-exec", "mv", "{}",
+			[]string{"-u", userName, "find", pg.dataDir, "-iname", "*.conf", "-exec", "mv", "{}",
 				pg.ConfFileLocation, ";"})
 
 	}
@@ -245,7 +251,7 @@ func (pg Postgres) createYugawareDatabase() {
 
 	createdbString := pg.PgBin + "/createdb -h " + pg.MountPath + " yugaware"
 	command2 := "sudo"
-	arg2 := []string{"-u", "yugabyte", "bash", "-c", createdbString}
+	arg2 := []string{"-u", viper.GetString("service_username"), "bash", "-c", createdbString}
 
 	if !common.HasSudoAccess() {
 
@@ -267,7 +273,7 @@ func (pg Postgres) dropYugawareDatabase() {
 	var err error
 	if common.HasSudoAccess() {
 		_, err = common.ExecuteBashCommand("sudo",
-			[]string{"-u", "yugabyte", "bash", "-c", dropdbString})
+			[]string{"-u", viper.GetString("service_username"), "bash", "-c", dropdbString})
 	} else {
 		_, err = common.ExecuteBashCommand(dropdbString, []string{})
 	}
@@ -279,52 +285,46 @@ func (pg Postgres) dropYugawareDatabase() {
 
 // TODO: replace with pg_ctl status
 // Status prints the status output specific to Postgres.
-func (pg Postgres) Status() {
+func (pg Postgres) Status() common.Status {
+	status := common.Status{
+		Service:   pg.Name(),
+		Port:      viper.GetInt("postgres.port"),
+		Version:   pg.version,
+		ConfigLoc: pg.ConfFileLocation,
+	}
 
-	name := "postgres"
-	port := config.GetYamlPathData("postgres.port")
-
-	runningStatus := ""
-
+	// Set the systemd service file location if one exists
 	if common.HasSudoAccess() {
-
-		args := []string{"is-active", name}
-		runningStatus, _ = common.ExecuteBashCommand(common.Systemctl, args)
-
-		runningStatus = strings.ReplaceAll(strings.TrimSuffix(runningStatus, "\n"), " ", "")
-
-		// For display purposes.
-		if runningStatus != "active" {
-
-			runningStatus = "inactive"
-		}
-
+		status.ServiceFileLoc = pg.SystemdFileLocation
 	} else {
+		status.ServiceFileLoc = "N/A"
+	}
 
+	// Get the service status
+	if common.HasSudoAccess() {
+		props := systemd.Show(filepath.Base(pg.SystemdFileLocation), "LoadState", "SubState",
+			"ActiveState")
+		if props["LoadState"] == "not-found" {
+			status.Status = common.StatusNotInstalled
+		} else if props["SubState"] == "running" {
+			status.Status = common.StatusRunning
+		} else if props["ActiveState"] == "inactive" {
+			status.Status = common.StatusStopped
+		} else {
+			status.Status = common.StatusErrored
+		}
+	} else {
 		command := "bash"
-		args := []string{"-c", "pgrep " + name}
+		args := []string{"-c", "pgrep postgres"}
 		out0, _ := common.ExecuteBashCommand(command, args)
 
 		if strings.TrimSuffix(string(out0), "\n") != "" {
-			runningStatus = "active"
+			status.Status = common.StatusRunning
 		} else {
-			runningStatus = "inactive"
+			status.Status = common.StatusStopped
 		}
 	}
-
-	systemdLoc := "N/A"
-
-	if common.HasSudoAccess() {
-
-		systemdLoc = pg.SystemdFileLocation
-	}
-
-	outString := name + "\t" + pg.version + "\t" + port +
-		"\t" + pg.ConfFileLocation + "\t" +
-		systemdLoc + "\t" + runningStatus + "\t"
-
-	fmt.Fprintln(common.StatusOutput, outString)
-
+	return status
 }
 
 // CreateCronJob creates the cron job for managing postgres with cron script in non-root.

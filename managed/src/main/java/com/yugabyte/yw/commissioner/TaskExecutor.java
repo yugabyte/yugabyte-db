@@ -219,6 +219,10 @@ public class TaskExecutor {
     return inverseTaskTypeMap.get(taskClass);
   }
 
+  public boolean isShutdown() {
+    return isShutdown.get();
+  }
+
   @Inject
   public TaskExecutor(
       ShutdownHookHandler shutdownHookHandler,
@@ -270,6 +274,17 @@ public class TaskExecutor {
     if (isShutdown.get()) {
       throw new IllegalStateException("TaskExecutor is shutting down");
     }
+  }
+
+  /**
+   * Instantiates the task for the task class.
+   *
+   * @param taskClass the task class.
+   * @return the task.
+   */
+  public <T extends ITask> T createTask(Class<T> taskClass) {
+    checkNotNull(taskClass, "Task class must be set");
+    return taskClass.cast(taskTypeMap.get(getTaskType(taskClass)).get());
   }
 
   /**

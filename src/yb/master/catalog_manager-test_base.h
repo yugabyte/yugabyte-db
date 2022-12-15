@@ -178,7 +178,7 @@ class TestLoadBalancerBase {
 
     tablets_ = std::move(tablets);
     cur_table_uuid_ = table_id;
-    tables_.AddTable(std::move(table));
+    tables_.AddOrReplace(table);
   }
 
   void TestAlgorithm() {
