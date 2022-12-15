@@ -2258,8 +2258,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
       EXPECT_TRUE(ql_resp.has_rows_data_sidecar());
 
       EXPECT_TRUE(controller.finished());
-      std::string rows_data;
-      EXPECT_OK(controller.AssignSidecarTo(ql_resp.rows_data_sidecar(), &rows_data));
+      auto rows_data = EXPECT_RESULT(controller.ExtractSidecar(ql_resp.rows_data_sidecar()));
       ql::RowsResult rows_result(kReadFromFollowerTable, selected_cols, rows_data);
       row_block = rows_result.GetRowBlock();
       return implicit_cast<size_t>(FLAGS_test_scan_num_rows) == row_block->row_count();

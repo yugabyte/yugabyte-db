@@ -76,21 +76,23 @@ bool IsMonotonic(const Col& collection, const Extractor& extractor) {
 // Returns small vector of key and index pairs, sorted by extracted key.
 template <class Col, class Extractor>
 auto StableSorted(const Col& collection, const Extractor& extractor) {
-  struct KeyAndIndex {
+  struct Entry {
     decltype(extractor(*collection.begin())) key;
     decltype(collection.size()) original_index;
+    const std::remove_reference_t<decltype(*collection.begin())>* pointer;
   };
 
-  boost::container::small_vector<KeyAndIndex, 0x10> order;
+  boost::container::small_vector<Entry, 0x10> order;
   order.reserve(collection.size());
   decltype(collection.size()) index = 0;
   for (const auto& value : collection) {
-    order.push_back(KeyAndIndex {
+    order.push_back(Entry {
       .key = extractor(value),
       .original_index = index++,
+      .pointer = &value,
     });
   }
-  std::sort(order.begin(), order.end(), [](const KeyAndIndex& lhs, const KeyAndIndex& rhs) {
+  std::sort(order.begin(), order.end(), [](const auto& lhs, const auto& rhs) {
     return lhs.key < rhs.key || (lhs.key == rhs.key && lhs.original_index < rhs.original_index);
   });
   return order;

@@ -1636,7 +1636,7 @@ void RowsResultResponse::SerializeResultBody(faststring* mesg) const {
   LOG_IF(DFATAL, result_->rows_data().size() < 4)
       << "Absent rows_count for the CQL ROWS Result Response (rows_data: "
       << result_->rows_data().size() << " bytes, expected >= 4)";
-  mesg->append(result_->rows_data());
+  mesg->append(result_->rows_data().cdata(), result_->rows_data().size());
 }
 
 //----------------------------------------------------------------------------------------

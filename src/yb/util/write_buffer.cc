@@ -170,9 +170,12 @@ void WriteBuffer::CopyTo(size_t begin, size_t end, std::byte* out) const {
 }
 
 RefCntSlice WriteBuffer::ExtractContinuousBlock(size_t begin, size_t end) const {
+  size_t full_size = end - begin;
+  if (!full_size) {
+    return RefCntSlice();
+  }
   RefCntSlice result;
   char* out = nullptr;
-  size_t full_size = end - begin;
   EnumerateBlocks(blocks_, begin, full_size,
       [&result, &out, full_size](
           const char* data, size_t size, const RefCntBuffer& buffer, bool last) {
@@ -192,17 +195,33 @@ RefCntSlice WriteBuffer::ExtractContinuousBlock(size_t begin, size_t end) const 
   return result;
 }
 
-void WriteBuffer::AssignTo(std::string* out) const {
-  out->clear();
+template <class Out>
+void WriteBuffer::DoAppendTo(Out* out) const {
   if (blocks_.empty()) {
     return;
   }
-  out->reserve(size_);
+  out->reserve(out->size() + size_);
   auto last = blocks_.size() - 1;
   for (size_t i = 0; i != last; ++i) {
     blocks_[i].AsSlice().AppendTo(out);
   }
   out->append(blocks_[last].data(), filled_bytes_in_last_block_);
+}
+
+void WriteBuffer::AppendTo(std::string* out) const {
+  DoAppendTo(out);
+}
+void WriteBuffer::AssignTo(std::string* out) const {
+  out->clear();
+  DoAppendTo(out);
+}
+
+void WriteBuffer::AppendTo(faststring* out) const {
+  DoAppendTo(out);
+}
+
+void WriteBuffer::AssignTo(faststring* out) const {
+  DoAppendTo(out);
 }
 
 std::string WriteBuffer::ToBuffer() const {
@@ -238,6 +257,11 @@ size_t WriteBuffer::BytesAfterPosition(const WriteBufferPos& pos) const {
   }
   result -= pos.offset;
   return result;
+}
+
+Slice WriteBuffer::FirstBlockSlice() const {
+  return blocks_.size() > 1 ? blocks_[0].AsSlice()
+                            : Slice(blocks_[0].data(), filled_bytes_in_last_block_);
 }
 
 }  // namespace yb

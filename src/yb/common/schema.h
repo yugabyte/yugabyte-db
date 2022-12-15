@@ -501,7 +501,7 @@ typedef std::string PgSchemaName;
 // Schema::swap() or Schema::Reset() rather than returning by value.
 class Schema {
  public:
-  static const ssize_t kColumnNotFound = -1;
+  static constexpr ssize_t kColumnNotFound = -1;
 
   Schema()
     : num_key_columns_(0),

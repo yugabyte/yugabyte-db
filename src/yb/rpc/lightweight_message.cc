@@ -81,6 +81,13 @@ std::string LightweightMessage::SerializeAsString() const {
   return result;
 }
 
+void LightweightMessage::AppendToString(std::string* out) const {
+  auto size = SerializedSize();
+  auto old_size = out->size();
+  out->resize(old_size + size);
+  SerializeToArray(pointer_cast<uint8_t*>(out->data()) + old_size);
+}
+
 std::string LightweightMessage::ShortDebugString() const {
   std::string result;
   AppendToDebugString(&result);
@@ -374,8 +381,8 @@ void SetupLimit(google::protobuf::io::CodedInputStream* in) {
                          narrow_cast<int>(FLAGS_rpc_max_message_size * 3 / 4));
 }
 
-Arena& empty_arena() {
-  static Arena arena(static_cast<size_t>(0), 0);
+ThreadSafeArena& empty_arena() {
+  static ThreadSafeArena arena(static_cast<size_t>(0), 0);
   return arena;
 }
 

@@ -72,7 +72,7 @@ constexpr size_t kQueueLength = 1000;
 
 void GetSidecar(
     const RpcController& controller, int idx, size_t expected_size, std::string* buffer) {
-  CHECK_OK(controller.AssignSidecarTo(idx, buffer));
+  CHECK_RESULT(controller.ExtractSidecar(idx)).AsSlice().AssignTo(buffer);
   CHECK_EQ(expected_size, buffer->size());
 }
 

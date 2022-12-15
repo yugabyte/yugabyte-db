@@ -924,13 +924,13 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
   // TODO(lw_uc) embed buffer and first arena block into holder itself.
   struct DataHolder {
     RefCntBuffer buffer;
-    Arena arena;
+    ThreadSafeArena arena;
 
     explicit DataHolder(const RefCntBuffer& buffer_) : buffer(buffer_) {}
   };
 
   auto holder = std::make_shared<DataHolder>(buffer);
-  auto batch = holder->arena.NewObject<LWLogEntryBatchPB>(&holder->arena);
+  auto batch = holder->arena.NewArenaObject<LWLogEntryBatchPB>();
   s = batch->ParseFromSlice(entry_batch_slice.Prefix(header.msg_length));
 
   if (!s.ok()) {
