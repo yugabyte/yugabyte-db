@@ -111,12 +111,13 @@ public class BackupUtil {
   public static final List<TaskType> BACKUP_TASK_TYPES =
       ImmutableList.of(TaskType.CreateBackup, TaskType.BackupUniverse, TaskType.MultiTableBackup);
 
-  public static Map<TableType, YQLDatabase> TABLE_TYPE_TO_YQL_DATABASE_MAP;
+  public static BiMap<TableType, YQLDatabase> TABLE_TYPE_TO_YQL_DATABASE_MAP;
 
   static {
-    TABLE_TYPE_TO_YQL_DATABASE_MAP = new HashMap<>();
+    TABLE_TYPE_TO_YQL_DATABASE_MAP = HashBiMap.create();
     TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.YQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_CQL);
     TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.PGSQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_PGSQL);
+    TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.REDIS_TABLE_TYPE, YQLDatabase.YQL_DATABASE_REDIS);
   }
 
   public enum ApiType {
@@ -697,6 +698,13 @@ public class BackupUtil {
     return keyspaceRegionLocations;
   }
 
+  public static String getKeyspaceFromStorageLocation(String storageLocation) {
+    String[] splitArray = storageLocation.split("/");
+    String keyspaceString = splitArray[(splitArray).length - 1];
+    splitArray = keyspaceString.split("-");
+    return splitArray[(splitArray).length - 1];
+  }
+
   public static boolean checkInProgressIncrementalBackup(Backup backup) {
     return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
         .stream()
@@ -709,5 +717,9 @@ public class BackupUtil {
 
   public static boolean checkIfUniverseExists(Backup backup) {
     return Universe.maybeGet(backup.universeUUID).isPresent();
+  }
+
+  public static boolean checkIfUniverseExists(UUID universeUUID) {
+    return Universe.maybeGet(universeUUID).isPresent();
   }
 }

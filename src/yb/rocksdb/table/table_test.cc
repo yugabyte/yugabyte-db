@@ -2833,6 +2833,7 @@ TEST_F(TableTest, MiddleOfMiddleKey) {
   const auto mkey_second = ASSERT_RESULT(db->GetMiddleKey());
   // Still the same as the midkey of the previous largest sst.
   ASSERT_EQ(mkey_second, mid_key_of_sst);
+  delete db;
 }
 
 }  // namespace rocksdb

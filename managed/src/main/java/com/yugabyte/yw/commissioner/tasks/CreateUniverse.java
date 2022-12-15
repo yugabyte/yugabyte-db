@@ -182,7 +182,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Create Load Balancer map to add nodes to load balancer
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =
-          createLoadBalancerMap(taskParams(), null, null);
+          createLoadBalancerMap(taskParams(), null, null, null);
       createManageLoadBalancerTasks(loadBalancerMap);
 
       // Run all the tasks.

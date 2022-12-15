@@ -10,9 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
-
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -23,10 +22,13 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.Collection;
-import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
+
+import javax.inject.Inject;
+import java.util.Collection;
+
+import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
 /**
  * Class contains the tasks to start a node in a given universe. It starts the tserver process and
@@ -166,6 +168,14 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // Update node state to running
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+
+      // Add node to load balancer.
+      createManageLoadBalancerTasks(
+          createLoadBalancerMap(
+              universe.getUniverseDetails(),
+              ImmutableList.of(cluster),
+              null,
+              ImmutableSet.of(currentNode)));
 
       // Update the DNS entry for this universe.
       UniverseDefinitionTaskParams.UserIntent userIntent =

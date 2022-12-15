@@ -140,6 +140,30 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, e.getMessage());
     }
 
+    // If the enable_replicate_transaction_status_table gflag is set, we do not support N:1
+    // replication architecture, i.e., only one universe can replicate to the target universe.
+    if (XClusterConfigTaskBase.isTransactionalReplication(sourceUniverse, targetUniverse)) {
+      List<XClusterConfig> xClusterConfigs =
+          XClusterConfig.getByTargetUniverseUUID(targetUniverse.universeUUID);
+      List<UUID> otherSourceUniverses =
+          xClusterConfigs
+              .stream()
+              .filter(
+                  xClusterConfig ->
+                      !xClusterConfig.sourceUniverseUUID.equals(sourceUniverse.universeUUID))
+              .map(xClusterConfig -> xClusterConfig.sourceUniverseUUID)
+              .collect(Collectors.toList());
+      if (!otherSourceUniverses.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "N:1 replication architecture is not supported when the gflag "
+                    + "enable_replicate_transaction_status_table is set; other universes already "
+                    + "replicating to the target universe are %s",
+                otherSourceUniverses));
+      }
+    }
+
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(

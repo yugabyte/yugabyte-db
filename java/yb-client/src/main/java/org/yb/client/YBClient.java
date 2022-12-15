@@ -1356,6 +1356,42 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get the list of all YSQL, YCQL, and YEDIS namespaces.
+   * @return a list of all the namespaces
+   */
+  public ListNamespacesResponse getNamespacesList() throws Exception {
+
+    // Fetch the namespaces of YSQL
+    ListNamespacesResponse namespacesList = null;
+    try {
+      Deferred<ListNamespacesResponse> d =
+          asyncClient.getNamespacesList(YQLDatabase.YQL_DATABASE_PGSQL);
+      namespacesList = d.join(getDefaultAdminOperationTimeoutMs());
+    } catch (MasterErrorException e) {
+    }
+
+    // Fetch the namespaces of YCQL
+    try {
+      Deferred<ListNamespacesResponse> d =
+          asyncClient.getNamespacesList(YQLDatabase.YQL_DATABASE_CQL);
+      ListNamespacesResponse response = d.join(getDefaultAdminOperationTimeoutMs());
+      namespacesList = namespacesList == null ? response : namespacesList.mergeWith(response);
+    } catch (MasterErrorException e) {
+    }
+
+    // Fetch the namespaces of YEDIS
+    try {
+      Deferred<ListNamespacesResponse> d =
+          asyncClient.getNamespacesList(YQLDatabase.YQL_DATABASE_REDIS);
+      ListNamespacesResponse response = d.join(getDefaultAdminOperationTimeoutMs());
+      namespacesList = namespacesList == null ? response : namespacesList.mergeWith(response);
+    } catch (MasterErrorException e) {
+    }
+
+    return namespacesList;
+  }
+
+  /**
    * Create for a given tablet and stream.
    * @param hp host port of the server.
    * @param tableId the table id to subscribe to.

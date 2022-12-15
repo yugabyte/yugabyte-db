@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
 
 import javax.inject.Inject;
 import java.util.ArrayList;
@@ -77,8 +78,10 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
     LoadBalancerConfig lbConfig = taskParams().lbConfig;
     try {
       Set<NodeDetails> nodes = new HashSet<>();
-      for (Set<NodeDetails> nodesPerAz : lbConfig.getAzNodes().values()) {
-        nodes.addAll(nodesPerAz);
+      if (MapUtils.isNotEmpty(lbConfig.getAzNodes())) {
+        for (Set<NodeDetails> nodesPerAz : lbConfig.getAzNodes().values()) {
+          nodes.addAll(nodesPerAz);
+        }
       }
       cloudAPI.manageNodeGroup(
           provider,
