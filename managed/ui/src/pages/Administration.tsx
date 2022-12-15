@@ -5,9 +5,11 @@ import { Selector, useSelector } from 'react-redux';
 import { RouteComponentProps } from 'react-router-dom';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
 import { isAvailable, showOrRedirect } from '../utils/LayoutUtils';
-import { HAInstances, HAReplication } from '../components/ha';
+import { HAReplication } from '../components/ha';
 import { AlertConfigurationContainer } from '../components/alerts';
 import { UserManagementContainer } from '../components/users';
+import { HAInstancesContainer } from '../components/ha/instances/HAInstanceContainer';
+
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -119,7 +121,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
             }
             unmountOnExit
           >
-            <HAInstances />
+            <HAInstancesContainer />
           </Tab>
         </YBTabsPanel>
       </Tab>
