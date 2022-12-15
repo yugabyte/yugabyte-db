@@ -12,8 +12,7 @@ AGType parser and driver support for [Apache AGE](https://age.apache.org/), grap
 sudo apt-get update
 sudo apt-get install python3-dev libpq-dev
 pip install --no-binary :all: psycopg2
-pip install antlr4-python3-runtime
-
+pip install antlr4-python3-runtime==4.9.2
 ```
 ### Test
 ```
