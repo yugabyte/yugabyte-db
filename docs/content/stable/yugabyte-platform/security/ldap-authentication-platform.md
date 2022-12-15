@@ -60,7 +60,7 @@ Consider the following example:
     ldapsearch -x -H ldaps://ldapserver.example.org -b dc=example,dc=org 'uid=adam' -D "cn=admin,dc=example,dc=org" -w adminpassword
     ```
 
-    <br>
+
     You should see a response similar to the following:
 
     ```output

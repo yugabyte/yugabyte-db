@@ -61,7 +61,7 @@ YB-TServer flags can be configured to determine which statements and events shou
 
 Each can be configured either by inclusion (listing all statement categories, users, or keyspaces to be audited) or by exclusion of CQL commands (listing all statement categories, user, or keyspaces to be excluded from auditing).
 
-The available flags are described in the following table.
+The available flags are described in the following table:
 
 <table>
   <tr>

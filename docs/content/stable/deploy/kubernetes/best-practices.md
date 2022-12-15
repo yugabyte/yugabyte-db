@@ -10,19 +10,19 @@ menu:
 type: docs
 ---
 
-## Local vs remote SSDs
+## Local versus remote SSDs
 
-Kubernetes gives users the option of using remote disks using dynamic provisioning or local storage which has to be pre-provisioned.
+Kubernetes provides you with an option of employing remote disks using dynamic provisioning or local storage which has to be preprovisioned.
 
-Local storage gives great performance, but the data is not replicated, and can be lost if the node fails. This option is ideal for databases, like YugabyteDB, that manage their own replication and can guarantee high availability (HA).
+Local storage provides great performance, but the data is not replicated and can be lost if the node fails. This option is ideal for databases, such as YugabyteDB, that manage their own replication and can guarantee high availability (HA).
 
-Remote storage has slightly lower performance but the data is resilient to failures. This type of storage is absolutely essential for databases that do not offer HA (for example, traditional relational databases, like PostgreSQL and MySQL).
+Remote storage has slightly lower performance but the data is resilient to failures. This type of storage is absolutely essential for databases that do not offer HA (for example, traditional relational databases, such as PostgreSQL and MySQL).
 
-Below is a table that summarizes the features and when to use local or remote storage.
+The following table summarizes the features and when to use local or remote storage:
 
 <table>
   <tr>
-    <th></th>
+    <th>Feature</th>
     <th>Local SSD storage</th>
     <th>Remote SSD storage</th>
   </tr>
@@ -63,4 +63,6 @@ Below is a table that summarizes the features and when to use local or remote st
   </tr>
 </table>
 
-Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The [GKE section](../gke/statefulset-yaml/) shows how to deploy YugabyteDB on Kubernetes using local SSDs.
+
+It is generally preferable to use local storage where possible for higher performance and lower costs. For information on how to deploy YugabyteDB on Kubernetes using local SSDs, see [Single-zone GKE](/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd/).
+

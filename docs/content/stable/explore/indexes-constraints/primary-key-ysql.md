@@ -31,7 +31,8 @@ The Primary Key constraint is a means to uniquely identify a specific row in a t
 
 ## Syntax and examples
 
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
+{{% explore-setup-single %}}
+
 
 ### Primary key for a single column
 
