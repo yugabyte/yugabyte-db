@@ -453,7 +453,11 @@ public class BackupsController extends AuthenticatedController {
     if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
     }
-    backupUtil.validateRestoreOverwrites(taskParams.backupStorageInfoList, universe);
+    if (backupUtil.isYbcBackup(taskParams.backupStorageInfoList.get(0).storageLocation)) {
+      taskParams.category = BackupCategory.YB_CONTROLLER;
+    }
+    backupUtil.validateRestoreOverwrites(
+        taskParams.backupStorageInfoList, universe, taskParams.category);
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (!customerConfig.getState().equals(ConfigState.Active)) {
@@ -472,9 +476,6 @@ public class BackupsController extends AuthenticatedController {
     for (BackupStorageInfo storageInfo : taskParams.backupStorageInfoList) {
       locationMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, storageInfo.storageLocation);
       storageUtil.validateStorageConfigOnLocations(configData, locationMap);
-    }
-    if (backupUtil.isYbcBackup(taskParams.backupStorageInfoList.get(0).storageLocation)) {
-      taskParams.category = BackupCategory.YB_CONTROLLER;
     }
 
     if (taskParams.category.equals(BackupCategory.YB_CONTROLLER) && !universe.isYbcEnabled()) {
