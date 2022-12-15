@@ -1129,6 +1129,59 @@ You can use the rest APIs to monitor your deployed connectors.
    curl -X GET localhost:8083/connectors/<connector-name>/status
    ```
 
+## Monitoring
+
+The YugabyteDB source connector provides two types of metrics that are in addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide.
+
+* Snapshot metrics provide information about connector operation while performing a snapshot.
+* Streaming metrics provide information about connector operation when the connector is capturing changes and streaming change event records.
+
+### Snapshot metrics
+
+The **MBean** is `debezium.yugabytedb:type=connector-metrics,context=snapshot,server=<database.server.name>`.
+
+Snapshot metrics are not exposed unless a snapshot operation is active, or if a snapshot has occurred since the last connector start. The following table lists the shapshot metrics that are available.
+
+| Metric name | Type | Description |
+| :---- | :---- | : ---- |
+| LastEvent | `string` | The last snapshot event that the connector has read. |
+| MilliSecondsSinceLastEvent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
+| TotalNumberOfEventsSeen | `long` | The total number of events that this connector has seen since last started or reset. |
+| NumberOfEventsFiltered | `long` | The number of events that have been filtered by include/exclude list filtering rules configured on the connector. |
+| QueueTotalCapacity | `int` | The length the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
+| QueueRemainingCapacity | `int` | The free capacity of the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
+| SnapshotRunning | `boolean` | Whether the snapshot was started. |
+| SnapshotPaused | `boolean` | Whether the snapshot was paused. |
+| SnapshotAborted | `boolean` | Whether the snapshot was aborted. |
+| SnapshotCompleted | `boolean` | Whether the snapshot completed. |
+| SnapshotDurationInSeconds | `long` | The total number of seconds that the snapshot has taken so far, even if not complete. Includes also time when snapshot was paused.|
+| SnapshotPausedDurationInSeconds | `long` | The total number of seconds that the snapshot was paused. If the snapshot was paused several times, the paused time adds up. |
+| MaxQueueSizeInBytes | `long` | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
+| CurrentQueueSizeInBytes | `long` | The current volume, in bytes, of records in the queue. |
+
+### Streaming metrics
+
+The **MBean** is `debezium.yugabytedb:type=connector-metrics,context=streaming,server=<database.server.name>`.
+
+The following table lists the streaming metrics that are available.
+
+| Metric name | Type | Description |
+| LastEvent | `string` | The last streaming event that the connector has read. |
+| MilliSecondsSinceLastEvent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
+| TotalNumberOfEventsSeen | `long` | The total number of events that this connector has seen since the last start or metrics reset. |
+| TotalNumberOfCreateEventsSeen | `long` | The total number of create events that this connector has seen since the last start or metrics reset. |
+| TotalNumberOfUpdateEventsSeen | `long` |The total number of update events that this connector has seen since the last start or metrics reset. |
+| TotalNumberOfDeleteEventsSeen | `long` | The total number of delete events that this connector has seen since the last start or metrics reset. |
+| NumberOfEventsFiltered | `long` | The number of events that have been filtered by include/exclude list filtering rules configured on the connector. |
+| QueueTotalCapacity | `int` | The length the queue used to pass events between the streamer and the main Kafka Connect loop. |
+| QueueRemainingCapacity | `int` | The free capacity of the queue used to pass events between the streamer and the main Kafka Connect loop. |
+| Connected | `boolean` | Flag that denotes whether the connector is currently connected to the database server. |
+| MilliSecondsBehindSource | `long` | The number of milliseconds between the last change event’s timestamp and the connector processing it. The values will incoporate any differences between the clocks on the machines where the database server and the connector are running. |
+| SourceEventPosition | `Map<String, String>` | The coordinates of the last received event. |
+| LastTransactionId | `string` | Transaction identifier of the last processed transaction. |
+| MaxQueueSizeInBytes | `long` | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
+| CurrentQueueSizeInBytes | `long` | The current volume, in bytes, of records in the queue. |
+
 ## Troubleshooting
 
 Debezium is a distributed system that captures all changes in multiple upstream databases; it never misses or loses an event. When the system is operating normally or being managed carefully then Debezium provides exactly once delivery of every change event record.
