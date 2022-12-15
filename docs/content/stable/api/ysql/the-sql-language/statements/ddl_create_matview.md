@@ -45,11 +45,14 @@ Use the `CREATE MATERIALIZED VIEW` statement to create a materialized view.
 Create a materialized view named *matview_name*. If `matview_name` already exists in the specified database, an error will be raised unless the `IF NOT EXISTS` clause is used.
 
 ### Tablespace
+
 Used to specify the tablespace for the materialized view.
 
 ### Storage parameters
 
 COLOCATED
+
+Colocated table support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 Specify `COLOCATED = true` for the materialized view to be colocated. The default value of this option is false.
 
@@ -64,7 +67,7 @@ yugabyte=# CREATE MATERIALIZED VIEW m1 AS SELECT * FROM t1 WHERE a = 3;
 yugabyte=# SELECT * FROM t1;
 ```
 
-```
+```output
  a | b
 ---+---
  3 | 4
@@ -76,7 +79,7 @@ yugabyte=# SELECT * FROM t1;
 yugabyte=# SELECT * FROM m1;
 ```
 
-```
+```output
  a | b
 ---+---
  3 | 4

@@ -44,8 +44,9 @@ void ColocationConcurrencyTest::InsertDataIntoTable(
     }
   }
 
-  auto curr_rows = ASSERT_RESULT(conn->FetchFormat("SELECT COUNT(*) FROM $0", table_name));
-  ASSERT_EQ(ASSERT_RESULT(GetInt64(curr_rows.get(), 0, 0)), num_rows);
+  auto curr_rows = ASSERT_RESULT(conn->FetchValue<PGUint64>(
+      Format("SELECT COUNT(*) FROM $0", table_name)));
+  ASSERT_EQ(curr_rows, num_rows);
 }
 
 // Concurrent DML on table 1 + truncate table 2, where table 1 & 2 are colocated.

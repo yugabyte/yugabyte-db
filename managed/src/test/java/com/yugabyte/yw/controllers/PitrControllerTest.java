@@ -182,7 +182,7 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
-    assertValue(resultJson, "error", "PITR Config retention period can't be less than 1 second");
+    assertValue(resultJson, "error", "PITR Config retention period cannot be less than 1 second");
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
@@ -198,7 +198,7 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
-    assertValue(resultJson, "error", "PITR Config interval can't be less than retention period");
+    assertValue(resultJson, "error", "PITR Config interval cannot be less than retention period");
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
   }

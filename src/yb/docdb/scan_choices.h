@@ -45,7 +45,11 @@ class ScanChoices {
   // Go (directly) to the new target (or the one after if new_target does not
   // exist in the desired list/range). If the new_target is larger than all scan target options it
   // means we are done.
-  virtual Status SkipTargetsUpTo(const Slice& new_target) = 0;
+  // Returns false if key parsing fails for any reason. If new_target is a valid user key, this
+  // method will correctly parse it. If it is not a valid user key, this method will return false.
+  // The caller should then determine how to deal with this key; e.g. if it's a valid system key,
+  // the caller can seek past this key before calling this method again with a new key.
+  virtual Result<bool> SkipTargetsUpTo(const Slice& new_target) = 0;
 
   // If the given doc_key isn't already at the desired target, seek appropriately to go to the
   // current target.
@@ -207,7 +211,7 @@ class HybridScanChoices : public ScanChoices {
     const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key);
 
-  Status SkipTargetsUpTo(const Slice& new_target) override;
+  Result<bool> SkipTargetsUpTo(const Slice& new_target) override;
   Status DoneWithCurrentTarget() override;
   Status SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) override;
 

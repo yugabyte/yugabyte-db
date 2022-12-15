@@ -9,6 +9,8 @@ menu:
     parent: voyager
     weight: 105
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 yb-voyager is a command line executable for migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database.
@@ -376,7 +378,6 @@ Comma-separated list of the tables for which data is exported. Do not use in con
 Comma-separated list of tables to exclude while exporting data.
 
 ---
-
 
 ## SSL Connectivity
 

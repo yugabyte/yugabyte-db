@@ -62,7 +62,7 @@ type: docs
 
 </ul>
 
-This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
+<br>This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -151,7 +151,7 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-n
   | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
-### `kubeconfig` file
+### kubeconfig file
 
 You can create a `kubeconfig` file for the previously created `yugabyte-platform-universe-management` service account as follows:
 
@@ -169,7 +169,7 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
     python generate_kubeconfig.py -s yugabyte-platform-universe-management -n ${YBA_NAMESPACE}
     ```
 
-    <br>Expect the following output:
+    Expect the following output:
 
     ```output
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
@@ -192,7 +192,7 @@ Continue configuring your Kubernetes provider as follows:
   - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
   - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments.
 - In the **Service Account** field, provide the name of the service account which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
-- In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry.
+- In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prerequisites#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 - Use **Pull Secret File** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
 
 ## Configure region and zones
@@ -203,13 +203,32 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 - Use the **Zone** field to select a zone label that should match with your failure domain zone label `failure-domain.beta.kubernetes.io/zone`.
 
-- Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster.
+- Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and the following guidelines are taken into consideration:
+
+  - Volume binding mode should be set to `WaitForFirstConsumer`, as described in [Configure storage class volume binding](../../../troubleshoot/universe-issues/#configure-storage-class-volume-binding).
+
+  - An SSD-based storage class and an extent-based file system (XFS) should be used, as per recommendations provided in [Deployment checklist - Disks](../../../../deploy/checklist/#disks).
+
+    The following is a sample storage class YAML file for Google Kubernetes Engine (GKE). You are expected to modify it to suit your Kubernetes cluster:
+
+    ```yaml
+    kind: StorageClass
+    metadata:
+    	name: yb-storage
+    provisioner: kubernetes.io/gce-pd
+    volumeBindingMode: WaitForFirstConsumer
+    allowVolumeExpansion: true
+    reclaimPolicy: Delete
+    parameters:
+    	type: pd-ssd
+    	fstype: xfs
+    ```
 
 - Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
-- Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.<br><br>
+- Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.<br>
 
-  ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)<br><br>
+  ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)<br>
 
 - Complete the **Overrides** field using one of the provided options. If you do not specify anything, YugabyteDB Anywhere would use defaults specified inside the Helm chart. The following overrides are available:
 

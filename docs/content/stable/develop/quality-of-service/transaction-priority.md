@@ -40,7 +40,7 @@ It is possible to set the priority of a transaction using the two session variab
 Let's create a [YugabyteDB cluster](../../../quick-start/), and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Managed" >}}
-You can create a cluster in the free tier of [YugabyteDB Managed](/preview/quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which can be used to do the steps below.
+You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which can be used to do the steps below.
 
 {{< /tip >}}
 
@@ -109,7 +109,7 @@ select * from account;
   </tr>
 
   <tr>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+    <td style="width:50%; border-right:1px solid rgba(158,159,165,0.5);">
     </td>
     <td style="width:50%;">
     Next, initiate the deposit of $200, which should have higher priority.
@@ -144,7 +144,7 @@ ERROR:  Operation failed. Try again: Unknown transaction,
   </tr>
 
   <tr>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+    <td style="width:50%; border-right:1px solid rgba(158,159,165,0.5);">
     </td>
     <td style="width:50%;">
     The deposit transaction can now commit.

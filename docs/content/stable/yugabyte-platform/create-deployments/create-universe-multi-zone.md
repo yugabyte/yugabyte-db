@@ -7,7 +7,7 @@ menu:
   stable_yugabyte-platform:
     identifier: create-multi-zone-universe
     parent: create-deployments
-    weight: 20
+    weight: 30
 type: docs
 ---
 
@@ -28,7 +28,7 @@ Generic</a>
 
 </ul>
 
-You can create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
+<br>You can create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
 
 ## Prerequisites
 
@@ -50,9 +50,9 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 - Change the instance type (**n1-standard-8**).
 
-- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3), as per the following illustration:<br><br>
+- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3), as per the following illustration:<br>
 
-  ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)<br><br>
+  ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)<br>
 
 - Click **Create**.
 
@@ -78,7 +78,7 @@ Once the universe is ready, its **Overview** tab should appear similar to the fo
 
 You connect to a database node as follows:
 
-- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:<br><br>
+- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:
 
   ![Multi-zone universe nodes](/images/yp/multi-zone-universe-nodes-1.png)
 
@@ -111,15 +111,15 @@ You can run one of the key-value workloads against the YCQL API and the YEDIS AP
 
 - Install Java by executing the following command:
 
-```sh
-$ sudo yum install java-1.8.0-openjdk.x86_64 -y
-```
+  ```sh
+  sudo yum install java-1.8.0-openjdk.x86_64 -y
+  ```
 
 - Switch to the yugabyte user by executing the following command:
 
-```sh
-$ sudo su - yugabyte
-```
+  ```sh
+  sudo su - yugabyte
+  ```
 
 - Export the `YCQL_ENDPOINTS` environment variable, supplying the IP addresses for nodes in the cluster, as follows:
 
@@ -146,7 +146,7 @@ $ sudo su - yugabyte
 To start the CassandraKeyValue workload, execute the following command:
 
 ```sh
-$ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
+java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --workload CassandraKeyValue \
             --nodes $YCQL_ENDPOINTS \
             --num_threads_write 2 \
@@ -192,13 +192,13 @@ You can stop the load tester as follows:
   user@yugaware-1:~$ sudo docker container ls | grep "yugabytedb/yb-sample-apps"
   ```
 
-  <br>Expect an output similar to the following:
+  Expect an output similar to the following:
 
   ```output
   <container_id> yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
   ```
 
-  <br>For example, if the container ID is ac144a49d57d, you would see the following output:
+  For example, if the container ID is ac144a49d57d, you would see the following output:
 
   ```output
   ac144a49d57d yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
@@ -210,19 +210,19 @@ You can stop the load tester as follows:
   user@yugaware-1:~$ sudo docker container stop <container_id>
   ```
 
-  <br>Expect the following output:
+  Expect the following output:
 
   ```output
   <container_id>
   ```
 
-  <br>For example, for a container with ID ac144a49d57d, you would need to execute the following command:
+  For example, for a container with ID ac144a49d57d, you would need to execute the following command:
 
   ```shell
   user@yugaware-1:~$ sudo docker container stop ac144a49d57d
   ```
 
-  <br>You would see the following output:
+  You would see the following output:
 
   ```output
   ac144a49d57d

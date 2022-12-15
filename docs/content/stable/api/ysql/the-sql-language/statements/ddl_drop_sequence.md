@@ -123,4 +123,3 @@ DROP SEQUENCE
 - [`lastval()`](../../../exprs/func_lastval)
 - [`nextval()`](../../../exprs/func_nextval)
 - [`setval()`](../../../exprs/func_setval)
--

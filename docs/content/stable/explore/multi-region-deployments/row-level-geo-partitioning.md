@@ -21,7 +21,7 @@ type: docs
   </li>
 </ul>
 
-Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics and transparent schema change propagation across the regions would benefit from this feature.
+Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics, and transparent schema change propagation across the regions would benefit from this feature.
 
 Geo-partitioning allows you to move data closer to users to:
 
@@ -166,7 +166,7 @@ When you create tables using a tablespace with a placement set, YugabyteDB autom
 
 ## Step 3. Pin user partitions specific to geographic locations
 
-Now, the setup should automatically be able to pin rows to the appropriate regions based on the  value set in the `geo_partition` column. This is shown in the following diagram:
+Now, the setup should automatically be able to pin rows to the appropriate regions based on the value set in the `geo_partition` column. This is shown in the following diagram:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-3.png)
 
@@ -209,7 +209,7 @@ Expanded display is used automatically.
     created_at    | 2020-11-07 21:28:11.056236
     ```
 
-Additionally, the row must be present only in the `bank_transactions_eu` partition, which can be verified by running the select statement directly against that partition. The other partitions should contain no rows.
+Additionally, the row must be present only in the `bank_transactions_eu` partition, which can be easily verified by running the select statement directly against that partition. The other partitions should contain no rows.
 
 ```sql
 yugabyte=# select * from bank_transactions_eu;

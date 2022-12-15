@@ -159,14 +159,14 @@ class PgPartitioningVersionTest :
     return conn->ExecuteFormat("SET enable_indexscan = $0;", indexscan ? "on" : "off");
   }
 
-  static Result<int64_t> FetchTableRowsCount(PGConn* conn, const std::string& table_name,
+  static Result<uint64_t> FetchTableRowsCount(PGConn* conn, const std::string& table_name,
       const std::string& where_clause = std::string()) {
     auto res = VERIFY_RESULT(conn->Fetch(Format(
         "SELECT COUNT(*) FROM $0;",
         where_clause.empty() ? table_name : Format("$0 WHERE $1", table_name, where_clause))));
     SCHECK_EQ(1, PQnfields(res.get()), IllegalState, "");
     SCHECK_EQ(1, PQntuples(res.get()), IllegalState, "");
-    return GetInt64(res.get(), 0, 0);
+    return GetValue<PGUint64>(res.get(), 0, 0);
   }
 
   Status SplitTableWithSingleTablet(

@@ -166,7 +166,7 @@ HybridScanChoices::HybridScanChoices(
 
 // Sets current_scan_target_ to the first tuple in the filter space
 // that is >= new_target.
-Status HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
+Result<bool> HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
   VLOG(2) << __PRETTY_FUNCTION__
           << " Updating current target to be >= " << DocKey::DebugSliceToString(new_target);
   DCHECK(!FinishedWithScanChoices());
@@ -247,8 +247,14 @@ Status HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
     auto current_it = current_scan_target_ranges_[option_list_idx];
     DCHECK(current_it != options.end());
 
-    std::vector<KeyEntryValue> target_value =
-        VERIFY_RESULT(DecodeKeyEntryValue(&decoder, num_cols));
+    auto decoded_key_entry_value = DecodeKeyEntryValue(&decoder, num_cols);
+    if (!decoded_key_entry_value.ok()) {
+      VLOG(1) << "Failed to decode the key: " << decoded_key_entry_value.status();
+      // We return false to give the caller a chance to validate and skip past any keys that scan
+      // choices should not be aware of before calling this again.
+      return false;
+    }
+    std::vector<KeyEntryValue>& target_value = *decoded_key_entry_value;
 
     auto lower = current_it->lower();
     auto upper = current_it->upper();
@@ -398,7 +404,7 @@ Status HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
   current_scan_target_.AppendKeyEntryType(KeyEntryType::kGroupEnd);
   VLOG(2) << "After " << __PRETTY_FUNCTION__ << " current_scan_target_ is "
           << DocKey::DebugSliceToString(current_scan_target_);
-  return Status::OK();
+  return true;
 }
 
 // Update the value at start OptionList by setting it up for incrementing to the

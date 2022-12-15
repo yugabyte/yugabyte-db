@@ -74,7 +74,7 @@ Once the active instance has been configured, you can configure one or more stan
 
     ![Standby instance type](/images/yp/high-availability/standby-configuration.png)<br>
 
-1. Enter the instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443. 
+1. Enter the instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
 
 1. Paste the shared authentication key from the active instance into the **Shared Authentication Key** field.
 
@@ -88,7 +88,7 @@ Once the active instance has been configured, you can configure one or more stan
 
 Your standby instances are now configured.
 
-Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured standby instance and and clicking **Add a peer certificate**, as per the following illustration:
+Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured standby instance and clicking **Add a peer certificate**, as per the following illustration:
 
 ![High availability instance](/images/yp/high-availability/ha-configured-standby.png)<br>
 
@@ -117,11 +117,11 @@ During a high-availability backup, the entire YugabyteDB Anywhere state is copie
 
 All instances involved in high availability should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
 
-Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these general guidelines: 
+Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these general guidelines:
 
 - Start an upgrade with an active instance.
 - After the active instance has been upgraded, ensure that YugabyteDB Anywhere is reachable by logging in and checking various pages.
-- Proceed with upgrading standby instances. 
+- Proceed with upgrading standby instances.
 
 The following is the detailed upgrade procedure:
 
@@ -174,4 +174,4 @@ If you are using custom ports for Prometheus in your YugabyteDB Anywhere install
 
   The default Prometheus port for YugabyteDB Anywhere is `9090`. Custom ports are configured through the settings section of the Replicated installer UI that is typically available at `https://<yugabyteanywhere-ip>:8800/`.
 
-  For information on how to access the Replicated settings page, see [Install YugabyteDB Anywhere](https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/).
+  For information on how to access the Replicated settings page, see [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/default/).

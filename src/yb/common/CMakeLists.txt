@@ -81,29 +81,16 @@ set(COMMON_SRCS
   hybrid_time.cc
   doc_hybrid_time.cc # must be after hybrid_time.cc
   id_mapping.cc
-  index.cc
   key_encoder.cc
-  partial_row.cc
   pgsql_error.cc
   placement_info.cc
-  ql_bfunc.cc
-  ql_expr.cc
-  ql_name.cc
-  ql_protocol_util.cc
-  ql_resultset.cc
-  ql_rowblock.cc
-  ql_serialization.cc
-  ql_scanspec.cc
   pg_types.cc
   retryable_request.cc
   roles_permissions.cc
-  row.cc
   row_mark.cc
-  schema.cc
   snapshot.cc
   transaction.cc
   transaction_error.cc
-  wire_protocol.cc
   ybc_util.cc
   ybc-internal.cc
   )
@@ -126,12 +113,45 @@ ADD_YB_LIBRARY(yb_common
   DEPS ${COMMON_LIBS})
 add_dependencies(yb_common yb_bfql yb_bfpg)
 
+set(QL_SRCS
+  index.cc
+  partial_row.cc
+  ql_bfunc.cc
+  ql_expr.cc
+  ql_name.cc
+  ql_protocol_util.cc
+  ql_resultset.cc
+  ql_rowblock.cc
+  ql_serialization.cc
+  ql_scanspec.cc
+  row.cc
+  schema.cc
+  wire_protocol.cc
+)
+
+set(QL_LIBS
+  yb_common
+  yb_common_proto
+  yb_common_base
+  yb_docdb_encoding
+  consensus_metadata_proto
+  yb_util
+  yb_bfql
+  yb_bfpg
+  gutil)
+
+ADD_YB_LIBRARY(yb_ql_common
+  SRCS ${QL_SRCS}
+  DEPS ${QL_LIBS}
+  )
+
 set(PARTITION_SRCS
   partition.cc
   )
 
 set(PARTITION_DEPS
   yb_common
+  yb_ql_common
   yb_util
   yb_docdb_encoding
   )
@@ -143,9 +163,9 @@ ADD_YB_LIBRARY(yb_partition
 
 ADD_YB_TEST_LIBRARY(yb_common_test_util
                     SRCS transaction-test-util.cc wire_protocol-test-util.cc
-                    DEPS yb_common yb_docdb)
+                    DEPS yb_common yb_ql_common yb_docdb)
 
-set(YB_TEST_LINK_LIBS yb_common yb_partition yb_common_test_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common yb_partition yb_ql_common yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(ql_table_row-test)
