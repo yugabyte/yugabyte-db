@@ -671,26 +671,36 @@ Whether you enable the connector to emit tombstones depends on how topics are co
 
 By default, a connector's `tombstones.on.delete` property is set to `true` so that the connector generates a tombstone after each delete event.
 
-If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the **absence of tombstone records might lead to unintended consequences**. For example, Kafka relies on tombstones during log compaction to remove records related to deleted keys.
+If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the **absence of tombstone records might lead to unintended consequences if your sink is not designed to handle it properly**. For example, Kafka relies on tombstones during log compaction to remove records related to deleted keys.
 
 ## Before image
 
-Before image refers to the state of the row before the change event occurred. The YugabyteDB connector will send the before image of the row when it will be configured using a stream ID enabled with before image, to know more about how to create stream ID for before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
+[Before image](../change-data-capture/_index/#before-image) refers to the state of the row before the change event occurred. The YugabyteDB connector will send the before image of the row when it will be configured using a stream ID enabled with before image, to know more about how to create stream ID for before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
 
 
-{{< note title="Note" >}}
+{{< tip title="Use transformers" >}}
 
 We recommend adding a transformer in the source connector while using with before image, the below property can be added to your configuration directly:
 
-```
+```properties
 ...
 "transforms":"unwrap",
 "transforms.unwrap.type":"io.debezium.connector.yugabytedb.transforms.PGCompatible",
-"transforms.unwrap.drop.tombstones":"",
+"transforms.unwrap.drop.tombstones":"false",
 ...
 ```
 
-{{< /note >}}
+Additionally, you will need another transformer in the sink connectors:
+
+```properties
+...
+"transforms":"unwrap",
+"transforms.unwrap.type":"io.debezium.transforms.ExtractNewRecordState",
+"transforms.unwrap.drop.tombstones":"false",
+...
+```
+
+{{< /tip >}}
 
 Once before image is enabled and the mentioned transformer is used, the effect of an update statement with the record structure would be:
 
@@ -1084,6 +1094,40 @@ Advanced connector configuration properties:
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
+
+### Monitoring status of the deployed connector
+
+You can use the rest APIs to monitor your deployed connectors.
+
+1. Get the list of all connectors
+
+   ```sh
+   curl -X GET localhost:8083/connectors/
+   ```
+
+2. Get the configuration of a connector
+
+   ```sh
+   curl -X GET localhost:8083/connectors/<connector-name>
+   ```
+
+3. Get the list of tasks with their configuration
+
+   ```sh
+   curl -X GET localhost:8083/connectors/<connector-name>/tasks
+   ```
+
+   Additionally, you can also view the status of one task by providing its task ID:
+
+   ```sh
+   curl -X GET localhost:8083/connectors/<connector-name>/tasks/<task-id>
+   ```
+
+4. Get the status of the connector with the status of its tasks
+
+   ```sh
+   curl -X GET localhost:8083/connectors/<connector-name>/status
+   ```
 
 ## Troubleshooting
 

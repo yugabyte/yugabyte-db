@@ -146,24 +146,28 @@ It is not possible to take a snapshot of the table again using an existing strea
 
 This refers to the state of the row before the change event occurred. This will only be populated in case of UPDATE and DELETE event as in case of INSERT and READ (Snapshot) events, the change is for the creation of new content.
 
+At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. By default, the history retention period is controlled by the [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec) applied cluster-wide to every YSQL database.
+
+However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the interval between the snapshots. You are not required to manually set the cluster-wide flag in order to use before image.
+
+There are no technical limitations on the retention target. However, when you increase the number of stored snapshots, you also increase the amount of space required for the database. The actual overhead depends on the workload, therefore it is recommended to estimate it by running tests based on your applications. This also impacts the garbage collection & compaction i.e. in case the CDC streams are lagging, the disk size will go up.
+
 You will need to create a CDC DB stream indicating the server to send the before image of the changed rows with the streams. To know more on how to create streams with before image enabled, see [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands).
+
+{{< note title="Note" >}}
+
+Any write operations done within the current transaction will not be visible as before image. In other words, the before image will only be available for records which are/were committed prior to the current transaction.
+
+{{< /note >}}
 
 ## Limitations
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
-* User Defined Types (UDT) are not supported. Issue [12744](https://github.com/yugabyte/yugabyte-db/issues/12744).
-
-{{< note title="Note" >}}
-
-In the current implementation, information related to the columns for the UDTs will not be there in the messages published on Kafka topic.
-
-{{< /note >}}
 
 * Enabling CDC on tables created using previous versions of YugabyteDB is not supported, even after YugabyteDB is upgraded to version 2.13 or higher.
   * Also, CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
 * DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
-* Support for DDL commands is incomplete.
 * A single stream can only be used to stream data from one namespace only.
 * There should be a primary key on the table you want to stream the changes from.
 
@@ -172,3 +176,4 @@ In addition, CDC support for the following features will be added in upcoming re
 * Support for point-in-time recovery (PITR) is tracked in issue [10938](https://github.com/yugabyte/yugabyte-db/issues/10938).
 * Support for transaction savepoints is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936).
 * Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
+* Support for schema evolution with before image is tracked in issue [15197](https://github.com/yugabyte/yugabyte-db/issues/15197).
