@@ -167,6 +167,10 @@ Any write operations done within the current transaction will not be visible as 
 
 {{< /note >}}
 
+## Packed rows
+
+The support for CDC with packed rows is also there. However, there is one case where if all the non-key columns of a row are modified, CDC will emit the change records as an INSERT record rather than an UPDATE record.
+
 ## Limitations
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
