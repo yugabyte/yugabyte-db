@@ -36,7 +36,7 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -50,7 +50,7 @@ type: docs
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
@@ -362,8 +362,9 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       runAsUser: 10001
       runAsGroup: 10001
     ```
+    Note that you cannot change users during the Helm upgrades.
 
-  - Add `tolerations` in Master and Tserver pods. Tolerations work in combination with taints. `Taints` are applied on nodes and `Tolerations` to pods. Taints and tolerations work together to ensure that pods do not schedule onto inappropriate nodes. You can `taint` a few nodes for YugabyteDB and provide `tolerations` to YugabyteDB pods so those nodes will have only YugabyteDB pods.
+  - Add `tolerations` in Master and Tserver pods. Tolerations work in combination with taints. `Taints` are applied on nodes and `Tolerations` to pods. Taints and tolerations work together to ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes and use taints + tolerations to prevent other pods from getting scheduled on the dedicated nodes if required.
   For more information, see [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core).
 
     ```yml
@@ -427,6 +428,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       podLabels:
         environment: production
         app: yugabytedb
+        prometheus.io/scrape: true
 
     tserver:
       podLabels: {}
@@ -441,6 +443,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
     For more information, see [Prerequisites](https://docs.yugabyte.com/preview/deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
 
     ```yml
+    ## Default values
     preflight:
       ## Set to true to skip disk IO check, DNS address resolution, and port bind checks
       skipAll: false
@@ -452,7 +455,6 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       ## SkipAll has higher priority
       skipUlimit: false
     ```
-    <br>Note that you cannot change users during the Helm upgrades.
 
 Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
 
