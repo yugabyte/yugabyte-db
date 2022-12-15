@@ -43,6 +43,8 @@ For more information, refer to [IP allow list](../../cloud-secure-clusters/add-c
 
 If your cluster is deployed in a VPC, deploy your application in a VPC that is [peered](../../cloud-basics/cloud-vpcs/cloud-add-peering/) with your cluster's VPC, and add the application VPC to the cluster IP allow list.
 
+Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If you are connecting from a public IP address (for example, for testing, development, or running sample applications), enable Public Access on the cluster **Settings** tab. Then use the public address in your application connection string. (This configuration is not recommended for production.)
+
 #### Using smart drivers
 
 To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
@@ -64,6 +66,7 @@ To get the connection parameters for your cluster:
 1. Click **Connect to your Application**.
 1. Click **Download CA Cert** and install the cluster certificate on the computer running the application.
 1. Choose the API used by your application, **YSQL** or **YCQL**, to display the corresponding connection parameters.
+1. If your cluster is deployed in a VPC, choose **Private Address** if your application is in a peered VPC. Otherwise, choose Public Address (only available if you have enabled [Public Access](#vpc-network); not recommended for production).
 
 ### Connection parameters
 
