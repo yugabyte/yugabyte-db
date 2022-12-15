@@ -66,6 +66,8 @@
   weight = 1
   identifier = "products"
   url = "/"
+  [main.params]
+    excludeVersion = true
 
 [[main]]
   name = "YugabyteDB"
@@ -266,6 +268,15 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
+  url = "/"
+  [preview.params]
+    classes = "separator"
+    showSection = true
+
+[[preview]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
   url = "/preview/"
   [preview.params]
     showSection = true
@@ -278,7 +289,6 @@
   [preview.params]
     showSection = true
     hideChildren = true
-    classes = "separator"
 
 [[preview]]
   name = "Explore"
@@ -362,7 +372,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/preview/"
+  url = "/"
   [preview_api.params]
     classes = "separator"
     showSection = true
@@ -407,7 +417,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/preview/"
+  url = "/"
   [preview_releases.params]
     classes = "separator"
     showSection = true
@@ -426,7 +436,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/preview/"
+  url = "/"
   [preview_faq.params]
     classes = "separator"
     showSection = true
@@ -453,7 +463,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/preview/"
+  url = "/"
   [preview_yugabyte-platform.params]
     classes = "separator"
     showSection = true
@@ -481,7 +491,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/preview/"
+  url = "/"
   [preview_yugabyte-cloud.params]
     classes = "separator"
     showSection = true
@@ -517,6 +527,15 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
+  url = "/"
+  [stable.params]
+    classes = "separator"
+    showSection = true
+
+[[stable]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
   url = "/stable/"
   [stable.params]
     showSection = true
@@ -529,7 +548,6 @@
   [stable.params]
     showSection = true
     hideChildren = true
-    classes = "separator"
 
 [[stable]]
   name = "Explore"
@@ -629,7 +647,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/stable/"
+  url = "/"
   [stable_yugabyte-platform.params]
     classes = "separator"
     showSection = true
@@ -657,7 +675,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/stable/"
+  url = "/"
   [stable_api.params]
     classes = "separator"
     showSection = true
@@ -702,6 +720,15 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
+  url = "/"
+  ["v2.14".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.14"]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
   url = "/v2.14/"
   ["v2.14".params]
     showSection = true
@@ -837,9 +864,9 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/v2.14/"
+  url = "/"
   ["v2.14_yugabyte-platform".params]
-    classes = "back-arrow"
+    classes = "separator"
     showSection = true
 
 [["v2.14_yugabyte-platform"]]
@@ -866,6 +893,15 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
+  url = "/"
+  ["v2.12".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.12"]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
   url = "/v2.12/"
   ["v2.12".params]
     showSection = true
@@ -878,7 +914,6 @@
   ["v2.12".params]
     showSection = true
     hideChildren = true
-    classes = "separator"
 
 [["v2.12"]]
   name = "Explore"
@@ -978,7 +1013,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/v2.12/"
+  url = "/"
   ["v2.12_yugabyte-platform".params]
     classes = "separator"
     showSection = true
@@ -1006,7 +1041,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/preview/"
+  url = "/"
   ["v2.12_api".params]
     classes = "separator"
     showSection = true
@@ -1053,6 +1088,15 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
+  url = "/"
+  ["v2.8".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.8"]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
   url = "/v2.8/"
   ["v2.8".params]
     showSection = true
@@ -1065,7 +1109,6 @@
   ["v2.8".params]
     showSection = true
     hideChildren = true
-    classes = "separator"
 
 [["v2.8"]]
   name = "Explore"
@@ -1166,7 +1209,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/v2.8/"
+  url = "/"
   ["v2.8_yugabyte-platform".params]
     classes = "separator"
     showSection = true
@@ -1185,7 +1228,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/preview/"
+  url = "/"
   ["v2.8_api".params]
     classes = "separator"
     showSection = true
@@ -1230,6 +1273,15 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
+  url = "/"
+  ["v2.6".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.6"]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
   url = "/v2.6/"
   ["v2.6".params]
     showSection = true
@@ -1242,7 +1294,6 @@
   ["v2.6".params]
     showSection = true
     hideChildren = true
-    classes = "separator"
 
 [["v2.6"]]
   name = "Explore"
@@ -1332,7 +1383,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/v2.6/"
+  url = "/"
   ["v2.6_yugabyte-platform".params]
     classes = "separator"
     showSection = true
@@ -1351,7 +1402,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/preview/"
+  url = "/"
   ["v2.6_api".params]
     classes = "separator"
     showSection = true
