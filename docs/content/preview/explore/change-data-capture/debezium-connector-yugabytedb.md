@@ -1138,12 +1138,12 @@ The YugabyteDB source connector provides two types of metrics that are in additi
 
 ### Snapshot metrics
 
-The **MBean** is `debezium.yugabytedb:type=connector-metrics,context=snapshot,server=<database.server.name>`.
+The **MBean** is `debezium.yugabytedb:type=connector-metrics,server=<database.server.name>,task=<task.id>,context=snapshot`.
 
 Snapshot metrics are not exposed unless a snapshot operation is active, or if a snapshot has occurred since the last connector start. The following table lists the shapshot metrics that are available.
 
 | Metric name | Type | Description |
-| :---- | :---- | : ---- |
+| :---- | :---- | :---- |
 | LastEvent | `string` | The last snapshot event that the connector has read. |
 | MilliSecondsSinceLastEvent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
 | TotalNumberOfEventsSeen | `long` | The total number of events that this connector has seen since last started or reset. |
@@ -1161,11 +1161,12 @@ Snapshot metrics are not exposed unless a snapshot operation is active, or if a 
 
 ### Streaming metrics
 
-The **MBean** is `debezium.yugabytedb:type=connector-metrics,context=streaming,server=<database.server.name>`.
+The **MBean** is `debezium.yugabytedb:type=connector-metrics,server=<database.server.name>,task=<task.id>,context=streaming`.
 
 The following table lists the streaming metrics that are available.
 
 | Metric name | Type | Description |
+| :---- | :---- | :---- |
 | LastEvent | `string` | The last streaming event that the connector has read. |
 | MilliSecondsSinceLastEvent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
 | TotalNumberOfEventsSeen | `long` | The total number of events that this connector has seen since the last start or metrics reset. |
@@ -1182,6 +1183,9 @@ The following table lists the streaming metrics that are available.
 | MaxQueueSizeInBytes | `long` | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
 | CurrentQueueSizeInBytes | `long` | The current volume, in bytes, of records in the queue. |
 
+## Usage examples
+
+For examples on how to configure CDC in different setup configurations, you can see our [list of examples on GitHub](https://github.com/yugabyte/cdc-examples) for usage with various sinks and configuration information.
 ## Troubleshooting
 
 Debezium is a distributed system that captures all changes in multiple upstream databases; it never misses or loses an event. When the system is operating normally or being managed carefully then Debezium provides exactly once delivery of every change event record.
