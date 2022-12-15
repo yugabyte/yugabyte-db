@@ -10,6 +10,8 @@ NODE_AGENT_HOME=""
 NODE_AGENT_PKG_DIR=""
 NODE_AGENT_RELEASE_DIR=""
 
+# Yugabyte Anywhere SSL cert verification option.
+SKIP_VERIFY_CERT=""
 #Skip the interactive installation or not.
 SKIP_CONFIGURE="false"
 #Unregister (if any) and register again.
@@ -71,7 +73,7 @@ node_agent_dir_setup() {
 unregister_node_agent() {
   local RESPONSE_FILE="/tmp/node_agent_${INSTALL_USER}.json"
   local STATUS_CODE=""
-  STATUS_CODE=$(curl -s -w "%{http_code}" -L --request GET \
+  STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
     "$NODE_AGENT_BASE_URL?nodeIp=$NODE_IP" --header "$HEADER: $HEADER_VAL" \
     --output "$RESPONSE_FILE"
     )
@@ -93,7 +95,7 @@ unregister_node_agent() {
   set -e
   if [ -n "$NODE_AGENT_UUID" ]; then
     local STATUS_CODE=""
-    STATUS_CODE=$(curl -s -w "%{http_code}" -L --request DELETE \
+    STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request DELETE \
     "$NODE_AGENT_BASE_URL/$NODE_AGENT_UUID" --header "$HEADER: $HEADER_VAL" --output /dev/null
     )
     if [ "$STATUS_CODE" != "200" ]; then
@@ -123,12 +125,10 @@ download_extract_package() {
     fi
     echo "* Getting $OS/$GO_ARCH_TYPE package"
     local BUILD_TAR="node-agent.tgz"
-
     local RESPONSE_CODE=""
-    RESPONSE_CODE=$(curl -s -w "%{http_code}" --location --request GET \
+    RESPONSE_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" --location --request GET \
     "$NODE_AGENT_DOWNLOAD_URL?downloadType=package&os=$OS&arch=$GO_ARCH_TYPE" \
-    --header "$HEADER: $HEADER_VAL" --output $BUILD_TAR
-    )
+    --header "$HEADER: $HEADER_VAL" --output $BUILD_TAR)
 
     if [ "$RESPONSE_CODE" -ne 200 ]; then
       echo "x Error while downloading the node agent build package"
@@ -142,7 +142,9 @@ download_extract_package() {
     #./
     #./<version>/
     #./<version>/*
-    VERSION=$(tar -tzf $BUILD_TAR | head -2 | tail -1 | cut -f2 -d"/")
+    set +o pipefail
+    VERSION=$(tar -tzf $BUILD_TAR | awk -F '/' '$2{print $2; exit}')
+    set -o pipefail
 
     echo "* Downloaded Version - $VERSION"
     #Untar the package.
@@ -247,6 +249,8 @@ Options:
     Api token to download the build files.
   --user (REQUIRED only for install_service type)
     Username of the installation. A sudo user can install service for a non-sudo user.
+  --skip_verify_cert (OPTIONAL)
+    Specify to skip Yugabyte Anywhere server cert verification during install.
   -h, --help
     Show usage.
 EOT
@@ -280,7 +284,7 @@ main() {
     setup_symlink
   elif [ "$TYPE" = "install" ]; then
     if [ -z "$PLATFORM_URL" ]; then
-      echo "Platform URL is required."
+      echo "Yugabyte Anywhere URL is required."
       show_usage >&2
       exit 1
     fi
@@ -309,16 +313,18 @@ main() {
         exit 1
       fi
       node-agent node register --api_token "$API_TOKEN" --url "$PLATFORM_URL" --node_ip "$NODE_IP" \
-      --node_port "$NODE_PORT"
+      --node_port "$NODE_PORT" ${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}
     else
-      node-agent node configure --api_token "$API_TOKEN" --url "$PLATFORM_URL"
+      node-agent node configure --api_token "$API_TOKEN" --url "$PLATFORM_URL" \
+      ${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}
     fi
     if [ $? -ne 0 ]; then
       echo "Node agent setup failed."
       exit 1
     fi
   else
-    err_msg "Invalid option: $TYPE. Must be one of ['install [--force]', 'install_service'].\n"
+    err_msg "Invalid option: $TYPE. Must be one of ['install [--force] [--skip_verify_cert]', \
+'install_service'].\n"
     show_usage >&2
     exit 1
   fi
@@ -338,6 +344,9 @@ while [[ $# -gt 0 ]]; do
     --user)
       INSTALL_USER="$2"
       shift
+    ;;
+    --skip_verify_cert)
+      SKIP_VERIFY_CERT="true"
     ;;
     --skip_configure)
       SKIP_CONFIGURE="true"

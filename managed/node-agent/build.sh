@@ -8,7 +8,7 @@ export GO111MODULE=on
 readonly protoc_version=21.5
 readonly package_name='node-agent'
 readonly default_platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
-readonly skip_dirs=("third-party" "proto" "generated" "build" "resources")
+readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target")
 
 readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
@@ -167,7 +167,7 @@ run_tests() {
         fi
         echo "Running tests in ${dir}..."
         set +e
-        go test --tags testonly -v ./"$dir"/...
+        go clean -testcache && go test --tags testonly -v ./"$dir"/...
         set -e
     done
     popd
@@ -194,8 +194,9 @@ package_for_platform() {
     mkdir -p "$script_dir"
     mkdir -p "$bin_dir"
     cp -rf "$os_exec_name" "${bin_dir}/$exec_name"
-    cp -rf ../version.txt "${version_dir}"/version.txt
-    cp -rf ../version_metadata.json "${version_dir}"/version_metadata.json
+    # Follow the symlinks.
+    cp -Lf ../version.txt "${version_dir}"/version.txt
+    cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
     pushd "$project_dir/resources"
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh
     cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh

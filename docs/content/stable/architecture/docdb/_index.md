@@ -36,6 +36,6 @@ type: indexpage
         Achieving high performance in DocDB.
       </div>
     </a>
-  </div>>
+  </div>
 
 </div>

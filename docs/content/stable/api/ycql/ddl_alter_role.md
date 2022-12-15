@@ -24,7 +24,8 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="437" height="65" viewbox="0 0 437 65"><path class="connector" d="M0 52h5m58 0h10m52 0h10m84 0h10m53 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h32m46 0h32q5 0 5 5v20q0 5-5 5m-5 0h25"/><rect class="literal" x="5" y="35" width="58" height="25" rx="7"/><text class="text" x="15" y="52">ALTER</text><rect class="literal" x="73" y="35" width="52" height="25" rx="7"/><text class="text" x="83" y="52">ROLE</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="135" y="35" width="84" height="25"/><text class="text" x="145" y="52">role_name</text></a><rect class="literal" x="229" y="35" width="53" height="25" rx="7"/><text class="text" x="239" y="52">WITH</text><rect class="literal" x="339" y="5" width="46" height="25" rx="7"/><text class="text" x="349" y="22">AND</text><a xlink:href="../grammar_diagrams#role-property"><rect class="rule" x="312" y="35" width="100" height="25"/><text class="text" x="322" y="52">role_property</text></a></svg>
 
 ### Grammar
-```
+
+```ebnf
 alter_table ::= ALTER ROLE role_name WITH role_property [ AND role_property ...];
 
 role_property ::=  PASSWORD = '<Text Literal>'

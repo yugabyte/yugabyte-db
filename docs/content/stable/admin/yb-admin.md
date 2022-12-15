@@ -50,7 +50,6 @@ To display the online help, run `yb-admin --help` from the YugabyteDB home direc
 * [Backup and snapshot](#backup-and-snapshot-commands)
 * [Deployment topology](#deployment-topology-commands)
   * [Multi-zone and multi-region](#multi-zone-and-multi-region-deployment-commands)
-  * [Master-follower](#master-follower-deployment-commands)
   * [Read replica](#read-replica-deployment-commands)
 * [Security](#security-commands)
   * [Encryption at rest](#encryption-at-rest-commands)
@@ -484,7 +483,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: The namespace, or name of the database or keyspace.
 * *table_name*: The name of the table.
-* *table_id*: The unique uuid associated with the table whose placement policy is being changed.
+* *table_id*: The unique UUID associated with the table whose placement policy is being changed.
 * *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 * *replication_factor*: The number of replicas for each tablet.
 * *placement_id*: Identifier of the primary cluster. Optional. If set, it has to match the `placement_id` specified for the primary cluster in the cluster configuration.
@@ -509,7 +508,7 @@ Use this command to create custom placement policies only for YCQL tables or tra
 
 #### create_transaction_table
 
-Creates a transaction status table to be used in a region. This command should always be followed by [`modify_table_placement_info`](#modify-table-placement-info) to set the placement information for the newly created transaction status table.
+Creates a transaction status table to be used in a region. This command should always be followed by [`modify_table_placement_info`](#modify-table-placement-info) to set the placement information for the newly-created transaction status table.
 
 **Syntax**
 
@@ -547,13 +546,41 @@ Next, set the placement on the newly created transactions table:
 
 After the load balancer runs, all tablets of `system.transactions_us_east` should now be solely located in the AWS us-east region.
 
----
-
 {{< note title="Note" >}}
 
 The preferred way to create transaction status tables with YSQL is to create a tablespace with the appropriate placement. YugabyteDB automatically creates a transaction table using the tablespace's placement when you create the first table using the new tablespace.
 
 {{< /note >}}
+
+#### add_transaction_tablet
+
+Add a tablet to a transaction status table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    add_transaction_tablet \
+    <keyspace> <table_name>
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *keyspace*: The name of the keyspace.
+* *table_name*: The name of the transaction status table name.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    add_transaction_tablet \
+    system transactions
+```
+
+To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
+
+---
 
 ### Backup and snapshot commands
 
@@ -1611,7 +1638,11 @@ yb-admin \
 Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
 {{< /warning >}}
 
+{{< note title="Tip" >}}
+
 To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
+
+{{< /note >}}
 
 **Example**
 
@@ -1625,10 +1656,10 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 
 #### alter_universe_replication
 
-Changes the universe replication for the specified source universe. Use this command to:
+Changes the universe replication for the specified source universe. Use this command to do the following:
 
-* Add or remove tables in an existing replication UUID
-* Modify the source master addresses
+* Add or remove tables in an existing replication UUID.
+* Modify the source master addresses.
 
 If no tables have been configured for replication, use [setup_universe_replication](#setup-universe-replication).
 
@@ -1665,7 +1696,7 @@ yb-admin -master_addresses <target_master_addresses> \
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
 
 {{< warning title="Important" >}}
-Enter the source universe bootstrap_ids in the same order as their corresponding table_ids.
+Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
 {{< /warning >}}
 
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
@@ -1808,6 +1839,38 @@ The CDC bootstrap ids are the ones that should be used with [`setup_universe_rep
 {{< /note >}}
 
 ---
+
+#### get_replication_status
+
+Returns the replication status of all consumer streams. If *producer_universe_uuid* is provided, this will only return streams that belong to an associated universe key.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> get_replication_status [ <producer_universe_uuid> ]
+```
+
+* *producer_universe_uuid*: Optional universe-unique identifier (can be any string, such as a string of a UUID).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    get_replication_status e260b8b6-e89f-4505-bb8e-b31f74aa29f3
+```
+
+```output
+statuses {
+  table_id: "03ee1455f2134d5b914dd499ccad4377"
+  stream_id: "53441ad2dd9f4e44a76dccab74d0a2ac"
+  errors {
+    error: REPLICATION_MISSING_OP_ID
+    error_detail: "Unable to find expected op id on the producer"
+  }
+}
+```
 
 ### Decommissioning commands
 

@@ -61,7 +61,7 @@ type: docs
 
 </ul>
 
-You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
+<br>You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
 
 To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required role-based access control (RBAC) and adding the provider in the YugabyteDB Anywhere.
 
@@ -160,7 +160,7 @@ You can create a universe using the provider as follows:
   - In the **Name** field, enter universe-1.
   - In the **Provider** field, enter ocp-test.
   - In the **Regions** field, enter US East.
-  - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).<br><br>
+  - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).<br>
 
   ![Create Universe](/images/ee/openshift-create-uni.png)
 

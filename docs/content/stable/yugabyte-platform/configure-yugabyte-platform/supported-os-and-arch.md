@@ -19,11 +19,13 @@ YugabyteDB Anywhere supports deploying YugabyteDB on both x86 and ARM (aarch64) 
 
 YugabyteDB Anywhere supports deploying YugabyteDB on the following operating systems:
 
-* AlmaLinux OS 8
-* CentOS 7
+* AlmaLinux OS 8 (default)
+* CentOS
+* Oracle Linux 7
 * Oracle Linux 8
 * Ubuntu 18
 * Ubuntu 20
+* Red Hat Enterprise Linux 8
 
 ### Requirements for all OSes
 
@@ -35,6 +37,7 @@ The host AMI must have `gtar` and `zipinfo` installed.
 
 YugabyteDB Anywhere support for Oracle Linux 8 and AlmaLinux OS 8 has the following limitations:
 
-* Oracle Linux 8 uses the `firewall-cmd` client to set default target ACCEPT.
-* On Oracle Linux 8, only the Red Hat Linux-compatible kernel is supported, to allow port changing. The Unbreakable Enterprise Kernel (UEK) isn't supported.
-* Systemd services are only supported in YugabyteDB Anywhere 2.15.1 and above.
+* Oracle Linux 8 uses the `firewall-cmd` client to set default target `ACCEPT`.
+* On Oracle Linux 8, only the Red Hat Linux-compatible kernel is supported, to allow port changing. The Unbreakable Enterprise Kernel (UEK) is not supported.
+* Systemd services are only supported in YugabyteDB Anywhere 2.15.1 and later versions.
+

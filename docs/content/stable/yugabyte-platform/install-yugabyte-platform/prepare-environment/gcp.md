@@ -126,16 +126,16 @@ You need to create an instance to run YugabyteDB Anywhere. To do this, from your
 Once the instance has been created, use the **SSH Keys** tab to add a custom public key and a login user to this instance. To do so, you start by creating a key-pair, as follows:
 
 ```sh
-$ ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
+ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
 ```
 
-<br>You can set the appropriate credentials for the SSH key as follows:
+You can set the appropriate credentials for the SSH key as follows:
 
 ```sh
-$ chmod 400 ~/.ssh/yugabyte-1-gcp
+chmod 400 ~/.ssh/yugabyte-1-gcp
 ```
 
-<br>Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
+Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
 
 For more information, see the following GCP documentation:
 
@@ -150,7 +150,7 @@ Use the GCP Cloud Console to find the public IP address of the instance you laun
 To connect to this server, execute the following command:
 
 ```sh
-$ ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
+ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
 ```
 
 Replace `NN.NN.NN.NN` with the IP address and `yugabyte-1-gcp` with the appropriate SSH key.
