@@ -6,7 +6,6 @@ headcontent: Find the guides, examples, and reference material you need to evalu
 type: indexpage
 layout: list
 breadcrumbDisable: true
-body_class: yb-page-style
 weight: 1
 resourcesIntro: Explore resources based on your usecase
 resources:
@@ -20,82 +19,153 @@ resources:
     url: /preview/migrate/
 ---
 
-<div class="component-box bottom-right-image width-half">
+{{< sections/textWithRightImage
+  title="Learn through examples"
+  description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
+  buttonText="Get started"
+  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  imageAlt="Yugabyte cloud" imageUrl="/images/homepage/learn-through-examples.svg"
+>}}
 
-- Get Started in the Cloud
+{{< sections/2boxes >}}
+  {{< sections/bottomImageBox
+    title="Get Started in the Cloud"
+    description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required."
+    buttonText="Get started"
+    buttonUrl="/preview/quick-start-yugabytedb-managed/"
+    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
+  >}}
 
-  Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required.
-
-  [Get started](/preview/quick-start-yugabytedb-managed/)
-
-  ![Yugabyte cloud](/images/homepage/yugabyte-in-cloud.svg)
-
-- Get Started locally on your Laptop
-
-  Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL.
-
-  [Get started](/preview/quick-start/)
-
-  ![Locally Laptop](/images/homepage/locally-laptop.svg)
-
-</div>
+  {{< sections/bottomImageBox
+    title="Get Started locally on your Laptop"
+    description="Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL."
+    buttonText="Get started"
+    buttonUrl="/preview/quick-start/"
+    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
+  >}}
+{{< /sections/2boxes >}}
 
 ## Learn through examples
 
-<div class="component-box top-center-image width-third invisible-link">
+{{< sections/3boxesTopImage >}}
+  {{< sections/imageTitleDescBox
+    title="Build a Hello world application"
+    description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster and performs basic SQL operations."
+    buttonText="Get started"
+    buttonUrl="/preview/develop/build-apps/"
+    imageAlt="Build a Hello world application"
+    imageUrl="/images/homepage/build-hello-world-application.svg"
+  >}}
 
-- Build a Hello world application
+  {{< sections/imageTitleDescBox
+    title="Run a real world demo app"
+    description="Run a distributed full-stack e-commerce application built on YugabyteDB, Node.js Express, and React."
+    buttonText="Get started"
+    buttonUrl="/preview/develop/realworld-apps/ecommerce-app/"
+    imageAlt="Run a real world demo app"
+    imageUrl="/images/homepage/run-real-world-demo-app.svg"
+  >}}
 
-  Use your favorite programming language to build an application that connects to a YugabyteDB cluster and performs basic SQL operations.
-
-  [Get started](/preview/develop/build-apps/)
-
-  ![Build a Hello world application](/images/homepage/build-hello-world-application.svg)
-
-- Run a real world demo app
-
-  Run a distributed full-stack e-commerce application built on YugabyteDB, Node.js Express, and React.
-
-  [Get started](/preview/develop/realworld-apps/ecommerce-app/)
-
-  ![Run a real world demo app](/images/homepage/run-real-world-demo-app.svg)
-
-- Explore Distributed SQL capabilities
-
-  Learn about YugabyteDB's PostgreSQL compatibility.
-
-  [Get started](/preview/explore/)
-
-  ![Explore Distributed SQL capabilities](/images/homepage/explore-distributed-sql-capabilitues.svg)
-
-</div>
+  {{< sections/imageTitleDescBox
+    title="Explore Distributed SQL capabilities"
+    description="Learn about YugabyteDB's PostgreSQL compatibility."
+    buttonText="Get started"
+    buttonUrl="/preview/explore/"
+    imageAlt="Explore Distributed SQL capabilities"
+    imageUrl="/images/homepage/explore-distributed-sql-capabilities.svg"
+  >}}
+{{< /sections/3boxesTopImage >}}
 
 ## Products
 
-<div class="component-box top-icon-image width-third invisible-link">
+{{< sections/3boxesTopIcon >}}
+  {{< sections/imageTitleDescBox
+    title="YugabyteDB"
+    description="Open source cloud-native distributed SQL database for mission-critical applications."
+    buttonText="Explore YugabyteDB"
+    buttonUrl="/preview/explore/"
+    imageAlt="Explore YugabyteDB"
+    imageUrl="/icons/database.svg"
+  >}}
 
-- YugabyteDB
+  {{< sections/imageTitleDescBox
+    title="YugabyteDB Anywhere"
+    description="YugabyteDB delivered as a private database-as-a-service for enterprises."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-platform/"
+    imageAlt="YugabyteDB Anywhere"
+    imageUrl="/icons/server.svg"
+  >}}
 
-  Open source cloud-native distributed SQL database for mission-critical applications.
+  {{< sections/imageTitleDescBox
+    title="YugabyteDB Managed"
+    description="Fully managed YugabyteDB-as-a-Service without the operational overhead of managing a database."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-cloud/"
+    imageAlt="YugabyteDB Managed"
+    imageUrl="/icons/cloud.svg"
+  >}}
+{{< /sections/3boxesTopIcon >}}
 
-  [Explore YugabyteDB](/preview/explore/)
+## Key concepts
 
-  ![Explore YugabyteDB](/images/homepage/database.svg)
+{{< sections/3boxesTopIcon >}}
+  {{< sections/imageTitleDescBox
+    title="Understand availability"
+    description="YugabyteDB clusters can continue to do reads and writes even in case of node failures."
+    buttonText="Read real world availability usecases"
+    buttonUrl="/preview/explore/fault-tolerance/macos/"
+    imageAlt="Understand availability"
+    imageUrl="/icons/availability.svg"
+  >}}
 
-- YugabyteDB Anywhere
+  {{< sections/imageTitleDescBox
+    title="Understand scalability"
+    description="Scale YugabyteDB clusters to handle more transactions per second, more concurrent client connections, and larger datasets."
+    buttonText="Read real world scalability usecases"
+    buttonUrl="/preview/explore/linear-scalability/"
+    imageAlt="Understand scalability"
+    imageUrl="/icons/scalability.svg"
+  >}}
 
-  YugabyteDB delivered as a private database-as-a-service for enterprises.
+  {{< sections/imageTitleDescBox
+    title="Understand geo-partitioning"
+    description="Use geo-partitioning to meet data residency requirements and achieve lower latency and higher performance."
+    buttonText="Read real world Geo usecases"
+    buttonUrl="/preview/explore/multi-region-deployments/row-level-geo-partitioning/"
+    imageAlt="Understand Geo"
+    imageUrl="/icons/geo.svg"
+  >}}
+{{< /sections/3boxesTopIcon >}}
 
-  [Documentation](/preview/yugabyte-platform/)
+## More resources
 
-  ![YugabyteDB Anywhere](/images/homepage/server.svg)
+{{< sections/3boxes >}}
+  {{< sections/multiplelinksBox
+    title="Explore Yugabyte University"
+    linkText1="Read real world availability usecases"
+    linkUrl1="https://university.yugabyte.com/courses/introduction-to-distributed-sql"
+    linkText2="Introduction to YugabyteDB"
+    linkUrl2="https://university.yugabyte.com/courses/introduction-to-yugabytedb"
+    linkText3="YugabyteDB Managed Basics"
+    linkUrl3="https://university.yugabyte.com/courses/yugabytedb-managed-basics"
+  >}}
 
-- YugabyteDB Managed
+  {{< sections/multiplelinksBox
+    title="Get under the hood"
+    linkText1="YugabyteDB architecture"
+    linkUrl1="/preview/architecture/"
+    linkText2="Benchmark YugabyteDB"
+    linkUrl2="/preview/benchmark/"
+    linkText3="Drivers and ORMs"
+    linkUrl3="/preview/drivers-orms/"
+  >}}
 
-  Fully managed YugabyteDB-as-a-Service without the operational overhead of managing a database.
-
-  [Documentation](/preview/yugabyte-cloud/)
-
-  ![YugabyteDB Managed](/images/homepage/cloud.svg)
-
-</div>
+  {{< sections/multiplelinksBox
+    title="Distributed SQL APIs"
+    linkText1="YSQL"
+    linkUrl1="/preview/api/ysql/"
+    linkText2="YCQL"
+    linkUrl2="/preview/api/ycql/"
+  >}}
+{{< /sections/3boxes >}}

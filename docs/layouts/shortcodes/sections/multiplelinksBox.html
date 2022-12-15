@@ -1,0 +1,41 @@
+<div>
+  <div class="card-title">{{- .Params.title -}}</div>
+  {{- if and (.Params.linkText1) (.Params.linkUrl1) -}}
+    <div class="card-link">
+      <a href="{{ .Params.linkText1 }}" title="{{- .Params.linkText1 -}}">
+        {{ .Params.linkText1 }}
+      </a>
+    </div>
+  {{- end -}}
+  {{- if and (.Params.linkText2) (.Params.linkUrl2) -}}
+    <div class="card-link">
+      <a href="{{ .Params.linkText2 }}" title="{{- .Params.linkText2 -}}">
+        {{ .Params.linkText2 }}
+      </a>
+    </div>
+  {{- end -}}
+
+  {{- if and (.Params.linkText3) (.Params.linkUrl3) -}}
+    <div class="card-link">
+      <a href="{{ .Params.linkText3 }}" title="{{- .Params.linkText3 -}}">
+        {{ .Params.linkText3 }}
+      </a>
+    </div>
+  {{- end -}}
+
+  {{- if and (.Params.linkText4) (.Params.linkUrl4) -}}
+    <div class="card-link">
+      <a href="{{ .Params.linkText4 }}" title="{{- .Params.linkText4 -}}">
+        {{ .Params.linkText4 }}
+      </a>
+    </div>
+  {{- end -}}
+
+  {{- if and (.Params.linkText5) (.Params.linkUrl5) -}}
+    <div class="card-link">
+      <a href="{{ .Params.linkText5 }}" title="{{- .Params.linkText5 -}}">
+        {{ .Params.linkText5 }}
+      </a>
+    </div>
+  {{- end -}}
+</div>

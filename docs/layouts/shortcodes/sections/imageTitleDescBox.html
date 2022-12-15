@@ -1,0 +1,23 @@
+<div>
+  <div class="card-img">
+    {{- if .Params.imageUrl -}}
+      <img src="{{- .Params.imageUrl -}}" {{- if .Params.imageAlt }} alt="{{- .Params.imageAlt -}}" title="{{- .Params.imageAlt -}}"{{- end -}}>
+    {{- end -}}
+  </div>
+
+  <div class="card-title">
+    {{- .Params.title -}}
+  </div>
+
+  <div class="card-desc">
+    {{- .Params.description -}}
+  </div>
+
+  <div class="card-link">
+    {{- if and (.Params.buttonText) (.Params.buttonUrl) -}}
+      <a href="{{ .Params.buttonUrl }}" title="{{- .Params.buttonText -}}">
+        {{ .Params.buttonText }}
+      </a>
+    {{- end -}}
+  </div>
+</div>
