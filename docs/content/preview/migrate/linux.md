@@ -60,3 +60,9 @@ Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two 
     ```sh
     sudo yum install yb-voyager
     ```
+
+7. Check that yb-voyager is installed using the following command:
+
+    ```sh
+    yb-voyager version
+    ```

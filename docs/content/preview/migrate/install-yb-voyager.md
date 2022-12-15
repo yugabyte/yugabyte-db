@@ -21,8 +21,9 @@ The following sections describe the prerequisites for installing YugabyteDB Voya
 
 You can install YugabyteDB Voyager on the following:
 
-- CentOS 7
-- Ubuntu 18.04, 20.04
+- RHEL 7/8
+- CentOS 7/8
+- Ubuntu 18.04, 20.04. 22.04
 - MacOS (currently supported only for PostgreSQL source database)
 
 ### Hardware requirements
@@ -50,7 +51,7 @@ export EXPORT_DIR=$HOME/export-dir
 
 The export directory has the following sub-directories and files:
 
-- `reports` directory contains the generated *Schema Analysis Report*
+- `reports` directory contains the generated *Schema Analysis Report*.
 - `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
 - `data` directory contains TSV (Tab Separated Values) files that are passed to the COPY command on the target database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
@@ -60,6 +61,9 @@ The export directory has the following sub-directories and files:
 
 ## Install yb-voyager
 
+YugabyteDB Voyager consists of the yb-voyager command line executable. yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the [*export directory*](#create-an-export-directory).
+
+Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisites) using one of the following options:
 
 <!-- <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
@@ -83,12 +87,6 @@ The export directory has the following sub-directories and files:
 </ul> -->
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      macOS
-    </a>
-  </li>
   <li>
     <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="true">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
@@ -101,39 +99,43 @@ The export directory has the following sub-directories and files:
       Ubuntu
     </a>
   </li>
+    <li >
+    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
   <li>
     <a href="#airgapped" class="nav-link" id="airgapped-tab" data-toggle="tab" role="tab" aria-controls="airgapped" aria-selected="true">
       <i class="fa-solid fa-link-slash" aria-hidden="true"></i>
       Airgapped
     </a>
   </li>
+  <li>
+    <a href="#github" class="nav-link" id="github-tab" data-toggle="tab" role="tab" aria-controls="github" aria-selected="true">
+      <i class="fab fa-github" aria-hidden="true"></i>
+      GitHub
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
-  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-  {{% includeMarkdown "./macos.md" %}}
-  </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
   {{% includeMarkdown "./linux.md" %}}
   </div>
   <div id="ubuntu" class="tab-pane fade" role="tabpanel" aria-labelledby="ubuntu-tab">
   {{% includeMarkdown "./ubuntu.md" %}}
   </div>
+  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
+  {{% includeMarkdown "./macos.md" %}}
+  </div>
   <div id="airgapped" class="tab-pane fade" role="tabpanel" aria-labelledby="airgapped-tab">
   {{% includeMarkdown "./airgapped.md" %}}
   </div>
+  <div id="github" class="tab-pane fade" role="tabpanel" aria-labelledby="github-tab">
+  {{% includeMarkdown "./github.md" %}}
+  </div>
 </div>
-
-YugabyteDB Voyager consists of the yb-voyager command line executable. yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the [*export directory*](#create-an-export-directory).
-<!-- For more information, refer to [Export directory](../../yb-voyager/reference/#export-directory). -->
-
-To install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisites), do the following:
-
-- Check that yb-voyager is installed using the following command:
-
-  ```sh
-  yb-voyager --help
-  ```
 
 To learn more about yb-voyager, refer to [YugabyteDB Voyager CLI](../yb-voyager-cli/).
 
