@@ -34,19 +34,12 @@ Change data capture (CDC) is a process to capture changes made to data in the da
 Be aware of the following:
 
 * You can't stream data out of system tables.
-* You can't create a stream on a table created after you created the stream. For example, if you create a DB stream on the database and then create a new table in that database, you won't be able to stream data out of the new table. You need to create a new DB Stream ID and use it to stream data.
 
 {{< note title="Note" >}}
 
 The current YugabyteDB CDC implementation supports only Debezium and Kafka.
 
 {{< /note >}}
-
-{{< warning title="Warning" >}}
-
-YugabyteDB doesn't yet support the DROP TABLE and TRUNCATE TABLE commands. The behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands). See also [Limitations](#limitations).
-
-{{< /warning >}}
 
 ## Process architecture
 
@@ -85,6 +78,20 @@ Streams are the YugabyteDB endpoints for fetching database changes by applicatio
 ### DB stream
 
 To facilitate the streaming of data, you have to create a DB Stream. This stream is created at the database level, and can access the data in all of that database's tables.
+
+### Stream expiry
+
+While reading the changes from WAL/IntentDB, the intents are retained and the retention time is controlled by the GFlag `cdc_intent_retention_ms`.
+
+When a stream is created the checkpoint for a tablet is set as soon as the client requests for changes. Now if the client doesn't request for changes within the `cdc_intent_retention_ms` time, CDC service considers the `tablet_id, stream_id` combination to be expired and allows the garbage collection process to clean those intents.
+
+Once a stream is expired, a new stream ID needs to be created in order to proceed.
+
+{{< warning title="Warning" >}}
+
+If `cdc_intent_retention_ms` is set to a high value and in case the stream lags for any reasons, this will cause the intents to be retained for a longer period and it may destabilize your cluster if the number intents keep growing.
+
+{{< /warning >}}
 
 ## Debezium connector for YugabyteDB
 
@@ -148,9 +155,9 @@ This refers to the state of the row before the change event occurred. This will 
 
 At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. By default, the history retention period is controlled by the [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec) applied cluster-wide to every YSQL database.
 
-However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the interval between the snapshots. You are not required to manually set the cluster-wide flag in order to use before image.
+However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream. Now when a CDC active stream's lag increases, the amount of space required for the database grows as more data is retained.
 
-There are no technical limitations on the retention target. However, when you increase the number of stored snapshots, you also increase the amount of space required for the database. The actual overhead depends on the workload, therefore it is recommended to estimate it by running tests based on your applications. This also impacts the garbage collection & compaction i.e. in case the CDC streams are lagging, the disk size will go up.
+There are no technical limitations on the retention target. The actual overhead depends on the workload, therefore it is recommended to estimate it by running tests based on your applications.
 
 You will need to create a CDC DB stream indicating the server to send the before image of the changed rows with the streams. To know more on how to create streams with before image enabled, see [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands).
 
@@ -163,7 +170,6 @@ Any write operations done within the current transaction will not be visible as 
 ## Limitations
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
-
 * Enabling CDC on tables created using previous versions of YugabyteDB is not supported, even after YugabyteDB is upgraded to version 2.13 or higher.
   * Also, CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
 * DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
