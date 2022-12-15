@@ -64,6 +64,8 @@ For additional information, see [DROP INDEX YCQL API](../../../api/ycql/ddl_drop
 
 ## Example scenario using YSQL
 
+{{% explore-setup-single %}}
+
 Suppose you work with a database that includes the following table populated with data:
 
 ```sql

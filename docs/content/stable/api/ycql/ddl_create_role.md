@@ -30,7 +30,7 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 
 ### Grammar
 
-```
+```ebnf
 create_table ::= CREATE ROLE [ IF NOT EXISTS ] role_name [ WITH role_property [ AND role_property ...] ];
 
 role_property ::=  PASSWORD = <Text Literal>
@@ -39,9 +39,11 @@ role_property ::=  PASSWORD = <Text Literal>
 ```
 
 Where
+
 - `role_name` is a text identifier.
 
 ## Semantics
+
 - An error is raised if `role_name` already exists unless the `IF NOT EXISTS` option is used.
 - By default, a role does not possess the `LOGIN` privilege nor `SUPERUSER` status.
 - A role with the `SUPERUSER` status possesses all the permissions on all the objects in the database even though they are not explicitly granted.

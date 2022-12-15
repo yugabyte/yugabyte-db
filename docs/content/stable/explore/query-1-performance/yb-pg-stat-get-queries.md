@@ -16,7 +16,7 @@ Use the YugabyteDB `yb_pg_stat_get_queries` function to see terminated queries a
 
 When a query quits for unexpected reasons, information about the query and the responsible backend is stored. You can access this information by using yb_pg_stat_get_queries. Calling the function returns queries using the following criteria:
 
-- Temporary file size exceeds temp_file_limit.
+- Temporary file size exceeds `temp_file_limit`.
 - Terminated by SIGSEGV - the query terminated due to a crash in the PostgreSQL process.
 - Terminated by SIGKILL - the query was killed by the system's out of memory killer because the node is running out of memory.
 
@@ -39,9 +39,9 @@ List of functions
 Schema              | pg_catalog
 Name                | yb_pg_stat_get_queries
 Result data type    | SETOF record
-Argument data types | db_oid oid, OUT db_oid oid, OUT backend_pid integer,
-                    | OUT query_text text, OUT termination_reason text,
-                    | OUT query_start timestamp with time zone,
+Argument data types | db_oid oid, OUT db_oid oid, OUT backend_pid integer, 
+                    | OUT query_text text, OUT termination_reason text, 
+                    | OUT query_start timestamp with time zone, 
                     | OUT query_end timestamp with time zone
 Type                | func
 ```
@@ -82,13 +82,13 @@ In the same session, start a long-running query, so that you have time to send a
 yugabyte=# SELECT * FROM generate_series(1, 123456789);
 ```
 
-In another shell, send the terminating signal to the backend process:
+In another session, send the terminating signal to the backend process:
 
 ```sh
 $ kill -SIGSEGV 4650 # the pid of the backend process
 ```
 
-Verify that the query is listed as a terminated query:
+Verify that the query is listed as a terminated query as follows:
 
 ```sql
 yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_pg_stat_get_queries(NULL);
@@ -206,7 +206,7 @@ new_db=# SELECT query_text FROM yb_pg_stat_get_queries(NULL);
 ```
 
 ```output
-                    query_text
+                    query_text 
 --------------------------------------------------
  SELECT 'db1' FROM generate_series(1, 123456789);
  SELECT 'db2' FROM generate_series(1, 123456789);
@@ -240,7 +240,7 @@ new_db=# SELECT query_text FROM yb_pg_stat_get_queries(13288)
 ```
 
 ```output
-                    query_text
+                    query_text 
 --------------------------------------------------
  SELECT 'db1' FROM generate_series(1, 123456789);
 (1 row)
@@ -253,7 +253,7 @@ new_db=# SELECT query_text FROM yb_pg_stat_get_queries(17920)
 ```
 
 ```output
-                    query_text
+                    query_text 
 --------------------------------------------------
  SELECT 'db2' FROM generate_series(1, 123456789);
 (1 row)

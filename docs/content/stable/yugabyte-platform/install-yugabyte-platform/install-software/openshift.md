@@ -35,7 +35,7 @@ type: docs
 
 </ul>
 
-To install YugabyteDB Anywhere on an OpenShift cluster, you can use YugabyteDB Anywhere Operator or the Helm tool.
+<br>To install YugabyteDB Anywhere on an OpenShift cluster, you can use YugabyteDB Anywhere Operator or the Helm tool.
 
 {{< note title="Note" >}}
 
@@ -134,9 +134,9 @@ You can create an instance of YugabyteDB Anywhere via the OpenShift web console 
 
 - Open the OCP web console and navigate to **Home > Projects > Create Project**.
 - Enter the name yb-platform and click **Create**.
-- Navigate to **Operators > Installed Operators** and select **YugabyteDB Anywhere Operator**, as shown in the following illustration:<br><br>
+- Navigate to **Operators > Installed Operators** and select **YugabyteDB Anywhere Operator**, as shown in the following illustration:<br>
 
-  ![YugabyteDB Anywhere Install Operator](/images/ee/openshift-install-yp-operator.png)<br><br>
+  ![YugabyteDB Anywhere Install Operator](/images/ee/openshift-install-yp-operator.png)<br>
 
 - Click **Create Instance** to open the **Create YBPlatform** page.
 
@@ -162,7 +162,7 @@ Alternatively, you can create an instance of YugabyteDB Anywhere via the command
   oc new-project yb-platform
   ```
 
-  <br>Expect the following output:
+  Expect the following output:
 
   ```output
   Now using project "yb-platform" on server "web-console-address"
@@ -174,7 +174,7 @@ Alternatively, you can create an instance of YugabyteDB Anywhere via the command
   oc get storageClass
   ```
 
-  \
+
   If your cluster's StorageClass is not `standard`, change the value of  `spec.yugaware.storageClass` to the correct StorageClass name when you create an instance of YugabyteDB Anywhere.
 
 - To create an instance of YugabyteDB Anywhere in the yb-platform project, execute the following command:
@@ -198,7 +198,7 @@ Alternatively, you can create an instance of YugabyteDB Anywhere via the command
   EOF
   ```
 
-  <br>Expect the following output:
+  Expect the following output:
 
   ```output
   ybplatform.yugabyte.com/ybplatform-sample created
@@ -210,7 +210,7 @@ Alternatively, you can create an instance of YugabyteDB Anywhere via the command
   oc get pods -n yb-platform -l app=ybplatform-sample-yugaware
   ```
 
-  <br>Expect the following output:
+  Expect the following output:
 
   ```output
   NAME                         READY  STATUS  RESTARTS  AGE
@@ -260,10 +260,10 @@ In addition to meeting the requirements described in [Prepare the OpenShift Envi
 - Verify that the OpenShift cluster is configured with Helm 3.4 or later by executing the following command:
 
   ```shell
-  $ helm version
+  helm version
   ```
 
-  <br>The output should be similar to the following:
+  The output should be similar to the following:
 
   ```output
   version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"
@@ -288,7 +288,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
   oc new-project yb-platform
   ```
 
-  <br>Expect the following output:
+  Expect the following output:
 
   ```output
   Now using project "yb-platform" on server "web-console-address"
@@ -300,7 +300,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
   oc create -f yugabyte-k8s-secret.yml -n yb-platform
   ```
 
-  <br>Expect the following output:
+  Expect the following output:
 
   ```output
   secret/yugabyte-k8s-pull-secret created
@@ -312,19 +312,19 @@ To create a YugabyteDB Anywhere instance, perform the following:
   helm repo add yugabytedb https://charts.yugabyte.com
   ```
 
-  <br>Expect the following output:
+  Expect the following output:
 
   ```output
   "yugabytedb" has been added to your repositories
   ```
 
-  <br>To search for the available chart version, execute the following command:
+  To search for the available chart version, execute the following command:
 
   ```shell
   helm search repo yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
   ```
 
-  <br>Expect the following output:
+  Expect the following output:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
@@ -337,7 +337,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
   oc get storageClass
   ```
 
-  <br>If your cluster's StorageClass is not `standard`, add `--set yugaware.storageClass=<storage-class-name>` when installing the YugabyteDB Anywhere Helm chart in the next step.
+  If your cluster's StorageClass is not `standard`, add `--set yugaware.storageClass=<storage-class-name>` when installing the YugabyteDB Anywhere Helm chart in the next step.
 
 - Execute the following command to install the YugabyteDB Anywhere Helm chart:
 
@@ -348,9 +348,9 @@ To create a YugabyteDB Anywhere instance, perform the following:
      --set ocpCompatibility.enabled=true --set rbac.create=false --wait
   ```
 
-  <br>Expect to see a message notifying you whether or not the deployment is successful.
+  Expect to see a message notifying you whether or not the deployment is successful.
 
-  <br>Note that if you are executing the preceding command as an admin user, then you can set `rbac.create=true`. <br>Alternatively, you can ask the cluster administrator to perform the next step.
+  Note that if you are executing the preceding command as an admin user, then you can set `rbac.create=true`. <br>Alternatively, you can ask the cluster administrator to perform the next step.
 
 - Optionally, execute the following command as an admin user to create ClusterRoleBinding:
 
@@ -373,7 +373,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
   EOF
   ```
 
-  <br>ClusterRole or ClusterRoleBinding with the cluster-admin role are recommended if your intention is to create clusters across multiple namespaces.
+  ClusterRole or ClusterRoleBinding with the cluster-admin role are recommended if your intention is to create clusters across multiple namespaces.
 
 ### Delete the Helm installation of YugabyteDB Anywhere
 
@@ -395,7 +395,7 @@ You start by logging in the OCP's web console as admin user, and then performing
 
 - Navigate to **Compute > Machine Sets** and open each Machine Set.
 
-- On the **Machine Set Details** page, open the **Machines** tab to access the region and availability zone label, as shown in the following illustration where the region is US East and the availability zone label is us-east4-a:<br><br>
+- On the **Machine Set Details** page, open the **Machines** tab to access the region and availability zone label, as shown in the following illustration where the region is US East and the availability zone label is us-east4-a:<br>
 
   ![Create Machines](/images/ee/openshift-yp-create-machine.png)
 
@@ -442,7 +442,7 @@ You can obtain the location using the OpenShift web console as follows:
 - Use the OCP web console to navigate to **Networking > Services** and select **ybplatform-sample-yugaware-ui** from the list. Ensure that the **yb-platform** project is selected.
 - In the **Service Routing** section of the **Details** tab, locate **External Load Balancer** and copy the value, as shown in the following illustration:
 
-![Service Details](/images/ee/openshift-service-details.png)
+  ![Service Details](/images/ee/openshift-service-details.png)
 
 - Open the copied location in a new instance of your web browser.
 
@@ -459,7 +459,7 @@ oc get services \
               {.status.loadBalancer.ingress[0].hostname}{"\n"}'
 ```
 
-  <br>Expect the following output:
+Expect the following output:
 
 ```output
 12.34.56.78
@@ -474,7 +474,7 @@ oc get services \
               {.status.loadBalancer.ingress[0].hostname}{"\n"}'
 ```
 
-  <br>Expect the following output:
+Expect the following output:
 
 ```output
 12.34.56.78
