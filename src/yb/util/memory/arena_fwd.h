@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <vector>
+
 namespace yb {
 
 namespace internal {
@@ -39,5 +41,10 @@ template<class T>
 using ArenaAllocator = internal::ArenaAllocatorBase<T, internal::ArenaTraits>;
 template<class T>
 using ThreadSafeArenaAllocator = internal::ArenaAllocatorBase<T, internal::ThreadSafeArenaTraits>;
+
+template <class Entry>
+class ArenaList;
+template <class Object>
+using ArenaVector = std::vector<Object, ThreadSafeArenaAllocator<Object>>;
 
 } // namespace yb

@@ -272,7 +272,7 @@ struct RequestTraits {
   static Request* MutableRequest(consensus::LWReplicateMsg* replicate);
 };
 
-consensus::LWReplicateMsg* CreateReplicateMsg(Arena* arena, OperationType op_type);
+consensus::LWReplicateMsg* CreateReplicateMsg(ThreadSafeArena* arena, OperationType op_type);
 
 // Request here actually means serializable part of operation state.
 // When creating new XxxOperation class inherited from OperationBase, it is better to declare

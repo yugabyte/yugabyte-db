@@ -201,7 +201,7 @@ OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
   };
 }
 
-consensus::LWReplicateMsg* CreateReplicateMsg(Arena* arena, OperationType op_type) {
+consensus::LWReplicateMsg* CreateReplicateMsg(ThreadSafeArena* arena, OperationType op_type) {
   auto result = arena->NewObject<consensus::LWReplicateMsg>(arena);
   result->set_op_type(static_cast<consensus::OperationType>(op_type));
   return result;

@@ -130,7 +130,7 @@ Peer::Peer(
       consensus_(consensus),
       messenger_(messenger) {}
 
-void Peer::TEST_SetTerm(int term, Arena* arena) {
+void Peer::TEST_SetTerm(int term, ThreadSafeArena* arena) {
   update_response_ = arena->NewObject<LWConsensusResponsePB>(arena);
   update_response_->set_responder_term(term);
 }
@@ -221,7 +221,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   bool last_exchange_successful = false;
   PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
   LWReplicateMsgsHolder msgs_holder;
-  std::vector<std::shared_ptr<Arena>> msg_arenas;
+  std::vector<std::shared_ptr<ThreadSafeArena>> msg_arenas;
   Status s = queue_->RequestForPeer(
       peer_pb_.permanent_uuid(), update_request_, &msgs_holder, &needs_remote_bootstrap,
       &member_type, &last_exchange_successful);
