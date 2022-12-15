@@ -18,6 +18,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
