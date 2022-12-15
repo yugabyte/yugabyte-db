@@ -1192,6 +1192,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Add index info to the indexed table.
   Status AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
+                             CowWriteLock<PersistentTableInfo>* l_ptr,
                              const IndexInfoPB& index_info,
                              CreateTableResponsePB* resp);
 
