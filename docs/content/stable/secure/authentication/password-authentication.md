@@ -63,16 +63,16 @@ To configure a YugabyteDB cluster to use SCRAM-SHA-256 authentication for databa
 
 1. Change the password encryption to use SCRAM-SHA-256.
 
-    To change the default MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf`](../../../reference/configuration/yb-tserver/#ysql-pg-conf) flag and set the value to `scram-sha-256`:
+    To change the default MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag and set the value to `scram-sha-256`:
 
     ```sh
-    --ysql_pg_conf="password_encryption=scram-sha-256"
+    --ysql_pg_conf_csv="password_encryption=scram-sha-256"
     ```
 
     or in the `yb-tserver.conf`, add the following line:
 
     ```sh
-    --ysql_pg_conf=password_encryption=scram-sha-256
+    --ysql_pg_conf_csv=password_encryption=scram-sha-256
     ```
 
 2. Specify the rules for host-based authentication.
@@ -100,7 +100,7 @@ To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow
 1. In the YB-TServer configuration file (flagfile), add the following two lines:
 
     ```sh
-    --ysql_pg_conf=password_encryption=scram-sha-256
+    --ysql_pg_conf_csv=password_encryption=scram-sha-256
     --ysql_hba_conf_csv=host all all 0.0.0.0/0 md5,host all all ::0/0 md5,host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
     ```
 
@@ -167,7 +167,7 @@ When you [enable SCRAM-SHA-256 authentication](#enable-scram-sha-256-authenticat
 - All new, or changed, passwords will be encrypted using the SCRAM-SHA-256 hashing algorithm.
 - All existing passwords were encrypted using the MD5 hashing algorithm.
 
-Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For an example, see [Create a cluster that uses SCRAM-SHA-256 password authentication](#Create-a-cluster-that-uses-scram-sha-256-password-authentication) above.
+Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For an example, see [Create a cluster that uses SCRAM-SHA-256 password authentication](#Create-a-cluster-that-uses-scram-sha-256-password-authentication).
 
 If you follow a similar approach for an existing cluster, you can enhance your cluster security, track and migrate passwords, and then remove the much weaker MD5 rules after all passwords have been updated.
 

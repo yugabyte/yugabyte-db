@@ -1,10 +1,10 @@
 ---
-title: Configure on-premises
+title: Configure YugabyteDB Overview
 headerTitle: Overview
 linkTitle: Overview
-description: Configuring YugabyteDB Anywhere on-premises
+description: Configure YugabyteDB Anywhere on-premises
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Configuring YugabyteDB Anywhere on-premises
+headcontent: Configure YugabyteDB Anywhere for on-premises
 menu:
   stable_yugabyte-platform:
     identifier: configure-5-onprem

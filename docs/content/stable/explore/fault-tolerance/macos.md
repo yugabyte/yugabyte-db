@@ -13,33 +13,11 @@ type: docs
 
 YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. You create YSQL tables with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster remains available for both reads and writes even if one node fails. However, if another node fails (bringing the number of failures to two), writes become unavailable on the cluster to preserve data consistency.
 
-This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
+{{< note title="Setup" >}}
 
-## Create a universe
+Local multi-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
 
-To start a local three-node cluster with a replication factor of `3`, first create a single-node cluster as follows:
-
-```sh
-./bin/yugabyted start \
-                --listen=127.0.0.1 \
-                --base_dir=/tmp/ybd1
-```
-
-Next, join two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
-
-```sh
-./bin/yugabyted start \
-                --listen=127.0.0.2 \
-                --base_dir=/tmp/ybd2 \
-                --join=127.0.0.1
-```
-
-```sh
-./bin/yugabyted start \
-                --listen=127.0.0.3 \
-                --base_dir=/tmp/ybd3 \
-                --join=127.0.0.1
-```
+{{< /note >}}
 
 ## Run the sample key-value app
 
@@ -49,7 +27,7 @@ Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) using
 wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
-Run the `SqlInserts` workload against the local universe using the following command:
+Run the `SqlInserts` workload against the local cluster using the following command:
 
 ```sh
 java -jar ./yb-sample-apps.jar --workload SqlInserts \
@@ -77,7 +55,7 @@ Note how both the reads and the writes are roughly the same across all the nodes
 
 ## Remove a node and observe continuous write availability
 
-Remove a node from the universe using the following command:
+Remove a node from the cluster using the following command:
 
 ```sh
 ./bin/yugabyted stop \
@@ -86,7 +64,7 @@ Remove a node from the universe using the following command:
 
 Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the status update.
 
-The `Time since heartbeat` value for that node will keep increasing. After that number reaches 60s (1 minute), YugabyteDB changes the status of that node from `ALIVE` to `DEAD`. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
+The `Time since heartbeat` value for that node will keep increasing. When the number reaches 60s (1 minute), YugabyteDB changes the status of the removed node from `ALIVE` to `DEAD`. Note that at this time the cluster is running in an under-replicated state for some subset of tablets.
 
 ![Read and write IOPS with 3rd node dead](/images/ce/fault_tolerance_dead_node.png)
 

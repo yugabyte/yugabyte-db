@@ -35,7 +35,7 @@ type: docs
 
 </ul>
 
-## Install YugabyteDB Anywhere on a Kubernetes Cluster
+## Install YugabyteDB Anywhere on a Kubernetes cluster
 
 You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
@@ -51,7 +51,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
     ```
 
-    <br>Expect the following output notifying you that the secret was created:
+    Expect the following output notifying you that the secret was created:
 
     ```output
     secret/yugabyte-k8s-pull-secret created
@@ -63,19 +63,19 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     helm repo add yugabytedb https://charts.yugabyte.com
     ```
 
-    <br>A message similar to the following should appear:
+    A message similar to the following should appear:
 
     ```output
     "yugabytedb" has been added to your repositories
     ```
 
-    <br>To search for the available chart version, run the following command:
+    To search for the available chart version, run the following command:
 
     ```sh
     helm search repo yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
     ```
 
-    <br>The latest Helm chart version and application version is displayed via the output similar to the following:
+    The latest Helm chart version and application version is displayed via the output similar to the following:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
@@ -94,13 +94,13 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     helm install yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
-    <br>In addition, you may provide a custom TLS certificate in the Helm chart, as follows:
+    In addition, you may provide a custom TLS certificate in the Helm chart, as follows:
 
     ```sh
     helm install yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --wait --set tls.sslProtocols="TLSv1.2" tls.certificate="LS0tLS1CRUdJTiBDRVJUSUZJQ..." tls.key="LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0t..."
     ```
 
-    <br>where `certificate` and `key` are set to full string values of your custom certificate and its corresponding key.
+    where `certificate` and `key` are set to full string values of your custom certificate and its corresponding key.
 
 1. Use the following command to check the service:
 
@@ -108,7 +108,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     kubectl get svc -n yb-platform
     ```
 
-    <br>The following output should appear:
+    The following output should appear:
 
     ```output
     NAME                  TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)                       AGE
@@ -121,26 +121,26 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     kubectl get pods -n yb-platform
     ```
 
-    <br>The following output should appear:
+    The following output should appear:
 
     ```output
     NAME                 READY   STATUS    RESTARTS   AGE
     yw-test-yugaware-0   4/4     Running   0          12s
     ```
 
-    <br>Note that even though the preceding output indicates that the `yw-test-yugaware-0` pod is running, it does not mean that YugabyteDB Anywhere is ready to accept your queries. If you open `localhost:80` and see an error (such as 502), it means that `yugaware` is still being initialized. You can check readiness of `yugaware` by executing the following command:
+    Note that even though the preceding output indicates that the `yw-test-yugaware-0` pod is running, it does not mean that YugabyteDB Anywhere is ready to accept your queries. If you open `localhost:80` and see an error (such as 502), it means that `yugaware` is still being initialized. You can check readiness of `yugaware` by executing the following command:
 
     ```sh
     kubectl logs --follow -n yb-platform yw-test-yugaware-0 yugaware
     ```
 
-    <br>And output similar to the following would confirm that there are no errors and that the server is running:
+    An output similar to the following would confirm that there are no errors and that the server is running:
 
     ```
     [info] AkkaHttpServer.scala:447 [main] Listening for HTTP on /0.0.0.0:9000
     ```
 
-    <br>If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Prepare the Kubernetes environment](../../prepare-environment/kubernetes/).
+    If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Prepare the Kubernetes environment](../../prepare-environment/kubernetes/).
 
 ## Customize YugabyteDB Anywhere
 
@@ -164,14 +164,75 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
   - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
   - For AWS, see [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html).
 
-  \
   For example, for a GKE version earlier than 1.17, you would run a command similar to the following:
 
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
-  --version {{<yb-version version="stable" format="short">}} \
-  --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
+    --version {{<yb-version version="stable" format="short">}} \
+    --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
   ```
+
+## Control placement of YugabyteDB Anywhere Pod
+
+The Helm chart allows you to control the placement of the pod when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity` and `toleration`. When you use these mechanisms to restrict placement of the YugabyteDB Anywhere pod, you should delay the creation of storage volumes (known as PersistentVolumeClaim (PVC)) until the pod has been placed. To do this, you would use a `StorageClass` with its `VolumeBindingMode` set to `WaitForFirstConsumer`, as described in [Configure storage class volume binding](../../../troubleshoot/universe-issues/#configure-storage-class-volume-binding). The following is a storage class YAML file for Google Kubernetes Engine (GKE):
+
+```yaml
+kind: StorageClass
+metadata:
+  name: yb-storage
+provisioner: kubernetes.io/gce-pd
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+parameters:
+  type: pd-ssd
+  fstype: xfs
+```
+If you do not delay the creation of the PVC, it may be created in a location that is not accessible to the pod, resulting in a failure to bring up the pod to a running state.
+
+### nodeSelector
+
+The Kubernetes `nodeSelector` field provides the means to constrain pods to nodes with specific labels, allowing you to restrict the placement of YugabyteDB Anywhere pod on a particular node, as demonstrated by the following example:
+
+```sh
+helm install yw-test yugabytedb/yugaware/ -n yb-platform \
+--version 2.15.2 --set yugaware.storageClass=yb-storage \
+--set nodeSelector.kubernetes\\.io/hostname=node-name-1
+```
+
+### zoneAffinity
+
+Kubernetes provides a flexible `nodeAffinity` construct to constrain the placement of pods to nodes in a given zone.
+
+When your Kubernetes cluster nodes are spread across multiple zones, you can use this command to explicitly place the YugabyteDB Anywhere pod on specific zones, as demonstrated by the following example:
+
+```sh
+helm install yw-test yugabytedb/yugaware/ -n yb-platform \
+--version 2.15.2 --set yugaware.storageClass=yb-storage \
+--set "zoneAffinity={us-west1-a,us-west1-b}"
+```
+
+### toleration
+
+Kubernetes nodes could have `taints` that repel pods from being placed on it. Only pods with a `toleration` for the same `taint` are permitted. For more information, see [Taints and Tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/).
+
+For example, if some of the nodes in your Kubernetes cluster are earmarked for experimentation and have a taint `dedicated=experimental:NoSchedule`, only pods with the matching toleration will be allowed; other pods will be prevented from being placed on these nodes.
+
+```sh
+helm install yw-test yugabytedb/yugaware/ -n yb-platform \
+--version 2.15.2 --set yugaware.storageClass=yb-storage \
+--values=/tmp/overrides.yaml
+```
+
+Where the `/tmp/overrides.yaml` has the contents:
+
+```yaml
+tolerations:
+- key: "dedicated"
+  operator: "Equal"
+  value: "experimental"
+  effect: "NoSchedule"
+```
 
 ## Delete the Helm Installation of YugabyteDB Anywhere
 
