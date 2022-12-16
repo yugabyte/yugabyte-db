@@ -11,6 +11,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.directory.api.ldap.model.cursor.EntryCursor;
@@ -200,9 +201,20 @@ public class LdapUtil {
         if (parseRole != null) {
           role = parseRole.getString();
         }
+
+        // Cursor.next returns true in some environments
+        if (!StringUtils.isEmpty(distinguishedName)) {
+          log.info("Successfully fetched DN");
+          break;
+        }
       }
-      cursor.close();
-      connection.unBind();
+
+      try {
+        cursor.close();
+        connection.unBind();
+      } catch (Exception e) {
+        log.error("Failed closing connections", e);
+      }
     } catch (Exception e) {
       log.error("LDAP query failed.", e);
       throw new PlatformServiceException(BAD_REQUEST, "LDAP search failed.");
