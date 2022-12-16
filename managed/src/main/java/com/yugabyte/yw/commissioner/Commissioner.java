@@ -201,6 +201,8 @@ public class Commissioner {
     responseJson.put("status", taskInfo.getTaskState().toString());
     // Get the percentage of subtasks that ran and completed
     responseJson.put("percent", taskInfo.getPercentCompleted());
+    String correlationId = task.getCorrelationId();
+    if (!Strings.isNullOrEmpty(correlationId)) responseJson.put("correlationId", correlationId);
 
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;

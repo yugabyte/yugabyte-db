@@ -209,7 +209,16 @@ class TaskDetail extends Component {
         </div>
 
         <YBPanelItem
-          header={<h2>Task details</h2>}
+          header={
+            <h2>
+              {currentTaskData.correlationId ? (
+                <Link to={`/logs/?queryRegex=${currentTaskData.correlationId}`}>
+                  Task details
+                </Link>
+              ) :
+                ('Task details')}
+            </h2>
+          }
           body={
             <div className="task-detail-container">
               <Row className="task-heading-row">

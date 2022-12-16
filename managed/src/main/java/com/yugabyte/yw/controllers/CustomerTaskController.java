@@ -17,7 +17,6 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Audit;
@@ -120,6 +119,8 @@ public class CustomerTaskController extends AuthenticatedController {
               ? task.getCustomTypeName()
               : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
+      String correlationId = task.getCorrelationId();
+      if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       ObjectNode versionNumbers = Json.newObject();
       JsonNode taskDetails = taskInfo.getTaskDetails();
       if (taskData.type == "UpgradeSoftware" && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
