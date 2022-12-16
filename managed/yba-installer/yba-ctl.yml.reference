@@ -44,7 +44,7 @@
 prometheus:
     scrapeInterval: 15
     scrapeTimeout: 10
-    externalPort: 9090
+    port: 9090
     maxConcurrency: 20
     maxSamples: 5000000
     timeout: 30
@@ -130,13 +130,8 @@ prometheus:
 # installation (otherwise leave it empty, must be a valid
 # email address).
 
-# externalPort: The external port that is used by the running
-# Platform instance. Defaults to 5432, override if you have opened
-# up a different port that you wish to use for running Yugabyte
-# Platform.
-
-# containerExposedPort: The container exposed port that is used by
-# the running Platform instance for HTTPS. Defaults to 9000, override
+# port: The container exposed port that is used by
+# the running Platform instance for HTTPS. Defaults to 9443, override
 # if you want to use a different port for running Yugabyte Platform
 # through HTTPS.
 
@@ -163,8 +158,7 @@ platform:
    ywUrl: ""
    ybOidcScope: ""
    ybOidcEmailAttr: ""
-   externalPort: 5432
-   containerExposedPort: 9443
+   port: 9443
    keyStorePassword: ""
    environmentVariables:
       platformAppSecret: "PLATFORM_APP_SECRET"
@@ -270,6 +264,9 @@ serviceManagementMode: "systemd"
 # FatalLevel
 # PanicLevel
 logLevel: "InfoLevel"
+
+# Parameter for configuring the InstallRoot. Should change if executing in non-root mode.
+installRoot: "/opt/yugabyte"
 
 # Uncomment to customize the linux user which will run all services that make up
 # Yugabyte Anywhere.

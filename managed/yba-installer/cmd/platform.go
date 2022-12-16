@@ -97,10 +97,6 @@ func (plat Platform) Install() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.InstallRoot, userName, userName, true)
 	}
-	// At the end of the installation, we rename .installStarted to .installCompleted, to signify the
-	// install has finished succesfully.
-	common.MoveFileGolang(common.InstallRoot+"/.installStarted",
-		common.InstallRoot+"/.installCompleted")
 
 	plat.Start()
 
@@ -228,7 +224,7 @@ func (plat Platform) Start() {
 
 	} else {
 
-		containerExposedPort := config.GetYamlPathData("platform.containerExposedPort")
+		containerExposedPort := config.GetYamlPathData("platform.port")
 		restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 
 		command1 := "bash"
@@ -320,7 +316,7 @@ func (plat Platform) Uninstall(removeData bool) {
 func (plat Platform) Status() common.Status {
 	status := common.Status{
 		Service:   plat.Name(),
-		Port:      viper.GetInt("platform.containerExposedPort"),
+		Port:      viper.GetInt("platform.port"),
 		Version:   plat.version,
 		ConfigLoc: plat.ConfFileLocation,
 	}
@@ -390,7 +386,7 @@ func configureConfHTTPS() {
 
 // CreateCronJob creates the cron job for managing YBA platform with cron script in non-root.
 func (plat Platform) CreateCronJob() {
-	containerExposedPort := config.GetYamlPathData("platform.containerExposedPort")
+	containerExposedPort := config.GetYamlPathData("platform.port")
 	restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 	common.ExecuteBashCommand("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + plat.cronScript + " " + common.InstallVersionDir +
