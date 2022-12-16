@@ -7,13 +7,16 @@
   {{ $docDir = index (split .File.Dir "/") 1 }}
 {{ end }}
 
-{{ if eq $versionDir "" }}
-  {{ $versionDir = .Site.Params.yb.preview_version_slug }}
+{{ $leftNavName := "home" }}
+{{ if $versionDir }}
+  {{ $leftNavName = $versionDir }}
+  {{ if $docDir }}
+    {{ $leftNavName = printf "%s_%s" $versionDir $docDir }}
+  {{ end }}
 {{ end }}
 
-{{ $leftNavName := $versionDir }}
-{{ if $docDir }}
-  {{ $leftNavName = printf "%s_%s" $versionDir $docDir }}
+{{ if eq $versionDir "" }}
+  {{ $versionDir = .Site.Params.yb.preview_version_slug }}
 {{ end }}
 
 {{ $.Scratch.Set "docVersion" $versionDir }}

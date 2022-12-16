@@ -262,6 +262,50 @@
   [leftbottom.params]
     newTab = true
 
+########## Menus for root (Docs Home)
+
+[[home]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  [home.params]
+    classes = "separator"
+    showSection = true
+
+[[home]]
+  name = "Quick Start"
+  weight = 2
+  identifier = "quick-start"
+  url = "/preview/quick-start-yugabytedb-managed/"
+  [home.params]
+    showSection = true
+    hideChildren = true
+
+[[home]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
+  url = "/preview/"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "YugabyteDB Anywhere"
+  weight = 3
+  identifier = "yugabytedb-anywhere"
+  url = "/preview/yugabyte-platform/"
+  [home.params]
+    showSection = true
+
+[[home]]
+  name = "YugabyteDB Managed"
+  weight = 4
+  identifier = "yugabytedb-managed"
+  url = "/preview/yugabyte-cloud/"
+  [home.params]
+    showSection = true
+
 ########## Menus for preview
 
 [[preview]]
