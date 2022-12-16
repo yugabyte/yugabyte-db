@@ -1,4 +1,8 @@
-
+<!--
++++
+private=true
++++
+-->
 You can perform an airgapped installation on RHEL 7/8, CentOS 7/8, and Ubuntu OS.
 
 For Airgapped installations, you need to download all the rpm files that are necessary for installing and running `yb-voyager` on a machine with an internet connection.
