@@ -6,4 +6,6 @@ github.com/trunkcode/hugo-seo v0.1.0 h1:qnVQt5Bapli/sL1+BYZBIZFm/BQpLhqeLxE3ZFAd
 github.com/trunkcode/hugo-seo v0.1.0/go.mod h1:L66E4t0yxaJE8YyS97iCHYwDYkapDuIBaGwCpvC5bWM=
 github.com/trunkcode/hugo-seo v0.2.0 h1:xOx5LTOwgISBAjXlzTHPK+Nd8Pdz1ZcoT9iG+kGZ6+g=
 github.com/trunkcode/hugo-seo v0.2.0/go.mod h1:L66E4t0yxaJE8YyS97iCHYwDYkapDuIBaGwCpvC5bWM=
+github.com/trunkcode/hugo-seo v0.2.2 h1:ywfWzmde21QktGKxs5hfdbMXhAEY0cANP/oaXKDgz/0=
+github.com/trunkcode/hugo-seo v0.2.2/go.mod h1:L66E4t0yxaJE8YyS97iCHYwDYkapDuIBaGwCpvC5bWM=
 github.com/twbs/bootstrap v4.6.2+incompatible/go.mod h1:fZTSrkpSf0/HkL0IIJzvVspTt1r9zuf7XlZau8kpcY0=
