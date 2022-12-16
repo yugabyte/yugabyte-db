@@ -84,6 +84,7 @@ public class CreateBackup extends UniverseTaskBase {
     tableBackupParams.customerUuid = params().customerUUID;
     tableBackupParams.ignoreErrors = true;
     tableBackupParams.storageConfigUUID = params().storageConfigUUID;
+    tableBackupParams.scheduleUUID = params().scheduleUUID;
     tableBackupParams.universeUUID = params().universeUUID;
     tableBackupParams.sse = params().sse;
     tableBackupParams.parallelism = params().parallelism;
