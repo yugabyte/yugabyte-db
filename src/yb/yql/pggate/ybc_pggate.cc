@@ -835,9 +835,9 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle,
                                                      end_inclusive));
 }
 
-YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
-    YBCPgExpr *attr_values) {
-  return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, YBCPgExpr lhs, int n_attr_values,
+                                   YBCPgExpr *attr_values) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, lhs, n_attr_values, attr_values));
 }
 
 YBCStatus YBCPgDmlBindHashCodes(
@@ -1095,6 +1095,14 @@ YBCStatus YBCPgNewOperator(
 
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
   return ToYBCStatus(pgapi->OperatorAppendArg(op_handle, arg));
+}
+
+YBCStatus YBCPgNewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    YBCPgExpr *elems, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewTupleExpr(
+      stmt, tuple_type_entity, type_attrs, num_elems, elems, expr_handle));
 }
 
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,

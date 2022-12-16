@@ -674,6 +674,9 @@ struct MinimalTupleData
 #define HeapTupleHasNulls(tuple) \
 		(((tuple)->t_data->t_infomask & HEAP_HASNULL) != 0)
 
+#define HeapTupleHeaderHasNulls(tuple) \
+		(((tuple)->t_infomask & HEAP_HASNULL) != 0)
+
 #define HeapTupleNoNulls(tuple) \
 		(!((tuple)->t_data->t_infomask & HEAP_HASNULL))
 

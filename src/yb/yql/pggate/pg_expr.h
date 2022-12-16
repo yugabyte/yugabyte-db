@@ -20,6 +20,7 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/pg_tuple.h"
+#include "yb/yql/pggate/pg_table.h"
 #include "yb/bfpg/tserver_opcodes.h"
 
 namespace yb {
@@ -28,6 +29,7 @@ namespace pggate {
 // decode collation encoded string
 void DecodeCollationEncodedString(const char** text, int64_t* text_len);
 
+class PgColumn;
 class PgDml;
 
 using DataTranslator = void(*)(
@@ -61,10 +63,21 @@ class PgExpr {
     PG_EXPR_EVAL_EXPR_CALL,
 
     PG_EXPR_GENERATE_ROWID,
+
+    PG_EXPR_TUPLE_EXPR,
   };
 
   // Prepare expression when constructing a statement.
   virtual Status PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb);
+
+  // Gets a vector of PgColumns whose references are nested in this
+  // pgexpr.
+  virtual Result<std::vector<std::reference_wrapper<PgColumn>>>
+      GetColumns(PgTable *pg_table) const;
+
+  // Unpacks all first level nested elements in this pgexpr to a vector of
+  // pgexpr.
+  virtual std::vector<std::reference_wrapper<const PgExpr>> Unpack() const;
 
   // Convert this expression structure to PB format.
   Status EvalTo(LWPgsqlExpressionPB *expr_pb);
@@ -89,6 +102,11 @@ class PgExpr {
             opcode_ == Opcode::PG_EXPR_MAX ||
             opcode_ == Opcode::PG_EXPR_MIN);
   }
+
+  bool is_tuple_expr() const {
+    return opcode_ == Opcode::PG_EXPR_TUPLE_EXPR;
+  }
+
   virtual bool is_ybbasetid() const {
     return false;
   }
@@ -186,6 +204,9 @@ class PgColumnRef : public PgExpr {
   // Setup ColumnRef expression when constructing statement.
   Status PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) override;
 
+  Result<std::vector<std::reference_wrapper<PgColumn>>>
+  GetColumns(PgTable *pg_table) const override;
+
   int attr_num() const {
     return attr_num_;
   }
@@ -212,6 +233,30 @@ class PgOperator : public PgExpr {
  private:
   Slice opname_;
   ArenaList<PgExpr> args_;
+};
+
+class PgTupleExpr : public PgExpr {
+ public:
+  PgTupleExpr(ThreadSafeArena* arena,
+              const YBCPgTypeEntity* type_entity,
+              const PgTypeAttrs *type_attrs,
+              int num_elems,
+              PgExpr *const *elems);
+
+  Status PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) override;
+
+  Result<std::vector<std::reference_wrapper<PgColumn>>>
+  GetColumns(PgTable *pg_table) const override;
+
+  Result<LWQLValuePB*> Eval() override;
+
+  const ArenaList<PgExpr> &GetElems() const { return elems_; }
+
+  std::vector<std::reference_wrapper<const PgExpr>> Unpack() const override;
+
+ private:
+  ArenaList<PgExpr> elems_;
+  LWQLValuePB ql_tuple_expr_value_;
 };
 
 }  // namespace pggate

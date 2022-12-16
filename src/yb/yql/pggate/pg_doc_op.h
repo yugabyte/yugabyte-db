@@ -509,6 +509,17 @@ class PgDocReadOp : public PgDocOp {
   bool PopulateNextHashPermutationOps();
   void InitializeHashPermutationStates();
 
+  // Helper functions for PopulateNextHashPermutationOps
+  // Prepares a new read request from the pool of inactive operators.
+  LWPgsqlReadRequestPB *PrepareReadReq();
+  // True if the next call to GetNextPermutation will not fail.
+  bool HasNextPermutation();
+  // Gets the next possible permutation of partition_exprs.
+  bool GetNextPermutation(std::vector<const LWPgsqlExpressionPB *> *exprs);
+  // Binds a given permutation of partition expressions to the given read request.
+  void BindPermutation(const std::vector<const LWPgsqlExpressionPB *> &exprs,
+                       LWPgsqlReadRequestPB *read_op);
+
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
   Result<bool> PopulateParallelSelectOps();
@@ -594,6 +605,8 @@ class PgDocReadOp : public PgDocOp {
   // Example:
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
+  // For a query clause "(h1,h3) IN ((1,5),(2,3)) AND h2 IN (2,4)"
+  // the will be initialized to [[(1,5), (2,3)], [(2,4)], []]
   std::vector<std::vector<const LWPgsqlExpressionPB*>> partition_exprs_;
 };
 
