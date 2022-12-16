@@ -15,7 +15,7 @@ services:
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
       db {
-        default.url="jdbc:postgresql://127.0.0.1:{{ yamlPath "platform.externalPort" }}/yugaware"
+        default.url="jdbc:postgresql://127.0.0.1:{{ yamlPath "postgres.port" }}/yugaware"
         default.driver=org.postgresql.Driver
         default.username="{{ yamlPath "platform.platformDbUser" }}"
         default.password="{{ yamlPath "platform.platformDbPassword" }}"
@@ -31,8 +31,8 @@ services:
         devops.home = "{{ installRoot }}/yb-platform/devops"
         swamper.targetPath = "{{ installRoot }}/data/prometheus/swamper_targets"
         swamper.rulesPath = "{{ installRoot }}/data/prometheus/swamper_rules"
-        metrics.url = "http://127.0.0.1:{{ yamlPath "prometheus.externalPort" }}/api/v1"
-        metrics.management.url = "http://127.0.0.1:{{ yamlPath "prometheus.externalPort" }}/-"
+        metrics.url = "http://127.0.0.1:{{ yamlPath "prometheus.port" }}/api/v1"
+        metrics.management.url = "http://127.0.0.1:{{ yamlPath "prometheus.port" }}/-"
         storage.path = "{{ installRoot }}/data/yb-platform"
         seedData = false
         multiTenant = false
@@ -121,7 +121,7 @@ services:
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware \
         -Dconfig.file={{ .ConfFileLocation }} \
         -Dhttp.port=disabled \
-        -Dhttps.port={{ yamlPath "platform.containerExposedPort" }}
+        -Dhttps.port={{ yamlPath "platform.port" }}
 
       Restart=always
       RestartSec={{ yamlPath "platform.restartSeconds"}}

@@ -101,7 +101,7 @@ func (prom Prometheus) Start() {
 	} else {
 		bashCmd := fmt.Sprintf("%s %d %d %d %d %d > /dev/null 2>&1 &",
 			prom.cronScript,
-			viper.GetInt("prometheus.externalPort"),
+			viper.GetInt("prometheus.port"),
 			viper.GetInt("prometheus.maxConcurrency"),
 			viper.GetInt("prometheus.maxSamples"),
 			viper.GetInt("prometheus.timeout"),
@@ -241,7 +241,7 @@ func (prom Prometheus) createPrometheusSymlinks() {
 func (prom Prometheus) Status() common.Status {
 	status := common.Status{
 		Service:   prom.Name(),
-		Port:      viper.GetInt("prometheus.externalPort"),
+		Port:      viper.GetInt("prometheus.port"),
 		Version:   prom.version,
 		ConfigLoc: prom.ConfFileLocation,
 	}
@@ -285,7 +285,7 @@ func (prom Prometheus) CreateCronJob() {
 	bashCmd := fmt.Sprintf(
 		"(crontab -l 2>/dev/null; echo \"@reboot %s %s %s %s %s %s \") | sort - | uniq - | crontab - ",
 		prom.cronScript,
-		config.GetYamlPathData("prometheus.externalPort"),
+		config.GetYamlPathData("prometheus.port"),
 		config.GetYamlPathData("prometheus.maxConcurrency"),
 		config.GetYamlPathData("prometheus.maxSamples"),
 		config.GetYamlPathData("prometheus.timeout"),

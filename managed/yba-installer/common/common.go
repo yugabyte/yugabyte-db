@@ -29,7 +29,7 @@ func Install(version string) {
 	// Hidden file written on first install (.installCompleted) at the end of the install,
 	// if the file already exists then it means that an installation has already taken place,
 	// and that future installs are prohibited.
-	if _, err := os.Stat(InstallRoot + "/.installCompleted"); err == nil {
+	if _, err := os.Stat(InstalledFile); err == nil {
 		log.Fatal("Install of YBA already completed, cannot perform reinstall without clean.")
 	}
 	SetUpPrereqs(version)
@@ -62,11 +62,11 @@ func copyBits(vers string) {
 
 	if HasSudoAccess() {
 
-		os.WriteFile(InstallRoot+"/.installStarted", []byte("root"), 0666)
+		os.WriteFile(installingFile, []byte("root\n"), 0666)
 
 	} else {
 
-		os.WriteFile(InstallRoot+"/.installStarted", []byte("non-root"), 0666)
+		os.WriteFile(installingFile, []byte("non-root\n"), 0666)
 
 	}
 
@@ -74,7 +74,7 @@ func copyBits(vers string) {
 
 	log.Debug(InstallRoot + " directory successfully created.")
 
-	neededFiles := []string{goBinaryName, InputFile, versionMetadataJSON, "../" + yugabundleBinary,
+	neededFiles := []string{goBinaryName, versionMetadataJSON, "../" + yugabundleBinary,
 		javaBinaryName, BundledPostgresName, pemToKeystoreConverter}
 
 	for _, file := range neededFiles {
@@ -93,6 +93,12 @@ func copyBits(vers string) {
 	ExecuteBashCommand("bash", []string{"-c", cronCpCmd})
 
 	os.Chdir(InstallVersionDir)
+}
+
+// CompleteInstallation moves the .installing file to .installed to indicate install success.
+func CompleteInstallation() {
+
+	MoveFileGolang(installingFile, InstalledFile)
 }
 
 // Uninstall performs the uninstallation procedures common to
@@ -144,9 +150,8 @@ func Uninstall() {
 
 	os.RemoveAll(InstallVersionDir)
 
-	// Remove the hidden marker file so that we are able to perform fresh installs of YBA,
-	// with the retained data directories.
-	os.RemoveAll(InstallRoot + "/.installCompleted")
+	// Remove the hidden marker file
+	os.RemoveAll(InstalledFile)
 }
 
 // Upgrade performs the upgrade procedures common to all services.
@@ -203,6 +208,8 @@ func createYugabyteUser() {
 			command2 := "useradd"
 			arg2 := []string{userName}
 			ExecuteBashCommand(command2, arg2)
+		} else {
+			log.Fatal("Need sudo access to create yugabyte user.")
 		}
 	} else {
 		log.Debug("User " + userName + " already exists, skipping user creation.")
@@ -254,7 +261,7 @@ func extractPlatformSupportPackageAndYugabundle(vers string) {
 		InstallVersionDir+"/packages/yugabyte-"+vers)
 
 	if HasSudoAccess() {
-		Chown("/opt/yugabyte", userName, userName, true)
+		Chown(InstallRoot, userName, userName, true)
 	}
 
 }

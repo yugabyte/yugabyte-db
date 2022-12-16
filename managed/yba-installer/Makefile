@@ -18,7 +18,7 @@ PACKAGE_NAME ?= ${PACKAGE_DIR}.tar.gz
 
 CONFIG_FILE_FOLDER:=$(CURDIR)/config/templates
 CRONTAB_SCRIPT_FOLDER:=$(CURDIR)/config/cron
-CONFIG_INPUT_FILE_NAME:=$(CURDIR)/yba-installer-input.yml
+CONFIG_INPUT_FILE_NAME:=$(CURDIR)/yba-ctl.yml.reference
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 
