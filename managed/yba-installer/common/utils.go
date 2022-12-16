@@ -64,40 +64,26 @@ func DetectOS() string {
 // GetVersion gets the version at execution time so that yba-installer
 // installs the correct version of Yugabyte Anywhere.
 func GetVersion() string {
+	ex, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+	exPath := filepath.Dir(ex)
 
-	cwd, _ := os.Getwd()
-	currentFolderPathList := strings.Split(cwd, "/")
-	lenFolder := len(currentFolderPathList)
-	currFolder := currentFolderPathList[lenFolder-1]
+	var configViper = viper.New()
+	configViper.SetConfigName("version_metadata.json")
+	configViper.SetConfigType("json")
+	configViper.AddConfigPath(exPath)
 
-	versionInformation := strings.Split(currFolder, "-")
-
-	// In case we are not executing in the install directory, return
-	// the version present in versionMetadata.json.
-	// TODO: Can we use viper for multiple files like this?
-	if len(versionInformation) < 3 {
-
-		viper.SetConfigName("version_metadata.json")
-		viper.SetConfigType("json")
-		viper.AddConfigPath(".")
-		err := viper.ReadInConfig()
-		if err != nil {
-			panic(err)
-		}
-
-		versionNumber := fmt.Sprint(viper.Get("version_number"))
-		buildNumber := fmt.Sprint(viper.Get("build_number"))
-
-		version := versionNumber + "-" + buildNumber
-
-		return version
-
+	err = configViper.ReadInConfig()
+	if err != nil {
+		panic(err)
 	}
 
-	versionNumber := versionInformation[1]
-	buildNumber := versionInformation[2]
+	versionNumber := fmt.Sprint(configViper.Get("version_number"))
+	buildNumber := fmt.Sprint(configViper.Get("build_number"))
 
-	version := versionNumber + "-" + buildNumber
+	version := versionNumber + "-b" + buildNumber
 
 	return version
 }
