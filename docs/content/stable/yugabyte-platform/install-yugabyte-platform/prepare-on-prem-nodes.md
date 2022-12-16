@@ -83,7 +83,7 @@ For any third-party Cron scheduling tools, you can disable Crontab and add the f
 */1 * * * * /home/yugabyte/bin/yb-server-ctl.sh tserver cron-check || /home/yugabyte/bin/yb-server-ctl.sh tserver start
 ```
 
-<br>Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YugabyteDB Anywhere to function as expected.
+Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YugabyteDB Anywhere to function as expected.
   {{< /tip >}}
 
 * Verify that Python 2.7 is installed.
@@ -101,3 +101,24 @@ For any third-party Cron scheduling tools, you can disable Crontab and add the f
 
 * Set `vm.swappiness` to 0.
 * Set `mount` path permissions to 0755.
+
+{{< note title="Note" >}}
+By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB Anywhere also supports the use of Tectia SSH that is based on the latest SSH G3 protocol. For more information, see [Enable Tectia SSH](#enable-tectia-ssh).
+{{< /note >}}
+
+### Enable Tectia SSH
+
+[Tectia SSH](https://www.ssh.com/products/tectia-ssh/) is used for secure file transfer, secure remote access and tunnelling. YugabyteDB Anywhere is shipped with a trial version of Tectia SSH client that requires a license in order to notify YugabyteDB Anywhere to permanently use Tectia instead of OpenSSH.
+
+To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where *storage_path* is the path provided during the Replicated installation.
+
+Once the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
+
+```shell
+curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ssh2_enabled'
+--header 'Cookie: <Cookie>'
+--header 'X-AUTH-TOKEN: <token>'
+--header 'Csrf-Token: <csrf-token>'
+--header 'Content-Type: text/plain'
+--data-raw '"true"'
+```

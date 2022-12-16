@@ -23,11 +23,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 
 // Allows the removal of a node from a universe. Ensures the task waits for the right set of
 // server data move primitives. And stops using the underlying instance, though YW still owns it.
@@ -158,11 +159,20 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
             createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           }
         }
-        createTServerTaskForNode(currentNode, "stop")
+
+        // Remove node from load balancer.
+        createManageLoadBalancerTasks(
+            createLoadBalancerMap(
+                universe.getUniverseDetails(),
+                Arrays.asList(currCluster),
+                new HashSet<>(Arrays.asList(currentNode)),
+                null));
+        createTServerTaskForNode(currentNode, "stop", true /*isIgnoreErrors*/)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
         if (universe.isYbcEnabled()) {
-          createStopYbControllerTasks(new HashSet<>(Arrays.asList(currentNode)))
+          createStopYbControllerTasks(
+                  new HashSet<>(Arrays.asList(currentNode)), true /*isIgnoreErrors*/)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
       }

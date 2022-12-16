@@ -72,6 +72,7 @@ set(CLIENT_SRCS
 
 set(CLIENT_LIBS
   yb_common
+  yb_ql_common
   yb_partition
   master_proto
   master_rpc

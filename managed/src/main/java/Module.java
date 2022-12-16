@@ -42,6 +42,9 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -112,7 +115,9 @@ public class Module extends AbstractModule {
     Security.addProvider(new BouncyCastleProvider());
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CustomerConfKeys());
-    // TODO: Other scopes
+    install(new ProviderConfKeys());
+    install(new GlobalConfKeys());
+    install(new UniverseConfKeys());
 
     install(new CloudModules());
     CollectorRegistry.defaultRegistry.clear();

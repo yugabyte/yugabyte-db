@@ -3284,7 +3284,7 @@ Status InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
 
 TEST_P(DocDBTestWrapper, TestUpdateDocWriteBatchTTL) {
   auto dwb = MakeDocWriteBatch();
-  Arena arena;
+  ThreadSafeArena arena;
   LWKeyValueWriteBatchPB kv_pb(&arena);
   dwb.TEST_CopyToWriteBatchPB(&kv_pb);
   ASSERT_FALSE(kv_pb.has_ttl());

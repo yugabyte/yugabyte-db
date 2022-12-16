@@ -139,6 +139,9 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Read next row into a value map using the specified projection.
   Status DoNextRow(const Schema& projection, QLTableRow* table_row) override;
 
+  // Returns OK if row_key_ is pointing to a system key.
+  Status ValidateSystemKey();
+
   const Schema& projection_;
   // Used to maintain ownership of projection_.
   // Separate field is used since ownership could be optional.

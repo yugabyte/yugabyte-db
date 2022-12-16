@@ -10,16 +10,15 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.google.api.client.util.Preconditions.checkState;
-import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
-
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
@@ -27,6 +26,9 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -34,8 +36,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
+
+import static com.google.api.client.util.Preconditions.checkState;
+import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 
 // Allows the addition of a node into a universe. Spawns the necessary processes - tserver
 // and/or master and ensures the task waits for the right set of load balance primitives.
@@ -161,6 +164,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodeSet, NodeDetails.NodeState.ToJoinCluster)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
+      // Copy the source root certificate to the newly added node.
+      createTransferXClusterCertsCopyTasks(
+          Collections.singleton(currentNode), universe, SubTaskGroupType.Provisioning);
+
       // Bring up any masters, as needed.
       boolean addMaster =
           areMastersUnderReplicated(currentNode, universe)
@@ -252,6 +259,14 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Update node state to live.
       createSetNodeStateTask(currentNode, NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+
+      // Add node to load balancer.
+      createManageLoadBalancerTasks(
+          createLoadBalancerMap(
+              universe.getUniverseDetails(),
+              ImmutableList.of(cluster),
+              null,
+              ImmutableSet.of(currentNode)));
 
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)

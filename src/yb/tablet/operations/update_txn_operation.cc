@@ -40,7 +40,7 @@ LWTransactionStatePB* RequestTraits<LWTransactionStatePB>::MutableRequest(
   return replicate->mutable_transaction_state();
 }
 
-Status UpdateTxnOperation::Prepare() {
+Status UpdateTxnOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX(2) << "Prepare";
   return Status::OK();
 }

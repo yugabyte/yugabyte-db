@@ -28,6 +28,9 @@ test: insert-conflict-do-nothing
 test: insert-conflict-do-update-2
 test: insert-conflict-do-update
 test: multixact-no-deadlock
+# TODO: Once Github issues #14985 & #14991 are fixed,
+# tuplelock-partition should be tested.
+# test: tuplelock-partition
 test: read-only-anomaly
 test: nowait
 test: nowait-2

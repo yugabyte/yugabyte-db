@@ -158,7 +158,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // the ThreadPoolToken.
   void Close();
 
-  void TEST_SetTerm(int term, Arena* arena);
+  void TEST_SetTerm(int term, ThreadSafeArena* arena);
 
   ~Peer();
 
@@ -234,7 +234,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
   uint64_t failed_attempts_ = 0;
 
   // The latest consensus update request and response stored in arena_.
-  Arena arena_;
+  ThreadSafeArena arena_;
   LWConsensusRequestPB* update_request_ = nullptr;
   LWConsensusResponsePB* update_response_ = nullptr;
 

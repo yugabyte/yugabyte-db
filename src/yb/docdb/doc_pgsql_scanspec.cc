@@ -16,6 +16,7 @@
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
@@ -41,6 +42,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
       query_id_(query_id),
       hashed_components_(nullptr),
       range_components_(nullptr),
+      range_options_groups_(schema_.num_range_key_columns()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
@@ -92,6 +94,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       query_id_(query_id),
       hashed_components_(&hashed_components.get()),
       range_components_(&range_components.get()),
+      range_options_groups_(schema_.num_range_key_columns()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
@@ -125,7 +128,6 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       range_bounds_ && range_bounds_->has_in_range_options()) {
     DCHECK(condition);
     range_options_ = std::make_shared<std::vector<OptionList>>(schema_.num_range_key_columns());
-    range_options_num_cols_ = std::vector<size_t>(schema_.num_range_key_columns(), 0);
     InitRangeOptions(*condition);
   }
 }
@@ -144,45 +146,140 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
     case QLOperator::QL_OP_IN: {
       DCHECK_EQ(condition.operands_size(), 2);
       // Skip any condition where LHS is not a column (e.g. subscript columns: 'map[k] = v')
-      if (condition.operands(0).expr_case() != PgsqlExpressionPB::kColumnId) {
+      const auto& lhs = condition.operands(0);
+      const auto& rhs = condition.operands(1);
+      if (lhs.expr_case() != PgsqlExpressionPB::kColumnId &&
+          lhs.expr_case() != PgsqlExpressionPB::kTuple) {
         return;
       }
 
       // Skip any RHS expressions that are not evaluated yet.
-      if (condition.operands(1).expr_case() != PgsqlExpressionPB::kValue) {
+      if (rhs.expr_case() != PgsqlExpressionPB::kValue &&
+          rhs.expr_case() != PgsqlExpressionPB::kTuple) {
         return;
       }
 
-      int col_idx = schema_.find_column_by_id(ColumnId(condition.operands(0).column_id()));
+      DCHECK(condition.op() == QL_OP_IN ||
+             condition.op() == QL_OP_EQUAL); // move this up
 
-      // Skip any non-range columns.
-      if (!schema_.is_range_column(col_idx)) {
-        return;
-      }
+      if (lhs.has_column_id()) {
 
-      SortingType sortingType = schema_.column(col_idx).sorting_type();
-      range_options_indexes_.emplace_back(condition.operands(0).column_id());
+        size_t col_idx = schema_.find_column_by_id(ColumnId(lhs.column_id()));
 
-      range_options_num_cols_[col_idx - num_hash_cols] = 1;
+        // Skip any non-range columns.
+        if (!schema_.is_range_column(col_idx)) {
+          return;
+        }
 
-      if (condition.op() == QL_OP_EQUAL) {
-        auto pv = KeyEntryValue::FromQLValuePBForKey(condition.operands(1).value(), sortingType);
-        (*range_options_)[col_idx - num_hash_cols].push_back({pv});
-      } else { // QL_OP_IN
-        DCHECK_EQ(condition.op(), QL_OP_IN);
-        DCHECK(condition.operands(1).value().has_list_value());
-        const auto &options = condition.operands(1).value().list_value();
-        int opt_size = options.elems_size();
-        (*range_options_)[col_idx - num_hash_cols].reserve(opt_size);
+        SortingType sortingType = schema_.column(col_idx).sorting_type();
+        range_options_indexes_.emplace_back(condition.operands(0).column_id());
 
-        // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
-        bool is_reverse_order = is_forward_scan_ ^ (sortingType == SortingType::kAscending ||
-            sortingType == SortingType::kAscendingNullsLast);
-        for (int i = 0; i < opt_size; i++) {
-          int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
-          const auto &elem = options.elems(elem_idx);
-          auto pv = KeyEntryValue::FromQLValuePBForKey(elem, sortingType);
-          (*range_options_)[col_idx - num_hash_cols].push_back({pv});
+        range_options_groups_.BeginNewGroup();
+        range_options_groups_.AddToLatestGroup(col_idx - num_hash_cols);
+        if (condition.op() == QL_OP_EQUAL) {
+          auto pv = KeyEntryValue::FromQLValuePBForKey(rhs.value(), sortingType);
+          (*range_options_)[col_idx - num_hash_cols].push_back(pv);
+        } else {
+          DCHECK(rhs.value().has_list_value());
+          const auto &options = rhs.value().list_value();
+          int opt_size = options.elems_size();
+          (*range_options_)[col_idx - num_hash_cols].reserve(opt_size);
+
+          // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
+          bool is_reverse_order = is_forward_scan_ ^ (sortingType == SortingType::kAscending ||
+              sortingType == SortingType::kAscendingNullsLast);
+          for (int i = 0; i < opt_size; i++) {
+            int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
+            const auto &elem = options.elems(elem_idx);
+            auto pv = KeyEntryValue::FromQLValuePBForKey(elem, sortingType);
+            (*range_options_)[col_idx - num_hash_cols].push_back(pv);
+          }
+        }
+      } else if (lhs.has_tuple()) {
+        // The lhs of this tuple IN condition might have a mix of hash and range columns.
+        // The hash columns in the lhs are always expected to appear to the left of all the
+        // range columns. We only take care to add the range components of the lhs to
+        // range_options_groups_ and range_options_indexes_. We compute start_range_col_idx to
+        // denote where in the lhs tuple range columns start appearing.
+        size_t total_cols = lhs.tuple().elems_size();
+        DCHECK_GT(total_cols, 0);
+
+        int start_range_col_idx = 0;
+        std::vector<int> col_idxs;
+        col_idxs.reserve(lhs.tuple().elems_size());
+
+        range_options_groups_.BeginNewGroup();
+
+        for (const auto& elem : lhs.tuple().elems()) {
+          DCHECK(elem.has_column_id());
+          ColumnId col_id = ColumnId(elem.column_id());
+          int col_idx = schema_.find_column_by_id(col_id);
+          col_idxs.push_back(col_idx);
+          if (!schema_.is_range_column(col_idx)) {
+            start_range_col_idx++;
+            DCHECK_EQ(start_range_col_idx, col_idxs.size());
+            continue;
+          }
+          range_options_groups_.AddToLatestGroup(col_idx - num_hash_cols);
+          range_options_indexes_.emplace_back(col_id);
+        }
+
+        if (start_range_col_idx >= lhs.tuple().elems_size()) {
+          return;
+        }
+
+        if (condition.op() == QL_OP_EQUAL) {
+          DCHECK(rhs.value().has_list_value());
+          const auto& value = rhs.value().list_value();
+          DCHECK_EQ(total_cols, value.elems_size());
+          for (size_t i = start_range_col_idx; i < total_cols; i++) {
+            SortingType sorting_type = schema_.column(col_idxs[i]).sorting_type();
+            Option option =
+                KeyEntryValue::FromQLValuePBForKey(
+                    value.elems(static_cast<int>(i)), sorting_type);
+            (*range_options_)[col_idxs[i] - num_hash_cols].push_back(std::move(option));
+          }
+        } else if (condition.op() == QL_OP_IN) {
+          // There should be no range columns before start_range_col_idx in col_idxs
+          // and there should be no hash columns after start_range_col_idx
+          DCHECK(std::find_if(col_idxs.begin(), col_idxs.begin() + start_range_col_idx,
+                              [this] (int idx) { return schema_.is_range_column(idx); })
+                 == (col_idxs.begin() + start_range_col_idx));
+          DCHECK(std::find_if(col_idxs.begin() + start_range_col_idx, col_idxs.end(),
+                              [this] (int idx) { return schema_.is_hash_key_column(idx); })
+                 == (col_idxs.end()));
+
+          DCHECK(rhs.value().has_list_value());
+          const auto& options = rhs.value().list_value();
+          int num_options = options.elems_size();
+          // IN arguments should have been de-duplicated and ordered ascendingly by the
+          // executor.
+
+          std::vector<bool> reverse;
+          reverse.reserve(total_cols);
+          for (size_t i = 0; i < total_cols; i++) {
+            SortingType sorting_type = schema_.column(col_idxs[i]).sorting_type();
+            bool is_reverse_order =
+                is_forward_scan_ ^
+                    (sorting_type == SortingType::kAscending ||
+                        sorting_type == SortingType::kAscendingNullsLast);
+            reverse.push_back(is_reverse_order);
+          }
+
+          std::vector<QLValuePB> sorted_options = SortTuplesbyOrdering(options, reverse);
+
+          for (int i = 0; i < num_options; i++) {
+            const auto& elem = sorted_options[i];
+            DCHECK(elem.has_tuple_value());
+            const auto& value = elem.tuple_value();
+
+            for (size_t j = start_range_col_idx; j < total_cols; j++) {
+              SortingType sorting_type = schema_.column(col_idxs[j]).sorting_type();
+              Option option = KeyEntryValue::FromQLValuePBForKey(
+                  value.elems(static_cast<int>(j)), sorting_type);
+              (*range_options_)[col_idxs[j] - num_hash_cols].push_back(std::move(option));
+            }
+          }
         }
       }
 

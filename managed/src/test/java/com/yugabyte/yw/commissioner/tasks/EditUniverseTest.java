@@ -75,6 +75,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
@@ -109,6 +110,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
@@ -161,6 +163,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
     } catch (Exception e) {
       fail();
     }

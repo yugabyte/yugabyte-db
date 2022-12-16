@@ -322,7 +322,7 @@ std::string CollectionToString(const Collection& collection, const Transform& tr
 }
 
 template <class... T>
-std::string AsString(T&&... t) {
+auto AsString(T&&... t) -> decltype(ToString(std::forward<T>(t)...)) {
   return ToString(std::forward<T>(t)...);
 }
 

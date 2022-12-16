@@ -21,6 +21,7 @@ message PingResponse {
 
 message ExecuteCommandRequest {
     repeated string command = 1;
+    string user = 2;
 }
 
 message ExecuteCommandResponse {
@@ -40,6 +41,7 @@ message UploadFileRequest {
         FileInfo fileInfo = 1;
         bytes chunkData = 2;
     };
+    string user = 3;
 }
 
 message FileInfo {
@@ -51,6 +53,7 @@ message UploadFileResponse {
 
 message DownloadFileRequest {
     string filename = 1;
+    string user = 2;
 }
 
 message DownloadFileResponse {

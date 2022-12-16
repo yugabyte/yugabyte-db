@@ -169,8 +169,8 @@ class CallResponse {
 
   Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
 
-  // Assign sidecar with specified index to out.
-  Status AssignSidecarTo(size_t idx, std::string* out) const;
+  // Extract sidecar with specified index to out.
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 
   // Transfer all sidecars to specified context, returning the first transferred sidecar index in
   // the context.
@@ -342,7 +342,7 @@ class OutboundCall : public RpcCall {
   friend class RpcController;
 
   // See appropriate comments in CallResponse.
-  virtual Status AssignSidecarTo(size_t idx, std::string* out) const;
+  virtual Result<RefCntSlice> ExtractSidecar(size_t idx) const;
   virtual size_t TransferSidecars(Sidecars* dest);
 
   ConnectionId conn_id_;

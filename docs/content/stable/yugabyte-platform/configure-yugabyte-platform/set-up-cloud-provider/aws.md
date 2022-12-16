@@ -61,7 +61,7 @@ type: docs
 
 </ul>
 
-You can configure Amazon Web Services (AWS) for YugabyteDB using YugabyteDB Anywhere. If no cloud providers have been configured yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
+<br>You can configure Amazon Web Services (AWS) for YugabyteDB using YugabyteDB Anywhere. If no cloud providers have been configured yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -102,7 +102,9 @@ Integrating with hosted zones can make YugabyteDB universes easily discoverable.
 You can customize your network, including the virtual network, as follows:
 
 - Select an existing Virtual Private Cloud (VPC).
-- Create a new VPC, with certain limitations. For example, an attempt to configure more than one AWS cloud provider with the **Create a new VPC** option enabled will result in a silent failure.
+- Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure:
+  - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
+  - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 
 ### NTP setup
 
@@ -126,7 +128,7 @@ You have an option to provide the following:
 
 - A custom Amazon Machine Image (AMI) ID to use in each region.
 
-  YugabyteDB Anywhere supports both x86 and ARM (aarch64) CPU architectures. See [Supported operating systems and architectures](../supported-os-and-arch/) for a complete list of supported operating systems. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
+  YugabyteDB Anywhere supports both x86 and ARM (aarch64) CPU architectures. See [Supported operating systems and architectures](../../supported-os-and-arch/) for a complete list of supported operating systems. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
 
   If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS).
 
@@ -151,7 +153,7 @@ If you choose to provide your own VPC information, you will be responsible for h
 - Routing table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
 - Security groups in each VPC can be hardened by only opening up the relevant ports to the CIDR blocks of the VPCs from which you are expecting traffic.
 - If you deploy YugabyteDB Anywhere in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up routing table entries in the source VPC (YugabyteDB Anywhere) and allowing one further CIDR block (or public IP) ingress rule on the security groups for the YugabyteDB nodes (to allow traffic from YugabyteDB Anywhere or its VPC).
-- When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the YugabyteDB Anywhere UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat.html) and [Tutorial: Creating a VPC with Public and Private Subnets for Your Clusters](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-public-private-vpc.html) in the AWS documentation.
+- When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the YugabyteDB Anywhere UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat.html) and [Creating a VPC with public and private subnets](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-public-private-vpc.html) in the AWS documentation.
 
 ### Limitations
 
@@ -161,7 +163,7 @@ If you create more than one AWS cloud provider with different CIDR block prefixe
 
 If you did not provide your own custom AMI IDs, before you can proceed to creating a universe, verify that you can actually spin up EC2 instances with the default AMIs in YugabyteDB Anywhere.
 
-While logged into your AWS account, navigate to the AWS site [Marketplace CentOS 7 product](https://aws.amazon.com/marketplace/pp/B00O7WM7QW/) and click **Continue to Subscribe**.
+While logged into your AWS account, navigate to the AWS site [AlmaLinux OS 8 (x86_64) product](https://aws.amazon.com/marketplace/pp/prodview-mku4y3g4sjrye) and click **Continue to Subscribe**.
 
 If you are not already subscribed and have not accepted the **Terms and Conditions**, then you should see the following message:
 
@@ -169,6 +171,6 @@ If you are not already subscribed and have not accepted the **Terms and Conditio
 
 If that is the case, click **Accept Terms** and wait for the page to switch to a successful state. After the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
 
-![Marketplace success](/images/ee/aws-setup/marketplace-success.png)
+![Marketplace success](/images/ee/aws-setup/marketplace-success-almalinux.png)
 
-Now, you are ready to create a YugabyteDB universe on AWS.
+<br>Now you are ready to create a YugabyteDB universe on AWS.

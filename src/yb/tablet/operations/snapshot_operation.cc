@@ -199,7 +199,7 @@ Status SnapshotOperation::CheckOperationAllowed(
 // SnapshotOperation
 // ------------------------------------------------------------------------------------------------
 
-Status SnapshotOperation::Prepare() {
+Status SnapshotOperation::Prepare(IsLeaderSide is_leader_side) {
   TRACE("PREPARE SNAPSHOT: Starting");
   RETURN_NOT_OK(tablet()->snapshots().Prepare(this));
 

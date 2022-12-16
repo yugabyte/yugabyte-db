@@ -76,8 +76,8 @@ func (prom Prometheus) Install() {
 	//chown is not needed when we are operating under non-root, the user will already
 	//have the necesary access.
 	if common.HasSudoAccess() {
-
-		common.Chown(common.InstallRoot+"/prometheus", "yugabyte", "yugabyte", true)
+		userName := viper.GetString("service_username")
+		common.Chown(common.InstallRoot+"/prometheus", userName, userName, true)
 
 	}
 
@@ -206,8 +206,8 @@ func (prom Prometheus) createDataDirs() {
 
 	if common.HasSudoAccess() {
 		// Need to give the yugabyte user ownership of the entire postgres directory.
-
-		common.Chown(prom.DataDir, "yugabyte", "yugabyte", true)
+		userName := viper.GetString("service_username")
+		common.Chown(prom.DataDir, userName, userName, true)
 	}
 }
 
@@ -230,7 +230,8 @@ func (prom Prometheus) createPrometheusSymlinks() {
 	common.CreateSymlink(promPkg, prom.PromDir, "console_libraries")
 
 	if common.HasSudoAccess() {
-		common.Chown(prom.PromDir, "yugabyte", "yugabyte", true)
+		userName := viper.GetString("service_username")
+		common.Chown(prom.PromDir, userName, userName, true)
 	}
 
 }

@@ -25,6 +25,8 @@
 
 #include "yb/gutil/callback_forward.h"
 
+#include "yb/util/ref_cnt_buffer.h"
+
 namespace yb {
 namespace ql {
 
@@ -125,7 +127,7 @@ class RowsResult : public ExecutedResult {
   explicit RowsResult(client::YBqlOp *op, const PTDmlStmt *tnode = nullptr);
   RowsResult(const client::YBTableName& table_name,
              const std::shared_ptr<std::vector<ColumnSchema>>& column_schemas,
-             const std::string& rows_data);
+             const RefCntSlice& rows_data);
   virtual ~RowsResult() override;
 
   // Result type.
@@ -135,9 +137,8 @@ class RowsResult : public ExecutedResult {
   const client::YBTableName& table_name() const { return table_name_; }
   const std::vector<ColumnSchema>& column_schemas() const { return *column_schemas_; }
   void set_column_schema(int col_index, const std::shared_ptr<QLType>& type);
-  const std::string& rows_data() const { return rows_data_; }
-  std::string& rows_data() { return rows_data_; }
-  void set_rows_data(const char *str, size_t size) { rows_data_.assign(str, size); }
+  Slice rows_data() const { return rows_data_.AsSlice(); }
+  void set_rows_data(const RefCntSlice& value) { rows_data_ = value; }
   const std::string& paging_state() const { return paging_state_; }
   QLClient client() const { return client_; }
 
@@ -157,7 +158,7 @@ class RowsResult : public ExecutedResult {
   const client::YBTableName table_name_;
   std::shared_ptr<std::vector<ColumnSchema>> column_schemas_;
   const QLClient client_;
-  std::string rows_data_;
+  RefCntSlice rows_data_;
   std::string paging_state_;
 };
 

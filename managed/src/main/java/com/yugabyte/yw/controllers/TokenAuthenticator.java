@@ -47,6 +47,7 @@ public class TokenAuthenticator extends Action.Simple {
           "/maintenance_windows/page",
           "/maintenance_windows/list",
           "/backups/page",
+          "/restore/page",
           "/schedules/page",
           "/fetch_package");
   public static final String COOKIE_AUTH_TOKEN = "authToken";

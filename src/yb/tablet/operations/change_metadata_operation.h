@@ -117,7 +117,7 @@ class ChangeMetadataOperation
   //
   // TODO: need a schema lock?
 
-  Status Prepare() override;
+  Status Prepare(IsLeaderSide is_leader_side) override;
 
  private:
   // Starts the ChangeMetadataOperation by assigning it a timestamp.

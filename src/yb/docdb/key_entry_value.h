@@ -25,7 +25,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_datatype.h"
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 #include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"

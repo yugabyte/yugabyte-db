@@ -54,7 +54,7 @@ class SplitOperation
       const TabletId& child1, const TabletId& child2);
 
  private:
-  Status Prepare() override;
+  Status Prepare(IsLeaderSide is_leader_side) override;
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;
   Status DoAborted(const Status& status) override;
   void AddedAsPending() override;
