@@ -1,3 +1,9 @@
+4.7.2
+BUG FIXES
+=========
+-- Fix incorrect positional variable usage in partition_data_time that lead to row locking timeout not working properly. Thanks to @nicwolff on Github for the fix. (PR #495, Issue #496)
+
+
 4.7.1
 BUG FIXES
 =========
