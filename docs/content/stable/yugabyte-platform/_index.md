@@ -28,8 +28,8 @@ You can access YugabyteDB Anywhere via an Internet browser that has been support
 
 YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the YugabyteDB Anywhere documentation describes the functionality available to a Super Admin user.
 
-{{< sections/2Boxes >}}
-  {{< sections/BottomImageBox
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
     title="Install"
     description="Install YugabyteDB Anywhere on any environment, including Kubernetes, public cloud, or private cloud."
     buttonText="Learn more"
@@ -37,51 +37,51 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 
-  {{< sections/BottomImageBox
+  {{< sections/bottom-image-box
     title="Configure"
     description="Confiure YugabyteDB Anywhere for various cloud providers."
     buttonText="Learn more"
     buttonUrl="configure-yugabyte-platform/"
 	imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
-{{< /sections/2Boxes >}}
+{{< /sections/2-boxes >}}
 
 ## Use YugabyteDB Anywhere
 
-{{< sections/3Boxes >}}
-  {{< sections/3BoxCard
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
     title="Deploy"
     description="Deploy multi-region, multi-zone, and multi-cloud universes."
     buttonText="Deploy"
     buttonUrl="create-deployments/"
   >}}
 
-  {{< sections/3BoxCard
+  {{< sections/3-box-card
     title="Manage"
     description="Modify universes and their nodes, upgrade YugabyteDB software."
     buttonText="Manage"
     buttonUrl="manage-deployments/"
   >}}
- 
-  {{< sections/3BoxCard
+
+  {{< sections/3-box-card
     title="Back up"
     description="Configure storage, back up and restore universe data."
     buttonText="Back up"
     buttonUrl="back-up-restore-universes/"
   >}}
-{{< /sections/3Boxes >}}
+{{< /sections/3-boxes >}}
 
 ## Continue learning
 
-{{< sections/3Boxes >}}
-  {{< sections/3BoxCard
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
 	title="Build applications"
 	description="Start coding in your favorite programming language using examples."
 	buttonText="Get Started"
 	buttonUrl="../develop/build-apps/"
   >}}
-  
-  {{< sections/3BoxCard
+
+  {{< sections/3-box-card
 	title="Yugabyte University"
 	subTitle="FREE COURSES AND WORKSHOPS"
 	linkText1="Developer workshops"
@@ -91,8 +91,8 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 	linkUrl2="https://university.yugabyte.com/courses/ysql-exercises-simple-queries"
 	linkTarget2="_blank"
   >}}
-  
-  {{< sections/3BoxCard
+
+  {{< sections/3-box-card
 	title="Support"
 	linkText1="Contact Support"
 	linkUrl1="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360001955891"
@@ -101,5 +101,4 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 	linkUrl2="https://communityinviter.com/apps/yugabyte-db/register"
 	linkTarget2="_blank"
   >}}
-{{< /sections/3Boxes >}}
-
+{{< /sections/3-boxes >}}

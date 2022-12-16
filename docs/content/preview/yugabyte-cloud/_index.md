@@ -27,8 +27,8 @@ resources:
 
 Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
 
-{{< sections/2Boxes >}}
-  {{< sections/BottomImageBox
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
     title="Sign up to create a Sandbox cluster"
     description="Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required."
     buttonText="Sign up"
@@ -39,58 +39,58 @@ Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 
-  {{< sections/BottomImageBox
+  {{< sections/bottom-image-box
     title="Deploy on dedicated clusters"
     description="Deploy single- and multi-region production clusters across multiple availability zones and regions."
     buttonText="Learn more"
     buttonUrl="cloud-basics/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
-{{< /sections/2Boxes >}}
+{{< /sections/2-boxes >}}
 
 ## Cluster basics
 
-{{< sections/3Boxes>}}
-  {{< sections/3BoxCard
+{{< sections/3-boxes>}}
+  {{< sections/3-box-card
     title="Deploy"
     description="Create single- and multi-region clusters in a variety of topologies."
     buttonText="Learn More"
     buttonUrl="cloud-basics/"
   >}}
 
-  {{< sections/3BoxCard
+  {{< sections/3-box-card
     title="Secure"
     description="Authorize access to clusters and databases, download cluster certificates, and audit account activity."
     buttonText="Secure"
     buttonUrl="cloud-secure-clusters/"
   >}}
 
-  {{< sections/3BoxCard
+  {{< sections/3-box-card
     title="Connect"
     description="Connect to your cluster using Cloud Shell, a client shell, and from applications."
     buttonText="Connect"
-    buttonUrl="cloud-connect/" 
+    buttonUrl="cloud-connect/"
   >}}
 
-  {{< sections/3BoxCard
+  {{< sections/3-box-card
     title="Monitor"
     description="Monitor cluster performance and get notified of potential problems."
     buttonText="Monitor"
     buttonUrl="cloud-monitor/"
   >}}
 
-  {{< sections/3BoxCard
+  {{< sections/3-box-card
     title="Manage"
     description="Scale clusters, configure backups, set maintenance windows, and pause or delete clusters."
     buttonText="Manage"
     buttonUrl="cloud-clusters/"
   >}}
-{{< /sections/3Boxes >}}
+{{< /sections/3-boxes >}}
 
 ## More resources
 
-{{< sections/3Boxes >}}
-  {{< sections/3BoxCard
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
 	title="Manage your account"
 	linkText1="Add Users to your account"
 	linkUrl1="cloud-admin/manage-access/"
@@ -100,7 +100,7 @@ Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (
 	linkUrl3="cloud-admin/cloud-admin-apikeys/"
   >}}
 
-  {{< sections/3BoxCard
+  {{< sections/3-box-card
 	title="More Information"
 	linkText1="What's new"
 	linkUrl1="release-notes/"
@@ -110,7 +110,7 @@ Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (
 	linkUrl3="../faq/yugabytedb-managed-faq/"
   >}}
 
-  {{< sections/3BoxCard
+  {{< sections/3-box-card
 	title="Support"
 	linkText1="Contact Support"
 	linkUrl1="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431"
@@ -122,19 +122,19 @@ Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (
 	linkUrl3="https://communityinviter.com/apps/yugabyte-db/register"
 	linkTarget3="_blank"
   >}}
-{{< /sections/3Boxes >}}
+{{< /sections/3-boxes >}}
 
 ## Continue learning
 
-{{< sections/3Boxes >}}
-  {{< sections/3BoxCard
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
 	title="Build Applications"
 	description="Start coding in your favorite programming language using these examples."
 	buttonText="Get Started"
 	buttonUrl="../develop/build-apps/"
   >}}
 
-  {{< sections/3BoxCard
+  {{< sections/3-box-card
 	title="Yugabyte University"
 	linkText1="YugabyteDB Managed Basics"
 	linkUrl1="https://university.yugabyte.com/courses/yugabytedb-managed-basics"
@@ -147,11 +147,11 @@ Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (
 	linkTarget3="_blank"
   >}}
 
-  {{< sections/3BoxCard
+  {{< sections/3-box-card
 	title="Yugabyte Channel"
 	description="Learn how to create a cluster, use distributed SQL, build a sample application, and scale clusters."
 	buttonText="Watch"
 	buttonUrl="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc"
 	buttonTarget="_blank"
   >}}
-{{< /sections/3Boxes >}}
+{{< /sections/3-boxes >}}

@@ -38,22 +38,22 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 - Explore a sample application
 
 
-{{< sections/2Boxes >}}
-  {{< sections/BottomImageBox
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
     title="Docs"
     description="Learn how to deploy and manage clusters in YugabyteDB Managed."
     buttonText="YugabyteDB Managed documentation"
     buttonUrl="../yugabyte-cloud/"
   >}}
 
-  {{< sections/BottomImageBox
+  {{< sections/bottom-image-box
     title="FAQ"
     description="Get answers to questions about YugabyteDB Managed."
     buttonText="YugabyteDB Managed FAQ"
     buttonUrl="../faq/yugabytedb-managed-faq/"
   >}}
-{{< /sections/2Boxes >}}
- 
+{{< /sections/2-boxes >}}
+
 
 <!-- Following sections are duplicated in cloud-quickstart -->
 
