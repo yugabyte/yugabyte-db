@@ -41,6 +41,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
@@ -2065,11 +2066,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(backupRequestParams.universeUUID);
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
 
-    if (cloudType != CloudType.kubernetes) {
-      // Ansible Configure Task for copying xxhsum binaries from
-      // third_party directory to the DB nodes.
-      installThirdPartyPackagesTask(universe)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+    if (!universe.isYbcEnabled()) {
+      if (cloudType != CloudType.kubernetes) {
+        // Ansible Configure Task for copying xxhsum binaries from
+        // third_party directory to the DB nodes.
+        installThirdPartyPackagesTask(universe)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+      } else {
+        installThirdPartyPackagesTaskK8s(universe)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+      }
     }
 
     if (backupRequestParams.alterLoadBalancer) {
@@ -2139,11 +2145,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
 
-    if (cloudType != CloudType.kubernetes) {
-      // Ansible Configure Task for copying xxhsum binaries from
-      // third_party directory to the DB nodes.
-      installThirdPartyPackagesTask(universe)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+    if (!universe.isYbcEnabled()) {
+      if (cloudType != CloudType.kubernetes) {
+        // Ansible Configure Task for copying xxhsum binaries from
+        // third_party directory to the DB nodes.
+        installThirdPartyPackagesTask(universe)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+      } else {
+        installThirdPartyPackagesTaskK8s(universe)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+      }
     }
 
     if (isYbc) {
@@ -2207,6 +2218,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     return restore;
+  }
+
+  public SubTaskGroup installThirdPartyPackagesTaskK8s(Universe universe) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("InstallingThirdPartySoftware", executor);
+    InstallThirdPartySoftwareK8s task = createTask(InstallThirdPartySoftwareK8s.class);
+    InstallThirdPartySoftwareK8s.Params params = new InstallThirdPartySoftwareK8s.Params();
+    params.universeUUID = universe.getUniverseUUID();
+    params.softwareType = InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM;
+    task.initialize(params);
+
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   public SubTaskGroup createTableBackupTaskYb(BackupTableParams taskParams) {

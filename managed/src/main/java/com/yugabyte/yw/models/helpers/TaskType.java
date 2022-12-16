@@ -464,7 +464,10 @@ public enum TaskType {
 
   AddGFlagMetadata(com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata.class),
 
-  DeleteRootVolumes(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes.class);
+  DeleteRootVolumes(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes.class),
+
+  InstallingThirdPartySoftware(
+      com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s.class);
 
   private final Class<? extends ITask> taskClass;
 
