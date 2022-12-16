@@ -410,7 +410,9 @@ public enum TaskType {
 
   InstanceExistCheck("subtasks.InstanceExistCheck"),
 
-  AddGFlagMetadata("AddGFlagMetadata");
+  AddGFlagMetadata("AddGFlagMetadata"),
+
+  InstallThirdPartySoftwareK8s("subtasks.InstallThirdPartySoftwareK8s");
 
   private String relativeClassPath;
 
