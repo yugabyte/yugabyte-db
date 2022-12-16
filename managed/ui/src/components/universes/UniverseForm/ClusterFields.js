@@ -3010,7 +3010,7 @@ export default class ClusterFields extends Component {
                 </Col>
               </Row>
             )}
-            {isDefinedNotNull(currentProvider) && (
+            {isDefinedNotNull(currentProvider) && currentProvider.code !== 'kubernetes' && (
               <Row>
                 <Col md={12}>
                   <div className="form-right-aligned-labels">
