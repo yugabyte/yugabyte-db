@@ -47,6 +47,10 @@ In addition to throttling controls for compactions, YugabyteDB does a variety of
 
 YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [`yb-admin` utility](../../../admin/yb-admin/). This can be useful when new data is not coming into the system for a table anymore and you might want to reclaim disk space due to overwrites or deletes that have already happened, or due to TTL expiry.
 
+### Scheduled full compactions (beta)
+
+YugabyteDB allows you to schedule full compactions over all data in a tablet by using the [`scheduled_full_compaction_frequency_hours`](../../../reference/configuration/yb-tserver/#scheduled-full-compaction-frequency-hours) and [`scheduled_full_compaction_jitter_factor_percentage`](../../../reference/configuration/yb-tserver/#scheduled-full-compaction-jitter-factor-percentage) gflags. This can improve performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This feature and its gflags can also be useful for tables with [TTL](../../../develop/learn/ttl-data-expiration-ycql), which regularly delete data. It is compatible with tables with TTL only if the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature is disabled.
+
 ### Server-global memstore limit
 
 Tracks and enforces a global size across the memstores for different tablets. This makes sense when there is a skew in the write rate across tablets. For example, the scenario when there are tablets belonging to multiple tables in a single YB-TServer and one of the tables gets a lot more writes than the other tables. The write-heavy table is allowed to grow much larger than it could if there was a per-tablet memory limit, allowing good write efficiency.
