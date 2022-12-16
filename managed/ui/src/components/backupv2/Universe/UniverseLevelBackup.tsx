@@ -69,6 +69,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
         title={
           <DropdownButton
             pullRight
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             title={
               <span>
                 <i className="fa fa-gear" />
