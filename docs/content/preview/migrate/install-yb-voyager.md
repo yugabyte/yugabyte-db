@@ -65,27 +65,6 @@ YugabyteDB Voyager consists of the yb-voyager command line executable. yb-voyage
 
 Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisites) using one of the following options:
 
-<!-- <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li class="active">
-    <a href="../macos/" class="nav-link">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      macOS
-    </a>
-  </li>
-  <li>
-    <a href="../linux/" class="nav-link">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Linux
-    </a>
-  </li>
-  <li>
-    <a href="../ubuntu/" class="nav-link">
-      <i class="fa-brands fa-ubuntu" aria-hidden="true"></i>
-      Ubuntu
-    </a>
-  </li>
-</ul> -->
-
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#linux" class="nav-link active" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="true">
