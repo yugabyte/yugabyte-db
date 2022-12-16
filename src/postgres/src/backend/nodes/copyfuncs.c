@@ -901,9 +901,15 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	/*
 	 * copy remainder of node
 	 */
-	COPY_NODE_FIELD(innerHashAttNos);
-	COPY_NODE_FIELD(outerParamExprs);
-	COPY_NODE_FIELD(hashOps);
+	COPY_SCALAR_FIELD(num_hashClauseInfos);
+	COPY_POINTER_FIELD(hashClauseInfos,
+					  from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
+	
+	for (int i = 0; i < from->num_hashClauseInfos; i++)
+	{
+		newnode->hashClauseInfos[i].outerParamExpr =
+			copyObject(from->hashClauseInfos[i].outerParamExpr);
+	}
 
 	return newnode;
 }

@@ -319,22 +319,12 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 /*
  * Whether or not we are using the hash batching strategy. We go with
  * the hash strategy if we have at least one hashable clause in our join
- * condition as signified by the number of elements in plan->hashOps.
+ * condition as signified by num_hashClauseInfos.
  */
-static bool
+static bool inline
 UseHash(YbBatchedNestLoop *plan, YbBatchedNestLoopState *nl)
 {
-	if (!yb_bnl_enable_hashing)
-		return false;
-
-	ListCell *lc;
-	foreach(lc, plan->hashOps)
-	{
-		Oid op = lfirst_oid(lc);
-		if (OidIsValid(op))
-			return true;
-	}
-	return false;
+	return yb_bnl_enable_hashing && plan->num_hashClauseInfos > 0;
 }
 
 /*
@@ -350,35 +340,31 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 
 	Assert(UseHash(plan, bnlstate));
 
-	ListCell *lc;
-	ListCell *lc2;
-	ListCell *lc3;
-	Oid *eqops = palloc(plan->hashOps->length * (sizeof(Oid)));
-	int i = 0;
+	int num_hashClauseInfos = plan->num_hashClauseInfos;
+	Oid *eqops = palloc(num_hashClauseInfos * (sizeof(Oid)));
 	
-	bnlstate->numLookupAttrs = plan->hashOps->length;
+	bnlstate->numLookupAttrs = num_hashClauseInfos;
 	bnlstate->innerAttrs =
-		palloc(bnlstate->numLookupAttrs * sizeof(AttrNumber));
+		palloc(num_hashClauseInfos * sizeof(AttrNumber));
 	int numattrs = plan->nl.nestParams->length;
 	ExprState **keyexprs = palloc(numattrs * (sizeof(ExprState*)));
-	List *outerParamExprs = NIL;
+	List *outerParamExprs = NULL;
+	YbBNLHashClauseInfo *current_hinfo = plan->hashClauseInfos;
 
-	forthree(lc, plan->hashOps,
-			 lc2, plan->innerHashAttNos,
-			 lc3, plan->outerParamExprs)
+	for (int i = 0; i < num_hashClauseInfos; i++)
 	{
-		Oid eqop = lfirst_oid(lc);
-		if (!OidIsValid(eqop))
-			continue;
+		Oid eqop = current_hinfo->hashOp;
+		Assert(OidIsValid(eqop));
 		eqops[i] = eqop;
-		bnlstate->innerAttrs[i] = lfirst_int(lc2);
-		Expr *outerExpr = (Expr *) lfirst(lc3);
+		bnlstate->innerAttrs[i] = current_hinfo->innerHashAttNo;
+		Expr *outerExpr = current_hinfo->outerParamExpr;
 		keyexprs[i] = ExecInitExpr(outerExpr, (PlanState *) bnlstate);
 		outerParamExprs = lappend(outerParamExprs, outerExpr);
-		i++;
+		current_hinfo++;
 	}
 	Oid *eqFuncOids;
-	execTuplesHashPrepare(i, eqops, &eqFuncOids, &bnlstate->hashFunctions);
+	execTuplesHashPrepare(num_hashClauseInfos, eqops, &eqFuncOids,
+						  &bnlstate->hashFunctions);
 
 	ExprState *tab_eq_fn =
 		ybPrepareOuterExprsEqualFn(outerParamExprs,
@@ -396,7 +382,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 
 	bnlstate->hashtable =
 		YbBuildTupleHashTableExt(&bnlstate->js.ps, outer_tdesc,
-								 i, keyexprs, tab_eq_fn,
+								 num_hashClauseInfos, keyexprs, tab_eq_fn,
 								 eqFuncOids, bnlstate->hashFunctions,
 								 GetBatchSize(plan), 0,
 								 econtext->ecxt_per_query_memory, tablecxt,
@@ -462,7 +448,12 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 							  eq,
 							  bnlstate->hashFunctions,
 							  bnlstate->innerAttrs);
-	Assert(data != NULL);
+	if(data == NULL)
+	{
+		/* Inner plan returned a tuple that doesn't match with anything. */
+		InstrCountFiltered1(bnlstate, 1);
+		return false;
+	}
 
 	NLBucketInfo *binfo = (NLBucketInfo*) data->additional;
 	while (binfo->current != NULL)
@@ -531,7 +522,7 @@ RegisterOuterMatchHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
  */
 void
 AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
-							  TupleTableSlot *slot)
+						 TupleTableSlot *slot)
 {
 	TupleHashTable ht = bnlstate->hashtable;
 	bool isnew = false;

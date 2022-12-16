@@ -189,13 +189,31 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   bool miss_partition_columns = false;
   bool has_partition_columns = false;
 
+  // Collecting column indexes that are involved in a tuple
+  std::vector<size_t> tuple_col_ids;
+
   for (size_t index = 0; index != bind_->num_hash_key_columns(); ++index) {
     auto expr = bind_.ColumnForIndex(index).bind_pb();
+    auto colid = bind_.ColumnForIndex(index).id();
     // For IN clause expr->has_condition() returns 'true'.
-    if (!expr || (!expr->has_condition() && (expr_binds_.find(expr) == expr_binds_.end()))) {
+    if (!expr || (!expr->has_condition() &&
+                  (expr_binds_.find(expr) == expr_binds_.end()) &&
+                  (std::find(tuple_col_ids.begin(), tuple_col_ids.end(), colid) ==
+                   tuple_col_ids.end()))) {
       miss_partition_columns = true;
+      continue;
     } else {
       has_partition_columns = true;
+    }
+
+    if (expr && expr->has_condition()) {
+      const auto& lhs = *expr->condition().operands().begin();
+      if (lhs.has_tuple()) {
+        const auto& tuple = lhs.tuple();
+        for (const auto& elem : tuple.elems()) {
+          tuple_col_ids.push_back(elem.column_id());
+        }
+      }
     }
   }
 
@@ -417,45 +435,66 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value,
   return Status::OK();
 }
 
-Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **attr_values) {
+Status PgDmlRead::BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr_values) {
   if (secondary_index_query_) {
     // Bind by secondary key.
-    return secondary_index_query_->BindColumnCondIn(attr_num, n_attr_values, attr_values);
+    return secondary_index_query_->BindColumnCondIn(lhs, n_attr_values, attr_values);
   }
 
-  SCHECK(attr_num != static_cast<int>(PgSystemAttrNum::kYBTupleId),
-         InvalidArgument,
-         "Operator IN cannot be applied to ROWID");
-
-  // Find column.
-  PgColumn& col = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
+  auto cols = VERIFY_RESULT(lhs->GetColumns(&bind_));
+  for (PgColumn &col : cols) {
+    SCHECK(col.attr_num() != static_cast<int>(PgSystemAttrNum::kYBTupleId),
+           InvalidArgument,
+           "Operator IN cannot be applied to ROWID");
+  }
 
   // Check datatype.
   // TODO(neil) Current code combine TEXT and BINARY datatypes into ONE representation.  Once that
   // is fixed, we can remove the special if() check for BINARY type.
-  if (col.internal_type() != InternalType::kBinaryValue) {
-    for (int i = 0; i < n_attr_values; i++) {
-      if (attr_values[i]) {
-        SCHECK_EQ(col.internal_type(), attr_values[i]->internal_type(), Corruption,
-            "Attribute value type does not match column type");
+  for (int i = 0; i < n_attr_values; i++) {
+    if (attr_values[i]) {
+      auto vals = attr_values[i]->Unpack();
+      auto curr_val_it = vals.begin();
+      for (const PgColumn &curr_col : cols) {
+        const PgExpr &curr_val = *curr_val_it;
+        auto col_type = curr_val.internal_type();
+        if (curr_col.internal_type() == InternalType::kBinaryValue)
+            continue;
+        SCHECK_EQ(curr_col.internal_type(), col_type, Corruption,
+          "Attribute value type does not match column type");
+        curr_val_it++;
       }
     }
   }
 
-  if (col.is_primary()) {
+  for (const PgColumn &curr_col : cols) {
+    // Check primary column bindings
+    if (curr_col.is_primary() && curr_col.bind_pb() != nullptr) {
+      if (expr_binds_.find(curr_col.bind_pb()) != expr_binds_.end()) {
+        LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.",
+                                            curr_col.attr_num());
+      }
+    }
+  }
+
+  // Find column.
+  // Note that in the case that we are dealing with a tuple IN,
+  // we only bind this condition to the first column in the IN. The nature of that
+  // column (hash or range) will decide how this tuple IN condition will be processed.
+  PgColumn& col = cols.front();
+  bool col_is_primary = col.is_primary();
+
+  if (col_is_primary) {
     // Alloc the protobuf.
     auto *bind_pb = col.bind_pb();
     if (bind_pb == nullptr) {
       bind_pb = AllocColumnBindPB(&col);
-    } else {
-      if (expr_binds_.find(bind_pb) != expr_binds_.end()) {
-        LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.",
-                                            attr_num);
-      }
     }
 
     bind_pb->mutable_condition()->set_op(QL_OP_IN);
-    bind_pb->mutable_condition()->add_operands()->set_column_id(col.id());
+    auto lhs_bind = bind_pb->mutable_condition()->add_operands();
+
+    RETURN_NOT_OK(lhs->PrepareForRead(this, lhs_bind));
 
     // There's no "list of expressions" field so we simulate it with an artificial nested OR
     // with repeated operands, one per bind expression.
@@ -712,7 +751,7 @@ Status PgDmlRead::MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB
   condition_expr_pb->mutable_condition()->set_op(QL_OP_IN);
 
   auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
-  op1_pb->set_column_id(col->id());
+  *op1_pb = *in_operator.operands().begin();
 
   auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
   auto it = in_operator.operands().begin();

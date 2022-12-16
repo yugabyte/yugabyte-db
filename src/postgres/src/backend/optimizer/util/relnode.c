@@ -1246,8 +1246,8 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	List	   *pclauses;
 	double		rows;
 	ListCell   *lc;
-	Relids		batchedrelids = root->yb_curbatchedrelids;
-	Relids		unbatchedrelids = root->yb_curunbatchedrelids;
+	Relids		batchedrelids = root->yb_cur_batched_relids;
+	Relids		unbatchedrelids = root->yb_cur_unbatched_relids;
 
 	/* If rel has LATERAL refs, every path for it should account for them */
 	Assert(bms_is_subset(baserel->lateral_relids, required_outer));
@@ -1313,27 +1313,9 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	baserel->ppilist = lappend(baserel->ppilist, ppi);
 
 	if (!IsYugaByteEnabled() ||
-		(bms_is_empty(root->yb_curbatchedrelids) &&
-		 bms_is_empty(root->yb_curunbatchedrelids)))
+		(bms_is_empty(root->yb_cur_batched_relids) &&
+		 bms_is_empty(root->yb_cur_unbatched_relids)))
 		return ppi;
-
-	/* See if we have any unbatchable filters. */
-	// foreach(lc, pclauses)
-	// {
-	// 	RestrictInfo *rinfo = lfirst(lc);
-	// 	RestrictInfo *batched =
-	// 		get_batched_restrictinfo(rinfo,
-	// 								 rinfo->required_relids,
-	// 								 baserel->relids);
-
-	// 	if (!batched ||
-	// 		!bms_equal(batched->left_relids, baserel->relids) ||
-	// 		!bms_is_subset(batched->right_relids, batchedrelids))
-	// 	{
-	// 		unbatchedrelids = bms_union(unbatchedrelids,
-	// 									rinfo->clause_relids);
-	// 	}
-	// }
 
 	unbatchedrelids = bms_del_member(unbatchedrelids,
 									 baserel->relid);

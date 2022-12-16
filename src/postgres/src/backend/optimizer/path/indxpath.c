@@ -594,10 +594,11 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	Relids batchedrelids = NULL;
 	Relids unbatchablerelids = NULL;
 
-	Relids batched_inner_attnos = NULL;
+	Bitmapset *batched_inner_attnos = NULL;
 
 	List *batched_rinfos = NIL;
 
+	Relids inner_relids = bms_make_singleton(index->rel->relid);
 
 	for (size_t i = 0; i < INDEX_MAX_KEYS && clauses->nonempty; i++)
 	{
@@ -611,16 +612,10 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			 * We are prohibiting batching outer rels that have already
 			 * been batched in the interest of simplicity for now.
 			 */
-			Relids inner_relids = bms_make_singleton(index->rel->relid);
 			Relids outer_relids =
 				bms_difference(rinfo->required_relids, inner_relids);
 			RestrictInfo *tmp_batched = get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
 
-			/* Disabling batching the same rel twice for now. */
-			if (tmp_batched &&
-				bms_overlap(tmp_batched->right_relids, batchedrelids))
-				tmp_batched = NULL;
-			
 			/* Disabling batching the same inner attno twice for now. */
 			if (tmp_batched)
 			{
@@ -663,10 +658,10 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	unbatchablerelids = bms_del_member(unbatchablerelids,
 									   index->rel->relid);
 
-	Assert(!root->yb_curbatchedrelids);
-	Assert(!root->yb_curunbatchedrelids);
-	root->yb_curbatchedrelids = batchedrelids;
-	root->yb_curunbatchedrelids = unbatchablerelids;
+	Assert(!root->yb_cur_batched_relids);
+	Assert(!root->yb_cur_unbatched_relids);
+	root->yb_cur_batched_relids = batchedrelids;
+	root->yb_cur_unbatched_relids = unbatchablerelids;
 
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
@@ -722,8 +717,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			*bitindexpaths = lappend(*bitindexpaths, ipath);
 	}
 
-	root->yb_curbatchedrelids = NULL;
-	root->yb_curunbatchedrelids = NULL;
+	root->yb_cur_batched_relids = NULL;
+	root->yb_cur_unbatched_relids = NULL;
 }
 
 /*
