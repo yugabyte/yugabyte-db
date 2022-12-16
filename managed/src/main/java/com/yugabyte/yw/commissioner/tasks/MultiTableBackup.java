@@ -244,6 +244,9 @@ public class MultiTableBackup extends UniverseTaskBase {
           // third_party directory to the DB nodes.
           installThirdPartyPackagesTask(universe)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
+        } else {
+          installThirdPartyPackagesTaskK8s(universe)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
         }
 
         if (params().alterLoadBalancer) {

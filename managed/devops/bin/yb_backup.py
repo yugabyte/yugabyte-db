@@ -1463,8 +1463,10 @@ class YBBackup:
                 global XXH64HASH_TOOL_PATH
                 tserver = live_tservers[0]
                 try:
-                    self.run_ssh_cmd("[ -d '{}' ]".format(XXH64HASH_TOOL_PATH), tserver).strip()
-                    node_machine_arch = self.run_ssh_cmd(['uname', '-m'], tserver).strip()
+                    self.run_ssh_cmd("[ -d '{}' ]".format(XXH64HASH_TOOL_PATH),
+                                     tserver, upload_cloud_cfg=False).strip()
+                    node_machine_arch = self.run_ssh_cmd(['uname', '-m'], tserver,
+                                                         upload_cloud_cfg=False).strip()
                     if node_machine_arch and 'x86' not in node_machine_arch:
                         xxh64_bin = XXH64_AARCH_BIN
                     else:
@@ -3151,7 +3153,7 @@ class YBBackup:
                 else:
                     raise ex
             self.download_file_from_server(
-                self.get_main_host_ip(), manifest_path, self.get_tmp_dir())
+                self.get_main_host_ip(), manifest_path, manifest_path)
             self.manifest.load_from_file(manifest_path)
         except subprocess.CalledProcessError as ex:
             # The file is available for new backup only.
