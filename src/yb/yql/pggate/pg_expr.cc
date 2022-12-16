@@ -209,6 +209,11 @@ Status PgExpr::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
   return Status::OK();
 }
 
+Result<std::vector<std::reference_wrapper<PgColumn>>>
+PgExpr::GetColumns(PgTable *pg_table) const {
+  return STATUS_SUBSTITUTE(InvalidArgument, "Illegal call to GetColumns");
+}
+
 Status PgExpr::EvalTo(LWPgsqlExpressionPB *expr_pb) {
   auto value = VERIFY_RESULT(Eval());
   if (value) {
@@ -229,6 +234,12 @@ Result<LWQLValuePB*> PgExpr::Eval() {
   // Expressions that are neither bind_variable nor constant don't need to be updated.
   // Only values for bind variables and constants need to be updated in the SQL requests.
   return nullptr;
+}
+
+std::vector<std::reference_wrapper<const PgExpr>> PgExpr::Unpack() const {
+  std::vector<std::reference_wrapper<const PgExpr>> vals;
+  vals.push_back(*this);
+  return vals;
 }
 
 namespace {
@@ -837,6 +848,13 @@ Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb)
   return Status::OK();
 }
 
+Result<std::vector<std::reference_wrapper<PgColumn>>>
+PgColumnRef::GetColumns(PgTable *pg_table) const {
+  std::vector<std::reference_wrapper<PgColumn>> cols;
+  cols.push_back(VERIFY_RESULT(pg_table->ColumnForAttr(attr_num())));
+  return cols;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgOperator::PgOperator(ThreadSafeArena* arena,
@@ -869,6 +887,68 @@ Status PgOperator::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) 
     RETURN_NOT_OK(arg.EvalTo(op));
   }
   return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PgTupleExpr::PgTupleExpr(ThreadSafeArena* arena,
+                         const YBCPgTypeEntity* type_entity,
+                         const PgTypeAttrs *type_attrs,
+                         int num_elems,
+                         PgExpr *const *elems)
+  : PgExpr(Opcode::PG_EXPR_TUPLE_EXPR, type_entity, false, type_attrs),
+    elems_(arena),
+    ql_tuple_expr_value_(arena) {
+  for (int i = 0; i < num_elems; i++) {
+    elems_.push_back_ref(elems[i]);
+  }
+}
+
+Status PgTupleExpr::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {
+  auto *tup_elems = expr_pb->mutable_tuple();
+  for (auto &elem : elems_) {
+    auto new_elem = tup_elems->add_elems();
+
+    if (elem.is_constant()) {
+      RETURN_NOT_OK(elem.EvalTo(new_elem->mutable_value()));
+    } else {
+      DCHECK(elem.is_colref());
+      PgColumnRef *cref = reinterpret_cast<PgColumnRef*>(&elem);
+      RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(cref->attr_num(), new_elem));
+    }
+  }
+  return Status::OK();
+}
+
+Result<std::vector<std::reference_wrapper<PgColumn>>>
+PgTupleExpr::GetColumns(PgTable *pg_table) const {
+  std::vector<std::reference_wrapper<PgColumn>> cols;
+  for (const auto &elem : GetElems()) {
+    int attr_num = reinterpret_cast<const PgColumnRef*>(&elem)->attr_num();
+    cols.push_back(VERIFY_RESULT(pg_table->ColumnForAttr(attr_num)));
+  }
+  return cols;
+}
+
+std::vector<std::reference_wrapper<const PgExpr>> PgTupleExpr::Unpack() const {
+  std::vector<std::reference_wrapper<const PgExpr>> vals;
+  for (auto &elem : GetElems()) {
+    vals.push_back(elem);
+  }
+  return vals;
+}
+
+Result<LWQLValuePB*> PgTupleExpr::Eval() {
+  auto *tup_elems = ql_tuple_expr_value_.mutable_tuple_value();
+  for (auto &elem : elems_) {
+    auto new_elem = tup_elems->add_elems();
+    if (elem.is_constant()) {
+      RETURN_NOT_OK(elem.EvalTo(new_elem));
+    } else {
+      return nullptr;
+    }
+  }
+  return &ql_tuple_expr_value_;
 }
 
 }  // namespace pggate
