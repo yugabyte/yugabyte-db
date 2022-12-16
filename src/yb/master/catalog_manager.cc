@@ -10971,6 +10971,11 @@ void CatalogManager::StartElectionIfReady(
 
   std::vector<std::string> possible_leaders;
   for (const auto& replica : *replicas) {
+    // Start hinted election only on running replicas if it's not initial election (create table).
+    if (!initial_election && (replica.second.member_type != PeerMemberType::VOTER ||
+        replica.second.state != RaftGroupStatePB::RUNNING)) {
+      continue;
+    }
     for (const auto& ts_desc : ts_descs) {
       if (ts_desc->permanent_uuid() == replica.first) {
         if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
