@@ -21,7 +21,7 @@ import (
 	// "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
 
-// Bash Command Constants
+// Hardcoded Variables.
 
 // Systemctl linux command.
 const Systemctl string = "systemctl"
@@ -29,14 +29,13 @@ const Systemctl string = "systemctl"
 // SystemdDir service file directory.
 const SystemdDir string = "/etc/systemd/system"
 
-// InstallRoot where YBA is installed.
-var InstallRoot = GetInstallRoot()
-
-// InstallVersionDir where the yba_installer directory is.
-var InstallVersionDir = InstallRoot + "/yba_installer-" + GetVersion()
-
 // InputFile where installer config settings are specified.
-var InputFile = "yba-installer-input.yml"
+var InputFile = "/opt/yba-ctl/yba-ctl.yml"
+
+var installingFile = "/opt/yba-ctl/.installing"
+
+// InstalledFile is location of install completed marker file.
+var InstalledFile = "/opt/yba-ctl/.installed"
 
 // BundledPostgresName is postgres package we ship with yba_installer_full.
 var BundledPostgresName = "postgresql-9.6.24-1-linux-x64-binaries.tar.gz"
@@ -47,21 +46,32 @@ var ConfigDir = "templates"
 // CronDir is directory where non-root cron scripts are stored (relative to yba-ctl)
 var CronDir = "cron"
 
+var skipConfirmation = false
+
 var yumList = []string{"RedHat", "CentOS", "Oracle", "Alma", "Amazon"}
 
 var aptList = []string{"Ubuntu", "Debian"}
-
-var currentUser = GetCurrentUser()
 
 var goBinaryName = "yba-ctl"
 
 var versionMetadataJSON = "version_metadata.json"
 
-var yugabundleBinary = "yugabundle-" + GetVersion() + "-centos-x86_64.tar.gz"
-
 var javaBinaryName = "OpenJDK8U-jdk_x64_linux_hotspot_8u345b01.tar.gz"
 
 var pemToKeystoreConverter = "pemtokeystore-linux-amd64"
+
+// Variables that need to be set before use.
+
+// Version of yba-ctl
+var Version string
+// InstallRoot where YBA is installed.
+var InstallRoot string
+// InstallVersionDir where the yba_installer directory is.
+var InstallVersionDir string
+
+var currentUser string
+
+var yugabundleBinary string
 
 // DetectOS detects the operating system yba-installer is running on.
 func DetectOS() string {
@@ -86,6 +96,7 @@ func GetVersion() string {
 
 	// In case we are not executing in the install directory, return
 	// the version present in versionMetadata.json.
+	// TODO: Can we use viper for multiple files like this?
 	if len(versionInformation) < 3 {
 
 		viper.SetConfigName("version_metadata.json")
@@ -191,20 +202,14 @@ func HasSudoAccess() bool {
 // GetInstallRoot returns the InstallRoot where YBA is installed.
 func GetInstallRoot() string {
 
-	InstallRoot := "/opt/yugabyte"
-
-	if !HasSudoAccess() {
-		InstallRoot = "/home/" + currentUser + "/yugabyte"
-	}
-
-	return InstallRoot
+	return viper.GetString("installRoot")
 
 }
 
 // GetInstallVersionDir returns the yba_installer directory inside InstallRoot
 func GetInstallVersionDir() string {
 
-	return GetInstallRoot() + "/yba_installer-" + GetVersion()
+	return GetInstallRoot() + "/yba_installer-" + Version
 }
 
 // GetCurrentUser returns the user yba-ctl was run as.
@@ -289,7 +294,16 @@ const (
 	DefaultNo
 )
 
+// DisableUserConfirm skips all confirmation steps.
+func DisableUserConfirm() {
+	skipConfirmation = true
+}
+
+// UserConfirm asks the user for confirmation before proceeding.
 func UserConfirm(prompt string, defAns defaultAnswer) bool {
+	if skipConfirmation {
+		return true
+	}
 	if !strings.HasSuffix(prompt, " ") {
 		prompt = prompt + " "
 	}
@@ -332,4 +346,35 @@ func UserConfirm(prompt string, defAns defaultAnswer) bool {
 			fmt.Println("please enter 'yes' or 'no'")
 		}
 	}
+}
+
+func InitViper() {
+	// Init Viper
+	viper.SetDefault("service_username", "yugabyte")
+	viper.SetDefault("installRoot", "/opt/yugabyte")
+	viper.SetConfigFile(InputFile)
+	viper.ReadInConfig()
+}
+
+func GetBinaryDir() string {
+
+	ex, err := os.Executable()
+	if err != nil {
+		log.Fatal("Error determining yba-ctl binary path.")
+	}
+	return filepath.Dir(ex)
+}
+
+func GetReferenceYaml() string {
+	return filepath.Join(GetBinaryDir(), "yba-ctl.yml.reference")
+}
+
+func init() {
+	InitViper()
+	// Init globals that rely on viper
+	Version = GetVersion()
+	InstallRoot = GetInstallRoot()
+	InstallVersionDir  = GetInstallVersionDir()
+	yugabundleBinary  = "yugabundle-" + Version + "-centos-x86_64.tar.gz"
+	currentUser  = GetCurrentUser()
 }

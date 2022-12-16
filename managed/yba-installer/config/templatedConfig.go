@@ -36,9 +36,9 @@ var randomKeystorePassword string = generateRandomStringURLSafe(32)
 // valid by turning the input YAML file into a JSON file, and then validating that
 // the parameters have been specified appropriately using the available
 // JSON schema.
-func validateJSONSchema(filename string) {
+func validateJSONSchema() {
 
-	createdBytes, err := os.ReadFile(filename)
+	createdBytes, err := os.ReadFile(common.InputFile)
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Error: %v.", err))
 	}
@@ -188,7 +188,7 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 // GenerateTemplate of a particular component.
 func GenerateTemplate(component common.Component) {
 
-	validateJSONSchema(common.InputFile)
+	validateJSONSchema()
 
 	createdBytes, _ := readConfigAndTemplate(component.TemplateFile(), component)
 
