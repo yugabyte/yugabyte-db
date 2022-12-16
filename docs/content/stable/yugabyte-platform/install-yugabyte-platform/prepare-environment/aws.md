@@ -62,7 +62,7 @@ type: docs
 In order to access YugabyteDB Anywhere from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the server hosting YugabyteDB Anywhere. At a minimum, you need to be able to do the following:
 
 - Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
-- Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
+- Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800` and YB Controller port `18018`).
 - View the YugabyteDB Anywhere UI (port `tcp:80`).
 
 If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).

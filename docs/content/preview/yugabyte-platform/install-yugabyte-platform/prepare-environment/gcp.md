@@ -98,7 +98,7 @@ For more information, see [Creating and managing service accounts](https://cloud
 In order to access YugabyteDB Anywhere from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
 
 - Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
-- Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
+- Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800` and YB Controller port `18018`).
 - View the YugabyteDB Anywhere UI (port `tcp:80`).
 
 If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information, see [Default ports](../../../../reference/configuration/default-ports).

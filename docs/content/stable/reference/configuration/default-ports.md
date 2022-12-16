@@ -34,7 +34,9 @@ To enable login to the machines running these servers, the SSH port 22 should be
 
 xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes.
 
-Note that YugabyteDB Anywhere obtained the replication lag using Prometheus metrics from tserver (port 9000). So, although the xCluster replication will work if this port is closed, the replication lag cannot be shown on YugabyteDB Anywhere.
+Note that YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
+
+Before installing YugabyteDB Anywhere, the YB Controller port 18018 must be open. Before upgrading the YugabyteDB software, this port must be open on all YugabyteDB nodes.
 
 ## Admin web server
 
