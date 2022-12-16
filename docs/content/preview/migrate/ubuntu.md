@@ -1,3 +1,8 @@
+<!--
++++
+private=true
++++
+-->
 
 Perform the following steps to install yb-voyager using apt for Ubuntu:
 

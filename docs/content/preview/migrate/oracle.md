@@ -1,3 +1,8 @@
+<!--
++++
+private=true
++++
+-->
 
 Create a role and a database user, and provide the user with READ access to all the resources which need to be migrated.
 

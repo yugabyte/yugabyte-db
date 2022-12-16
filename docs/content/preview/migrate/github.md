@@ -1,3 +1,8 @@
+<!--
++++
+private=true
++++
+-->
 
 Perform the following steps to install `yb_voyager` using an installer script:
 

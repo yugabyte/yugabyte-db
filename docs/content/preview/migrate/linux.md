@@ -1,3 +1,8 @@
+<!--
++++
+private=true
++++
+-->
 
 Perform the following steps to install yb-voyager using yum for RHEL 7/8 and CentOS 7/8:
 
