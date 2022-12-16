@@ -109,7 +109,7 @@ func (plat Platform) Install() {
 	} else {
 		// Allow yugabyte user to fully manage this installation (GetInstallRoot() to be safe)
 		userName := viper.GetString("service_username")
-		common.Chown(common.GetInstallRoot(), userName, userName, true)
+		common.Chown(common.GetBaseInstall(), userName, userName, true)
 	}
 
 	plat.Start()

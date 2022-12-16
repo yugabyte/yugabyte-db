@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"fmt"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -38,24 +39,24 @@ func Init(logLevel string) {
 	})
 
 	switch logLevel {
-  case "TraceLevel":
-    log.SetLevel(log.TraceLevel)
-  case "DebugLevel":
-    log.SetLevel(log.DebugLevel)
-  case "InfoLevel":
-    log.SetLevel(log.InfoLevel)
-  case "WarnLevel":
-    log.SetLevel(log.WarnLevel)
-  case "ErrorLevel":
-    log.SetLevel(log.ErrorLevel)
-  case "FatalLevel":
-    log.SetLevel(log.FatalLevel)
-  case "PanicLevel":
-    log.SetLevel(log.PanicLevel)
-  default:
-    Debug("Invalid Logging Level specified in yba-ctl.yml. Defaulting to InfoLevel.")
-    log.SetLevel(log.InfoLevel)
-  }
+	case "trace":
+		log.SetLevel(log.TraceLevel)
+	case "debug":
+		log.SetLevel(log.DebugLevel)
+	case "info":
+		log.SetLevel(log.InfoLevel)
+	case "warn":
+		log.SetLevel(log.WarnLevel)
+	case "error":
+		log.SetLevel(log.ErrorLevel)
+	case "fatal":
+		log.SetLevel(log.FatalLevel)
+	case "panic":
+		log.SetLevel(log.PanicLevel)
+	default:
+		log.Fatal(fmt.Sprintf("Invalid log level specified: [%s]", logLevel))
+
+	}
 
 	// TODO: Also make logging file for installer actions.
 	log.SetOutput(os.Stdout)

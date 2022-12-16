@@ -1,9 +1,9 @@
 package checks
 
 import (
-	"path/filepath"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 )
@@ -12,8 +12,8 @@ import (
 var InputFile = inputFileCheck{"input", false}
 
 type inputFileCheck struct {
-	name				string
-	skipAllowed	bool
+	name        string
+	skipAllowed bool
 }
 
 // Name gets the check name
@@ -27,15 +27,18 @@ func (i inputFileCheck) SkipAllowed() bool {
 
 func (i inputFileCheck) Execute() Result {
 	res := Result{
-		Check: i.name,
+		Check:  i.name,
 		Status: StatusPassed,
 	}
 
-	common.UserConfirm(
-		fmt.Sprintf("Is %s present and in the desired state?", common.InputFile), common.DefaultYes)
+	if !common.UserConfirm(
+		fmt.Sprintf("Is %s present and in the desired state?", common.InputFile), common.DefaultYes) {
+		res.Error = fmt.Errorf("user abort")
+		res.Status = StatusCritical
+	}
 
 	if _, err := os.Stat(common.InputFile); err != nil {
-		err := fmt.Errorf("%s is not present. Copying over reference.", common.InputFile)
+		err := fmt.Errorf("%s is not present. Copying over reference", common.InputFile)
 		res.Error = err
 		res.Status = StatusWarning
 

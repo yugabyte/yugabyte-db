@@ -26,6 +26,7 @@ const (
 )
 
 var force bool
+var logLevel string
 
 var rootCmd = &cobra.Command{
 	Use:   "yba-ctl",
@@ -35,6 +36,12 @@ var rootCmd = &cobra.Command{
     YBA Installer, you can perform numerous actions related to your Yugabyte
     Anywhere instance through our command line CLI, such as clean, createBackup,
     restoreBackup, install, and upgrade! View the CLI menu to learn more!`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if len(logLevel) == 0 {
+			logLevel = viper.GetString("logLevel")
+		}
+		log.Init(logLevel)
+	},
 }
 
 func cleanCmd() *cobra.Command {
@@ -245,8 +252,7 @@ func init() {
 		createBackupCmd(), restoreBackupCmd(),
 		upgradeCmd, startCmd, stopCmd, restartCmd, statusCmd)
 	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "skip user confirmation")
-
-	log.Init(viper.GetString("logLevel"))
+	rootCmd.PersistentFlags().StringVar(&logLevel, "log_level", "", "log level for this command")
 
 }
 
