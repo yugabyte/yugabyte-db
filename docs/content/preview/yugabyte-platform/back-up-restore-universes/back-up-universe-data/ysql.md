@@ -46,7 +46,7 @@ The **Backups** page allows you to create new backups that start immediately, as
 
 - Click **Backup now** to open the dialog shown in the following illustration:<br>
 
-  ![Backup](/images/yp/create-backup-new-2.png)<br>
+  ![Backup](/images/yp/create-backup-new-2.png)
 
 - In the **Backup Now** dialog, select YSQL as the API type and then complete all the other fields.
 
@@ -75,3 +75,71 @@ To view detailed information about an existing backup, click on it to open **Bac
 ![Backups](/images/yp/backups-list.png)<br>
 
 You can access the detailed information about a specific backup by clicking it to open the **Backup Details** dialog. 
+
+
+
+INCREMENTAL BACKUPS Beta
+
+Incremental backups are a way of taking differential backups on top of a complete backup. To reduce the length of time spent on each backup, only SST files that are new to YugabyteDB and not present in the previous backups are incrementally backed up. For example, in most cases, for incremental backups occurring every hour, the 1-hour delta would be significantly smaller compared to the full backup.
+
+<!--
+
+![img](/images/yp/incremental-backup-flow.png)
+
+-->
+
+You can pick up any increment from a list of increments, and the restore will be until that point.
+
+YugabyteDB Anywhere performs incremental backups via YB-Controller.
+
+## Create incremental backup
+
+You can create an incremental backup on any complete or incremental backup taken using YB-Controller, as follows:
+
+Navigate to Backups, select a backup, and then click on it to open **Backup Details** shown in the following illustration:
+
+![img](/images/yp/incremental-backup-details.png)
+
+In the  **Backup Details** view, click **Add Incremental Backup**.
+
+Complete the **Create Incremental Backup** dialog and click **Backup**, as per the following illustration:
+
+![img](/images/yp/create-incremental-backup.png)
+
+**Create Schedule Policy:** Another option that user will get to create incremental backups is through scheduled policy. I.e. User can create a schedule policy which will take full backups periodically and incremental backups between those full backups.
+
+In order to create these schedule policy use will have to enable the incremental backup option and provide a incremental backup frequency. The provided incremental backup frequency should be lower than the frequency of full backup schedule.
+
+![img](/Users/lizarekadze/yugabyte-db/docs/static/images/yp/incremental-backup2.png)
+
+**Restore Backup:** User will be provided with be provided with the options to either restore the full backup or the part of incremental backup chain. During the restore, we will only store the successful incremental backups and discard any failed backup.
+
+![img](/images/yp/incremental-backup3.png)
+
+**Delete Backup:** User will have the options to delete only the complete backup chain which includes full backup and it’s incremental backups through usual delete backup option. User cannot delete subset of incremental bakups
+
+**Effects on existing functionality:**  
+
+1. - Delete Backup:
+
+   - - Users would not be able to delete any arbitrary successful incremental backup that is part of a chain. Users would only be able to delete the complete incremental backup chain.
+     - They can however delete failed incremental backups as they are not part of any backup chain.
+
+   - Restore Backup:
+
+   - - If User tries to restore an incremental backup, the YBA/YBC would restore the complete backup chain as it would restore all previous increment backup and base backup.
+
+   - Schedule Backup:
+
+   - - As soon as user disable the full backup, the incremental backup too will be stopped and if user enables it then the incremental backup schedule will be started on new full backups.
+     - If user deletes the main full backup schedule then, the incremental backup schedule will also be removed.
+
+Users will not be able to edit any incremental backup related property in the schedule. They will have to delete the existing schedule and create a new schedule if they need to overwrite any incremental backup property.
+
+**Non-functional aspects:**   
+
+1. - Incremental backup size and duration will be visible to users to check the performance.
+   - We don’t store each incremental backup restore time but the total restore time can be treated as task duration.
+   - The failed incremental backup operation will be reported like usual failed backup operations like create, restore and delete.
+   - For each operation, a customer task would be created for traceability and task_info would also be maintained for the purpose of debugging.
+
