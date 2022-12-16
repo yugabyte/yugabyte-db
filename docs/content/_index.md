@@ -19,7 +19,7 @@ resources:
     url: /preview/migrate/
 ---
 
-{{< sections/textWithRightImage
+{{< sections/TextWithRightImage
   title="Learn through examples"
   description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
   buttonText="Get started"
@@ -27,8 +27,8 @@ resources:
   imageAlt="Yugabyte cloud" imageUrl="/images/homepage/learn-through-examples.svg"
 >}}
 
-{{< sections/2boxes >}}
-  {{< sections/bottomImageBox
+{{< sections/2Boxes >}}
+  {{< sections/BottomImageBox
     title="Get Started in the Cloud"
     description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required."
     buttonText="Get started"
@@ -36,19 +36,19 @@ resources:
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 
-  {{< sections/bottomImageBox
+  {{< sections/BottomImageBox
     title="Get Started locally on your Laptop"
     description="Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL."
     buttonText="Get started"
     buttonUrl="/preview/quick-start/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
-{{< /sections/2boxes >}}
+{{< /sections/2Boxes >}}
 
 ## Learn through examples
 
-{{< sections/3boxesTopImage >}}
-  {{< sections/imageTitleDescBox
+{{< sections/3BoxesTopImage >}}
+  {{< sections/3BoxCard
     title="Build a Hello world application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster and performs basic SQL operations."
     buttonText="Get started"
@@ -57,7 +57,7 @@ resources:
     imageUrl="/images/homepage/build-hello-world-application.svg"
   >}}
 
-  {{< sections/imageTitleDescBox
+  {{< sections/3BoxCard
     title="Run a real world demo app"
     description="Run a distributed full-stack e-commerce application built on YugabyteDB, Node.js Express, and React."
     buttonText="Get started"
@@ -66,7 +66,7 @@ resources:
     imageUrl="/images/homepage/run-real-world-demo-app.svg"
   >}}
 
-  {{< sections/imageTitleDescBox
+  {{< sections/3BoxCard
     title="Explore Distributed SQL capabilities"
     description="Learn about YugabyteDB's PostgreSQL compatibility."
     buttonText="Get started"
@@ -74,12 +74,12 @@ resources:
     imageAlt="Explore Distributed SQL capabilities"
     imageUrl="/images/homepage/explore-distributed-sql-capabilities.svg"
   >}}
-{{< /sections/3boxesTopImage >}}
+{{< /sections/3BoxesTopImage >}}
 
 ## Products
 
-{{< sections/3boxesTopIcon >}}
-  {{< sections/imageTitleDescBox
+{{< sections/3Boxes >}}
+  {{< sections/3BoxCard
     title="YugabyteDB"
     description="Open source cloud-native distributed SQL database for mission-critical applications."
     buttonText="Explore YugabyteDB"
@@ -88,7 +88,7 @@ resources:
     imageUrl="/icons/database.svg"
   >}}
 
-  {{< sections/imageTitleDescBox
+  {{< sections/3BoxCard
     title="YugabyteDB Anywhere"
     description="YugabyteDB delivered as a private database-as-a-service for enterprises."
     buttonText="Documentation"
@@ -97,7 +97,7 @@ resources:
     imageUrl="/icons/server.svg"
   >}}
 
-  {{< sections/imageTitleDescBox
+  {{< sections/3BoxCard
     title="YugabyteDB Managed"
     description="Fully managed YugabyteDB-as-a-Service without the operational overhead of managing a database."
     buttonText="Documentation"
@@ -105,12 +105,12 @@ resources:
     imageAlt="YugabyteDB Managed"
     imageUrl="/icons/cloud.svg"
   >}}
-{{< /sections/3boxesTopIcon >}}
+{{< /sections/3Boxes >}}
 
 ## Key concepts
 
-{{< sections/3boxesTopIcon >}}
-  {{< sections/imageTitleDescBox
+{{< sections/3Boxes >}}
+  {{< sections/3BoxCard
     title="Understand availability"
     description="YugabyteDB clusters can continue to do reads and writes even in case of node failures."
     buttonText="Read real world availability usecases"
@@ -119,7 +119,7 @@ resources:
     imageUrl="/icons/availability.svg"
   >}}
 
-  {{< sections/imageTitleDescBox
+  {{< sections/3BoxCard
     title="Understand scalability"
     description="Scale YugabyteDB clusters to handle more transactions per second, more concurrent client connections, and larger datasets."
     buttonText="Read real world scalability usecases"
@@ -128,7 +128,7 @@ resources:
     imageUrl="/icons/scalability.svg"
   >}}
 
-  {{< sections/imageTitleDescBox
+  {{< sections/3BoxCard
     title="Understand geo-partitioning"
     description="Use geo-partitioning to meet data residency requirements and achieve lower latency and higher performance."
     buttonText="Read real world Geo usecases"
@@ -136,12 +136,12 @@ resources:
     imageAlt="Understand Geo"
     imageUrl="/icons/geo.svg"
   >}}
-{{< /sections/3boxesTopIcon >}}
+{{< /sections/3Boxes >}}
 
 ## More resources
 
-{{< sections/3boxes >}}
-  {{< sections/multiplelinksBox
+{{< sections/3Boxes >}}
+  {{< sections/3BoxCard
     title="Explore Yugabyte University"
     linkText1="Read real world availability usecases"
     linkUrl1="https://university.yugabyte.com/courses/introduction-to-distributed-sql"
@@ -151,7 +151,7 @@ resources:
     linkUrl3="https://university.yugabyte.com/courses/yugabytedb-managed-basics"
   >}}
 
-  {{< sections/multiplelinksBox
+  {{< sections/3BoxCard
     title="Get under the hood"
     linkText1="YugabyteDB architecture"
     linkUrl1="/preview/architecture/"
@@ -161,11 +161,11 @@ resources:
     linkUrl3="/preview/drivers-orms/"
   >}}
 
-  {{< sections/multiplelinksBox
+  {{< sections/3BoxCard
     title="Distributed SQL APIs"
     linkText1="YSQL"
     linkUrl1="/preview/api/ysql/"
     linkText2="YCQL"
     linkUrl2="/preview/api/ycql/"
   >}}
-{{< /sections/3boxes >}}
+{{< /sections/3Boxes >}}

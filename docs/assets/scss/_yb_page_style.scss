@@ -122,16 +122,15 @@
 }
 
 .three-col-top-image,
-.three-col-left-icon,
-.three-col-links {
+.three-col-left-icon {
   display: flex;
   flex-flow: row wrap;
   padding: 0 !important;
-  margin: 32px -16px !important;
+  margin: 32px -8px !important;
 
   > div {
     flex: 0 0 calc(33% - 13px);
-    margin: 32px 16px 16px 0;
+    margin: 8px;
     border: 1px solid #d7dee4;
     background: #fff;
     overflow: hidden;
@@ -143,10 +142,31 @@
     transition: all 300ms ease;
     width: auto;
 
-    &:hover {
-      background: #f2f6ff;
-      border: 1px solid #cddbff;
-      box-shadow: 0 0 0 1px #cddbff;
+    &:not(.card-multi-links) {
+      &:hover {
+        background: #f2f6ff;
+        border: 1px solid #cddbff;
+        box-shadow: 0 0 0 1px #cddbff;
+      }
+
+      .card-link {
+        width: 0;
+        height: 0;
+
+        a {
+          opacity: 0;
+
+          &::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+          }
+        }
+      }
     }
 
     .card-img {
@@ -173,22 +193,16 @@
       line-height: 22px;
     }
 
-    .card-link {
-      width: 0;
-      height: 0;
+    &.card-multi-links {
+      .card-desc {
+        margin-bottom: 16px;
+      }
 
-      a {
-        opacity: 0;
-
-        &::before {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          z-index: 1;
-        }
+      .tritiery-btn:not(.btn-priority) {
+        display: block;
+        padding: 0;
+        border: 0;
+        font-weight: 400;
       }
     }
 
@@ -198,8 +212,7 @@
   }
 }
 
-.three-col-left-icon,
-.three-col-links {
+.three-col-left-icon {
   > div {
     padding: 24px;
 
@@ -210,33 +223,6 @@
       background: transparent;
       aspect-ratio: 1;
       border: none;
-    }
-  }
-}
-
-.three-col-links {
-  > div {
-    &:hover {
-      background: transparent;
-      border: 1px solid #d7dee4;
-      box-shadow: none;
-    }
-
-    .card-link {
-      width: auto;
-      height: auto;
-
-      a {
-        opacity: 1;
-
-        &::before {
-          display: none;
-        }
-      }
-    }
-
-    .card-link + .card-link {
-      margin-left: 0;
     }
   }
 }

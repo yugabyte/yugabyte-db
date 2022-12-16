@@ -10,7 +10,6 @@ aliases:
   - /preview/quick-start/install/
 layout: single
 type: docs
-body_class: yb-page-style
 rightNav:
   hideH4: true
 ---

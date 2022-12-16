@@ -6,7 +6,6 @@ headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
 description: Get started using YugabyteDB Managed in less than five minutes.
 layout: single
 type: docs
-body_class: yb-page-style
 rightNav:
   hideH4: true
 ---
@@ -38,30 +37,23 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 - Load sample data and run queries
 - Explore a sample application
 
-<div class="row cloud-laptop">
-  <div class="col-12 col-md-12 col-lg-6">
-    <div class="border two-side">
-      <div class="body">
-        <div class="box-top">
-          <span>Docs</span>
-        </div>
-        <div class="body-content">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
-        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed documentation</a>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-12 col-lg-6">
-    <div class="border two-side">
-      <div class="body">
-        <div class="box-top">
-          <span>FAQ</span>
-        </div>
-        <div class="body-content">Get answers to questions about YugabyteDB Managed.</div>
-        <a class="text-link" href="../faq/yugabytedb-managed-faq/" title="Learn more">YugabyteDB Managed FAQ</a>
-      </div>
-    </div>
-  </div>
-</div>
+
+{{< sections/2Boxes >}}
+  {{< sections/BottomImageBox
+    title="Docs"
+    description="Learn how to deploy and manage clusters in YugabyteDB Managed."
+    buttonText="YugabyteDB Managed documentation"
+    buttonUrl="../yugabyte-cloud/"
+  >}}
+
+  {{< sections/BottomImageBox
+    title="FAQ"
+    description="Get answers to questions about YugabyteDB Managed."
+    buttonText="YugabyteDB Managed FAQ"
+    buttonUrl="../faq/yugabytedb-managed-faq/"
+  >}}
+{{< /sections/2Boxes >}}
+ 
 
 <!-- Following sections are duplicated in cloud-quickstart -->
 
