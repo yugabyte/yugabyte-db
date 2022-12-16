@@ -263,7 +263,7 @@ class UniverseDetail extends Component {
 
     const isTopKMetricsEnabled = runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === 'yb.metrics.ui.topk.enable'
-    ).value === 'true';
+    )?.value === 'true';
 
     const type =
       pathname.indexOf('edit') < 0

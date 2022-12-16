@@ -20,6 +20,7 @@ monitors:
 host_requirements:
   disk_space: 50GB
   docker_space: 10GB
+  docker_version: 20.10.0
 custom_requirements:
   - id: check_free_space
     message: Ensure there is sufficient space for platform installation

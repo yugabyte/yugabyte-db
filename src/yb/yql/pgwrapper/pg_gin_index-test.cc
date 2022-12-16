@@ -110,10 +110,7 @@ TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(SplitOption)) {
   {
     auto query = Format("SELECT count(*) FROM $0 where v @@ 'bc'", kTableName);
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-    auto res = ASSERT_RESULT(conn_->Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    ASSERT_EQ(PQnfields(res.get()), 1);
-    auto value = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+    auto value = ASSERT_RESULT(conn_->FetchValue<PGUint64>(query));
     ASSERT_EQ(value, 1);
   }
   {

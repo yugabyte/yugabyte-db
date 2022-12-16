@@ -11,17 +11,17 @@ menu:
 type: docs
 ---
 
-The YB-TServer (short for YugabyteDB Tablet Server) service is responsible for the actual IO for end user requests in a YugabyteDB cluster. Recall from the previous section that data for a table is split, or sharded, into tablets. Each tablet is composed of one or more tablet-peers, depending on the replication factor. And each YB-TServer hosts one or more tablet-peers.
+The YB-TServer (YugabyteDB Tablet Server) service is responsible for the actual IO of the end-user requests in a YugabyteDB cluster. Recall from the previous section that data for a table is split, or sharded, into tablets. Each tablet is composed of one or more tablet-peers, depending on the replication factor. And each YB-TServer hosts one or more tablet-peers.
 
-Note: We will refer to the “tablet-peers hosted by a YB-TServer” simply as the “tablets hosted by a YB-TServer”.
+Note that the tablet-peers hosted by a YB-TServer will be referred to as tablets hosted by a YB-TServer.
 
-Below is a pictorial illustration of this in the case of a 4-node YugabyteDB universe, with one table that has 16 tablets and a replication factor of 3.
+The following diagram illustrates a case of a 4-node YugabyteDB universe, with one table that has 16 tablets and a replication factor of 3:
 
-![tserver_overview](/images/architecture/tserver_overview.png)
+![tserver_overview](/images/architecture/tserver_overview-1.png)
 
-The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and replicate data between each other. The system shown above comprises of 16 independent Raft groups. The details of this replication are covered in another section on replication.
+The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and replicate data between each other. The system shown in the preceding diagram comprises 16 independent Raft groups. The details of this replication are covered in another section on replication.
 
-Within each YB-TServer, there is a lot of cross-tablet intelligence built in to maximize resource efficiency. Below are just some of the ways the YB-TServer coordinates operations across tablets hosted by it:
+Within each YB-TServer, there is a lot of cross-tablet intelligence built in to maximize resource efficiency. There are multiple ways the YB-TServer coordinates operations across tablets it hosts.
 
 ## Server-global block cache
 
@@ -29,7 +29,7 @@ The block cache is shared across the different tablets in a given YB-TServer. Th
 
 ## Space amplification
 
-YugabyteDB's compactions are size tiered. Size tier compactions have the advantage of lower disk write (IO) amplification when compared to level compactions. There may be a concern that size-tiered compactions have higher space amplification (that it needs 50% space head room). This is not true in YugabyteDB because each table is broken into several tablets and concurrent compactions across tablets are throttled to a certain maximum. Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
+YugabyteDB's compactions are size-tiered. Size tier compactions have the advantage of lower disk write (IO) amplification when compared to level compactions. There may be a concern that size-tiered compactions have higher space amplification (that it needs 50% space head room). This is not true in YugabyteDB because each table is broken into several tablets and concurrent compactions across tablets are throttled to a certain maximum. Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
 
 ## Throttled compactions
 
@@ -45,11 +45,15 @@ In addition to throttling controls for compactions, YugabyteDB does a variety of
 
 ### Manual compactions
 
-YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [`yb-admin` utility](../../../admin/yb-admin/). This can be useful for cases when new data is not coming into the system for a table anymore, users want to reclaim disk space due to overwrites/deletes that have already happened or due to TTL expiry.
+YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [`yb-admin` utility](../../../admin/yb-admin/). This can be useful when new data is not coming into the system for a table anymore and you might want to reclaim disk space due to overwrites or deletes that have already happened, or due to TTL expiry.
+
+### Scheduled full compactions (beta)
+
+YugabyteDB allows you to schedule full compactions over all data in a tablet by using the [`scheduled_full_compaction_frequency_hours`](../../../reference/configuration/yb-tserver/#scheduled-full-compaction-frequency-hours) and [`scheduled_full_compaction_jitter_factor_percentage`](../../../reference/configuration/yb-tserver/#scheduled-full-compaction-jitter-factor-percentage) gflags. This can improve performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This feature and its gflags can also be useful for tables with [TTL](../../../develop/learn/ttl-data-expiration-ycql), which regularly delete data. It is compatible with tables with TTL only if the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature is disabled.
 
 ### Server-global memstore limit
 
-Tracks and enforces a global size across the memstores for different tablets. This makes sense when there is a skew in the write rate across tablets. For example, the scenario when there are tablets belonging to multiple tables in a single YB-TServer and one of the tables gets a lot more writes than the other tables. The write heavy table is allowed to grow much larger than it could if there was a per-tablet memory limit, allowing good write efficiency.
+Tracks and enforces a global size across the memstores for different tablets. This makes sense when there is a skew in the write rate across tablets. For example, the scenario when there are tablets belonging to multiple tables in a single YB-TServer and one of the tables gets a lot more writes than the other tables. The write-heavy table is allowed to grow much larger than it could if there was a per-tablet memory limit, allowing good write efficiency.
 
 ### Auto-sizing of block cache/memstore
 

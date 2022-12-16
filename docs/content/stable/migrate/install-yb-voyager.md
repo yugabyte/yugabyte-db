@@ -83,7 +83,7 @@ To install yb-voyager on a machine which satisfies the [Prerequisites](#prerequi
   ./install-yb-voyager
   ```
 
-  It is safe to execute the script multiple times. If the script fails, check the `/tmp/install-yb-voyager.  log` file.
+  It is safe to execute the script multiple times. If the script fails, check the `/tmp/install-yb-voyager.log` file.
 
 - The script generates a `.yb-voyager.rc` file in the home directory. Source the file to ensure that the environment variables are set using the following command:
 

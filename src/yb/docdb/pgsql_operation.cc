@@ -1029,10 +1029,9 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
   // it skips. For a large enough table it eventually starts to select less than targrows per page,
   // regardless of the row_count_limit.
   // Anyways, double targrows seems like reasonable minimum for the row_count_limit.
-  size_t row_count_limit = 2 * targrows;
-  if (request_.has_limit() && request_.limit() > row_count_limit) {
-    row_count_limit = request_.limit();
-  }
+
+  VLOG(2) << "Start sampling tablet with sampling_state=" << sampling_state.ShortDebugString();
+
   // Request is not supposed to contain any column refs, we just need the liveness column.
   Schema projection;
   RETURN_NOT_OK(CreateProjection(doc_read_context.schema, request_.column_refs(), &projection));
@@ -1042,9 +1041,8 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
       deadline, read_time, is_explicit_request_read_time));
   bool scan_time_exceeded = false;
   CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
-  while (scanned_rows++ < row_count_limit &&
-         VERIFY_RESULT(table_iter_->HasNext()) &&
-         !scan_time_exceeded) {
+  while (VERIFY_RESULT(table_iter_->HasNext())) {
+    scanned_rows++;
     if (numrows < targrows) {
       // Select first targrows of the table. If first partition(s) have less than that, next
       // partition starts to continue populating it's reservoir starting from the numrows' position:
@@ -1067,6 +1065,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
         reservoir[k].set_binary_value(ybctid.data(), ybctid.size());
         // Choose next number of rows to skip
         YbgReservoirGetNextS(rstate, samplerows, targrows, &rowstoskip);
+        VLOG(3) << "Next reservoir sampling rowstoskip=" << rowstoskip;
       } else {
         rowstoskip -= 1;
       }
@@ -1075,9 +1074,14 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
     table_iter_->SkipRow();
     // Check if we are running out of time
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
+    if (scan_time_exceeded) {
+      VLOG(1) << "ANALYZE sampling scan exceeded deadline";
+      break;
+    }
   }
   // Count live rows we have scanned TODO how to count dead rows?
-  samplerows += scanned_rows - 1;
+  samplerows += scanned_rows;
+
   // Return collected tuples from the reservoir.
   // Tuples are returned as (index, ybctid) pairs, where index is in [0..targrows-1] range.
   // As mentioned above, for large tables reservoirs become increasingly sparse from page to page.
@@ -1108,9 +1112,13 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
   YbgDeleteMemoryContext();
 
   // Return paging state if scan has not been completed
-  RETURN_NOT_OK(SetPagingStateIfNecessary(
-      table_iter_.get(), scanned_rows, row_count_limit, scan_time_exceeded,
-      doc_read_context.schema, read_time, has_paging_state));
+  if (request_.return_paging_state() && scan_time_exceeded) {
+    RETURN_NOT_OK(SetPagingState(
+        table_iter_.get(), doc_read_context.schema, read_time, has_paging_state));
+  }
+
+  VLOG(2) << "End sampling with new_sampling_state=" << new_sampling_state->ShortDebugString();
+
   return fetched_rows;
 }
 
@@ -1308,9 +1316,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
   // Unless iterated to the end, pack current iterator position into response, so follow up request
   // can seek to correct position and continue
-  RETURN_NOT_OK(SetPagingStateIfNecessary(
-      iter, fetched_rows, row_count_limit, scan_time_exceeded,
-      request_.has_index_request() ? *index_schema : doc_schema, read_time, has_paging_state));
+  if (request_.return_paging_state() && (fetched_rows >= row_count_limit || scan_time_exceeded)) {
+    RETURN_NOT_OK(SetPagingState(
+        iter, request_.has_index_request() ? *index_schema : doc_schema, read_time,
+        has_paging_state));
+  }
   return fetched_rows;
 }
 
@@ -1366,39 +1376,32 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
   return row_count;
 }
 
-Status PgsqlReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
-                                                     size_t fetched_rows,
-                                                     const size_t row_count_limit,
-                                                     const bool scan_time_exceeded,
-                                                     const Schema& schema,
-                                                     const ReadHybridTime& read_time,
-                                                     bool *has_paging_state) {
+Status PgsqlReadOperation::SetPagingState(YQLRowwiseIteratorIf* iter,
+                                          const Schema& schema,
+                                          const ReadHybridTime& read_time,
+                                          bool *has_paging_state) {
   *has_paging_state = false;
-  if (!request_.return_paging_state()) {
-    return Status::OK();
-  }
 
   // Set the paging state for next row.
-  if (fetched_rows >= row_count_limit || scan_time_exceeded) {
-    SubDocKey next_row_key;
-    RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
-    // When the "limit" number of rows are returned and we are asked to return the paging state,
-    // return the partition key and row key of the next row to read in the paging state if there are
-    // still more rows to read. Otherwise, leave the paging state empty which means we are done
-    // reading from this tablet.
-    if (!next_row_key.doc_key().empty()) {
-      const auto& keybytes = next_row_key.Encode();
-      PgsqlPagingStatePB* paging_state = response_.mutable_paging_state();
-      if (schema.num_hash_key_columns() > 0) {
-        paging_state->set_next_partition_key(
-           PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
-      } else {
-        paging_state->set_next_partition_key(keybytes.ToStringBuffer());
-      }
-      paging_state->set_next_row_key(keybytes.ToStringBuffer());
-      *has_paging_state = true;
+  SubDocKey next_row_key;
+  RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
+  // When the "limit" number of rows are returned and we are asked to return the paging state,
+  // return the partition key and row key of the next row to read in the paging state if there are
+  // still more rows to read. Otherwise, leave the paging state empty which means we are done
+  // reading from this tablet.
+  if (!next_row_key.doc_key().empty()) {
+    const auto& keybytes = next_row_key.Encode();
+    PgsqlPagingStatePB* paging_state = response_.mutable_paging_state();
+    if (schema.num_hash_key_columns() > 0) {
+      paging_state->set_next_partition_key(
+          PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
+    } else {
+      paging_state->set_next_partition_key(keybytes.ToStringBuffer());
     }
+    paging_state->set_next_row_key(keybytes.ToStringBuffer());
+    *has_paging_state = true;
   }
+
   if (*has_paging_state) {
     if (FLAGS_pgsql_consistent_transactional_paging) {
       read_time.AddToPB(response_.mutable_paging_state());

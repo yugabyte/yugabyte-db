@@ -18,6 +18,7 @@ set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
     yb_common
+    yb_ql_common
     yb_pggate_flags
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper

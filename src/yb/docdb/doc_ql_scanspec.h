@@ -22,10 +22,12 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bytes.h"
 
+#include "yb/util/col_group.h"
+
 namespace yb {
 namespace docdb {
 
-using Option = std::vector<KeyEntryValue>;  // an option in an IN/EQ clause
+using Option = KeyEntryValue;               // an option in an IN/EQ clause
 using OptionList = std::vector<Option>;     // all the options in an IN/EQ clause
 
 // DocDB variant of QL scanspec.
@@ -87,8 +89,8 @@ class DocQLScanSpec : public QLScanSpec {
     return range_bounds_indexes_;
   }
 
-  const std::vector<size_t> range_options_num_cols() const {
-    return range_options_num_cols_;
+  const ColGroupHolder range_options_groups() const {
+    return range_options_groups_;
   }
 
  private:
@@ -136,10 +138,12 @@ class DocQLScanSpec : public QLScanSpec {
   // Ids of columns that have range option filters such as c2 IN (1, 5, 6, 9).
   std::vector<ColumnId> range_options_indexes_;
 
-  // Stores the number of columns involved in a range option filter.
-  // For filter: A in (..) AND (C, D) in (...) AND E in (...) where A, B, C, D, E are
-  // range columns, range_options_num_cols_ will contain [1, 0, 2, 2, 1].
-  std::vector<size_t> range_options_num_cols_;
+  // Groups of range column indexes found from the filters.
+  // Eg: If we had an incoming filter of the form (r1, r3, r4) IN ((1,2,5), (5,4,3), ...)
+  // AND r2 <= 5
+  // where (r1,r2,r3,r4) is the primary key of this table, then
+  // range_options_groups_ would contain the groups {0,2,3} and {1}.
+  ColGroupHolder range_options_groups_;
 
   // Does the scan include static columns also?
   const bool include_static_columns_;

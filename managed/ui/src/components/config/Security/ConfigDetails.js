@@ -1,6 +1,8 @@
 import React from 'react';
 import moment from 'moment';
 import { YBModal } from '../../common/forms/fields';
+import { PROTECTION_LEVELS } from './KeyManagementConfiguration';
+import { GCP_KMS_REGIONS_FLATTENED } from '../PublicCloud/views/providerRegionsData';
 
 export const ConfigDetails = ({ data, visible, onHide }) => {
   const {
@@ -99,7 +101,8 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
       CRYPTO_KEY_ID,
       KEY_RING_ID,
       LOCATION_ID,
-      GCP_CONFIG: { client_email }
+      GCP_CONFIG: { client_email },
+      PROTECTION_LEVEL
     } = credentials;
     const data = [
       {
@@ -108,7 +111,7 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
       },
       {
         label: 'Location',
-        value: LOCATION_ID
+        value: GCP_KMS_REGIONS_FLATTENED.find((region) => region.value === LOCATION_ID)?.label
       },
       {
         label: 'Key Ring Name',
@@ -117,6 +120,10 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
       {
         label: 'Crypto Key Name',
         value: CRYPTO_KEY_ID
+      },
+      {
+        label: 'Protection Level',
+        value: PROTECTION_LEVELS.find((protection) => protection.value === PROTECTION_LEVEL)?.label
       }
     ];
     return data;

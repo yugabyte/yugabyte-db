@@ -252,6 +252,14 @@ Default: `7200` (2 hours)
 
 The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
 
+##### --evict_failed_followers
+
+Failed followers will be evicted from the Raft group and the data will be re-replicated.
+
+Default: `false`
+
+Note that it is not recommended to set the flag to true for masters as you cannot automatically recover a failed master once it is evicted.
+
 ##### --leader_failure_max_missed_heartbeat_periods
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds, is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.

@@ -100,18 +100,6 @@ auto GetColumnValue(const Col& col) {
   return ResultType();
 }
 
-namespace {
-
-LWQLValuePB CopyValue(const LWQLValuePB& source) {
-  return LWQLValuePB(&source.arena(), source);
-}
-
-QLValuePB CopyValue(const QLValuePB& source) {
-  return QLValuePB(source);
-}
-
-} // namespace
-
 template <class Cond>
 void QLScanRange::Init(const Cond& condition) {
   // If there is no range column, return.
@@ -298,35 +286,47 @@ void QLScanRange::Init(const Cond& condition) {
               size_t num_cols = col_ids.size();
               auto options_itr = options.begin();
 
-              auto lower = CopyValue(*options.begin());
-              auto upper = CopyValue(*options.begin());
+              std::vector<decltype(&*options.begin())> lower;
+              std::vector<decltype(&*options.begin())> upper;
+              // We are just setting default values for the upper and lower
+              // bounds on the first iteration to populate the lower and upper
+              // vectors.
+              bool is_init_iteration = true;
 
               while(options_itr != options.end()) {
                 DCHECK(options_itr->has_tuple_value());
                 DCHECK_EQ(num_cols, options_itr->tuple_value().elems().size());
                 auto tuple_itr = options_itr->tuple_value().elems().begin();
-                auto l_itr = lower.mutable_tuple_value()->mutable_elems()->begin();
-                auto u_itr = upper.mutable_tuple_value()->mutable_elems()->begin();
+                auto l_itr = lower.begin();
+                auto u_itr = upper.begin();
                 while(tuple_itr != options_itr->tuple_value().elems().end()) {
-                  if (*l_itr > *tuple_itr) {
-                    *l_itr = *tuple_itr;
+                  if (PREDICT_FALSE(is_init_iteration)) {
+                    lower.push_back(&*tuple_itr);
+                    upper.push_back(&*tuple_itr);
+                    ++tuple_itr;
+                    continue;
                   }
-                  if (*u_itr < *tuple_itr) {
-                    *u_itr = *tuple_itr;
+
+                  if (**l_itr > *tuple_itr) {
+                    *l_itr = &*tuple_itr;
+                  }
+                  if (**u_itr < *tuple_itr) {
+                    *u_itr = &*tuple_itr;
                   }
                   ++tuple_itr;
                   ++l_itr;
                   ++u_itr;
                 }
+                is_init_iteration = false;
                 ++options_itr;
               }
 
-              auto l_itr = lower.tuple_value().elems().begin();
-              auto u_itr = upper.tuple_value().elems().begin();
+              auto l_itr = lower.begin();
+              auto u_itr = upper.begin();
               for (size_t i = 0; i < col_ids.size(); ++i, ++l_itr, ++u_itr) {
                 auto& range = ranges_[col_ids[i]];
-                range.min_bound = QLLowerBound(*l_itr, true);
-                range.max_bound = QLUpperBound(*u_itr, true);
+                range.min_bound = QLLowerBound(**l_itr, true);
+                range.max_bound = QLUpperBound(**u_itr, true);
               }
             }
           }

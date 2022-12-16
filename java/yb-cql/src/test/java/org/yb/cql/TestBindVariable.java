@@ -22,6 +22,8 @@ import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.SimpleStatement;
+import com.google.common.collect.Lists;
 
 import org.junit.Test;
 import org.yb.client.TestUtils;
@@ -2457,34 +2459,390 @@ public class TestBindVariable extends BaseCQLTest {
     }
   }
 
-/*
   @Test
-  public void testTransactionUnboundArg() throws Exception {
-    LOG.info("Start test: " + getCurrentTestMethodName());
+  public void testCollectionBindInserts() throws Exception {
+    session.execute(
+        "CREATE TABLE test_tbl (h int PRIMARY KEY, m map<int, varchar>, ll list<varchar>);");
 
-    session.execute("CREATE TABLE productkey (key text," +
-                    "                         key_type text," +
-                    "                         tenant text," +
-                    "                         PRIMARY KEY (key)) " +
-                    "WITH TRANSACTIONS = {'enabled' : true};");
-    String stmt =
-        "BEGIN TRANSACTION " +
-        "  insert into productkey (key, tenant) values (:key, :timestamp); " +
-        "  insert into productkey (key, key_type, tenant) values (:key, :keyType, :tenant); " +
-        "END TRANSACTION;";
-    PreparedStatement preparedStatement = session.prepare(stmt);
-    BoundStatement boundStatement  = preparedStatement.bind();
-    boundStatement.setString("key", "test");
+    String bindByPosition =
+        "INSERT INTO test_tbl (h, m, ll) VALUES (1, {100: 'map_value_1'}, ['list_value_1']) " +
+        "IF m[100] != ? AND ll[0] != ?;";
+    String bindByName =
+        "INSERT INTO test_tbl (h, m, ll) VALUES (2, {200: 'map_value_2'}, ['list_value_2']) " +
+        "IF m[200] != ? AND ll[0] != ?;";
+    String bindByNamedMarkers =
+        "INSERT INTO test_tbl (h, m, ll) VALUES (3, {300: 'map_value_3'}, ['list_value_3']) " +
+        "IF m[300] != :b1 AND ll[0] != :b2;";
 
-    try {
-      ResultSet rs = session.execute(boundStatement);
-      assertNull(rs.one());
-      fail("Prepared statement \"" + stmt + "\" did not fail");
-    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
-      LOG.info("Expected exception", e);
+    // Direct binding
+    {
+      // Bind by position
+      for (boolean applied : Arrays.asList(true, false)) {
+        ResultSet rs = session.execute(bindByPosition, "map_value_1", "list_value_1");
+        assertEquals(applied, expected_one_row(rs).getBool(0));
+      }
+
+      session.execute("TRUNCATE TABLE test_tbl;");
+
+      // Bind by name
+      {
+        HashMap bindings = new HashMap<String, Object>() {{
+            put("value(m)", "map_value_2");
+            put("value(ll)", "list_value_2");
+          }};
+        for (boolean applied : Arrays.asList(true, false)) {
+          ResultSet rs = session.execute(bindByName, bindings);
+          assertEquals(applied, expected_one_row(rs).getBool(0));
+        }
+      }
+
+      session.execute("TRUNCATE TABLE test_tbl;");
+
+      // Bind by named markers
+      {
+        HashMap bindings = new HashMap<String, Object>() {{
+            put("b1", "map_value_3");
+            put("b2", "list_value_3");
+          }};
+        for (boolean applied : Arrays.asList(true, false)) {
+          ResultSet rs = session.execute(bindByNamedMarkers, bindings);
+          assertEquals(applied, expected_one_row(rs).getBool(0));
+        }
+      }
     }
 
-    LOG.info("End test: " + getCurrentTestMethodName());
+    session.execute("truncate table test_tbl;");
+
+    // Prepared statements
+    {
+      // Bind by position
+      {
+        PreparedStatement prepared = session.prepare(bindByPosition);
+        for (boolean applied : Arrays.asList(true, false)) {
+          ResultSet rs = session.execute(prepared.bind("map_value_1", "list_value_1"));
+          assertEquals(applied, expected_one_row(rs).getBool(0));
+        }
+      }
+
+      // Bind by name
+      {
+        PreparedStatement prepared = session.prepare(bindByName);
+        for (boolean applied : Arrays.asList(true, false)) {
+          ResultSet rs = session.execute(prepared.bind().setString("value(m)", "map_value_2")
+                                                        .setString("value(ll)", "list_value_2"));
+          assertEquals(applied, expected_one_row(rs).getBool(0));
+        }
+      }
+
+      // Bind by named markers
+      {
+        PreparedStatement prepared = session.prepare(bindByNamedMarkers);
+        for (boolean applied : Arrays.asList(true, false)) {
+          ResultSet rs = session.execute(prepared.bind().setString("b1", "map_value_3")
+                                                        .setString("b2", "list_value_3"));
+          assertEquals(applied, expected_one_row(rs).getBool(0));
+        }
+      }
+    }
   }
-*/
+
+  @Test
+  public void testCollectionBindUpdates() throws Exception {
+    session.execute(
+      "CREATE TABLE test_tbl (h int PRIMARY KEY, m map<int, varchar>, ll list<varchar>);");
+
+    // Insert 10 rows
+    for (int h = 1; h <= 10; h++) {
+      session.execute(
+          "INSERT INTO test_tbl (h, m, ll) VALUES (?, {? : ?}, [?, ?, ?, ?, ?]);",
+          h, h * 100, String.format("map_value_%d", h), "list_value_0", "list_value_1",
+          "list_value_2", "list_value_3", "list_value_4");
+    }
+
+    String bindByPosition =
+        "UPDATE test_tbl set m[100] = ?, ll[1] = ? WHERE h = ?";
+    String bindByName =
+        "UPDATE test_tbl set m[200] = ?, ll[2] = ? WHERE h = ?";
+    String bindByNamedMarkers =
+        "UPDATE test_tbl set m[300] = :b1, ll[3] = :b2 WHERE h = :b3";
+
+    // Direct binding
+    {
+      // Bind by position
+      session.execute(bindByPosition, "map_updated_value_1", "list_updated_value_1", 1);
+      assertQuery("SELECT * from test_tbl where h = 1",
+          "Row[1, {100=map_updated_value_1}, [list_value_0, list_updated_value_1, list_value_2, " +
+              "list_value_3, list_value_4]]");
+
+      // Bind by name
+      {
+        HashMap values = new HashMap<String, Object>() {{
+            put("h", 2);
+            // Using "value(m)" instead of "m" leads to "InvalidArguments. Bind variable "m" not
+            // found."
+            // Similar case with "value(ll)" instead of "ll".
+            // NOTE: Cassandra expects value(m) & value(ll) here instead of just the column name.
+            put("m", "map_updated_value_2");
+            put("ll", "list_updated_value_2");
+          }};
+        session.execute(bindByName, values);
+        assertQuery("SELECT * from test_tbl where h = 2",
+            "Row[2, {200=map_updated_value_2}, [list_value_0, list_value_1, list_updated_value_2," +
+                " list_value_3, list_value_4]]");
+      }
+
+      // Bind by named markers
+      {
+        HashMap values = new HashMap<String, Object>() {{
+            put("b1", "map_updated_value_3");
+            put("b2", "list_updated_value_3");
+            put("b3", 3);
+          }};
+        session.execute(bindByNamedMarkers, values);
+        assertQuery("SELECT * from test_tbl where h = 3",
+            "Row[3, {300=map_updated_value_3}, [list_value_0, list_value_1, list_value_2, " +
+                "list_updated_value_3, list_value_4]]");
+      }
+    }
+
+    session.execute("truncate table test_tbl;");
+    // Insert 10 rows
+    for (int h = 1; h <= 10; h++) {
+      session.execute("INSERT INTO test_tbl (h, m, ll) VALUES (?, {? : 'b'}, [?, ?, ?, ?, ?]);",
+          h, h * 100, "list_value_0", "list_value_1", "list_value_2", "list_value_3",
+          "list_value_4");
+    }
+
+    // Prepared statements
+    {
+      // Bind by position
+      {
+        PreparedStatement prepared = session.prepare(bindByPosition);
+        session.execute(prepared.bind("map_updated_value_1", "list_updated_value_1", 1));
+        assertQuery("SELECT * from test_tbl where h = 1",
+            "Row[1, {100=map_updated_value_1}, [list_value_0, list_updated_value_1, list_value_2," +
+                " list_value_3, list_value_4]]");
+      }
+
+      // Bind by name
+      {
+        PreparedStatement prepared = session.prepare(bindByName);
+        // Using value(m) instead of "m" leads to "InvalidArguments. Bind variable "m" not found.
+        // Similar case with "value(ll)" instead of "ll".
+        // NOTE: Cassandra expects value(m) & value(ll) here instead of just the column name.
+        session.execute(prepared.bind().setInt("h", 2)
+                                       .setString("m", "map_updated_value_2")
+                                       .setString("ll", "list_updated_value_2"));
+        assertQuery("SELECT * from test_tbl where h = 2",
+            "Row[2, {200=map_updated_value_2}, [list_value_0, list_value_1, list_updated_value_2," +
+                " list_value_3, list_value_4]]");
+      }
+
+      // Bind by named markers
+      {
+        PreparedStatement prepared = session.prepare(bindByNamedMarkers);
+        session.execute(prepared.bind().setInt("b3", 3)
+                                       .setString("b1", "map_updated_value_3")
+                                       .setString("b2", "list_updated_value_3"));
+        assertQuery("SELECT * from test_tbl where h = 3",
+            "Row[3, {300=map_updated_value_3}, [list_value_0, list_value_1, list_value_2, " +
+                "list_updated_value_3, list_value_4]]");
+      }
+    }
+  }
+
+  @Test
+  public void testCollectionBindDeletes() throws Exception {
+    session.execute(
+        "CREATE TABLE test_tbl (h int PRIMARY KEY, m map<int, varchar>, ll list<varchar>);");
+
+    // Insert 10 rows
+    for (int h = 1; h <= 10; h++) {
+      session.execute("INSERT INTO test_tbl (h, m, ll) VALUES (?, {? : ?}, [?, ?, ?, ?, ?]);", h,
+          h * 100, String.format("map_value_%d", h), "list_value_0", "list_value_1", "list_value_2",
+          "list_value_3", "list_value_4");
+    }
+
+    // Binding only value
+    String bindByPosition = "DELETE FROM test_tbl WHERE h = ? IF m[100] = ? AND ll[1] = ?";
+    String bindByName = "DELETE FROM test_tbl WHERE h = ? IF m[200] = ? AND ll[2] = ?";
+    String bindByNamedMarkers =
+      "DELETE FROM test_tbl WHERE h = :b1 IF m[300] = :b2 AND ll[3] = :b3";
+
+    // Direct binding
+    {
+      // Bind by position
+      {
+        session.execute(bindByPosition, 1, "map_value_1", "list_value_1");
+        assertNoRow("SELECT * from test_tbl where h = 1");
+      }
+
+      // Bind by name
+      {
+        HashMap values = new HashMap<String, Object>() {{
+            put("h", 2);
+            put("value(m)", "map_value_2");
+            put("value(ll)", "list_value_2");
+          }};
+        session.execute(bindByName, values);
+        assertNoRow("SELECT * from test_tbl where h = 2");
+      }
+
+      // Bind by named markers
+      {
+        HashMap values = new HashMap<String, Object>() {{
+            put("b2", "map_value_3");
+            put("b3", "list_value_3");
+            put("b1", 3);
+          }};
+        session.execute(bindByNamedMarkers, values);
+        assertNoRow("SELECT * from test_tbl where h = 3");
+      }
+    }
+
+    session.execute("truncate table test_tbl;");
+    // Insert 10 rows
+    for (int h = 1; h <= 10; h++) {
+      session.execute("INSERT INTO test_tbl (h, m, ll) VALUES (?, {? : ?}, [?, ?, ?, ?, ?]);", h,
+          h * 100, String.format("map_value_%d", h), "list_value_0", "list_value_1",
+          "list_value_2", "list_value_3", "list_value_4");
+    }
+
+    // Prepared statements
+    {
+      // Bind by position
+      {
+        PreparedStatement prepared = session.prepare(bindByPosition);
+        session.execute(prepared.bind(1, "map_value_1", "list_value_1"));
+        assertNoRow("SELECT * from test_tbl where h = 1");
+      }
+
+      // Bind by name
+      {
+        PreparedStatement prepared = session.prepare(bindByName);
+        session.execute(prepared.bind().setInt("h", 2).setString("value(m)", "map_value_2")
+                                                      .setString("value(ll)", "list_value_2"));
+        assertNoRow("SELECT * from test_tbl where h = 2");
+      }
+
+      // Bind by named markers
+      {
+        PreparedStatement prepared = session.prepare(bindByNamedMarkers);
+        session.execute(prepared.bind().setInt("b1", 3).setString("b2", "map_value_3")
+                                                       .setString("b3", "list_value_3"));
+        assertNoRow("SELECT * from test_tbl where h = 3");
+      }
+    }
+  }
+
+  @Test
+  public void testCollectionBindSelects() throws Exception {
+    session.execute(
+        "CREATE TABLE test_tbl (h int PRIMARY KEY, m map<int, varchar>, ll list<varchar>);");
+
+    // Insert 10 rows
+    for (int h = 1; h <= 10; h++) {
+      session.execute("INSERT INTO test_tbl (h, m, ll) VALUES (?, {? : ?}, [?, ?, ?, ?, ?]);", h,
+          h * 100, String.format("map_value_%d", h), "list_value_0", "list_value_1", "list_value_2",
+          "list_value_3", "list_value_4");
+    }
+
+    // Binding only value
+    String bindByPosition = "SELECT * FROM test_tbl WHERE h = ? AND m[100] = ? AND ll[1] = ?";
+    String bindByName = "SELECT * FROM test_tbl WHERE h = ? AND m[200] = ? AND ll[2] = ?";
+    String bindByNamedMarkers =
+        "SELECT * FROM test_tbl WHERE h = :b1 AND m[300] = :b2 AND ll[3] = :b3";
+
+    // Direct binding
+    {
+      // Bind by position
+      assertQuery(new SimpleStatement(bindByPosition, 1, "map_value_1", "list_value_1"),
+          "Row[1, {100=map_value_1}, "
+              + "[list_value_0, list_value_1, list_value_2, list_value_3, list_value_4]]");
+
+      // Bind by name
+      {
+        HashMap values = new HashMap<String, Object>() {{
+            put("h", 2);
+            put("value(m)", "map_value_2");
+            put("value(ll)", "list_value_2");
+          }};
+        assertQuery(new SimpleStatement(bindByName, values),
+            "Row[2, {200=map_value_2}, "
+                + "[list_value_0, list_value_1, list_value_2, list_value_3, list_value_4]]");
+      }
+
+      // Bind by named markers
+      {
+        HashMap values = new HashMap<String, Object>() {{
+            put("b2", "map_value_3");
+            put("b3", "list_value_3");
+            put("b1", 3);
+          }};
+        assertQuery(new SimpleStatement(bindByNamedMarkers, values),
+            "Row[3, {300=map_value_3}, "
+                + "[list_value_0, list_value_1, list_value_2, list_value_3, list_value_4]]");
+      }
+    }
+
+    // Prepared statements
+    {
+      // Bind by position
+      {
+        PreparedStatement prepared = session.prepare(bindByPosition);
+        assertQuery(prepared.bind(1, "map_value_1", "list_value_1"),
+            "Row[1, {100=map_value_1}, "
+                + "[list_value_0, list_value_1, list_value_2, list_value_3, list_value_4]]");
+      }
+
+      // Bind by name
+      {
+        PreparedStatement prepared = session.prepare(bindByName);
+        assertQuery(prepared.bind().setInt("h", 2).setString("value(m)", "map_value_2")
+                                                  .setString("value(ll)", "list_value_2"),
+            "Row[2, {200=map_value_2}, "
+                + "[list_value_0, list_value_1, list_value_2, list_value_3, list_value_4]]");
+      }
+
+      // Bind by named markers
+      {
+        PreparedStatement prepared = session.prepare(bindByNamedMarkers);
+        assertQuery(prepared.bind().setInt("b1", 3).setString("b2", "map_value_3")
+                                                   .setString("b3", "list_value_3"),
+            "Row[3, {300=map_value_3}, "
+                + "[list_value_0, list_value_1, list_value_2, list_value_3, list_value_4]]");
+      }
+    }
+  }
+
+  /*
+    @Test
+    public void testTransactionUnboundArg() throws Exception {
+      LOG.info("Start test: " + getCurrentTestMethodName());
+
+      session.execute("CREATE TABLE productkey (key text," +
+                      "                         key_type text," +
+                      "                         tenant text," +
+                      "                         PRIMARY KEY (key)) " +
+                      "WITH TRANSACTIONS = {'enabled' : true};");
+      String stmt =
+          "BEGIN TRANSACTION " +
+          "  insert into productkey (key, tenant) values (:key, :timestamp); " +
+          "  insert into productkey (key, key_type, tenant) values (:key, :keyType, :tenant); " +
+          "END TRANSACTION;";
+      PreparedStatement preparedStatement = session.prepare(stmt);
+      BoundStatement boundStatement  = preparedStatement.bind();
+      boundStatement.setString("key", "test");
+
+      try {
+        ResultSet rs = session.execute(boundStatement);
+        assertNull(rs.one());
+        fail("Prepared statement \"" + stmt + "\" did not fail");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception", e);
+      }
+
+      LOG.info("End test: " + getCurrentTestMethodName());
+    }
+  */
 }

@@ -38,7 +38,7 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 
 - Start YugabyteDB.
 
-  For more information, see [Quick Start](/quick-start/install).
+  For more information, see [Quick Start](../../quick-start/).
 
 - Install JRE or JDK for Java 8 or later.
 

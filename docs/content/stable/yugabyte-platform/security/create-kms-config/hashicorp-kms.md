@@ -14,21 +14,30 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="{{< relref "./aws-kms.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS KMS
     </a>
   </li>
-
+  <li >
+    <a href="{{< relref "./google-kms.md" >}}" class="nav-link">
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
+      Google KMS
+    </a>
+  </li>
+  <li >
+    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
+      <i class="icon-azure" aria-hidden="true"></i>
+      &nbsp;&nbsp;Azure KMS
+    </a>
+  </li>
   <li >
     <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
     </a>
   </li>
-
 </ul>
-
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
+<br>Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
 
 ## Configure HashiCorp Vault
 
@@ -61,7 +70,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   max_lease_ttl = "8760h"
   ```
 
-  <br>Replace `127.0.0.1` with the vault web address.
+  Replace `127.0.0.1` with the vault web address.
 
   For additional configuration options, see [Parameters](https://www.vaultproject.io/docs/configuration#parameters).
 
@@ -75,7 +84,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   vault secrets enable transit
   ```
 
-  <br>For more information, see [Transit Secrets Engine](https://www.vaultproject.io/docs/secrets/transit) and [Setup](https://www.vaultproject.io/docs/secrets/transit#setup).
+  For more information, see [Transit Secrets Engine](https://www.vaultproject.io/docs/secrets/transit) and [Setup](https://www.vaultproject.io/docs/secrets/transit#setup).
 
 - Create the vault policy, as per the following sample:
 
@@ -107,7 +116,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   vault token create -no-default-policy -policy=trx
   ```
 
-  <br>You may also specify the following for your token:
+  You may also specify the following for your token:
 
   - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
 
@@ -128,9 +137,9 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
     - **Vault Address** — Enter the web address of your vault. For example, `http://127.0.0.1:8200`
     - **Secret Token** — Enter the token you obtained from the vault.
     - **Secret Engine** — This is a read-only field with its value set to `transit`. It identifies the secret engine.
-    - **Mount Path** — Specify the path to the secret engine within the vault. The default value is `transit/`.<br><br>
+    - **Mount Path** — Specify the path to the secret engine within the vault. The default value is `transit/`.<br>
 
-    ![Create config](/images/yp/security/hashicorp-config.png)<br><br>
+    ![Create config](/images/yp/security/hashicorp-config.png)
 
 1. Click **Save**. Your new configuration should appear in the list of configurations.
 

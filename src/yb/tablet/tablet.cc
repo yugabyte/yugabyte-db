@@ -1286,7 +1286,7 @@ Status Tablet::WriteTransactionalBatch(
 namespace {
 
 std::vector<docdb::LWKeyValueWriteBatchPB*> SplitWriteBatchByTransaction(
-    const docdb::LWKeyValueWriteBatchPB& put_batch, Arena* arena) {
+    const docdb::LWKeyValueWriteBatchPB& put_batch, ThreadSafeArena* arena) {
   std::map<Slice, docdb::LWKeyValueWriteBatchPB*> map;
   for (const auto& write_pair : put_batch.write_pairs()) {
     if (!write_pair.has_transaction()) {
@@ -1296,7 +1296,7 @@ std::vector<docdb::LWKeyValueWriteBatchPB*> SplitWriteBatchByTransaction(
     auto transaction_id = write_pair.transaction().transaction_id();
     auto& write_batch_ref = map[transaction_id];
     if (!write_batch_ref) {
-      write_batch_ref = arena->NewObject<docdb::LWKeyValueWriteBatchPB>(arena);
+      write_batch_ref = arena->NewArenaObject<docdb::LWKeyValueWriteBatchPB>();
     }
     auto* write_batch = write_batch_ref;
     if (!write_batch->has_transaction()) {
@@ -1343,7 +1343,7 @@ Status Tablet::ApplyKeyValueRowOperations(
       if (!metadata_->is_under_twodc_replication()) {
         RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
       }
-      Arena arena;
+      ThreadSafeArena arena;
       auto batches_by_transaction = SplitWriteBatchByTransaction(put_batch, &arena);
       for (const auto& write_batch : batches_by_transaction) {
         RETURN_NOT_OK(WriteTransactionalBatch(
@@ -1930,16 +1930,20 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
 }
 
 Status Tablet::CreatePreparedChangeMetadata(
-    ChangeMetadataOperation *operation, const Schema* schema) {
+    ChangeMetadataOperation *operation, const Schema* schema, IsLeaderSide is_leader_side) {
   if (schema) {
-    auto key_schema = GetKeySchema(
-        operation->has_table_id() ? operation->table_id().ToBuffer() : "");
-    if (!key_schema.KeyEquals(*schema)) {
-      return STATUS_FORMAT(
-          InvalidArgument,
-          "Schema keys cannot be altered. New schema key: $0. Existing schema key: $1",
-          schema->CreateKeyProjection(),
-          key_schema);
+    // On follower, the previous op for adding table may not finish applying.
+    // GetKeySchema might fail in this case.
+    if (is_leader_side) {
+      auto key_schema = GetKeySchema(
+          operation->has_table_id() ? operation->table_id().ToBuffer() : "");
+      if (!key_schema.KeyEquals(*schema)) {
+        return STATUS_FORMAT(
+            InvalidArgument,
+            "Schema keys cannot be altered. New schema key: $0. Existing schema key: $1",
+            schema->CreateKeyProjection(),
+            key_schema);
+      }
     }
 
     if (!schema->has_column_ids()) {

@@ -44,6 +44,7 @@
 #include "optimizer/cost.h"
 #include "optimizer/var.h"
 #include "utils/datum.h"
+#include "utils/elog.h"
 #include "utils/rel.h"
 #include "utils/lsyscache.h"
 #include "utils/resowner_private.h"
@@ -2646,6 +2647,7 @@ ybBeginSample(Relation rel, int targrows)
 	ybSample->targrows = targrows;
 	ybSample->liverows = 0;
 	ybSample->deadrows = 0;
+	elog(DEBUG1, "Sampling %d rows from table %s", targrows, RelationGetRelationName(rel));
 
 	/*
 	 * Create new sampler command

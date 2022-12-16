@@ -743,9 +743,6 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
   }
   active_op_count_ = partition_keys.size();
   VLOG(1) << "Number of partitions to sample: " << active_op_count_;
-  // If we have big enough sample after processing some partitions we skip the rest.
-  // By shuffling partitions we randomly select the partition(s) to sample.
-  std::shuffle(pgsql_ops_.begin(), pgsql_ops_.end(), ThreadLocalRandom());
 
   return true;
 }
@@ -797,6 +794,12 @@ Status PgDocReadOp::CompleteProcessResponse() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
   auto send_count = std::min(parallelism_level_, active_op_count_);
+  ::yb::LWPgsqlSamplingStatePB* sampling_state;
+
+  // There can be only one op at a time for sampling, since any modifications to the random sampling
+  // state need to be propagated after one op completes to the next.
+  if (read_op_->read_request().has_sampling_state())
+    DCHECK_LE(send_count, 1);
 
   for (size_t op_index = 0; op_index < send_count; op_index++) {
     auto& read_op = GetReadOp(op_index);
@@ -828,31 +831,12 @@ Status PgDocReadOp::CompleteProcessResponse() {
     }
 
     if (res.has_sampling_state()) {
-      VLOG(1) << "Received sampling state:"
-              << " samplerows: " << res.sampling_state().samplerows()
-              << " rowstoskip: " << res.sampling_state().rowstoskip()
-              << " rstate_w: " << res.sampling_state().rstate_w()
-              << " rand_state: " << res.sampling_state().rand_state();
-      if (has_more_arg) {
-        // Copy sampling state from the response to the request, to properly continue to sample
-        // the next block.
-        req.ref_sampling_state(res.mutable_sampling_state());
-        res.clear_sampling_state();
-      } else {
-        // Partition sampling is completed.
-        // If samplerows is greater than or equal to targrows the sampling is complete. There are
-        // enough rows selected to calculate stats and we can estimate total number of rows in the
-        // table by extrapolating samplerows to the partitions that have not been scanned.
-        // If samplerows is less than targrows next partition needs to be sampled. Next pgdoc_op
-        // already has sampling state copied from the template_op_, only couple fields need to be
-        // updated: numrows and samplerows. The targrows never changes, and in reservoir population
-        // phase (before samplerows reaches targrows) 1. numrows and samplerows are always equal;
-        // and 2. random numbers never generated, so random state remains the same.
-        // That essentially means the only thing we need to collect from the partition's final
-        // sampling state is the samplerows. We use that number to either estimate liverows, or to
-        // update numrows and samplerows in next partition's sampling state.
-        sample_rows_ = res.sampling_state().samplerows();
-      }
+      VLOG(1) << "Received sampling state: " << res.sampling_state().ShortDebugString();
+      sample_rows_ = res.sampling_state().samplerows();
+
+      // Copy sampling state from the response to propagate in later requests for continuing further
+      // sampling.
+      sampling_state = res.mutable_sampling_state();
     }
 
     if (has_more_arg) {
@@ -876,24 +860,8 @@ Status PgDocReadOp::CompleteProcessResponse() {
   if (active_op_count_ > 0 && read_op_->read_request().has_sampling_state()) {
     auto& read_op = down_cast<PgsqlReadOp&>(*pgsql_ops_[0]);
     auto *req = &read_op.read_request();
-    if (!req->has_paging_state()) {
-      // Current sampling op without paging state means that previous one was completed and moved
-      // outside.
-      auto sampling_state = req->mutable_sampling_state();
-      if (sample_rows_ < sampling_state->targrows()) {
-        // More sample rows are needed, update sampling state and let next partition be scanned
-        VLOG(1) << "Continue sampling next partition from " << sample_rows_;
-        sampling_state->set_numrows(static_cast<int32>(sample_rows_));
-        sampling_state->set_samplerows(sample_rows_);
-      } else {
-        // Have enough of sample rows, estimate total table rows assuming they are evenly
-        // distributed between partitions
-        auto completed_ops = pgsql_ops_.size() - active_op_count_;
-        sample_rows_ = floor((sample_rows_ / completed_ops) * pgsql_ops_.size() + 0.5);
-        VLOG(1) << "Done sampling, prorated rowcount is " << sample_rows_;
-        end_of_data_ = true;
-      }
-    }
+    req->ref_sampling_state(sampling_state);
+    VLOG(1) << "Continue sampling from " << sampling_state->ShortDebugString();
   }
 
   return Status::OK();

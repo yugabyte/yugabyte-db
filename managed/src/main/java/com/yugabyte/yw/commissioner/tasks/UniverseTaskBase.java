@@ -2,9 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.util.Objects;
@@ -44,6 +41,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
@@ -125,9 +123,11 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.ClusterAZ;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -139,6 +139,23 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.slf4j.MDC;
+import org.yb.ColumnSchema.SortOrder;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.ModifyClusterConfigIncrementVersion;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
+import play.api.Play;
+import play.libs.Json;
+
+import javax.annotation.Nullable;
+import javax.inject.Inject;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -154,22 +171,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import javax.annotation.Nullable;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.slf4j.MDC;
-import org.yb.ColumnSchema.SortOrder;
-import org.yb.CommonTypes.TableType;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.ModifyClusterConfigIncrementVersion;
-import org.yb.client.YBClient;
-import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterTypes;
-import play.api.Play;
-import play.libs.Json;
+
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -186,7 +190,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private String ycqlUsername = Util.DEFAULT_YCQL_USERNAME;
   private String ysqlDb = Util.YUGABYTE_DB;
 
-  enum VersionCheckMode {
+  public enum VersionCheckMode {
     NEVER,
     ALWAYS,
     HA_ONLY
@@ -2062,11 +2066,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(backupRequestParams.universeUUID);
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
 
-    if (cloudType != CloudType.kubernetes) {
-      // Ansible Configure Task for copying xxhsum binaries from
-      // third_party directory to the DB nodes.
-      installThirdPartyPackagesTask(universe)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+    if (!universe.isYbcEnabled()) {
+      if (cloudType != CloudType.kubernetes) {
+        // Ansible Configure Task for copying xxhsum binaries from
+        // third_party directory to the DB nodes.
+        installThirdPartyPackagesTask(universe)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+      } else {
+        installThirdPartyPackagesTaskK8s(universe)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+      }
     }
 
     if (backupRequestParams.alterLoadBalancer) {
@@ -2127,7 +2136,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return backup;
   }
 
-  protected void createAllRestoreSubtasks(
+  protected Restore createAllRestoreSubtasks(
       RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType, boolean isYbc) {
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
@@ -2136,11 +2145,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
 
-    if (cloudType != CloudType.kubernetes) {
-      // Ansible Configure Task for copying xxhsum binaries from
-      // third_party directory to the DB nodes.
-      installThirdPartyPackagesTask(universe)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+    if (!universe.isYbcEnabled()) {
+      if (cloudType != CloudType.kubernetes) {
+        // Ansible Configure Task for copying xxhsum binaries from
+        // third_party directory to the DB nodes.
+        installThirdPartyPackagesTask(universe)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+      } else {
+        installThirdPartyPackagesTaskK8s(universe)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+      }
     }
 
     if (isYbc) {
@@ -2188,6 +2202,36 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(subTaskGroupType);
     }
+
+    Restore restore = null;
+    Optional<Restore> restoreIfPresent = Restore.fetchRestore(restoreBackupParams.prefixUUID);
+    if (!restoreIfPresent.isPresent()) {
+      log.info(
+          "Creating entry for restore taskUUID: {}, restoreUUID: {} ",
+          taskUUID,
+          restoreBackupParams.prefixUUID);
+      restore = Restore.create(TaskInfo.getOrBadRequest(taskUUID));
+    } else {
+      restore = restoreIfPresent.get();
+      restore.updateTaskUUID(taskUUID);
+      restore.update(taskUUID, TaskInfo.State.Running);
+    }
+
+    return restore;
+  }
+
+  public SubTaskGroup installThirdPartyPackagesTaskK8s(Universe universe) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("InstallingThirdPartySoftware", executor);
+    InstallThirdPartySoftwareK8s task = createTask(InstallThirdPartySoftwareK8s.class);
+    InstallThirdPartySoftwareK8s.Params params = new InstallThirdPartySoftwareK8s.Params();
+    params.universeUUID = universe.getUniverseUUID();
+    params.softwareType = InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM;
+    task.initialize(params);
+
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   public SubTaskGroup createTableBackupTaskYb(BackupTableParams taskParams) {
@@ -2600,6 +2644,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param targetClusters list of clusters with nodes that need to be added/removed. If null/empty,
    *     default to all clusters.
    * @param nodesToIgnore list of nodes to exclude.
+   * @param nodesToAdd list of nodes to add that may not be updated in the taskParams by the time
+   *     the map is created.
    * @return a map. Key is LoadBalancerPlacement (cloud provider uuid, region code, load balancer
    *     name) and value is LoadBalancerConfig (load balancer name, map of AZs and their list of
    *     nodes)
@@ -2607,11 +2653,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Map<LoadBalancerPlacement, LoadBalancerConfig> createLoadBalancerMap(
       UniverseDefinitionTaskParams taskParams,
       List<Cluster> targetClusters,
-      Set<NodeDetails> nodesToIgnore) {
+      Set<NodeDetails> nodesToIgnore,
+      Set<NodeDetails> nodesToAdd) {
     boolean allClusters = CollectionUtils.isEmpty(targetClusters);
     // Get load balancer map for target clusters
     Map<LoadBalancerPlacement, LoadBalancerConfig> targetLbMap =
-        generateLoadBalancerMap(taskParams, targetClusters, nodesToIgnore);
+        generateLoadBalancerMap(taskParams, targetClusters, nodesToIgnore, nodesToAdd);
     // Get load balancer map remaining clusters in universe
     List<Cluster> remainingClusters = taskParams.clusters;
     if (!allClusters) {
@@ -2622,7 +2669,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               .collect(Collectors.toList());
     }
     Map<LoadBalancerPlacement, LoadBalancerConfig> remainingLbMap =
-        generateLoadBalancerMap(taskParams, remainingClusters, nodesToIgnore);
+        generateLoadBalancerMap(taskParams, remainingClusters, nodesToIgnore, nodesToAdd);
 
     // Filter by target load balancers and
     // merge nodes in other clusters that are part of the same load balancer
@@ -2642,6 +2689,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param taskParams the universe task params.
    * @param clusters list of clusters.
    * @param nodesToIgnore list of nodes to exclude.
+   * @param nodesToAdd list of nodes to add that may not be updated to show in the taskParams by the
+   *     time the map is created.
    * @return a map. Key is LoadBalancerPlacement (cloud provider uuid, region code, load balancer
    *     name) and value is LoadBalancerConfig (load balancer name, map of AZs and their list of
    *     nodes)
@@ -2649,7 +2698,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Map<LoadBalancerPlacement, LoadBalancerConfig> generateLoadBalancerMap(
       UniverseDefinitionTaskParams taskParams,
       List<Cluster> clusters,
-      Set<NodeDetails> nodesToIgnore) {
+      Set<NodeDetails> nodesToIgnore,
+      Set<NodeDetails> nodesToAdd) {
     // Prov1 + Reg1 + LB1 -> AZ1 (n1, n2, n3,...), AZ2 (n4, n5), AZ3(nX)
     Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap = new HashMap<>();
     if (CollectionUtils.isEmpty(clusters)) {
@@ -2666,9 +2716,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 .stream()
                 .filter(n -> n.isActive() && n.isTserver)
                 .collect(Collectors.toSet());
+        // Ignore nodes
+        Set<AvailabilityZone> ignoredAzs = new HashSet<>();
         if (CollectionUtils.isNotEmpty(nodesToIgnore)) {
           nodes =
               nodes.stream().filter(n -> !nodesToIgnore.contains(n)).collect(Collectors.toSet());
+          for (NodeDetails n : nodesToIgnore) {
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(n.azUuid);
+            ignoredAzs.add(az);
+          }
+        }
+        // Add new nodes
+        if (CollectionUtils.isNotEmpty(nodesToAdd)) {
+          nodes.addAll(nodesToAdd);
         }
         for (NodeDetails node : nodes) {
           AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
@@ -2682,13 +2742,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           String lbName = placementAZ.lbName;
           AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
           // Skip map creation if all nodes in entire Regions/AZs have been ignored
-          if (azNodes.containsKey(az)) {
+          if (!Strings.isNullOrEmpty(lbName) && azNodes.containsKey(az)) {
             LoadBalancerPlacement lbPlacement =
                 new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
             LoadBalancerConfig lbConfig = new LoadBalancerConfig(lbName);
             loadBalancerMap
                 .computeIfAbsent(lbPlacement, v -> lbConfig)
                 .addNodes(az, azNodes.get(az));
+          }
+        }
+        // Ensure removal of ignored nodes with PlacementAZs not in PlacementInfo
+        Map<ClusterAZ, String> existingLBs = taskParams.existingLBs;
+        if (MapUtils.isNotEmpty(existingLBs)) {
+          for (AvailabilityZone az : ignoredAzs) {
+            ClusterAZ clusterAZ = new ClusterAZ(cluster.uuid, az);
+            if (existingLBs.containsKey(clusterAZ)) {
+              String lbName = existingLBs.get(clusterAZ);
+              LoadBalancerPlacement lbPlacement =
+                  new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
+              loadBalancerMap.computeIfAbsent(lbPlacement, v -> new LoadBalancerConfig(lbName));
+            }
           }
         }
       }
@@ -3268,12 +3341,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
-      XClusterConfig xClusterConfig, File sourceRootCertDirPath, boolean ignoreErrors) {
+      XClusterConfig xClusterConfig,
+      File sourceRootCertDirPath,
+      boolean ignoreErrors,
+      boolean skipRemoveTransactionalCert) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("TransferXClusterCerts", executor);
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
-    Collection<NodeDetails> nodes = targetUniverse.getNodes();
-    for (NodeDetails node : nodes) {
+
+    // If transactional replication is enabled and this subtask is going to delete the certificate
+    // for the last xCluster config on the target universe, delete the cert for transactional
+    // replication as well. It is assumed that xCluster replications can be deleted one by one only.
+    boolean removeTransactionalReplicationCert =
+        !skipRemoveTransactionalCert
+            && XClusterConfigTaskBase.isTransactionalReplication(targetUniverse)
+            && !XClusterConfigTaskBase.otherXClusterConfigsAsTargetExist(
+                targetUniverse.universeUUID, xClusterConfig.uuid);
+
+    for (NodeDetails node : targetUniverse.getNodes()) {
       TransferXClusterCerts.Params transferParams = new TransferXClusterCerts.Params();
       transferParams.universeUUID = targetUniverse.universeUUID;
       transferParams.nodeName = node.nodeName;
@@ -3286,23 +3371,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
       subTaskGroup.addSubTask(transferXClusterCertsTask);
+
+      if (removeTransactionalReplicationCert) {
+        TransferXClusterCerts.Params transferParamsForTransactionCert =
+            new TransferXClusterCerts.Params();
+        transferParamsForTransactionCert.universeUUID = targetUniverse.universeUUID;
+        transferParamsForTransactionCert.nodeName = node.nodeName;
+        transferParamsForTransactionCert.azUuid = node.azUuid;
+        transferParamsForTransactionCert.action = TransferXClusterCerts.Params.Action.REMOVE;
+        transferParamsForTransactionCert.replicationGroupName =
+            XClusterConfigTaskBase.TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME;
+        transferParamsForTransactionCert.producerCertsDirOnTarget = sourceRootCertDirPath;
+        transferParamsForTransactionCert.ignoreErrors = ignoreErrors;
+
+        TransferXClusterCerts transferXClusterCertsForTransactionTask =
+            createTask(TransferXClusterCerts.class);
+        transferXClusterCertsForTransactionTask.initialize(transferParamsForTransactionCert);
+        subTaskGroup.addSubTask(transferXClusterCertsForTransactionTask);
+      }
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
-  }
-
-  protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
-      XClusterConfig xClusterConfig, File sourceRootCertDirPath) {
-    return createTransferXClusterCertsRemoveTasks(
-        xClusterConfig, sourceRootCertDirPath, false /* ignoreErrors */);
-  }
-
-  protected SubTaskGroup createTransferXClusterCertsRemoveTasks(XClusterConfig xClusterConfig) {
-    return createTransferXClusterCertsRemoveTasks(
-        xClusterConfig,
-        Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID)
-            .getUniverseDetails()
-            .getSourceRootCertDirPath());
   }
 
   protected void createDeleteXClusterConfigSubtasks(
@@ -3336,7 +3425,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 sourceRootCertDirPath,
                 forceDelete
                     || xClusterConfig.status
-                        == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
+                        == XClusterConfig.XClusterConfigStatusType.DeletedUniverse,
+                false /* skipRemoveTransactionalCert */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
       }
     }
@@ -3482,10 +3572,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       transferParams.action = TransferXClusterCerts.Params.Action.COPY;
       transferParams.replicationGroupName = replicationGroupName;
       transferParams.producerCertsDirOnTarget = sourceRootCertDirPath;
+      transferParams.ignoreErrors = false;
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
       subTaskGroup.addSubTask(transferXClusterCertsTask);
+
+      // If transactional replication is enabled, transfer the cert for it as well. It assumes that
+      // the TransferXClusterCerts subtask for the same parameters is idempotent.
+      if (XClusterConfigTaskBase.isTransactionalReplication(
+          Universe.getOrBadRequest(taskParams().universeUUID))) {
+        TransferXClusterCerts.Params transferParamsForTransactionCert =
+            new TransferXClusterCerts.Params();
+        transferParamsForTransactionCert.universeUUID = taskParams().universeUUID;
+        transferParamsForTransactionCert.nodeName = node.nodeName;
+        transferParamsForTransactionCert.azUuid = node.azUuid;
+        transferParamsForTransactionCert.rootCertPath = certificate;
+        transferParamsForTransactionCert.action = TransferXClusterCerts.Params.Action.COPY;
+        transferParamsForTransactionCert.replicationGroupName =
+            XClusterConfigTaskBase.TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME;
+        transferParamsForTransactionCert.producerCertsDirOnTarget = sourceRootCertDirPath;
+        transferParamsForTransactionCert.ignoreErrors = false;
+
+        TransferXClusterCerts transferXClusterCertsForTransactionTask =
+            createTask(TransferXClusterCerts.class);
+        transferXClusterCertsForTransactionTask.initialize(transferParamsForTransactionCert);
+        subTaskGroup.addSubTask(transferXClusterCertsForTransactionTask);
+      }
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

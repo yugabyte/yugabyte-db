@@ -3,7 +3,6 @@
 package node
 
 import (
-	"errors"
 	"fmt"
 	"node-agent/app/executor"
 	"node-agent/app/server"
@@ -27,6 +26,8 @@ var (
 func SetupConfigureCommand(parentCmd *cobra.Command) {
 	configureCmd.PersistentFlags().String("api_token", "", "API token for fetching config info.")
 	configureCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
+	configureCmd.PersistentFlags().Bool("skip_verify_cert", false,
+		"Skip Yugabyte Anywhere SSL cert verification.")
 	configureCmd.MarkPersistentFlagRequired("api_token")
 	configureCmd.MarkPersistentFlagRequired("url")
 	parentCmd.AddCommand(configureCmd)
@@ -44,7 +45,7 @@ func configureNodeHandler(cmd *cobra.Command, args []string) {
 func interactiveConfigHandler(cmd *cobra.Command) error {
 	apiToken, err := cmd.Flags().GetString("api_token")
 	if err != nil {
-		return errors.New("Need API Token during interactive config setup")
+		return fmt.Errorf("Need API Token during interactive config setup - %s", err.Error())
 	}
 	ctx := server.Context()
 	config := util.CurrentConfig()
@@ -52,11 +53,19 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 		cmd,
 		"url",
 		util.PlatformUrlKey,
-		true,
+		true, /* isRequired */
 		util.ExtractBaseURL,
 	)
 	if err != nil {
-		return errors.New("Need Platform URL during interactive config setup")
+		return fmt.Errorf("Need Platform URL during interactive config setup - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagBool(
+		cmd,
+		"skip_verify_cert",
+		util.PlatformSkipVerifyCertKey,
+	)
+	if err != nil {
+		return fmt.Errorf("Error storing skip_verify_cert value - %s", err.Error())
 	}
 	// Get node agent name and IP.
 	checkConfigAndUpdate(util.NodeIpKey, "Node IP")

@@ -16,6 +16,7 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb.fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
@@ -27,9 +28,7 @@ namespace docdb {
 class ConsensusFrontier;
 class DeadlineInfo;
 class DocDBCompactionFilterFactory;
-class DocKey;
 class DocOperation;
-class DocPath;
 class DocPgsqlScanSpec;
 class DocQLScanSpec;
 class DocRowwiseIterator;
@@ -50,7 +49,6 @@ class ScanChoices;
 class SchemaPacking;
 class SchemaPackingStorage;
 class SharedLockManager;
-class SubDocKey;
 class TransactionStatusCache;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
@@ -77,13 +75,7 @@ enum class ValueEntryType;
 
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 
-// Automatically decode keys that are stored in string-typed PrimitiveValues when converting a
-// PrimitiveValue to string. This is useful when displaying write batches for secondary indexes.
-YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
-
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
-
-YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
 
 // "Weak" intents are written for ancestor keys of a key that's being modified. For example, if
 // we're writing a.b.c with snapshot isolation, we'll write weak snapshot isolation intents for
