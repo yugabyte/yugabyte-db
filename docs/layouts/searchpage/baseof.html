@@ -1,29 +1,29 @@
 <!doctype html>
 <html lang="{{ .Site.Language.Lang }}" class="no-js">
-<head>
-    {{ partial "head.html" . }}
-</head>
-<body class="td-{{ .Type }}{{ with .Page.Params.body_class }} {{ . }}{{ end }}">
-<header>
-    {{ partial "navbar.html" . }}
-</header>
-<div class="container-fluid td-outer">
-    <div class="td-main">
+  <head>
+      {{ partial "head.html" . }}
+  </head>
+  <body class="td-{{ .Type }}{{ with .Page.Params.body_class }} {{ . }}{{ end }}">
+    <header>
+      {{ partial "navbar.html" . }}
+    </header>
+    <div class="container-fluid td-outer">
+      <div class="td-main">
         <aside class=" td-sidebar d-print-none">
-            {{ partial "sidebar.html" . }}
-            <div id="dragbar"></div>
+          {{ partial "sidebar.html" . }}
+          <div id="dragbar"></div>
         </aside>
         <div class="row flex-xl-nowrap content-parent search-content">
-            <div class="content-child">
-                <main class="content-area ">
-                    {{ partial "version-banner.html" . }}
-                    {{ block "main" . }}{{ end }}
-                </main>
-                {{ partial "yb_footer.html" . }}
-            </div>
+          <div class="content-child">
+            <main class="content-area ">
+              {{ partial "version-banner.html" . }}
+              {{ block "main" . }}{{ end }}
+            </main>
+            {{ partial "footer.html" . }}
+          </div>
         </div>
+      </div>
     </div>
-</div>
-{{ partial "scripts.html" . }}
-</body>
+    {{ partial "scripts.html" . }}
+  </body>
 </html>
