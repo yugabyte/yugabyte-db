@@ -1,7 +1,7 @@
 ---
-title: Troubleshoot
-linkTitle: Troubleshoot
-description: Troubleshoot issues when migrating data using YugabyteDB Voyager.
+title: Known issues
+linkTitle: Known issues
+description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
