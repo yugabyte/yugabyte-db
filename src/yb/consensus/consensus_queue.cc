@@ -767,7 +767,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
     *repl_index = to_index;
   }
 
-  if (last_op_id.index >= to_index) {
+  if (last_op_id.index >= to_index && !fetch_single_entry) {
     // Nothing to read.
     return ReadOpsResult();
   }

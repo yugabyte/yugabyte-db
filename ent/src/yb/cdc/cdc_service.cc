@@ -1679,6 +1679,7 @@ void CDCServiceImpl::GetChanges(
     tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
   }
 
+  VLOG(1) << "Sending GetChanges response " << resp->ShortDebugString();
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
@@ -2176,7 +2177,8 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
             << ", checkpoint: " << checkpoint
             << ", last replicated time: " << last_replicated_time_str
-            << ", last active time: " << last_active_time_cdc_state_table;
+            << ", last active time: " << last_active_time_cdc_state_table
+            << ", cdc_sdk_safe_time: " << cdc_sdk_safe_time;
 
     // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
     if (tablet_stream_to_be_deleted && checkpoint == OpId::Max().ToString()) {
@@ -2347,7 +2349,8 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
     VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index
             << " term " << current_term
             << " cdc_sdk_op_id: " << tablet_info->cdc_sdk_op_id.ToString()
-            << " expiration: " << tablet_info->cdc_sdk_op_id_expiration.ToMilliseconds();
+            << " expiration: " << tablet_info->cdc_sdk_op_id_expiration.ToMilliseconds()
+            << " cdc_sdk_safe_time: " << tablet_info->cdc_sdk_safe_time;
     s = UpdatePeersCdcMinReplicatedIndex(tablet_id, *tablet_info, ignore_rpc_failures);
     WARN_NOT_OK(s, "UpdatePeersCdcMinReplicatedIndex failed");
     if (!ignore_rpc_failures && !s.ok()) {
