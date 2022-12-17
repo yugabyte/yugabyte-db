@@ -41,6 +41,10 @@
 #include "utils/timestamp.h"
 
 #include "pg_yb_utils.h"
+#include "access/htup_details.h"
+#include "catalog/pg_yb_role_profile.h"
+#include "commands/yb_profile.h"
+#include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 
@@ -50,7 +54,7 @@
  */
 static void sendAuthRequest(Port *port, AuthRequest areq, const char *extradata,
 				int extralen);
-static void auth_failed(Port *port, int status, char *logdetail);
+static void auth_failed(Port *port, int status, char *logdetail, bool lockout);
 static char *recv_password_packet(Port *port);
 
 
@@ -264,7 +268,7 @@ ClientAuthentication_hook_type ClientAuthentication_hook = NULL;
  * particular, if logdetail isn't NULL, we send that string to the log.
  */
 static void
-auth_failed(Port *port, int status, char *logdetail)
+auth_failed(Port *port, int status, char *logdetail, bool role_is_locked_out)
 {
 	const char *errstr;
 	char	   *cdetail;
@@ -347,9 +351,11 @@ auth_failed(Port *port, int status, char *logdetail)
 		logdetail = cdetail;
 
 	ereport(FATAL,
-			(errcode(errcode_return),
-			 errmsg(errstr, port->user_name),
-			 logdetail ? errdetail_log("%s", logdetail) : 0));
+		(errcode(errcode_return),
+		 role_is_locked_out
+			? errmsg("role \"%s\" is locked. Contact your database administrator.", port->user_name)
+			: errmsg(errstr, port->user_name),
+		 logdetail ? errdetail_log("%s", logdetail) : 0));
 
 	/* doesn't return */
 }
@@ -628,10 +634,51 @@ ClientAuthentication(Port *port)
 	if (ClientAuthentication_hook)
 		(*ClientAuthentication_hook) (port, status);
 
+
+	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
+	{
+		bool profile_is_disabled = false;
+		HeapTuple roleTuple, profileTuple = NULL;
+		Oid roleid = InvalidOid;
+
+		/* Get role info from pg_authid */
+		roleTuple = SearchSysCache1(AUTHNAME, PointerGetDatum(port->user_name));
+		if (HeapTupleIsValid(roleTuple))
+		{
+			roleid = HeapTupleGetOid(roleTuple);
+			profileTuple = yb_get_role_profile_tuple_by_role_oid(roleid);
+			if (HeapTupleIsValid(profileTuple))
+			{
+				Form_pg_yb_role_profile rolprfform = (Form_pg_yb_role_profile)
+											GETSTRUCT(profileTuple);
+				if (rolprfform->rolprfstatus != YB_ROLPRFSTATUS_OPEN)
+				{
+					profile_is_disabled = true;
+				}
+			}
+			ReleaseSysCache(roleTuple);
+		}
+
+		if (status == STATUS_OK && !profile_is_disabled)
+		{
+			if (roleid != InvalidOid)
+				YbResetFailedAttemptsIfAllowed(roleid);
+			sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
+		}
+		else
+		{
+			/* Do not increment login attempts if no password was supplied */
+			if (roleid != InvalidOid && status != STATUS_EOF)
+				profile_is_disabled = YbMaybeIncFailedAttemptsAndDisableProfile(roleid);
+			auth_failed(port, status, logdetail, profile_is_disabled);
+		}
+		return;
+	}
+
 	if (status == STATUS_OK)
 		sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
 	else
-		auth_failed(port, status, logdetail);
+		auth_failed(port, status, logdetail, false);
 }
 
 

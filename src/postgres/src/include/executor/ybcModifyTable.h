@@ -168,6 +168,18 @@ extern bool YBCExecuteUpdate(Relation rel,
 							 bool canSetTag);
 
 /*
+ * Update a row (identified by the roleid) in a pg_yb_role_profile. This is a
+ * stripped down and specific version of YBCExecuteUpdate. It is used by
+ * auth.c, since the typical method of writing does not work at that stage of
+ * the DB initialization.
+ *
+ * Returns true if a row was updated.
+ */
+extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
+										  int failed_attempts,
+										  char rolprfstatus);
+
+/*
  * Replace a row in a YugaByte table by first deleting an existing row
  * (identified by ybctid) and then inserting a tuple to replace it.
  * This allows us to update a row primary key.
