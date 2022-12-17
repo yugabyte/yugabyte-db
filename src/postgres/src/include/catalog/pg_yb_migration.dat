@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V29__14562__update_yb_is_database_colocated.sql
-{ major => '29', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V30__14939__yb_profiles.sql
+{ major => '30', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]
