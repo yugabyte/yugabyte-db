@@ -188,6 +188,14 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     return placementInfo;
   }
 
+  private Set<NodeDetails> getAllNodes(LoadBalancerConfig lbConfig) {
+    Set<NodeDetails> allNodes = new HashSet<>();
+    for (Set<NodeDetails> nodes : lbConfig.getAzNodes().values()) {
+      allNodes.addAll(nodes);
+    }
+    return allNodes;
+  }
+
   @Test
   // @formatter:off
   @Parameters({
@@ -354,14 +362,14 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
       Set<NodeDetails> expectedNodes = new HashSet<>(nodes1);
       expectedNodes.add(nodes2.get(0));
-      assertThat(lbConfig.getAllNodes(), containsInAnyOrder(expectedNodes.toArray()));
+      assertThat(getAllNodes(lbConfig), containsInAnyOrder(expectedNodes.toArray()));
     }
     // Test retrieve all nodes by nodesToAdd
     lbMap = universeTaskBase.createLoadBalancerMap(taskParams, null, null, new HashSet<>(allNodes));
     assertEquals(2, lbMap.size());
     Set<NodeDetails> returnedNodes = new HashSet<>();
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
-      returnedNodes.addAll(lbConfig.getAllNodes());
+      returnedNodes.addAll(getAllNodes(lbConfig));
     }
     assertThat(returnedNodes, containsInAnyOrder(allNodes.toArray()));
     // Test retrieve all nodes without nodesToAdd
@@ -371,7 +379,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     assertEquals(2, lbMap.size());
     returnedNodes = new HashSet<>();
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
-      returnedNodes.addAll(lbConfig.getAllNodes());
+      returnedNodes.addAll(getAllNodes(lbConfig));
     }
     assertThat(returnedNodes, containsInAnyOrder(allNodes.toArray()));
     // Test null cluster (default to all clusters)
@@ -379,7 +387,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
         universeTaskBase.createLoadBalancerMap(taskParams, null, null, null);
     returnedNodes = new HashSet<>();
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
-      returnedNodes.addAll(lbConfig.getAllNodes());
+      returnedNodes.addAll(getAllNodes(lbConfig));
     }
     assertThat(lbMapDefault, equalTo(lbMap));
   }

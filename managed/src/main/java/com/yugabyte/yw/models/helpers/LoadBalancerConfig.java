@@ -14,18 +14,15 @@ import java.util.Set;
 public class LoadBalancerConfig {
   private String lbName;
   private Map<AvailabilityZone, Set<NodeDetails>> azNodes;
-  private Set<NodeDetails> allNodes;
 
   public LoadBalancerConfig(String lbName) {
     this.lbName = lbName;
     this.azNodes = new HashMap<>();
-    this.allNodes = new HashSet<>();
   }
 
   public void addNodes(AvailabilityZone az, Set<NodeDetails> nodes) {
     if (CollectionUtils.isNotEmpty(nodes)) {
       azNodes.computeIfAbsent(az, k -> new HashSet<>()).addAll(nodes);
-      allNodes.addAll(nodes);
     }
   }
 
@@ -40,9 +37,6 @@ public class LoadBalancerConfig {
                     v1.addAll(v2);
                     return v1;
                   }));
-      for (Set<NodeDetails> otherNodes : otherAzNodes.values()) {
-        allNodes.addAll(otherNodes);
-      }
     }
   }
 }
