@@ -216,14 +216,14 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
     ```yaml
     kind: StorageClass
     metadata:
-    	name: yb-storage
+      name: yb-storage
     provisioner: kubernetes.io/gce-pd
     volumeBindingMode: WaitForFirstConsumer
     allowVolumeExpansion: true
     reclaimPolicy: Delete
     parameters:
-    	type: pd-ssd
-    	fstype: xfs
+      type: pd-ssd
+      fstype: xfs
     ```
 
 - Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
@@ -365,7 +365,21 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       runAsGroup: 10001
     ```
 
-    <br>Note that you cannot change users during the Helm upgrades.
+    Note that you cannot change users during the Helm upgrades.
+
+  - Overrides to use a secret:
+
+    ```yml
+    tserver:
+      secretEnv:
+      - name: {{ENV-NAME-IN-TSERVER}}
+        valueFrom:
+          secretKeyRef:
+            key: <KEY NAME>
+            name: <SECRET NAME>
+    ```
+
+    Note that this override only works with user-created namespaces, not platform-created namespaces.
 
 Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
 

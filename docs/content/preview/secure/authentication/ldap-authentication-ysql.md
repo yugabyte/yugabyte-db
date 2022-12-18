@@ -30,7 +30,7 @@ type: docs
 
 The LDAP authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions).
 
-LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag. YugabyteDB supports two modes for LDAP authentication:
+LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag. YugabyteDB supports two modes for LDAP authentication:
 
 * **simple-bind** mode
 * **search+bind** mode
@@ -39,7 +39,7 @@ These are described below.
 
 ## Simple Bind Mode
 
-In **simple-bind** mode, YB-TServer will bind to the Distinguished Name ("DN") constructed with "prefix username suffix" format. Here is an example for Simple bind mode:
+In **simple-bind** mode, YB-TServer binds to the Distinguished Name ("DN") constructed with "prefix username suffix" format. The following is an example using Simple bind mode:
 
 ```sh
 --ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldap.yugabyte.com ldapprefix=""uid="" ldapsuffix="", ou=DBAs, dc=example, dc=com"" ldapport=389"'
@@ -47,7 +47,7 @@ In **simple-bind** mode, YB-TServer will bind to the Distinguished Name ("DN") c
 
 ### Configurations
 
-The configurations supported for simple bind mode.
+The following configurations are supported for simple bind mode.
 
 | T-Server Gflag name | Default value | Description |
 | :------------------ | :------------ | :---------- |
@@ -62,9 +62,9 @@ The configurations supported for simple bind mode.
 
 In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ldapbinddn` and `ldapbindpasswd`, and performs a search for the user trying to log into the database. This mode is commonly used by LDAP authentication schemes in other software.
 
-For Searching the LDAP directory if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search will be performed over the subtree at `ldapbasedn`, and will try to do an exact match of the attribute specified in `ldapsearchattribute`. After the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
+For Searching the LDAP directory, if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search is performed over the subtree at `ldapbasedn`, and tries to do an exact match of the attribute specified in `ldapsearchattribute`. After the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
 
-Here is an example for search + bind mode:
+The following is an example of search + bind mode:
 
 ```sh
 --ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0  ldap ldapserver=ldap.yugabyte.com ldapbasedn=""dc=yugabyte, dc=com"" ldapsearchattribute=uid"'
@@ -72,7 +72,7 @@ Here is an example for search + bind mode:
 
 ### Configurations
 
-The configurations supported for search + bind mode.
+The following configurations are supported for search + bind mode.
 
 | T-Server Gflag name | Default value | Description |
 | :------------------ | :------------ | :---------- |
@@ -86,6 +86,37 @@ The configurations supported for search + bind mode.
 | `ldapsearchattribute` | `uid` | Attribute to match against the username in the search when doing search + bind authentication. If no attribute is specified, the **uid** attribute is used. |
 | `ldapsearchfilter` | (empty) | The search filter to use when doing search + bind authentication. |
 | `ldapurl` | (empty) | An RFC 4516 LDAP URL. This is an alternative way to write LDAP options in a more compact and standard form. |
+
+## Creating secrets for Kubernetes
+
+In Kubernetes universes, you can create secrets with sensitive information in the namespace where you are running YugabyteDB. Later, when creating universe pods, you can refer to those secrets in environment variables to use in configuring LDAP.
+
+Kubernetes expects secret data to be in base64 format. Run the following command in a shell to convert a password into base64 format:
+
+```sh
+printf 'PASSWORD' | base64
+```
+
+Add the following contents to a yaml file:
+
+```yaml
+apiVersion: v1
+kind: Secret
+data:
+  <KEY NAME>: <Base64 password>
+metadata:
+  annotations:
+  name: <SECRET NAME>
+type: Opaque
+```
+
+Provide a key name and secret name. These are [what] used to [what]
+
+Run the following command to create the secret in the namespace running YugabyteDB:
+
+```sh
+kubectl apply -n <namespace> -f <path-to-yaml-file>
+```
 
 ## Example
 
