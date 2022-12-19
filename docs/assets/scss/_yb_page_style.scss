@@ -83,6 +83,7 @@
       margin: 0 0 16px;
       position: relative;
       z-index: 1;
+      color: #0b1117;
     }
 
     .card-desc {
@@ -138,7 +139,7 @@
   gap: 16px 0;
 
   .card-title {
-    color: #000;
+    color: #0b1117;
     font-weight: 600;
     font-size: 14px;
     line-height: 24px;
@@ -146,7 +147,7 @@
   }
 
   .card-desc {
-    color: #000;
+    color: #25323d;
     font-size: 14px;
     line-height: 22px;
   }
@@ -240,13 +241,11 @@
   .two-col-side-image > div {
     flex: none;
     flex: 1 1 calc(50% - 32px);
-    //max-width: 100%;
     padding-right: 75px;
   }
 
   .three-col-top-image > div,
   .three-col-left-icon > div {
-    //flex: none;
     flex: 1 1 calc(33.3% - 16px);
   }
 }

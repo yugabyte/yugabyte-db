@@ -138,7 +138,7 @@ resources:
   >}}
 {{< /sections/3-boxes >}}
 
-### More resources
+## More resources
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
