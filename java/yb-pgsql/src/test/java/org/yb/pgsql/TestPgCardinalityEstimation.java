@@ -148,7 +148,7 @@ public class TestPgCardinalityEstimation extends BasePgSQLTest {
           "ON t1.c_float = t2.c_float FULL JOIN %1$s t3 " +
           "ON t1.c_float = t3.c_float " +
           "WHERE t1.c_int > 21965 " +
-          "ORDER BY t1.c_float, t2.c_text, t3.c_varchar DESC LIMIT %d OFFSET 50",
+          "ORDER BY t1.c_float, t2.c_text, t3.c_varchar DESC LIMIT %2$d OFFSET 50",
           TABLE_NAME, QUERY_LIMIT),
           makeTopLevelBuilder()
               .storageReadRequests(Checkers.equal(0))
