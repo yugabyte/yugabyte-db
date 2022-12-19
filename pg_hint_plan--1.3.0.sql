@@ -1,4 +1,4 @@
-/* pg_hint_plan/pg_hint_plan--1.5.sql */
+/* pg_hint_plan/pg_hint_plan--1.3.0.sql */
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION pg_hint_plan" to load this file. \quit
@@ -11,7 +11,7 @@ CREATE TABLE hint_plan.hints (
 	PRIMARY KEY (id)
 );
 CREATE UNIQUE INDEX hints_norm_and_app ON hint_plan.hints (
- 	norm_query_string,
+	norm_query_string,
 	application_name
 );
 
