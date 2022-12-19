@@ -36,7 +36,11 @@ xCluster uses the YB-Master port 7100 for the initial communication, and then us
 
 Note that YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
 
-Before installing YugabyteDB Anywhere, the YB Controller port 18018 must be open. Before upgrading the YugabyteDB software, this port must be open on all YugabyteDB nodes.
+Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB software on YugabyteDB Anywhere, the YB Controller port 18018 must be open on all YugabyteDB nodes and be reachable from YugabyteDB Anywhere nodes:
+
+| Service       | Port  |
+| ------------- | ----- |
+| YB Controller | 18018 |
 
 ## Admin web server
 
