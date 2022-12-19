@@ -65,13 +65,13 @@ A YugabyteDB Anywhere node has the following requirements:
   * Nodes: 1 Virtual Machine
   * Cores: 8 Cores
   * RAM: 16 GB
-* Storage Disk:  100GB (minimum) (confirm SSD)
+* Storage Disk: 100GB (minimum) (confirm SSD)
 * Docker Engine: supported version 19.03.n. If not installed, see [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
 * The following ports should be open on the YugabyteDB Anywhere host:
   * 8800 – HTTP access to the Replicated UI.
   * 80 – HTTP access to the YugabyteDB Anywhere UI.
   * 443 - HTTPs access to the YugabyteDB Anywhere UI.
-  * 22 – SSH
+  * 22 – SSH.
   * 9090 - Prometheus metrics
 
   For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).

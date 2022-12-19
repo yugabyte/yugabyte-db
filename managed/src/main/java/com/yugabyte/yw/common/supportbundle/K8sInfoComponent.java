@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.supportbundle;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -160,7 +161,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       boolean isReadOnlyUniverseCluster = !universeCluster.clusterType.equals(ClusterType.PRIMARY);
       String helmReleaseName =
-          PlacementInfoUtil.getHelmReleaseName(
+          KubernetesUtil.getHelmReleaseName(
               isMultiAz, nodePrefix, namespaceToAzName.getValue(), isReadOnlyUniverseCluster);
       try {
         String localFilePath =
@@ -262,7 +263,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       String kubernetesClusterName =
           kubernetesManagerFactory.getManager().getCurrentContext(azConfig);
       String namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               isMultiAz,
               nodePrefix,
               azName,
@@ -306,7 +307,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       //     Run the kubectl commands and get the output to a file.
       for (Cluster universeCluster : universeClusters) {
         Map<UUID, Map<String, String>> azToConfig =
-            PlacementInfoUtil.getConfigPerAZ(universeCluster.placementInfo);
+            KubernetesUtil.getConfigPerAZ(universeCluster.placementInfo);
         Provider provider =
             Provider.getOrBadRequest(UUID.fromString(universeCluster.userIntent.provider));
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);

@@ -100,7 +100,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS
   // communication between server and client.
-  @ApiModelProperty public UUID clientRootCA = null;
+  // This is made 'protected' to make sure there is no direct setting/getting
+  @ApiModelProperty protected UUID clientRootCA = null;
 
   // This flag represents whether user has chosen to use same certificates for node to node and
   // client to server communication.
@@ -871,6 +872,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     return Iterables.getOnlyElement(foundClusters, null);
+  }
+
+  // the getter has some logic built around, as there are no other layer to
+  // have such logic at a common place
+  public UUID getClientRootCA() {
+    return (rootCA != null && rootAndClientRootCASame) ? rootCA : clientRootCA;
+  }
+
+  public void setClientRootCA(UUID clientRootCA) {
+    this.clientRootCA = clientRootCA;
   }
 
   /**

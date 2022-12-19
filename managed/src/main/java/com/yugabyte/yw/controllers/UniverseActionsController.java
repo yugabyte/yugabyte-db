@@ -10,36 +10,37 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
-
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.ToggleTlsParams;
-import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.ToggleTlsParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
+import play.mvc.Result;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
-import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
-import play.mvc.Result;
+
+import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
 
 @Api(
     value = "Universe management",
@@ -152,6 +153,32 @@ public class UniverseActionsController extends AuthenticatedController {
     UniverseResp resp =
         UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
     return PlatformResults.withData(resp);
+  }
+
+  @ApiOperation(
+      value = "Update load balancer config",
+      nickname = "updateLoadBalancerConfig",
+      response = UpdateLoadBalancerConfig.class)
+  public Result updateLoadBalancerConfig(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    log.info("Updating load balancer config {} for {}.", universe.universeUUID, customer.uuid);
+
+    UUID taskUUID =
+        universeActionsHandler.updateLoadBalancerConfig(
+            customer,
+            universe,
+            formFactory.getFormDataOrBadRequest(
+                request().body().asJson(), UniverseDefinitionTaskParams.class));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.UpdateLoadBalancerConfig,
+            taskUUID);
+    return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 
   @Deprecated

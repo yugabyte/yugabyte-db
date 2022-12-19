@@ -68,10 +68,18 @@ void DocDBDebugDump(
   auto iter = std::unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
   iter->SeekToFirst();
 
-  while (iter->Valid()) {
-    ProcessDumpEntry(
-        iter->key(), iter->value(), schema_packing_storage, db_type, include_binary, dump_func);
-    iter->Next();
+  if (db_type == StorageDbType::kIntents) {
+    while (iter->Valid()) {
+      ProcessDumpEntry(
+          iter->key(), iter->value(), schema_packing_storage, db_type, include_binary, dump_func);
+      iter->Next();
+    }
+  } else if (iter->Valid()) {
+    rocksdb::ScanCallback scan_callback = [&](const Slice& key, const Slice& value) -> bool {
+      ProcessDumpEntry(key, value, schema_packing_storage, db_type, include_binary, dump_func);
+      return true;
+    };
+    iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback);
   }
 }
 

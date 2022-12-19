@@ -26,6 +26,8 @@
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/util/arena.h"
 
+#include "yb/rocksdb/db/dbformat.h"
+
 namespace rocksdb {
 
 namespace {
@@ -79,6 +81,9 @@ class TwoLevelIterator : public InternalIterator {
   bool IsKeyPinned() const override {
     return second_level_iter_.iter() ? second_level_iter_.IsKeyPinned() : false;
   }
+  bool ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
 
  private:
   void SaveError(const Status& s) {
@@ -151,6 +156,27 @@ void TwoLevelIterator::Prev() {
   SkipEmptyDataBlocksBackward();
 }
 
+bool TwoLevelIterator::ScanForward(
+    const Comparator* user_key_comparator, const Slice& upperbound,
+    KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+  LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
+
+  do {
+    if (!upperbound.empty() &&
+        user_key_comparator->Compare(ExtractUserKey(second_level_iter_.key()), upperbound) >= 0) {
+      break;
+    }
+
+    if (!second_level_iter_.ScanForward(
+            user_key_comparator, upperbound, key_filter_callback, scan_callback)) {
+      return false;
+    }
+
+    SkipEmptyDataBlocksForward();
+  } while (Valid());
+
+  return true;
+}
 
 void TwoLevelIterator::SkipEmptyDataBlocksForward() {
   while (second_level_iter_.iter() == nullptr ||

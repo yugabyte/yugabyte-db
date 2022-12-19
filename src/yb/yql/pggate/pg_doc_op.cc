@@ -794,7 +794,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
   auto send_count = std::min(parallelism_level_, active_op_count_);
-  ::yb::LWPgsqlSamplingStatePB* sampling_state;
+  ::yb::LWPgsqlSamplingStatePB* sampling_state = nullptr;
 
   // There can be only one op at a time for sampling, since any modifications to the random sampling
   // state need to be propagated after one op completes to the next.
@@ -857,7 +857,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
     end_of_data_ = request_population_completed_;
   }
 
-  if (active_op_count_ > 0 && read_op_->read_request().has_sampling_state()) {
+  if (active_op_count_ > 0 && sampling_state != nullptr) {
     auto& read_op = down_cast<PgsqlReadOp&>(*pgsql_ops_[0]);
     auto *req = &read_op.read_request();
     req->ref_sampling_state(sampling_state);

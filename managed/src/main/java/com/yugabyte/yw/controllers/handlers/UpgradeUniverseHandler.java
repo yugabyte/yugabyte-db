@@ -48,7 +48,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YbcManager;
 
 @Slf4j
@@ -322,9 +321,7 @@ public class UpgradeUniverseHandler {
 
     // Verify request params
     requestParams.verifyParams(universe);
-    if (requestParams.rootAndClientRootCASame == null) {
-      requestParams.rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
-    }
+    requestParams.rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
     requestParams.allowInsecure =
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
 
@@ -351,30 +348,30 @@ public class UpgradeUniverseHandler {
       // Setting the ClientRootCA to the already existing clientRootCA as we do not
       // support root certificate rotation through TLS upgrade.
       // There is a check for different new and existing root cert already.
-      if (universeDetails.clientRootCA == null) {
-        if (requestParams.clientRootCA == null) {
+      if (universeDetails.getClientRootCA() == null) {
+        if (requestParams.getClientRootCA() == null) {
           if (requestParams.rootCA != null && requestParams.rootAndClientRootCASame) {
             // Setting ClientRootCA to RootCA in case rootAndClientRootCA is true
-            requestParams.clientRootCA = requestParams.rootCA;
+            requestParams.setClientRootCA(requestParams.rootCA);
           } else {
             // Create self-signed clientRootCA in case it is not provided by the user
             // and rootCA and clientRootCA needs to be different
-            requestParams.clientRootCA =
+            requestParams.setClientRootCA(
                 CertificateHelper.createClientRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid);
+                    customer.uuid));
           }
         }
       } else {
-        requestParams.clientRootCA = universeDetails.clientRootCA;
+        requestParams.setClientRootCA(universeDetails.getClientRootCA());
       }
 
       // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
       // This is necessary to set to ensure backward compatibility as existing parts of
       // codebase uses rootCA for Client to Node Encryption
       if (requestParams.rootCA == null && requestParams.rootAndClientRootCASame) {
-        requestParams.rootCA = requestParams.clientRootCA;
+        requestParams.rootCA = requestParams.getClientRootCA();
       }
 
       // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.

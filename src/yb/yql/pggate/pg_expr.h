@@ -139,14 +139,14 @@ class PgExpr {
 
 class PgConstant : public PgExpr {
  public:
-  PgConstant(Arena* arena,
+  PgConstant(ThreadSafeArena* arena,
              const YBCPgTypeEntity *type_entity,
              bool collate_is_valid_non_c,
              const char* collation_sortkey,
              uint64_t datum,
              bool is_null,
              PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
-  PgConstant(Arena* arena,
+  PgConstant(ThreadSafeArena* arena,
              const YBCPgTypeEntity *type_entity,
              bool collate_is_valid_non_c,
              PgDatumKind datum_kind,
@@ -198,7 +198,7 @@ class PgColumnRef : public PgExpr {
 
 class PgOperator : public PgExpr {
  public:
-  PgOperator(Arena* arena,
+  PgOperator(ThreadSafeArena* arena,
              const char *name,
              const YBCPgTypeEntity *type_entity,
              bool collate_is_valid_non_c);

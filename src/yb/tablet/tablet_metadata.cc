@@ -111,8 +111,9 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 //  Raft group metadata
 // ============================================================================
 
-TableInfo::TableInfo()
-    : doc_read_context(new docdb::DocReadContext(log_prefix)),
+TableInfo::TableInfo(const std::string& log_prefix_, PrivateTag)
+    : log_prefix(log_prefix_),
+      doc_read_context(new docdb::DocReadContext(log_prefix)),
       index_map(std::make_unique<IndexMap>()) {
 }
 
@@ -181,14 +182,21 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 
 TableInfo::~TableInfo() = default;
 
-Status TableInfo::LoadFromPB(
+Result<TableInfoPtr> TableInfo::LoadFromPB(
     const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb) {
+  Primary primary(primary_table_id == pb.table_id());
+  auto log_prefix = MakeTableInfoLogPrefix(tablet_log_prefix, primary, pb.table_id());
+  auto result = std::make_shared<TableInfo>(log_prefix, PrivateTag());
+  RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
+  return result;
+}
+
+Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   table_id = pb.table_id();
   namespace_name = pb.namespace_name();
   namespace_id = pb.namespace_id();
   table_name = pb.table_name();
   table_type = pb.table_type();
-  Primary primary(primary_table_id == table_id);
   cotable_id = VERIFY_RESULT(ParseCotableId(primary, table_id));
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
@@ -209,8 +217,6 @@ Status TableInfo::LoadFromPB(
     RETURN_NOT_OK(DeletedColumn::FromPB(deleted_col, &col));
     deleted_cols.push_back(col);
   }
-
-  log_prefix = MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id);
 
   return Status::OK();
 }
@@ -319,14 +325,12 @@ Status KvStoreInfo::LoadTablesFromPB(
     const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id) {
   tables.clear();
   for (const auto& table_pb : pbs) {
-    const TableId table_id = table_pb.table_id();
-    TableInfoPtr& table_info =
-        tables.emplace(table_id, std::make_shared<TableInfo>()).first->second;
-
-    RETURN_NOT_OK(table_info->LoadFromPB(tablet_log_prefix, primary_table_id, table_pb));
+    TableInfoPtr table_info = VERIFY_RESULT(TableInfo::LoadFromPB(
+        tablet_log_prefix, primary_table_id, table_pb));
+    tables.emplace(table_info->table_id, table_info);
 
     const Schema& schema = table_info->schema();
-    if (table_id != primary_table_id) {
+    if (table_info->primary()) {
       if (schema.table_properties().is_ysql_catalog_table()) {
         // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
         // to set cotable ID.

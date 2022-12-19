@@ -26,13 +26,13 @@
         scrape_interval: {{ yamlPath "prometheus.scrapeInterval" }}s
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}s
         static_configs:
-          - targets: ['127.0.0.1:{{ yamlPath "prometheus.externalPort" }}']
+          - targets: ['127.0.0.1:{{ yamlPath "prometheus.port" }}']
 
       - job_name: 'platform'
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}s
         metrics_path: "/api/v1/prometheus_metrics"
         static_configs:
-          - targets: ['127.0.0.1:{{ yamlPath "platform.containerExposedPort" }}']
+          - targets: ['127.0.0.1:{{ yamlPath "platform.port" }}']
 
       - job_name: "node"
         file_sd_configs:
@@ -183,7 +183,7 @@
       --web.console.libraries={{ .PromDir }}/console_libraries \
       --web.enable-admin-api \
       --web.enable-lifecycle \
-      --web.listen-address=:{{ yamlPath "prometheus.externalPort" }} \
+      --web.listen-address=:{{ yamlPath "prometheus.port" }} \
       --query.max-concurrency={{ yamlPath "prometheus.maxConcurrency" }} \
       --query.max-samples={{ yamlPath "prometheus.maxSamples" }} \
       --query.timeout={{ yamlPath "prometheus.timeout" }}s

@@ -277,7 +277,6 @@ REINDEX INDEX ing_j_idx;
 EXPLAIN (costs off)
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
--- TODO(#12899): fix output
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
 EXPLAIN (costs off)

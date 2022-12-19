@@ -38,24 +38,24 @@ func Init(logLevel string) {
 	})
 
 	switch logLevel {
-	case "TraceLevel":
-		log.SetLevel(log.TraceLevel)
-	case "DebugLevel":
-		log.SetLevel(log.DebugLevel)
-	case "InfoLevel":
-		log.SetLevel(log.InfoLevel)
-	case "WarnLevel":
-		log.SetLevel(log.WarnLevel)
-	case "ErrorLevel":
-		log.SetLevel(log.ErrorLevel)
-	case "FatalLevel":
-		log.SetLevel(log.FatalLevel)
-	case "PanicLevel":
-		log.SetLevel(log.PanicLevel)
-	default:
-		Debug("Invalid Logging Level specified in yba-installer-input.yml. Defaulting to InfoLevel.")
-		log.SetLevel(log.InfoLevel)
-	}
+  case "TraceLevel":
+    log.SetLevel(log.TraceLevel)
+  case "DebugLevel":
+    log.SetLevel(log.DebugLevel)
+  case "InfoLevel":
+    log.SetLevel(log.InfoLevel)
+  case "WarnLevel":
+    log.SetLevel(log.WarnLevel)
+  case "ErrorLevel":
+    log.SetLevel(log.ErrorLevel)
+  case "FatalLevel":
+    log.SetLevel(log.FatalLevel)
+  case "PanicLevel":
+    log.SetLevel(log.PanicLevel)
+  default:
+    Debug("Invalid Logging Level specified in yba-ctl.yml. Defaulting to InfoLevel.")
+    log.SetLevel(log.InfoLevel)
+  }
 
 	// TODO: Also make logging file for installer actions.
 	log.SetOutput(os.Stdout)

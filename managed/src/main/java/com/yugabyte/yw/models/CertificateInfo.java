@@ -478,7 +478,7 @@ public class CertificateInfo extends Model {
     universes.forEach(
         universe -> {
           UUID rootCA = universe.getUniverseDetails().rootCA;
-          UUID clientRootCA = universe.getUniverseDetails().clientRootCA;
+          UUID clientRootCA = universe.getUniverseDetails().getClientRootCA();
           if (rootCA != null) {
             if (certificateInfoSet.contains(rootCA)) {
               certificateUniverseMap.putIfAbsent(rootCA, new HashSet<>());

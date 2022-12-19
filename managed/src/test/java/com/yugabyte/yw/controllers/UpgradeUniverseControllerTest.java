@@ -544,7 +544,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     // Checking params are merged with universe info.
     Universe universe = Universe.getOrBadRequest(universeUUID);
     assertEquals(universe.getUniverseDetails().rootCA, taskParams.rootCA);
-    assertEquals(universe.getUniverseDetails().clientRootCA, taskParams.clientRootCA);
+    assertEquals(universe.getUniverseDetails().getClientRootCA(), taskParams.getClientRootCA());
     assertEquals(universe.getUniverseDetails().clusters.size(), taskParams.clusters.size());
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
@@ -713,7 +713,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CertsRotateParams taskParams = argCaptor.getValue();
     assertEquals(bodyJson.get("rootCA").asText(), taskParams.rootCA.toString());
-    assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.clientRootCA.toString());
+    assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.getClientRootCA().toString());
     assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
 
     // Checking params are merged with universe info.
@@ -756,7 +756,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CertsRotateParams taskParams = argCaptor.getValue();
     assertEquals(bodyJson.get("rootCA").asText(), taskParams.rootCA.toString());
-    assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.clientRootCA.toString());
+    assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.getClientRootCA().toString());
     assertEquals(1200, (int) taskParams.sleepAfterMasterRestartMillis);
     assertEquals(1300, (int) taskParams.sleepAfterTServerRestartMillis);
     assertEquals(UpgradeOption.NON_ROLLING_UPGRADE, taskParams.upgradeOption);
@@ -1157,7 +1157,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                 userIntent.providerType = CloudType.onprem;
               } else {
                 universeDetails.rootCA = rootCA;
-                universeDetails.clientRootCA = clientRootCA;
+                universeDetails.setClientRootCA(clientRootCA);
                 universeDetails.rootAndClientRootCASame = false;
                 userIntent.providerType = CloudType.aws;
               }
@@ -1190,7 +1190,9 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           date,
           TestHelper.TMP_PATH + "/upgrade_universe_controller_test_ca2.crt",
           customCertInfo);
-      return Json.newObject().put("rootCA", rootCA.toString());
+      return Json.newObject()
+          .put("rootCA", rootCA.toString())
+          .put("clientRootCA", rootCA.toString());
     } else {
       createTempFile("upgrade_universe_controller_test_ca.crt", cert1Contents);
       CertificateInfo.create(
@@ -1233,7 +1235,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           userIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
           universeDetails.rootAndClientRootCASame = true;
           universeDetails.rootCA = rootCA;
-          universeDetails.clientRootCA = rootCA;
+          universeDetails.setClientRootCA(rootCA);
           universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
           universe.setUniverseDetails(universeDetails);
         });

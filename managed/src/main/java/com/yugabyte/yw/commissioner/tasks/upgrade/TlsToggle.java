@@ -76,7 +76,7 @@ public class TlsToggle extends UpgradeTaskBase {
     }
 
     if (EncryptionInTransitUtil.isClientRootCARequired(taskParams())
-        && taskParams().clientRootCA == null) {
+        && taskParams().getClientRootCA() == null) {
       throw new IllegalArgumentException("Client root certificate is null");
     }
   }
@@ -233,7 +233,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.clientRootCA = taskParams().getClientRootCA();
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
@@ -252,7 +252,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.setClientRootCA(taskParams().getClientRootCA());
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     params.nodeToNodeChange = getNodeToNodeChange();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
@@ -272,7 +272,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.setClientRootCA(taskParams().getClientRootCA());
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     params.nodeToNodeChange = getNodeToNodeChange();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
