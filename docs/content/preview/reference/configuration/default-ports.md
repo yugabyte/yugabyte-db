@@ -34,9 +34,13 @@ Internode (server-to-server or node-to-node) communication, including xCluster, 
 
 To enable login to the machines running these servers, the SSH port 22 should be opened.
 
-xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes.
+xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes. Note that YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
 
-Note that YugabyteDB Anywhere obtained the replication lag using Prometheus metrics from tserver (port 9000). So, although the xCluster replication will work if this port is closed, the replication lag cannot be shown on YugabyteDB Anywhere.
+Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB software on YugabyteDB Anywhere, the YB Controller port 18018 must be open on all YugabyteDB nodes and be reachable from YugabyteDB Anywhere nodes:
+
+| Service       | Port  |
+| ------------- | ----- |
+| YB Controller | 18018 |
 
 ## Admin web server
 
@@ -78,7 +82,7 @@ You can access the Prometheus server on port `9090` of the YugabyteDB Anywhere n
 
 ### Servers
 
-Use the following targets to monitor `yb-tserver` and `yb-master` server metrics:
+Use the following targets to monitor YB-TServer and YB-Master server metrics:
 
 | Server     | Target                      |
 | ---------- | --------------------------- |
@@ -87,7 +91,7 @@ Use the following targets to monitor `yb-tserver` and `yb-master` server metrics
 
 ### APIs
 
-Use the following `yb-tserver` targets for the various API metrics:
+Use the following YB-TServer targets for the various API metrics:
 
 | API     | Target
 | ------- | ------------------------- |
