@@ -82,7 +82,7 @@ HybridScanChoices::HybridScanChoices(
         col_groups_.AddToLatestGroup(idx - num_hash_cols);
     } else if (col_has_range_option) {
       auto& options = (*range_options)[idx - num_hash_cols];
-
+      current_options.reserve(options.size());
       if (options.empty()) {
         // If there is nothing specified in the IN list like in
         // SELECT * FROM ... WHERE c1 IN ();
