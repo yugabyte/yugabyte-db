@@ -89,34 +89,40 @@ The following configurations are supported for search + bind mode.
 
 ## Creating secrets for Kubernetes
 
-In Kubernetes universes, you can create secrets with sensitive information in the namespace where you are running YugabyteDB. Later, when creating universe pods, you can refer to those secrets in environment variables to use in configuring LDAP.
+In Kubernetes, you can create secrets with sensitive information in the namespace where you are running YugabyteDB. Later, when creating universe pods, you can refer to those secrets in environment variables to use in configuring LDAP.
 
-Kubernetes expects secret data to be in base64 format. Run the following command in a shell to convert a password into base64 format:
+To create a secret:
 
-```sh
-printf 'PASSWORD' | base64
-```
+1. Kubernetes expects secret data to be in base64 format. Run the following command in a shell to convert a password into base64 format:
 
-Add the following contents to a yaml file:
+    ```sh
+    printf 'PASSWORD' | base64
+    ```
 
-```yaml
-apiVersion: v1
-kind: Secret
-data:
-  <KEY NAME>: <Base64 password>
-metadata:
-  annotations:
-  name: <SECRET NAME>
-type: Opaque
-```
+    Replace PASSWORD with your password.
 
-Provide a key name and secret name. These are [what] used to [what]
+1. Add the following contents to a yaml file:
 
-Run the following command to create the secret in the namespace running YugabyteDB:
+    ```yaml
+    apiVersion: v1
+    kind: Secret
+    data:
+      <KEY NAME>: <Base64 password>
+    metadata:
+      annotations:
+      name: <SECRET NAME>
+    type: Opaque
+    ```
 
-```sh
-kubectl apply -n <namespace> -f <path-to-yaml-file>
-```
+    Replace `Base64 password` with the base64 password you generated.
+
+    Provide a key name and secret name. These are [what] used to [what]
+
+1. Run the following command to create the secret in the namespace running YugabyteDB:
+
+    ```sh
+    kubectl apply -n <namespace> -f <path-to-yaml-file>
+    ```
 
 ## Example
 
