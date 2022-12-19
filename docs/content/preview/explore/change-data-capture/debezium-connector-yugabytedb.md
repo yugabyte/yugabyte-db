@@ -1009,7 +1009,10 @@ We use a custom record extractor (`YBExtractNewRecordState`) so that the sinks u
 See the following section for more details on `YBExtractNewRecordState`.
 {{< /note >}}
 
+### Transformers
 #### YBExtractNewRecordState SMT
+
+Transformer type: `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState`
 
 Unlike the Debezium Connector for PostgreSQL, we only send the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload we send and the default value is set to `null`.
 
@@ -1018,6 +1021,16 @@ To differentiate between the case where a column is set to `null` and the case i
 A schema registry requires that, once a schema is registered, records must contain only payloads with that schema version. If you're using a schema registry, the YugabyteDB Debezium connector's approach can be problematic, as the schema may change with every message. For example, if we keep changing the record to only include the value of modified columns, the schema of each record will be different (the total number unique schemas will be a result of making all possible combinations of columns) and thus would require sending a schema with every record.
 
 To avoid this problem when you're using a schema registry, use the `YBExtractNewRecordState` SMT (Single Message Transformer for Kafka), which interprets these values and sends the record in the correct format (by removing the unmodified columns from the JSON message). Records transformed by `YBExtractNewRecordState` are compatible with all sink implementations. This approach ensures that the schema doesn't change with each new record and it can work with a schema registry.
+
+#### PGCompatible SMT
+
+Transformer type: `io.debezium.connector.yugabytedb.transforms.PGCompatible`
+
+YugabyteDB CDC service publishes events by default with a schema that only includes columns that have been modified. The source connector then sends the value as `null` for columns that are missing in the payload. Each column payload includes a `set` field that is used to signal if a column has been set to `null` or is not present in the payload from YugabyteDB.
+
+However, some sink connectors may not understand the above format. `PGCompatible` transforms the payload to a format that is compatible with the format of the standard change data events. Specifically, it transforms column schema and value to remove the set field and collapse the payload such it only contains the data type schema and value.
+
+PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all the fields in a payload.
 
 ### Connector configuration properties
 
