@@ -401,7 +401,7 @@ public class AWSCloudImpl implements CloudAPI {
         Listener listener = getListenerByPort(lbClient, lbName, port);
         // If no listener exists for a port, create target group and listener
         // else check target group settings and add/remove nodes from target group
-        String targetGroupName = "tg-" + UUID.randomUUID();
+        String targetGroupName = "tg-" + UUID.randomUUID().toString().substring(0, 29);
         if (listener == null) {
           String targetGroupArn =
               createNodeGroup(lbClient, lbName, targetGroupName, protocol, port, instanceIDs);
