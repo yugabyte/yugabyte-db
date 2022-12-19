@@ -275,6 +275,64 @@ public class ReleaseManagerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testLoadReleasesWithLinuxOSReleasePath() throws IOException {
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
+    List<String> versions = ImmutableList.of("0.0.1");
+    createDummyReleases(versions, false, false, true, true, false, "linux");
+    when(mockGFlagsValidation.getMissingGFlagFileList(any()))
+        .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    releaseManager.importLocalReleases();
+    verify(mockGFlagsValidation, times(1))
+        .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
+
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1))
+        .loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.1",
+            ReleaseManager.ReleaseMetadata.create("0.0.1")
+                .withFilePath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-linux-x86_64.tar.gz")
+                .withChartPath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-0.0.1-helm.tar.gz")
+                .withPackage(
+                    TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-linux-x86_64.tar.gz",
+                    Architecture.x86_64));
+    assertReleases(expectedMap, releaseMap.getValue());
+  }
+
+  @Test
+  public void testLoadReleasesWithEl8OSReleasePath() throws IOException {
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
+    List<String> versions = ImmutableList.of("0.0.1");
+    createDummyReleases(versions, false, false, true, true, false, "el8");
+    when(mockGFlagsValidation.getMissingGFlagFileList(any()))
+        .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    releaseManager.importLocalReleases();
+    verify(mockGFlagsValidation, times(1))
+        .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
+
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1))
+        .loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.1",
+            ReleaseManager.ReleaseMetadata.create("0.0.1")
+                .withFilePath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-el8-x86_64.tar.gz")
+                .withChartPath(TMP_STORAGE_PATH + "/0.0.1/yugabyte-0.0.1-helm.tar.gz")
+                .withPackage(
+                    TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-el8-x86_64.tar.gz",
+                    Architecture.x86_64));
+    assertReleases(expectedMap, releaseMap.getValue());
+  }
+
+  @Test
   public void testLoadReleasesWithoutChart() throws IOException {
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.1");
