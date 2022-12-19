@@ -124,6 +124,8 @@ To create a secret:
     kubectl apply -n <namespace> -f <path-to-yaml-file>
     ```
 
+    Replace namespace with the namespace running YugabyteDB. Replace path-to-yaml-file with the full path to the yaml file you created in the preceding step.
+
 ## Example
 
 To use LDAP password authentication on a new YugabyteDB cluster, follow these steps:
