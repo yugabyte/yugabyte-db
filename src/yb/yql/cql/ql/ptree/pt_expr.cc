@@ -1034,6 +1034,7 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
     } else if (op1->expr_op() == ExprOperator::kCollection) {
       const PTCollectionExpr *collection_expr = static_cast<const PTCollectionExpr *>(op1.get());
       std::vector<const ColumnDesc *> col_descs;
+      col_descs.reserve(collection_expr->values().size());
       for (auto &value : collection_expr->values()) {
         PTRef *ref = static_cast<PTRef *>(value.get());
         col_descs.push_back(ref->desc());
