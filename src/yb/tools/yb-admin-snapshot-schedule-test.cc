@@ -3207,8 +3207,7 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
   }
 
   std::vector<std::string> ExtraTSFlags() override {
-    return { "--vmodule=meta_cache=5,read_query=5,pg_client=5,client=5",
-             "--cleanup_split_tablets_interval_sec=1",
+    return { "--cleanup_split_tablets_interval_sec=1",
              "--leader_lease_duration_ms=6000",
              "--leader_failure_max_missed_heartbeat_periods=12",
              "--retryable_request_timeout_secs=5" };

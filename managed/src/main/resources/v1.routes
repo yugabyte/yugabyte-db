@@ -306,6 +306,7 @@ PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state               c
 POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     com.yugabyte.yw.controllers.UniverseActionsController.configureAlerts(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/set_key                           com.yugabyte.yw.controllers.UniverseActionsController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/toggle_tls                        com.yugabyte.yw.controllers.UniverseActionsController.toggleTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+PUT    /customers/:cUUID/universes/:uniUUID/update_lb_config                  com.yugabyte.yw.controllers.UniverseActionsController.updateLoadBalancerConfig(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # xCluster Replication API
 POST    /customers/:cUUID/xcluster_configs                                     com.yugabyte.yw.controllers.XClusterConfigController.create(cUUID: java.util.UUID)
@@ -332,6 +333,7 @@ POST    /customers/:cUUID/universes/:uniUUID/upgrade/reboot                    c
 
 # Table Management API
 GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeParentTableInfo: Boolean ?= false)
+GET     /customers/:cUUID/universes/:uniUUID/namespaces                        com.yugabyte.yw.controllers.TablesController.listNamespaces(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeSystemNamespaces: Boolean ?= false)
 POST    /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.describe(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.alter(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
@@ -364,6 +366,8 @@ PUT     /customers/:cUUID/backups/:backupUUID                                  c
 PUT     /customers/:cUUID/schedules/:sUUID                                     com.yugabyte.yw.controllers.ScheduleController.editBackupSchedule(cUUID: java.util.UUID, sUUID: java.util.UUID)
 + forceNoAudit
 POST    /customers/:cUUID/schedules/page                                       com.yugabyte.yw.controllers.ScheduleController.pageScheduleList(cUUID: java.util.UUID)
++ forceNoAudit
+POST    /customers/:cUUID/restore/page                                         com.yugabyte.yw.controllers.BackupsController.pageRestoreList(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/schedules/:sUUID/delete                              com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID)
 GET     /customers/:cUUID/backups/:backupUUID/list_increments                  com.yugabyte.yw.controllers.BackupsController.listIncrementalBackups(cUUID: java.util.UUID, backupUUID: java.util.UUID)
 

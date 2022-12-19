@@ -115,6 +115,7 @@ DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 DECLARE_int32(cdc_snapshot_batch_size);
 DECLARE_bool(TEST_cdc_snapshot_failure);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_string(vmodule);
 
 namespace yb {
 
@@ -2628,6 +2629,14 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     change_resp =
         ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
     ValidateColumnCounts(change_resp, 2);
+  }
+
+  void EnableVerboseLoggingForModule(const std::string& module, int level) {
+    if (!FLAGS_vmodule.empty()) {
+      FLAGS_vmodule += Format(",$0=$1", module, level);
+    } else {
+      FLAGS_vmodule = Format("$0=$1", module, level);
+    }
   }
 };
 
@@ -9834,6 +9843,182 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
 
   CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWithBeforeImage)) {
+  EnableVerboseLoggingForModule("cdc_service", 1);
+  EnableVerboseLoggingForModule("cdcsdk_producer", 1);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min(), kuint64max, false, 0, true));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Do batch insert into the table.
+  uint32_t start_idx = 1;
+  uint32_t end_idx = 1001;
+  uint32_t batch_range = 1000;
+  int batch_count = 4;
+  for (int idx = 0; idx < batch_count; idx++) {
+    ASSERT_OK(WriteRowsHelper(start_idx /* start */, end_idx /* end */, &test_cluster_, true));
+    start_idx = end_idx;
+    end_idx += batch_range;
+  }
+
+  // Update all row where key is even
+  ASSERT_OK(conn.Execute("UPDATE test_table set value_1 = value_1 + 1 where key % 2 = 0"));
+
+  bool first_get_changes = true;
+  GetChangesResponsePB change_resp;
+  int insert_count = 0;
+  int update_count = 0;
+  while (true) {
+    if (first_get_changes) {
+      change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+      first_get_changes = false;
+
+    } else {
+      change_resp =
+          ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+    }
+
+    if (change_resp.cdc_sdk_proto_records_size() == 0) {
+      break;
+    }
+    ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+    uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+    for (uint32_t i = 0; i < record_size; ++i) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      if (record.row_message().op() == RowMessage::INSERT) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 2);
+        // Old tuples validations
+        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), 0);
+        ASSERT_EQ(record.row_message().old_tuple(1).datum_int32(), 0);
+
+        // New tuples validations
+        ASSERT_GT(record.row_message().new_tuple(0).datum_int32(), 0);
+        ASSERT_LE(record.row_message().new_tuple(0).datum_int32(), 4000);
+        ASSERT_GT(record.row_message().new_tuple(1).datum_int32(), 1);
+        ASSERT_LE(record.row_message().new_tuple(1).datum_int32(), 4002);
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        insert_count += 1;
+      } else if (record.row_message().op() == RowMessage::UPDATE) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 2);
+        // The old tuple key should match the new tuple key.
+        ASSERT_EQ(
+            record.row_message().old_tuple(0).datum_int32(),
+            record.row_message().new_tuple(0).datum_int32());
+        // The updated value of value_1 column should be more than 1 of its before image.
+        ASSERT_EQ(
+            record.row_message().new_tuple(1).datum_int32(),
+            record.row_message().old_tuple(1).datum_int32() + 1);
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        update_count += 1;
+      }
+    }
+  }
+  LOG(INFO) << "Total insert count: " << insert_count << " update counts: " << update_count;
+  ASSERT_EQ(insert_count, 2 * update_count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionDeleteRowsWithBeforeImage)) {
+  EnableVerboseLoggingForModule("cdc_service", 1);
+  EnableVerboseLoggingForModule("cdcsdk_producer", 1);
+  // ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min(), kuint64max, false, 0, true));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Do batch insert into the table.
+  uint32_t start_idx = 1;
+  uint32_t end_idx = 1001;
+  uint32_t batch_range = 1000;
+  int batch_count = 4;
+  for (int idx = 0; idx < batch_count; idx++) {
+    ASSERT_OK(WriteRowsHelper(start_idx /* start */, end_idx /* end */, &test_cluster_, true));
+    start_idx = end_idx;
+    end_idx += batch_range;
+  }
+
+  // Delete all rows where key is even.
+  ASSERT_OK(conn.Execute("DELETE from test_table where key % 2 = 0"));
+
+  bool first_get_changes = true;
+  GetChangesResponsePB change_resp;
+  int insert_count = 0;
+  int delete_count = 0;
+  while (true) {
+    if (first_get_changes) {
+      change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+      first_get_changes = false;
+
+    } else {
+      change_resp =
+          ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+    }
+
+    if (change_resp.cdc_sdk_proto_records_size() == 0) {
+      break;
+    }
+    ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+    uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+    for (uint32_t i = 0; i < record_size; ++i) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      if (record.row_message().op() == RowMessage::INSERT) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 2);
+        // Old tuples validations
+        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), 0);
+        ASSERT_EQ(record.row_message().old_tuple(1).datum_int32(), 0);
+
+        // New tuples validations
+        ASSERT_GT(record.row_message().new_tuple(0).datum_int32(), 0);
+        ASSERT_LE(record.row_message().new_tuple(0).datum_int32(), 4000);
+        ASSERT_GT(record.row_message().new_tuple(1).datum_int32(), 1);
+        ASSERT_LE(record.row_message().new_tuple(1).datum_int32(), 4002);
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        insert_count += 1;
+      } else if (record.row_message().op() == RowMessage::DELETE) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 2);
+        // The old tuple key should match the new tuple key.
+        ASSERT_GT(record.row_message().old_tuple(0).datum_int32(), 0);
+        ASSERT_LE(record.row_message().old_tuple(0).datum_int32(), 4000);
+        ASSERT_GT(record.row_message().old_tuple(1).datum_int32(), 1);
+        ASSERT_LE(record.row_message().old_tuple(1).datum_int32(), 4002);
+
+        ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 0);
+        ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 0);
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        delete_count += 1;
+      }
+    }
+  }
+  LOG(INFO) << "Total insert count: " << insert_count << " update counts: " << delete_count;
+  ASSERT_EQ(insert_count, 2 * delete_count);
 }
 
 }  // namespace enterprise

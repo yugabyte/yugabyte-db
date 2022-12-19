@@ -10,13 +10,25 @@
 
 package com.yugabyte.yw.common.config;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.typesafe.config.Config;
-import com.yugabyte.yw.models.helpers.TaskType;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import java.time.Duration;
+import java.time.Period;
+import java.util.List;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.collect.ImmutableSet;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.PlatformServiceException;
+
 import lombok.Getter;
+import play.libs.Json;
 
 @Getter
 public class ConfDataType<T> {
@@ -24,19 +36,35 @@ public class ConfDataType<T> {
       new ConfDataType<>("Duration", Duration.class, Config::getDuration, Duration::parse);
   static ConfDataType<Double> DoubleType =
       new ConfDataType<>("Double", Double.class, Config::getDouble, Double::parseDouble);
-
-  // TODO:
-  //  String,
-  //  Long,
-  //  Boolean,
-  //  Bytes,
-  //  Period,
-  //  Temporal,
-
-  // Example for enum type
-  static ConfDataType<TaskType> TaskTypeEnum =
+  static ConfDataType<String> StringType =
+      new ConfDataType<>("String", String.class, Config::getString, String::valueOf);
+  static ConfDataType<Long> LongType =
+      new ConfDataType<>("Long", Long.class, Config::getLong, Long::parseLong);
+  static ConfDataType<Boolean> BooleanType =
+      new ConfDataType<>("Boolean", Boolean.class, Config::getBoolean, ConfDataType::parseBoolean);
+  static ConfDataType<Period> PeriodType =
+      new ConfDataType<>("Period", Period.class, Config::getPeriod, Period::parse);
+  static ConfDataType<Integer> IntegerType =
+      new ConfDataType<>("Integer", Integer.class, Config::getInt, Integer::parseInt);
+  static ConfDataType<List> StringListType =
       new ConfDataType<>(
-          "TaskType", TaskType.class, new EnumGetter<>(TaskType.class), TaskType::valueOf);
+          "String List", List.class, Config::getStringList, ConfDataType::parseStrList);
+  static ConfDataType<Long> BytesType =
+      new ConfDataType<>(
+          "Bytes",
+          Long.class,
+          Config::getBytes,
+          (s) -> {
+            Config c = ConfigFactory.parseString("bytes = " + s);
+            return c.getBytes("bytes");
+          });
+
+  static ConfDataType<VersionCheckMode> VersionCheckModeEnum =
+      new ConfDataType<>(
+          "VersionCheckMode",
+          VersionCheckMode.class,
+          new EnumGetter<>(VersionCheckMode.class),
+          VersionCheckMode::valueOf);
 
   private final String name;
 
@@ -68,6 +96,25 @@ public class ConfDataType<T> {
     @Override
     public T apply(Config config, String path) {
       return config.getEnum(enumClass, path);
+    }
+  }
+
+  static final Set<String> BOOLS = ImmutableSet.of("true", "false");
+
+  public static Boolean parseBoolean(String s) {
+    if (BOOLS.contains(s.toLowerCase().trim())) {
+      return Boolean.parseBoolean(s.trim());
+    } else {
+      throw new PlatformServiceException(BAD_REQUEST, "Not a valid boolean value");
+    }
+  }
+
+  public static List<String> parseStrList(String s) {
+    try {
+      List<String> strList = Json.mapper().readValue(s, new TypeReference<List<String>>() {});
+      return strList;
+    } catch (Exception e) {
+      throw new PlatformServiceException(BAD_REQUEST, "Not a valid list of strings");
     }
   }
 }

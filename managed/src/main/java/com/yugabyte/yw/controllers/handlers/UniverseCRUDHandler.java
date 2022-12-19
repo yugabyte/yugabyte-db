@@ -10,9 +10,6 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
@@ -64,6 +61,14 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Status;
+
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -77,13 +82,9 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Http.Status;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 public class UniverseCRUDHandler {
 
@@ -226,34 +227,29 @@ public class UniverseCRUDHandler {
     if (StringUtils.isEmpty(primaryIntent.accessKeyCode)) {
       primaryIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
-    if (PlacementInfoUtil.checkIfNodeParamsValid(taskParams, cluster)) {
+    try {
+      Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
+      PlacementInfoUtil.updateUniverseDefinition(
+          taskParams, universe, customer.getCustomerId(), cluster.uuid);
       try {
-        Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
-        PlacementInfoUtil.updateUniverseDefinition(
-            taskParams, universe, customer.getCustomerId(), cluster.uuid);
-        try {
-          if (taskParams
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(Common.CloudType.kubernetes)) {
-            taskParams.updateOptions =
-                Collections.singleton(
-                    UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
-          } else {
-            taskParams.updateOptions = getUpdateOptions(taskParams, cluster, universe);
-          }
-        } catch (Exception e) {
-          LOG.error("Failed to calculate update options", e);
+        if (taskParams
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)) {
+          taskParams.updateOptions =
+              Collections.singleton(
+                  UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
+        } else {
+          taskParams.updateOptions = getUpdateOptions(taskParams, cluster, universe);
         }
-        UniverseResp.fillClusterRegions(taskParams.clusters);
-      } catch (IllegalStateException | UnsupportedOperationException e) {
-        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      } catch (Exception e) {
+        LOG.error("Failed to calculate update options", e);
       }
-    } else {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Invalid Node/AZ combination for given instance type " + cluster.userIntent.instanceType);
+      UniverseResp.fillClusterRegions(taskParams.clusters);
+    } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
+      LOG.error("Failed to update universe definition", e);
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
   }
 
@@ -348,22 +344,22 @@ public class UniverseCRUDHandler {
     }
 
     if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
-      if (taskParams.clientRootCA == null) {
+      if (taskParams.getClientRootCA() == null) {
         if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
           // Setting ClientRootCA to RootCA in case rootAndClientRootCA is true
-          taskParams.clientRootCA = taskParams.rootCA;
+          taskParams.setClientRootCA(taskParams.rootCA);
         } else {
           // create self-signed clientRootCA in case it is not provided by the user
           // and root and clientRoot CA needs to be different
-          taskParams.clientRootCA =
+          taskParams.setClientRootCA(
               CertificateHelper.createClientRootCA(
                   runtimeConfigFactory.staticApplicationConf(),
                   taskParams.nodePrefix,
-                  customer.uuid);
+                  customer.uuid));
         }
       }
 
-      cert = CertificateInfo.get(taskParams.clientRootCA);
+      cert = CertificateInfo.get(taskParams.getClientRootCA());
       if (cert.certType == CertConfigType.CustomCertHostPath) {
         if (!taskParams
             .getPrimaryCluster()
@@ -387,17 +383,17 @@ public class UniverseCRUDHandler {
               INTERNAL_SERVER_ERROR,
               String.format(
                   "Error while dumping certs from Vault for certificate: %s",
-                  taskParams.clientRootCA));
+                  taskParams.getClientRootCA()));
         }
       }
 
-      checkValidRootCA(taskParams.clientRootCA);
+      checkValidRootCA(taskParams.getClientRootCA());
 
       // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
       // This is necessary to set to ensure backward compatibility as existing parts of
       // codebase (kubernetes) uses rootCA for Client to Node Encryption
       if (taskParams.rootCA == null && taskParams.rootAndClientRootCASame) {
-        taskParams.rootCA = taskParams.clientRootCA;
+        taskParams.rootCA = taskParams.getClientRootCA();
       }
 
       // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
@@ -627,7 +623,11 @@ public class UniverseCRUDHandler {
         }
       }
 
-      universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
+      // other configs enabled by default
+      universe.updateConfig(
+          ImmutableMap.of(
+              Universe.TAKE_BACKUPS, "true",
+              Universe.KEY_CERT_HOT_RELOADABLE, "true"));
       universe.save();
       // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
       // non legacy cluster for proper operations.
@@ -697,6 +697,9 @@ public class UniverseCRUDHandler {
       taskParams.ybcSoftwareVersion = u.getUniverseDetails().ybcSoftwareVersion;
       taskParams.ybcInstalled = true;
     }
+
+    // Set existing LBs into taskParams
+    taskParams.setExistingLBs(u.getUniverseDetails().clusters);
 
     if (taskParams.getPrimaryCluster() == null) {
       // Update of a read only cluster.
@@ -1537,11 +1540,6 @@ public class UniverseCRUDHandler {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
 
-    if (taskParams.rootAndClientRootCASame == null) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST, "rootAndClientRootCASame cannot be null.");
-    }
-
     boolean nodeToNodeChange =
         taskParams.enableNodeToNodeEncrypt != null
             && taskParams.enableNodeToNodeEncrypt != userIntent.enableNodeToNodeEncrypt;
@@ -1552,13 +1550,16 @@ public class UniverseCRUDHandler {
 
     boolean rootCaChange =
         taskParams.rootCA != null && !taskParams.rootCA.equals(universeDetails.rootCA);
+    boolean rootAndClientRootCASameToggled =
+        (taskParams.rootAndClientRootCASame != universeDetails.rootAndClientRootCASame);
     boolean clientRootCaChange =
         !taskParams.rootAndClientRootCASame
-            && taskParams.clientRootCA != null
-            && !taskParams.clientRootCA.equals(universeDetails.clientRootCA);
+            && taskParams.getClientRootCA() != null
+            && !taskParams.getClientRootCA().equals(universeDetails.getClientRootCA());
     boolean certsRotate =
         rootCaChange
             || clientRootCaChange
+            || rootAndClientRootCASameToggled
             || taskParams.createNewRootCA
             || taskParams.createNewClientRootCA
             || taskParams.selfSignedServerCertRotate
@@ -1567,7 +1568,7 @@ public class UniverseCRUDHandler {
     if (tlsToggle && certsRotate) {
       if (((rootCaChange || taskParams.createNewRootCA) && universeDetails.rootCA != null)
           || ((clientRootCaChange || taskParams.createNewClientRootCA)
-              && universeDetails.clientRootCA != null)) {
+              && universeDetails.getClientRootCA() != null)) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
             "Cannot enable/disable TLS along with cert rotation. Perform them individually.");
@@ -1625,10 +1626,10 @@ public class UniverseCRUDHandler {
           !(taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt);
       tlsToggleParams.rootCA =
           isRootCA ? (!taskParams.createNewRootCA ? taskParams.rootCA : null) : null;
-      tlsToggleParams.clientRootCA =
+      tlsToggleParams.setClientRootCA(
           isClientRootCA
-              ? (!taskParams.createNewClientRootCA ? taskParams.clientRootCA : null)
-              : null;
+              ? (!taskParams.createNewClientRootCA ? taskParams.getClientRootCA() : null)
+              : null);
       return upgradeUniverseHandler.toggleTls(tlsToggleParams, customer, universe);
     }
 
@@ -1652,11 +1653,11 @@ public class UniverseCRUDHandler {
     }
 
     if (isClientRootCA && taskParams.createNewClientRootCA) {
-      taskParams.clientRootCA =
+      taskParams.setClientRootCA(
           CertificateHelper.createClientRootCA(
               runtimeConfigFactory.staticApplicationConf(),
               universeDetails.nodePrefix,
-              customer.uuid);
+              customer.uuid));
     }
     // taskParams has the same subset of overridable fields as CertsRotateParams.
     // taskParams is already merged with universe details.

@@ -39,6 +39,5 @@ abstract class RuntimeConfigKeysModule extends AbstractModule {
         }
       }
     }
-    // TODO do same for other scopes
   }
 }

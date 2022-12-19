@@ -405,6 +405,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
 
+  HybridTime get_cdc_sdk_safe_time();
+
   OpId cdc_sdk_min_checkpoint_op_id();
 
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();

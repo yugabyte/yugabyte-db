@@ -10,6 +10,12 @@
 import axios from 'axios';
 import { ROOT_URL } from '../../../config';
 
+export function getNameSpaces(uUUID: string) {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${uUUID}/namespaces`;
+  return axios.get(requestUrl).then((resp) => resp.data);
+}
+
 export function getPITRConfigs(uUUID: string) {
   const cUUID = localStorage.getItem('customerId');
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${uUUID}/pitr_config`;

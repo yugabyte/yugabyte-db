@@ -125,11 +125,11 @@ std::string PgsqlOp::ToString() const {
                 is_read() ? "READ" : "WRITE", active_, read_time_, RequestToString());
 }
 
-PgsqlReadOp::PgsqlReadOp(Arena* arena, bool is_region_local)
+PgsqlReadOp::PgsqlReadOp(ThreadSafeArena* arena, bool is_region_local)
     : PgsqlOp(arena, is_region_local), read_request_(arena) {
 }
 
-PgsqlReadOp::PgsqlReadOp(Arena* arena, const PgTableDesc& desc, bool is_region_local)
+PgsqlReadOp::PgsqlReadOp(ThreadSafeArena* arena, const PgTableDesc& desc, bool is_region_local)
     : PgsqlReadOp(arena, is_region_local) {
   read_request_.set_client(YQL_CLIENT_PGSQL);
   read_request_.dup_table_id(desc.id().GetYbTableId());
@@ -144,7 +144,7 @@ Status PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
 
 PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<void>& shared_ptr) const {
   auto result = ArenaMakeShared<PgsqlReadOp>(
-      std::shared_ptr<Arena>(shared_ptr, &arena()), &arena(), is_region_local());
+      std::shared_ptr<ThreadSafeArena>(shared_ptr, &arena()), &arena(), is_region_local());
   result->read_request() = read_request();
   result->read_from_followers_ = read_from_followers_;
   return result;
@@ -154,7 +154,7 @@ std::string PgsqlReadOp::RequestToString() const {
   return read_request_.ShortDebugString();
 }
 
-PgsqlWriteOp::PgsqlWriteOp(Arena* arena, bool need_transaction, bool is_region_local)
+PgsqlWriteOp::PgsqlWriteOp(ThreadSafeArena* arena, bool need_transaction, bool is_region_local)
     : PgsqlOp(arena, is_region_local), write_request_(arena),
       need_transaction_(need_transaction) {
 }
@@ -169,7 +169,7 @@ std::string PgsqlWriteOp::RequestToString() const {
 
 PgsqlOpPtr PgsqlWriteOp::DeepCopy(const std::shared_ptr<void>& shared_ptr) const {
   auto result = ArenaMakeShared<PgsqlWriteOp>(
-      std::shared_ptr<Arena>(shared_ptr, &arena()), &arena(), need_transaction_,
+      std::shared_ptr<ThreadSafeArena>(shared_ptr, &arena()), &arena(), need_transaction_,
       is_region_local());
   result->write_request() = write_request();
   return result;

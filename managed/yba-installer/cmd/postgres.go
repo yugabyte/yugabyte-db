@@ -38,14 +38,14 @@ func NewPostgres(installRoot, version string) Postgres {
 	return Postgres{
 		"postgres",
 		common.SystemdDir + "/postgres.service",
-		common.InstallRoot + "/pgsql/conf",
+		common.GetInstallRoot() + "/pgsql/conf",
 		"yba-installer-postgres.yml",
 		version,
-		common.InstallRoot + "/pgsql/run/postgresql",
-		common.InstallRoot + "/data/postgres",
-		common.InstallRoot + "/pgsql/bin",
-		common.InstallRoot + "/data/logs/postgres.log",
-		fmt.Sprintf("%s/%s/managePostgres.sh", common.InstallVersionDir, common.CronDir)}
+		common.GetInstallRoot() + "/pgsql/run/postgresql",
+		common.GetInstallRoot() + "/data/postgres",
+		common.GetInstallRoot() + "/pgsql/bin",
+		common.GetInstallRoot() + "/data/logs/postgres.log",
+		fmt.Sprintf("%s/%s/managePostgres.sh", common.GetInstallVersionDir(), common.CronDir)}
 }
 
 // TemplateFile returns service's templated config file path
@@ -114,7 +114,7 @@ func (pg Postgres) Stop() {
 	} else {
 
 		// Delete the file used by the crontab bash script for monitoring.
-		os.RemoveAll(common.InstallRoot + "/postgres/testfile")
+		os.RemoveAll(common.GetInstallRoot() + "/postgres/testfile")
 
 		command1 := "bash"
 		arg1 := []string{"-c",
@@ -168,7 +168,7 @@ func (pg Postgres) extractPostgresPackage() {
 	// TODO: Replace with tar package
 	command1 := "bash"
 	arg1 := []string{"-c", "tar -zvxf " + common.BundledPostgresName + " -C " +
-		common.InstallRoot}
+		common.GetInstallRoot()}
 
 	common.ExecuteBashCommand(command1, arg1)
 
@@ -178,7 +178,7 @@ func (pg Postgres) extractPostgresPackage() {
 
 func (pg Postgres) runInitDB() {
 
-	common.Create(common.InstallRoot + "/data/logs/postgres.log")
+	common.Create(common.GetInstallRoot() + "/data/logs/postgres.log")
 
 	// Needed for socket acceptance in the non-root case.
 	common.CreateDir(pg.MountPath, os.ModePerm)

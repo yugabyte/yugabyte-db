@@ -16,7 +16,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 namespace yb {
 namespace docdb {

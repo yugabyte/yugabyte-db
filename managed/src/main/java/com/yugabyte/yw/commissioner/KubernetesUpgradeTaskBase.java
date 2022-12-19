@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -134,7 +135,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
 
     String masterAddresses =
-        PlacementInfoUtil.computeMasterAddresses(
+        KubernetesUtil.computeMasterAddresses(
             placementInfo,
             placement.masters,
             taskParams().nodePrefix,

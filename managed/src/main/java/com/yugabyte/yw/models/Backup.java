@@ -654,6 +654,28 @@ public class Backup extends Model {
     return backupList.size() != 0;
   }
 
+  public static Optional<BackupTableParams> findBackupParamsWithStorageLocation(
+      String storageLocation) {
+    List<Backup> backupList = find.query().findList();
+    List<BackupTableParams> backupParams = new ArrayList<>();
+
+    for (Backup b : backupList) {
+      Optional<BackupTableParams> backupTableParams =
+          b.getBackupInfo()
+              .backupList
+              .stream()
+              .filter(bL -> bL.storageLocation.equals(storageLocation))
+              .findFirst();
+      if (backupTableParams.isPresent()) {
+        backupParams.add(backupTableParams.get());
+      }
+    }
+    if (backupParams.size() == 0) {
+      return Optional.empty();
+    }
+    return Optional.of(backupParams.get(0));
+  }
+
   public static Set<Universe> getAssociatedUniverses(UUID customerUUID, UUID configUUID) {
     Set<UUID> universeUUIDs = new HashSet<>();
     List<Backup> backupList = getInProgressAndCompleted(customerUUID);

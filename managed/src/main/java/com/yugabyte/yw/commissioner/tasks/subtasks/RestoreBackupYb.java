@@ -11,9 +11,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.RestoreKeyspace;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
+import java.util.Optional;
 import javax.inject.Inject;
 
 import java.util.HashMap;
@@ -38,8 +42,12 @@ public class RestoreBackupYb extends AbstractTaskBase {
 
   @Override
   public void run() {
-
+    RestoreKeyspace restoreKeyspace = null;
     try {
+
+      log.info("Creating entry for restore keyspace: {}", taskUUID);
+      restoreKeyspace = RestoreKeyspace.create(TaskInfo.getOrBadRequest(taskUUID));
+
       ShellResponse response = restoreManagerYb.runCommand(taskParams());
       JsonNode jsonNode = null;
       try {
@@ -50,12 +58,19 @@ public class RestoreBackupYb extends AbstractTaskBase {
       }
       if (response.code != 0 || jsonNode.has("error")) {
         log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
+        restoreKeyspace.update(taskUUID, TaskInfo.State.Failure);
         throw new RuntimeException(response.message);
       } else {
         log.info("[" + getName() + "] STDOUT: " + response.message);
+        long backupSize = restoreKeyspace.getBackupSizeFromStorageLocation();
+        Restore.updateRestoreSizeForRestore(taskUUID, backupSize);
+        restoreKeyspace.update(taskUUID, TaskInfo.State.Success);
       }
     } catch (Exception e) {
       log.error("Errored out with: " + e);
+      if (restoreKeyspace != null) {
+        restoreKeyspace.update(taskUUID, TaskInfo.State.Failure);
+      }
       throw new RuntimeException(e);
     }
   }

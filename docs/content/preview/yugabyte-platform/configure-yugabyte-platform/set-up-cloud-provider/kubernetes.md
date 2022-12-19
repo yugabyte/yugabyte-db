@@ -38,7 +38,7 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -52,7 +52,7 @@ type: docs
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
@@ -364,8 +364,99 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       runAsUser: 10001
       runAsGroup: 10001
     ```
+    Note that you cannot change users during the Helm upgrades.
 
-    <br>Note that you cannot change users during the Helm upgrades.
+  - Add `tolerations` in Master and Tserver pods. Tolerations work in combination with taints. `Taints` are applied on nodes and `Tolerations` to pods. Taints and tolerations work together to ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes and use taints + tolerations to prevent other pods from getting scheduled on the dedicated nodes if required.
+  For more information, see [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core).
+
+    ```yml
+    ## Consider node has following taint.
+    ## kubectl taint nodes node1 dedicated=experimental:NoSchedule-
+
+    master:
+      tolerations:
+      - key: dedicated
+        operator: Equal
+        value: experimental
+        effect: NoSchedule
+
+    tserver:
+      tolerations: []
+    ```
+
+  - You can use `nodeSelector` to schedule Master and TServer pods on dedicated nodes. For more information, see [Node Selector](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector).
+
+    ```yml
+    ## The pod will get scheduled on a node that has a topology.kubernetes.io/zone=asia-south2-a label.
+    nodeSelector:
+      topology.kubernetes.io/zone: asia-south2-a
+    ```
+
+  - Add `affinity` in Master and TServer pods. The `affinity` allows the Kubernetes scheduler to place a pod on a set of nodes or a pod relative to the placement of other pods. You can use `nodeAffinity` rules to control pod placements on a set of nodes. In contrast, `podAffinity` or `podAntiAffinity` rules provide the ability to control pod placements relative to other pods. For more information, see [Affinity API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#affinity-v1-core).
+
+    ```yml
+    ## Following example can be used to prevent scheduling of multiple master pods on single kubernetes node.
+    master:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "yb-master"
+            topologyKey: kubernetes.io/hostname
+
+    tserver:
+      affinity: {}
+    ```
+
+  - Add `annotations` to Master and Tserver pods. The Kubernetes `annotations` can attach arbitrary metadata to objects. For more information, see [Annotations](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/).
+
+    ```yml
+    master:
+      podAnnotations:
+        application: "yugabytedb"
+
+    tserver:
+      podAnnotations: {}
+    ```
+
+  - Add `labels` to Master and Tserver pods. The Kubernetes `labels` are key/value pairs attached to objects. The `labels` are used to specify identifying attributes of objects that are meaningful and relevant to you. For more information, see [Labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/).
+
+    ```yml
+    master:
+      podLabels:
+        environment: production
+        app: yugabytedb
+        prometheus.io/scrape: true
+
+    tserver:
+      podLabels: {}
+    ```
+
+  - You can use the following preflight checks to verify YugabyteDB prerequisites:
+    1. DNS address resolution
+    2. Disk IO
+    3. Port available for bind
+    4. Ulimit
+
+    For more information, see [Prerequisites](https://docs.yugabyte.com/preview/deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
+
+    ```yml
+    ## Default values
+    preflight:
+      ## Set to true to skip disk IO check, DNS address resolution, and port bind checks
+      skipAll: false
+
+      ## Set to true to skip port bind checks
+      skipBind: false
+
+      ## Set to true to skip ulimit verification
+      ## SkipAll has higher priority
+      skipUlimit: false
+    ```
 
 Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
 
