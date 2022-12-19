@@ -14,14 +14,11 @@
 
 #include "yb/rocksdb/metadata.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/kv_util.h"
 
 using std::endl;
 using rocksdb::Status;
 using rocksdb::SequenceNumber;
-
-using yb::FormatBytesAsStr;
-using yb::QuotesType;
-using yb::BinaryOutputFormat;
 
 namespace yb {
 
@@ -30,9 +27,13 @@ rocksdb::Status WriteBatchFormatter::PutCF(
     const SliceParts& key,
     const SliceParts& value) {
   StartOutputLine(__FUNCTION__);
-  OutputKey(key.TheOnlyPart());
+  KeyBuffer key_buffer;
+  Slice key_slice = key.AsSingleSlice(&key_buffer);
+  OutputKey(key_slice);
   AddSeparator();
-  OutputValue(key.TheOnlyPart(), value.TheOnlyPart());
+  ValueBuffer value_buffer;
+  Slice value_slice = value.AsSingleSlice(&value_buffer);
+  OutputValue(key_slice, value_slice);
   FinishOutputLine();
   return Status::OK();
 }
