@@ -5,7 +5,7 @@ description: Refer to the known issues when migrating data using YugabyteDB Voya
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
-    identifier: troubleshoot-voyager
+    identifier: known-issues-voyager
     parent: voyager
     weight: 106
 type: docs
