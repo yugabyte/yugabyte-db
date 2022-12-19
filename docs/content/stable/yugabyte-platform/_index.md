@@ -48,7 +48,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 
 ## Use YugabyteDB Anywhere
 
-{{< sections/3-boxes >}}
+{{< sections/3-boxes>}}
   {{< sections/3-box-card
     title="Deploy"
     description="Deploy multi-region, multi-zone, and multi-cloud universes."
@@ -62,25 +62,25 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     buttonText="Manage"
     buttonUrl="manage-deployments/"
   >}}
-
+ 
   {{< sections/3-box-card
     title="Back up"
     description="Configure storage, back up and restore universe data."
     buttonText="Back up"
     buttonUrl="back-up-restore-universes/"
   >}}
-{{< /sections/3-boxes >}}
+{{< /sections/3-boxes>}}
 
 ## Continue learning
 
-{{< sections/3-boxes >}}
+{{< sections/3-boxes>}}
   {{< sections/3-box-card
 	title="Build applications"
 	description="Start coding in your favorite programming language using examples."
 	buttonText="Get Started"
 	buttonUrl="../develop/build-apps/"
   >}}
-
+  
   {{< sections/3-box-card
 	title="Yugabyte University"
 	subTitle="FREE COURSES AND WORKSHOPS"
@@ -91,7 +91,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 	linkUrl2="https://university.yugabyte.com/courses/ysql-exercises-simple-queries"
 	linkTarget2="_blank"
   >}}
-
+  
   {{< sections/3-box-card
 	title="Support"
 	linkText1="Contact Support"
@@ -101,4 +101,5 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 	linkUrl2="https://communityinviter.com/apps/yugabyte-db/register"
 	linkTarget2="_blank"
   >}}
-{{< /sections/3-boxes >}}
+{{< /sections/3-boxes>}}
+

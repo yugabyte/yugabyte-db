@@ -40,11 +40,11 @@
   h3[id],
   h4[id],
   h5[id] {
-    &::before{
+    &::before {
       height: 7.5rem;
       margin-top: -7.5rem;
-      
     }
+
     > a[aria-hidden] {
       &::after {
         content: "";
@@ -84,7 +84,8 @@
     }
 
     &:not(:first-child) {
-      margin: 4.5rem 0 1rem 0;
+      margin: 64px 0 24px 0;
+      margin: 72px 0 16px 0;
     }
   }
 

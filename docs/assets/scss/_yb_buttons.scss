@@ -139,4 +139,27 @@ body {
       border: 1px solid #2b59c3;
     }
   }
+
+  .arrow-btn {
+    color: #507ce1;
+    font-weight: 500;
+    font-size: 15px;
+    line-height: 24px;
+    display: block;
+
+    &:not(:last-child) {
+      margin-bottom: 8px;
+    }
+
+    img {
+      width: 24px;
+      height: 24px;
+      margin: 0;
+    }
+
+    &:hover {
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+  }
 }

@@ -1,7 +1,7 @@
 .single-col-image {
   display: flex;
   flex-flow: row wrap;
-  margin: 0 -16px 0;
+  margin: 64px -16px;
 
   > div {
     flex: 0 0 calc(50% - 32px);
@@ -53,11 +53,12 @@
   display: flex;
   flex-flow: row wrap;
   padding: 0 !important;
-  margin: 32px -16px !important;
+  margin: 64px -16px !important;
+  gap: 32px 0;
 
   > div {
     flex: 0 0 calc(50% - 32px);
-    margin: 32px 16px 16px;
+    margin: 0 16px 0;
     border: 1px solid #d7dee4;
     background: #fff;
     overflow: hidden;
@@ -80,6 +81,8 @@
       font-weight: 600;
       line-height: 24px;
       margin: 0 0 16px;
+      position: relative;
+      z-index: 1;
     }
 
     .card-desc {
@@ -89,6 +92,8 @@
       margin-bottom: 16px;
       width: 364px;
       max-width: 100%;
+      position: relative;
+      z-index: 1;
     }
 
     .card-img {
@@ -102,6 +107,9 @@
     }
 
     .card-link {
+      position: relative;
+      z-index: 1;
+
       a {
         &::before {
           content: "";
@@ -126,11 +134,41 @@
   display: flex;
   flex-flow: row wrap;
   padding: 0 !important;
-  margin: 32px -8px !important;
+  margin: 0 -8px !important;
+  gap: 16px 0;
+
+  .card-title {
+    color: #000;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 24px;
+    margin: 0 0 24px;
+  }
+
+  .card-desc {
+    color: #000;
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  &.three-col-left-icon {
+    > div {
+      padding: 24px 17px 24px 24px;
+
+      .card-img {
+        width: 32px;
+        height: 32px;
+        margin: 0 0 16px;
+        background: transparent;
+        aspect-ratio: 1;
+        border: none;
+      }
+    }
+  }
 
   > div {
     flex: 0 0 calc(33% - 13px);
-    margin: 8px;
+    margin: 0 8px;
     border: 1px solid #d7dee4;
     background: #fff;
     overflow: hidden;
@@ -138,7 +176,7 @@
     display: inline-flex;
     flex-flow: column;
     position: relative;
-    padding: 0 24px 24px;
+    padding: 0 17px 24px 24px;
     transition: all 300ms ease;
     width: auto;
 
@@ -179,20 +217,6 @@
       border-bottom: 1px solid #d7dee4;
     }
 
-    .card-title {
-      color: #000;
-      font-weight: 600;
-      font-size: 14px;
-      line-height: 24px;
-      margin: 0 0 16px;
-    }
-
-    .card-desc {
-      color: #000;
-      font-size: 14px;
-      line-height: 22px;
-    }
-
     &.card-multi-links {
       .card-desc {
         margin-bottom: 16px;
@@ -212,17 +236,57 @@
   }
 }
 
-.three-col-left-icon {
-  > div {
-    padding: 24px;
+@media (max-width: 1280px) {
+  .two-col-side-image > div {
+    flex: none;
+    flex: 1 1 calc(50% - 32px);
+    //max-width: 100%;
+    padding-right: 75px;
+  }
 
-    .card-img {
-      width: 32px;
-      height: 32px;
-      margin: 0 0 16px;
-      background: transparent;
-      aspect-ratio: 1;
-      border: none;
+  .three-col-top-image > div,
+  .three-col-left-icon > div {
+    //flex: none;
+    flex: 1 1 calc(33.3% - 16px);
+  }
+}
+
+@media (max-width: 991px) {
+  .single-col-image {
+    gap: 24px;
+
+    > div,
+    > div.card-img {
+      flex: 1 1 100%;
+    }
+  }
+
+  .three-col-top-image > div .card-img {
+    text-align: center;
+    max-height: 165px;
+  }
+
+  .two-col-side-image {
+    flex-flow: column;
+  }
+
+  .two-col-side-image > div {
+    padding-right: 50px;
+  }
+
+  .three-col-top-image > div,
+  .three-col-left-icon > div {
+    flex: 1 0 calc(50% - 16px);
+  }
+}
+
+@media (max-width: 600px) {
+  .three-col-top-image,
+  .three-col-left-icon {
+    flex-flow: column;
+
+    > div {
+      max-width: 100%;
     }
   }
 }
