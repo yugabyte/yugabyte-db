@@ -91,11 +91,11 @@ The number of available addresses and sizing recommendation depends on the cloud
 
 In AWS, you assign the range to a single region. If you need multiple regions, you create a separate VPC for each region.
 
-For typical applications, a size of /25 is sufficient. /26 should only be used for testing and development.
+Use at least `/25` for production deployments, and `/24` if deploying multiple clusters in a single VPC. `/26` should only be used for testing and development.
 
-When sizing the VPC, you need to take into account that the address range is split into subnets, each in a separate availability zone, and that AWS reserves 5 addresses per subnet. A further 8 addresses are required by the load balancer.
+When sizing the VPC, you need to take into account that the address range is split into subnets, each in a separate availability zone, and that AWS reserves 5 addresses per subnet. A further 8 addresses are required by AWS when creating the load balancer, though it typically only uses one or two addresses while running. If you enable public access on your cluster, two load balancers are created, one for VPC peered connections, and one for public connections.
 
-For example, in a size /26 VPC, each subnet is size /28, which is 16 addresses per subnet; 5 addresses are reserved by AWS, and 8 addresses are required to create a load balancer, which leaves only 3 usable addresses. This limits you to 3 nodes per zone in a /26 VPC with the regular load balancer, and only 2 usable nodes if you want to enable public access.
+For example, in a size `/26` VPC, each subnet is size `/28`, which is 16 addresses per subnet; 5 addresses are reserved by AWS, and 8 addresses are required to create a load balancer, which leaves only 3 usable addresses. This limits you to 3 nodes per zone in a `/26` VPC with the regular load balancer, and only 2 usable nodes if you want to enable public access.
 
 | Network Size<br/>(prefix length) | IP Addresses | IP addresses per subnet | Available IP addresses per subnet |
 | :--- | :--- | :--- | :--- |
