@@ -183,11 +183,6 @@ public class Provider extends Model {
 
   @ApiModelProperty public String destVpcId = null;
 
-  @Deprecated // should be a runtime config at customer level
-  @Transient
-  @ApiModelProperty(value = TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST, hidden = true)
-  public boolean overrideKeyValidate = false;
-
   // Hosted Zone for the deployment
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)

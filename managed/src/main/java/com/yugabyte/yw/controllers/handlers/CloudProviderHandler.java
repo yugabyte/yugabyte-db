@@ -46,6 +46,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AccessKey;
@@ -84,6 +85,7 @@ import play.libs.Json;
 
 public class CloudProviderHandler {
   public static final String YB_FIREWALL_TAGS = "YB_FIREWALL_TAGS";
+  public static final String SKIP_KEYPAIR_VALIDATION_KEY = "yb.provider.skip_keypair_validation";
 
   private static final Logger LOG = LoggerFactory.getLogger(CloudProviderHandler.class);
   private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE =
@@ -115,6 +117,7 @@ public class CloudProviderHandler {
   @Inject private CloudQueryHelper queryHelper;
   @Inject private AccessKeyRotationUtil accessKeyRotationUtil;
   @Inject private ProviderEditRestrictionManager providerEditRestrictionManager;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
@@ -603,6 +606,9 @@ public class CloudProviderHandler {
   public UUID bootstrap(Customer customer, Provider provider, CloudBootstrap.Params taskParams) {
     // Set the top-level provider info.
     taskParams.providerUUID = provider.uuid;
+    taskParams.skipKeyPairValidate =
+        runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
+
     // If the regionList is still empty by here, then we need to list the regions available.
     if (taskParams.perRegionMetadata == null) {
       taskParams.perRegionMetadata = new HashMap<>();
@@ -732,7 +738,8 @@ public class CloudProviderHandler {
           Strings.isNullOrEmpty(editProviderReq.keyPairName)
               ? AccessKey.getDefaultKeyCode(provider)
               : editProviderReq.keyPairName;
-      taskParams.overrideKeyValidate = editProviderReq.overrideKeyValidate;
+      taskParams.skipKeyPairValidate =
+          runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
       taskParams.providerUUID = provider.uuid;
       taskParams.destVpcId = editProviderReq.destVpcId;
       taskParams.perRegionMetadata =
