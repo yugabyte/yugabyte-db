@@ -555,7 +555,6 @@ class AWSProviderInitView extends Component {
           regionFormVals['sshPrivateKeyContent'] = reader.result;
         };
       }
-      regionFormVals['overrideKeyValidate'] = formValues.overrideKeyValidate;
       return this.props.createAWSProvider(
         formValues.accountName,
         awsProviderConfig,
@@ -780,7 +779,6 @@ class AWSProviderInitView extends Component {
       <Fragment>
         {nameRow}
         {pemContentRow}
-        {this.rowOverrideKeyValidateToggle()}
       </Fragment>
     );
   }
@@ -849,22 +847,6 @@ class AWSProviderInitView extends Component {
       </Row>
     );
 
-  }
-
-  rowOverrideKeyValidateToggle() {
-    const label = 'Override Custom KeyPair Validation';
-    const tooltipContent =
-      'Would you like YugaWare to NOT validate KeyPair with AWS?';
-    return this.generateRow(
-      label,
-      <Field
-        name="overrideKeyValidate"
-        component={YBToggle}
-        defaultChecked={false}
-        infoTitle={label}
-        infoContent={tooltipContent}
-      />
-    );
   }
 
   render() {
