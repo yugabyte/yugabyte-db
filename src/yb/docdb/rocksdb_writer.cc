@@ -448,7 +448,7 @@ ApplyIntentsContext::ApplyIntentsContext(
     rocksdb::DB* intents_db)
     : IntentsWriterContext(transaction_id),
       apply_state_(apply_state),
-      // In case we have passed in a non-null apply_state, it's aborted set will have been loaded
+      // In case we have passed in a non-null apply_state, its aborted set will have been loaded
       // from persisted apply state, and the passed in aborted set will correspond to the aborted
       // set at commit time. Rather then copy that set upstream so it is passed in as aborted, we
       // simply grab a reference to it here, if it is defined, to use in this method.

@@ -307,34 +307,6 @@ class Slice {
   // Intentionally copyable
 };
 
-struct SliceParts {
-  SliceParts(const Slice* _parts, int _num_parts) :
-      parts(_parts), num_parts(_num_parts) { }
-  SliceParts() : parts(nullptr), num_parts(0) {}
-
-  template<size_t N>
-  SliceParts(const std::array<Slice, N>& input) // NOLINT
-      : parts(input.data()), num_parts(N) {
-  }
-
-  std::string ToDebugHexString() const;
-
-  // Sum of sizes of all slices.
-  size_t SumSizes() const;
-
-  // Copy content of all slice to specified buffer.
-  void* CopyAllTo(void* out) const {
-    return CopyAllTo(static_cast<char*>(out));
-  }
-
-  char* CopyAllTo(char* out) const;
-
-  Slice TheOnlyPart() const;
-
-  const Slice* parts;
-  int num_parts;
-};
-
 inline bool operator==(const Slice& x, const Slice& y) {
   return ((x.size() == y.size()) &&
           (Slice::MemEqual(x.data(), y.data(), x.size())));

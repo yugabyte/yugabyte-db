@@ -227,6 +227,7 @@ set(UTIL_SRCS
   shared_mem.cc
   signal_util.cc
   slice.cc
+  slice_parts.cc
   spinlock_profiling.cc
   split.cc
   stack_trace.cc
