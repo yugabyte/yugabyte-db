@@ -17,14 +17,15 @@ For on-premises deployments of YugabyteDB universes, you need to import nodes th
 
 The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the YugabyteDB Anywhere node):
 
-* 7100 - Master RPC
-* 9100 - TServer RPC
+* 7100 - YB-Master RPC
+* 9100 - YB-TServer RPC
+* 18018 - YB Controller
 
 The following ports must be exposed for intra-cluster communication, and you should expose these ports to administrators or users monitoring the system, as these ports provide diagnostic troubleshooting and metrics:
 
 * 9300 - Prometheus metrics
-* 7000 - Master HTTP endpoint
-* 9000 - TServer HTTP endpoint
+* 7000 - YB-Master HTTP endpoint
+* 9000 - YB-TServer HTTP endpoint
 * 11000 - YEDIS API
 * 12000 - YCQL API
 * 13000 - YSQL API

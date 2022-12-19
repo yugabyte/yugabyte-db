@@ -65,7 +65,7 @@ In order to access YugabyteDB Anywhere from outside the AWS environment, you wou
 - Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
 - View the YugabyteDB Anywhere UI (port `tcp:80`).
 
-If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 18018, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
 To create a security group that enables these, use the Amazon console to navigate to **EC2 > Security Groups**, click **Create Security Group**, and then add the following values:
 
