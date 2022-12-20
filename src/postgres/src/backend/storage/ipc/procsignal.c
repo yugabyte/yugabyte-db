@@ -24,6 +24,7 @@
 #include "storage/latch.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
+#include "storage/procsignal.h"
 #include "storage/shmem.h"
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
@@ -64,7 +65,6 @@ static ProcSignalSlot *ProcSignalSlots = NULL;
 static volatile ProcSignalSlot *MyProcSignalSlot = NULL;
 
 static bool CheckProcSignal(ProcSignalReason reason);
-static void CleanupProcSignalState(int status, Datum arg);
 
 /*
  * ProcSignalShmemSize
@@ -128,13 +128,34 @@ ProcSignalInit(int pss_idx)
 	on_shmem_exit(CleanupProcSignalState, Int32GetDatum(pss_idx));
 }
 
+/* CleanupProcSignalState
+ * 		Remove current process from ProcSignalSlots
+ */
+static void
+CleanupProcSignalStateInternal(PGPROC *proc, int procSignalSlotIndex, volatile ProcSignalSlot *slot)
+{
+	/* sanity check */
+	if (slot->pss_pid != proc->pid)
+	{
+		/*
+		 * don't ERROR here. We're exiting anyway, and don't want to get into
+		 * infinite loop trying to exit
+		 */
+		elog(LOG, "process %d releasing ProcSignal slot %d, but it contains %d",
+			 proc->pid, procSignalSlotIndex, (int) slot->pss_pid);
+		return;					/* XXX better to zero the slot anyway? */
+	}
+
+	slot->pss_pid = 0;
+}
+
 /*
  * CleanupProcSignalState
  *		Remove current process from ProcSignalSlots
  *
  * This function is called via on_shmem_exit() during backend shutdown.
  */
-static void
+void
 CleanupProcSignalState(int status, Datum arg)
 {
 	int			pss_idx = DatumGetInt32(arg);
@@ -150,19 +171,25 @@ CleanupProcSignalState(int status, Datum arg)
 	 */
 	MyProcSignalSlot = NULL;
 
-	/* sanity check */
-	if (slot->pss_pid != MyProcPid)
-	{
-		/*
-		 * don't ERROR here. We're exiting anyway, and don't want to get into
-		 * infinite loop trying to exit
-		 */
-		elog(LOG, "process %d releasing ProcSignal slot %d, but it contains %d",
-			 MyProcPid, pss_idx, (int) slot->pss_pid);
-		return;					/* XXX better to zero the slot anyway? */
-	}
+	CleanupProcSignalStateInternal(MyProc, pss_idx, slot);
+}
 
-	slot->pss_pid = 0;
+/*
+ * CleanupProcSignalStateForProc
+ *		Remove the given process from ProcSignalSlots
+ *
+ * This function is called from reaper() when the parent is notified that its
+ * child died unexpectedly.
+ */
+void
+CleanupProcSignalStateForProc(PGPROC *proc)
+{
+	int			pss_idx = proc->backendId;
+	volatile ProcSignalSlot *slot;
+
+	slot = &ProcSignalSlots[pss_idx - 1];
+
+	CleanupProcSignalStateInternal(proc, proc->backendId, slot);
 }
 
 /*
