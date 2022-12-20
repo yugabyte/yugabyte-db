@@ -74,26 +74,27 @@ public class NodeDetails {
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
-    ToBeAdded(DELETE),
+    ToBeAdded(DELETE, ADD),
     // Set when a new node is created in the cloud provider.
-    InstanceCreated(DELETE),
+    InstanceCreated(DELETE, ADD),
     // Set when a node has gone through the Ansible set-up task.
-    ServerSetup(DELETE),
-    // Set when a new node is provisioned and configured but before it is added into
+    ServerSetup(DELETE, ADD),
+    // Set when a new node is provisioned and configured, but before it is added into
     // the existing cluster.
-    ToJoinCluster(REMOVE),
-    // Set when reprovision node.
+    ToJoinCluster(REMOVE, ADD),
+    // Set when re-provisioning node. Used for third-party software upgrades.
     Reprovisioning(),
     // Set after the node (without any configuration) is created using the IaaS provider at the
     // end of the provision step before it is set up and configured.
-    Provisioned(DELETE),
+    Provisioned(DELETE, ADD),
     // Set after the YB software installed and some basic configuration done on a provisioned node.
-    SoftwareInstalled(START, DELETE),
+    SoftwareInstalled(START, DELETE, ADD),
     // Set after the YB software is upgraded via Rolling Restart.
     UpgradeSoftware(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
+    // Setting state to Live must be towards the end as ADD cannot be an option here.
     Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT),
     // Set when node is about to enter the stopped state.
     // The actions in Live state should apply because of the transition from Live to Stopping.
@@ -116,11 +117,13 @@ public class NodeDetails {
     // Set after the node has been removed (unjoined) from the cluster.
     Removed(ADD, RELEASE),
     // Set when node is about to enter the Live state from Removed/Decommissioned state.
-    Adding(DELETE, RELEASE),
+    // RELEASE is an option for convenience-
+    // If stuck in Adding stuck, we can just RELEASE instead of REMOVE and then RELEASE.
+    Adding(DELETE, RELEASE, ADD, REMOVE),
     // Set when a stopped/removed node is about to enter the Decommissioned state.
     // The actions in Removed state should apply because of the transition from Removed to
     // BeingDecommissioned.
-    BeingDecommissioned(ADD, RELEASE),
+    BeingDecommissioned(RELEASE),
     // After a stopped/removed node is returned back to the IaaS.
     Decommissioned(ADD, DELETE),
     // Set when the cert is being updated.
@@ -305,7 +308,7 @@ public class NodeDetails {
     return state != null && state.allowedActions().contains(actionType);
   }
 
-  /** Validates if the action is allowed on the state for the node. */
+  /* Validates if the action is allowed on the state for the node. */
   @JsonIgnore
   public void validateActionOnState(NodeActionType actionType) {
     if (!isActionAllowedOnState(actionType)) {
@@ -355,6 +358,14 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isInTransit() {
     return IN_TRANSIT_STATES.contains(state);
+  }
+
+  @JsonIgnore
+  public boolean isInTransit(NodeState omittedState) {
+    if (omittedState != state) {
+      return isInTransit();
+    }
+    return false;
   }
 
   // This is invoked to see if the node can be deleted from the universe JSON.

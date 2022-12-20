@@ -37,15 +37,15 @@ func NewPrometheus(installRoot, version string, isUpgrade bool) Prometheus {
 	return Prometheus{
 		"prometheus",
 		common.SystemdDir + "/prometheus.service",
-		common.InstallRoot + "/prometheus/conf/prometheus.yml",
+		common.GetInstallRoot() + "/prometheus/conf/prometheus.yml",
 		"yba-installer-prometheus.yml",
 		version,
 		isUpgrade,
 		// data directory
-		common.InstallRoot + "/data/prometheus",
+		common.GetInstallRoot() + "/data/prometheus",
 		// prometheus code/conf directory
-		common.InstallRoot + "/prometheus",
-		fmt.Sprintf("%s/%s/managePrometheus.sh", common.InstallVersionDir, common.CronDir)}
+		common.GetInstallRoot() + "/prometheus",
+		fmt.Sprintf("%s/%s/managePrometheus.sh", common.GetInstallVersionDir(), common.CronDir)}
 }
 
 func (prom Prometheus) getSystemdFile() string {
@@ -77,7 +77,7 @@ func (prom Prometheus) Install() {
 	//have the necesary access.
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
-		common.Chown(common.InstallRoot+"/prometheus", userName, userName, true)
+		common.Chown(common.GetInstallRoot()+"/prometheus", userName, userName, true)
 
 	}
 
@@ -101,7 +101,7 @@ func (prom Prometheus) Start() {
 	} else {
 		bashCmd := fmt.Sprintf("%s %d %d %d %d %d > /dev/null 2>&1 &",
 			prom.cronScript,
-			viper.GetInt("prometheus.externalPort"),
+			viper.GetInt("prometheus.port"),
 			viper.GetInt("prometheus.maxConcurrency"),
 			viper.GetInt("prometheus.maxSamples"),
 			viper.GetInt("prometheus.timeout"),
@@ -126,7 +126,7 @@ func (prom Prometheus) Stop() {
 	} else {
 
 		// Delete the file used by the crontab bash script for monitoring.
-		os.RemoveAll(common.InstallRoot + "/prometheus/testfile")
+		os.RemoveAll(common.GetInstallRoot() + "/prometheus/testfile")
 
 		commandCheck0 := "bash"
 		argCheck0 := []string{"-c", "pgrep prometheus"}
@@ -169,9 +169,9 @@ func (prom Prometheus) Uninstall(removeData bool) {
 func (prom Prometheus) moveAndExtractPrometheusPackage() {
 
 	srcPath := fmt.Sprintf(
-		"%s/third-party/prometheus-%s.linux-amd64.tar.gz", common.InstallVersionDir, prom.version)
+		"%s/third-party/prometheus-%s.linux-amd64.tar.gz", common.GetInstallVersionDir(), prom.version)
 	dstPath := fmt.Sprintf(
-		"%s/packages/prometheus-%s.linux-amd64.tar.gz", common.InstallVersionDir, prom.version)
+		"%s/packages/prometheus-%s.linux-amd64.tar.gz", common.GetInstallVersionDir(), prom.version)
 
 	common.CopyFileGolang(srcPath, dstPath)
 	rExtract, errExtract := os.Open(dstPath)
@@ -181,11 +181,11 @@ func (prom Prometheus) moveAndExtractPrometheusPackage() {
 	defer rExtract.Close()
 
 	extPackagePath := fmt.Sprintf(
-		"%s/packages/prometheus-%s.linux-amd64", common.InstallVersionDir, prom.version)
+		"%s/packages/prometheus-%s.linux-amd64", common.GetInstallVersionDir(), prom.version)
 	if _, err := os.Stat(extPackagePath); err == nil {
 		log.Debug(extPackagePath + " already exists, skipping re-extract.")
 	} else {
-		if err := tar.Untar(rExtract, common.InstallVersionDir+"/packages",
+		if err := tar.Untar(rExtract, common.GetInstallVersionDir()+"/packages",
 			tar.WithMaxUntarSize(-1)); err != nil {
 			log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", dstPath, err.Error()))
 		}
@@ -215,9 +215,9 @@ func (prom Prometheus) createPrometheusSymlinks() {
 
 	// Version specific promtheus that we untarred to packages.
 	promPkg := fmt.Sprintf("%s/packages/prometheus-%s.linux-amd64",
-		common.InstallVersionDir, prom.version)
+		common.GetInstallVersionDir(), prom.version)
 
-	promBinaryDir := common.InstallRoot + "/prometheus/bin"
+	promBinaryDir := common.GetInstallRoot() + "/prometheus/bin"
 
 	// Required for systemctl.
 	if common.HasSudoAccess() {
@@ -241,7 +241,7 @@ func (prom Prometheus) createPrometheusSymlinks() {
 func (prom Prometheus) Status() common.Status {
 	status := common.Status{
 		Service:   prom.Name(),
-		Port:      viper.GetInt("prometheus.externalPort"),
+		Port:      viper.GetInt("prometheus.port"),
 		Version:   prom.version,
 		ConfigLoc: prom.ConfFileLocation,
 	}
@@ -285,7 +285,7 @@ func (prom Prometheus) CreateCronJob() {
 	bashCmd := fmt.Sprintf(
 		"(crontab -l 2>/dev/null; echo \"@reboot %s %s %s %s %s %s \") | sort - | uniq - | crontab - ",
 		prom.cronScript,
-		config.GetYamlPathData("prometheus.externalPort"),
+		config.GetYamlPathData("prometheus.port"),
 		config.GetYamlPathData("prometheus.maxConcurrency"),
 		config.GetYamlPathData("prometheus.maxSamples"),
 		config.GetYamlPathData("prometheus.timeout"),

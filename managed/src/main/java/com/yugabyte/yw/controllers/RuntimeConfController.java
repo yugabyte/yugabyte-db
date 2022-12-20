@@ -72,6 +72,8 @@ public class RuntimeConfController extends AuthenticatedController {
 
   @Inject private RuntimeConfigChangeNotifier changeNotifier;
 
+  @Inject private Map<String, ConfKeyInfo<?>> keyMetaData;
+
   @Inject
   public RuntimeConfController(SettableRuntimeConfigFactory settableRuntimeConfigFactory) {
     this.settableRuntimeConfigFactory = settableRuntimeConfigFactory;
@@ -142,7 +144,7 @@ public class RuntimeConfController extends AuthenticatedController {
       responseContainer = "List",
       notes = "List all the mutable runtime config keys with metadata")
   public Result listKeyInfo() {
-    return null; // todo Inject keys map and
+    return PlatformResults.withData(keyMetaData.values());
   }
 
   @ApiOperation(

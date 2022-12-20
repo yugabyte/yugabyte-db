@@ -80,6 +80,10 @@ public class TestHelper {
     if (server != null) {
       server.shutdown(false, false);
     }
+    EbeanServer perfAdvisorServer = Ebean.getServer("perf_advisor");
+    if (perfAdvisorServer != null) {
+      perfAdvisorServer.shutdown(false, false);
+    }
   }
 
   public static void createTarGzipFiles(List<Path> paths, Path output) throws IOException {

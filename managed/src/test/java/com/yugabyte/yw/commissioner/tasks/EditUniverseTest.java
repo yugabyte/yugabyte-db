@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -289,7 +290,16 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testExpandOnPremFailNoNodes() {
     Universe universe = onPremUniverse;
+    AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
+    List<NodeInstance> added = new ArrayList<>();
+    added.add(createOnpremInstance(zone));
+    added.add(createOnpremInstance(zone));
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    added.forEach(
+        nodeInstance -> {
+          nodeInstance.setInUse(true);
+          nodeInstance.save();
+        });
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
   }

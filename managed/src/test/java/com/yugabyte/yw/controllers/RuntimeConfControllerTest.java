@@ -18,6 +18,7 @@ import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PAR
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.FORBIDDEN;
 import static play.test.Helpers.NOT_FOUND;
@@ -26,22 +27,27 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.ExternalScriptHelper;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -65,6 +71,7 @@ import play.test.Helpers;
 @RunWith(JUnitParamsRunner.class)
 public class RuntimeConfControllerTest extends FakeDBApplication {
   private static final String LIST_KEYS = "/api/runtime_config/mutable_keys";
+  private static final String LIST_KEY_INFO = "/api/runtime_config/mutable_key_info";
   private static final String LIST_SCOPES = "/api/customers/%s/runtime_config/scopes";
   private static final String GET_CONFIG = "/api/customers/%s/runtime_config/%s";
   private static final String GET_CONFIG_INCL_INHERITED = GET_CONFIG + "?includeInherited=true";
@@ -111,6 +118,27 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             .map(JsonNode::asText)
             .collect(Collectors.toSet());
     assertTrue(String.valueOf(actualKeys), actualKeys.containsAll(expectedKeys));
+  }
+
+  @Test
+  public void listKeyInfo() {
+    Result result = doRequestWithAuthToken("GET", LIST_KEY_INFO, authToken);
+    assertEquals(OK, result.status());
+    String actualInfo = contentAsString(result);
+    List<String> expectedInfo = new ArrayList<>();
+    ObjectMapper objMapper = new ObjectMapper();
+    try {
+      expectedInfo.add(objMapper.writeValueAsString(CustomerConfKeys.taskGcRetentionDuration));
+      expectedInfo.add(objMapper.writeValueAsString(ProviderConfKeys.allowUnsupportedInstances));
+      expectedInfo.add(objMapper.writeValueAsString(UniverseConfKeys.allowDowngrades));
+      expectedInfo.add(objMapper.writeValueAsString(GlobalConfKeys.ansibleDebug));
+
+      for (String info : expectedInfo) {
+        assertTrue(info, actualInfo.contains(info));
+      }
+    } catch (JsonProcessingException e) {
+      fail(e.getMessage());
+    }
   }
 
   @Test

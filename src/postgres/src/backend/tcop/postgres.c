@@ -4405,7 +4405,9 @@ static void yb_maybe_sleep_on_txn_conflict(int attempt)
 		 * read/ write rpc which faced a kConflict error is unblocked only when all
 		 * conflicting transactions have ended (either committed or aborted).
 		 */
+		pgstat_report_wait_start(WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF);
 		pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
+		pgstat_report_wait_end();
 	}
 }
 

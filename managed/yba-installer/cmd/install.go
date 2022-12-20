@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
@@ -20,12 +21,18 @@ var installCmd = &cobra.Command{
         `,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+		if force {
+			common.DisableUserConfirm()
+		}
+		// Preflight checks
 		results := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
 		// Only print results if we should fail.
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
 			log.Fatal("preflight failed")
 		}
+
+		// Run install
 		common.Install(common.GetVersion())
 
 		for _, name := range serviceOrder {
@@ -39,6 +46,7 @@ var installCmd = &cobra.Command{
 			}
 		}
 
+		common.MarkInstallComplete()
 		log.Info("Successfully installed Yugabyte Anywhere!")
 	},
 }

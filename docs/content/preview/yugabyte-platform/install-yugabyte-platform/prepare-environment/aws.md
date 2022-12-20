@@ -65,7 +65,7 @@ In order to access YugabyteDB Anywhere from outside the AWS environment, you wou
 - Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
 - View the YugabyteDB Anywhere UI (port `tcp:80`).
 
-If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 18018, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
 To create a security group that enables these, use the Amazon console to navigate to **EC2 > Security Groups**, click **Create Security Group**, and then add the following values:
 
@@ -160,7 +160,7 @@ In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to y
 
 You need to create an instance to run the YugabyteDB Anywhere server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
 
-- Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration: <br><br>
+- Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration: 
 ![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
 
 - Select c5.xlarge as the instance type (4 vCPUs are recommended for production).
@@ -183,7 +183,7 @@ You need to create an instance to run the YugabyteDB Anywhere server. To do this
 
 - Click **Launch** to launch the YugabyteDB Anywhere server.
 
-  You should see an instance being created, as shown in the following illustration:<br><br>
+  You should see an instance being created, as shown in the following illustration:
 
   ![Image](/images/ee/aws-setup/yugaware-machine-creation.png)
 
@@ -195,7 +195,7 @@ If you are planning to use an IAM role while deploying the universe in your AWS 
 - Set the **IAM role** field to your IAM role (for example, ec2-admin-access).
 - Set the **Metadata accessible** field to Enabled.
 - Set the **Metadata version** field to V1 and V2 (token optional).
-- Set the **Metadata token response hop limit** field to 3, as per the following illustration:<br><br>
+- Set the **Metadata token response hop limit** field to 3, as per the following illustration:
 
   ![AIM for AWS](/images/ee/aws-setup/iam-for-aws.png)
 

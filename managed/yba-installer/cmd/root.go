@@ -18,6 +18,7 @@ import (
 // List of services required for YBA installation.
 var services map[string]common.Component
 var serviceOrder []string
+var force bool
 
 var rootCmd = &cobra.Command{
 	Use:   "yba-ctl",
@@ -245,12 +246,11 @@ var upgradeCmd = &cobra.Command{
 }
 
 func init() {
-
 	// services is an ordered map so services that depend on others should go later in the chain.
 	services = make(map[string]common.Component)
-	services["postgres"] = NewPostgres(common.InstallRoot, "9.6")
-	services["prometheus"] = NewPrometheus(common.InstallRoot, "2.39.0", false)
-	services["yb-platform"] = NewPlatform(common.InstallRoot, common.GetVersion())
+	services["postgres"] = NewPostgres(common.GetInstallRoot(), "9.6")
+	services["prometheus"] = NewPrometheus(common.GetInstallRoot(), "2.39.0", false)
+	services["yb-platform"] = NewPlatform(common.GetInstallRoot(), common.GetVersion())
 	// serviceOrder = make([]string, len(services))
 	serviceOrder = []string{"postgres", "prometheus", "yb-platform"}
 	// populate names of services for valid args
@@ -258,14 +258,7 @@ func init() {
 	rootCmd.AddCommand(cleanCmd(), licenseCmd, versionCmd,
 		createBackupCmd(), restoreBackupCmd(),
 		upgradeCmd, startCmd, stopCmd, restartCmd, statusCmd)
-
-	// Init viper
-	// Set some default values
-	viper.SetDefault("service_username", "yugabyte")
-
-	viper.SetConfigFile(common.InputFile)
-	viper.AddConfigPath(".")
-	viper.ReadInConfig()
+	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "skip user confirmation")
 
 	log.Init(viper.GetString("logLevel"))
 

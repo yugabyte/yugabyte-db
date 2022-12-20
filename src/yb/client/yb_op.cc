@@ -840,7 +840,7 @@ std::vector<ColumnSchema> YBqlReadOp::MakeColumnSchemasFromRequest() const {
 Result<QLRowBlock> YBqlReadOp::MakeRowBlock() const {
   Schema schema(MakeColumnSchemasFromRequest(), 0);
   QLRowBlock result(schema);
-  Slice data(rows_data_);
+  auto data = rows_data_.AsSlice();
   if (!data.empty()) {
     RETURN_NOT_OK(result.Deserialize(request().client(), &data));
   }

@@ -97,7 +97,7 @@ struct TableHolder {
 
 class PgsqlReadOpWithPgTable : private TableHolder, public PgsqlReadOp {
  public:
-  explicit PgsqlReadOpWithPgTable(Arena* arena, const PgTableDescPtr& descr, bool is_region_local)
+  PgsqlReadOpWithPgTable(ThreadSafeArena* arena, const PgTableDescPtr& descr, bool is_region_local)
       : TableHolder(descr), PgsqlReadOp(arena, *table_, is_region_local) {}
 
   PgTable& table() {
@@ -241,7 +241,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     return a.table_id < b.table_id;
   });
 
-  auto arena = std::make_shared<Arena>();
+  auto arena = std::make_shared<ThreadSafeArena>();
 
   PrecastRequestSender precast_sender;
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
@@ -1194,7 +1194,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
             expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());
           } else {
             const YBCPgCollationInfo& collation_info = attr->collation_info;
-            Arena arena;
+            ThreadSafeArena arena;
             PgConstant value(
                 &arena, attr->type_entity, collation_info.collate_is_valid_non_c,
                 collation_info.sortkey, attr->datum, false);

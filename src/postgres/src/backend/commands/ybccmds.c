@@ -1261,7 +1261,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					SearchSysCache1(RELOID, ObjectIdGetDatum(relationId));
 				if (!HeapTupleIsValid(reltup))
 					elog(ERROR,
-						 "Cache lookup failed for relation %u",
+						 "cache lookup failed for relation %u",
 						  relationId);
 				Form_pg_class relform = (Form_pg_class) GETSTRUCT(reltup);
 				ReleaseSysCache(reltup);

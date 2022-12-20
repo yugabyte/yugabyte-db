@@ -315,6 +315,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           } else {
             createWaitForServersTasks(singletonNodeList, processType)
                 .setSubTaskGroupType(subGroupType);
+            if (processType.equals(ServerType.TSERVER) && node.isYsqlServer) {
+              createWaitForServersTasks(singletonNodeList, ServerType.YSQLSERVER)
+                  .setSubTaskGroupType(subGroupType);
+            }
           }
 
           if (processType == ServerType.MASTER && context.reconfigureMaster) {
@@ -625,8 +629,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     return nodes
         .stream()
         .sorted(
-            Comparator.<NodeDetails, Boolean>comparing(
-                    node -> leaderMasterAddress.equals(node.cloudInfo.private_ip))
+            Comparator.<NodeDetails, Boolean>comparing(node -> node.state == NodeState.Live)
+                .thenComparing(node -> leaderMasterAddress.equals(node.cloudInfo.private_ip))
                 .thenComparing(NodeDetails::getNodeIdx))
         .collect(Collectors.toList());
   }
@@ -646,6 +650,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             Comparator.<NodeDetails, Boolean>comparing(
                     // Fully upgrade primary cluster first
                     node -> !node.placementUuid.equals(primaryClusterUuid))
+                .thenComparing(node -> node.state == NodeState.Live)
                 .thenComparing(
                     node -> {
                       Map<UUID, PlacementAZ> placementAZMap =
