@@ -119,12 +119,27 @@ Status Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *expr_pb) {
 
   QLValue ql_bind;
   DCHECK_NOTNULL(bind_pt->name().get());
-  RETURN_NOT_OK(exec_context_->params().GetBindVariable(bind_pt->name()->c_str(),
-                                                        bind_pt->pos(),
-                                                        bind_pt->ql_type(),
-                                                        &ql_bind));
-  *expr_pb->mutable_value() = std::move(*ql_bind.mutable_value());
-  return Status::OK();
+  auto status_primary_bindvar = exec_context_->params().GetBindVariable(
+      bind_pt->name()->c_str(), bind_pt->pos(), bind_pt->ql_type(), &ql_bind);
+
+  if (status_primary_bindvar.ok()) {
+    *expr_pb->mutable_value() = std::move(*ql_bind.mutable_value());
+    return Status::OK();
+  }
+
+  // Try finding the variable using alternative names.
+  for (auto alternative_name : *bind_pt->alternative_names()) {
+    auto s = exec_context_->params().GetBindVariable(
+        alternative_name->c_str(), bind_pt->pos(), bind_pt->ql_type(), &ql_bind);
+    if (s.ok()) {
+      *expr_pb->mutable_value() = std::move(*ql_bind.mutable_value());
+      return Status::OK();
+    }
+  }
+
+  LOG(WARNING) << "Bind variable: " << bind_pt->name()
+               << " was not found. Status: " << status_primary_bindvar;
+  return status_primary_bindvar;
 }
 
 //--------------------------------------------------------------------------------------------------
