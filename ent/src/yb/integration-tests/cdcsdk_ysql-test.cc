@@ -31,6 +31,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/gutil/walltime.h"
 #include "yb/rocksdb/db.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/master/catalog_manager_if.h"
@@ -8641,7 +8642,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentGCedWithTabletBootStrap
   LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompatibillitySupportActiveTime)) {
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupportActiveTime)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   // We want to force every GetChanges to update the cdc_state table.
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
@@ -8716,6 +8717,83 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompatibillitySupportActiveTi
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GE(record_size, 100);
   LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupportSafeTime)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 60;
+  // We want to force every GetChanges to update the cdc_state table.
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+
+  const uint32_t num_tservers = 3;
+  ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  GetChangesResponsePB change_resp;
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // Here we are creating a scenario where active_time is not set in the cdc_state table because of
+  // older server version, if we upgrade the server where active_time is part of cdc_state table,
+  // GetChanges call should successful not intents GCed error.
+  client::TableHandle cdc_state;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(cdc_state.Open(cdc_state_table, test_client()));
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GE(record_size, 100);
+  LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
+
+  // Call GetChanges again so that the checkpoint is updated.
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  const auto op = cdc_state.NewUpdateOp();
+  auto* const req = op->mutable_request();
+  QLAddStringHashValue(req, tablets[0].tablet_id());
+  QLAddStringRangeValue(req, stream_id);
+  // Intensionally set the active_time field to null
+  cdc_state.AddStringColumnValue(req, master::kCdcData, "");
+  // And set back only active time, so that safe _time does not exist.
+  auto map_value_pb = client::AddMapColumn(req, Schema::first_column_id() + master::kCdcDataIdx);
+  client::AddMapEntryToColumn(
+      map_value_pb, kCDCSDKActiveTime, std::to_string(GetCurrentTimeMicros()));
+  auto* condition = req->mutable_if_expr()->mutable_condition();
+  condition->set_op(QL_OP_EXISTS);
+  auto session = test_client()->NewSession();
+  EXPECT_OK(session->TEST_ApplyAndFlush(op));
+
+  // We confirm if 'UpdatePeersAndMetrics' thread has updated the checkpoint in tablet tablet peer.
+  for (uint tserver_index = 0; tserver_index < num_tservers; tserver_index++) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(tserver_index)) {
+      if (peer->tablet_id() == tablets[0].tablet_id()) {
+        ASSERT_OK(WaitFor(
+            [&]() -> Result<bool> {
+              return change_resp.cdc_sdk_checkpoint().index() ==
+                     peer->cdc_sdk_min_checkpoint_op_id().index;
+            },
+            MonoDelta::FromSeconds(60),
+            "Failed to update checkpoint in tablet peer."));
+      }
+    }
+  }
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotWithInvalidFromOpId)) {
