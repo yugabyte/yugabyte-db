@@ -19,14 +19,6 @@ resources:
     url: /preview/migrate/
 ---
 
-{{< sections/text-with-right-image
-  title="Learn through examples"
-  description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
-  buttonText="Get started"
-  buttonUrl="/preview/quick-start-yugabytedb-managed/"
-  imageAlt="Yugabyte cloud" imageUrl="/images/homepage/learn-through-examples.svg"
->}}
-
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Get Started in the Cloud"
