@@ -817,7 +817,7 @@ Mappings for YugabyteDB basic data types:
 | TSTZRANGE | STRING | The string representation of a timestamp range with the local system time zone. |
 | DATERANGE | STRING | The string representation of a date range. Always has an _exclusive_ upper bound. |
 | ARRAY | ARRAY | N/A |
-| ENUM | STRING | The string representation |
+| ENUM | STRING | The string representation of the enum label. |
 
 ### Temporal types
 
