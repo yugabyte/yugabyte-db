@@ -1024,7 +1024,7 @@ See the following section for more details on `YBExtractNewRecordState`.
 
 ### Transformers
 
-There are two transformers available: YBExtractNewRecordState, and PGCompatible.
+There are three transformers available: YBExtractNewRecordState, ExtractTopic and PGCompatible.
 
 #### YBExtractNewRecordState SMT
 
@@ -1037,6 +1037,34 @@ To differentiate between the case where a column is set to `null` and the case i
 A schema registry requires that, once a schema is registered, records must contain only payloads with that schema version. If you're using a schema registry, the YugabyteDB Debezium connector's approach can be problematic, as the schema may change with every message. For example, if we keep changing the record to only include the value of modified columns, the schema of each record will be different (the total number unique schemas will be a result of making all possible combinations of columns) and thus would require sending a schema with every record.
 
 To avoid this problem when you're using a schema registry, use the `YBExtractNewRecordState` SMT (Single Message Transformer for Kafka), which interprets these values and sends the record in the correct format (by removing the unmodified columns from the JSON message). Records transformed by `YBExtractNewRecordState` are compatible with all sink implementations. This approach ensures that the schema doesn't change with each new record and it can work with a schema registry.
+
+#### ExtractTopic
+
+Transformer type: `io.aiven.kafka.connect.transforms.ExtractTopic`
+
+This transformer extracts a string value from the record and use it as the topic name.
+
+The transformation can use either the whole key or value (in this case, it must have `INT8`, `INT16`, `INT32`, `INT64`, `FLOAT32`, `FLOAT32`, `BOOLEAN`, or `STRING` type) or a field in them (in this case, it must have `STRUCT` type and the field's value must be `INT8`, `INT16`, `INT32`, `INT64`, `FLOAT32`, `FLOAT32`, `BOOLEAN`, or `STRING`).
+
+ExtractTopic exists in two variants:
+
+* `io.aiven.kafka.connect.transforms.ExtractTopic$Key` - works on keys
+* `io.aiven.kafka.connect.transforms.ExtractTopic$Value` - works on values
+
+The transformation defines the following configurations:
+
+* `field.name` - The name of the field which should be used as the topic name. If `null` or empty, the entire key or value is used (and assumed to be a string). By default is `null`.
+* `skip.missing.or.null` - In case the source of the new topic name is `null` or missing, should a record be silently passed without transformation. By default, is `false`.
+
+Here is an example of this transformation configuration:
+
+```
+...
+"transforms":"ExtractTopicFromValueField",
+"transforms.ExtractTopicFromValueField.type":"io.aiven.kafka.connect.transforms.ExtractTopic$Value",
+"transforms.ExtractTopicFromValueField.field.name":"inner_field_name",
+...
+```
 
 #### PGCompatible SMT
 
