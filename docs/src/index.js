@@ -474,7 +474,7 @@ $(document).ready(() => {
     }
   })(document);
 
-  $(window).on('scroll', () => {
+  $('.td-main .content-parent').on('scroll', () => {
     // Active TOC link on scroll.
     if ($('.td-toc #TableOfContents').length > 0) {
       let rightMenuSelector = '.td-content > h2,.td-content > h3,.td-content > h4';
