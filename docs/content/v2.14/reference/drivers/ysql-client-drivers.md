@@ -136,7 +136,7 @@ The YugabyteDB JDBC Smart Driver is a distributed JDBC Smart Driver for YSQL bui
 
 For information on the YugabyteDB JDBC Smart Driver and its load balancing features, see [YugabyteDB JDBC Smart Driver](../../../reference/drivers/java/yugabyte-jdbc-reference/).
 
-For a tutorial on building a sample Java application with the YugabyteDB JDBC driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-yb-jdbc/).
+For a tutorial on building a sample Java application with the YugabyteDB JDBC driver, see [Connect an application](../../../drivers-orms/java/yugabyte-jdbc/).
 
 ### PostgreSQL JDBC driver (PgJDBC)
 
