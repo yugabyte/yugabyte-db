@@ -748,7 +748,7 @@ The highlighted fields in the update event are:
 | :--- | :--------- | :---------- |
 | 1 | before | The value of the row before the update operation. |
 | 2 | after | Specifies the state of the row after the change event occurred. In this example, the value of `email` has changed to `service@example.com`. |
-| 3 | source | Mandatory field that describes the source metadata for the event. The source field structure has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
+| 3 | source | Mandatory field that describes the source metadata for the event. This has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
 ## Datatype mappings
@@ -1009,6 +1009,9 @@ See the following section for more details on `YBExtractNewRecordState`.
 {{< /note >}}
 
 ### Transformers
+
+There are two transformers available: YBExtractNewRecordState, and PGCompatible.
+
 #### YBExtractNewRecordState SMT
 
 Transformer type: `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState`
@@ -1025,9 +1028,9 @@ To avoid this problem when you're using a schema registry, use the `YBExtractNew
 
 Transformer type: `io.debezium.connector.yugabytedb.transforms.PGCompatible`
 
-YugabyteDB CDC service publishes events by default with a schema that only includes columns that have been modified. The source connector then sends the value as `null` for columns that are missing in the payload. Each column payload includes a `set` field that is used to signal if a column has been set to `null` or is not present in the payload from YugabyteDB.
+By default, the YugabyteDB CDC service publishes events with a schema that only includes columns that have been modified. The source connector then sends the value as `null` for columns that are missing in the payload. Each column payload includes a `set` field that is used to signal if a column has been set to `null` because it wasn't present in the payload from YugabyteDB.
 
-However, some sink connectors may not understand the above format. `PGCompatible` transforms the payload to a format that is compatible with the format of the standard change data events. Specifically, it transforms column schema and value to remove the set field and collapse the payload such it only contains the data type schema and value.
+However, some sink connectors may not understand the preceding format. `PGCompatible` transforms the payload to a format that is compatible with the format of the standard change data events. Specifically, it transforms column schema and value to remove the set field and collapse the payload such that it only contains the data type schema and value.
 
 PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all the fields in a payload.
 
@@ -1085,7 +1088,7 @@ Advanced connector configuration properties:
 | Property | Default | Description |
 | :------- | :------ | :---------- |
 | snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started <br/><br/> `initial_only` - Only take a snapshot of the table, do not stream further changes |
-| snapshot.include.collection.list | All tables specified in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (<schemaName>.<tableName>) of the tables to include in a snapshot. The specified items must also be named in the connector’s `table.include.list` property. This property takes effect only if the connector’s `snapshot.mode` property is set to a value other than `never`. |
+| snapshot.include.collection.list | All tables specified in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (<schemaName>.<tableName>) of the tables to include in a snapshot. The specified items must also be named in the connector's `table.include.list` property. This property takes effect only if the connector's `snapshot.mode` property is set to a value other than `never`. |
 | cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. |
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (such as createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
