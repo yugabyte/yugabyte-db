@@ -461,12 +461,6 @@ components:
                 default.port="{{repl ConfigOption "db_external_port"}}"
                 default.username="{{repl ConfigOption "dbuser"}}"
                 default.password="{{repl ConfigOption "dbpass"}}"
-                default.logStatements=true
-                default.migration.initOnMigrate=true
-                default.migration.auto=true
-              }
-              ebean {
-                default = ["com.yugabyte.yw.models.*"]
               }
 
               play.filters {

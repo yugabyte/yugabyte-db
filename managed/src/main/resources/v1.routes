@@ -497,6 +497,16 @@ GET    /customers/:cUUID/node_agents/:nUUID/state                              c
 DELETE /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.unregister(cUUID: java.util.UUID, nUUID: java.util.UUID)
 GET    /node_agents/download                                                   com.yugabyte.yw.controllers.NodeAgentController.download(downloadType: String ?= "INSTALLER", os: String ?= "", arch: String ?= "")
 
+# Performance Advisor API
+GET    /customers/:cUUID/performance_recommendations/:rUUID                    com.yugabyte.yw.controllers.PerfAdvisorController.get(cUUID: java.util.UUID, rUUID: java.util.UUID)
++ forceNoAudit
+POST   /customers/:cUUID/performance_recommendations/page                      com.yugabyte.yw.controllers.PerfAdvisorController.page(cUUID: java.util.UUID)
+POST   /customers/:cUUID/performance_recommendations/hide                      com.yugabyte.yw.controllers.PerfAdvisorController.hide(cUUID: java.util.UUID)
+POST   /customers/:cUUID/performance_recommendations/resolve                   com.yugabyte.yw.controllers.PerfAdvisorController.resolve(cUUID: java.util.UUID)
+DELETE /customers/:cUUID/performance_recommendations                           com.yugabyte.yw.controllers.PerfAdvisorController.delete(cUUID: java.util.UUID)
++ forceNoAudit
+POST   /customers/:cUUID/performance_recommendation_state_change/page          com.yugabyte.yw.controllers.PerfAdvisorController.pageAuditInfo(cUUID: java.util.UUID)
+
 # List buckets API
 POST     /customers/:cUUID/cloud/:cloud/buckets                                com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)
 
