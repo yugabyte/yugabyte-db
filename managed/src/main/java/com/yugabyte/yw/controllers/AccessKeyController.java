@@ -8,6 +8,7 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -42,6 +43,8 @@ public class AccessKeyController extends AuthenticatedController {
   @Inject AccessManager accessManager;
 
   @Inject TemplateManager templateManager;
+
+  @Inject ProviderEditRestrictionManager providerEditRestrictionManager;
 
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
@@ -89,9 +92,34 @@ public class AccessKeyController extends AuthenticatedController {
   public Result create(UUID customerUUID, UUID providerUUID) throws IOException {
     AccessKeyFormData formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class).get();
     formData = accessManager.setOrValidateRequestDataWithExistingKey(formData, providerUUID);
+    AccessKeyFormData finalFormData = formData;
+    AccessKey accessKey =
+        providerEditRestrictionManager.tryEditProvider(
+            providerUUID,
+            () -> {
+              try {
+                return create(customerUUID, providerUUID, finalFormData);
+              } catch (IOException e) {
+                LOG.error("Failed to create access key", e);
+                throw new PlatformServiceException(
+                    INTERNAL_SERVER_ERROR,
+                    "Failed to create access key: " + e.getLocalizedMessage());
+              }
+            });
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AccessKey,
+            Objects.toString(accessKey.idKey, null),
+            Audit.ActionType.Create,
+            request().body().asJson());
+    return PlatformResults.withData(accessKey);
+  }
+
+  private AccessKey create(UUID customerUUID, UUID providerUUID, AccessKeyFormData formData)
+      throws IOException {
     UUID regionUUID = formData.regionUUID;
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-
     String keyCode = formData.keyCode;
     String keyContent = formData.keyContent;
     AccessManager.KeyType keyType = formData.keyType;
@@ -203,15 +231,7 @@ public class AccessKeyController extends AuthenticatedController {
     if (expirationThresholdDays != null) {
       accessKey.updateExpirationDate(expirationThresholdDays);
     }
-
-    auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.AccessKey,
-            Objects.toString(accessKey.idKey, null),
-            Audit.ActionType.Create,
-            request().body().asJson());
-    return PlatformResults.withData(accessKey);
+    return accessKey;
   }
 
   @ApiOperation(

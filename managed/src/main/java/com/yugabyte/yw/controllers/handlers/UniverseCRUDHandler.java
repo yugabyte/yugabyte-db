@@ -657,7 +657,15 @@ public class UniverseCRUDHandler {
     }
 
     // Submit the task to create the universe.
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
+
+    UUID taskUUID;
+    try {
+      taskUUID = commissioner.submit(taskType, taskParams);
+    } catch (RuntimeException e) {
+      // No need to keep this Universe
+      Universe.delete(universe.getUniverseUUID());
+      throw e;
+    }
     LOG.info(
         "Submitted create universe for {}:{}, task uuid = {}.",
         universe.universeUUID,

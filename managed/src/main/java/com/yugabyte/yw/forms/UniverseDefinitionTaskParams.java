@@ -166,6 +166,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public Map<ClusterAZ, String> existingLBs = null;
 
+  // Override the default DB present in pre-built Ami
+  @ApiModelProperty(hidden = true)
+  public boolean overridePrebuiltAmiDBVersion = false;
+
   /** Allowed states for an imported universe. */
   public enum ImportedState {
     NONE, // Default, and for non-imported universes.
