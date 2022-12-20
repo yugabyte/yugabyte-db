@@ -161,6 +161,10 @@ Write operations within the current transaction aren't visible in the before ima
 
 {{< /note >}}
 
+## Dynamic addition of new tables
+
+If a new table is added to a namespace on which there is an active stream ID, a background thread will add the newly created table to the stream ID so that data can now be streamed from the new table as well. The background thread runs at an interval of 1 second and adds `cdcsdk_table_processing_limit_per_run` tables per iteration to the stream.
+
 ## Packed rows
 
 The support for CDC with packed rows is also there. However, there is one case where if all the non-key columns of a row are modified, CDC will emit the change records as an INSERT record rather than an UPDATE record.

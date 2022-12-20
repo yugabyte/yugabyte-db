@@ -97,7 +97,7 @@ The Debezium YugabyteDB connector acts as a YugabyteDB client. When the connecto
 
 Periodically, Kafka Connect records the most recent offset in another Kafka topic. The offset indicates source-specific position information that Debezium includes with each event.
 
-When Kafka Connect gracefully shuts down, it stops the connectors, flushes all event records to Kafka, and records the last offset received from each connector. When Kafka Connect restarts, it reads the last recorded offset for each connector, and starts each connector at its last recorded offset. When the connector restarts, it sends a request to the YugabyteDB server to send the events starting just after that position.
+When Kafka Connect gracefully shuts down, it stops the connectors, and flushes all event records to Kafka. Upon restart, the connector reads the last recorded offset from YugabyteDB server and then it sends a request to the YugabyteDB server to send the events starting just after that position.
 
 ### Topic names
 
@@ -202,6 +202,18 @@ For example:
   }
 }
 ```
+
+### Tablet splitting
+
+YugabyteDB also supports [tablet splitting](../../architecture/docdb-sharding/tablet-splitting). While streaming changes, if the YugabyteDB source connector detectes that a tablet has been split, it will gracefully handle the splitting and will start polling for the children tablets.
+
+### Dynamic addition of new tables
+
+If a new table is added to a namespace on which there is an active stream ID, then it will be added to the stream. The YugabyteDB source connector launches a poller thread at startup which continuously checks if there is a new table added to the stream ID it is configured to poll for, once the connector detects that there is a new table, it signals the Kafka Connect runtime to restart the connector so that the newly added table can be polled. The behaviour of this poller thread can be governed by the configuration properties `auto.add.new.tables` and `new.table.poll.interval.ms`, refer to [configuration properties](#connector-configuration-properties) for more details.
+
+### Schema evolution
+
+The YugabyteDB source connector caches schema at the tablet level, this means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, CDC service emits a record with the new schema for all the tablets, the YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
 
 ## Data change events
 
@@ -499,7 +511,7 @@ The following example shows the value portion of a change event that the connect
       }
     },
     "source": { --> 6
-      "version": "1.7.0-SNAPSHOT",
+      "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
       "ts_ms": -8898156066356,
@@ -565,7 +577,7 @@ The update event is as follows:
       }
     },
     "source": { --> 3
-      "version": "1.7.0-SNAPSHOT",
+      "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
       "ts_ms": -8881476960074,
@@ -623,7 +635,7 @@ DELETE FROM customers WHERE id = 1;
     },
     "after": null, --> 2
     "source": {
-      "version": "1.7.0-SNAPSHOT",
+      "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
       "ts_ms": -8876894517738,
@@ -683,7 +695,7 @@ It is recommend to add a transformer in the source connector while using with be
 
 ```properties
 ...
-"transforms":"unwrap",
+"transforms":"unwrap,extract",
 "transforms.unwrap.type":"io.debezium.connector.yugabytedb.transforms.PGCompatible",
 "transforms.unwrap.drop.tombstones":"false",
 ...
@@ -696,6 +708,8 @@ You also need a transformer in the sink connectors:
 "transforms":"unwrap",
 "transforms.unwrap.type":"io.debezium.transforms.ExtractNewRecordState",
 "transforms.unwrap.drop.tombstones":"false",
+"transforms.extract.type":"io.debezium.transforms.ExtractNewRecordState",
+"transforms.extract.drop.tombstones":"false",
 ...
 ```
 
@@ -722,7 +736,7 @@ UPDATE customers SET email = 'service@example.com' WHERE id = 1;
       "email": "service@example.com"
     },
     "source": { --> 3
-      "version": "1.7.0-SNAPSHOT",
+      "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
       "ts_ms": -8881476960074,
