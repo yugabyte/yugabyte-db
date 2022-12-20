@@ -54,6 +54,7 @@ html {
     flex: 1 1 40%;
     justify-content: center;
     margin-left: 0;
+    margin-right: 0;
     padding: 0 50px;
     overflow: auto;
 
@@ -83,6 +84,7 @@ html {
       > div {
         display: flex;
         max-width: 100%;
+        width: 100%;
         min-height: calc(100vh - 170px);
       }
     }
@@ -236,6 +238,8 @@ html {
 
     main {
       padding-top: 170px;
+      padding-left: 0;
+      padding-right: 0;
     }
 
     .td-sidebar:not(.close-bar) {
@@ -260,6 +264,12 @@ html {
   }
 }
 
+@media (max-width: 1300px) and(min-width: 1200px) {
+  .td-main .content-parent {
+    padding: 0 85px;
+  }
+}
+
 .dragging {
   .td-main .content-parent .content-child,
   .td-main aside.td-sidebar .left-sidebar-wrap,
@@ -268,8 +278,4 @@ html {
     -webkit-user-select: none;
     user-select: none;
   }
-}
-
-body:not(.dragging) .td-main aside.td-sidebar:not(.toggled-sidebar) {
-  transition: max-width 1.5s ease-in-out !important;
 }

@@ -35,7 +35,8 @@
       position: sticky;
       margin-top: 0;
       top: 112px;
-      transition: width 0.5s linear;
+      //transition: width 0.5s linear;
+      transition: width 100ms ease-in-out;
       max-width: 100%;
 
       @media (max-width: 991px) {
@@ -49,7 +50,9 @@
       height: calc(100vh - 112px);
       display: flex;
       flex-flow: column;
-
+      //opacity: 1;
+      overflow-x: hidden;
+      //transition:opacity .1s  ease-in;
       @media (max-width: 991px) {
         height: calc(100vh - 75px);
       }
@@ -115,10 +118,12 @@
     &.stick-bar {
       background: transparent;
       border: 0;
+      max-width: 60px;
+      max-width: 60px;
+      min-width: 0;
 
       .side-nav-collapse-toggle-2 {
-        right: calc(100% - 46px);
-
+        //right: calc(100% - 46px);
         &::before {
           content: "\f101";
         }
@@ -139,6 +144,11 @@
         }
       }
 
+      .left-sidebar-wrap .left-sidebar-wrap-inner {
+        //opacity: 0;
+        display: none;
+      }
+
       div#dragbar {
         display: none;
       }
@@ -151,8 +161,9 @@
         height: 100%;
         display: flex;
         flex-flow: column;
-        transition: width 0.5s linear, opacity 0.2s 0.3s linear;
+        //transition: width 0.5s linear, opacity 0.2s 0.3s linear;
         min-width: 268px;
+        //min-width: 1px;
 
         &.smoothscoll {
           //scroll-behavior: smooth;
