@@ -1,5 +1,5 @@
 ---
-title: Back up data universe YSQL data
+title: Back up universe YSQL data
 headerTitle: Back up universe YSQL data
 linkTitle: Back up universe data
 description: Use YugabyteDB Anywhere to back up data in YSQL tables.
@@ -42,6 +42,8 @@ To view, [restore](../../restore-universe-data/ysql/), or delete existing backup
 
 By default, the list displays all the backups generated for the universe regardless of the time period. You can configure the list to only display the backups created during a specific time period, such as last year,  last month, and so on. In addition, you can specify a custom time period.
 
+## Create backups
+
 The **Backups** page allows you to create new backups that start immediately, as follows:
 
 - Click **Backup now** to open the dialog shown in the following illustration:<br>
@@ -56,90 +58,47 @@ The **Backups** page allows you to create new backups that start immediately, as
 
 If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file, containing key references, is also backed up. To allow YugabyteDB Anywhere to back up your data with the user authentication enabled, follow the instructions provided in [Edit configuration flags](../../../manage-deployments/edit-config-flags) to add the `ysql_enable_auth=true` and `ysql_hba_conf_csv="local all all trust"` YB-TServer flags.
 
+<!-- 
+
 {{< note title="Note" >}}
 
 Versions of YugabyteDB Anywhere prior to 2.11.2.0 do not support backups of YSQL databases that use `enum` types. To mitigate the issue, it is recommended that you use the `ysql_dump` utility in combination with the `/COPY` action as a workaround.
 
 {{< /note >}}
 
+-->
+
 <!-- The preceding note should say 2.11.2.0. Careful with search and replace on version numbers! -->
 
 For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql/).
 
-To view detailed information about an existing backup, click on it to open **Backup Details**. In addition to actions such as deleting and restoring the backup, as well as restoring and copying the database location, you can use **Backup Details** to add an incremental backup for universes that had the YB Controller automatically installed during their creation. The same universes allow you to configure their throttle parameters by clicking **... > Configure Throttle Parameters**, as per the following illustration:
+To view detailed information about an existing backup, click on it to open **Backup Details**. In addition to actions such as deleting and restoring the backup, as well as restoring and copying the database location, you can use **Backup Details** to add an [incremental backup](#create-incremental-backup) for universes that had the YB Controller automatically installed during their creation. The same universes allow you to configure their throttle parameters by clicking **... > Configure Throttle Parameters**, as per the following illustration:
 
-![Throttle parameters](/images/yp/backup-throttle-config-button.png)<br>
+![Throttle parameters](/images/yp/backup-throttle-config-button.png)
 
-<br>You define throttle parameters to enhance your universe's backups and restore performance using the **Configure Throttle Parameters** dialog shown in the following illustration:<br><br>![Throttle](/images/yp/backup-restore-throttle.png)<br><br><br>To access a list of all backups from all universes, including the deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
+You define throttle parameters to enhance your universe's backups and restore performance using the **Configure Throttle Parameters** dialog shown in the following illustration:
 
-![Backups](/images/yp/backups-list.png)<br>
+![Throttle](/images/yp/backup-restore-throttle.png)
 
-You can access the detailed information about a specific backup by clicking it to open the **Backup Details** dialog. 
+To access a list of all backups from all universes, including the deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
 
+![Backups](/images/yp/backups-list.png)
 
+## Create incremental backups
 
-INCREMENTAL BACKUPS Beta
-
-Incremental backups are a way of taking differential backups on top of a complete backup. To reduce the length of time spent on each backup, only SST files that are new to YugabyteDB and not present in the previous backups are incrementally backed up. For example, in most cases, for incremental backups occurring every hour, the 1-hour delta would be significantly smaller compared to the full backup.
-
-<!--
-
-![img](/images/yp/incremental-backup-flow.png)
-
--->
-
-You can pick up any increment from a list of increments, and the restore will be until that point.
-
-YugabyteDB Anywhere performs incremental backups via YB-Controller.
-
-## Create incremental backup
+Incremental backups are a way of taking differential backups on top of a complete backup. To reduce the length of time spent on each backup, only SST files that are new to YugabyteDB and not present in the previous backups are incrementally backed up. For example, in most cases, for incremental backups occurring every hour, the 1-hour delta would be significantly smaller compared to the complete backup. The restore happens until the point of the defined increment.
 
 You can create an incremental backup on any complete or incremental backup taken using YB-Controller, as follows:
 
-Navigate to Backups, select a backup, and then click on it to open **Backup Details** shown in the following illustration:
+- Navigate to **Backups**, select a backup, and then click on it to open **Backup Details**.
 
-![img](/images/yp/incremental-backup-details.png)
+- In the  **Backup Details** view, click **Add Incremental Backup**.
 
-In the  **Backup Details** view, click **Add Incremental Backup**.
+- Modify settings in the **Create Incremental Backup** dialog, if required, and then click **Backup**.
 
-Complete the **Create Incremental Backup** dialog and click **Backup**, as per the following illustration:
 
-![img](/images/yp/create-incremental-backup.png)
+A successful incremental backup appears in the list of backups. 
 
-**Create Schedule Policy:** Another option that user will get to create incremental backups is through scheduled policy. I.e. User can create a schedule policy which will take full backups periodically and incremental backups between those full backups.
+You can delete only the full backup chain which includes a complete backup and its incremental backups. You cannot delete a subset of successful incremental bakups.
 
-In order to create these schedule policy use will have to enable the incremental backup option and provide a incremental backup frequency. The provided incremental backup frequency should be lower than the frequency of full backup schedule.
-
-![img](/Users/lizarekadze/yugabyte-db/docs/static/images/yp/incremental-backup2.png)
-
-**Restore Backup:** User will be provided with be provided with the options to either restore the full backup or the part of incremental backup chain. During the restore, we will only store the successful incremental backups and discard any failed backup.
-
-![img](/images/yp/incremental-backup3.png)
-
-**Delete Backup:** User will have the options to delete only the complete backup chain which includes full backup and it’s incremental backups through usual delete backup option. User cannot delete subset of incremental bakups
-
-**Effects on existing functionality:**  
-
-1. - Delete Backup:
-
-   - - Users would not be able to delete any arbitrary successful incremental backup that is part of a chain. Users would only be able to delete the complete incremental backup chain.
-     - They can however delete failed incremental backups as they are not part of any backup chain.
-
-   - Restore Backup:
-
-   - - If User tries to restore an incremental backup, the YBA/YBC would restore the complete backup chain as it would restore all previous increment backup and base backup.
-
-   - Schedule Backup:
-
-   - - As soon as user disable the full backup, the incremental backup too will be stopped and if user enables it then the incremental backup schedule will be started on new full backups.
-     - If user deletes the main full backup schedule then, the incremental backup schedule will also be removed.
-
-Users will not be able to edit any incremental backup related property in the schedule. They will have to delete the existing schedule and create a new schedule if they need to overwrite any incremental backup property.
-
-**Non-functional aspects:**   
-
-1. - Incremental backup size and duration will be visible to users to check the performance.
-   - We don’t store each incremental backup restore time but the total restore time can be treated as task duration.
-   - The failed incremental backup operation will be reported like usual failed backup operations like create, restore and delete.
-   - For each operation, a customer task would be created for traceability and task_info would also be maintained for the purpose of debugging.
-
+A failed incremental backup, which you can delete, is reported similarly to any other failed backup operations.
