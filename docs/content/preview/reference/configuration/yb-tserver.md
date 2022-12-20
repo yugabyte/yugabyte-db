@@ -920,12 +920,6 @@ Enable each local peer to update its own log checkpoint instead of the leader up
 
 Default: `false`
 
-##### --cdcsdk_table_processing_limit_per_run
-
-Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
-
-Default: `2`
-
 ## File expiration based on TTL flags
 
 ##### --tablet_enable_ttl_file_filter
