@@ -12,7 +12,8 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = false)
 @AllArgsConstructor
 @NoArgsConstructor
-public class ScheduledAccessKeyRotateParams extends AbstractTaskParams {
+public class ScheduledAccessKeyRotateParams extends AbstractTaskParams
+    implements IProviderTaskParams {
   private UUID customerUUID;
   private UUID providerUUID;
   private List<UUID> universeUUIDs;
