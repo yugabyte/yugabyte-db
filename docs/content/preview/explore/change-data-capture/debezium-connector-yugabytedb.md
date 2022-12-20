@@ -1076,6 +1076,21 @@ However, some sink connectors may not understand the preceding format. `PGCompat
 
 PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all the fields in a payload.
 
+### AVRO serialization
+
+The YugabyteDB source connector also supports AVRO serialization with schema registry. To use AVRO serialization, simply add the following configuration to your connector:
+
+```output.json
+{
+  ...
+  "key.converter":"io.confluent.connect.avro.AvroConverter",
+  "key.converter.schema.registry.url":"http://host-url-for-schema-registry:8081",
+  "value.converter":"io.confluent.connect.avro.AvroConverter",
+  "value.converter.schema.registry.url":"http://host-url-for-schema-registry:8081"
+  ...
+}
+```
+
 ### Connector configuration properties
 
 The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values.
