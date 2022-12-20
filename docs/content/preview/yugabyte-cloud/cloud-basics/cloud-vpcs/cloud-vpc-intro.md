@@ -107,9 +107,9 @@ For more information, refer to [Subnets for your VPC](https://docs.aws.amazon.co
 
   {{% tab header="GCP" lang="gcp" %}}
 
-For a custom GCP network, a size of /26 per region is sufficient for typical applications.
+For a custom GCP network, a size of `/26` per region is sufficient for typical applications.
 
-For an automatic GCP network, a minimum size of /18 is recommended to have enough addresses to distribute among all the regions.
+For an automatic GCP network, a minimum size of `/18` is recommended to have enough addresses to distribute among all the regions.
 
 | Type | Network Size (prefix length) | IP Addresses | Notes |
 | :--- | :--- | :--- | :--- | :--- |
