@@ -1198,7 +1198,7 @@ The following table lists the streaming metrics that are available.
 
 ## Usage examples
 
-For examples on how to configure CDC in different setup configurations, you can see our [list of examples on GitHub](https://github.com/yugabyte/cdc-examples) for usage with various sinks and configuration information.
+For examples on how to configure CDC in different setup configurations, refer to the list of [CDC examples] on GitHub(https://github.com/yugabyte/cdc-examples) for usage with various sinks and configuration information.
 ## Troubleshooting
 
 Debezium is a distributed system that captures all changes in multiple upstream databases; it never misses or loses an event. When the system is operating normally or being managed carefully then Debezium provides exactly once delivery of every change event record.
