@@ -145,15 +145,15 @@ You can't take another snapshot of the table using an existing stream ID. In oth
 
 ## Before image
 
-This refers to the state of the row before the change event occurred. This will only be populated in case of UPDATE and DELETE event as in case of INSERT and READ (Snapshot) events, the change is for the creation of new content.
+Before image refers to the state of the row before the change event occurred. This state is populated during UPDATE and DELETE events as in case of INSERT and READ (Snapshot) events, the change is for the creation of new content.
 
-At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. By default, the history retention period is controlled by the [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec) applied cluster-wide to every YSQL database.
+At any moment, YugabyteDB not only stores the latest state of the data, but also the recent history of changes. By default, the history retention period is controlled by the [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec), applied cluster-wide to every YSQL database.
 
-However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream. Now when a CDC active stream's lag increases, the amount of space required for the database grows as more data is retained.
+However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream. When a CDC active stream's lag increases, the amount of space required for the database grows as more data is retained.
 
-There are no technical limitations on the retention target. The actual overhead depends on the workload, therefore it is recommended to estimate it by running tests based on your applications.
+There are no technical limitations on the retention target. The actual overhead depends on the workload, and you'll need to estimate it by running tests based on your applications.
 
-You will need to create a CDC DB stream indicating the server to send the before image of the changed rows with the streams. To know more on how to create streams with before image enabled, see [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands).
+You'll need to create a CDC DB stream indicating the server to send the before image of the changed rows with the streams. To learn more about creating streams with before image enabled, see [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands).
 
 {{< note title="Note" >}}
 
