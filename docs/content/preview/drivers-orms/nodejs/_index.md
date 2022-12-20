@@ -8,13 +8,14 @@ menu:
   preview:
     identifier: nodejs-drivers
     parent: drivers-orms
-    weight: 570
+    weight: 530
 type: indexpage
+showRightNav: true
 ---
 
-The following projects are recommended for implementing Node applications using the YugabyteDB YSQL API.
-
 ## Supported projects
+
+The following projects are recommended for implementing Node applications using the YugabyteDB YSQL and YCQL APIs.
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :----------------------- | :--------------------|
@@ -24,8 +25,8 @@ The following projects are recommended for implementing Node applications using 
 
 | Project | Documentation and Guides | Example Apps |
 | :------ | :----------------------- | :----------- |
-| Sequelize | [Documentation](sequelize/) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-sequelize/) | [Sequelize ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/node/sequelize) |
-| Prisma | [Documentation](prisma/) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-prisma/) <br /> | [Prisma ORM App](https://github.com/yugabyte/orm-examples/tree/master/node/prisma)
+| Sequelize | [Documentation](sequelize/) <br /> [Hello World](../orms/nodejs/ysql-sequelize/) | [Sequelize ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/node/sequelize) |
+| Prisma | [Documentation](prisma/) <br /> [Hello World](../orms/nodejs/ysql-prisma/) <br /> | [Prisma ORM App](https://github.com/yugabyte/orm-examples/tree/master/node/prisma)
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yugabyte-node-driver/) or [Use an ORM](sequelize/).
 

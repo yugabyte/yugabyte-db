@@ -57,7 +57,7 @@ type: docs
 
 </ul>
 
-To prepare the environment for OpenShift, you start by provisioning the OpenShift cluster.
+<br>To prepare the environment for OpenShift, you start by provisioning the OpenShift cluster.
 
 The recommended OpenShift Container Platform (OCP) version is 4.6, with backward compatibility assumed but not guaranteed.
 

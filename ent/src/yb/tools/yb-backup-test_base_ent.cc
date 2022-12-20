@@ -20,12 +20,15 @@
 
 #include "yb/gutil/strings/escaping.h"
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_admin.proxy.h"
 
 #include "yb/tools/yb-backup-test_base_ent.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/path_util.h"
+#include "yb/util/pb_util.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
@@ -73,6 +76,12 @@ Status RedisSet(std::shared_ptr<client::YBSession> session,
 void YBBackupTest::SetUp() {
   pgwrapper::PgCommandTestBase::SetUp();
   ASSERT_OK(CreateClient());
+  test_admin_client_ = std::make_unique<TestAdminClient>(cluster_.get(), client_.get());
+}
+
+void YBBackupTest::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {
+  pgwrapper::PgCommandTestBase::UpdateMiniClusterOptions(options);
+  options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
 }
 
 string YBBackupTest::GetTempDir(const string& subdir) {
@@ -125,19 +134,8 @@ Result<string> YBBackupTest::GetTableId(
   return name.table_id();
 }
 
-Result<google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>>
-    YBBackupTest::GetTablets(const string& table_name, const string& log_prefix,
-                              const string& ns) {
-  auto table_id = VERIFY_RESULT(GetTableId(table_name, log_prefix, ns));
-
-  LOG(INFO) << log_prefix << ": get tablets";
-  google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
-  RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
-  return tablets;
-}
-
 bool YBBackupTest::CheckPartitions(
-    const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
+    const std::vector<yb::master::TabletLocationsPB>& tablets,
     const vector<string>& expected_splits) {
   if (implicit_cast<size_t>(tablets.size()) != expected_splits.size() + 1) {
     LOG(WARNING) << Format("Tablets size ($0) != expected_splits.size() + 1 ($1)", tablets.size(),
@@ -146,7 +144,7 @@ bool YBBackupTest::CheckPartitions(
   }
 
   static const string empty;
-  for (int i = 0; i < tablets.size(); i++) {
+  for (size_t i = 0; i < tablets.size(); i++) {
     const string& expected_start = (i == 0 ? empty : expected_splits[i-1]);
     const string& expected_end = (i == tablets.size() - 1 ? empty : expected_splits[i]);
 
@@ -168,36 +166,7 @@ bool YBBackupTest::CheckPartitions(
   return true;
 }
 
-// Waiting for parent deletion is required if we plan to split the children created by this split
-// in the future.
-void YBBackupTest::ManualSplitTablet(
-    const string& tablet_id, const string& table_name, const int expected_num_tablets,
-    bool wait_for_parent_deletion, const std::string& namespace_name) {
-  master::SplitTabletRequestPB split_req;
-  split_req.set_tablet_id(tablet_id);
-  master::SplitTabletResponsePB split_resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(30s * kTimeMultiplier);
-  auto master_admin_proxy = cluster_->GetMasterProxy<master::MasterAdminProxy>();
-  ASSERT_OK(master_admin_proxy.SplitTablet(split_req, &split_resp, &rpc));
-  ASSERT_FALSE(split_resp.has_error());
-
-  master::IsTabletSplittingCompleteRequestPB splitting_complete_req;
-  master::IsTabletSplittingCompleteResponsePB splitting_complete_resp;
-  splitting_complete_req.set_wait_for_parent_deletion(wait_for_parent_deletion);
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    rpc.Reset();
-    RETURN_NOT_OK(master_admin_proxy.IsTabletSplittingComplete(
-        splitting_complete_req, &splitting_complete_resp, &rpc));
-    return splitting_complete_resp.is_tablet_splitting_complete();
-  }, 30s, "Wait for ongoing splits to finish."));
-
-  auto tablets = ASSERT_RESULT(GetTablets(table_name, "wait-split", namespace_name));
-  ASSERT_EQ(tablets.size(), expected_num_tablets);
-}
-
-void YBBackupTest::LogTabletsInfo(
-    const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets) {
+void YBBackupTest::LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets) {
   for (const auto& tablet : tablets) {
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "tablet location:\n" << tablet.DebugString();
@@ -481,6 +450,86 @@ void YBBackupTest::DoTestYSQLKeyspaceWithHyphenBackupRestore(
         (1 row)
       )#"
   ));
+}
+
+void YBBackupTest::TestColocatedDBBackupRestore() {
+  // Create a colocated database.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE DATABASE demo WITH COLOCATION=TRUE", "CREATE DATABASE"));
+
+  // Set this database for creating tables below.
+  SetDbName("demo");
+
+  // Create 10 tables in a loop and insert data.
+  vector<string> table_names;
+  for (int i = 0; i < 10; ++i) {
+    table_names.push_back(Format("mytbl_$0", i));
+  }
+  for (const auto& table_name : table_names) {
+    ASSERT_NO_FATALS(CreateTable(
+        Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
+    ASSERT_NO_FATALS(InsertRows(
+        Format("INSERT INTO $0 VALUES (generate_series(1, 100))", table_name), 100));
+  }
+  LOG(INFO) << "All tables created and data inserted successsfully";
+
+  // Create a backup.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo", "create"}));
+  LOG(INFO) << "Backup finished";
+
+  // Read the SnapshotInfoPB from the given path.
+  master::SnapshotInfoPB snapshot_info;
+  ASSERT_OK(pb_util::ReadPBContainerFromPath(
+      Env::Default(), JoinPathSegments(backup_dir, "SnapshotInfoPB"), &snapshot_info));
+  LOG(INFO) << "SnapshotInfoPB: " << snapshot_info.ShortDebugString();
+
+  // SnapshotInfoPB should contain 1 namespace entry, 1 tablet entry and 11 table entries.
+  // 11 table entries comprise of - 10 entries for the tables created and 1 entry for
+  // the parent colocated table.
+  int32_t num_namespaces = 0, num_tables = 0, num_tablets = 0, num_others = 0;
+  for (const auto& entry : snapshot_info.backup_entries()) {
+    if (entry.entry().type() == master::SysRowEntryType::NAMESPACE) {
+      num_namespaces++;
+    } else if (entry.entry().type() == master::SysRowEntryType::TABLE) {
+      num_tables++;
+    } else if (entry.entry().type() == master::SysRowEntryType::TABLET) {
+      num_tablets++;
+    } else {
+      num_others++;
+    }
+  }
+
+  ASSERT_EQ(num_namespaces, 1);
+  ASSERT_EQ(num_tablets, 1);
+  ASSERT_EQ(num_tables, 11);
+  ASSERT_EQ(num_others, 0);
+  // Snapshot should be complete.
+  ASSERT_EQ(snapshot_info.entry().state(),
+            master::SysSnapshotEntryPB::State::SysSnapshotEntryPB_State_COMPLETE);
+  // We clear all tablet snapshot entries for backup.
+  ASSERT_EQ(snapshot_info.entry().tablet_snapshots_size(), 0);
+  // We've migrated this field to backup_entries so they are already accounted above.
+  ASSERT_EQ(snapshot_info.entry().entries_size(), 0);
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+  LOG(INFO) << "Restored backup to yugabyte_new keyspace successfully";
+
+  SetDbName("yugabyte_new");
+
+  // Post-restore, we should have all the data.
+  for (const auto& table_name : table_names) {
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("SELECT COUNT(*) FROM $0", table_name),
+        R"#(
+           count
+          -------
+             100
+          (1 row)
+        )#"));
+  }
 }
 
 } // namespace tools

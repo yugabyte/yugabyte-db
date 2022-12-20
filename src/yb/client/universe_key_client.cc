@@ -19,6 +19,7 @@
 
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging.h"
 
 using namespace std::chrono_literals;
 
@@ -68,7 +69,7 @@ void UniverseKeyClient::ProcessGetUniverseKeyRegistryResponse(
       HostPort host_port,
       CoarseBackoffWaiter backoff_waiter) {
   if (!rpc->status().ok() || resp->has_error()) {
-    LOG_EVERY_N(WARNING, 100) << Format(
+    YB_LOG_EVERY_N(WARNING, 100) << Format(
         "Rpc status: $0, resp: $1", rpc->status(), resp->ShortDebugString());
 
     // Always retry the request on failure.

@@ -1692,7 +1692,8 @@ typedef enum ObjectType
 	OBJECT_TSTEMPLATE,
 	OBJECT_TYPE,
 	OBJECT_USER_MAPPING,
-	OBJECT_VIEW
+	OBJECT_VIEW,
+	OBJECT_YBPROFILE
 } ObjectType;
 
 /* ----------------------
@@ -2186,6 +2187,25 @@ typedef struct OptSplit
 } OptSplit;
 
 /* ----------------------
+ *		Create/Drop Profile Statements
+ * ----------------------
+ */
+
+typedef struct YbCreateProfileStmt
+{
+	NodeTag		type;
+	char	   *prfname;
+	Value	   *prffailedloginattempts;
+} YbCreateProfileStmt;
+
+typedef struct YbDropProfileStmt
+{
+	NodeTag		type;
+	char	   *prfname;
+	bool		missing_ok;		/* skip error if missing? */
+} YbDropProfileStmt;
+
+/* ----------------------
  *		Create/Drop Tablegroup Statements
  * ----------------------
  */
@@ -2197,6 +2217,11 @@ typedef struct CreateTableGroupStmt
 	RoleSpec   *owner;
 	List 	   *options;
 	char 	   *tablespacename;
+	/*
+	 * Whether this tablegroup is created implicitly by YB
+	 * or created explicitly by users.
+	 */
+	bool		implicit;
 } CreateTableGroupStmt;
 
 /* ----------------------

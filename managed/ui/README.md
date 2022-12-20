@@ -1,12 +1,12 @@
 Ensure that the node/npm binaries are recent. For example,
-$ npm -v
-6.14.4
+\$ npm -v
+7.24.0
 
-$ node -v
-v12.18.0
-
+\$ node -v
+v16.10.0
 
 ### `npm install`
+
 Install all the dependencies needed for the project
 
 ### `npm start`

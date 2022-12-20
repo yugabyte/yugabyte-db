@@ -1957,3 +1957,35 @@ pg_stat_get_archiver(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM(HeapTupleGetDatum(
 									  heap_form_tuple(tupdesc, values, nulls)));
 }
+
+/* Returns backend_allocated_mem_bytes from the process's beid */
+Datum
+yb_pg_stat_get_backend_allocated_mem_bytes(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	int64		result;
+	PgBackendStatus *beentry;
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	result = beentry->yb_st_allocated_mem_bytes;
+
+	PG_RETURN_INT64(result);
+}
+
+/* Returns rss_mem_bytes from the process's beid */
+Datum
+yb_pg_stat_get_backend_rss_mem_bytes(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	int64		result;
+	LocalPgBackendStatus *local_beentry;
+
+	if ((local_beentry = pgstat_fetch_stat_local_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	result = local_beentry->yb_backend_rss_mem_bytes;
+
+	PG_RETURN_INT64(result);
+}

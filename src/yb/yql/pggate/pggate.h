@@ -150,6 +150,7 @@ class PgApiImpl {
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
+  Result<uint32_t> GetNumberOfDatabases();
   uint64_t GetSharedAuthKey() const;
 
   // Setup the table to store sequences data.
@@ -158,12 +159,14 @@ class PgApiImpl {
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
+                             bool is_db_catalog_version_mode,
                              int64_t last_val,
                              bool is_called);
 
   Status UpdateSequenceTupleConditionally(int64_t db_oid,
                                           int64_t seq_oid,
                                           uint64_t ysql_catalog_version,
+                                          bool is_db_catalog_version_mode,
                                           int64_t last_val,
                                           bool is_called,
                                           int64_t expected_last_val,
@@ -173,6 +176,7 @@ class PgApiImpl {
   Status UpdateSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
+                             bool is_db_catalog_version_mode,
                              int64_t last_val,
                              bool is_called,
                              bool* skipped);
@@ -180,6 +184,7 @@ class PgApiImpl {
   Status ReadSequenceTuple(int64_t db_oid,
                            int64_t seq_oid,
                            uint64_t ysql_catalog_version,
+                           bool is_db_catalog_version_mode,
                            int64_t *last_val,
                            bool *is_called);
 
@@ -195,7 +200,8 @@ class PgApiImpl {
   Status ConnectDatabase(const char *database_name);
 
   // Determine whether the given database is colocated.
-  Status IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+  Status IsDatabaseColocated(const PgOid database_oid, bool *colocated,
+                             bool *legacy_colocated_database);
 
   // Create database.
   Status NewCreateDatabase(const char *database_name,
@@ -352,6 +358,8 @@ class PgApiImpl {
                       PgStatement **handle);
 
   Status ExecPostponedDdlStmt(PgStatement *handle);
+
+  Status ExecDropTable(PgStatement *handle);
 
   Status BackfillIndex(const PgObjectId& table_id);
 
@@ -590,7 +598,7 @@ class PgApiImpl {
 
   Result<client::TabletServersInfo> ListTabletServers();
 
-  void StartSysTablePrefetching();
+  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
   void StopSysTablePrefetching();
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
 
@@ -640,6 +648,8 @@ class PgApiImpl {
   std::unique_ptr<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
   std::optional<std::pair<PgOid, int32_t>> catalog_version_db_index_;
+  // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.
+  std::unique_ptr<tserver::PgGetTserverCatalogVersionInfoResponsePB> catalog_version_info_;
 };
 
 }  // namespace pggate

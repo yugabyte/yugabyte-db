@@ -40,6 +40,7 @@ public class LdapUtilTest extends FakeDBApplication {
     ldapUtil = spy(LdapUtil.class);
     entryCursor = mock(EntryCursor.class);
     ldapNetworkConnection = mock(LdapNetworkConnection.class);
+
     doReturn(ldapNetworkConnection).when(ldapUtil).createNewLdapConnection(any());
     doNothing().when(ldapNetworkConnection).bind(anyString(), anyString());
     doReturn(entryCursor)
@@ -55,7 +56,7 @@ public class LdapUtilTest extends FakeDBApplication {
             "test-user",
             "password",
             new LdapUtil.LdapConfiguration(
-                "ldapUrl", 389, "base-dn", "", "", false, false, false, "", "", ""));
+                "ldapUrl", 389, "base-dn", "", "", false, false, false, "", "", "", false));
 
     assertNotNull(user);
     assertEquals("test-user", user.email);
@@ -76,7 +77,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 "test-user",
                 "password",
                 new LdapUtil.LdapConfiguration(
-                    "ldapUrl", 389, "base-dn", "", "cn=", false, false, false, "", "", "")));
+                    "ldapUrl", 389, "base-dn", "", "cn=", false, false, false, "", "", "", false)));
   }
 
   @Test
@@ -98,7 +99,7 @@ public class LdapUtilTest extends FakeDBApplication {
                 user.email,
                 "password",
                 new LdapUtil.LdapConfiguration(
-                    "ldapUrl", 389, "base-dn", "", "cn=", false, false, false, "", "", "")));
+                    "ldapUrl", 389, "base-dn", "", "cn=", false, false, false, "", "", "", false)));
     assertNull(Users.getByEmail(user.email));
   }
 
@@ -126,7 +127,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "service_account",
                 "service_password",
-                ""));
+                "",
+                false));
 
     assertNotNull(user);
     assertEquals(Users.Role.BackupAdmin, user.getRole());
@@ -161,7 +163,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "service_account",
                 "service_password",
-                ""));
+                "",
+                false));
 
     assertNotNull(updatedUser);
     assertEquals(Users.Role.BackupAdmin, updatedUser.getRole());
@@ -196,7 +199,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 "service_account",
                 "service_password",
-                ""));
+                "",
+                false));
 
     assertEquals(user, oldUser);
   }
@@ -226,7 +230,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 true,
                 "service_account",
                 "service_password",
-                "search-attribute"));
+                "search-attribute",
+                false));
 
     assertNotNull(user);
     assertEquals("test-user", user.email);
@@ -243,6 +248,6 @@ public class LdapUtilTest extends FakeDBApplication {
                 "test-user",
                 "password",
                 new LdapUtil.LdapConfiguration(
-                    "ldapUrl", 389, "base-dn", "", "cn=", false, false, true, "", "", "")));
+                    "ldapUrl", 389, "base-dn", "", "cn=", false, false, true, "", "", "", false)));
   }
 }

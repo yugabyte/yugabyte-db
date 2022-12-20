@@ -5,10 +5,11 @@ package com.yugabyte.yw.controllers;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
-import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.KubernetesOverridesResponse;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -17,13 +18,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.Authorization;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -131,7 +132,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
           }
 
           String namespace =
-              PlacementInfoUtil.getKubernetesNamespace(
+              KubernetesUtil.getKubernetesNamespace(
                   taskParams.nodePrefix,
                   azCode,
                   config,
@@ -160,7 +161,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
       if (!extraAZs.isEmpty()) {
         overrideErrorsSet.add(
             String.format(
-                "AZ overrides have following AZs: %s. But no DB pods scheduled in these AZs."
+                "AZ overrides have following AZs: %s. But no DB pods assigned to these AZs."
                     + "These overrides are not validated.",
                 extraAZs));
       }

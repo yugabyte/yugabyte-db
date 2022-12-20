@@ -185,7 +185,7 @@ class DataCenterConfiguration extends Component {
             (featureFlags.test['enableMultiRegionConfig'] || featureFlags.released['enableMultiRegionConfig']) && (
               <Tab eventKey="newBackupConfig" title="New Backup Config" key="new-backup-config">
                 <NewStorageConfiguration activeTab={section}/>
-            </Tab>
+              </Tab>
             )
           }
          

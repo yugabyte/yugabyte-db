@@ -25,7 +25,7 @@
 
 using namespace std::literals;
 
-DEFINE_int64(apply_intents_task_injected_delay_ms, 0,
+DEFINE_UNKNOWN_int64(apply_intents_task_injected_delay_ms, 0,
              "Inject such delay before applying intents for large transactions. "
              "Could be used to throttle the apply speed.");
 

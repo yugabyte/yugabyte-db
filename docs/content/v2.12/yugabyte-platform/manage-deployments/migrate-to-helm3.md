@@ -70,7 +70,7 @@ $ kubectl get svc -n yw-test
 ```
 
 ```
-NAME                         TYPE                CLUSTER-IP    EXTERNAL-IP   PORT(S)                                       AGE
+NAME                  TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)                       AGE
 yw-test-yugaware-ui   LoadBalancer   10.103.85.235   10.103.85.235   80:30265/TCP,9090:30661/TCP   18m
 ```
 

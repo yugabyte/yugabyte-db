@@ -16,6 +16,8 @@
 
 using namespace std::literals;
 
+DECLARE_int32(timestamp_history_retention_interval_sec);
+
 namespace yb {
 
 class CqlPackedRowTest : public PackedRowTestBase<CqlTestBase<MiniCluster>> {
@@ -166,6 +168,32 @@ TEST_F(CqlPackedRowTest, WriteTime) {
       "SELECT writetime(v1), writetime(v2) FROM t", processor));
   ASSERT_EQ(old_v1time, v1time);
   ASSERT_EQ(old_v2time, v2time);
+}
+
+TEST_F(CqlPackedRowTest, RetainPacking) {
+  // Set retention interval to 0, to repack all recently flushed entries.
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT) WITH tablets = 1"));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1) VALUES (1, 1)"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1) VALUES (2, 2)"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(session.ExecuteQuery("ALTER TABLE t ADD v2 INT"));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1, v2) VALUES (3, 3, 3)"));
+
+  // The first compaction to compact all flushed entries with an old schema, so all disk entries
+  // have only the most recent schema version.
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+
+  // Compaction with flush to check that we did not lost used schema versions.
+  ASSERT_OK(cluster_->CompactTablets());
 }
 
 } // namespace yb

@@ -73,27 +73,33 @@ using yb::docdb::DocWriteBatch;
 using yb::docdb::InitMarkerBehavior;
 using yb::operator"" _GB;
 
-DEFINE_string(master_addresses, "", "Comma-separated list of YB Master server addresses");
-DEFINE_string(table_name, "", "Name of the table to generate partitions for");
-DEFINE_string(namespace_name, "", "Namespace of the table");
-DEFINE_string(base_dir, "", "Base directory where we will store all the SSTable files");
-DEFINE_int64(memtable_size_bytes, 1_GB, "Amount of bytes to use for the rocksdb memtable");
-DEFINE_uint64(row_batch_size, 1000, "The number of rows to batch together in each rocksdb write");
-DEFINE_bool(flush_batch_for_tests, false, "Option used only in tests to flush after each batch. "
+DEFINE_UNKNOWN_string(master_addresses, "", "Comma-separated list of YB Master server addresses");
+DEFINE_UNKNOWN_string(table_name, "", "Name of the table to generate partitions for");
+DEFINE_UNKNOWN_string(namespace_name, "", "Namespace of the table");
+DEFINE_UNKNOWN_string(base_dir, "", "Base directory where we will store all the SSTable files");
+DEFINE_UNKNOWN_int64(memtable_size_bytes, 1_GB, "Amount of bytes to use for the rocksdb memtable");
+DEFINE_UNKNOWN_uint64(row_batch_size, 1000,
+    "The number of rows to batch together in each rocksdb write");
+DEFINE_UNKNOWN_bool(flush_batch_for_tests, false,
+    "Option used only in tests to flush after each batch. "
     "Used to generate multiple SST files in conjuction with small row_batch_size");
-DEFINE_string(bulk_load_helper_script, "./bulk_load_helper.sh", "Relative path for bulk load helper"
-              " script");
-DEFINE_string(bulk_load_cleanup_script, "./bulk_load_cleanup.sh", "Relative path for bulk load "
-              "cleanup script");
-DEFINE_string(ssh_key_file, "", "SSH key to push SSTable files to production cluster");
-DEFINE_bool(export_files, false, "Whether or not the files should be exported to a production "
-            "cluster.");
-DEFINE_int32(bulk_load_num_threads, 16, "Number of threads to use for bulk load");
-DEFINE_int32(bulk_load_threadpool_queue_size, 10000,
+DEFINE_UNKNOWN_string(bulk_load_helper_script, "./bulk_load_helper.sh",
+    "Relative path for bulk load helper"
+    " script");
+DEFINE_UNKNOWN_string(bulk_load_cleanup_script, "./bulk_load_cleanup.sh",
+    "Relative path for bulk load "
+    "cleanup script");
+DEFINE_UNKNOWN_string(ssh_key_file, "", "SSH key to push SSTable files to production cluster");
+DEFINE_UNKNOWN_bool(export_files, false,
+    "Whether or not the files should be exported to a production "
+    "cluster.");
+DEFINE_UNKNOWN_int32(bulk_load_num_threads, 16, "Number of threads to use for bulk load");
+DEFINE_UNKNOWN_int32(bulk_load_threadpool_queue_size, 10000,
              "Maximum number of entries to queue in the threadpool");
-DEFINE_int32(bulk_load_num_memtables, 3, "Number of memtables to use for rocksdb");
-DEFINE_int32(bulk_load_max_background_flushes, 2, "Number of flushes to perform in the background");
-DEFINE_uint64(bulk_load_num_files_per_tablet, 5,
+DEFINE_UNKNOWN_int32(bulk_load_num_memtables, 3, "Number of memtables to use for rocksdb");
+DEFINE_UNKNOWN_int32(bulk_load_max_background_flushes, 2,
+    "Number of flushes to perform in the background");
+DEFINE_UNKNOWN_uint64(bulk_load_num_files_per_tablet, 5,
               "Determines how to compact the data of a tablet to ensure we have only a certain "
               "number of sst files per tablet");
 
@@ -323,7 +329,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   docdb::QLWriteOperation op(
-      req, std::make_shared<docdb::DocReadContext>(schema, schema_version),
+      req, std::make_shared<docdb::DocReadContext>("BULK LOAD: ", schema, schema_version),
       index_map, nullptr /* unique_index_key_schema */, TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{

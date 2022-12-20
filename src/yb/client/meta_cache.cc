@@ -91,20 +91,20 @@ using strings::Substitute;
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(max_concurrent_master_lookups, 500,
+DEFINE_UNKNOWN_int32(max_concurrent_master_lookups, 500,
              "Maximum number of concurrent tablet location lookups from YB client to master");
 
 DEFINE_test_flag(bool, verify_all_replicas_alive, false,
                  "If set, when a RemoteTablet object is destroyed, we will verify that all its "
                  "replicas are not marked as failed");
 
-DEFINE_int32(retry_failed_replica_ms, 60 * 1000,
+DEFINE_UNKNOWN_int32(retry_failed_replica_ms, 60 * 1000,
              "Time in milliseconds to wait for before retrying a failed replica");
 
-DEFINE_int64(meta_cache_lookup_throttling_step_ms, 5,
+DEFINE_UNKNOWN_int64(meta_cache_lookup_throttling_step_ms, 5,
              "Step to increment delay between calls during lookup throttling.");
 
-DEFINE_int64(meta_cache_lookup_throttling_max_delay_ms, 1000,
+DEFINE_UNKNOWN_int64(meta_cache_lookup_throttling_max_delay_ms, 1000,
              "Max delay between calls during lookup throttling.");
 
 DEFINE_test_flag(bool, force_master_lookup_all_tablets, false,

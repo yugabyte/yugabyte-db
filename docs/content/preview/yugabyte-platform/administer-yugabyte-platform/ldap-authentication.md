@@ -27,7 +27,7 @@ type: docs
 
 </ul>
 
-LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
+<br>LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
 
 LDAP authentication is similar to a direct password authentication, except that it employs the LDAP protocol to verify the password. This means that only users who already exist in the database and have appropriate permissions can be authenticated via LDAP.
 
@@ -43,11 +43,11 @@ You can use the YugabyteDB Anywhere UI to enable LDAP authentication for Yugabyt
 
 - Navigate to **Admin > User Management > User Authentication**.
 
-- Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br><br>
+- Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br>
 
   ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)<br>
 
-  <br>
+  
 
   With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
 

@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -70,9 +71,14 @@ public class Universe extends Model {
   public static final String HELM2_LEGACY = "helm2Legacy";
   public static final String DUAL_NET_LEGACY = "dualNetLegacy";
   public static final String USE_CUSTOM_IMAGE = "useCustomImage";
+  // Flag for whether we have https on for master/tserver UI
+  public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
+
+  // Key to indicate if a universe cert is hot reloadable
+  public static final String KEY_CERT_HOT_RELOADABLE = "cert_hot_reloadable";
 
   public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
@@ -94,7 +100,6 @@ public class Universe extends Model {
 
   public void updateSwamperConfigWritten(Boolean swamperConfigWritten) {
     this.swamperConfigWritten = swamperConfigWritten;
-    this.save();
   }
 
   public enum HelmLegacy {
@@ -130,9 +135,8 @@ public class Universe extends Model {
 
   @JsonIgnore
   public void setConfig(Map<String, String> newConfig) {
-    LOG.info("Setting config {} on universe {} [ {} ]", Json.toJson(config), name, universeUUID);
+    LOG.info("Setting config {} on universe {} [ {} ]", Json.toJson(newConfig), name, universeUUID);
     this.config = newConfig;
-    this.save();
   }
 
   public void updateConfig(Map<String, String> newConfig) {
@@ -473,7 +477,11 @@ public class Universe extends Model {
    * @return true if there is any such node.
    */
   public boolean nodesInTransit() {
-    return getUniverseDetails().nodeDetailsSet.stream().anyMatch(NodeDetails::isInTransit);
+    return nodesInTransit(null);
+  }
+
+  public boolean nodesInTransit(NodeDetails.NodeState omittedState) {
+    return getNodes().stream().anyMatch(n -> n.isInTransit(omittedState));
   }
 
   public NodeDetails getNodeOrBadRequest(String nodeName) {
@@ -734,7 +742,7 @@ public class Universe extends Model {
       if (details.rootAndClientRootCASame) {
         return CertificateInfo.get(details.rootCA).certificate;
       }
-      return CertificateInfo.get(details.clientRootCA).certificate;
+      return CertificateInfo.get(details.getClientRootCA()).certificate;
     }
     return null;
   }
@@ -989,8 +997,8 @@ public class Universe extends Model {
             s ->
                 (s.getUniverseDetails().rootCA != null
                         && s.getUniverseDetails().rootCA.equals(certUUID))
-                    || (s.getUniverseDetails().clientRootCA != null
-                        && s.getUniverseDetails().clientRootCA.equals(certUUID)))
+                    || (s.getUniverseDetails().getClientRootCA() != null
+                        && s.getUniverseDetails().getClientRootCA().equals(certUUID)))
         .collect(Collectors.toSet());
   }
 
@@ -1065,5 +1073,15 @@ public class Universe extends Model {
       universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
     }
     return universe;
+  }
+
+  // Allow https when software version given is >= 2.17.1.0-b14.
+  // Invalid software versions will not allow https.
+  // compareYbVersions() returns 0 if incorrect software version is passed, hence the strictly
+  // greater.
+  public static boolean shouldEnableHttpsUI(
+      boolean enableNodeToNodeEncrypt, String ybSoftwareVersion) {
+    return enableNodeToNodeEncrypt
+        && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
   }
 }

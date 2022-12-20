@@ -16,7 +16,6 @@
     "remote_role.yml",
     "setup-cgroup.yml",
     "edit_authorized_keys.yml",
-    "reinstall-package.yml",
     "configure_ssh2.yml",
     "install-third-party.yml"
   ],
@@ -71,5 +70,8 @@
     "vars/cloud/azu.yml",
     "vars/cloud/gcp.yml",
     "vars/cloud/onprem.yml"
+  ],
+  "connection_plugins": [
+    "connection_plugins/node_agent_rpc.py"
   ]
 }

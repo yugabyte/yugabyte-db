@@ -48,8 +48,9 @@
 
 #include "yb/util/logging.h"
 #include <glog/logging.h>
+#include "yb/util/flags.h"
 
-DEFINE_bool(aggressive_compaction_for_read_amp, false,
+DEFINE_UNKNOWN_bool(aggressive_compaction_for_read_amp, false,
             "Determines if we should compact aggressively to reduce read amplification based on "
             "number of files alone, without regards to relative sizes of the SSTable files.");
 
@@ -485,7 +486,8 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, int input_level, int output_level,
     uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
-    InternalKey** compaction_end, bool* manual_conflict) {
+    CompactionReason compaction_reason, InternalKey** compaction_end,
+    bool* manual_conflict) {
   // CompactionPickerFIFO has its own implementation of compact range
   assert(ioptions_.compaction_style != kCompactionStyleFIFO);
 
@@ -537,7 +539,8 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
         /* max_grandparent_overlap_bytes = */ LLONG_MAX, output_path_id,
         GetCompressionType(ioptions_, output_level, 1),
         /* grandparents = */ std::vector<FileMetaData*>(), ioptions_.info_log,
-        /* is_manual = */ true);
+        /* is_manual = */ true, /* score */ -1, /* deletion_compaction */ false,
+        compaction_reason);
     if (c && start_level == 0) {
       MarkL0FilesForDeletion(vstorage, &ioptions_);
       level0_compactions_in_progress_.insert(c.get());
@@ -638,7 +641,8 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
       mutable_cf_options.MaxFileSizeForLevel(output_level),
       mutable_cf_options.MaxGrandParentOverlapBytes(input_level), output_path_id,
       GetCompressionType(ioptions_, output_level, vstorage->base_level()), std::move(grandparents),
-      ioptions_.info_log, /* is manual compaction = */ true);
+      ioptions_.info_log, /* is manual compaction = */ true, /* score */ -1,
+      /* deletion_compaction */ false, compaction_reason);
   if (!compaction) {
     return nullptr;
   }
@@ -1638,10 +1642,8 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalRe
       }
       char file_num_buf[kFormatFileNumberBufSize];
       sr->Dump(file_num_buf, sizeof(file_num_buf));
-      LOG_TO_BUFFER(log_buffer,
-                  "[%s] Universal: %s"
-                  "[%d] being compacted, skipping",
-                  cf_name.c_str(), file_num_buf, loop);
+      RDEBUG(ioptions_.info_log, "[%s] Universal: %s[%d] being compacted, skipping",
+              cf_name.c_str(), file_num_buf, loop);
 
       sr = nullptr;
     }
@@ -2042,7 +2044,8 @@ std::unique_ptr<Compaction> FIFOCompactionPicker::CompactRange(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, int input_level, int output_level,
     uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
-    InternalKey** compaction_end, bool* manual_conflict) {
+    CompactionReason compaction_reason, InternalKey** compaction_end,
+    bool* manual_conflict) {
   assert(input_level == 0);
   assert(output_level == 0);
   *compaction_end = nullptr;

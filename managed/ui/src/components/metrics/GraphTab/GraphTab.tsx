@@ -54,7 +54,7 @@ export const GraphTab: FC<MetricsData> = ({
     const metricsWithSettings = metricsKey.map((metricKey) => {
       const settings: any = {
         metric: metricKey,
-      }
+      };
       if (metricMeasure === MetricMeasure.OUTLIER) {
         settings.nodeAggregation = "AVG";
         settings.splitMode = outlierType;
@@ -150,4 +150,4 @@ export const GraphTab: FC<MetricsData> = ({
       {tabContent}
     </>
   );
-}
+};

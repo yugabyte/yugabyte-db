@@ -260,7 +260,6 @@ export default class AZSelectorTable extends Component {
         newTaskParams.currentClusterType = clusterType.toUpperCase();
         newTaskParams.clusterOperation = 'CREATE';
         newTaskParams.resetAZConfig = false;
-        newTaskParams.regionsChanged = false;
         this.props.submitConfigureUniverse(newTaskParams);
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
@@ -269,7 +268,6 @@ export default class AZSelectorTable extends Component {
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
         newTaskParams.userAZSelected = true;
         newTaskParams.resetAZConfig = false;
-        newTaskParams.regionsChanged = false;
         if (
           isNonEmptyObject(
             getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType)
@@ -687,17 +685,17 @@ export default class AZSelectorTable extends Component {
             azList.length <
               (enableGeoPartitioning ? currentCluster.userIntent.numNodes : replicationFactor) &&
             azList.length < azListForSelectedRegions.length && (
-              <Row>
-                <Col xs={4}>
-                  <YBButton
-                    btnText="Add Zone"
-                    btnIcon="fa fa-plus"
-                    btnClass={'btn btn-orange universe-form-add-az-btn'}
-                    onClick={addNewAZField}
-                  />
-                </Col>
-              </Row>
-            )}
+            <Row>
+              <Col xs={4}>
+                <YBButton
+                  btnText="Add Zone"
+                  btnIcon="fa fa-plus"
+                  btnClass={'btn btn-orange universe-form-add-az-btn'}
+                  onClick={addNewAZField}
+                />
+              </Col>
+            </Row>
+          )}
         </div>
       );
     }

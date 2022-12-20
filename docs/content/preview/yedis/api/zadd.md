@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`ZADD key [NX|XX] [CH] [INCR] score member [score member ...]`</b><br>
+**`ZADD key [NX|XX] [CH] [INCR] score member [score member ...]`**
+
 This command sets all specified `members` with their respective `scores` in the sorted set
 specified by `key`, with multiple `score` `member` pairs possible. If a specified `member` is already in
 the sorted set, this command updates that `member` with the new `score`. If the `key` does not exist, a new sorted set
@@ -27,10 +28,10 @@ The number of new `members` added to the sorted set, unless the `CH` option is s
 
 ## ZADD options
 
-<li> XX: Only update `members` that already exist. Do not add new `members`.</li>
-<li> NX: Do not update `members` that already exist. Only addd new `members`.</li>
-<li> CH: Modify the return value from new `members` added to `members` added or updated.</li>
-<li> INCR: Increment the specified `member` by `score`. Only one `score` `member` pair can be specified.</li>
+- XX: Only update `members` that already exist. Do not add new `members`.
+- NX: Do not update `members` that already exist. Only addd new `members`.
+- CH: Modify the return value from new `members` added to `members` added or updated.
+- INCR: Increment the specified `member` by `score`. Only one `score` `member` pair can be specified.
 
 ## Examples
 

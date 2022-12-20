@@ -92,7 +92,7 @@
 #endif
 
 // See KUDU-588 for details.
-DEFINE_bool(writable_file_use_fsync, false,
+DEFINE_UNKNOWN_bool(writable_file_use_fsync, false,
             "Use fsync(2) instead of fdatasync(2) for synchronizing dirty "
             "data to disk.");
 TAG_FLAG(writable_file_use_fsync, advanced);
@@ -105,18 +105,18 @@ TAG_FLAG(writable_file_use_fsync, advanced);
 #define FLAGS_never_fsync_default false
 #endif
 
-DEFINE_bool(never_fsync, FLAGS_never_fsync_default,
+DEFINE_UNKNOWN_bool(never_fsync, FLAGS_never_fsync_default,
             "Never fsync() anything to disk. This is used by tests to speed up runtime and improve "
             "stability. This is very unsafe to use in production.");
 
 TAG_FLAG(never_fsync, advanced);
 TAG_FLAG(never_fsync, unsafe);
 
-DEFINE_int32(o_direct_block_size_bytes, 4096,
+DEFINE_UNKNOWN_int32(o_direct_block_size_bytes, 4096,
              "Size of the block to use when flag durable_wal_write is set.");
 TAG_FLAG(o_direct_block_size_bytes, advanced);
 
-DEFINE_int32(o_direct_block_alignment_bytes, 4096,
+DEFINE_UNKNOWN_int32(o_direct_block_alignment_bytes, 4096,
              "Alignment (in bytes) for blocks used for O_DIRECT operations.");
 TAG_FLAG(o_direct_block_alignment_bytes, advanced);
 

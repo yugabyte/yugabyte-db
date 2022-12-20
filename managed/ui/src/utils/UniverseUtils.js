@@ -145,6 +145,10 @@ export function isKubernetesUniverse(currentUniverse) {
 
 export const isYbcEnabledUniverse = (universeDetails) => {
   return universeDetails?.enableYbc;
+};
+
+export const isYbcInstalledInUniverse = (universeDetails) => {
+  return universeDetails?.ybcInstalled
 }
 
 /**

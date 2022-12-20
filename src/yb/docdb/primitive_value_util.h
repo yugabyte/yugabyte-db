@@ -15,7 +15,9 @@
 
 #pragma once
 
-#include "yb/docdb/docdb.h"
+#include <google/protobuf/repeated_field.h>
+
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
 

@@ -68,44 +68,44 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-DEFINE_int32(log_segment_size_mb, 64,
+DEFINE_UNKNOWN_int32(log_segment_size_mb, 64,
              "The default segment size for log roll-overs, in MB");
 TAG_FLAG(log_segment_size_mb, advanced);
 
-DEFINE_uint64(log_segment_size_bytes, 0,
+DEFINE_UNKNOWN_uint64(log_segment_size_bytes, 0,
              "The default segment size for log roll-overs, in bytes. "
              "If 0 then log_segment_size_mb is used.");
 
-DEFINE_uint64(initial_log_segment_size_bytes, 1024 * 1024,
+DEFINE_UNKNOWN_uint64(initial_log_segment_size_bytes, 1024 * 1024,
               "The maximum segment size we want for a new WAL segment, in bytes. "
               "This value keeps doubling (for each subsequent WAL segment) till it gets to the "
               "maximum configured segment size (log_segment_size_bytes or log_segment_size_mb).");
 
-DEFINE_bool(durable_wal_write, false,
+DEFINE_UNKNOWN_bool(durable_wal_write, false,
             "Whether the Log/WAL should explicitly call fsync() after each write.");
 TAG_FLAG(durable_wal_write, stable);
 
-DEFINE_int32(interval_durable_wal_write_ms, 1000,
+DEFINE_UNKNOWN_int32(interval_durable_wal_write_ms, 1000,
             "Interval in ms after which the Log/WAL should explicitly call fsync(). "
             "If 0 fsysnc() is not called.");
 TAG_FLAG(interval_durable_wal_write_ms, stable);
 
-DEFINE_int32(bytes_durable_wal_write_mb, 1,
+DEFINE_UNKNOWN_int32(bytes_durable_wal_write_mb, 1,
              "Amount of data in MB after which the Log/WAL should explicitly call fsync(). "
              "If 0 fsysnc() is not called.");
 TAG_FLAG(bytes_durable_wal_write_mb, stable);
 
-DEFINE_bool(log_preallocate_segments, true,
+DEFINE_UNKNOWN_bool(log_preallocate_segments, true,
             "Whether the WAL should preallocate the entire segment before writing to it");
 TAG_FLAG(log_preallocate_segments, advanced);
 
-DEFINE_bool(log_async_preallocate_segments, true,
+DEFINE_UNKNOWN_bool(log_async_preallocate_segments, true,
             "Whether the WAL segments preallocation should happen asynchronously");
 TAG_FLAG(log_async_preallocate_segments, advanced);
 
 DECLARE_string(fs_data_dirs);
 
-DEFINE_bool(require_durable_wal_write, false, "Whether durable WAL write is required."
+DEFINE_UNKNOWN_bool(require_durable_wal_write, false, "Whether durable WAL write is required."
     "In case you cannot write using O_DIRECT in WAL and data directories and this flag is set true"
     "the system will deliberately crash with the appropriate error. If this flag is set false, "
     "the system will soft downgrade the durable_wal_write flag.");
@@ -117,7 +117,7 @@ TAG_FLAG(require_durable_wal_write, stable);
 //
 // TODO(logindex): should be switched to DEFINE_RUNTIME_AUTO_bool after
 // https://github.com/yugabyte/yugabyte-db/issues/11912.
-DEFINE_bool(
+DEFINE_UNKNOWN_bool(
     save_index_into_wal_segments, yb::IsDebug(), "Whether to save log index into WAL segments.");
 TAG_FLAG(save_index_into_wal_segments, hidden);
 TAG_FLAG(save_index_into_wal_segments, advanced);
@@ -924,13 +924,13 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
   // TODO(lw_uc) embed buffer and first arena block into holder itself.
   struct DataHolder {
     RefCntBuffer buffer;
-    Arena arena;
+    ThreadSafeArena arena;
 
     explicit DataHolder(const RefCntBuffer& buffer_) : buffer(buffer_) {}
   };
 
   auto holder = std::make_shared<DataHolder>(buffer);
-  auto batch = holder->arena.NewObject<LWLogEntryBatchPB>(&holder->arena);
+  auto batch = holder->arena.NewArenaObject<LWLogEntryBatchPB>();
   s = batch->ParseFromSlice(entry_batch_slice.Prefix(header.msg_length));
 
   if (!s.ok()) {

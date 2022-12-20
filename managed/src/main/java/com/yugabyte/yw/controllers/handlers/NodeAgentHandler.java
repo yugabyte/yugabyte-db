@@ -33,6 +33,7 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.Date;
 import java.util.Map;
 import java.util.Objects;
@@ -183,7 +184,7 @@ public class NodeAgentHandler {
                       "Purging node agent {} because connection failed. Error: {}",
                       n.uuid,
                       e.getMessage());
-                  n.purge();
+                  n.purge(getNodeAgentBaseCertDirectory(n));
                 }
               });
     } catch (Exception e) {
@@ -191,7 +192,8 @@ public class NodeAgentHandler {
     }
   }
 
-  private Path getNodeAgentBaseCertDirectory(NodeAgent nodeAgent) {
+  @VisibleForTesting
+  Path getNodeAgentBaseCertDirectory(NodeAgent nodeAgent) {
     return Paths.get(
         appConfig.getString("yb.storage.path"),
         "node-agent",
@@ -415,6 +417,17 @@ public class NodeAgentHandler {
   }
 
   /**
+   * Returns the node agents for the customer with additional node agent IP filter.
+   *
+   * @param customerUuid customer UUID.
+   * @param nodeAgentIp optional node agent IP.
+   * @return the node agent.
+   */
+  public Collection<NodeAgent> list(UUID customerUuid, String nodeAgentIp) {
+    return NodeAgent.list(customerUuid, nodeAgentIp);
+  }
+
+  /**
    * Returns the node agent with the given IDs.
    *
    * @param customerUuid customer UUID.
@@ -492,6 +505,6 @@ public class NodeAgentHandler {
    * @param uuid the node UUID.
    */
   public void unregister(UUID uuid) {
-    NodeAgent.maybeGet(uuid).ifPresent(NodeAgent::purge);
+    NodeAgent.maybeGet(uuid).ifPresent(n -> n.purge(getNodeAgentBaseCertDirectory(n)));
   }
 }

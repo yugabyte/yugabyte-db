@@ -29,51 +29,87 @@ namespace yb {
 
 namespace client {
 
-ExternalTransaction::ExternalTransaction(TransactionManager* transaction_manager,
-                                         const ExternalTransactionMetadata& metadata)
+ExternalTransaction::ExternalTransaction(TransactionManager* transaction_manager)
     : transaction_manager_(transaction_manager),
-      metadata_(metadata),
-      commit_handle_(transaction_manager_->rpcs().InvalidHandle()) {
+      handle_(transaction_manager_->rpcs().InvalidHandle()) {
 }
 
 ExternalTransaction::~ExternalTransaction() {
-  transaction_manager_->rpcs().Abort({&commit_handle_});
+  transaction_manager_->rpcs().Abort({&handle_});
 }
 
-void ExternalTransaction::Commit(CommitCallback commit_callback) {
+void ExternalTransaction::Create(const ExternalTransactionMetadata& metadata,
+                                 CreateCallback create_callback) {
+  LOG(INFO) << "Create for " << metadata.transaction_id;
   tserver::UpdateTransactionRequestPB req;
-  req.set_tablet_id(metadata_.status_tablet);
+  req.set_tablet_id(metadata.status_tablet);
   req.set_propagated_hybrid_time(transaction_manager_->Now().ToUint64());
   req.set_is_external(true);
   auto& state = *req.mutable_state();
-  state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
+  state.set_transaction_id(metadata.transaction_id.data(), metadata.transaction_id.size());
+  state.set_status(TransactionStatus::CREATED);
+  state.set_external_hybrid_time(metadata.hybrid_time);
+  transaction_manager_->rpcs().RegisterAndStart(
+      UpdateTransaction(
+          TransactionRpcDeadline(),
+          nullptr /* tablet */,
+          transaction_manager_->client(),
+          &req,
+          [this, create_callback](const auto& status, const auto& req, const auto& resp) {
+            this->CreateDone(status, resp, create_callback);
+          }),
+      &handle_);
+}
+
+std::future<Status> ExternalTransaction::CreateFuture(const ExternalTransactionMetadata& metadata) {
+  return MakeFuture<Status>([&](auto callback) {
+    Create(metadata, std::move(callback));
+  });
+}
+
+void ExternalTransaction::CreateDone(const Status& status,
+                                     const tserver::UpdateTransactionResponsePB& response,
+                                     CreateCallback create_callback) {
+  transaction_manager_->rpcs().Unregister(&handle_);
+  create_callback(status);
+}
+
+void ExternalTransaction::Commit(const ExternalTransactionMetadata& metadata,
+                                 CommitCallback commit_callback) {
+  LOG(INFO) << "Commit for " << metadata.transaction_id;
+  tserver::UpdateTransactionRequestPB req;
+  req.set_tablet_id(metadata.status_tablet);
+  req.set_propagated_hybrid_time(transaction_manager_->Now().ToUint64());
+  req.set_is_external(true);
+  auto& state = *req.mutable_state();
+  state.set_transaction_id(metadata.transaction_id.data(), metadata.transaction_id.size());
   state.set_status(TransactionStatus::COMMITTED);
-  state.set_external_commit_ht(metadata_.commit_ht);
-  for (const auto& involved_tablet_id : metadata_.involved_tablet_ids) {
+  state.set_external_hybrid_time(metadata.hybrid_time);
+  for (const auto& involved_tablet_id : metadata.involved_tablet_ids) {
     *state.add_tablets() = involved_tablet_id;
   }
   transaction_manager_->rpcs().RegisterAndStart(
       UpdateTransaction(
           TransactionRpcDeadline(),
-          nullptr,
+          nullptr /* tablet */,
           transaction_manager_->client(),
           &req,
           [this, commit_callback](const auto& status, const auto& req, const auto& resp) {
             this->CommitDone(status, resp, commit_callback);
           }),
-      &commit_handle_);
+      &handle_);
 }
 
-std::future<Status> ExternalTransaction::CommitFuture() {
-  return MakeFuture<Status>([this](auto callback) {
-    Commit(std::move(callback));
+std::future<Status> ExternalTransaction::CommitFuture(const ExternalTransactionMetadata& metadata) {
+  return MakeFuture<Status>([&](auto callback) {
+    Commit(metadata, std::move(callback));
   });
 }
 
 void ExternalTransaction::CommitDone(const Status& status,
                                      const tserver::UpdateTransactionResponsePB& response,
                                      CommitCallback commit_callback) {
-  transaction_manager_->rpcs().Unregister(&commit_handle_);
+  transaction_manager_->rpcs().Unregister(&handle_);
   commit_callback(status);
 }
 

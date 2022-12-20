@@ -611,6 +611,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     AvailabilityZone.createOrThrow(r1, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.createOrThrow(r1, "az-3", "PlacementAZ-3", "subnet-3");
     az3.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
+    az3.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
@@ -1061,10 +1062,8 @@ public class CustomerControllerTest extends FakeDBApplication {
   @Test
   public void testCustomerHostInfo() {
     JsonNode response = Json.parse("{\"foo\": \"bar\"}");
-    when(mockCloudQueryHelper.currentHostInfo(
-            Common.CloudType.aws, ImmutableList.of("instance-id", "vpc-id", "privateIp", "region")))
-        .thenReturn(response);
-    when(mockCloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null)).thenReturn(response);
+    when(mockCloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws)).thenReturn(response);
+    when(mockCloudQueryHelper.getCurrentHostInfo(Common.CloudType.gcp)).thenReturn(response);
     Result result = getHostInfo(customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());

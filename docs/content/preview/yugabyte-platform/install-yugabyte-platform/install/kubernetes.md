@@ -4,7 +4,6 @@ headerTitle: Overview
 linkTitle: Overview
 description: Installing YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Installing YugabyteDB Anywhere on Kubernetes
 menu:
   preview_yugabyte-platform:
     identifier: install-2-k8s
@@ -38,7 +37,7 @@ For installation overview, select one of the following installation types:
   </li>
 </ul>
 
-Click elements of the following chart to access detailed steps:
+<br>Click elements of the following chart to access detailed steps:
 
 <div class="image-with-map">
 <img src="/images/ee/flowchart/yb-install-k8s.png" usemap="#image-map">

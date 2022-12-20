@@ -49,13 +49,14 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags.h"
 
 // TODO: Semantics of the Log and Appender thread interactions changed and now multi-threaded
 // writing is no longer allowed, or to be more precise, does no longer guarantee the ordering of
 // events being written, across threads.
-DEFINE_int32(num_writer_threads, 1, "Number of threads writing to the log");
-DEFINE_int32(num_batches_per_thread, 2000, "Number of batches per thread");
-DEFINE_int32(num_ops_per_batch_avg, 5, "Target average number of ops per batch");
+DEFINE_UNKNOWN_int32(num_writer_threads, 1, "Number of threads writing to the log");
+DEFINE_UNKNOWN_int32(num_batches_per_thread, 2000, "Number of batches per thread");
+DEFINE_UNKNOWN_int32(num_ops_per_batch_avg, 5, "Target average number of ops per batch");
 
 namespace yb {
 namespace log {

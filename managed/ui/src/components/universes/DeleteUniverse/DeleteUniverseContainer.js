@@ -26,7 +26,7 @@ const mapDispatchToProps = (dispatch) => {
         (response) => {
           dispatch(deleteUniverseReadReplicaResponse(response.payload));
           toast.success('Deletion is in progress');
-          browserHistory.push(`/universes/universeUUID/tasks`);
+          browserHistory.push(`/universes/${universeUUID}/tasks`);
         }
       );
     },

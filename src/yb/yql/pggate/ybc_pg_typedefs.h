@@ -338,11 +338,15 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_reindex;
   const int32_t*  ysql_max_read_restart_attempts;
   const int32_t*  ysql_max_write_restart_attempts;
+  const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
   const bool*     ysql_colocate_database_by_default;
+  const bool*     ysql_ddl_rollback_enabled;
+  const bool*     ysql_enable_read_request_caching;
+  const bool*     ysql_enable_profile;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -390,6 +394,25 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID,
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
+
+// source:
+// https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154
+typedef struct YbTcmallocStats {
+  // "generic.total_physical_bytes"
+  int64_t total_physical_bytes;
+  // "generic.heap_size"
+  int64_t heap_size_bytes;
+  // "generic.current_allocated_bytes"
+  int64_t current_allocated_bytes;
+  // "tcmalloc.pageheap_free_bytes"
+  int64_t pageheap_free_bytes;
+  // "tcmalloc.pageheap_unmapped_bytes"
+  int64_t pageheap_unmapped_bytes;
+} YbTcmallocStats;
+
+// In per database catalog version mode, this puts a limit on the maximum
+// number of databases that can exist in a cluster.
+static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -13,6 +14,7 @@ import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
@@ -56,6 +58,7 @@ public class TlsToggle extends UpgradeTaskBase {
           verifyParams();
           // Copy any new certs to all nodes
           createCopyCertTasks(allNodes);
+          updateUniverseHttpsEnabledUI();
           // Round 1 gflags upgrade
           createRound1GFlagUpdateTasks(nodes);
           // Update TLS related params in universe details
@@ -73,7 +76,7 @@ public class TlsToggle extends UpgradeTaskBase {
     }
 
     if (EncryptionInTransitUtil.isClientRootCARequired(taskParams())
-        && taskParams().clientRootCA == null) {
+        && taskParams().getClientRootCA() == null) {
       throw new IllegalArgumentException("Client root certificate is null");
     }
   }
@@ -153,6 +156,23 @@ public class TlsToggle extends UpgradeTaskBase {
     }
   }
 
+  protected void updateUniverseHttpsEnabledUI() {
+    int nodeToNodeChange = getNodeToNodeChange();
+
+    // HTTPS_ENABLED_UI will piggyback node-to-node encryption.
+    if (nodeToNodeChange != 0) {
+      String httpsEnabledUI =
+          (nodeToNodeChange > 0
+                  && Universe.shouldEnableHttpsUI(true, getUserIntent().ybSoftwareVersion))
+              ? "true"
+              : "false";
+      saveUniverseDetails(
+          u -> {
+            u.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, httpsEnabledUI));
+          });
+    }
+  }
+
   private void createGFlagUpdateTasks(int round, List<NodeDetails> nodes, ServerType processType) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
@@ -213,7 +233,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.clientRootCA = taskParams().getClientRootCA();
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
@@ -232,7 +252,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.setClientRootCA(taskParams().getClientRootCA());
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     params.nodeToNodeChange = getNodeToNodeChange();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
@@ -252,7 +272,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.setClientRootCA(taskParams().getClientRootCA());
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     params.nodeToNodeChange = getNodeToNodeChange();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);

@@ -17,7 +17,7 @@
 
 #include "yb/yql/cql/cqlserver/cql_server.h"
 
-DEFINE_int32(cql_rpc_keepalive_time_ms, 120000,
+DEFINE_UNKNOWN_int32(cql_rpc_keepalive_time_ms, 120000,
              "If an RPC connection from a client is idle for this amount of time, the server "
              "will disconnect the client. Setting flag to 0 disables this clean up.");
 TAG_FLAG(cql_rpc_keepalive_time_ms, advanced);

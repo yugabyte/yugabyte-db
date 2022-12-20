@@ -4954,7 +4954,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "us"
+      "format" : ""
     }, {
       "format" : "short",
       "label" : null,
@@ -5832,12 +5832,12 @@
     "id" : 22,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Reads",
+      "legendFormat" : "Read",
       "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_reads_irate\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Writes",
+      "legendFormat" : "Write",
       "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_writes_irate\"}[300s])) by (saved_name)",
       "refId" : "B"
     } ],
@@ -6806,11 +6806,11 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Automatic Split",
+    "title" : "Tablet Split Manager",
     "id" : 1,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Split",
+      "legendFormat" : "Runtime",
       "expr" : "avg(rate(automatic_split_manager_time{node_prefix=~\"$dbcluster\"}[300s]))",
       "refId" : "A"
     } ],
@@ -8793,22 +8793,22 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Apply",
-      "expr" : "avg(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_op_apply\"}[300s])) by (saved_name)",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_op_apply\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Add",
-      "expr" : "avg(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_op_added\"}[300s])) by (saved_name)",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_op_added\"}[300s])) by (saved_name)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Compaction",
-      "expr" : "avg(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_compaction_added\"}[300s])) by (saved_name)",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_compaction_added\"}[300s])) by (saved_name)",
       "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "Compaction",
-      "expr" : "avg(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_post_split_compaction_added\"}[300s])) by (saved_name)",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_post_split_compaction_added\"}[300s])) by (saved_name)",
       "refId" : "D"
     } ],
     "gridPos" : {
@@ -12659,7 +12659,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "us"
+      "format" : "B"
     }, {
       "format" : "short",
       "label" : null,
@@ -12672,7 +12672,7 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Response Size (bytes)",
+    "title" : "Response Size",
     "id" : 105,
     "targets" : [ {
       "hide" : false,

@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.supportbundle;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesCluster;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,7 +38,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.io.IOException;
-import java.text.ParseException;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -160,7 +161,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       boolean isReadOnlyUniverseCluster = !universeCluster.clusterType.equals(ClusterType.PRIMARY);
       String helmReleaseName =
-          PlacementInfoUtil.getHelmReleaseName(
+          KubernetesUtil.getHelmReleaseName(
               isMultiAz, nodePrefix, namespaceToAzName.getValue(), isReadOnlyUniverseCluster);
       try {
         String localFilePath =
@@ -262,7 +263,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       String kubernetesClusterName =
           kubernetesManagerFactory.getManager().getCurrentContext(azConfig);
       String namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               isMultiAz,
               nodePrefix,
               azName,
@@ -284,8 +285,8 @@ class K8sInfoComponent implements SupportBundleComponent {
   }
 
   @Override
-  public void downloadComponent(Customer customer, Universe universe, Path bundlePath)
-      throws IOException {
+  public void downloadComponent(
+      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws Exception {
     try {
       log.debug("Starting downloadComponent() on K8sInfoComponent");
 
@@ -306,7 +307,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       //     Run the kubectl commands and get the output to a file.
       for (Cluster universeCluster : universeClusters) {
         Map<UUID, Map<String, String>> azToConfig =
-            PlacementInfoUtil.getConfigPerAZ(universeCluster.placementInfo);
+            KubernetesUtil.getConfigPerAZ(universeCluster.placementInfo);
         Provider provider =
             Provider.getOrBadRequest(UUID.fromString(universeCluster.userIntent.provider));
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
@@ -417,8 +418,13 @@ class K8sInfoComponent implements SupportBundleComponent {
 
   @Override
   public void downloadComponentBetweenDates(
-      Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate)
-      throws IOException, ParseException {
-    this.downloadComponent(customer, universe, bundlePath);
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+    this.downloadComponent(customer, universe, bundlePath, node);
   }
 }

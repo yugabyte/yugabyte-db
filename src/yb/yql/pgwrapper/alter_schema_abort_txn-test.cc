@@ -46,8 +46,7 @@ TEST_F(AlterSchemaAbortTxnTest, YB_DISABLE_TEST_IN_TSAN(AlterSchemaFailure)) {
   ASSERT_OK(txn_conn.Execute("COMMIT"));
 
 
-  auto res = ASSERT_RESULT(ddl_conn.FetchFormat("SELECT COUNT(*) FROM $0", "p"));
-  int64_t value = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  auto value = ASSERT_RESULT(ddl_conn.FetchValue<PGUint64>(Format("SELECT COUNT(*) FROM $0", "p")));
   ASSERT_EQ(value, 2);
 }
 

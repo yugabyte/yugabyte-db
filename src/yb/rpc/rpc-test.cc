@@ -74,6 +74,7 @@
 #include "yb/util/thread.h"
 
 #include "yb/util/memory/memory_usage_test_util.h"
+#include "yb/util/flags.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_rpc_test_CalculatorService_Sleep);
 METRIC_DECLARE_histogram(rpc_incoming_queue_time);
@@ -81,7 +82,7 @@ METRIC_DECLARE_counter(tcp_bytes_sent);
 METRIC_DECLARE_counter(tcp_bytes_received);
 METRIC_DECLARE_counter(rpcs_timed_out_early_in_queue);
 
-DEFINE_int32(rpc_test_connection_keepalive_num_iterations, 1,
+DEFINE_UNKNOWN_int32(rpc_test_connection_keepalive_num_iterations, 1,
   "Number of iterations in TestRpc.TestConnectionKeepalive");
 
 DECLARE_bool(TEST_pause_calculator_echo_request);

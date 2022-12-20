@@ -100,7 +100,10 @@ public class CommonUtils {
           // Azure KMS fields
           "AZU_KEY_NAME",
           "AZU_KEY_ALGORITHM",
-          "AZU_KEY_SIZE");
+          "AZU_KEY_SIZE",
+          "KEYSPACETABLELIST",
+          // General API field
+          "KEYSPACE");
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
@@ -731,9 +734,8 @@ public class CommonUtils {
   public static String generateStateLogMsg(Universe universe, boolean alreadyRunning) {
     String stateLogMsg =
         String.format(
-            "alreadyRunning={} backupInProgress={} updateInProgress={} universePaused={}",
+            "alreadyRunning={} updateInProgress={} universePaused={}",
             alreadyRunning,
-            universe.getUniverseDetails().backupInProgress,
             universe.getUniverseDetails().updateInProgress,
             universe.getUniverseDetails().universePaused);
     return stateLogMsg;

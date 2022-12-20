@@ -23,6 +23,8 @@ type: docs
   </li>
 </ul>
 
+{{% explore-setup-single %}}
+
 ## CHECK Constraint
 
 The YSQL `CHECK` constraint allows you to constrain values in columns based on a boolean expression. The values are evaluated with regards to meeting a specific requirement before these values are inserted or updated; if they fail the check, YSQL rejects the changes and displays a constraint violation error.

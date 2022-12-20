@@ -126,14 +126,16 @@ SetFlagResult SetFlag(
 //
 // The third argument is a date in the format of "MM_YYYY" to make it easy to track when a flag was
 // deprecated, so we may fully remove declarations in future releases.
-#define DEPRECATE_FLAG(type, name, date_mm_yyyy)                                              \
-    namespace deprecated_flag_do_not_use {                                                    \
-    type default_##name;                                                                      \
-    DEFINE_##type(name, default_##name, "Deprecated");                                        \
-    TAG_FLAG(name, hidden);                                                                   \
-    REGISTER_CALLBACK(name,                                                                   \
-                      "Warn deprecated flag",                                                 \
-                      []() { yb::flags_internal::WarnFlagDeprecated(#name, date_mm_yyyy); }); \
-    }
+// Flags are set to a dummy value
+#define DEPRECATE_FLAG(type, name, date_mm_yyyy) \
+  namespace deprecated_flag_do_not_use { \
+  type default_##name; \
+  DEFINE_RUNTIME_##type(name, default_##name, "Deprecated"); \
+  _TAG_FLAG(name, ::yb::FlagTag::kDeprecated, deprecated); \
+  REGISTER_CALLBACK(name, "Warn deprecated flag", []() { \
+    yb::flags_internal::WarnFlagDeprecated(#name, date_mm_yyyy); \
+  }); \
+  } \
+  static_assert(true, "semi-colon required after this macro")
 
 } // namespace yb

@@ -128,13 +128,13 @@ TAG_FLAG(log_min_seconds_to_retain, advanced);
 //    (interval_durable_wal_write_ms * FLAGS_log_background_sync_interval_fraction) ms.
 // This is only true when durable_wal_write_ is false. If true, fsync in performed in-line on
 // every call to Log::Sync()
-DEFINE_bool(log_enable_background_sync, true,
+DEFINE_UNKNOWN_bool(log_enable_background_sync, true,
             "If true, log fsync operations in the aggresively performed in the background.");
-DEFINE_double(log_background_sync_data_fraction, 0.5,
+DEFINE_UNKNOWN_double(log_background_sync_data_fraction, 0.5,
              "When log_enable_background_sync is enabled and periodic_sync_unsynced_bytes_ "
              "reaches bytes_durable_wal_write_mb_*log_background_sync_data_fraction, the fsync "
              "task is pushed to the log-sync queue.");
-DEFINE_double(log_background_sync_interval_fraction, 0.6,
+DEFINE_UNKNOWN_double(log_background_sync_interval_fraction, 0.6,
              "When log_enable_background_sync is enabled and time passed since insertion of log "
              "entry exceeds interval_durable_wal_write_ms*log_background_sync_interval_fraction "
              "the fsync task is pushed to the log-sync queue.");
@@ -152,21 +152,21 @@ TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, advanced);
 
 // Fault/latency injection flags.
 // -----------------------------
-DEFINE_bool(log_inject_latency, false,
+DEFINE_UNKNOWN_bool(log_inject_latency, false,
             "If true, injects artificial latency in log sync operations. "
             "Advanced option. Use at your own risk -- has a negative effect "
             "on performance for obvious reasons!");
-DEFINE_int32(log_inject_latency_ms_mean, 100,
+DEFINE_UNKNOWN_int32(log_inject_latency_ms_mean, 100,
              "The number of milliseconds of latency to inject, on average. "
              "Only takes effect if --log_inject_latency is true");
-DEFINE_int32(log_inject_latency_ms_stddev, 100,
+DEFINE_UNKNOWN_int32(log_inject_latency_ms_stddev, 100,
              "The standard deviation of latency to inject in before log sync operations. "
              "Only takes effect if --log_inject_latency is true");
 TAG_FLAG(log_inject_latency, unsafe);
 TAG_FLAG(log_inject_latency_ms_mean, unsafe);
 TAG_FLAG(log_inject_latency_ms_stddev, unsafe);
 
-DEFINE_int32(log_inject_append_latency_ms_max, 0,
+DEFINE_UNKNOWN_int32(log_inject_append_latency_ms_max, 0,
              "The maximum latency to inject before the log append operation.");
 
 DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
@@ -188,20 +188,20 @@ DEFINE_test_flag(bool, disable_wal_retention_time, false,
 // We have to make the queue length really long.
 // TODO: Create new flags log_taskstream_queue_max_size and log_taskstream_queue_max_wait_ms
 // and deprecate these flags.
-DEFINE_int32(taskstream_queue_max_size, 100000,
+DEFINE_UNKNOWN_int32(taskstream_queue_max_size, 100000,
              "Maximum number of operations waiting in the taskstream queue.");
 
-DEFINE_int32(taskstream_queue_max_wait_ms, 1000,
+DEFINE_UNKNOWN_int32(taskstream_queue_max_wait_ms, 1000,
              "Maximum time in ms to wait for items in the taskstream queue to arrive.");
 
-DEFINE_int32(wait_for_safe_op_id_to_apply_default_timeout_ms, 15000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int32(wait_for_safe_op_id_to_apply_default_timeout_ms, 15000 * yb::kTimeMultiplier,
              "Timeout used by WaitForSafeOpIdToApply when it was not specified by caller.");
 
 DEFINE_test_flag(int64, log_fault_after_segment_allocation_min_replicate_index, 0,
                  "Fault of segment allocation when min replicate index is at least specified. "
                  "0 to disable.");
 
-DEFINE_int64(time_based_wal_gc_clock_delta_usec, 0,
+DEFINE_UNKNOWN_int64(time_based_wal_gc_clock_delta_usec, 0,
              "A delta in microseconds to add to the clock value used to determine if a WAL "
              "segment is safe to be garbage collected. This is needed for clusters running with a "
              "skewed hybrid clock, because the clock used for time-based WAL GC is the wall clock, "

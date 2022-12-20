@@ -11,6 +11,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableMap;
@@ -18,8 +19,10 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
+import javax.persistence.OptimisticLockException;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -207,5 +210,17 @@ public class ProviderTest extends FakeDBApplication {
     CloudBootstrap.Params.PerRegionMetadata data = metadata.get(regionCode);
     assertNotNull(data);
     assertEquals(subnetId, data.subnetId);
+  }
+
+  @Test
+  public void testOptimisticLocking() {
+    Provider provider = ModelFactory.gcpProvider(defaultCustomer);
+    Provider providerCopy = Provider.getOrBadRequest(provider.uuid);
+    provider.setConfig(Collections.singletonMap("qqq", "vvv"));
+    provider.save();
+    providerCopy.setConfig(Collections.singletonMap("1", "2"));
+    assertThrows(OptimisticLockException.class, () -> providerCopy.save());
+    providerCopy.setVersion(provider.getVersion());
+    providerCopy.save(); // Success
   }
 }

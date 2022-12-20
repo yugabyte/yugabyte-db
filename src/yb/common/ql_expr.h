@@ -80,7 +80,7 @@ class ExprResult<QLValuePB> {
 template <>
 class ExprResult<LWQLValuePB> {
  public:
-  explicit ExprResult(Arena* arena) : arena_(arena) {}
+  explicit ExprResult(ThreadSafeArena* arena) : arena_(arena) {}
   explicit ExprResult(LWQLValuePB* template_value) : arena_(&template_value->arena()) {}
   explicit ExprResult(ExprResult<LWQLValuePB>* template_result)
       : arena_(template_result->arena_) {}
@@ -96,7 +96,7 @@ class ExprResult<LWQLValuePB> {
  private:
   friend class ExprResultWriter<LWQLValuePB>;
 
-  Arena* arena_;
+  ThreadSafeArena* arena_;
   LWQLValuePB* value_ = nullptr;
 };
 

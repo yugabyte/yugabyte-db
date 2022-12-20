@@ -133,9 +133,18 @@
 
   <logger name="play" level="INFO" />
   <logger name="org.yb" level="INFO" />
-  <logger name="application" level="TRACE" />
-  <logger name="com.yugabyte.yw" level="TRACE" />
-  <logger name="org.flywaydb.core" level="TRACE" />
+  <if condition='property("cloud").equals("true")'>
+    <then>
+      <logger name="application" level="INFO" />
+      <logger name="com.yugabyte.yw" level="DEBUG" />
+      <logger name="org.flywaydb.core" level="INFO" />
+    </then>
+    <else>
+      <logger name="application" level="TRACE" />
+      <logger name="com.yugabyte.yw" level="TRACE" />
+      <logger name="org.flywaydb.core" level="TRACE" />
+    </else>
+  </if>
 
   <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
   <logger name="com.gargoylesoftware.htmlunit.javascript" level="OFF" />

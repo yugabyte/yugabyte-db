@@ -38,5 +38,9 @@ Status YQLRowwiseIteratorIf::NextRow(QLTableRow* table_row) {
   return DoNextRow(schema(), table_row);
 }
 
+Status YQLRowwiseIteratorIf::Iterate(const YQLScanCallback& callback) {
+  return STATUS(NotSupported, "This iterator does not support iterate with callback.");
+}
+
 }  // namespace docdb
 }  // namespace yb

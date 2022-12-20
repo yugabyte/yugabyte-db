@@ -44,6 +44,7 @@
 #include "optimizer/cost.h"
 #include "optimizer/var.h"
 #include "utils/datum.h"
+#include "utils/elog.h"
 #include "utils/rel.h"
 #include "utils/lsyscache.h"
 #include "utils/resowner_private.h"
@@ -1765,7 +1766,8 @@ ybcBeginScan(Relation relation,
 		* for system catalog tables.
 		*/
 		if (!IsSystemRelation(relation))
-			YbSetCatalogCacheVersion(ybScan->handle, yb_catalog_cache_version);
+			YbSetCatalogCacheVersion(
+				ybScan->handle, YbGetCatalogCacheVersion());
 	} else
 		ybScan->quit_scan = true;
 
@@ -2179,7 +2181,7 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	}
 
 	Cost cost_per_tuple = cpu_tuple_cost * yb_per_tuple_cost_factor +
-	                      baserel->baserestrictcost.per_tuple;
+	                       baserel->baserestrictcost.per_tuple;
 
 	*startup_cost += baserel->baserestrictcost.startup;
 
@@ -2415,7 +2417,6 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		}
 	}
 
-
 	path->path.rows = baserel_rows_estimate;
 
 	/*
@@ -2447,11 +2448,11 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 																	  scan_plan.hash_key,
 																	  scan_plan.primary_key);
 		baserel_rows_estimate = const_qual_selectivity * baserel->tuples;
-	}
 
-	if (baserel_rows_estimate < baserel->rows)
-	{
-		baserel->rows = baserel_rows_estimate;
+		if (baserel_rows_estimate < baserel->rows)
+		{
+			baserel->rows = baserel_rows_estimate;
+		}
 	}
 
 	if (relation)
@@ -2547,10 +2548,12 @@ HTSU_Result
 YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy wait_policy,
 						 EState* estate)
 {
-	if (wait_policy == LockWaitBlock) {
+	if (wait_policy == LockWaitBlock && !YBIsWaitQueueEnabled()) {
 		/*
-		 * Right now we don't support LockWaitBlock and default to LockWaitError. This will be resolved
-		 * once we support pessimistic locking.
+		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is mapped
+		 * to LockWaitError right now (see WaitPolicy proto for meaning of "Fail-on-Conflict" and the
+		 * reason why LockWaitError is not mapped to no-wait semantics but to Fail-on-Conflict
+		 * semantics).
 		 */
 		wait_policy = LockWaitError;
 	}
@@ -2643,6 +2646,7 @@ ybBeginSample(Relation rel, int targrows)
 	ybSample->targrows = targrows;
 	ybSample->liverows = 0;
 	ybSample->deadrows = 0;
+	elog(DEBUG1, "Sampling %d rows from table %s", targrows, RelationGetRelationName(rel));
 
 	/*
 	 * Create new sampler command

@@ -102,11 +102,11 @@ Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) 
       deadline_,
       read_time_);
   if (!sub_doc_key.empty()) {
-    iter_key_.Reset(sub_doc_key);
+    row_key_ = sub_doc_key;
   } else {
     DocKeyEncoder(&iter_key_).Schema(doc_read_context_.schema);
+    row_key_ = iter_key_;
   }
-  row_key_ = iter_key_;
   row_hash_key_ = row_key_;
   VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << row_key_;
   db_iter_->Seek(row_key_);
@@ -308,7 +308,15 @@ Result<bool> DocRowwiseIterator::HasNext() {
         // We must have seeked past the target key we are looking for (no result) so we can safely
         // skip all scan targets between the current target and row key (excluding row_key_ itself).
         // Update the target key and iterator and call HasNext again to try the next target.
-        RETURN_NOT_OK(scan_choices_->SkipTargetsUpTo(row_key_));
+        if (!VERIFY_RESULT(scan_choices_->SkipTargetsUpTo(row_key_))) {
+          // SkipTargetsUpTo returns false when it fails to decode the key. ValidateSystemKey()
+          // checks if current key is a known system key. This is a temporary fix until we address
+          // GH15304 (https://github.com/yugabyte/yugabyte-db/issues/15304) which will remove key
+          // decoding from ScanChoices completely.
+          RETURN_NOT_OK(ValidateSystemKey());
+          db_iter_->SeekOutOfSubDoc(&iter_key_);
+          continue;
+        }
 
         // We updated scan target above, if it goes past the row_key_ we will seek again, and
         // process the found key in the next loop.
@@ -451,6 +459,21 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
   return Status::OK();
 }
 
+Status DocRowwiseIterator::ValidateSystemKey() {
+  // Currently we only have Table tombstone key as system key.
+  DocKeyDecoder decoder(row_key_);
+  if (VERIFY_RESULT(decoder.DecodeColocationId())) {
+    RETURN_NOT_OK(decoder.ConsumeGroupEnd());
+
+    if (decoder.left_input().size() == 0) {
+      return Status::OK();
+    }
+  }
+
+  return STATUS_FORMAT(
+      Corruption, "Key parsing failed for non-system key $0", row_key_.ToDebugHexString());
+}
+
 bool DocRowwiseIterator::LivenessColumnExists() const {
   const SubDocument* subdoc = row_.GetChild(KeyEntryValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != ValueEntryType::kInvalid;
@@ -471,6 +494,21 @@ Status DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
   RETURN_NOT_OK(doc_key.FullyDecodeFrom(row_key_));
   *sub_doc_key = SubDocKey(doc_key, read_time_.read);
   DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
+  return Status::OK();
+}
+
+Status DocRowwiseIterator::Iterate(const YQLScanCallback& callback) {
+  QLTableRow row;
+  auto& projection = schema();
+  while (VERIFY_RESULT(HasNext())) {
+    row.Clear();
+
+    RETURN_NOT_OK(DoNextRow(projection, &row));
+    if (!VERIFY_RESULT(callback(row))) {
+      break;
+    }
+  }
+
   return Status::OK();
 }
 

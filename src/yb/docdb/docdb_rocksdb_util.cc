@@ -23,6 +23,7 @@
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/value_type.h"
@@ -68,67 +69,69 @@ constexpr int32_t kMaxBlockRestartInterval = 256;
 
 } // namespace
 
-DEFINE_int32(rocksdb_max_background_flushes, -1, "Number threads to do background flushes.");
-DEFINE_bool(rocksdb_disable_compactions, false, "Disable rocksdb compactions.");
-DEFINE_bool(rocksdb_compaction_measure_io_stats, false, "Measure stats for rocksdb compactions.");
-DEFINE_int32(rocksdb_base_background_compactions, -1,
+DEFINE_UNKNOWN_int32(rocksdb_max_background_flushes, -1,
+    "Number threads to do background flushes.");
+DEFINE_UNKNOWN_bool(rocksdb_disable_compactions, false, "Disable rocksdb compactions.");
+DEFINE_UNKNOWN_bool(rocksdb_compaction_measure_io_stats, false,
+    "Measure stats for rocksdb compactions.");
+DEFINE_UNKNOWN_int32(rocksdb_base_background_compactions, -1,
              "Number threads to do background compactions.");
-DEFINE_int32(rocksdb_max_background_compactions, -1,
+DEFINE_UNKNOWN_int32(rocksdb_max_background_compactions, -1,
              "Increased number of threads to do background compactions (used when compactions need "
              "to catch up.) Unless rocksdb_disable_compactions=true, this cannot be set to zero.");
-DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
+DEFINE_UNKNOWN_int32(rocksdb_level0_file_num_compaction_trigger, 5,
              "Number of files to trigger level-0 compaction. -1 if compaction should not be "
              "triggered by number of files at all.");
 
-DEFINE_int32(rocksdb_level0_slowdown_writes_trigger, -1,
+DEFINE_UNKNOWN_int32(rocksdb_level0_slowdown_writes_trigger, -1,
              "The number of files above which writes are slowed down.");
-DEFINE_int32(rocksdb_level0_stop_writes_trigger, -1,
+DEFINE_UNKNOWN_int32(rocksdb_level0_stop_writes_trigger, -1,
              "The number of files above which compactions are stopped.");
-DEFINE_int32(rocksdb_universal_compaction_size_ratio, 20,
+DEFINE_UNKNOWN_int32(rocksdb_universal_compaction_size_ratio, 20,
              "The percentage upto which files that are larger are include in a compaction.");
-DEFINE_uint64(rocksdb_universal_compaction_always_include_size_threshold, 64_MB,
+DEFINE_UNKNOWN_uint64(rocksdb_universal_compaction_always_include_size_threshold, 64_MB,
              "Always include files of smaller or equal size in a compaction.");
-DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
+DEFINE_UNKNOWN_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
-DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
+DEFINE_UNKNOWN_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
              "Use to control write rate of flush and compaction.");
-DEFINE_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
+DEFINE_UNKNOWN_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
               "Allows to control rate limit sharing/calculation across RocksDB instances\n"
               "  tserver - rate limit is shared across all RocksDB instances"
               " at tabset server level\n"
               "  none - rate limit is calculated independently for every RocksDB instance");
-DEFINE_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
+DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
              "Threshold beyond which compaction is considered large.");
-DEFINE_uint64(rocksdb_max_file_size_for_compaction, 0,
+DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
-DEFINE_int32(rocksdb_max_write_buffer_number, 2,
+DEFINE_UNKNOWN_int32(rocksdb_max_write_buffer_number, 2,
              "Maximum number of write buffers that are built up in memory.");
 
-DEFINE_int64(db_block_size_bytes, 32_KB,
+DEFINE_UNKNOWN_int64(db_block_size_bytes, 32_KB,
              "Size of RocksDB data block (in bytes).");
 
-DEFINE_int64(db_filter_block_size_bytes, 64_KB,
+DEFINE_UNKNOWN_int64(db_filter_block_size_bytes, 64_KB,
              "Size of RocksDB filter block (in bytes).");
 
-DEFINE_int64(db_index_block_size_bytes, 32_KB,
+DEFINE_UNKNOWN_int64(db_index_block_size_bytes, 32_KB,
              "Size of RocksDB index block (in bytes).");
 
-DEFINE_int64(db_min_keys_per_index_block, 100,
+DEFINE_UNKNOWN_int64(db_min_keys_per_index_block, 100,
              "Minimum number of keys per index block.");
 
-DEFINE_int64(db_write_buffer_size, -1,
+DEFINE_UNKNOWN_int64(db_write_buffer_size, -1,
              "Size of RocksDB write buffer (in bytes). -1 to use default.");
 
-DEFINE_int32(memstore_size_mb, 128,
+DEFINE_UNKNOWN_int32(memstore_size_mb, 128,
              "Max size (in mb) of the memstore, before needing to flush.");
 
-DEFINE_bool(use_docdb_aware_bloom_filter, true,
+DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 // Empirically 2 is a minimal value that provides best performance on sequential scan.
-DEFINE_int32(max_nexts_to_avoid_seek, 2,
+DEFINE_UNKNOWN_int32(max_nexts_to_avoid_seek, 2,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
 
-DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
+DEFINE_UNKNOWN_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
 // Using class kExternal as this change affects the format of data in the SST files which are sent
 // to xClusters during bootstrap.
@@ -137,30 +140,31 @@ DEFINE_RUNTIME_AUTO_string(regular_tablets_data_block_key_value_encoding, kExter
     "Key-value encoding to use for regular data blocks in RocksDB. Possible options: "
     "shared_prefix, three_shared_parts");
 
-DEFINE_uint64(initial_seqno, 1ULL << 50, "Initial seqno for new RocksDB instances.");
+DEFINE_UNKNOWN_uint64(initial_seqno, 1ULL << 50, "Initial seqno for new RocksDB instances.");
 
-DEFINE_int32(num_reserved_small_compaction_threads, -1, "Number of reserved small compaction "
-             "threads. It allows splitting small vs. large compactions.");
+DEFINE_UNKNOWN_int32(num_reserved_small_compaction_threads, -1,
+    "Number of reserved small compaction "
+    "threads. It allows splitting small vs. large compactions.");
 
-DEFINE_bool(enable_ondisk_compression, true,
+DEFINE_UNKNOWN_bool(enable_ondisk_compression, true,
             "Determines whether SSTable compression is enabled or not.");
 
-DEFINE_int32(priority_thread_pool_size, -1,
+DEFINE_UNKNOWN_int32(priority_thread_pool_size, -1,
              "Max running workers in compaction thread pool. "
              "If -1 and max_background_compactions is specified - use max_background_compactions. "
              "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
 
-DEFINE_string(compression_type, "Snappy",
+DEFINE_UNKNOWN_string(compression_type, "Snappy",
               "On-disk compression type to use in RocksDB."
               "By default, Snappy is used if supported.");
 
-DEFINE_int32(block_restart_interval, kDefaultDataBlockRestartInterval,
+DEFINE_UNKNOWN_int32(block_restart_interval, kDefaultDataBlockRestartInterval,
              "Controls the number of keys to look at for computing the diff encoding.");
 
-DEFINE_int32(index_block_restart_interval, kDefaultIndexBlockRestartInterval,
+DEFINE_UNKNOWN_int32(index_block_restart_interval, kDefaultIndexBlockRestartInterval,
              "Controls the number of data blocks to be indexed inside an index block.");
 
-DEFINE_bool(prioritize_tasks_by_disk, false,
+DEFINE_UNKNOWN_bool(prioritize_tasks_by_disk, false,
             "Consider disk load when considering compaction and flush priorities.");
 
 namespace yb {
@@ -266,11 +270,6 @@ void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
   SeekForward(*key_bytes, iter);
   key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
 }
-
-struct SeekStats {
-  int next = 0;
-  int seek = 0;
-};
 
 SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) {
   SeekStats result;
@@ -501,11 +500,10 @@ class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
       : rocksdb::FilteringIterator(iterator, arena_mode), hybrid_time_filter_(hybrid_time_filter) {}
 
  private:
-  bool Satisfied(Slice key) override {
-    auto user_key = rocksdb::ExtractUserKey(key);
+  bool Satisfied(Slice user_key) override {
     auto doc_ht = DocHybridTime::DecodeFromEnd(&user_key);
     if (!doc_ht.ok()) {
-      LOG(DFATAL) << "Unable to decode doc ht " << rocksdb::ExtractUserKey(key) << ": "
+      LOG(DFATAL) << "Unable to decode doc ht " << user_key << ": "
                   << doc_ht.status();
       return true;
     }
@@ -974,9 +972,8 @@ Status RocksDBPatcher::UpdateFileSizes() {
   return impl_->UpdateFileSizes();
 }
 
-Status ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush) {
-  rocksdb::CompactRangeOptions options;
-  options.skip_flush = skip_flush;
+Status ForceRocksDBCompact(rocksdb::DB* db,
+    const rocksdb::CompactRangeOptions& options) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(options, /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed");

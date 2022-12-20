@@ -67,7 +67,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     entries_per_index_block, 10000, "Number of entries per index block stored in WAL segment file");
 TAG_FLAG(entries_per_index_block, advanced);
 

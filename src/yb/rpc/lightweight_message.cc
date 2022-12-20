@@ -17,6 +17,7 @@
 
 #include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/flags.h"
 
 using namespace yb::size_literals;
 
@@ -26,7 +27,7 @@ using namespace yb::size_literals;
 // than that because we will have overheads from that layer.
 // Hence, we have a limit of 254MB at the consensus layer.
 // The rpc layer adds its own headers, so we limit the rpc message size to 255MB.
-DEFINE_uint64(rpc_max_message_size, 255_MB,
+DEFINE_UNKNOWN_uint64(rpc_max_message_size, 255_MB,
               "The maximum size of a message of any RPC that the server will accept.");
 
 using google::protobuf::internal::WireFormatLite;
@@ -78,6 +79,13 @@ std::string LightweightMessage::SerializeAsString() const {
   result.resize(size);
   SerializeToArray(pointer_cast<uint8_t*>(const_cast<char*>(result.data())));
   return result;
+}
+
+void LightweightMessage::AppendToString(std::string* out) const {
+  auto size = SerializedSize();
+  auto old_size = out->size();
+  out->resize(old_size + size);
+  SerializeToArray(pointer_cast<uint8_t*>(out->data()) + old_size);
 }
 
 std::string LightweightMessage::ShortDebugString() const {
@@ -373,8 +381,8 @@ void SetupLimit(google::protobuf::io::CodedInputStream* in) {
                          narrow_cast<int>(FLAGS_rpc_max_message_size * 3 / 4));
 }
 
-Arena& empty_arena() {
-  static Arena arena(static_cast<size_t>(0), 0);
+ThreadSafeArena& empty_arena() {
+  static ThreadSafeArena arena(static_cast<size_t>(0), 0);
   return arena;
 }
 

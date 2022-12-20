@@ -36,7 +36,7 @@ from typing import DefaultDict, Dict, List, Any, Optional, Pattern, Tuple
 from datetime import datetime
 
 from yb.common_util import (
-    init_env,
+    init_logging,
     YB_SRC_ROOT,
     read_file,
     load_yaml_file,
@@ -46,7 +46,7 @@ from yb.common_util import (
     write_file,
     make_parent_dir,
     )
-from sys_detection import local_sys_conf, SHORT_OS_NAME_REGEX_STR
+from sys_detection import local_sys_conf, SHORT_OS_NAME_REGEX_STR, is_macos
 
 from collections import defaultdict
 
@@ -729,6 +729,18 @@ def get_third_party_release(
             i += 1
         wrong_count_str = 'more than one'
     else:
+        if (is_macos() and
+                os_type == 'macos' and
+                compiler_type.startswith('clang') and
+                compiler_type != 'clang'):
+            return get_third_party_release(
+                available_archives=available_archives,
+                compiler_type='clang',
+                os_type=os_type,
+                architecture=architecture,
+                is_linuxbrew=False,
+                lto=lto,
+                allow_older_os=False)
         logging.info(f"Available release archives:\n{to_yaml_str(available_archives)}")
         wrong_count_str = 'no'
 
@@ -740,7 +752,7 @@ def get_third_party_release(
 
 def main() -> None:
     args = parse_args()
-    init_env(verbose=args.verbose)
+    init_logging(verbose=args.verbose)
     if args.update:
         updater = MetadataUpdater(
             github_token_file_path=args.github_token_file,

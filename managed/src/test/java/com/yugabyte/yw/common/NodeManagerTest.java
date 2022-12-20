@@ -90,6 +90,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -101,6 +102,7 @@ import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -133,6 +135,8 @@ public class NodeManagerTest extends FakeDBApplication {
   @InjectMocks NodeManager nodeManager;
 
   @Mock Config mockConfig;
+
+  @Mock NodeAgentClient nodeAgentClient;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
   private final String MASTER_ADDRESSES = "10.0.0.1:7100,10.0.0.2:7100,10.0.0.3:7100";
@@ -278,7 +282,7 @@ public class NodeManagerTest extends FakeDBApplication {
         configureParams.enableNodeToNodeEncrypt
             || (configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt),
-        !configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt,
+        configureParams.enableClientToNodeEncrypt,
         ybHomeDir);
   }
 
@@ -377,7 +381,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.add("--certs_client_dir");
       expectedCommand.add(yb_home_dir + "/yugabyte-client-tls-config");
 
-      CertificateInfo clientRootCert = CertificateInfo.get(configureParams.clientRootCA);
+      CertificateInfo clientRootCert = CertificateInfo.get(configureParams.getClientRootCA());
       if (clientRootCert == null) {
         throw new RuntimeException(
             "No valid clientRootCA found for " + configureParams.universeUUID);
@@ -505,6 +509,7 @@ public class NodeManagerTest extends FakeDBApplication {
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(nodeAgentClient.maybeGetNodeAgentClient(any())).thenReturn(Optional.empty());
     createTempFile("node_manager_test_ca.crt", "test-cert");
   }
 
@@ -912,8 +917,7 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("certs_dir", certsDir);
               ybcFlags.put("certs_dir_name", certsDir);
             }
-            if (!configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt) {
+            if (configureParams.enableClientToNodeEncrypt) {
               gflags.put("certs_for_client_dir", certsForClientDir);
             }
             expectedCommand.addAll(getCertificatePaths(userIntent, configureParams, ybHomeDir));
@@ -2214,7 +2218,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private Map<String, String> extractGFlags(List<String> command) {
     String gflagsJson = mapKeysToValues(command).get("--gflags");
     if (gflagsJson == null) {
-      throw new RuntimeException("QQ! " + command);
+      throw new IllegalStateException("Empty gflags for " + command);
     }
     return Json.fromJson(Json.parse(gflagsJson), Map.class);
   }
@@ -2431,6 +2435,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.enableClientToNodeEncrypt = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
+      params.setClientRootCA(params.rootCA);
       params.deviceInfo = new DeviceInfo();
       params.deviceInfo.numVolumes = 1;
       if (t.cloudType == CloudType.onprem) {
@@ -2453,7 +2458,7 @@ public class NodeManagerTest extends FakeDBApplication {
       int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
       expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
       expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
-      assertEquals(expectedCommand, actualCommand);
+      checkEquality(expectedCommand, actualCommand);
       idx++;
     }
   }
@@ -2478,6 +2483,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.enableClientToNodeEncrypt = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
+      params.setClientRootCA(params.rootCA);
       params.deviceInfo = new DeviceInfo();
       params.deviceInfo.numVolumes = 1;
       if (t.cloudType == CloudType.onprem) {
@@ -2500,8 +2506,32 @@ public class NodeManagerTest extends FakeDBApplication {
       int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
       expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
       expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
-      assertEquals(expectedCommand, actualCommand);
+      checkEquality(expectedCommand, actualCommand);
       idx++;
+    }
+  }
+
+  // checks for presence of same options (starting with --) in the commands and
+  // makes sure values are not empty. Cert names are random temporary files,
+  // expecting them to be same is impractical
+  private void checkEquality(List<String> expectedCommand, List<String> actualCommand) {
+    if (expectedCommand != null
+        && actualCommand != null
+        && expectedCommand.size() == actualCommand.size()) {
+      for (int i = 0; i < expectedCommand.size(); i++) {
+        String expected = expectedCommand.get(i);
+        String actual = actualCommand.get(i);
+        if (expected != null
+            && ((expected.startsWith("--") && expected.equals(actual))
+                || !actual.trim().isEmpty())) {
+          continue;
+        }
+        String message =
+            String.format(
+                "ybcloud.sh command mismatch. Expected => %s, Actual => %s",
+                expectedCommand, actualCommand);
+        Assert.fail(message);
+      }
     }
   }
 
@@ -2994,6 +3024,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       params.rootCA = createUniverseWithCert(data, params);
+      params.setClientRootCA(params.rootCA);
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         List<String> expectedCommand = data.baseCommand;
@@ -3352,9 +3383,9 @@ public class NodeManagerTest extends FakeDBApplication {
       }
       if (isClientRootCA) {
         params.clientRootCARotationType = CertRotationType.RootCert;
-        params.clientRootCA =
+        params.setClientRootCA(
             createCertificateConfig(
-                CertConfigType.SelfSigned, data.provider.customerUUID, params.nodePrefix);
+                CertConfigType.SelfSigned, data.provider.customerUUID, params.nodePrefix));
       }
       params.setProperty("processType", MASTER.toString());
       params.deviceInfo = new DeviceInfo();
@@ -3725,7 +3756,7 @@ public class NodeManagerTest extends FakeDBApplication {
             Universe.saveDetails(
                 createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(onpremTD.cloudType)));
     nodeTaskParams.rootCA = certificateUUID1;
-    nodeTaskParams.clientRootCA = certificateUUID2;
+    nodeTaskParams.setClientRootCA(certificateUUID2);
     nodeTaskParams.rootAndClientRootCASame =
         certificateUUID2 == null || Objects.equals(certificateUUID1, certificateUUID2);
 

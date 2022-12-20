@@ -1,4 +1,4 @@
-# src/test/regress/yb_misc_serial_schedule
+# src/test/regress/yb_index_serial_schedule
 #
 ####################################################################################################
 # This testsuite includes miscellaneous tests that are not yet characterized to a proper testsuite.

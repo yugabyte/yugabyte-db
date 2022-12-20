@@ -21,12 +21,8 @@
 
 #include "yb/common/constants.h"
 
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
-
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
 
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
@@ -819,67 +815,6 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
 // If not possible to decode, return the key_bytes directly as a readable string.
 std::string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes);
 std::string BestEffortDocDBKeyToStr(const Slice &slice);
-
-class DocDbAwareFilterPolicyBase : public rocksdb::FilterPolicy {
- public:
-  explicit DocDbAwareFilterPolicyBase(size_t filter_block_size_bits, rocksdb::Logger* logger) {
-    builtin_policy_.reset(rocksdb::NewFixedSizeFilterPolicy(
-        filter_block_size_bits, rocksdb::FilterPolicy::kDefaultFixedSizeFilterErrorRate, logger));
-  }
-
-  void CreateFilter(const Slice* keys, int n, std::string* dst) const override;
-
-  bool KeyMayMatch(const Slice& key, const Slice& filter) const override;
-
-  rocksdb::FilterBitsBuilder* GetFilterBitsBuilder() const override;
-
-  rocksdb::FilterBitsReader* GetFilterBitsReader(const Slice& contents) const override;
-
-  FilterType GetFilterType() const override;
-
- private:
-  std::unique_ptr<const rocksdb::FilterPolicy> builtin_policy_;
-};
-
-// This filter policy only takes into account hashed components of keys for filtering.
-class DocDbAwareHashedComponentsFilterPolicy : public DocDbAwareFilterPolicyBase {
- public:
-  DocDbAwareHashedComponentsFilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger)
-      : DocDbAwareFilterPolicyBase(filter_block_size_bits, logger) {}
-
-  const char* Name() const override { return "DocKeyHashedComponentsFilter"; }
-
-  const KeyTransformer* GetKeyTransformer() const override;
-};
-
-// Together with the fix for BlockBasedTableBuild::Add
-// (https://github.com/yugabyte/yugabyte-db/issues/6435) we also disable DocKeyV2Filter
-// for range-partitioned tablets. For hash-partitioned tablets it will be supported during read
-// path and will work the same way as DocDbAwareV3FilterPolicy.
-class DocDbAwareV2FilterPolicy : public DocDbAwareFilterPolicyBase {
- public:
-  DocDbAwareV2FilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger)
-      : DocDbAwareFilterPolicyBase(filter_block_size_bits, logger) {}
-
-  const char* Name() const override { return "DocKeyV2Filter"; }
-
-  const KeyTransformer* GetKeyTransformer() const override;
-};
-
-// This filter policy takes into account following parts of keys for filtering:
-// - For range-based partitioned tables (such tables have 0 hashed components):
-// use all hash components of the doc key.
-// - For hash-based partitioned tables (such tables have >0 hashed components):
-// use first range component of the doc key.
-class DocDbAwareV3FilterPolicy : public DocDbAwareFilterPolicyBase {
- public:
-  DocDbAwareV3FilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger)
-      : DocDbAwareFilterPolicyBase(filter_block_size_bits, logger) {}
-
-  const char* Name() const override { return "DocKeyV3Filter"; }
-
-  const KeyTransformer* GetKeyTransformer() const override;
-};
 
 }  // namespace docdb
 }  // namespace yb

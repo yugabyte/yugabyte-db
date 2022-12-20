@@ -16,7 +16,7 @@
 #pragma once
 
 #include "yb/common/ql_scanspec.h"
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {

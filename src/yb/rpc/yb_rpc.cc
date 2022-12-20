@@ -44,9 +44,7 @@ using namespace std::literals;
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_uint64(rpc_max_message_size);
 
-DEFINE_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
-
-DEFINE_uint64(min_sidecar_buffer_size, 16_KB, "Minimal buffer to allocate for sidecar");
+DEFINE_UNKNOWN_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
 
 DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "
@@ -253,10 +251,12 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
 }
 
 YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener)
-    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener) {}
+    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
+      sidecars_(&consumption_) {}
 
 YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method)
-    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */) {
+    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */),
+      sidecars_(&consumption_) {
   header_.remote_method = remote_method.serialized_body();
 }
 
@@ -289,80 +289,16 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   return Status::OK();
 }
 
-size_t YBInboundCall::CopyToLastSidecarBuffer(const Slice& car) {
-  if (sidecar_buffers_.empty()) {
-    return 0;
-  }
-  auto& last_buffer =  sidecar_buffers_.back();
-  auto len = std::min(last_buffer.size() - filled_bytes_in_last_sidecar_buffer_, car.size());
-  memcpy(last_buffer.data() + filled_bytes_in_last_sidecar_buffer_, car.data(), len);
-  filled_bytes_in_last_sidecar_buffer_ += len;
-
-  return len;
-}
-
-size_t YBInboundCall::AddRpcSidecar(Slice car) {
-  sidecar_offsets_.Add(narrow_cast<uint32_t>(total_sidecars_size_));
-  total_sidecars_size_ += car.size();
-  // Copy start of sidecar to existing buffer if present.
-  car.remove_prefix(CopyToLastSidecarBuffer(car));
-
-  // If sidecar did not fit into last buffer, then we should allocate a new one.
-  if (!car.empty()) {
-    DCHECK(sidecar_buffers_.empty() ||
-           filled_bytes_in_last_sidecar_buffer_ == sidecar_buffers_.back().size());
-
-    // Allocate new sidecar buffer and copy remaining part of sidecar to it.
-    AllocateSidecarBuffer(std::max<size_t>(car.size(), FLAGS_min_sidecar_buffer_size));
-    memcpy(sidecar_buffers_.back().data(), car.data(), car.size());
-    filled_bytes_in_last_sidecar_buffer_ = car.size();
-  }
-
-  return num_sidecars_++;
-}
-
-void YBInboundCall::ResetRpcSidecars() {
-  if (consumption_) {
-    for (const auto& buffer : sidecar_buffers_) {
-      consumption_.Add(-buffer.size());
-    }
-  }
-  num_sidecars_ = 0;
-  filled_bytes_in_last_sidecar_buffer_ = 0;
-  total_sidecars_size_ = 0;
-  sidecar_buffers_.clear();
-  sidecar_offsets_.Clear();
-}
-
-void YBInboundCall::ReserveSidecarSpace(size_t space) {
-  if (num_sidecars_ != 0) {
-    LOG(DFATAL) << "Attempt to ReserveSidecarSpace when there are already sidecars present";
-    return;
-  }
-
-  AllocateSidecarBuffer(space);
-}
-
-void YBInboundCall::AllocateSidecarBuffer(size_t size) {
-  sidecar_buffers_.push_back(RefCntBuffer(size));
-  if (consumption_) {
-    consumption_.Add(size);
-  }
-}
-
 Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool is_success) {
   auto body_size = response.SerializedSize();
 
   ResponseHeader resp_hdr;
   resp_hdr.set_call_id(header_.call_id);
   resp_hdr.set_is_error(!is_success);
-  for (auto& offset : sidecar_offsets_) {
-    offset += body_size;
-  }
-  *resp_hdr.mutable_sidecar_offsets() = std::move(sidecar_offsets_);
+  sidecars_.MoveOffsetsTo(body_size, resp_hdr.mutable_sidecar_offsets());
 
   response_buf_ = VERIFY_RESULT(SerializeRequest(
-      body_size, total_sidecars_size_, resp_hdr, response));
+      body_size, sidecars_.size(), resp_hdr, response));
   return Status::OK();
 }
 
@@ -417,17 +353,11 @@ void YBInboundCall::LogTrace() const {
   }
 }
 
-void YBInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void YBInboundCall::DoSerialize(ByteBlocks* output) {
   TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
   CHECK_GT(response_buf_.size(), 0);
-  output->push_back(std::move(response_buf_));
-  if (!sidecar_buffers_.empty()) {
-    sidecar_buffers_.back().Shrink(filled_bytes_in_last_sidecar_buffer_);
-    for (auto& car : sidecar_buffers_) {
-      output->push_back(std::move(car));
-    }
-    sidecar_buffers_.clear();
-  }
+  output->emplace_back(std::move(response_buf_));
+  sidecars_.Flush(output);
 }
 
 Status YBInboundCall::ParseParam(RpcCallParams* params) {

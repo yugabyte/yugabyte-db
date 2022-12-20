@@ -40,19 +40,18 @@ public class CloudBootstrap extends CloudTaskBase {
   public static class Params extends CloudTaskParams {
     public static Params fromProvider(Provider provider) {
       Params taskParams = new Params();
-      taskParams.airGapInstall = provider.airGapInstall;
+      taskParams.airGapInstall = provider.details.airGapInstall;
       taskParams.destVpcId = provider.destVpcId;
       taskParams.hostVpcId = provider.hostVpcId;
       taskParams.hostVpcRegion = provider.hostVpcRegion;
       taskParams.keyPairName = provider.keyPairName;
       taskParams.providerUUID = provider.uuid;
-      taskParams.sshPort = provider.sshPort;
       taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
-      taskParams.sshUser = provider.sshUser;
-      taskParams.overrideKeyValidate = provider.overrideKeyValidate;
-      taskParams.setUpChrony = provider.setUpChrony;
-      taskParams.ntpServers = provider.ntpServers;
-      taskParams.showSetUpChrony = provider.showSetUpChrony;
+      taskParams.sshPort = provider.details.sshPort;
+      taskParams.sshUser = provider.details.sshUser;
+      taskParams.setUpChrony = provider.details.setUpChrony;
+      taskParams.ntpServers = provider.details.ntpServers;
+      taskParams.showSetUpChrony = provider.details.showSetUpChrony;
       taskParams.perRegionMetadata =
           provider
               .regions
@@ -160,7 +159,7 @@ public class CloudBootstrap extends CloudTaskBase {
 
     // Whether provider should validate a custom KeyPair
     // Default: false.
-    public boolean overrideKeyValidate = false;
+    public boolean skipKeyPairValidate = false;
 
     public String hostVpcId = null;
     public String hostVpcRegion = null;
@@ -259,7 +258,7 @@ public class CloudBootstrap extends CloudTaskBase {
     params.regionCode = regionCode;
     params.keyPairName = taskParams().keyPairName;
     params.sshPrivateKeyContent = taskParams().sshPrivateKeyContent;
-    params.overrideKeyValidate = taskParams().overrideKeyValidate;
+    params.skipKeyPairValidate = taskParams().skipKeyPairValidate;
     params.sshUser = taskParams().sshUser;
     params.sshPort = taskParams().sshPort;
     params.airGapInstall = taskParams().airGapInstall;

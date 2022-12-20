@@ -26,10 +26,11 @@ import com.google.cloud.kms.v1.KeyRing;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
-
 import java.util.UUID;
 import org.apache.commons.lang3.RandomUtils;
 import org.junit.Before;
@@ -112,6 +113,17 @@ public class GcpEARServiceTest extends FakeDBApplication {
   public void testCreateAuthConfigWithService() throws Exception {
     // Check if create key ring and crypto key functions are called
     ObjectNode fakeAuthConfigCopy = fakeAuthConfig.deepCopy();
+
+    // Make a fake auth config object in db to update proper protection level
+    KmsConfig kmsConfig = new KmsConfig();
+    kmsConfig.configUUID = this.configUUID;
+    kmsConfig.customerUUID = this.customer.uuid;
+    kmsConfig.keyProvider = KeyProvider.GCP;
+    kmsConfig.authConfig = fakeAuthConfigCopy;
+    kmsConfig.version = KmsConfig.SCHEMA_VERSION;
+    kmsConfig.name = authConfigName;
+    kmsConfig.save();
+
     ObjectNode createdAuthConfig =
         mockGcpEARService.createAuthConfigWithService(configUUID, fakeAuthConfigCopy);
     assertEquals(createdAuthConfig, fakeAuthConfig);

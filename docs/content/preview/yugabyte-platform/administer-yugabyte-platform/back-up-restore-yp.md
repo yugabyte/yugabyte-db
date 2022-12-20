@@ -28,7 +28,7 @@ type: docs
 
 </ul>
 
-YugabyteDB Anywhere installations include configuration settings, certificates and keys, as well as other components required for creating and managing YugabyteDB universes.
+<br>YugabyteDB Anywhere installations include configuration settings, certificates and keys, as well as other components required for creating and managing YugabyteDB universes.
 
 You can use the YugabyteDB Anywhere `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 

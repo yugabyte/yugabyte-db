@@ -29,27 +29,21 @@ type: docs
 
 </ul>
 
-You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data.
+<br>You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data.
 
-{{< note title="Note" >}}
-
-Non-transactional backups are not supported.
-
-{{< /note >}}
+Note that non-transactional backups are not supported.
 
 To view, [restore](../../restore-universe-data/ycql/), or delete existing backups for your universe, navigate to that universe and select **Backups**, as per the following illustration:
 
-![Create Backup](/images/yp/create-backup-new-1.png)
+![Create Backup](/images/yp/create-backup-new-ycql.png)
 
 By default, the list displays all the backups generated for the universe regardless of the time period. You can configure the list to only display the backups created during a specific time period, such as last year,  last month, and so on. In addition, you can specify a custom time period.
 
-To view detailed information about an existing backup, click on it to open **Backup Details**.
-
 The **Backups** page allows you to create new backups that start immediately, as follows:
 
-- Click **Backup now** to open the dialog shown in the following illustration:<br><br>
+- Click **Backup now** to open the dialog shown in the following illustration:<br>
 
-  ![Backup](/images/yp/create-backup-new-3.png)<br><br>
+  ![Backup](/images/yp/create-backup-new-3.png)<br>
 
 - In the **Backup Now** dialog, select YCQL as the API type.
 
@@ -69,4 +63,17 @@ If the universe has [encryption at rest enabled](../../../security/enable-encryp
 
 For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql/).
 
-To access a list of all backups from all universes, including the deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.
+To view detailed information about an existing backup, click on it to open **Backup Details**. In addition to actions such as deleting and restoring the backup, as well as restoring tables and copying their locations, you can use **Backup Details** to add an incremental backup for universes that had the YB Controller automatically installed during their creation. To do so, click **Add Incremental Backup** to open the dialog shown in the following illustration:
+
+![Incremental Backup](/images/yp/backup-increment-ycql.png)
+
+In addition, YB Controller-enabled universes can have their throttle parameters configured for more efficient backups and restore. For more information, see [Back up data universe YSQL data](../../back-up-universe-data/ysql/).
+
+<br><br>To access a list of all backups from all universes, including the deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
+
+![Backups](/images/yp/backups-list.png)<br>
+
+<br>You can access the detailed information about a specific backup by clicking it to open the **Backup Details** dialog shown in the following illustration:<br>
+
+![Backup details](/images/yp/backup-details-ycql.png)<br>
+

@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetSta
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -31,7 +32,6 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -63,6 +63,7 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import play.api.Play;
+import play.mvc.Http.Status;
 
 @Slf4j
 public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase {
@@ -73,6 +74,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   private static final int PARTITION_SIZE_FOR_IS_BOOTSTRAP_REQUIRED_API = 8;
   public static final String SOURCE_ROOT_CERTS_DIR_GFLAG = "certs_for_cdc_dir";
   public static final String DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
+  public static final String SOURCE_ROOT_CERTIFICATE_NAME = "ca.crt";
+  public static final String ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG =
+      "enable_replicate_transaction_status_table";
+  public static final boolean ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_DEFAULT = false;
+  public static final String TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME = "system";
 
   public static final List<XClusterConfig.XClusterConfigStatusType>
       X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST =
@@ -434,69 +440,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.error("{} hit error : {}", getName(), e.getMessage());
       Throwables.propagate(e);
     }
-  }
-
-  /**
-   * It checks if it is necessary to copy the source universe root certificate to the target
-   * universe for the xCluster replication config to work. If it is necessary, an optional
-   * containing the path to the source root certificate on the Platform host will be returned.
-   * Otherwise, it will be empty.
-   *
-   * @param sourceUniverse The source Universe in the xCluster replication config
-   * @param targetUniverse The target Universe in the xCluster replication config
-   * @return An optional File that is present if transferring the source root certificate is
-   *     necessary
-   * @throws IllegalArgumentException If setting up a replication config between a universe with
-   *     node-to-node TLS and one without; It is not supported by coreDB
-   */
-  public static Optional<File> getSourceCertificateIfNecessary(
-      Universe sourceUniverse, Universe targetUniverse) {
-    String sourceCertificatePath = sourceUniverse.getCertificateNodetoNode();
-    String targetCertificatePath = targetUniverse.getCertificateNodetoNode();
-
-    if (sourceCertificatePath == null && targetCertificatePath == null) {
-      return Optional.empty();
-    }
-    if (sourceCertificatePath != null && targetCertificatePath != null) {
-      UniverseDefinitionTaskParams targetUniverseDetails = targetUniverse.getUniverseDetails();
-      UniverseDefinitionTaskParams.UserIntent userIntent =
-          targetUniverseDetails.getPrimaryCluster().userIntent;
-      // If the "certs_for_cdc_dir" gflag is set, it must be set on masters and tservers with the
-      // same value.
-      String gflagValueOnMasters = userIntent.masterGFlags.get(SOURCE_ROOT_CERTS_DIR_GFLAG);
-      String gflagValueOnTServers = userIntent.tserverGFlags.get(SOURCE_ROOT_CERTS_DIR_GFLAG);
-      if ((gflagValueOnMasters != null || gflagValueOnTServers != null)
-          && !Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
-        throw new IllegalStateException(
-            String.format(
-                "The %s gflag must "
-                    + "be set on masters and tservers with the same value or not set at all: "
-                    + "gflagValueOnMasters: %s, gflagValueOnTServers: %s",
-                SOURCE_ROOT_CERTS_DIR_GFLAG, gflagValueOnMasters, gflagValueOnTServers));
-      }
-      // If the "certs_for_cdc_dir" gflag is set on the target universe, the certificate must
-      // be transferred even though the universes are using the same certs.
-      if (!sourceCertificatePath.equals(targetCertificatePath)
-          || gflagValueOnMasters != null
-          || targetUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
-        File sourceCertificate = new File(sourceCertificatePath);
-        if (!sourceCertificate.exists()) {
-          throw new IllegalStateException(
-              String.format("sourceCertificate file \"%s\" does not exist", sourceCertificate));
-        }
-        return Optional.of(sourceCertificate);
-      }
-      // The "certs_for_cdc_dir" gflag is not set and certs are equal, so the target universe does
-      // not need the source cert.
-      return Optional.empty();
-    }
-    throw new IllegalArgumentException(
-        "A replication config cannot be set between a universe with node-to-node encryption "
-            + "enabled and a universe with node-to-node encryption disabled.");
-  }
-
-  protected SubTaskGroup createTransferXClusterCertsRemoveTasks() {
-    return createTransferXClusterCertsRemoveTasks(getXClusterConfigFromTaskParams());
   }
 
   /**
@@ -1457,4 +1400,50 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
   // --------------------------------------------------------------------------------
   // End of TableInfo helpers.
+
+  public static boolean isTransactionalReplication(
+      @Nullable Universe sourceUniverse, Universe targetUniverse) {
+    UniverseDefinitionTaskParams.UserIntent targetUniverseUserIntent =
+        targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    String gflagValueOnTarget =
+        targetUniverseUserIntent.masterGFlags.get(ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
+    Boolean gflagValueOnTargetBoolean =
+        gflagValueOnTarget != null ? Boolean.valueOf(gflagValueOnTarget) : null;
+
+    if (sourceUniverse != null) {
+      // Replication between a universe with the gflag `enable_replicate_transaction_status_table`
+      // and a universe without it is not allowed.
+      UniverseDefinitionTaskParams.UserIntent sourceUniverseUserIntent =
+          sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+      String gflagValueOnSource =
+          sourceUniverseUserIntent.masterGFlags.get(
+              ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
+      Boolean gflagValueOnSourceBoolean =
+          gflagValueOnSource != null ? Boolean.valueOf(gflagValueOnSource) : null;
+      if (!Objects.equals(gflagValueOnSourceBoolean, gflagValueOnTargetBoolean)) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            String.format(
+                "The gflag %s must be set to the same value on both universes",
+                ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG));
+      }
+    }
+
+    return gflagValueOnTargetBoolean == null
+        ? ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_DEFAULT
+        : gflagValueOnTargetBoolean;
+  }
+
+  public static boolean isTransactionalReplication(Universe targetUniverse) {
+    return isTransactionalReplication(null /* sourceUniverse */, targetUniverse);
+  }
+
+  public static boolean otherXClusterConfigsAsTargetExist(
+      UUID universeUuid, UUID xClusterConfigUuid) {
+    List<XClusterConfig> xClusterConfigs = XClusterConfig.getByTargetUniverseUUID(universeUuid);
+    if (xClusterConfigs.size() == 0) {
+      return false;
+    }
+    return xClusterConfigs.size() != 1 || !xClusterConfigs.get(0).uuid.equals(xClusterConfigUuid);
+  }
 }

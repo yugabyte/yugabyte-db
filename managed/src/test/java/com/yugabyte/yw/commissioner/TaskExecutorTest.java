@@ -80,10 +80,14 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
           TaskType.ReadOnlyClusterCreate,
+          TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
           TaskType.ReleaseInstanceFromUniverse,
-          TaskType.RebootNodeInUniverse);
+          TaskType.RebootNodeInUniverse,
+          TaskType.MultiTableBackup,
+          TaskType.BackupUniverse,
+          TaskType.ResizeNode);
 
   @Override
   protected Application provideApplication() {
@@ -547,7 +551,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     Set<TaskType> retryableTaskTypes =
         TaskType.filteredValues()
             .stream()
-            .filter(taskType -> TaskExecutor.isTaskRetryable(taskExecutor.getTaskClass(taskType)))
+            .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
             .collect(Collectors.toSet());
     assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
   }

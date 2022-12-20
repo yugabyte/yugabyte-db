@@ -123,7 +123,7 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
     --set prometheus.resources.requests.mem=6Gi
   ```
 
-- You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Since every cloud provider has different annontations for doing this, refer to the following documentation:
+- You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Since every cloud provider has different annotations for doing this, refer to the following documentation:
 
   - For Google Cloud, see [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing).
   - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).

@@ -248,7 +248,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   using SharedPtr = std::shared_ptr<PgDocOp>;
 
   using Sender = std::function<Result<PgDocResponse>(
-      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, bool)>;
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, ForceNonBufferable)>;
 
   struct OperationRowOrder {
     OperationRowOrder(const PgsqlOpPtr& operation_, int64_t order_)
@@ -268,7 +268,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   const PgExecParameters& ExecParameters() const;
 
   // Execute the op. Return true if the request has been sent and is awaiting the result.
-  virtual Result<RequestSent> Execute(bool force_non_bufferable = false);
+  virtual Result<RequestSent> Execute(
+      ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
   // Instruct this doc_op to abandon execution and querying data by setting end_of_data_ to 'true'.
   // - This op will not send request to tablet server.
@@ -440,9 +441,9 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   MonoDelta read_rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
 
  private:
-  Status SendRequest(bool force_non_bufferable);
+  Status SendRequest(ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
-  Status SendRequestImpl(bool force_non_bufferable);
+  Status SendRequestImpl(ForceNonBufferable force_non_bufferable);
 
   Result<std::list<PgDocResult>> ProcessResponse(const Result<PgDocResponse::Data>& data);
 
@@ -456,7 +457,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   static Result<PgDocResponse> DefaultSender(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, bool force_non_bufferable);
+      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable);
 
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.

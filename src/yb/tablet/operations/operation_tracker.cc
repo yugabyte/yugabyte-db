@@ -50,7 +50,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 
-DEFINE_int64(tablet_operation_memory_limit_mb, 1024,
+DEFINE_UNKNOWN_int64(tablet_operation_memory_limit_mb, 1024,
              "Maximum amount of memory that may be consumed by all in-flight "
              "operations belonging to a particular tablet. When this limit "
              "is reached, new operations will be rejected and clients will "

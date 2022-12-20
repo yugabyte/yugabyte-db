@@ -50,12 +50,20 @@ TABLEGROUP_NAME_SUFFIX = '.tablegroup.parent.tablename'
 TABLEGROUP_UUID_RE_STR = UUID_RE_STR + TABLEGROUP_UUID_SUFFIX
 TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
     TABLEGROUP_UUID_RE_STR + '[ ]*\t' + TABLEGROUP_UUID_RE_STR)
+COLOCATION_UUID_SUFFIX = '.colocation.parent.uuid'
+COLOCATION_NAME_SUFFIX = '.colocation.parent.tablename'
+COLOCATION_UUID_RE_STR = UUID_RE_STR + COLOCATION_UUID_SUFFIX
+COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
+    COLOCATION_UUID_RE_STR + '[ ]*\t' + COLOCATION_UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 
 LIST_TABLET_SERVERS_RE = re.compile('.*list_tablet_servers.*(' + UUID_RE_STR + ').*')
 
 IMPORTED_TABLE_RE = re.compile(r'(?:Colocated t|T)able being imported: ([^\.]*)\.(.*)')
 RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
+
+ACCESS_TOKEN_RE = re.compile(r'(.*?)--access_token=.*?( |\')')
+ACCESS_TOKEN_REDACT_RE = r'\g<1>--access_token=REDACT\g<2>'
 
 STARTED_SNAPSHOT_CREATION_RE = re.compile(r'[\S\s]*Started snapshot creation: (?P<uuid>.*)')
 YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
@@ -419,7 +427,9 @@ def keyspace_type(keyspace):
 
 
 def is_parent_table_name(table_name):
-    return table_name.endswith(COLOCATED_NAME_SUFFIX) or table_name.endswith(TABLEGROUP_NAME_SUFFIX)
+    return table_name.endswith(COLOCATED_NAME_SUFFIX) or \
+           table_name.endswith(TABLEGROUP_NAME_SUFFIX) or \
+           table_name.endswith(COLOCATION_NAME_SUFFIX)
 
 
 def get_postgres_oid_from_table_id(table_id):
@@ -429,10 +439,10 @@ def get_postgres_oid_from_table_id(table_id):
 
 def verify_tablegroup_parent_table_ids(old_id, new_id):
     # Perform check on tablegroup parent tables
-    if old_id.endswith(TABLEGROUP_UUID_SUFFIX):
+    if old_id.endswith(TABLEGROUP_UUID_SUFFIX) or old_id.endswith(COLOCATION_UUID_SUFFIX):
         # Assert that the postgres tablegroup oids are the same.
-        old_oid = get_postgres_oid_from_table_id(old_id.replace(TABLEGROUP_UUID_SUFFIX, ''))
-        new_oid = get_postgres_oid_from_table_id(new_id.replace(TABLEGROUP_UUID_SUFFIX, ''))
+        old_oid = get_postgres_oid_from_table_id(old_id[:32])
+        new_oid = get_postgres_oid_from_table_id(new_id[:32])
         if (old_oid != new_oid):
             raise BackupException('Tablegroup parent table have different tablegroup oids: '
                                   'Old oid: {}, New oid: {}'.format(old_oid, new_oid))
@@ -595,6 +605,8 @@ class S3BackupStorage(AbstractBackupStorage):
                 % self.options.cloud_cfg_file_path]
         if self.options.args.disable_multipart:
             args.append('--disable-multipart')
+        if self.options.access_token:
+            args.append('--access_token=%s' % self.options.access_token)
         return args
 
     def upload_file_cmd(self, src, dest):
@@ -784,7 +796,8 @@ class YBTSConfig:
             logging.info("Loading TS config via Web UI on {}:{}".format(tserver_ip, web_port))
 
         url = "{}:{}/varz?raw=1".format(tserver_ip, web_port)
-        output = self.backup.run_program(['curl', url, '--silent', '--show-error'], num_retry=10)
+        output = self.backup.run_program(
+            ['curl', url, '--silent', '--show-error', '--insecure', '--location'], num_retry=10)
 
         # Read '--placement_region'.
         if read_region:
@@ -1339,19 +1352,30 @@ class YBBackup:
         options = BackupOptions(self.args)
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
+            access_token = None
+            proxy_config = ''
+            if os.getenv('PROXY_HOST'):
+                proxy_config = 'proxy_host = ' + os.environ['PROXY_HOST'] + '\n'
+
+                if os.getenv('PROXY_PORT'):
+                    proxy_config += 'proxy_port = ' + os.environ['PROXY_PORT'] + '\n'
+
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
                 metadata = get_instance_profile_credentials()
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
                     if metadata:
+                        access_token = metadata[2]
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + metadata[0] + '\n' +
                                      'secret_key = ' + metadata[1] + '\n' +
-                                     'access_token = ' + metadata[2] + '\n')
+                                     'access_token = ' + metadata[2] + '\n' +
+                                     proxy_config)
                     else:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + '\n' +
                                      'secret_key = ' + '\n' +
-                                     'access_token = ' + '\n')
+                                     'access_token = ' + '\n' +
+                                     proxy_config)
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 host_base = os.getenv('AWS_HOST_BASE')
                 path_style_access = True if os.getenv('PATH_STYLE_ACCESS',
@@ -1371,7 +1395,8 @@ class YBBackup:
                     s3_cfg.write('[default]\n' +
                                  'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
                                  'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n' +
-                                 host_base_cfg)
+                                 host_base_cfg +
+                                 proxy_config)
             else:
                 raise BackupException(
                     "Missing either AWS access key or secret key for S3 "
@@ -1379,6 +1404,11 @@ class YBBackup:
 
             os.chmod(self.cloud_cfg_file_path, 0o400)
             options.cloud_cfg_file_path = self.cloud_cfg_file_path
+            # access_token: Used when AWS credentials are used from IAM role. It
+            # is the identifier for temporary credentials, passed as command-line
+            # param with s3cmd, so that s3cmd does not try to refresh credentials
+            # on it's own.
+            options.access_token = access_token
         elif self.is_gcs():
             credentials = os.getenv('GCS_CREDENTIALS_JSON')
             if not credentials:
@@ -1433,8 +1463,10 @@ class YBBackup:
                 global XXH64HASH_TOOL_PATH
                 tserver = live_tservers[0]
                 try:
-                    self.run_ssh_cmd("[ -d '{}' ]".format(XXH64HASH_TOOL_PATH), tserver).strip()
-                    node_machine_arch = self.run_ssh_cmd(['uname', '-m'], tserver).strip()
+                    self.run_ssh_cmd("[ -d '{}' ]".format(XXH64HASH_TOOL_PATH),
+                                     tserver, upload_cloud_cfg=False).strip()
+                    node_machine_arch = self.run_ssh_cmd(['uname', '-m'], tserver,
+                                                         upload_cloud_cfg=False).strip()
                     if node_machine_arch and 'x86' not in node_machine_arch:
                         xxh64_bin = XXH64_AARCH_BIN
                     else:
@@ -2685,6 +2717,22 @@ class YBBackup:
         del_cmd = self.storage.delete_obj_cmd(backup_path)
         if self.is_nfs():
             self.run_ssh_cmd(' '.join(del_cmd), self.get_leader_master_ip())
+
+            # Backup location of a keyspace is typically of the format
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-<keyspace>
+            # If there are 2 keyspaces keyspace1, keyspace2 in a universe, then the locations are
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-keyspace1 and
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-keyspace2.
+            # While deleting these backups we are deleting the directories multi-table-keyspace1
+            # and multi-table-keyspace2 but not deleting the empty directory backup-<backup_time>.
+            # The change here is to delete the backup-<backup_time> directory if empty.
+            del_dir_cmd = ["rm", "-df", pipes.quote(re.search('.*(?=/)', backup_path)[0])]
+            try:
+                self.run_ssh_cmd(' '.join(del_dir_cmd), self.get_leader_master_ip())
+            except Exception as ex:
+                if "Directory not empty" not in str(ex.output.decode('utf-8')):
+                    raise ex
+
         else:
             self.run_program(del_cmd)
 
@@ -3105,7 +3153,7 @@ class YBBackup:
                 else:
                     raise ex
             self.download_file_from_server(
-                self.get_main_host_ip(), manifest_path, self.get_tmp_dir())
+                self.get_main_host_ip(), manifest_path, manifest_path)
             self.manifest.load_from_file(manifest_path)
         except subprocess.CalledProcessError as ex:
             # The file is available for new backup only.
@@ -3274,11 +3322,13 @@ class YBBackup:
                     logging.info('Imported colocated table id was changed from {} to {}'
                                  .format(old_id, new_id))
             elif (COLOCATED_DB_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
-                  TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
+                  TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
+                  COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
                 # Parent colocated/tablegroup table
                 (entity, old_id, new_id) = split_by_tab(line)
                 assert entity == 'ParentColocatedTable'
-                if old_id.endswith(TABLEGROUP_UUID_SUFFIX):
+                if (old_id.endswith(TABLEGROUP_UUID_SUFFIX) or
+                        old_id.endswith(COLOCATION_UUID_SUFFIX)):
                     verify_tablegroup_parent_table_ids(old_id, new_id)
                 snapshot_metadata['table'][new_id] = old_id
                 # Colocated parent table includes both tablegroup parent table
@@ -3662,10 +3712,40 @@ class YBBackup:
             self.timer.print_summary()
 
 
+class RedactingFormatter(logging.Formatter):
+    """
+    Replaces portions of log with the desired replacements. The class
+    uses re.sub(pattern, replacement, orig_str) function to modify original log-lines.
+    The object of this class is added to the logging handler.
+    Constructor params:
+        - orig_formatter: The original formatter for the logging.
+        - sub_list: A list of format (matching-pattern, replacement). The format
+                    function iterates through this list and makes replacements.
+    """
+    def __init__(self, orig_formatter, sub_list):
+        self.orig_formatter = orig_formatter
+        self._sub_list = sub_list
+
+    def format(self, record):
+        log_line = self.orig_formatter.format(record)
+        for (pattern, sub) in self._sub_list:
+            log_line = re.sub(pattern, sub, log_line)
+        return log_line
+
+    def __getattr__(self, attr):
+        return getattr(self.orig_formatter, attr)
+
+
 if __name__ == "__main__":
     # Setup logging. By default in the config the output stream is: stream=sys.stderr.
     # Set custom output format and logging level=INFO (DEBUG messages will not be printed).
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+    # Redact access_token param contents, appending to list can handle more redacts.
+    # The log-line after formatting: s3cmd ... --access_token=REDACTED ... .
+    for handler in logging.root.handlers:
+        handler.setFormatter(RedactingFormatter(handler.formatter,
+                             [(ACCESS_TOKEN_RE, ACCESS_TOKEN_REDACT_RE)]))
+
     # Registers the signal handlers.
     yb_backup = YBBackup()
     with terminating(ThreadPool(1)) as pool:

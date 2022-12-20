@@ -85,26 +85,26 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(raft_heartbeat_interval_ms, yb::NonTsanVsTsan(500, 1000),
+DEFINE_UNKNOWN_int32(raft_heartbeat_interval_ms, yb::NonTsanVsTsan(500, 1000),
              "The heartbeat interval for Raft replication. The leader produces heartbeats "
              "to followers at this interval. The followers expect a heartbeat at this interval "
              "and consider a leader to have failed if it misses several in a row.");
 TAG_FLAG(raft_heartbeat_interval_ms, advanced);
 
-DEFINE_double(leader_failure_max_missed_heartbeat_periods, 6.0,
+DEFINE_UNKNOWN_double(leader_failure_max_missed_heartbeat_periods, 6.0,
               "Maximum heartbeat periods that the leader can fail to heartbeat in before we "
               "consider the leader to be failed. The total failure timeout in milliseconds is "
               "raft_heartbeat_interval_ms times leader_failure_max_missed_heartbeat_periods. "
               "The value passed to this flag may be fractional.");
 TAG_FLAG(leader_failure_max_missed_heartbeat_periods, advanced);
 
-DEFINE_int32(leader_failure_exp_backoff_max_delta_ms, 20 * 1000,
+DEFINE_UNKNOWN_int32(leader_failure_exp_backoff_max_delta_ms, 20 * 1000,
              "Maximum time to sleep in between leader election retries, in addition to the "
              "regular timeout. When leader election fails the interval in between retries "
              "increases exponentially, up to this value.");
 TAG_FLAG(leader_failure_exp_backoff_max_delta_ms, experimental);
 
-DEFINE_bool(enable_leader_failure_detection, true,
+DEFINE_UNKNOWN_bool(enable_leader_failure_detection, true,
             "Whether to enable failure detection of tablet leaders. If enabled, attempts will be "
             "made to elect a follower as a new leader when the leader is detected to have failed.");
 TAG_FLAG(enable_leader_failure_detection, unsafe);
@@ -112,7 +112,7 @@ TAG_FLAG(enable_leader_failure_detection, unsafe);
 DEFINE_test_flag(bool, do_not_start_election_test_only, false,
                  "Do not start election even if leader failure is detected. ");
 
-DEFINE_bool(evict_failed_followers, true,
+DEFINE_UNKNOWN_bool(evict_failed_followers, true,
             "Whether to evict followers from the Raft config that have fallen "
             "too far behind the leader's log to catch up normally or have been "
             "unreachable by the leader for longer than "
@@ -136,7 +136,7 @@ DEFINE_test_flag(bool, leader_skip_no_op, false,
 DEFINE_test_flag(bool, follower_fail_all_prepare, false,
                  "Whether a follower will fail preparing all operations.");
 
-DEFINE_int32(after_stepdown_delay_election_multiplier, 5,
+DEFINE_UNKNOWN_int32(after_stepdown_delay_election_multiplier, 5,
              "After a peer steps down as a leader, the factor with which to multiply "
              "leader_failure_max_missed_heartbeat_periods to get the delay time before starting a "
              "new election.");
@@ -179,28 +179,29 @@ METRIC_DEFINE_coarse_histogram(
   yb::MetricUnit::kMicroseconds,
   "Microseconds spent resolving DNS requests during RaftConsensus::UpdateRaftConfig");
 
-DEFINE_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
+DEFINE_UNKNOWN_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
              "Leader lease duration. A leader keeps establishing a new lease or extending the "
              "existing one with every UpdateConsensus. A new server is not allowed to serve as a "
              "leader (i.e. serve up-to-date read requests or acknowledge write requests) until a "
              "lease of this duration has definitely expired on the old leader's side.");
 
-DEFINE_int32(ht_lease_duration_ms, 2000,
+DEFINE_UNKNOWN_int32(ht_lease_duration_ms, 2000,
              "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
              "extending the existing one with every UpdateConsensus. A new server is not allowed "
              "to add entries to RAFT log until a lease of the old leader is expired. 0 to disable."
              );
 
-DEFINE_int32(min_leader_stepdown_retry_interval_ms,
+DEFINE_UNKNOWN_int32(min_leader_stepdown_retry_interval_ms,
              20 * 1000,
              "Minimum amount of time between successive attempts to perform the leader stepdown "
              "for the same combination of tablet and intended (target) leader. This is needed "
              "to avoid infinite leader stepdown loops when the current leader never has a chance "
              "to update the intended leader with its latest records.");
 
-DEFINE_bool(use_preelection, true, "Whether to use pre election, before doing actual election.");
+DEFINE_UNKNOWN_bool(use_preelection, true,
+    "Whether to use pre election, before doing actual election.");
 
-DEFINE_int32(temporary_disable_preelections_timeout_ms, 10 * 60 * 1000,
+DEFINE_UNKNOWN_int32(temporary_disable_preelections_timeout_ms, 10 * 60 * 1000,
              "If some of nodes does not support preelections, then we disable them for this "
              "amount of time.");
 
@@ -215,25 +216,25 @@ DEFINE_test_flag(int32, log_change_config_every_n, 1,
                  "Used to reduce the number of lines being printed for change config requests "
                  "when a test simulates a failure that would generate a log of these requests.");
 
-DEFINE_bool(enable_lease_revocation, false, "Enables lease revocation mechanism");
+DEFINE_UNKNOWN_bool(enable_lease_revocation, false, "Enables lease revocation mechanism");
 
-DEFINE_bool(quick_leader_election_on_create, false,
+DEFINE_UNKNOWN_bool(quick_leader_election_on_create, false,
             "Do we trigger quick leader elections on table creation.");
 TAG_FLAG(quick_leader_election_on_create, advanced);
 TAG_FLAG(quick_leader_election_on_create, hidden);
 
-DEFINE_bool(
+DEFINE_UNKNOWN_bool(
     stepdown_disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
 
-DEFINE_bool(
+DEFINE_UNKNOWN_bool(
     raft_disallow_concurrent_outstanding_report_failure_tasks, true,
     "If true, only submit a new report failure task if there is not one outstanding.");
 TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, advanced);
 TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, hidden);
 
-DEFINE_int64(protege_synchronization_timeout_ms, 1000,
+DEFINE_UNKNOWN_int64(protege_synchronization_timeout_ms, 1000,
              "Timeout to synchronize protege before performing step down. "
              "0 to disable synchronization.");
 
@@ -2300,10 +2301,11 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // See also https://ramcloud.stanford.edu/~ongaro/thesis.pdf
   // section 4.2.3.
   MonoTime now = MonoTime::Now();
-  if (request->candidate_uuid() != state_->GetLeaderUuidUnlocked() &&
+  auto leader_uuid = state_->GetLeaderUuidUnlocked();
+  if (request->candidate_uuid() != leader_uuid &&
       !request->ignore_live_leader() &&
       now < withhold_votes_until_.load(std::memory_order_acquire)) {
-    return RequestVoteRespondLeaderIsAlive(request, response);
+    return RequestVoteRespondLeaderIsAlive(request, response, leader_uuid);
   }
 
   // Candidate is running behind.
@@ -2962,13 +2964,14 @@ Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpIdPB& local_last_
 }
 
 Status RaftConsensus::RequestVoteRespondLeaderIsAlive(const VoteRequestPB* request,
-                                                      VoteResponsePB* response) {
+                                                      VoteResponsePB* response,
+                                                      const std::string& leader_uuid) {
   FillVoteResponseVoteDenied(ConsensusErrorPB::LEADER_IS_ALIVE, response);
   std::string msg = Format(
-      "$0: Denying vote to candidate $1 for term $2 because replica is either leader or believes a "
-      "valid leader to be alive. Time left: $3",
+      "$0: Denying vote to candidate $1 for term $2 because replica believes a valid leader to be "
+      "alive (leader uuid: $3). Time left: $4",
       GetRequestVoteLogPrefix(*request), request->candidate_uuid(), request->candidate_term(),
-      withhold_votes_until_.load(std::memory_order_acquire) - MonoTime::Now());
+      leader_uuid, withhold_votes_until_.load(std::memory_order_acquire) - MonoTime::Now());
   LOG(INFO) << msg;
   StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
   return Status::OK();
@@ -3461,10 +3464,11 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   return Status::OK();
 }
 
-Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForCDC(const yb::OpId& from,
-  int64_t* last_replicated_opid_index,
-  const CoarseTimePoint deadline) {
-  return queue_->ReadReplicatedMessagesForCDC(from, last_replicated_opid_index, deadline);
+Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForCDC(
+    const yb::OpId& from, int64_t* last_replicated_opid_index, const CoarseTimePoint deadline,
+    const bool fetch_single_entry) {
+  return queue_->ReadReplicatedMessagesForCDC(
+      from, last_replicated_opid_index, deadline, fetch_single_entry);
 }
 
 void RaftConsensus::UpdateCDCConsumerOpId(const yb::OpId& op_id) {

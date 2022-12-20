@@ -88,6 +88,7 @@
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/sst_file_writer.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/status.h"
@@ -119,16 +120,17 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/compare_util.h"
+#include "yb/util/enums.h"
 
 using std::unique_ptr;
 using std::shared_ptr;
 
 using namespace std::literals;
 
-DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
-DEFINE_bool(flush_rocksdb_on_shutdown, true,
+DEFINE_UNKNOWN_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
+DEFINE_UNKNOWN_bool(flush_rocksdb_on_shutdown, true,
             "Safely flush RocksDB when instance is destroyed, disabled for crash tests.");
-DEFINE_double(fault_crash_after_rocksdb_flush, 0.0,
+DEFINE_UNKNOWN_double(fault_crash_after_rocksdb_flush, 0.0,
               "Fraction of time to crash right after a successful RocksDB flush in tests.");
 
 DEFINE_RUNTIME_bool(use_priority_thread_pool_for_flushes, false,
@@ -139,26 +141,26 @@ DEFINE_RUNTIME_bool(use_priority_thread_pool_for_compactions, true,
     "When true priority thread pool will be used for compactions, otherwise "
     "Env thread pool with Priority::LOW will be used.");
 
-DEFINE_int32(compaction_priority_start_bound, 10,
+DEFINE_UNKNOWN_int32(compaction_priority_start_bound, 10,
              "Compaction task of DB that has number of SST files less than specified will have "
              "priority 0.");
 
-DEFINE_int32(compaction_priority_step_size, 5,
+DEFINE_UNKNOWN_int32(compaction_priority_step_size, 5,
              "Compaction task of DB that has number of SST files greater that "
              "compaction_priority_start_bound will get 1 extra priority per every "
              "compaction_priority_step_size files.");
 
-DEFINE_int32(small_compaction_extra_priority, 1,
+DEFINE_UNKNOWN_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
 
-DEFINE_int32(automatic_compaction_extra_priority, 50,
+DEFINE_UNKNOWN_int32(automatic_compaction_extra_priority, 50,
              "Assigns automatic compactions extra priority when automatic tablet splits are "
              "enabled. This deprioritizes manual compactions including those induced by the "
              "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
-DEFINE_bool(rocksdb_use_logging_iterator, false,
+DEFINE_UNKNOWN_bool(rocksdb_use_logging_iterator, false,
             "Wrap newly created RocksDB iterators in a logging wrapper");
 
 DEFINE_test_flag(int32, max_write_waiters, std::numeric_limits<int32_t>::max(),
@@ -248,6 +250,38 @@ constexpr int kShuttingDownPriority = 200;
 constexpr int kFlushPriority = 100;
 constexpr int kNoJobId = -1;
 
+// Returns a pointer to the set of task state metrics based on the current task state.
+RocksDBTaskStateMetrics* GetRocksDBTaskStateMetrics(
+    RocksDBPriorityThreadPoolMetrics* metrics,
+    const yb::PriorityThreadPoolTaskState state) {
+  switch (state) {
+    case yb::PriorityThreadPoolTaskState::kNotStarted:
+      FALLTHROUGH_INTENDED;
+    case yb::PriorityThreadPoolTaskState::kPaused:
+      return &metrics->nonactive;
+    case yb::PriorityThreadPoolTaskState::kRunning:
+      return &metrics->active;
+  }
+  FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+}
+
+// TODO remove in GI-15048.
+// Returns a pointer to the set of paused or queued task state metrics if the current state
+// is either Paused or Queued. Otherwise, returns a nullptr.
+RocksDBTaskStateMetrics* GetRocksDBPausedOrQueuedMetrics(
+    RocksDBPriorityThreadPoolMetrics* metrics,
+    const yb::PriorityThreadPoolTaskState state) {
+  switch (state) {
+    case yb::PriorityThreadPoolTaskState::kNotStarted:
+      return &metrics->queued;
+    case yb::PriorityThreadPoolTaskState::kPaused:
+      return &metrics->paused;
+    case yb::PriorityThreadPoolTaskState::kRunning:
+      return nullptr;
+  }
+  FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+}
+
 class DBImpl::CompactionTask : public ThreadPoolTask {
  public:
   CompactionTask(
@@ -258,7 +292,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         priority_(CalcSizePriority()),
         metrics_(db_impl->priority_thread_pool_metrics_) {
     db_impl->mutex_.AssertHeld();
-    SetFileAndByteCount();
+    SetTaskInfo();
   }
 
   CompactionTask(
@@ -270,7 +304,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         priority_(CalcSizePriority()),
         metrics_(db_impl->priority_thread_pool_metrics_) {
     db_impl->mutex_.AssertHeld();
-    SetFileAndByteCount();
+    SetTaskInfo();
   }
 
   bool ShouldRemoveWithKey(void* key) override {
@@ -322,40 +356,18 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
           ((job_id_value == kNoJobId) ? "None" : std::to_string(job_id_value)));
   }
 
-  void UpdateStatsStateChangedTo(yb::PriorityThreadPoolTaskState state) const override {
-    if (!metrics_) {
-      return;
-    }
-    switch (state) {
-      case yb::PriorityThreadPoolTaskState::kNotStarted:
-        metrics_->queued.CompactionTaskAdded(compaction_info_);
-        return;
-      case yb::PriorityThreadPoolTaskState::kPaused:
-        metrics_->paused.CompactionTaskAdded(compaction_info_);
-        return;
-      case yb::PriorityThreadPoolTaskState::kRunning:
-        metrics_->active.CompactionTaskAdded(compaction_info_);
-        return;
-    }
-    FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+  void UpdateStatsStateChangedTo(yb::PriorityThreadPoolTaskState state) override {
+    UpdateStats(state,
+        [this](RocksDBTaskMetrics* task_metrics) {
+          task_metrics->CompactionTaskAdded(compaction_info_);
+        });
   }
 
-  void UpdateStatsStateChangedFrom(yb::PriorityThreadPoolTaskState state) const override {
-    if (!metrics_) {
-      return;
-    }
-    switch (state) {
-      case yb::PriorityThreadPoolTaskState::kNotStarted:
-        metrics_->queued.CompactionTaskRemoved(compaction_info_);
-        return;
-      case yb::PriorityThreadPoolTaskState::kPaused:
-        metrics_->paused.CompactionTaskRemoved(compaction_info_);
-        return;
-      case yb::PriorityThreadPoolTaskState::kRunning:
-        metrics_->active.CompactionTaskRemoved(compaction_info_);
-        return;
-    }
-    FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+  void UpdateStatsStateChangedFrom(yb::PriorityThreadPoolTaskState state) override {
+    UpdateStats(state,
+        [this](RocksDBTaskMetrics* task_metrics) {
+          task_metrics->CompactionTaskRemoved(compaction_info_);
+        });
   }
 
   void SetJobID(JobContext* job_context) {
@@ -392,6 +404,34 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
  private:
+  // TODO GI-15048 This function probably won't be necessary once we remove the deprecated
+  // metrics. For now, it is needed because up to four metrics are updated with each state
+  // change rather than just one.
+  void UpdateStats(yb::PriorityThreadPoolTaskState state,
+      std::function<void(RocksDBTaskMetrics* metrics)> update_metrics) {
+    if (!metrics_) {
+      return;
+    }
+
+    auto* state_metrics = GetRocksDBTaskStateMetrics(metrics_.get(), state);
+    // TODO GI-15048 Temporarily maintains total compactions.
+    update_metrics(&state_metrics->total);
+    auto* task_metrics =
+        state_metrics->TaskMetricsByCompactionReason(compaction_info_.compaction_reason);
+    update_metrics(task_metrics);
+
+    // TODO GI-15048 Paused and queued metrics is deprecated.
+    // Temporarily maintained to not break the graph in YB-Anywhere.
+    auto* paused_or_queued_metrics = GetRocksDBPausedOrQueuedMetrics(metrics_.get(), state);
+    if (paused_or_queued_metrics) {
+      // TODO GI-15048 Temporarily maintains total compactions.
+      update_metrics(&paused_or_queued_metrics->total);
+      task_metrics = paused_or_queued_metrics->TaskMetricsByCompactionReason(
+          compaction_info_.compaction_reason);
+      update_metrics(task_metrics);
+    }
+  }
+
   int CalcSizePriority() const {
     db_impl_->mutex_.AssertHeld();
 
@@ -423,13 +463,16 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     return result;
   }
 
-  void SetFileAndByteCount() {
+  void SetTaskInfo() {
     size_t levels = compaction_->num_input_levels();
     uint64_t file_count = 0;
     for (size_t i = 0; i < levels; i++) {
         file_count += compaction_->num_input_files(i);
     }
-    compaction_info_ = CompactionInfo{file_count, compaction_->CalculateTotalInputSize()};
+    compaction_info_ = CompactionInfo{
+        file_count,
+        compaction_->CalculateTotalInputSize(),
+        compaction_->compaction_reason()};
   }
 
   DBImpl::ManualCompaction* const manual_compaction_;
@@ -2124,7 +2167,7 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
     // Always compact all files together.
     s = RunManualCompaction(cfd, ColumnFamilyData::kCompactAllLevels,
                             cfd->NumberLevels() - 1, options.target_path_id,
-                            begin, end, exclusive);
+                            begin, end, exclusive, options.compaction_reason);
     final_output_level = cfd->NumberLevels() - 1;
   } else {
     for (int level = 0; level <= max_level_with_files; level++) {
@@ -2159,7 +2202,7 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
         }
       }
       s = RunManualCompaction(cfd, level, output_level, options.target_path_id,
-                              begin, end, exclusive);
+                              begin, end, exclusive, options.compaction_reason);
       if (!s.ok()) {
         break;
       }
@@ -2793,7 +2836,8 @@ void DBImpl::SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task) {
 Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
                                    int output_level, uint32_t output_path_id,
                                    const Slice* begin, const Slice* end,
-                                   bool exclusive, bool disallow_trivial_move) {
+                                   bool exclusive, CompactionReason compaction_reason,
+                                   bool disallow_trivial_move) {
   TEST_SYNC_POINT("DBImpl::RunManualCompaction");
 
   DCHECK(input_level == ColumnFamilyData::kCompactAllLevels ||
@@ -2871,8 +2915,8 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
   }
 
   RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
-      "[%s] Manual compaction starting",
-      cfd->GetName().c_str());
+      "[%s] Manual compaction starting, reason: %s",
+      cfd->GetName().c_str(), ToString(compaction_reason).c_str());
 
   size_t compaction_task_serial_no = 0;
   // We don't check bg_error_ here, because if we get the error in compaction,
@@ -2888,7 +2932,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
                   *manual_compaction.cfd->GetLatestMutableCFOptions(),
                   manual_compaction.input_level, manual_compaction.output_level,
                   manual_compaction.output_path_id, manual_compaction.begin, manual_compaction.end,
-                  &manual_compaction.manual_end, &manual_conflict)) ==
+                  compaction_reason, &manual_compaction.manual_end, &manual_conflict)) ==
              nullptr) &&
          manual_conflict)) {
       DCHECK(!exclusive || !manual_conflict)

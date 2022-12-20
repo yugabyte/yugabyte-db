@@ -78,6 +78,9 @@ const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 YB_STRONGLY_TYPED_BOOL(Primary);
 
 struct TableInfo {
+ private:
+  class PrivateTag {};
+ public:
   // Table id, name and type.
   std::string table_id;
   std::string namespace_name;
@@ -88,6 +91,7 @@ struct TableInfo {
   TableType table_type;
   Uuid cotable_id; // table_id as Uuid
 
+  std::string log_prefix;
   // The table schema, secondary index map, index info (for index table only) and schema version.
   const std::unique_ptr<docdb::DocReadContext> doc_read_context;
   std::unique_ptr<IndexMap> index_map;
@@ -106,8 +110,10 @@ struct TableInfo {
   // We use the retention time from the primary table.
   uint32_t wal_retention_secs = 0;
 
-  TableInfo();
-  TableInfo(Primary primary,
+  // Public ctor with private argument to allow std::make_shared, but prevent public usage.
+  TableInfo(const std::string& log_prefix, PrivateTag);
+  TableInfo(const std::string& tablet_log_prefix,
+            Primary primary,
             std::string table_id,
             std::string namespace_name,
             std::string table_name,
@@ -125,7 +131,8 @@ struct TableInfo {
   TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
   ~TableInfo();
 
-  Status LoadFromPB(const TableId& primary_table_id, const TableInfoPB& pb);
+  static Result<TableInfoPtr> LoadFromPB(
+      const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
 
   std::string ToString() const {
@@ -142,8 +149,18 @@ struct TableInfo {
 
   Status MergeWithRestored(const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite);
 
+  const std::string& LogPrefix() const {
+    return log_prefix;
+  }
+
+  bool primary() const {
+    return cotable_id.IsNil();
+  }
+
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
+ private:
+  Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -158,7 +175,8 @@ struct KvStoreInfo {
         rocksdb_dir(rocksdb_dir_),
         snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
-  Status LoadFromPB(const KvStoreInfoPB& pb,
+  Status LoadFromPB(const std::string& tablet_log_prefix,
+                    const KvStoreInfoPB& pb,
                     const TableId& primary_table_id,
                     bool local_superblock);
 
@@ -166,6 +184,7 @@ struct KvStoreInfo {
       const KvStoreInfoPB& pb, bool colocated, docdb::OverwriteSchemaPacking overwrite);
 
   Status LoadTablesFromPB(
+      const std::string& tablet_log_prefix,
       const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
 
   void ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const;
@@ -330,9 +349,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id);
 
+  Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+
   int64_t cdc_min_replicated_index() const;
 
   OpId cdc_sdk_min_checkpoint_op_id() const;
+
+  HybridTime cdc_sdk_safe_time() const;
 
   Status SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
 
@@ -498,7 +521,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<std::string> TopSnapshotsDir() const;
 
   // Return standard "T xxx P yyy" log prefix.
-  std::string LogPrefix() const;
+  const std::string& LogPrefix() const;
 
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids() const;
 
@@ -624,6 +647,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // The minimum CDCSDK checkpoint Opid that has been consumed by client.
   OpId cdc_sdk_min_checkpoint_op_id_ GUARDED_BY(data_mutex_);
 
+  // The minimum hybrid time based on which data is retained for before image
+  HybridTime cdc_sdk_safe_time_ GUARDED_BY(data_mutex_);
+
   bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
@@ -636,6 +662,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
+
+  const std::string log_prefix_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

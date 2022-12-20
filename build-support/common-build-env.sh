@@ -515,14 +515,6 @@ is_ubuntu() {
   [[ -f /etc/issue ]] && grep -q Ubuntu /etc/issue
 }
 
-build_compiler_if_necessary() {
-  # Sometimes we have to build the compiler before we can run CMake.
-  if is_clang && is_linux; then
-    log "Building clang before we can run CMake with compiler pointing to clang"
-    "$YB_THIRDPARTY_DIR/build_thirdparty.sh" llvm
-  fi
-}
-
 set_compiler_type_based_on_jenkins_job_name() {
   if [[ -n "${YB_COMPILER_TYPE:-}" ]]; then
     if [[ -n "${JOB_NAME:-}" ]]; then
@@ -1992,7 +1984,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${build_type:-} ]]; then
     build_type=$_build_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Setting build type to '$build_type' based on predefined build root ('$basename')"
     fi
     validate_build_type "$build_type"
@@ -2003,7 +1995,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     export YB_COMPILER_TYPE=$_compiler_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Automatically setting compiler type to '$YB_COMPILER_TYPE' based on predefined build" \
           "root ('$basename')"
     fi
@@ -2014,7 +2006,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${YB_LINKING_TYPE:-} ]]; then
     export YB_LINKING_TYPE=$_linking_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Automatically setting linking type to '$YB_LINKING_TYPE' based on predefined build" \
           "root ('$basename')"
     fi
@@ -2633,10 +2625,12 @@ build_clangd_index() {
   log "Building Clangd index at ${clangd_index_path}"
   (
     set -x
+    # The location of the final compilation database file needs to be consistent with that in the
+    # compile_commands.py module.
     time "${YB_LLVM_TOOLCHAIN_DIR}/bin/clangd-indexer" \
         --executor=all-TUs \
         "--format=${format}" \
-        "${BUILD_ROOT}/compile_commands.json" \
+        "${BUILD_ROOT}/compile_commands/combined_postprocessed/compile_commands.json" \
         >"${clangd_index_path}"
   )
 }

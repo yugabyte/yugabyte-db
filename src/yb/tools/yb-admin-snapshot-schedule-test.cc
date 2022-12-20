@@ -23,13 +23,16 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_balancer_test_util.h"
 
-#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_util.h"
 
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tools/admin-test-base.h"
+#include "yb/tools/test_admin_client.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -77,6 +80,13 @@ Result<double> MinuteStringToSeconds(const std::string& min_str) {
       return MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[0]))).ToSeconds();
 }
 
+Result<size_t> GetTabletCount(TestAdminClient* client) {
+  auto tablets = VERIFY_RESULT(client->GetTabletLocations(
+      client::kTableName.namespace_name(), client::kTableName.table_name()));
+  LOG(INFO) << "Number of tablets: " << tablets.size();
+  return tablets.size();
+}
+
 } // namespace
 
 YB_DEFINE_ENUM(YsqlColocationConfig, (kNotColocated)(kDBColocated)(kTablegroup));
@@ -112,17 +122,6 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshots", "JSON"));
     rapidjson::Document result;
     result.CopyFrom(VERIFY_RESULT(Get(&out, "snapshots")).get(), result.GetAllocator());
-    return result;
-  }
-
-  Result<rapidjson::Document> ListTablets(
-      const std::string& table = client::kTableName.table_name(),
-      const std::string& db = client::kTableName.namespace_name(),
-      const std::string& db_type = "ycql") {
-    auto out = VERIFY_RESULT(CallJsonAdmin(
-        "list_tablets", Format("$0.$1", db_type, db), table, "JSON"));
-    rapidjson::Document result;
-    result.CopyFrom(VERIFY_RESULT(Get(&out, "tablets")).get(), result.GetAllocator());
     return result;
   }
 
@@ -238,6 +237,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
     LOG(INFO) << "Create client";
     client_ = VERIFY_RESULT(CreateClient());
+    test_admin_client_ = std::make_unique<TestAdminClient>(cluster_.get(), client_.get());
 
     return Status::OK();
   }
@@ -296,7 +296,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         break;
       case YsqlColocationConfig::kDBColocated:
         RETURN_NOT_OK(conn.ExecuteFormat(
-            "CREATE DATABASE $0 WITH COLOCATED=TRUE", client::kTableName.namespace_name()));
+            "CREATE DATABASE $0 WITH COLOCATION=TRUE", client::kTableName.namespace_name()));
         break;
       case YsqlColocationConfig::kTablegroup:
         RETURN_NOT_OK(conn.ExecuteFormat(
@@ -460,6 +460,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   std::unique_ptr<CppCassandraDriver> cql_driver_;
+  std::unique_ptr<TestAdminClient> test_admin_client_;
 };
 
 class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
@@ -975,7 +976,7 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
     std::string colocated_option =
         GetParam() == YsqlColocationConfig::kTablegroup ? "TABLEGROUP " + kTablegroupName : "";
     std::string not_colocated_prefix = "not_colocated";
-    std::string not_colocated_option = "WITH (COLOCATED = FALSE)";
+    std::string not_colocated_option = "WITH (COLOCATION = FALSE)";
 
     ExecuteOnTables(not_colocated_prefix, not_colocated_option, colocated_prefixes,
         colocated_option, ExecBeforeRestoreTS);
@@ -1127,7 +1128,10 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, FailAfterMigration) {
 
   LOG(INFO) << "Insert new row into pb_yg_migration table";
   ASSERT_OK(conn.Execute(
-      "INSERT INTO pg_yb_migration (major, minor, name) VALUES (2147483640, 0, 'version n')"));
+      "BEGIN;\n"
+      "SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;\n"
+      "INSERT INTO pg_yb_migration (major, minor, name) VALUES (2147483640, 0, 'version n');\n"
+      "COMMIT;"));
   LOG(INFO) << "Assert restore for time " << time
             << " fails because of new row in pg_yb_migration";
 
@@ -3203,8 +3207,7 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
   }
 
   std::vector<std::string> ExtraTSFlags() override {
-    return { "--vmodule=meta_cache=5,read_query=5,pg_client=5,client=5",
-             "--cleanup_split_tablets_interval_sec=1",
+    return { "--cleanup_split_tablets_interval_sec=1",
              "--leader_lease_duration_ms=6000",
              "--leader_failure_max_missed_heartbeat_periods=12",
              "--retryable_request_timeout_secs=5" };
@@ -3243,34 +3246,6 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
     FLAGS_num_replicas = 1;
   }
 
-  Result<int> GetTabletCount() {
-    auto tablets_obj = VERIFY_RESULT(ListTablets());
-    auto tablets = tablets_obj.GetArray();
-    LOG(INFO) << "Number of tablets: " << tablets.Size();
-    return tablets.Size();
-  }
-
-  Status TriggerManualSplit() {
-    auto tablets_obj = VERIFY_RESULT(ListTablets());
-    auto tablets = tablets_obj.GetArray();
-    if (tablets.Size() != 1) {
-      return STATUS(IllegalState, "Expected only one tablet");
-    }
-    auto tablet_id = VERIFY_RESULT(Get(tablets[0], "id")).get().GetString();
-    LOG(INFO) << "Tablet id: " << tablet_id;
-
-    // Flush the table to ensure that there's at least one sst file.
-    RETURN_NOT_OK(CallAdmin(
-        "flush_table", Format("ycql.$0", client::kTableName.namespace_name()),
-        client::kTableName.table_name()));
-
-    // Split the tablet.
-    LOG(INFO) << "Triggering a manual split.";
-    RETURN_NOT_OK(CallAdmin("split_tablet", tablet_id));
-
-    return Status::OK();
-  }
-
   Result<int> GetRowCount(CassandraSession* conn) {
     LOG(INFO) << "Reading rows";
     auto select_query = Format("SELECT count(*) FROM $0", client::kTableName.table_name());
@@ -3287,7 +3262,7 @@ class YbAdminRestoreDuringSplit : public YbAdminRestoreAfterSplitTest {
     set_on_master_ = set_on_master;
   }
 
-  Status RunTest(int expected_num_restored_tablets) {
+  Status RunTest(size_t expected_num_restored_tablets) {
     const int kNumRows = 10000;
 
     // Create exactly one tserver so that we only have to invalidate one cache.
@@ -3307,7 +3282,8 @@ class YbAdminRestoreDuringSplit : public YbAdminRestoreAfterSplitTest {
       RETURN_NOT_OK(cluster_->SetFlagOnTServers(delay_flag_name_, "true"));
     }
 
-    RETURN_NOT_OK(TriggerManualSplit());
+    RETURN_NOT_OK(test_admin_client_->SplitTablet(client::kTableName.namespace_name(),
+                                                  client::kTableName.table_name()));
 
     // Sleep for a couple of seconds to ensure that we are in the phase
     // where operation is paused.
@@ -3339,7 +3315,7 @@ class YbAdminRestoreDuringSplit : public YbAdminRestoreAfterSplitTest {
     }
 
     // There should be 2 tablets since we split 1 to 2.
-    int tablet_count = VERIFY_RESULT(GetTabletCount());
+    auto tablet_count = VERIFY_RESULT(GetTabletCount(test_admin_client_.get()));
     if (tablet_count != 2) {
       return STATUS_FORMAT(IllegalState, "Expected $0 tablets, got $1 tablets", 2, tablet_count);
     }
@@ -3355,7 +3331,7 @@ class YbAdminRestoreDuringSplit : public YbAdminRestoreAfterSplitTest {
     }
 
     // Verify tablet count matches expectation.
-    tablet_count = VERIFY_RESULT(GetTabletCount());
+    tablet_count = VERIFY_RESULT(GetTabletCount(test_admin_client_.get()));
     if (tablet_count != expected_num_restored_tablets) {
       return STATUS_FORMAT(IllegalState, "Expected $0 tablets, got $1 tablets",
                            expected_num_restored_tablets, tablet_count);
@@ -3413,9 +3389,9 @@ TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeParentHidden) {
   // Set flag to disable hiding parent.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_deleting_split_tablets", "true"));
 
-  ASSERT_OK(TriggerManualSplit());
-
-  std::this_thread::sleep_for(kCleanupSplitTabletsInterval * 5);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ false));
 
   // Restore time is after split completes but parent does not hide.
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
@@ -3430,8 +3406,7 @@ TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeParentHidden) {
   ASSERT_EQ(rows, kNumRows + 5);
 
   // There should be 2 tablets since we split 1 to 2.
-  int tablet_count = ASSERT_RESULT(GetTabletCount());
-  ASSERT_EQ(tablet_count, 2);
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 2);
 
   // Set flag to enable hiding parent.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_deleting_split_tablets", "false"));
@@ -3445,8 +3420,7 @@ TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeParentHidden) {
   ASSERT_EQ(rows, kNumRows);
 
   // There should be 2 tablets.
-  tablet_count = ASSERT_RESULT(GetTabletCount());
-  ASSERT_EQ(tablet_count, 2);
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 2);
 
   // Further inserts to the table should succeed.
   ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
@@ -3472,12 +3446,11 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreAfterSplit, YbAdminRestoreAfterSpl
 
   // This row should be absent after restoration.
   ASSERT_OK(conn.ExecuteQueryFormat(
-      "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
-      client::kTableName.table_name(), i));
+      "INSERT INTO $0 (key, value) VALUES ($1, 'after')", client::kTableName.table_name(), i));
 
-  ASSERT_OK(TriggerManualSplit());
-
-  std::this_thread::sleep_for(kCleanupSplitTabletsInterval * 5);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ true));
 
   // Read data so that the partitions in the cache get updated to the
   // post-split values.
@@ -3485,8 +3458,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreAfterSplit, YbAdminRestoreAfterSpl
   ASSERT_EQ(rows, kNumRows + 1);
 
   // There should be 2 tablets since we split 1 to 2.
-  int tablet_count = ASSERT_RESULT(GetTabletCount());
-  ASSERT_EQ(tablet_count, 2);
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 2);
 
   // Perform a restoration.
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
@@ -3495,8 +3467,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreAfterSplit, YbAdminRestoreAfterSpl
   ASSERT_EQ(rows, kNumRows);
 
   // There should be 1 tablet.
-  tablet_count = ASSERT_RESULT(GetTabletCount());
-  ASSERT_EQ(tablet_count, 1);
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 1);
 
   // Further inserts to the table should succeed.
   ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
@@ -3519,9 +3490,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, VerifyRestoreWithDeletedTablets,
   // Insert enough data to cause to splitting.
   ASSERT_RESULT(CreateTableAndInsertData(&conn, kNumRows));
 
-  ASSERT_OK(TriggerManualSplit());
-
-  std::this_thread::sleep_for(kCleanupSplitTabletsInterval * 5);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ true));
 
   // Read data so that the partitions in the cache get updated to the
   // post-split values.
@@ -3529,8 +3500,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, VerifyRestoreWithDeletedTablets,
   ASSERT_EQ(rows, kNumRows);
 
   // There should be 2 tablets since we split 1 to 2.
-  int tablet_count = ASSERT_RESULT(GetTabletCount());
-  ASSERT_EQ(tablet_count, 2);
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 2);
 
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
 
@@ -3544,14 +3514,64 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, VerifyRestoreWithDeletedTablets,
   rows = ASSERT_RESULT(GetRowCount(&conn));
   ASSERT_EQ(rows, kNumRows);
 
-  auto tablets_size = ASSERT_RESULT(ListTablets()).GetArray().Size();
-  ASSERT_EQ(tablets_size, 2);
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 2);
 
   // Further inserts to the table should succeed.
   ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
 
   rows = ASSERT_RESULT(GetRowCount(&conn));
   ASSERT_EQ(rows, kNumRows + 5);
+}
+
+TEST_F(YbAdminRestoreAfterSplitTest, TestRestoreUncompactedChildTabletAndSplit) {
+  SetRf1Flags();
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  // Skip the post split compaction so we can force the snapshot used to restore from to include the
+  // pre-compaction data of the child tablets.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "true"));
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  ASSERT_RESULT(CreateTableAndInsertData(&conn, 500));
+  auto table_name = ASSERT_RESULT(test_admin_client_->GetTableName(
+      client::kTableName.namespace_name(), client::kTableName.table_name()));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(table_name));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      table_name, /* wait_for_parent_deletion */ false, tablets[0].tablet_id()));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(table_name));
+  ASSERT_EQ(tablets.size(), 2);
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  // Create a snapshot to ensure the snapshot we restore to has the child tablets uncompacted.
+  ASSERT_RESULT(test_admin_client_->CreateSnapshotAndWait(
+      ASSERT_RESULT(SnapshotScheduleId::FromString(schedule_id))));
+  // Read data so that the partitions in the cache get updated to the
+  // post-split values.
+  ASSERT_EQ(ASSERT_RESULT(GetRowCount(&conn)), 500);
+  // Delete a row so the restore has some work to do.
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "DELETE FROM $0.$1 where key = $2", client::kTableName.namespace_name(),
+      client::kTableName.table_name(), "1"));
+  ASSERT_EQ(499, ASSERT_RESULT(GetRowCount(&conn)));
+  // Force a compaction and wait for the child tablets to be fully compacted.
+  ASSERT_OK(CompactTablets(cluster_.get()));
+  for (const auto& tablet : tablets) {
+    const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet.tablet_id()));
+    ASSERT_OK(test_admin_client_->WaitForTabletFullyCompacted(leader_idx, tablet.tablet_id()));
+  }
+  // Reset the flag so we compact the children after the restore.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "false"));
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  ASSERT_EQ(500, ASSERT_RESULT(GetRowCount(&conn)));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(table_name));
+  ASSERT_EQ(tablets.size(), 2);
+  for (const auto& tablet : tablets) {
+    const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet.tablet_id()));
+    ASSERT_OK(test_admin_client_->WaitForTabletFullyCompacted(leader_idx, tablet.tablet_id()));
+  }
+  // Try to split the first tablet to sanity check it was compacted after the restore.
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      table_name, /* wait_for_parent_deletion */ false, tablets[0].tablet_id()));
+  // SplitTablet does most work asynchronously, so sanity check the tablet count here.
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 3);
 }
 
 TEST_F(YbAdminRestoreDuringSplit, VerifyParentNotHiddenPostRestore) {
@@ -3571,9 +3591,9 @@ TEST_F(YbAdminRestoreDuringSplit, VerifyParentNotHiddenPostRestore) {
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
   LOG(INFO) << "Restore time " << time.ToHumanReadableTime();
 
-  ASSERT_OK(TriggerManualSplit());
-
-  std::this_thread::sleep_for(kCleanupSplitTabletsInterval * 5);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ true));
   LOG(INFO) << "Done splitting";
 
   // Read data so that the partitions in the cache get updated to the
@@ -3589,8 +3609,7 @@ TEST_F(YbAdminRestoreDuringSplit, VerifyParentNotHiddenPostRestore) {
   ASSERT_EQ(rows, kNumRows + 5);
 
   // There should be 2 tablets since we split 1 to 2.
-  int tablet_count = ASSERT_RESULT(GetTabletCount());
-  ASSERT_EQ(tablet_count, 2);
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 2);
 
   // Set flag to delay tablet split metadata restore.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_delay_tablet_split_metadata_restore_secs", "2"));
@@ -3604,8 +3623,7 @@ TEST_F(YbAdminRestoreDuringSplit, VerifyParentNotHiddenPostRestore) {
   ASSERT_EQ(rows, kNumRows);
 
   // There should be 1 tablet.
-  tablet_count = ASSERT_RESULT(GetTabletCount());
-  ASSERT_EQ(tablet_count, 1);
+  ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 1);
 
   // Further inserts to the table should succeed.
   ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
@@ -3675,8 +3693,9 @@ class YbAdminSnapshotScheduleAutoSplitting : public YbAdminSnapshotScheduleTestW
   }
 };
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuringRestore),
-          YbAdminSnapshotScheduleAutoSplitting) {
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuringRestore),
+    YbAdminSnapshotScheduleAutoSplitting) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -3688,12 +3707,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuri
 
   // Only this row should be present after restoration.
   ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
-      client::kTableName.table_name(), 0));
+      "INSERT INTO $0 (key, value) VALUES ($1, 'after')", client::kTableName.table_name(), 0));
 
-  auto tablets_obj = ASSERT_RESULT(ListTablets(
-      client::kTableName.table_name(), client::kTableName.namespace_name(), "ysql"));
-  auto prev_tablets_count = tablets_obj.GetArray().Size();
+  auto prev_tablets_count = ASSERT_RESULT(GetTabletCount(test_admin_client_.get()));
   LOG(INFO) << prev_tablets_count << " tablets present before restore";
 
   Timestamp time = ASSERT_RESULT(GetCurrentTime());
@@ -3706,8 +3722,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuri
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
 
   LOG(INFO) << "Reading rows after restoration";
-  auto all_good = ASSERT_RESULT(VerifyData(&conn, prev_tablets_count));
-  ASSERT_TRUE(all_good);
+  ASSERT_TRUE(ASSERT_RESULT(VerifyData(&conn, prev_tablets_count)));
 
   // Note down the time and perform a restore again.
   Timestamp time2(ASSERT_RESULT(WallClock()->Now()).time_point);
@@ -3720,8 +3735,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuri
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time2));
 
   LOG(INFO) << "Reading rows after restoration the second time";
-  all_good = ASSERT_RESULT(VerifyData(&conn, prev_tablets_count));
-  ASSERT_TRUE(all_good);
+  ASSERT_TRUE(ASSERT_RESULT(VerifyData(&conn, prev_tablets_count)));
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshOnNewConnection),
@@ -3744,9 +3758,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshOnNew
       "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
       client::kTableName.table_name(), 0));
 
-  auto tablets_obj = ASSERT_RESULT(ListTablets(
-      client::kTableName.table_name(), client::kTableName.namespace_name(), "ysql"));
-  auto prev_tablets_count = tablets_obj.GetArray().Size();
+  auto prev_tablets_count = ASSERT_RESULT(GetTabletCount(test_admin_client_.get()));
   LOG(INFO) << prev_tablets_count << " tablets present before restore";
 
   Timestamp time = ASSERT_RESULT(GetCurrentTime());
@@ -3756,13 +3768,13 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshOnNew
   LOG(INFO) << "Inserted 5000 rows";
 
   // Wait for at least one round of splitting.
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
-    auto tablets_obj = VERIFY_RESULT(ListTablets(
-        client::kTableName.table_name(), client::kTableName.namespace_name(), "ysql"));
-    auto tablets_count = tablets_obj.GetArray().Size();
-    LOG(INFO) << tablets_count << " tablets thus far after inserting 5000 rows";
-    return tablets_count >= 2;
-  }, 120s, "Wait for tablets to be split"));
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        auto tablets_count = VERIFY_RESULT(GetTabletCount(test_admin_client_.get()));
+        LOG(INFO) << tablets_count << " tablets thus far after inserting 5000 rows";
+        return tablets_count >= 2;
+      },
+      120s, "Wait for tablets to be split"));
 
   // Read data so that cache gets updated to latest partitions.
   auto select_query = Format(
@@ -3782,8 +3794,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshOnNew
   auto new_conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
   LOG(INFO) << "Reading rows after restoration";
-  auto all_good = ASSERT_RESULT(VerifyData(&new_conn, prev_tablets_count));
-  ASSERT_TRUE(all_good);
+  ASSERT_TRUE(ASSERT_RESULT(VerifyData(&new_conn, prev_tablets_count)));
 }
 
 class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
@@ -3799,28 +3810,6 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
     return { "--yb_num_shards_per_tserver=1",
              "--cleanup_split_tablets_interval_sec=1"
     };
-  }
-
-  Status TriggerManualSplit() {
-    auto tablets_obj = VERIFY_RESULT(ListTablets(
-        client::kTableName.table_name(), client::kTableName.namespace_name(), "ysql"));
-    auto tablets = tablets_obj.GetArray();
-    if (tablets.Size() != 1) {
-      return STATUS(IllegalState, "Expected only one tablet");
-    }
-    auto tablet_id = VERIFY_RESULT(Get(tablets[0], "id")).get().GetString();
-    LOG(INFO) << "Tablet id: " << tablet_id;
-
-    // Flush the table to ensure that there's at least one sst file.
-    RETURN_NOT_OK(CallAdmin(
-        "flush_table", Format("ysql.$0", client::kTableName.namespace_name()),
-        client::kTableName.table_name()));
-
-    // Split the tablet.
-    LOG(INFO) << "Triggering a manual split.";
-    RETURN_NOT_OK(CallAdmin("split_tablet", tablet_id));
-
-    return Status::OK();
   }
 
   void TestIOWithSnapshotScheduleAndSplit(bool test_write, bool perform_restore) {
@@ -3852,34 +3841,9 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
     ASSERT_EQ(rows, "5000");
 
     // Trigger a manual split.
-    ASSERT_OK(TriggerManualSplit());
-
-    // Wait for Split to complete.
-    ASSERT_OK(WaitFor([this]() -> Result<bool> {
-      bool parent_hidden = false;
-      int running_tablets = 0;
-      auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(0);
-      tserver::ListTabletsRequestPB req;
-      tserver::ListTabletsResponsePB resp;
-      rpc::RpcController controller;
-      controller.set_timeout(30s * kTimeMultiplier);
-      RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
-      for (const auto& tablet : resp.status_and_schema()) {
-        if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()
-            && tablet.tablet_status().table_name() == client::kTableName.table_name()) {
-          LOG(INFO) << "Tablet " << tablet.tablet_status().tablet_id() << " of table "
-                    << tablet.tablet_status().table_name() << ", hidden status "
-                    << tablet.tablet_status().is_hidden() << ", running status "
-                    << tablet.tablet_status().state();
-          if (tablet.tablet_status().is_hidden()) {
-            parent_hidden = true;
-          } else if (tablet.tablet_status().state() == tablet::RaftGroupStatePB::RUNNING) {
-            running_tablets++;
-          }
-        }
-      }
-      return parent_hidden && running_tablets == 2;
-    }, 30s * kTimeMultiplier, "Wait for tablet splitting to complete"));
+    ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ true));
 
     // Verify that cache gets refreshed post split.
     if (test_write) {

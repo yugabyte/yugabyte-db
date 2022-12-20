@@ -13,6 +13,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -24,7 +25,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
+import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.InetAddress;
@@ -33,7 +37,9 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
@@ -52,9 +58,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
 import lombok.Getter;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -93,11 +104,13 @@ public class Util {
 
   public static final double EPSILON = 0.000001d;
 
-  public static final String YBC_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
+  public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
   public static final String YB_RELEASES_PATH = "yb.releases.path";
+
+  public static final String YB_NODE_UI_WS_KEY = "yb.node_ui.ws";
 
   public static final String K8S_POD_FQDN_TEMPLATE =
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
@@ -681,8 +694,7 @@ public class Util {
     String archType = null;
     if (ybServerPackage.contains(Architecture.x86_64.name().toLowerCase())) {
       archType = Architecture.x86_64.name();
-    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())
-        || ybServerPackage.contains(Architecture.arm64.name().toLowerCase())) {
+    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())) {
       archType = Architecture.aarch64.name();
     } else {
       throw new RuntimeException(
@@ -723,5 +735,93 @@ public class Util {
       throw new IllegalArgumentException("Duration string " + goDuration + " is invalid");
     }
     return Duration.ofNanos(nanos);
+  }
+
+  /**
+   * Adds the file/directory from filePath to the archive tarArchive starting at the parent location
+   * in the archive
+   *
+   * @param filePath the directory/file we want to add to the archive.
+   * @param parent the location where we are storing the directory/file in the archive, "" is the
+   *     root of the archive
+   * @param tarArchive the archive we want the directory/file be added to.
+   */
+  public static void addFilesToTarGZ(
+      String filePath, String parent, TarArchiveOutputStream tarArchive) throws IOException {
+    File file = new File(filePath);
+    String entryName = parent + file.getName();
+    tarArchive.putArchiveEntry(new TarArchiveEntry(file, entryName));
+    if (file.isFile()) {
+      try (FileInputStream fis = new FileInputStream(file);
+          BufferedInputStream bis = new BufferedInputStream(fis)) {
+        IOUtils.copy(bis, tarArchive);
+        tarArchive.closeArchiveEntry();
+      }
+    } else if (file.isDirectory()) {
+      // no content to copy so close archive entry
+      tarArchive.closeArchiveEntry();
+      for (File f : file.listFiles()) {
+        addFilesToTarGZ(f.getAbsolutePath(), entryName + File.separator, tarArchive);
+      }
+    }
+  }
+
+  /**
+   * Adds the the file archive tarArchive in fileName
+   *
+   * @param file the file we want to add to the archive
+   * @param fileName the location we want the file to be saved in the archive
+   * @param tarArchive the archive we want the file be added to.
+   */
+  public static void copyFileToTarGZ(File file, String fileName, TarArchiveOutputStream tarArchive)
+      throws IOException {
+    tarArchive.putArchiveEntry(tarArchive.createArchiveEntry(file, fileName));
+    try (FileInputStream fis = new FileInputStream(file);
+        BufferedInputStream bis = new BufferedInputStream(fis)) {
+      IOUtils.copy(bis, tarArchive);
+      tarArchive.closeArchiveEntry();
+    }
+  }
+
+  /**
+   * Extracts the archive tarFile and untars to into folderPath directory
+   *
+   * @param tarFile the archive we want to sasve to folderPath
+   * @param folderPath the directory where we want to extract the archive to
+   */
+  public static void extractFilesFromTarGZ(File tarFile, String folderPath) throws IOException {
+    TarArchiveEntry currentEntry;
+    Files.createDirectories(Paths.get(folderPath));
+
+    try (FileInputStream fis = new FileInputStream(tarFile);
+        GZIPInputStream gis = new GZIPInputStream(new BufferedInputStream(fis));
+        TarArchiveInputStream tis = new TarArchiveInputStream(gis)) {
+      while ((currentEntry = tis.getNextTarEntry()) != null) {
+        File destPath = new File(folderPath, currentEntry.getName());
+        if (currentEntry.isDirectory()) {
+          destPath.mkdirs();
+        } else {
+          destPath.createNewFile();
+          try (FileOutputStream fos = new FileOutputStream(destPath)) {
+            IOUtils.copy(tis, fos);
+          }
+        }
+      }
+    }
+  }
+
+  public static boolean isKubernetesBasedUniverse(Universe universe) {
+    boolean isKubernetesUniverse =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(CloudType.kubernetes);
+    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+      isKubernetesUniverse =
+          isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
+    }
+    return isKubernetesUniverse;
   }
 }

@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -29,7 +30,21 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     None
   }
 
+  @ApiModelProperty(
+      value = "Map  of region UUID to AMI name",
+      required = true,
+      example =
+          "{\n"
+              + "    'b28e0813-4866-4a2d-89f3-52265766d666':"
+              + " 'OpenLogic:CentOS:7_9:7.9.2022020700',\n"
+              + "    'b28e0813-4866-4a2d-89f3-52265766d666':"
+              + " 'ami-0f12219b4df721aa6',\n"
+              + "    'd73833fc-0812-4a01-98f8-f4f24db76dbe':"
+              + " 'https://www.googleapis.com/compute/v1/projects/rhel-cloud/global/images/"
+              + "rhel-8-v20221102'\n"
+              + "  }")
   public Map<UUID, String> machineImages = new HashMap<>();
+
   public boolean forceVMImageUpgrade = false;
   public String ybSoftwareVersion = null;
 

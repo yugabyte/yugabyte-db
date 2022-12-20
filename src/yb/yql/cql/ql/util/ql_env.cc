@@ -33,12 +33,14 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
-DEFINE_bool(ycql_cache_login_info, false, "Use authentication information cached locally.");
-DEFINE_bool(ycql_require_drop_privs_for_truncate, false,
+DEFINE_UNKNOWN_bool(use_cassandra_authentication, false,
+    "If to require authentication on startup.");
+DEFINE_UNKNOWN_bool(ycql_cache_login_info, false, "Use authentication information cached locally.");
+DEFINE_UNKNOWN_bool(ycql_require_drop_privs_for_truncate, false,
             "Require DROP TABLE permission in order to truncate table");
-DEFINE_bool(ycql_use_local_transaction_tables, false,
+DEFINE_UNKNOWN_bool(ycql_use_local_transaction_tables, false,
             "Whether or not to use local transaction tables when possible for YCQL transactions.");
 
 namespace yb {

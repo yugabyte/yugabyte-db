@@ -43,7 +43,7 @@ int main() {
 
 using GFLAGS::ParseCommandLineFlags;
 
-DEFINE_int32(bits_per_key, 10, "");
+DEFINE_UNKNOWN_int32(bits_per_key, 10, "");
 
 namespace rocksdb {
 

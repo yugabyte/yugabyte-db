@@ -5,93 +5,126 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"io/ioutil"
+	"net"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
+	"github.com/spf13/viper"
+
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
 // Component 3: Platform
 type Platform struct {
-	Name                string
+	name                string
 	SystemdFileLocation string
 	ConfFileLocation    string
-	Version             string
-	CorsOrigin          string
-	UseOIDCSso          bool
+	templateFileName    string
+	version             string
+	DataDir             string
+	cronScript          string
 }
 
-// Method of the Component
-// Interface are implemented by
-// the Platform struct and customizable
-// for each specific service.
+// NewPlatform creates a new YBA service struct.
+func NewPlatform(installRoot, version string) Platform {
+	return Platform{
+		"yb-platform",
+		common.SystemdDir + "/yb-platform.service",
+		installRoot + "/yb-platform/conf/yb-platform.conf",
+		"yba-installer-platform.yml",
+		version,
+		installRoot + "/data/yb-platform",
+		fmt.Sprintf("%s/%s/managePlatform.sh", common.GetInstallVersionDir(), common.CronDir)}
+}
 
+func (plat Platform) devopsDir() string {
+	return plat.yugabyteDir() + "/devops"
+}
+
+// yugaware dir has actual yugaware binary and JARs
+func (plat Platform) yugawareDir() string {
+	return plat.yugabyteDir() + "/yugaware"
+}
+
+func (plat Platform) packageFolder() string {
+	return "yugabyte-" + plat.version
+}
+
+func (plat Platform) yugabyteDir() string {
+	return common.GetInstallVersionDir() + "/packages/" + plat.packageFolder()
+}
+
+func (plat Platform) backupScript() string {
+	return plat.devopsDir() + "/bin/yb_platform_backup.sh"
+}
+
+// TemplateFile returns the templated config file path that is used to generate yb-platform.conf.
+func (plat Platform) TemplateFile() string {
+	return plat.templateFileName
+}
+
+// Name returns the name of the service.
+func (plat Platform) Name() string {
+	return plat.name
+}
+
+// Install YBA service.
 func (plat Platform) Install() {
-
-	createNecessaryDirectories(plat.Version)
-	createDevopsAndYugawareDirectories(plat.Version)
-	untarDevopsAndYugawarePackages(plat.Version)
-	copyYugabyteReleaseFile(plat.Version)
-	renameAndCreateSymlinks(plat.Version)
+	config.GenerateTemplate(plat)
+	plat.createNecessaryDirectories()
+	plat.createDevopsAndYugawareDirectories()
+	plat.untarDevopsAndYugawarePackages()
+	plat.copyYugabyteReleaseFile()
+	plat.copyYbcPackages()
+	plat.renameAndCreateSymlinks()
 	configureConfHTTPS()
 
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
-	os.Create(INSTALL_ROOT + "/yb-platform/yugaware/bin/platform.log")
+	common.Create(common.GetInstallRoot() + "/yb-platform/yugaware/bin/platform.log")
 
 	//Crontab based monitoring for non-root installs.
-	if !hasSudoAccess() {
+	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
+	} else {
+		// Allow yugabyte user to fully manage this installation (GetInstallRoot() to be safe)
+		userName := viper.GetString("service_username")
+		common.Chown(common.GetInstallRoot(), userName, userName, true)
 	}
 
-	// Change ownership of the data directory so that all universes can
-	// be properly created as the Yugabyte User, under the Sudo method
-	// of installation.
-	if hasSudoAccess() {
-
-		ExecuteBashCommand("chown", []string{"yugabyte:yugabyte", "-R", INSTALL_ROOT + "/yb-platform"})
-		swamperTargetsDir := []string{"yugabyte:yugabyte", "-R", INSTALL_ROOT + "/prometheus/swamper_targets"}
-		swamperRulesDir := []string{"yugabyte:yugabyte", "-R", INSTALL_ROOT + "/prometheus/swamper_rules"}
-		ExecuteBashCommand("chown", swamperTargetsDir)
-		ExecuteBashCommand("chown", swamperRulesDir)
-
-	}
-
-	// At the end of the installation, we rename .installStarted to .installCompleted, to signify that the
-	// install has finished succesfully.
-	MoveFileGolang(INSTALL_ROOT+"/.installStarted", INSTALL_ROOT+"/.installCompleted")
+	plat.Start()
 
 }
 
-func createNecessaryDirectories(version string) {
+func (plat Platform) createNecessaryDirectories() {
 
-	os.MkdirAll(INSTALL_ROOT+"/yb-platform/releases/"+version, os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/prometheus/swamper_targets", os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/prometheus/swamper_rules", os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/yb-platform/data", os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/yb-platform/third-party", os.ModePerm)
-
-}
-
-func createDevopsAndYugawareDirectories(version string) {
-
-	packageFolder := "yugabyte-" + version
-	os.MkdirAll(INSTALL_VERSION_DIR+"/packages/"+packageFolder+"/devops", os.ModePerm)
-	os.MkdirAll(INSTALL_VERSION_DIR+"/packages/"+packageFolder+"/yugaware", os.ModePerm)
+	os.MkdirAll(common.GetInstallRoot()+"/yb-platform", os.ModePerm)
+	os.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version, os.ModePerm)
+	os.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/release", os.ModePerm)
+	os.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/releases", os.ModePerm)
 
 }
 
-func untarDevopsAndYugawarePackages(version string) {
+func (plat Platform) createDevopsAndYugawareDirectories() {
 
-	packageFolder := "yugabyte-" + version
-	packageFolderPath := INSTALL_VERSION_DIR + "/packages/" + packageFolder
+	os.MkdirAll(plat.devopsDir(), os.ModePerm)
+	os.MkdirAll(plat.yugawareDir(), os.ModePerm)
 
-	files, err := ioutil.ReadDir(packageFolderPath)
+}
+
+func (plat Platform) untarDevopsAndYugawarePackages() {
+
+	packageFolderPath := plat.yugabyteDir()
+
+	files, err := os.ReadDir(packageFolderPath)
 	if err != nil {
-		LogError("Error: " + err.Error() + ".")
+		log.Fatal("Error: " + err.Error() + ".")
 	}
 
 	for _, f := range files {
@@ -101,12 +134,12 @@ func untarDevopsAndYugawarePackages(version string) {
 			devopsTgzPath := packageFolderPath + "/" + devopsTgzName
 			rExtract, errExtract := os.Open(devopsTgzPath)
 			if errExtract != nil {
-				LogError("Error in starting the File Extraction process.")
+				log.Fatal("Error in starting the File Extraction process.")
 			}
 
 			if err := tar.Untar(rExtract, packageFolderPath+"/devops",
 				tar.WithMaxUntarSize(-1)); err != nil {
-				LogError(fmt.Sprintf("failed to extract file %s, error: %s", devopsTgzPath, err.Error()))
+				log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", devopsTgzPath, err.Error()))
 			}
 
 		} else if strings.Contains(f.Name(), "yugaware") && strings.Contains(f.Name(), "tar") {
@@ -115,12 +148,12 @@ func untarDevopsAndYugawarePackages(version string) {
 			yugawareTgzPath := packageFolderPath + "/" + yugawareTgzName
 			rExtract, errExtract := os.Open(yugawareTgzPath)
 			if errExtract != nil {
-				LogError("Error in starting the File Extraction process.")
+				log.Fatal("Error in starting the File Extraction process.")
 			}
 
 			if err := tar.Untar(rExtract, packageFolderPath+"/yugaware",
 				tar.WithMaxUntarSize(-1)); err != nil {
-				LogError(fmt.Sprintf("failed to extract file %s, error: %s", yugawareTgzPath, err.Error()))
+				log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", yugawareTgzPath, err.Error()))
 			}
 
 		}
@@ -128,14 +161,13 @@ func untarDevopsAndYugawarePackages(version string) {
 
 }
 
-func copyYugabyteReleaseFile(version string) {
+func (plat Platform) copyYugabyteReleaseFile() {
 
-	packageFolder := "yugabyte-" + version
-	packageFolderPath := INSTALL_VERSION_DIR + "/packages/" + packageFolder
+	packageFolderPath := plat.yugabyteDir()
 
-	files, err := ioutil.ReadDir(packageFolderPath)
+	files, err := os.ReadDir(packageFolderPath)
 	if err != nil {
-		LogError("Error: " + err.Error() + ".")
+		log.Fatal("Error: " + err.Error() + ".")
 	}
 
 	for _, f := range files {
@@ -143,92 +175,84 @@ func copyYugabyteReleaseFile(version string) {
 
 			yugabyteTgzName := f.Name()
 			yugabyteTgzPath := packageFolderPath + "/" + yugabyteTgzName
-			CopyFileGolang(yugabyteTgzPath,
-				INSTALL_ROOT+"/yb-platform/releases/"+version+"/"+yugabyteTgzName)
+			common.CopyFileGolang(yugabyteTgzPath,
+				common.GetInstallRoot()+"/data/yb-platform/releases/"+plat.version+"/"+yugabyteTgzName)
 
 		}
 	}
 }
 
-func renameAndCreateSymlinks(version string) {
+func (plat Platform) copyYbcPackages() {
+	packageFolderPath := common.GetInstallVersionDir() + "/packages/yugabyte-" + plat.version
+	ybcPattern := packageFolderPath + "/**/ybc/ybc*.tar.gz"
 
-	packageFolder := "yugabyte-" + version
-	packageFolderPath := INSTALL_VERSION_DIR + "/packages/" + packageFolder
-
-	command1 := "ln"
-	path1a := packageFolderPath + "/yugaware"
-
-	path1b := INSTALL_ROOT + "/yb-platform/yugaware"
-	arg1 := []string{"-sf", path1a, path1b}
-
-	if _, err := os.Stat(path1b); err == nil {
-		pathBackup := packageFolderPath + "/yugaware_backup"
-		MoveFileGolang(path1b, pathBackup)
-	} else if errors.Is(err, os.ErrNotExist) {
-		ExecuteBashCommand(command1, arg1)
+	matches, err := filepath.Glob(ybcPattern)
+	if err != nil {
+		log.Fatal(
+			fmt.Sprintf("Could not find ybc components in %s. Failed with err %s",
+				packageFolderPath, err.Error()))
 	}
 
-	command2 := "ln"
-	path2a := packageFolderPath + "/devops"
-	path2b := INSTALL_ROOT + "/yb-platform/devops"
-	arg2 := []string{"-sf", path2a, path2b}
-
-	if _, err := os.Stat(path2b); err == nil {
-		pathBackup := packageFolderPath + "/devops_backup"
-		MoveFileGolang(path2b, pathBackup)
-	} else if errors.Is(err, os.ErrNotExist) {
-		ExecuteBashCommand(command2, arg2)
+	for _, f := range matches {
+		_, fileName := filepath.Split(f)
+		// TODO: Check if file does not already exist?
+		common.CopyFileGolang(f, common.GetInstallRoot()+"/data/yb-platform/ybc/release/"+fileName)
 	}
 
 }
 
+func (plat Platform) renameAndCreateSymlinks() {
+
+	common.CreateSymlink(plat.yugabyteDir(), common.GetInstallRoot()+"/yb-platform", "yugaware")
+	common.CreateSymlink(plat.yugabyteDir(), common.GetInstallRoot()+"/yb-platform", "devops")
+
+}
+
+// Start the YBA platform service.
 func (plat Platform) Start() {
 
-	if hasSudoAccess() {
+	if common.HasSudoAccess() {
 
-		arg1 := []string{"daemon-reload"}
-		ExecuteBashCommand(SYSTEMCTL, arg1)
-
-		arg2 := []string{"enable", "yb-platform.service"}
-		ExecuteBashCommand(SYSTEMCTL, arg2)
-
-		arg3 := []string{"start", "yb-platform.service"}
-		ExecuteBashCommand(SYSTEMCTL, arg3)
-
-		arg4 := []string{"status", "yb-platform.service"}
-		ExecuteBashCommand(SYSTEMCTL, arg4)
+		common.ExecuteBashCommand(common.Systemctl,
+			[]string{"daemon-reload"})
+		common.ExecuteBashCommand(common.Systemctl,
+			[]string{"enable", filepath.Base(plat.SystemdFileLocation)})
+		common.ExecuteBashCommand(common.Systemctl,
+			[]string{"start", filepath.Base(plat.SystemdFileLocation)})
+		common.ExecuteBashCommand(common.Systemctl,
+			[]string{"status", filepath.Base(plat.SystemdFileLocation)})
 
 	} else {
 
-		containerExposedPort := getYamlPathData(".platform.containerExposedPort")
-
-		scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + plat.Name + "NonRoot.sh"
+		containerExposedPort := config.GetYamlPathData("platform.port")
+		restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 
 		command1 := "bash"
-		arg1 := []string{"-c", scriptPath + " " + INSTALL_VERSION_DIR + " " + containerExposedPort +
-			" > /dev/null 2>&1 &"}
+		arg1 := []string{"-c", plat.cronScript + " " + common.GetInstallVersionDir() + " " +
+			containerExposedPort + " " + restartSeconds + " > /dev/null 2>&1 &"}
 
-		ExecuteBashCommand(command1, arg1)
+		common.ExecuteBashCommand(command1, arg1)
 
 	}
 
 }
 
+// Stop the YBA platform service.
 func (plat Platform) Stop() {
 
-	if hasSudoAccess() {
+	if common.HasSudoAccess() {
 
-		arg1 := []string{"stop", "yb-platform.service"}
-		ExecuteBashCommand(SYSTEMCTL, arg1)
+		arg1 := []string{"stop", filepath.Base(plat.SystemdFileLocation)}
+		common.ExecuteBashCommand(common.Systemctl, arg1)
 
 	} else {
 
 		// Delete the file used by the crontab bash script for monitoring.
-		os.RemoveAll(INSTALL_ROOT + "/yb-platform/testfile")
+		os.RemoveAll(common.GetInstallRoot() + "/yb-platform/testfile")
 
 		commandCheck0 := "bash"
 		argCheck0 := []string{"-c", "pgrep -fl yb-platform"}
-		out0, _ := ExecuteBashCommand(commandCheck0, argCheck0)
+		out0, _ := common.ExecuteBashCommand(commandCheck0, argCheck0)
 
 		// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
 		// process itself was started by a non-root user.)
@@ -239,19 +263,20 @@ func (plat Platform) Stop() {
 			for _, pid := range pids {
 				if strings.Contains(pid, "java") {
 					argStop := []string{"-c", "kill -9 " + strings.TrimSuffix(pid, "\n")}
-					ExecuteBashCommand(commandCheck0, argStop)
+					common.ExecuteBashCommand(commandCheck0, argStop)
 				}
 			}
 		}
 	}
 }
 
+// Restart the YBA platform service.
 func (plat Platform) Restart() {
 
-	if hasSudoAccess() {
+	if common.HasSudoAccess() {
 
 		arg1 := []string{"restart", "yb-platform.service"}
-		ExecuteBashCommand(SYSTEMCTL, arg1)
+		common.ExecuteBashCommand(common.Systemctl, arg1)
 
 	} else {
 
@@ -262,72 +287,72 @@ func (plat Platform) Restart() {
 
 }
 
-func (plat Platform) GetSystemdFile() string {
-	return plat.SystemdFileLocation
-}
-
-func (plat Platform) GetConfFile() string {
-	return plat.ConfFileLocation
-}
-
-// Per current cleanup.sh script.
-func (plat Platform) Uninstall() {
+// Uninstall the YBA platform service and optionally clean out data.
+func (plat Platform) Uninstall(removeData bool) {
+	// Stop running platform service
 	plat.Stop()
-	RemoveAllExceptDataVolumes([]string{"platform"})
-}
 
-func (plat Platform) VersionInfo() string {
-	return plat.Version
+	// Clean up systemd file
+	if common.HasSudoAccess() {
+		err := os.Remove(plat.SystemdFileLocation)
+		if err != nil {
+			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
+				err.Error(), plat.SystemdFileLocation))
+		}
+	}
+
+	// Optionally remove data
+	if removeData {
+		err := os.RemoveAll(plat.DataDir)
+		if err != nil {
+			log.Info(fmt.Sprintf("Error %s removing data dir %s.", err.Error(), plat.DataDir))
+		}
+
+	}
+
 }
 
 // Status prints the status output specific to yb-platform.
-func (plat Platform) Status() {
+func (plat Platform) Status() common.Status {
+	status := common.Status{
+		Service:   plat.Name(),
+		Port:      viper.GetInt("platform.port"),
+		Version:   plat.version,
+		ConfigLoc: plat.ConfFileLocation,
+	}
 
-	name := "yb-platform"
-	port := getYamlPathData(".platform.containerExposedPort")
-
-	runningStatus := ""
-
-	if hasSudoAccess() {
-
-		args := []string{"is-active", name}
-		runningStatus, _ = ExecuteBashCommand(SYSTEMCTL, args)
-
-		runningStatus = strings.ReplaceAll(strings.TrimSuffix(runningStatus, "\n"), " ", "")
-
-		// For display purposes.
-		if runningStatus != "active" {
-
-			runningStatus = "inactive"
-
-		}
-
+	// Set the systemd service file location if one exists
+	if common.HasSudoAccess() {
+		status.ServiceFileLoc = plat.SystemdFileLocation
 	} else {
+		status.ServiceFileLoc = "N/A"
+	}
 
+	// Get the service status
+	if common.HasSudoAccess() {
+		props := systemd.Show(filepath.Base(plat.SystemdFileLocation), "LoadState", "SubState",
+			"ActiveState")
+		if props["LoadState"] == "not-found" {
+			status.Status = common.StatusNotInstalled
+		} else if props["SubState"] == "running" {
+			status.Status = common.StatusRunning
+		} else if props["ActiveState"] == "inactive" {
+			status.Status = common.StatusStopped
+		} else {
+			status.Status = common.StatusErrored
+		}
+	} else {
 		command := "bash"
 		args := []string{"-c", "pgrep -f yb-platform"}
-		out0, _ := ExecuteBashCommand(command, args)
+		out0, _ := common.ExecuteBashCommand(command, args)
 
 		if strings.TrimSuffix(string(out0), "\n") != "" {
-			runningStatus = "active"
+			status.Status = common.StatusRunning
 		} else {
-			runningStatus = "inactive"
+			status.Status = common.StatusStopped
 		}
 	}
-
-	systemdLoc := "N/A"
-
-	if hasSudoAccess() {
-
-		systemdLoc = plat.SystemdFileLocation
-	}
-
-	outString := name + "\t" + plat.Version + "\t" + port +
-		"\t" + plat.ConfFileLocation + "\t" + systemdLoc +
-		"\t" + runningStatus + "\t"
-
-	fmt.Fprintln(statusOutput, outString)
-
+	return status
 }
 
 func configureConfHTTPS() {
@@ -337,29 +362,49 @@ func configureConfHTTPS() {
 	os.Chmod("key.pem", os.ModePerm)
 	os.Chmod("cert.pem", os.ModePerm)
 
-	os.MkdirAll(INSTALL_ROOT+"/yb-platform/certs", os.ModePerm)
-	LogDebug(INSTALL_ROOT + "/yb-platform/certs directory successfully created.")
+	os.MkdirAll(common.GetInstallRoot()+"/yb-platform/certs", os.ModePerm)
+	log.Debug(common.GetInstallRoot() + "/yb-platform/certs directory successfully created.")
 
-	keyStorePassword := getYamlPathData(".platform.keyStorePassword")
+	// Do not use viper because we might have to return the default.
+	keyStorePassword := config.GetYamlPathData("platform.keyStorePassword")
 
-	ExecuteBashCommand("bash", []string{"-c", "./pemtokeystore-linux-amd64 -keystore server.ks " +
-		"-keystore-password " + keyStorePassword + " -cert-file myserver=cert.pem " +
-		"-key-file myserver=key.pem"})
+	_, err := common.ExecuteBashCommand("bash",
+		[]string{"-c", "./pemtokeystore-linux-amd64 -keystore server.ks " +
+			"-keystore-password " + keyStorePassword +
+			" -cert-file myserver=cert.pem " +
+			"-key-file myserver=key.pem"})
+	if err != nil {
+		log.Fatal("failed to create keystore file: " + err.Error())
+	}
 
-	ExecuteBashCommand("bash", []string{"-c", "cp " + "server.ks" + " " + INSTALL_ROOT + "/yb-platform/certs"})
+	common.ExecuteBashCommand("bash",
+		[]string{"-c", "cp " + "server.ks" + " " + common.GetInstallRoot() + "/yb-platform/certs"})
 
-	if hasSudoAccess() {
-
-		ExecuteBashCommand("chown", []string{"yugabyte:yugabyte", INSTALL_ROOT + "/yb-platform/certs"})
-		ExecuteBashCommand("chown", []string{"yugabyte:yugabyte", INSTALL_ROOT + "/yb-platform/certs/server.ks"})
+	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
+		common.Chown(common.GetInstallRoot()+"/yb-platform/certs", userName, userName, true)
 
 	}
 }
 
+// CreateCronJob creates the cron job for managing YBA platform with cron script in non-root.
 func (plat Platform) CreateCronJob() {
-	containerExposedPort := getYamlPathData(".platform.containerExposedPort")
-	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + plat.Name + "NonRoot.sh"
-	ExecuteBashCommand("bash", []string{"-c",
-		"(crontab -l 2>/dev/null; echo \"@reboot " + scriptPath + " " + INSTALL_VERSION_DIR + " " +
-			containerExposedPort + "\") | sort - | uniq - | crontab - "})
+	containerExposedPort := config.GetYamlPathData("platform.port")
+	restartSeconds := config.GetYamlPathData("platform.restartSeconds")
+	common.ExecuteBashCommand("bash", []string{"-c",
+		"(crontab -l 2>/dev/null; echo \"@reboot " + plat.cronScript + " " +
+			common.GetInstallVersionDir() + " " + containerExposedPort + " " + restartSeconds +
+			"\") | sort - | uniq - | crontab - "})
+}
+
+// GenerateCORSOrigin determines the IP address of the host to populate CORS origin field in conf.
+func (plat Platform) GenerateCORSOrigin() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return "https:" + localAddr.IP.String()
 }

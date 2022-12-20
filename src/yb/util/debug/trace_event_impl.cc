@@ -47,7 +47,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/thread.h"
 
-DEFINE_string(trace_to_console, "",
+DEFINE_UNKNOWN_string(trace_to_console, "",
               "Trace pattern specifying which trace events should be dumped "
               "directly to the console");
 TAG_FLAG(trace_to_console, experimental);

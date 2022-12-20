@@ -40,6 +40,7 @@
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/cql/cqlserver/system_query_cache.h"
 #include "yb/yql/cql/ql/parser/parser.h"
+#include "yb/util/flags.h"
 
 using namespace std::placeholders;
 using namespace yb::size_literals;
@@ -47,19 +48,19 @@ using namespace yb::size_literals;
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_int32(cql_update_system_query_cache_msecs);
 
-DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
+DEFINE_UNKNOWN_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
              "statements. 0 or negative means unlimited.");
-DEFINE_int32(cql_ybclient_reactor_threads, 24,
+DEFINE_UNKNOWN_int32(cql_ybclient_reactor_threads, 24,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the cql layer");
-DEFINE_int32(password_hash_cache_size, 64, "Number of password hashes to cache. 0 or "
+DEFINE_UNKNOWN_int32(password_hash_cache_size, 64, "Number of password hashes to cache. 0 or "
              "negative disables caching.");
-DEFINE_int64(cql_processors_limit, -4000,
+DEFINE_UNKNOWN_int64(cql_processors_limit, -4000,
              "Limit number of CQL processors. Positive means absolute limit. "
              "Negative means number of processors per 1GB of root mem tracker memory limit. "
              "0 - unlimited.");
-DEFINE_bool(cql_check_table_schema_in_paging_state, true,
+DEFINE_UNKNOWN_bool(cql_check_table_schema_in_paging_state, true,
             "Return error for prepared SELECT statement execution if the table was altered "
             "during the prepared statement execution.");
 

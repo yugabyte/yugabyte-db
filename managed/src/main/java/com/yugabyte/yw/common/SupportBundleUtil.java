@@ -14,7 +14,9 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesManager.RoleData;
+import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
@@ -22,6 +24,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,6 +41,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,8 +52,15 @@ import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.ToString;
+import java.util.zip.GZIPInputStream;
+
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.compress.archivers.ArchiveException;
+import org.apache.commons.compress.archivers.ArchiveStreamFactory;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.time.DateUtils;
@@ -421,7 +436,7 @@ public class SupportBundleUtil {
         kubernetesCluster.namespaceToAzNameMap.entrySet()) {
       String namespace = namespaceToAzName.getKey();
       String helmReleaseName =
-          PlacementInfoUtil.getHelmReleaseName(
+          KubernetesUtil.getHelmReleaseName(
               isMultiAz, nodePrefix, namespaceToAzName.getValue(), isReadOnlyUniverseCluster);
 
       String masterStorageClassName =
@@ -436,5 +451,149 @@ public class SupportBundleUtil {
     }
 
     return allStorageClassNames;
+  }
+
+  /**
+   * Untar an input file into an output file.
+   *
+   * <p>The output file is created in the output folder, having the same name as the input file,
+   * minus the '.tar' extension.
+   *
+   * @param inputFile the input .tar file
+   * @param outputDir the output directory file.
+   * @throws IOException
+   * @throws FileNotFoundException
+   * @return The {@link List} of {@link File}s with the untared content.
+   * @throws ArchiveException
+   */
+  public List<File> unTar(final File inputFile, final File outputDir)
+      throws FileNotFoundException, IOException, ArchiveException {
+
+    log.info(
+        String.format(
+            "Untaring %s to dir %s.", inputFile.getAbsolutePath(), outputDir.getAbsolutePath()));
+
+    final List<File> untaredFiles = new LinkedList<File>();
+    final InputStream is = new FileInputStream(inputFile);
+    final TarArchiveInputStream debInputStream =
+        (TarArchiveInputStream) new ArchiveStreamFactory().createArchiveInputStream("tar", is);
+    TarArchiveEntry entry = null;
+    while ((entry = (TarArchiveEntry) debInputStream.getNextEntry()) != null) {
+      final File outputFile = new File(outputDir, entry.getName());
+      if (entry.isDirectory()) {
+        log.info(
+            String.format(
+                "Attempting to write output directory %s.", outputFile.getAbsolutePath()));
+        if (!outputFile.exists()) {
+          log.info(
+              String.format(
+                  "Attempting to create output directory %s.", outputFile.getAbsolutePath()));
+          if (!outputFile.mkdirs()) {
+            throw new IllegalStateException(
+                String.format("Couldn't create directory %s.", outputFile.getAbsolutePath()));
+          }
+        }
+      } else {
+        log.info(String.format("Creating output file %s.", outputFile.getAbsolutePath()));
+        File parent = outputFile.getParentFile();
+        if (!parent.exists()) parent.mkdirs();
+        final OutputStream outputFileStream = new FileOutputStream(outputFile);
+        IOUtils.copy(debInputStream, outputFileStream);
+        outputFileStream.close();
+      }
+      untaredFiles.add(outputFile);
+    }
+    debInputStream.close();
+
+    return untaredFiles;
+  }
+
+  /**
+   * Ungzip an input file into an output file.
+   *
+   * <p>The output file is created in the output folder, having the same name as the input file,
+   * minus the '.gz' extension.
+   *
+   * @param inputFile the input .gz file
+   * @param outputDir the output directory file.
+   * @throws IOException
+   * @throws FileNotFoundException
+   * @return The {@File} with the ungzipped content.
+   */
+  public File unGzip(final File inputFile, final File outputDir)
+      throws FileNotFoundException, IOException {
+
+    log.info(
+        String.format(
+            "Ungzipping %s to dir %s.", inputFile.getAbsolutePath(), outputDir.getAbsolutePath()));
+
+    final File outputFile =
+        new File(outputDir, inputFile.getName().substring(0, inputFile.getName().length() - 3));
+
+    final GZIPInputStream in = new GZIPInputStream(new FileInputStream(inputFile));
+    final FileOutputStream out = new FileOutputStream(outputFile);
+
+    IOUtils.copy(in, out);
+
+    in.close();
+    out.close();
+
+    return outputFile;
+  }
+
+  public void downloadNodeLevelComponent(
+      UniverseInfoHandler universeInfoHandler,
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      NodeDetails node,
+      String nodeHomeDir,
+      String sourceNodeFiles,
+      String componentName)
+      throws Exception {
+    if (node == null) {
+      String errMsg =
+          String.format(
+              "Wrongly called downloadNodeLevelComponent() "
+                  + "from '%s' with node = null, on universe = '%s'.",
+              componentName, universe.name);
+      throw new RuntimeException(errMsg);
+    }
+
+    // Get target file path
+    String nodeName = node.getNodeName();
+    Path nodeTargetFile = Paths.get(bundlePath.toString(), componentName + ".tar.gz");
+
+    log.debug(
+        String.format(
+            "Gathering '%s' for node: '%s', source path: '%s', target path: '%s'.",
+            componentName, nodeName, nodeHomeDir, nodeTargetFile.toString()));
+
+    Path targetFile =
+        universeInfoHandler.downloadNodeFile(
+            customer, universe, node, nodeHomeDir, sourceNodeFiles, nodeTargetFile);
+    try {
+      if (Files.exists(targetFile)) {
+        File unZippedFile =
+            unGzip(
+                new File(targetFile.toAbsolutePath().toString()),
+                new File(bundlePath.toAbsolutePath().toString()));
+        Files.delete(targetFile);
+        unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
+        unZippedFile.delete();
+      } else {
+        log.debug(
+            String.format(
+                "No files exist at the source path '%s' for universe '%s' for component '%s'.",
+                nodeHomeDir, universe.name, componentName));
+      }
+    } catch (Exception e) {
+      log.error(
+          String.format(
+              "Something went wrong while trying to untar the files from "
+                  + "component '%s' in the DB node: ",
+              componentName),
+          e);
+    }
   }
 }

@@ -109,12 +109,19 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // See FlushExtraResult for details.
   virtual FlushExtraResult MakeFlushExtraResult() = 0;
 
-  virtual void SwapResponses() = 0;
+  virtual Status SwapResponses() = 0;
 
   void Failed(const Status& status) override;
 
   // Is this a local call?
   bool IsLocalCall() const;
+
+  Status CheckResponseCount(
+      const char* op, const char* name, int found, int expected);
+
+  Status CheckResponseCount(
+      const char* op, int redis_found, int redis_expected, int ql_found, int ql_expected,
+      int pgsql_found, int pgsql_expected);
 
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
@@ -168,7 +175,7 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
   virtual ~WriteRpc();
 
  private:
-  void SwapResponses() override;
+  Status SwapResponses() override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
 };
@@ -181,7 +188,7 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
   virtual ~ReadRpc();
 
  private:
-  void SwapResponses() override;
+  Status SwapResponses() override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
 };

@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -285,7 +286,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     intent.numNodes = 1;
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            UniverseDefinitionTaskParams.ClusterType.ASYNC, intent, 1, null);
+            UniverseDefinitionTaskParams.ClusterType.ASYNC,
+            intent,
+            1,
+            null,
+            Collections.emptyList());
     Universe updated =
         Universe.saveDetails(
             defaultUniverse.universeUUID,

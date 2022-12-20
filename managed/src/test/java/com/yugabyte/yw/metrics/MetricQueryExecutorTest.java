@@ -177,32 +177,20 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 + " {\"cpu\":\"system\",\"exported_instance\":\"instance2\"},"
                 + "\"value\":[1479278137,\"0.04329469299783263\"]}]}}");
 
-    when(mockApiHelper.getRequest(eq("foo://bar/query"), anyMap(), anyMap()))
-        .thenReturn(Json.toJson(responseJson));
-
     when(mockApiHelper.getRequest(eq("foo://bar/query_range"), anyMap(), anyMap()))
         .thenReturn(Json.toJson(responseJson));
 
     JsonNode result = qe.call();
-    ArrayNode topNodesQueryUrls = (ArrayNode) result.get("topKQueryURLs");
-    assertEquals(topNodesQueryUrls.size(), 1);
-    assertEquals(
-        topNodesQueryUrls.get(0).asText(),
-        "foo://bar/graph?g0.expr=topk%282%2C+max%28max_over_time%28our_valid_range_metric"
-            + "%7Bfilter%3D%22awesome%22%7D%5B3600s%5D%29%29+by+%28exported_instance%29%29&"
-            + "g0.tab=0&g0.range_input=100000s&g0.end_input=2016-11-17 11:22:17");
     ArrayNode directUrls = (ArrayNode) result.get("directURLs");
     assertEquals(directUrls.size(), 1);
     assertEquals(
-        directUrls.get(0).asText(),
         "foo://bar/graph?g0.expr=%28max%28max_over_time%28our_valid_range_metric%7Bfilter"
-            + "%3D%22awesome%22%2C+cpu%3D%22system%22%2C+exported_instance%3D%22instance1"
-            + "%22%7D%5B60s%5D%29%29+by+%28exported_instance%29%29+or+%28max%28max_over_time"
-            + "%28our_valid_range_metric%7Bfilter%3D%22awesome%22%2C+cpu%3D%22system%22%2C+"
-            + "exported_instance%3D%22instance2%22%7D%5B60s%5D%29%29+by+%28exported_instance"
-            + "%29%29+or+%28max%28max_over_time%28our_valid_range_metric%7Bfilter%3D%22awesome"
-            + "%22%7D%5B60s%5D%29%29%29&g0.tab=0&g0.range_input=100000s"
-            + "&g0.end_input=2016-11-17 11:22:17");
+            + "%3D%22awesome%22%7D%5B60s%5D%29%29+by+%28exported_instance%29+and+topk%282%2C+max%28"
+            + "max_over_time%28our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B3600s%5D%"
+            + "401479381737%29%29+by+%28exported_instance%29%29%29+or+max%28max_over_time%28"
+            + "our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B60s%5D%29%29&g0.tab=0&"
+            + "g0.range_input=100000s&g0.end_input=2016-11-17 11:22:17",
+        directUrls.get(0).asText());
   }
 
   @Test

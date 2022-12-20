@@ -12,17 +12,24 @@
 //
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertArrayEquals;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertGreaterThan;
+import static org.yb.AssertionWrappers.assertLessThan;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
+
 import java.io.File;
-import java.lang.Math;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +75,13 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("ysql_legacy_colocated_database_creation", "false");
+    return flagMap;
+  }
+
+  @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
 
@@ -100,12 +114,12 @@ public class TestYbBackup extends BasePgSQLTest {
     String restoreDBName = dbName + "2";
 
     try (Statement stmt = connection.createStatement()) {
-      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=%s", initialDBName, colocString));
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=%s", initialDBName, colocString));
     }
     try (Connection connection2 = getConnectionBuilder().withDatabase(initialDBName).connect();
          Statement stmt = connection2.createStatement()) {
       stmt.execute("CREATE TABLE test_tbl (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   String.format("WITH (colocated = %s)", colocString));
+                   String.format("WITH (colocation = %s)", colocString));
 
       for (int i = 1; i <= 2000; ++i) {
         stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
@@ -151,30 +165,41 @@ public class TestYbBackup extends BasePgSQLTest {
         TableProperties.TP_YSQL | TableProperties.TP_NON_COLOCATED));
   }
 
-  @Test
+  // TODO: Enable this test once issue #14873 is fixed.
+  @Ignore
   public void testAlteredTableInColocatedDB() throws Exception {
     doAlteredTableBackup("altered_colocated_db", new TableProperties(
         TableProperties.TP_YSQL | TableProperties.TP_COLOCATED));
   }
 
   @Test
-  public void testMixedColocatedDatabase() throws Exception {
+  public void testAlteredTableInLegacyColocatedDB() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
+    initYBBackupUtil();
+    doAlteredTableBackup("altered_colocated_db", new TableProperties(
+        TableProperties.TP_YSQL | TableProperties.TP_COLOCATED));
+  }
+
+  private void doMixedColocatedDatabaseBackup() throws Exception {
     String initialDBName = "yb_colocated";
     String restoreDBName = "yb_colocated2";
 
     try (Statement stmt = connection.createStatement()) {
-      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", initialDBName));
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=TRUE", initialDBName));
     }
 
     try (Connection connection2 = getConnectionBuilder().withDatabase(initialDBName).connect();
          Statement stmt = connection2.createStatement()) {
       // Create 3 tables, 2 colocated and 1 non colocated but in the same db.
       stmt.execute("CREATE TABLE test_tbl1 (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (COLOCATED=TRUE)");
+                   "WITH (COLOCATION=TRUE)");
       stmt.execute("CREATE TABLE test_tbl2 (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (COLOCATED=TRUE)");
+                   "WITH (COLOCATION=TRUE)");
       stmt.execute("CREATE TABLE test_tbl3 (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (COLOCATED=FALSE)");
+                   "WITH (COLOCATION=FALSE)");
 
       // Insert random rows/values for tables to snapshot
       for (int j = 1; j <= 3; ++j) {
@@ -253,6 +278,21 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  public void testMixedColocatedDatabase() throws Exception {
+    doMixedColocatedDatabaseBackup();
+  }
+
+  @Test
+  public void testMixedLegacyColocatedDatabase() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
+    initYBBackupUtil();
+    doMixedColocatedDatabaseBackup();
+  }
+
+  @Test
   public void testAlteredTableInOriginalCluster() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
@@ -294,15 +334,112 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  // TODO: Enable this test once issue #14873 is fixed.
+  @Ignore
+  public void testColocatedDBWithColocationIdAlreadySet() throws Exception {
+    String ybTablePropsSql = "SELECT c.relname, tg.grpname, props.colocation_id"
+        + " FROM pg_class c, yb_table_properties(c.oid) props"
+        + " LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid"
+        + " WHERE c.oid >= " + FIRST_NORMAL_OID
+        + " ORDER BY c.relname";
+    String uniqueIndexOnlySql = "SELECT b FROM test_tbl WHERE b = 3.14";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE yb1 COLOCATION=TRUE");
+    }
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb1").connect();
+         Statement stmt = connection2.createStatement()) {
+      // Create a table with a set colocation_id.
+      stmt.execute("CREATE TABLE test_tbl ("
+          + "  h INT PRIMARY KEY,"
+          + "  a INT,"
+          + "  b FLOAT CONSTRAINT test_tbl_uniq UNIQUE WITH (colocation_id=654321)"
+          + ") WITH (colocation_id=123456)");
+      stmt.execute("CREATE INDEX test_tbl_a_idx ON test_tbl (a ASC) WITH (colocation_id=11223344)");
+      stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (1, 101, 3.14)");
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", "default", 123456),
+          new Row("test_tbl_a_idx", "default", 11223344),
+          new Row("test_tbl_pkey", null, null),
+          new Row("test_tbl_uniq", "default", 654321));
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+
+      // Check that backup and restore works fine.
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yb1");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", "default", 123456),
+          new Row("test_tbl_a_idx", "default", 11223344),
+          new Row("test_tbl_pkey", null, null),
+          new Row("test_tbl_uniq", "default", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
+
+      // Now try to do a backup/restore of the restored db.
+      String backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yb2");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb3");
+    }
+    // Verify data is correct.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb3").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT b FROM test_tbl WHERE h=1", new Row(3.14));
+
+      assertQuery(stmt, ybTablePropsSql,
+          new Row("test_tbl", "default", 123456),
+          new Row("test_tbl_a_idx", "default", 11223344),
+          new Row("test_tbl_pkey", null, null),
+          new Row("test_tbl_uniq", "default", 654321));
+
+      runInvalidQuery(stmt, "INSERT INTO test_tbl (h, a, b) VALUES (2, 202, 3.14)",
+          "violates unique constraint \"test_tbl_uniq\"");
+
+      assertTrue(isIndexOnlyScan(stmt, uniqueIndexOnlySql, "test_tbl_uniq"));
+      assertQuery(stmt, uniqueIndexOnlySql, new Row(3.14));
+    }
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb1");
+      stmt.execute("DROP DATABASE yb2");
+      stmt.execute("DROP DATABASE yb3");
+    }
+  }
+
   @Test
-  public void testColocatedWithColocationIdAlreadySet() throws Exception {
+  public void testLegacyColocatedDBWithColocationIdAlreadySet() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
+    initYBBackupUtil();
     String ybTablePropsSql = "SELECT c.relname, props.colocation_id"
         + " FROM pg_class c, yb_table_properties(c.oid) props"
         + " WHERE c.oid >= " + FIRST_NORMAL_OID
         + " ORDER BY c.relname";
     String uniqueIndexOnlySql = "SELECT b FROM test_tbl WHERE b = 3.14";
     try (Statement stmt = connection.createStatement()) {
-      stmt.execute("CREATE DATABASE yb1 COLOCATED=TRUE");
+      stmt.execute("CREATE DATABASE yb1 COLOCATION=TRUE");
     }
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb1").connect();
          Statement stmt = connection2.createStatement()) {
@@ -527,21 +664,20 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  @Test
-  public void testColocatedDatabaseRestoreToOriginalDB() throws Exception {
+  private void doColocatedDatabaseRestoreToOriginalDB() throws Exception {
     String initialDBName = "yb_colocated";
     int num_tables = 2;
 
     try (Statement stmt = connection.createStatement()) {
-      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=TRUE", initialDBName));
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=TRUE", initialDBName));
     }
 
     try (Connection connection2 = getConnectionBuilder().withDatabase(initialDBName).connect();
          Statement stmt = connection2.createStatement()) {
       stmt.execute("CREATE TABLE test_tbl1 (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (COLOCATED=TRUE)");
+                   "WITH (COLOCATION=TRUE)");
       stmt.execute("CREATE TABLE test_tbl2 (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (COLOCATED=TRUE)");
+                   "WITH (COLOCATION=TRUE)");
 
       // Insert random rows/values for tables to snapshot
       for (int j = 1; j <= num_tables; ++j) {
@@ -585,6 +721,21 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format("DROP DATABASE %s", initialDBName));
     }
+  }
+
+  @Test
+  public void testColocatedDatabaseRestoreToOriginalDB() throws Exception {
+    doColocatedDatabaseRestoreToOriginalDB();
+  }
+
+  @Test
+  public void testLegacyColocatedDatabaseRestoreToOriginalDB() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
+    initYBBackupUtil();
+    doColocatedDatabaseRestoreToOriginalDB();
   }
 
   @Test
@@ -1420,9 +1571,11 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  private void testMaterializedViewsHelper(boolean matviewOnMatview) throws Exception {
+  private void testMaterializedViewsHelper(boolean matviewOnMatview, String dbName)
+      throws Exception {
     String backupDir = null;
-    try (Statement stmt = connection.createStatement()) {
+    try (Connection connection = getConnectionBuilder().withDatabase(dbName).connect();
+         Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_tbl");
       stmt.execute("CREATE TABLE test_tbl (t int)");
       stmt.execute("CREATE MATERIALIZED VIEW test_mv AS SELECT * FROM test_tbl");
@@ -1436,7 +1589,7 @@ public class TestYbBackup extends BasePgSQLTest {
       }
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-          "--keyspace", "ysql.yugabyte");
+          "--keyspace", String.format("ysql.%s", dbName));
       backupDir = new JSONObject(output).getString("snapshot_url");
     }
 
@@ -1453,12 +1606,35 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testRefreshedMaterializedViewsBackup() throws Exception {
-    testMaterializedViewsHelper(false);
+    testMaterializedViewsHelper(false, "yugabyte");
   }
 
   @Test
   public void testRefreshedMaterializedViewsOnMaterializedViewsBackup() throws Exception {
-    testMaterializedViewsHelper(true);
+    testMaterializedViewsHelper(true, "yugabyte");
+  }
+
+  @Test
+  public void testColocatedMateralizedViewBackup() throws Exception {
+    String dbName = "colocated_db";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=true", dbName));
+    }
+    testMaterializedViewsHelper(false, dbName);
+  }
+
+  @Test
+  public void testLegacyColocatedMateralizedViewBackup() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
+    initYBBackupUtil();
+    String dbName = "colocated_db";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=true", dbName));
+    }
+    testMaterializedViewsHelper(false, dbName);
   }
 
   @Test
@@ -1602,7 +1778,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(1,100)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(50.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(76));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(78));
 
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -1635,7 +1811,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(101,200)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(100.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(76));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(78));
 
       // Test whether extension membership is set correctly after restoration.
       stmt.execute("DROP EXTENSION orafce CASCADE");

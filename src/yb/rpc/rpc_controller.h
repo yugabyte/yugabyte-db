@@ -140,14 +140,11 @@ class RpcController {
   // Return the configured timeout.
   MonoDelta timeout() const;
 
-  // Returns the slice pointing to the i-th sidecar upon success.
-  //
-  // Should only be called if the call's finished, but the controller has not
-  // been Reset().
-  //
-  // May fail if index is invalid.
-  Result<Slice> GetSidecar(int idx) const;
-  Result<SidecarHolder> GetSidecarHolder(int idx) const;
+  // Assign sidecar with specified index to out.
+  Result<RefCntSlice> ExtractSidecar(int idx) const;
+
+  // Transfer all sidecars to specified context.
+  size_t TransferSidecars(Sidecars* dest);
 
   int32_t call_id() const;
 

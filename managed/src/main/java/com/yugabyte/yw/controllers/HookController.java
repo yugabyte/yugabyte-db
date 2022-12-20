@@ -215,7 +215,7 @@ public class HookController extends AuthenticatedController {
   }
 
   public void verifyAuth(Customer customer) {
-    if (!rConfigFactory.staticApplicationConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
+    if (!rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
       throw new PlatformServiceException(
           UNAUTHORIZED, "Custom hooks is not enabled on this Anywhere instance");
     boolean cloudEnabled = rConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");

@@ -15,15 +15,15 @@ package org.yb.client;
 
 import java.util.List;
 
-import org.yb.cdc.CdcService;
+import org.yb.cdc.CdcService.TabletCheckpointPair;
 
 public class GetTabletListToPollForCDCResponse extends YRpcResponse {
-  private List<CdcService.TabletCheckpointPair> tabletCheckpointPairList;
+  private List<TabletCheckpointPair> tabletCheckpointPairList;
 
   public GetTabletListToPollForCDCResponse(
       long elapsedMillis,
       String uuid,
-      List<CdcService.TabletCheckpointPair> tabletCheckpointPairList) {
+      List<TabletCheckpointPair> tabletCheckpointPairList) {
     super(elapsedMillis, uuid);
     this.tabletCheckpointPairList = tabletCheckpointPairList;
   }
@@ -32,7 +32,7 @@ public class GetTabletListToPollForCDCResponse extends YRpcResponse {
    * Get the list of tablet checkpoint pairs as specified in the request
    * @return a list of tablet checkpoint pairs
    */
-  public List<CdcService.TabletCheckpointPair> getTabletCheckpointPairList() {
+  public List<TabletCheckpointPair> getTabletCheckpointPairList() {
     return this.tabletCheckpointPairList;
   }
 

@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -94,7 +95,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
         Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
 
-        Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+        Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
         for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
@@ -195,15 +196,14 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     params.commandType = commandType;
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
-    params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(nodePrefix, az, isReadOnlyCluster);
+    params.helmReleaseName = KubernetesUtil.getHelmReleaseName(nodePrefix, az, isReadOnlyCluster);
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config. It is true in this
       // particular case, all callers just pass az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               nodePrefix, az, config, newNamingStyle, isReadOnlyCluster);
     }
     params.universeUUID = taskParams().universeUUID;

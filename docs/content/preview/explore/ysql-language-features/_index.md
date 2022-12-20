@@ -24,7 +24,7 @@ The following diagram shows how YugabyteDB reuses the PostgreSQL query layer, sp
 
 ![Reusing the PostgreSQL query layer in YSQL](/images/section_icons/architecture/Reusing-PostgreSQL-query-layer.png)
 
-## SQL Features in YSQL
+## SQL features in YSQL
 
 The following table lists the most important YSQL features which you would find familiar if you have worked with PostgreSQL.
 

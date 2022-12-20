@@ -54,11 +54,6 @@ public class ApiUtils {
 
   public static Universe.UniverseUpdater mockUniverseUpdater(
       final String nodePrefix, final Common.CloudType cloudType) {
-    return mockUniverseUpdater(nodePrefix, cloudType, false);
-  }
-
-  public static Universe.UniverseUpdater mockUniverseUpdater(
-      final String nodePrefix, final Common.CloudType cloudType, final boolean backupState) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -80,7 +75,7 @@ public class ApiUtils {
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
-        universeDetails.backupInProgress = backupState;
+        universeDetails.updateInProgress = true;
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -120,9 +115,26 @@ public class ApiUtils {
       final String nodePrefix,
       final boolean setMasters,
       final boolean updateInProgress) {
+    AvailableNodeTracker mockNodeTracker =
+        new AvailableNodeTracker(userIntent, Collections.emptyList()) {
+          @Override
+          public void acquire(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+            super.acquire(zoneId, serverType);
+          }
+
+          @Override
+          public int getAvailableForZone(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+            return Integer.MAX_VALUE;
+          }
+        };
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+            ClusterType.PRIMARY,
+            userIntent,
+            userIntent.replicationFactor,
+            null,
+            Collections.emptyList(),
+            mockNodeTracker);
     return mockUniverseUpdater(userIntent, nodePrefix, setMasters, updateInProgress, placementInfo);
   }
 

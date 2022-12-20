@@ -38,11 +38,11 @@ using GFLAGS::SetUsageMessage;
 
 // A simple benchmark to simulate transactional logs
 
-DEFINE_int32(num_records, 6000, "Number of records.");
-DEFINE_int32(record_size, 249, "Size of each record.");
-DEFINE_int32(record_interval, 10000, "Interval between records (microSec)");
-DEFINE_int32(bytes_per_sync, 0, "bytes_per_sync parameter in EnvOptions");
-DEFINE_bool(enable_sync, false, "sync after each write.");
+DEFINE_UNKNOWN_int32(num_records, 6000, "Number of records.");
+DEFINE_UNKNOWN_int32(record_size, 249, "Size of each record.");
+DEFINE_UNKNOWN_int32(record_interval, 10000, "Interval between records (microSec)");
+DEFINE_UNKNOWN_int32(bytes_per_sync, 0, "bytes_per_sync parameter in EnvOptions");
+DEFINE_UNKNOWN_bool(enable_sync, false, "sync after each write.");
 
 namespace rocksdb {
 void RunBenchmark() {

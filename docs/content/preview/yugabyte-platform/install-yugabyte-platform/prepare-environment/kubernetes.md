@@ -59,7 +59,7 @@ type: docs
 
 </ul>
 
-The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
+<br>The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
 
 - Kubernetes 1.20 or later.
 - Helm 3.4 or later.
@@ -69,7 +69,7 @@ The YugabyteDB Anywhere Helm chart has been tested using the following software 
 Before installing the YugabyteDB Admin Console, verify that you have the following:
 
 - A Kubernetes cluster configured with [Helm](https://helm.sh/).
-- A Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to YugabyteDB Anywhere.
+- A Kubernetes node with minimum 4 CPU core, 15 GB RAM, and 100GB storage can be allocated to YugabyteDB Anywhere.
 - A Kubernetes secret obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
 
 To confirm that `helm` is configured correctly, run the following command:

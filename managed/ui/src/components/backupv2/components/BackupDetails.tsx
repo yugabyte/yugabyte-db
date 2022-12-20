@@ -82,8 +82,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-        return config.metadata.configUUID === backupDetails?.kmsConfigUUID;
-      })
+      return config.metadata.configUUID === backupDetails?.kmsConfigUUID;
+    })
     : undefined;
 
   if (!backupDetails) return null;
@@ -173,7 +173,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             <div className="details-rest">
               <div>
                 <div className="header-text">Backup Type</div>
-                <div>{backupDetails.backupType ? 'On Demand' : 'Scheduled'}</div>
+                <div>{backupDetails.onDemand ? 'On Demand' : 'Scheduled'}</div>
               </div>
               <div>
                 <div className="header-text">Table Type</div>
@@ -261,7 +261,11 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
                   <YBButton
-                    btnText={<>Add Incremental Backup<YBTag>Beta</YBTag></>}
+                    btnText={
+                      <>
+                        Add Incremental Backup<YBTag>Beta</YBTag>
+                      </>
+                    }
                     btnIcon="fa fa-plus"
                     className="add-increment-backup-btn"
                     disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}

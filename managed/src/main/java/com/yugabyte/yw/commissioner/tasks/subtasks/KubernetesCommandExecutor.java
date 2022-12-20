@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -20,10 +19,10 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -290,8 +289,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     PlacementInfo pi = taskParams().placementInfo;
 
-    Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
-    Map<UUID, String> azToDomain = PlacementInfoUtil.getDomainPerAZ(pi);
+    Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
+    Map<UUID, String> azToDomain = KubernetesUtil.getDomainPerAZ(pi);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Provider.get(taskParams().providerUUID));
 
     Map<String, String> serviceToIP = new HashMap<String, String>();
@@ -329,8 +328,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             : u.getUniverseDetails().getPrimaryCluster().uuid;
     PlacementInfo pi = taskParams().placementInfo;
 
-    Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
-    Map<UUID, String> azToDomain = PlacementInfoUtil.getDomainPerAZ(pi);
+    Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
+    Map<UUID, String> azToDomain = KubernetesUtil.getDomainPerAZ(pi);
     Provider provider = Provider.get(taskParams().providerUUID);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     String nodePrefix = u.getUniverseDetails().nodePrefix;
@@ -342,10 +341,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, String> config = entry.getValue();
 
       String helmReleaseName =
-          PlacementInfoUtil.getHelmReleaseName(
+          KubernetesUtil.getHelmReleaseName(
               isMultiAz, nodePrefix, azName, taskParams().isReadOnlyCluster);
       String namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               isMultiAz,
               nodePrefix,
               azName,
@@ -418,7 +417,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
               nodeDetail.cloudInfo.private_ip =
-                  PlacementInfoUtil.formatPodAddress(
+                  KubernetesUtil.formatPodAddress(
                       podAddressTemplate,
                       hostname,
                       helmFullNameWithSuffix + "yb-masters",
@@ -428,7 +427,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.isMaster = false;
               nodeDetail.isTserver = true;
               nodeDetail.cloudInfo.private_ip =
-                  PlacementInfoUtil.formatPodAddress(
+                  KubernetesUtil.formatPodAddress(
                       podAddressTemplate,
                       hostname,
                       helmFullNameWithSuffix + "yb-tservers",
@@ -441,6 +440,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.cloudInfo.az = podVals.get("az_name").asText();
               nodeDetail.cloudInfo.region = podVals.get("region_name").asText();
             }
+            nodeDetail.cloudInfo.instance_type =
+                taskParams().isReadOnlyCluster
+                    ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.instanceType
+                    : u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
             nodeDetail.state = NodeDetails.NodeState.Live;
@@ -936,7 +939,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         Map<String, Object> azOverrides = mapper.readValue(azOverridesString, Map.class);
         HelmUtils.mergeYaml(overrides, azOverrides);
       }
-    } catch (JsonProcessingException e) {
+    } catch (IOException e) {
       log.error(
           String.format(
               "Error in writing overrides map to string or string to map: "

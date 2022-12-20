@@ -66,7 +66,7 @@ type: docs
 
 </ul>
 
-You can configure Amazon Web Services (AWS) for YugabyteDB using YugabyteDB Anywhere. If no cloud providers have been configured yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
+<br>You can configure Amazon Web Services (AWS) for YugabyteDB using YugabyteDB Anywhere. If no cloud providers have been configured yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 

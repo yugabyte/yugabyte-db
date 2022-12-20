@@ -11,6 +11,7 @@
 package com.yugabyte.yw.controllers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -55,6 +57,7 @@ public class UniverseControllerRequestBinder {
       T taskParams = Json.mapper().treeToValue(formData, paramType);
       taskParams.clusters = clusters;
       taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
+      taskParams.platformUrl = request.host();
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new PlatformServiceException(
@@ -83,7 +86,7 @@ public class UniverseControllerRequestBinder {
             instanceTagsNode = userIntent.remove("instanceTags");
           }
           UniverseDefinitionTaskParams.Cluster currentCluster;
-          if (clustersJson.has("uuid")) {
+          if (clusterJson.has("uuid")) {
             UUID uuid = UUID.fromString(clusterJson.get("uuid").asText());
             currentCluster = universe.getCluster(uuid);
             if (currentCluster == null) {
@@ -138,7 +141,7 @@ public class UniverseControllerRequestBinder {
   }
 
   public static <T extends UniverseDefinitionTaskParams> T mergeWithUniverse(
-      T params, Universe universe, Class<T> paramsClass) {
+      T params, Universe universe, Class<? extends T> paramsClass) {
     try {
       ObjectNode paramsJson = Json.mapper().valueToTree(params);
       if (params.clusters != null && params.clusters.isEmpty()) {
@@ -161,6 +164,10 @@ public class UniverseControllerRequestBinder {
     universeDetailsNode.remove("targetXClusterConfigs");
     universeDetailsNode.remove("sourceXClusterConfigs");
     T result = Json.mapper().treeToValue(universeDetailsNode, paramsClass);
+    if (!paramsClass.equals(result.getClass())) {
+      throw new IllegalStateException(
+          "Expected " + paramsClass + " but deserialized to " + result.getClass());
+    }
     result.universeUUID = universe.universeUUID;
     result.expectedUniverseVersion = universe.version;
     if (universe.isYbcEnabled()) {
@@ -179,6 +186,23 @@ public class UniverseControllerRequestBinder {
       setter.accept(mapFromKeyValueArray((ArrayNode) serializedValue));
     } else if (serializedValue.isObject()) {
       setter.accept(Json.fromJson(serializedValue, Map.class));
+    }
+  }
+
+  // Parses params into targetClass and returns that object.
+  public static <T> T deepCopy(UniverseDefinitionTaskParams params, Class<T> targetClass) {
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      return mapper.readValue(mapper.writeValueAsString(params), targetClass);
+    } catch (IOException e) {
+      String errMsg = "Serialization/Deserialization of universe details failed.";
+      log.error(
+          String.format(
+              "Error in serializing/deserializing UniverseDefinitonTaskParams into %s "
+                  + "for universe: %s, UniverseDetails: %s",
+              targetClass, params.universeUUID, CommonUtils.maskObject(params)),
+          e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
   }
 

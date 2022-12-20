@@ -15,6 +15,7 @@
 
 #include "yb/client/table_handle.h"
 
+#include "yb/tools/test_admin_client.h"
 #include "yb/tools/tools_test_utils.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
@@ -37,6 +38,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
 
   void SetUp() override;
 
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override;
+
   string GetTempDir(const string& subdir);
 
   Status RunBackupCommand(const vector<string>& args);
@@ -49,21 +52,11 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   Result<string> GetTableId(
       const string& table_name, const string& log_prefix, const string& ns = string());
 
-  Result<google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>> GetTablets(
-      const string& table_name, const string& log_prefix, const string& ns = string());
-
   bool CheckPartitions(
-      const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
+      const std::vector<yb::master::TabletLocationsPB>& tablets,
       const vector<string>& expected_splits);
 
-  // Waiting for parent deletion is required if we plan to split the children created by this split
-  // in the future.
-  void ManualSplitTablet(
-      const string& tablet_id, const string& table_name, const int expected_num_tablets,
-      bool wait_for_parent_deletion, const std::string& namespace_name = string());
-
-  void LogTabletsInfo(
-      const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets);
+  void LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets);
 
   Status WaitForTabletFullyCompacted(size_t tserver_idx, const TabletId& tablet_id);
 
@@ -73,8 +66,11 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   void DoTestYSQLKeyspaceWithHyphenBackupRestore(
       const string& backup_db, const string& restore_db);
 
+  void TestColocatedDBBackupRestore();
+
   client::TableHandle table_;
   TmpDirProvider tmp_dir_;
+  std::unique_ptr<TestAdminClient> test_admin_client_;
 };
 
 }  // namespace tools

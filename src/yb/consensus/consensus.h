@@ -329,9 +329,9 @@ class Consensus {
       MicrosTime min_allowed, CoarseTimePoint deadline) const = 0;
 
   // Read majority replicated messages for CDC producer.
-  virtual Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& from,
-                                                             int64_t* repl_index,
-                                                             const CoarseTimePoint deadline) = 0;
+  virtual Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
+      const yb::OpId& from, int64_t* repl_index, const CoarseTimePoint deadline,
+      const bool fetch_single_entry = false) = 0;
 
   virtual void UpdateCDCConsumerOpId(const yb::OpId& op_id) = 0;
 

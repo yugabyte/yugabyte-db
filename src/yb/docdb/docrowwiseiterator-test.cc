@@ -97,6 +97,24 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       const DocDB &doc_db,
       CoarseTimePoint deadline,
       const ReadHybridTime &read_time,
+      const DocPgsqlScanSpec &spec,
+      RWOperationCounter *pending_op_counter = nullptr,
+      bool liveness_column_expected = false) {
+    auto iter = std::make_unique<DocRowwiseIterator>(
+        projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
+        pending_op_counter);
+    RETURN_NOT_OK(iter->Init(spec));
+    return iter;
+  }
+
+  virtual Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
+      const Schema &projection,
+      std::reference_wrapper<const DocReadContext>
+          doc_read_context,
+      const TransactionOperationContext &txn_op_context,
+      const DocDB &doc_db,
+      CoarseTimePoint deadline,
+      const ReadHybridTime &read_time,
       RWOperationCounter *pending_op_counter = nullptr,
       bool liveness_column_expected = false) {
     auto iter = std::make_unique<DocRowwiseIterator>(
@@ -108,6 +126,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
 
   // Test case implementation.
   void TestClusteredFilterRange();
+  void TestClusteredFilterRangeWithTableTombstone();
   void TestClusteredFilterHybridScan();
   void TestClusteredFilterSubsetCol();
   void TestClusteredFilterSubsetCol2();
@@ -116,7 +135,9 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestClusteredFilterDiscreteScan();
   void TestClusteredFilterRangeScan();
   void TestSimpleRangeScan();
+  void SetupDocRowwiseIteratorData();
   void TestDocRowwiseIterator();
+  void TestDocRowwiseIteratorCallbackAPI();
   void TestDocRowwiseIteratorDeletedDocument();
   void TestDocRowwiseIteratorWithRowDeletes();
   void TestBackfillInsert();
@@ -299,7 +320,7 @@ void DocRowwiseIteratorTest::InsertTestRangeData() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterRange() {
   InsertTestRangeData();
-  DocReadContext doc_read_context(test_range_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(test_range_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue::Int32(5)};
 
@@ -346,9 +367,79 @@ void DocRowwiseIteratorTest::TestClusteredFilterRange() {
   ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
 }
 
+void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
+  constexpr ColocationId colocation_id(0x4001);
+
+  Schema test_schema(
+      {ColumnSchema(
+           "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+           SortingType::kAscending),
+       ColumnSchema(
+           "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+           SortingType::kAscending),
+       // Non-key columns
+       ColumnSchema("payload", DataType::INT32, true)},
+      {10_ColId, 11_ColId, 12_ColId}, 2);
+  test_schema.set_colocation_id(colocation_id);
+
+  const std::vector<KeyEntryValue> range_components{
+      KeyEntryValue::Int32(5), KeyEntryValue::Int32(6)};
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(
+          DocKey(test_schema, range_components).Encode(), KeyEntryValue::MakeColumnId(12_ColId)),
+      QLValue::Primitive(10), HybridTime::FromMicros(1000)));
+
+  // Add colocation table tombstone.
+  DocKey colocation_key(colocation_id);
+  ASSERT_OK(DeleteSubDoc(DocPath(colocation_key.Encode()), HybridTime::FromMicros(500)));
+
+  auto doc_read_context = DocReadContext::TEST_Create(test_schema);
+
+  PgsqlConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(12_ColId);
+  cond.set_op(QL_OP_LESS_THAN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_int32_value(5);
+
+  DocDBDebugDumpToConsole();
+
+  const std::vector<KeyEntryValue> empty_key_components;
+  boost::optional<int32_t> empty_hash_code;
+  DocPgsqlScanSpec spec(
+      test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
+      empty_hash_code, empty_hash_code, nullptr);
+
+  auto iter = ASSERT_RESULT(CreateIterator(
+      test_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
+  ASSERT_OK(iter->NextRow(&row));
+
+  ASSERT_OK(row.GetValue(test_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(5, value.int32_value());
+
+  ASSERT_OK(row.GetValue(test_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(6, value.int32_value());
+
+  ASSERT_OK(row.GetValue(test_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int32_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+}
+
 void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -431,7 +522,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -556,7 +647,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -635,7 +726,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -723,7 +814,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -755,7 +846,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
   ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
 }
 
-void DocRowwiseIteratorTest::TestDocRowwiseIterator() {
+void DocRowwiseIteratorTest::SetupDocRowwiseIteratorData() {
   // Row 1
   // We don't need any seeks for writes, where column values are primitives.
   ASSERT_OK(SetPrimitive(
@@ -805,12 +896,16 @@ void DocRowwiseIteratorTest::TestDocRowwiseIterator() {
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 4000 }]) -> "row2_e_prime"
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
       )#");
+}
+
+void DocRowwiseIteratorTest::TestDocRowwiseIterator() {
+  SetupDocRowwiseIteratorData();
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -893,6 +988,140 @@ void DocRowwiseIteratorTest::TestDocRowwiseIterator() {
   }
 }
 
+void DocRowwiseIteratorTest::TestDocRowwiseIteratorCallbackAPI() {
+  SetupDocRowwiseIteratorData();
+
+  const Schema &schema = kSchemaForIteratorTests;
+  const Schema &projection = kProjectionForIteratorTests;
+  QLValue value;
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
+
+  {
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000)));
+
+    size_t row_idx = 0;
+    YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
+      switch (row_idx) {
+        case 0:
+          RETURN_NOT_OK(row.GetValue(projection.column_id(0), &value));
+          EXPECT_FALSE(value.IsNull());
+          EXPECT_EQ("row1_c", value.string_value());
+
+          RETURN_NOT_OK(row.GetValue(projection.column_id(1), &value));
+          EXPECT_FALSE(value.IsNull());
+          EXPECT_EQ(10000, value.int64_value());
+
+          RETURN_NOT_OK(row.GetValue(projection.column_id(2), &value));
+          EXPECT_FALSE(value.IsNull());
+          EXPECT_EQ("row1_e", value.string_value());
+          break;
+        case 1:
+          RETURN_NOT_OK(row.GetValue(projection.column_id(0), &value));
+          EXPECT_TRUE(value.IsNull()) << "Value: " << value.ToString();
+
+          RETURN_NOT_OK(row.GetValue(projection.column_id(1), &value));
+          EXPECT_FALSE(value.IsNull());
+          EXPECT_EQ(20000, value.int64_value());
+
+          RETURN_NOT_OK(row.GetValue(projection.column_id(2), &value));
+          EXPECT_FALSE(value.IsNull());
+          EXPECT_EQ("row2_e", value.string_value());
+          break;
+        default:
+          EXPECT_TRUE(false) << "Unexpected row";
+      }
+
+      row_idx++;
+      return ContinueScan::kTrue;
+    };
+
+    ASSERT_OK(iter->Iterate(std::move(callback)));
+    ASSERT_EQ(2, row_idx);
+    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  }
+
+  // Scan at a later hybrid_time.
+
+  {
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
+
+    size_t row_idx = 0;
+    YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
+      switch (row_idx) {
+        case 0:
+          RETURN_NOT_OK(row.GetValue(projection.column_id(0), &value));
+          EXPECT_FALSE(value.IsNull());
+          EXPECT_EQ("row1_c", value.string_value());
+
+          RETURN_NOT_OK(row.GetValue(projection.column_id(1), &value));
+          EXPECT_FALSE(value.IsNull());
+          EXPECT_EQ(10000, value.int64_value());
+
+          RETURN_NOT_OK(row.GetValue(projection.column_id(2), &value));
+          EXPECT_FALSE(value.IsNull());
+          EXPECT_EQ("row1_e", value.string_value());
+          break;
+        case 1:
+          RETURN_NOT_OK(row.GetValue(projection.column_id(0), &value));
+          EXPECT_TRUE(value.IsNull()) << "Value: " << value.ToString();
+
+          RETURN_NOT_OK(row.GetValue(projection.column_id(1), &value));
+          EXPECT_FALSE(value.IsNull());
+          // These two rows have different values compared to the previous case.
+          EXPECT_EQ(30000, value.int64_value());
+
+          RETURN_NOT_OK(row.GetValue(projection.column_id(2), &value));
+          EXPECT_FALSE(value.IsNull());
+          EXPECT_EQ("row2_e_prime", value.string_value());
+          break;
+        default:
+          EXPECT_TRUE(false) << "Unexpected row";
+      }
+
+      row_idx++;
+      return ContinueScan::kTrue;
+    };
+
+    ASSERT_OK(iter->Iterate(std::move(callback)));
+    ASSERT_EQ(2, row_idx);
+    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+  }
+
+
+  // Validate the callback function result.
+  {
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
+
+    YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
+        return STATUS(NotSupported, "");
+    };
+
+    auto status = iter->Iterate(std::move(callback));
+    ASSERT_FALSE(status.ok());
+  }
+
+  {
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000)));
+
+    size_t row_idx = 0;
+    YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
+        row_idx++;
+        return ContinueScan::kFalse;
+    };
+
+    ASSERT_OK(iter->Iterate(std::move(callback)));
+    ASSERT_EQ(1, row_idx);
+  }
+}
+
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorDeletedDocument() {
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
@@ -922,7 +1151,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorDeletedDocument() {
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -979,7 +1208,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1194,7 +1423,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1243,7 +1472,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorIncompleteProjection() {
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1304,7 +1533,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   Schema schema_copy = kSchemaForIteratorTests;
   schema_copy.set_colocation_id(colocation_id);
   Schema projection;
-  DocReadContext doc_read_context(schema_copy, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
 
   // Read should have results before delete...
   {
@@ -1376,7 +1605,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "e"}, &projection));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1442,7 +1671,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorValidColumnNotInProjection() 
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1498,7 +1727,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"a", "b"},
       &projection, 2));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1657,7 +1886,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
   const Schema &projection = kProjectionForIteratorTests;
   const auto txn_context = TransactionOperationContext(
       TransactionId::GenerateRandom(), &txn_status_manager);
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   LOG(INFO) << "=============================================== ReadTime-2000";
   {
@@ -1905,7 +2134,7 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(kSchemaForIteratorTests, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(kSchemaForIteratorTests);
 
   auto iter = ASSERT_RESULT(CreateIterator(
       projection, doc_read_context, txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
@@ -1972,7 +2201,7 @@ void DocRowwiseIteratorTest::TestLargeKeys() {
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -2046,7 +2275,7 @@ void DocRowwiseIteratorTest::TestPackedRow() {
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -2133,7 +2362,7 @@ void DocRowwiseIteratorTest::TestDeletedDocumentUsingLivenessColumnDelete() {
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -2195,6 +2424,10 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {
     TestClusteredFilterRange();
 }
 
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeWithTableTombstone) {
+    TestClusteredFilterRangeWithTableTombstone();
+}
+
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterHybridScanTest) {
     TestClusteredFilterHybridScan();
 }
@@ -2217,6 +2450,10 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterEmptyInTest) {
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     TestDocRowwiseIterator();
+}
+
+TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTestCallbackAPI) {
+    TestDocRowwiseIteratorCallbackAPI();
 }
 
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {

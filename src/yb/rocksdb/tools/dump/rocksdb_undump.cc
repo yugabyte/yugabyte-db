@@ -22,10 +22,10 @@
 #include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/db_dump_tool.h"
 
-DEFINE_string(dump_location, "", "Path to the dump file that will be loaded");
-DEFINE_string(db_path, "", "Path to the db that we will undump the file into");
-DEFINE_bool(compact, false, "Compact the db after loading the dumped file");
-DEFINE_string(db_options, "",
+DEFINE_UNKNOWN_string(dump_location, "", "Path to the dump file that will be loaded");
+DEFINE_UNKNOWN_string(db_path, "", "Path to the db that we will undump the file into");
+DEFINE_UNKNOWN_bool(compact, false, "Compact the db after loading the dumped file");
+DEFINE_UNKNOWN_string(db_options, "",
               "Options string used to open the database that will be loaded");
 
 int main(int argc, char **argv) {

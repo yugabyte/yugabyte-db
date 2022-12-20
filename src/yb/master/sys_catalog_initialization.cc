@@ -31,13 +31,13 @@
 
 using std::string;
 
-DEFINE_string(initial_sys_catalog_snapshot_path, "",
+DEFINE_UNKNOWN_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
     "is done.");
 
 DEPRECATE_FLAG(bool, use_initial_sys_catalog_snapshot, "11_2022");
 
-DEFINE_bool(create_initial_sys_catalog_snapshot, false,
+DEFINE_UNKNOWN_bool(create_initial_sys_catalog_snapshot, false,
     "Run initdb and create an initial sys catalog data snapshot");
 
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
@@ -207,7 +207,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 }
 
 Status MakeYsqlSysCatalogTablesTransactional(
-    TableInfoMap* table_ids_map,
+    TableIndex::TablesRange tables,
     SysCatalogTable* sys_catalog,
     SysConfigInfo* ysql_catalog_config,
     int64_t term) {
@@ -221,9 +221,9 @@ Status MakeYsqlSysCatalogTablesTransactional(
   }
 
   int num_updated_tables = 0;
-  for (const auto& iter : *table_ids_map) {
-    const auto& table_id = iter.first;
-    auto& table_info = *iter.second;
+  for (const auto& table : tables) {
+    const auto& table_id = table->id();
+    auto& table_info = *table;
 
     if (!IsPgsqlId(table_id)) {
       continue;

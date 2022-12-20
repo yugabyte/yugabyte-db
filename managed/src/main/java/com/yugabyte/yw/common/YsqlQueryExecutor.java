@@ -69,6 +69,16 @@ public class YsqlQueryExecutor {
   }
 
   private String getQueryType(String queryString) {
+    // Ignore Set statements. E.g.: /*+Set(yb_bnl_batch_size 20)*/SELECT a.rolname, t.datname, ...
+    if (queryString.startsWith("/*")) {
+      String[] queryStringParts = queryString.split("\\*/", 2);
+      if (queryStringParts.length < 2) {
+        LOG.warn("Illegal YSQL query string: {}", queryString);
+      } else {
+        queryString = queryStringParts[1].trim();
+      }
+    }
+
     String[] queryParts = queryString.split(" ");
     String command = queryParts[0].toUpperCase();
     if (command.equals("TRUNCATE") || command.equals("DROP"))
@@ -112,7 +122,6 @@ public class YsqlQueryExecutor {
       Universe universe, RunQueryFormData queryParams, String username, String password) {
     ObjectNode response = newObject();
 
-    // TODO: implement execute query for CQL
     String ysqlEndpoints = universe.getYSQLServerAddresses();
     String connectString =
         String.format("jdbc:postgresql://%s/%s", ysqlEndpoints.split(",")[0], queryParams.db_name);
@@ -183,21 +192,6 @@ public class YsqlQueryExecutor {
       response.put("error", "Failed to parse response: " + e.getMessage());
     }
     return response;
-  }
-
-  public JsonNode runQueryUtil(Universe universe, DatabaseUserFormData data, String query) {
-    RunQueryFormData ysqlQuery = new RunQueryFormData();
-    // Create user for customer YSQL.
-    ysqlQuery.query = query;
-    ysqlQuery.db_name = data.dbName;
-    JsonNode ysqlResponse =
-        executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
-    if (ysqlResponse.has("error")) {
-      String errorMsg = ysqlResponse.get("error").asText();
-      LOG.error("Error executing query: {}", errorMsg);
-      throw new PlatformServiceException(Http.Status.BAD_REQUEST, errorMsg);
-    }
-    return ysqlResponse;
   }
 
   public void createUser(Universe universe, DatabaseUserFormData data) {
@@ -287,7 +281,7 @@ public class YsqlQueryExecutor {
     LOG.info("Assigned permissions to the user");
   }
 
-  private void runUserDbCommands(String query, String dbName, Universe universe) {
+  public void runUserDbCommands(String query, String dbName, Universe universe) {
     NodeDetails nodeToUse;
     try {
       nodeToUse = CommonUtils.getServerToRunYsqlQuery(universe);

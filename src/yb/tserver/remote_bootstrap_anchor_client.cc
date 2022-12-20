@@ -45,7 +45,7 @@ using std::string;
 using namespace yb::size_literals;
 using yb::consensus::MakeOpIdPB;
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     remote_bootstrap_anchor_session_timeout_ms, 5000,
     "Tablet server RPC client timeout for RemoteBootstrapAnchor Service calls.");
 TAG_FLAG(remote_bootstrap_anchor_session_timeout_ms, hidden);

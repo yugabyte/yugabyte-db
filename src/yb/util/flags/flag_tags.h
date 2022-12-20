@@ -107,6 +107,11 @@
 //         DEFINE_pg_flag macro. The name and type of the flag should exactly match the guc
 //         variable.
 //
+// - "deprecated":
+//         This tag is used to indicate that a flag is deprecated. Do not explicitly set this tag.
+//         Use DEPRECATE_FLAG instead.
+//
+//
 // A given flag may have zero or more tags associated with it. The system does
 // not make any attempt to check integrity of the tags - for example, it allows
 // you to mark a flag as both stable and unstable, even though this makes no
@@ -124,7 +129,7 @@
 //
 //  DEFINE_bool(sometimes_crash, false, "This flag makes YB crash a lot");
 //  TAG_FLAG(sometimes_crash, unsafe);
-//  TAG_FLAG(sometimes_crash, runtime);
+//  TAG_FLAG(sometimes_crash, ::yb::FlagTag::kRuntime, runtime);
 //
 // To fetch the list of tags associated with a flag, use 'GetFlagTags'.
 
@@ -151,7 +156,8 @@ YB_DEFINE_ENUM(
     (kRuntime)
     (kSensitive_info)
     (kAuto)
-    (kPg));
+    (kPg)
+    (kDeprecated));
 
 #define FLAG_TAG_stable ::yb::FlagTag::kStable
 #define FLAG_TAG_evolving ::yb::FlagTag::kEvolving
@@ -160,8 +166,11 @@ YB_DEFINE_ENUM(
 #define FLAG_TAG_advanced ::yb::FlagTag::kAdvanced
 #define FLAG_TAG_unsafe ::yb::FlagTag::kUnsafe
 #define FLAG_TAG_sensitive_info ::yb::FlagTag::kSensitive_info
-#define FLAG_TAG_auto ::yb::FlagTag::kAuto
-#define FLAG_TAG_pg ::yb::FlagTag::kPg
+// Disallow explicit use of the following tags
+// kRuntime: Use DEFINE_RUNTIME_type macro instead
+// kAuto: Use DEFINE_RUNTIME_AUTO_type or DEFINE_NON_RUNTIME_AUTO_type macros instead
+// kPg: Use DEFINE_RUNTIME_pg_flag or DEFINE_NON_RUNTIME_pg_flag macros instead
+// kDeprecated: Use DEPRECATE_FLAG instead
 
 // Tag the flag 'flag_name' with the given tag 'tag'.
 //
@@ -170,24 +179,19 @@ YB_DEFINE_ENUM(
 //
 // This also validates that 'tag' is a valid flag as defined in the FlagTag
 // enum above.
-#define TAG_FLAG(flag_name, tag) \
-  COMPILE_ASSERT(sizeof(BOOST_PP_CAT(FLAGS_, flag_name)), flag_does_not_exist); \
-  COMPILE_ASSERT(sizeof(BOOST_PP_CAT(FLAG_TAG_, tag)), invalid_tag); \
-  namespace { \
-  ::yb::flag_tags_internal::FlagTagger BOOST_PP_CAT( \
-      t_, BOOST_PP_CAT(flag_name, BOOST_PP_CAT(_, tag)))( \
-      AS_STRING(flag_name), BOOST_PP_CAT(FLAG_TAG_, tag)); \
-  }
+#define TAG_FLAG(flag_name, tag) _TAG_FLAG(flag_name, BOOST_PP_CAT(FLAG_TAG_, tag), tag)
 
-// Internal only macro for tagging as kRuntime, to explicitly disallow new additions of the old
-// approach of: TAG_FLAG(foo, runtime);
-#define _TAG_FLAG_RUNTIME(flag_name) \
+// Internal only macro for tagging flags.
+#define _TAG_FLAG(flag_name, tag, tag_name) \
   COMPILE_ASSERT(sizeof(BOOST_PP_CAT(FLAGS_, flag_name)), flag_does_not_exist); \
+  COMPILE_ASSERT(sizeof(tag), invalid_tag); \
   namespace { \
   ::yb::flag_tags_internal::FlagTagger BOOST_PP_CAT( \
-      t_, BOOST_PP_CAT(flag_name, _runtime))( \
-      AS_STRING(flag_name), ::yb::FlagTag::kRuntime); \
-  }
+      t_, BOOST_PP_CAT(flag_name, BOOST_PP_CAT(_, tag_name)))(AS_STRING(flag_name), tag); \
+  } \
+  static_assert(true, "semi-colon required after this macro")
+
+#define _TAG_FLAG_RUNTIME(flag_name) _TAG_FLAG(flag_name, ::yb::FlagTag::kRuntime, runtime)
 
 // Fetch the list of flags associated with the given flag.
 //
@@ -214,57 +218,81 @@ class FlagTagger {
 } // namespace yb
 
 #define DEFINE_test_flag(type, name, default_value, description) \
-    BOOST_PP_CAT(DEFINE_, type)(TEST_##name, default_value, description " (For testing only!)"); \
-    TAG_FLAG(TEST_##name, unsafe); \
-    TAG_FLAG(TEST_##name, hidden);
+  BOOST_PP_CAT(DEFINE_, type)(TEST_##name, default_value, description " (For testing only!)"); \
+  TAG_FLAG(BOOST_PP_CAT(TEST_, name), unsafe); \
+  TAG_FLAG(BOOST_PP_CAT(TEST_, name), hidden)
 
 // Runtime flags.
 #define DEFINE_RUNTIME_bool(name, default_value, description) \
   DEFINE_bool(name, default_value, description); \
-  _TAG_FLAG_RUNTIME(name);
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_uint32(name, default_value, description) \
   DEFINE_uint32(name, default_value, description); \
-  _TAG_FLAG_RUNTIME(name);
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_int32(name, default_value, description) \
   DEFINE_int32(name, default_value, description); \
-  _TAG_FLAG_RUNTIME(name);
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_int64(name, default_value, description) \
   DEFINE_int64(name, default_value, description); \
-  _TAG_FLAG_RUNTIME(name);
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_uint64(name, default_value, description) \
   DEFINE_uint64(name, default_value, description); \
-  _TAG_FLAG_RUNTIME(name);
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_double(name, default_value, description) \
   DEFINE_double(name, default_value, description); \
-  _TAG_FLAG_RUNTIME(name);
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_string(name, default_value, description) \
   DEFINE_string(name, default_value, description); \
-  _TAG_FLAG_RUNTIME(name);
+  _TAG_FLAG_RUNTIME(name)
 
 // Non Runtime flags.
 #define DEFINE_NON_RUNTIME_bool(name, default_value, description) \
-  DEFINE_bool(name, default_value, description);
+  DEFINE_bool(name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_uint32(name, default_value, description) \
-  DEFINE_uint32(name, default_value, description);
+  DEFINE_uint32(name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_int32(name, default_value, description) \
-  DEFINE_int32(name, default_value, description);
+  DEFINE_int32(name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_int64(name, default_value, description) \
-  DEFINE_int64(name, default_value, description);
+  DEFINE_int64(name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_uint64(name, default_value, description) \
-  DEFINE_uint64(name, default_value, description);
+  DEFINE_uint64(name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_double(name, default_value, description) \
-  DEFINE_double(name, default_value, description);
+  DEFINE_double(name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_string(name, default_value, description) \
-  DEFINE_string(name, default_value, description);
+  DEFINE_string(name, default_value, description)
+
+// Unknown flags. !!Not to be used!!
+// Older flags need to be reviewed in order to determine if they are runtime or non-runtime.
+#define DEFINE_UNKNOWN_bool(name, default_value, description) \
+  DEFINE_bool(name, default_value, description)
+
+#define DEFINE_UNKNOWN_uint32(name, default_value, description) \
+  DEFINE_uint32(name, default_value, description)
+
+#define DEFINE_UNKNOWN_int32(name, default_value, description) \
+  DEFINE_int32(name, default_value, description)
+
+#define DEFINE_UNKNOWN_int64(name, default_value, description) \
+  DEFINE_int64(name, default_value, description); \
+  _TAG_FLAG_RUNTIME(name);
+
+#define DEFINE_UNKNOWN_uint64(name, default_value, description) \
+  DEFINE_uint64(name, default_value, description)
+
+#define DEFINE_UNKNOWN_double(name, default_value, description) \
+  DEFINE_double(name, default_value, description)
+
+#define DEFINE_UNKNOWN_string(name, default_value, description) \
+  DEFINE_string(name, default_value, description)

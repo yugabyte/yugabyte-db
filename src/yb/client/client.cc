@@ -223,12 +223,12 @@ constexpr int kDefaultBackfillIndexClientRpcTimeoutMs = 24 * 60 * 60 * 1000;  //
 
 }
 
-DEFINE_bool(client_suppress_created_logs, false,
+DEFINE_UNKNOWN_bool(client_suppress_created_logs, false,
             "Suppress 'Created table ...' messages");
 TAG_FLAG(client_suppress_created_logs, advanced);
 TAG_FLAG(client_suppress_created_logs, hidden);
 
-DEFINE_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndexClientRpcTimeoutMs,
+DEFINE_UNKNOWN_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndexClientRpcTimeoutMs,
              "Timeout for BackfillIndex RPCs from client to master.");
 TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 
@@ -633,14 +633,18 @@ Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
                             wait);
 }
 
-Status YBClient::DeleteTable(const string& table_id, bool wait, CoarseTimePoint deadline) {
+Status YBClient::DeleteTable(const string& table_id,
+                             bool wait,
+                             const TransactionMetadata *txn,
+                             CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
                             table_id,
                             false /* is_index_table */,
                             PatchAdminDeadline(deadline),
                             nullptr /* indexed_table_name */,
-                            wait);
+                            wait,
+                            txn);
 }
 
 Status YBClient::DeleteIndexTable(const YBTableName& table_name,

@@ -70,7 +70,7 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
         >
           <TableHeaderColumn dataField="uuid" hidden={true} isKey={true}>
             UUID
-            </TableHeaderColumn>
+          </TableHeaderColumn>
           <TableHeaderColumn
             dataField="name"
             columnClassName="no-border name-column"
@@ -79,7 +79,7 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
             dataFormat={getUniverseLink}
           >
             Universe Name
-            </TableHeaderColumn>
+          </TableHeaderColumn>
           <TableHeaderColumn
             dataField="universeStatus"
             columnClassName="no-border name-column"
@@ -87,7 +87,7 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
             dataFormat={modifyStatus}
           >
             Status
-            </TableHeaderColumn>
+          </TableHeaderColumn>
         </BootstrapTable>
       ) : (
         <>No Associated Universe.</>

@@ -15,12 +15,10 @@
 #include "yb/client/ql-dml-test-base.h"
 
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master_backup.pb.h"
 
 #include "yb/tools/yb-backup-test_base_ent.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/pb_util.h"
 
 using namespace std::chrono_literals;
 using namespace std::literals;
@@ -58,6 +56,8 @@ class YBBackupTestNumTablets : public YBBackupTest {
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
     options->extra_tserver_flags.push_back("--cleanup_split_tablets_interval_sec=1");
   }
+
+  string default_db_ = "yugabyte";
 };
 
 // Test backup/restore on table with UNIQUE constraint when default number of tablets differs. When
@@ -77,7 +77,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(CreateTable(Format(
       "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT, UNIQUE (v))", table_name)));
 
-  auto tablets = ASSERT_RESULT(GetTablets(index_name, "pre-backup"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
 
   const string backup_dir = GetTempDir("backup");
@@ -104,7 +104,7 @@ TEST_F_EX(YBBackupTest,
   // 2. finding 2 index tablets
   ASSERT_NO_FATALS(CreateTable(Format(
       "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT, UNIQUE (v))", table_name)));
-  tablets = ASSERT_RESULT(GetTablets(index_name, "pre-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 2);
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
@@ -112,7 +112,7 @@ TEST_F_EX(YBBackupTest,
   // the external snapshot (3 tablets), so it should adjust to match the snapshot (3 tablets).
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
-  tablets = ASSERT_RESULT(GetTablets(index_name, "post-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -170,7 +170,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(select_query, select_output));
 
   // It has three tablets because of --ysql_num_tablets=3.
-  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 3);
   ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xaa\xaa"}));
@@ -189,7 +189,8 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   constexpr int num_tablets = 4;
-  ManualSplitTablet(tablet_id, table_name, num_tablets, /* wait_for_parent_deletion */ false);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, table_name, /* wait_for_parent_deletion */ false, tablet_id));
 
   // Verify that it has these four tablets:
   // -       -0x5555
@@ -199,7 +200,7 @@ TEST_F_EX(YBBackupTest,
   // 0xa6e8 just happens to be what tablet splitting chooses.  Tablet splitting should choose the
   // split point based on the existing data.  Don't verify that it chose the right split point: that
   // is out of scope of this test.  Just trust what it chose.
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
   ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xa6\xe8", "\xaa\xaa"}));
@@ -223,7 +224,7 @@ TEST_F_EX(YBBackupTest,
   // expectation here.
   ASSERT_NO_FATALS(CreateTable(
       Format("CREATE TABLE $0 (k INT PRIMARY KEY) SPLIT INTO 4 TABLETS", table_name)));
-  tablets = ASSERT_RESULT(GetTablets(table_name, "mock-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 4);
   ASSERT_TRUE(CheckPartitions(tablets, {"\x3f\xff", "\x7f\xfe", "\xbf\xfd"}));
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
@@ -234,7 +235,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
   // Validate.
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 4);
   ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xa6\xe8", "\xaa\xaa"}));
   ASSERT_NO_FATALS(RunPsqlCommand(select_query, select_output));
@@ -263,7 +264,7 @@ TEST_F_EX(YBBackupTest,
                                       " SPLIT AT VALUES ((10, 'f'), (20, 'n'))", table_name)));
 
   // Verify table has 3 tablets
-  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-backup"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 3);
   // 'H' represents the KeyEntryType for Int32.
@@ -303,7 +304,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
   // Validate
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 3);
   ASSERT_TRUE(CheckPartitions(tablets, {"H\x80\x00\x00\x0aSf\x00\x00!"s,
                                         "H\x80\x00\x00\x14Sn\x00\x00!"s}));
@@ -348,7 +349,7 @@ TEST_F_EX(YBBackupTest,
                                       " SPLIT AT VALUES (('f'), ('n'))", index_name, table_name)));
 
   // Verify both table and index have 3 tablets
-  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-backup"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 3);
   // 'H' represents the KeyEntryType for Int32.
@@ -358,7 +359,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_TRUE(CheckPartitions(tablets, {"H\x80\x00\x00\x0a!"s,
                                         "H\x80\x00\x00\x14!"s}));
 
-  tablets = ASSERT_RESULT(GetTablets(index_name, "pre-backup"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 3);
   // 'S' represents the KeyEntryType for String.
@@ -395,11 +396,11 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
   // Validate
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 3);
   ASSERT_TRUE(CheckPartitions(tablets, {"H\x80\x00\x00\x0a!"s,
                                         "H\x80\x00\x00\x14!"s}));
-  tablets = ASSERT_RESULT(GetTablets(index_name, "post-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
   ASSERT_TRUE(CheckPartitions(tablets, {"Sf\0\0\0!"s, "Sn\0\0\0!"s}));
 
@@ -444,7 +445,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k TEXT, PRIMARY KEY(k ASC))"
                                       " SPLIT AT VALUES (('4a'))", table_name)));
 
-  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 2);
 
@@ -465,7 +466,7 @@ TEST_F_EX(YBBackupTest,
   // Wait for automatic split to complete.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto res = VERIFY_RESULT(GetTablets(table_name, "wait-split"));
+        auto res = VERIFY_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
         return res.size() == expected_num_tablets;
       }, 30s * kTimeMultiplier, Format("Waiting for tablet count: $0", expected_num_tablets)));
 
@@ -481,7 +482,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
   // Validate number of tablets after restore.
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), expected_num_tablets);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -507,7 +508,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k TEXT, PRIMARY KEY(k ASC))"
                                       " SPLIT AT VALUES (('4a'))", table_name)));
 
-  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 2);
 
@@ -534,10 +535,11 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   int num_tablets = 3;
-  ManualSplitTablet(tablet_id, table_name, num_tablets, /* wait_for_parent_deletion */ true);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, table_name, /* wait_for_parent_deletion */ true, tablet_id));
 
   // Verify that it has these three tablets:
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
   ASSERT_TRUE(CheckPartitions(tablets, {"S150a\0\0!"s, "S4a\0\0!"s}));
@@ -551,10 +553,11 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   num_tablets = 4;
-  ManualSplitTablet(tablet_id, table_name, num_tablets, /* wait_for_parent_deletion */ false);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, table_name, /* wait_for_parent_deletion */ false, tablet_id));
 
   // Verify that it has these four tablets:
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
   ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
@@ -571,7 +574,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
   // Validate
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 4);
   ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
 
@@ -599,7 +602,7 @@ TEST_F_EX(YBBackupTest,
                                       index_name, table_name)));
 
   // Verify the index has only one tablet
-  auto tablets = ASSERT_RESULT(GetTablets(index_name, "pre-split"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 1);
   ASSERT_TRUE(CheckPartitions(tablets, {}));
@@ -624,10 +627,12 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   int num_tablets = 2;
-  ManualSplitTablet(tablet_id, index_name, num_tablets, /* wait_for_parent_deletion */ true);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, index_name, /* wait_for_parent_deletion */ true, tablet_id));
+
 
   // Verify that it has these two tablets:
-  tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
   // '|' represents kNullHigh
@@ -642,10 +647,11 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   num_tablets = 3;
-  ManualSplitTablet(tablet_id, index_name, num_tablets, /* wait_for_parent_deletion */ true);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, index_name, /* wait_for_parent_deletion */ true, tablet_id));
 
   // Verify that it has these three tablets:
-  tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
   ASSERT_TRUE(CheckPartitions(tablets, {"|SGYUH\200\000\001\000\0010!!\000\000!"s,
@@ -675,7 +681,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
   // Validate
-  tablets = ASSERT_RESULT(GetTablets(index_name, "post-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
   ASSERT_TRUE(CheckPartitions(tablets, {"|SGYUH\200\000\001\000\0010!!\000\000!"s,
                                         "|SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
@@ -715,7 +721,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX $0 ON $1 (v ASC)", index_name, table_name)));
 
   // Verify the index has only one tablet
-  auto tablets = ASSERT_RESULT(GetTablets(index_name, "pre-split"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 1);
   ASSERT_TRUE(CheckPartitions(tablets, {}));
@@ -740,10 +746,11 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   int num_tablets = 2;
-  ManualSplitTablet(tablet_id, index_name, num_tablets, /* wait_for_parent_deletion */ true);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, index_name, /* wait_for_parent_deletion */ true, tablet_id));
 
   // Verify that it has these two tablets:
-  tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
   // H\200\000\000\310 represents ascending-order integer value 200
@@ -759,10 +766,11 @@ TEST_F_EX(YBBackupTest,
 
   // Split it && Wait for split to complete.
   num_tablets = 3;
-  ManualSplitTablet(tablet_id, index_name, num_tablets, /* wait_for_parent_deletion */ false);
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, index_name, /* wait_for_parent_deletion */ false, tablet_id));
 
   // Verify that it has these three tablets:
-  tablets = ASSERT_RESULT(GetTablets(index_name, "post-split"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
   ASSERT_TRUE(CheckPartitions(tablets,
@@ -781,7 +789,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
   // Validate
-  tablets = ASSERT_RESULT(GetTablets(index_name, "post-restore"));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
   ASSERT_TRUE(CheckPartitions(tablets,
                               {"H\200\000\000\310SGq\317H\200\000\001\000\001\n!!\000\000!"s,
@@ -881,6 +889,8 @@ class YBBackupPartitioningVersionTest : public YBBackupTest {
     }
     return cluster_->WaitForTabletServerCount(GetNumTabletServers(), kDefaultTimeout);
   }
+
+  string default_db_ = "yugabyte";
 };
 
 TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLPartitioningVersion),
@@ -925,7 +935,8 @@ TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLPartitioningVersio
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPartitioningVersion),
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPartitioningVersion),
     YBBackupPartitioningVersionTest) {
   // The test checks that range partitions are restored correctly depending on partitioning_version.
 
@@ -933,42 +944,44 @@ TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPartitioningVersio
   ASSERT_OK(ForceSetPartitioningVersion(0));
   const std::vector<std::string> expected_splits_tblv0 = {
       bytes_to_str("\x48\x80\x00\x00\x64\x21"), /* 100 */
-      bytes_to_str("\x48\x80\x00\x00\xc8\x21")  /* 200 */};
+      bytes_to_str("\x48\x80\x00\x00\xc8\x21") /* 200 */};
   const std::vector<std::string> expected_splits_idx1v0 = {
       bytes_to_str("\x61\x86\xff\xff\x21"), /* 'y' */
       bytes_to_str("\x61\x8f\xff\xff\x21"), /* 'p' */
-      bytes_to_str("\x61\x9a\xff\xff\x21")  /* 'e' */};
-  const std::vector<std::string> expected_splits_idx2v0 ={
+      bytes_to_str("\x61\x9a\xff\xff\x21") /* 'e' */};
+  const std::vector<std::string> expected_splits_idx2v0 = {
       bytes_to_str("\x53\x78\x79\x7a\x00\x00\x21") /* 'xyz' */};
 
   // 1.1) Create regular tablets and check partitoning verison and structure.
-  ASSERT_NO_FATALS(CreateTable(Format(
-      "CREATE TABLE tblr0 (k INT, v TEXT, PRIMARY KEY (k ASC))")));
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tblr0 (k INT, v TEXT, PRIMARY KEY (k ASC))")));
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblr0", "pre-backup")));
   ASSERT_TRUE(CheckPartitions(
-      ASSERT_RESULT(GetTablets("tblr0", "pre-backup")), {}));
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblr0")), {}));
   ASSERT_NO_FATALS(CreateTable(Format(
       "CREATE TABLE tblv0 (k INT, v TEXT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100), (200))")));
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblv0", "pre-backup")));
   ASSERT_TRUE(CheckPartitions(
-      ASSERT_RESULT(GetTablets("tblv0", "pre-backup")), expected_splits_tblv0));
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblv0")),
+      expected_splits_tblv0));
 
   // 1.2) Create indexes and check partitoning verison and structure.
-  ASSERT_NO_FATALS(CreateIndex(Format(
-      "CREATE INDEX idx1v0 ON tblv0 (v DESC) SPLIT AT VALUES (('y'), ('p'), ('e'))")));
+  ASSERT_NO_FATALS(CreateIndex(
+      Format("CREATE INDEX idx1v0 ON tblv0 (v DESC) SPLIT AT VALUES (('y'), ('p'), ('e'))")));
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("idx1v0", "pre-backup")));
   ASSERT_TRUE(CheckPartitions(
-      ASSERT_RESULT(GetTablets("idx1v0", "pre-backup")), expected_splits_idx1v0));
-  ASSERT_NO_FATALS(CreateIndex(Format(
-      "CREATE UNIQUE INDEX idx2v0 ON tblv0 (v ASC) SPLIT AT VALUES (('xyz'))")));
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "idx1v0")),
+      expected_splits_idx1v0));
+  ASSERT_NO_FATALS(
+      CreateIndex(Format("CREATE UNIQUE INDEX idx2v0 ON tblv0 (v ASC) SPLIT AT VALUES (('xyz'))")));
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("idx2v0", "pre-backup")));
   ASSERT_TRUE(CheckPartitions(
-      ASSERT_RESULT(GetTablets("idx2v0", "pre-backup")), expected_splits_idx2v0));
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "idx2v0")),
+      expected_splits_idx2v0));
 
   // 2) Force backuping.
   const std::string backup_dir = GetTempDir("backup");
-  ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
   // 3) Drop table to be able to restore in the same keyspace.
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE tblv0"), "DROP TABLE"));
@@ -981,44 +994,51 @@ TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPartitioningVersio
 
   // 5) Make sure new tables are created with a new patitioning version.
   // 5.1) Create regular tablet and check partitioning verison and structure.
-  ASSERT_NO_FATALS(CreateTable(Format(
-      "CREATE TABLE tblr1 (k INT, v TEXT, PRIMARY KEY (k ASC))")));
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tblr1 (k INT, v TEXT, PRIMARY KEY (k ASC))")));
   ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("tblr1", "post-restore")));
   ASSERT_TRUE(CheckPartitions(
-      ASSERT_RESULT(GetTablets("tblr1", "post-restore")), {}));
-  ASSERT_NO_FATALS(CreateTable(Format(
-      "CREATE TABLE tblv1 (k INT, v TEXT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((10))")));
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblr1")), {}));
+  ASSERT_NO_FATALS(CreateTable(
+      Format("CREATE TABLE tblv1 (k INT, v TEXT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((10))")));
   ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("tblv1", "post-restore")));
-  ASSERT_TRUE(CheckPartitions(ASSERT_RESULT(GetTablets("tblv1", "post-restore")), {
-      bytes_to_str("\x48\x80\x00\x00\x0a\x21"), /* 10 */}));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblv1")),
+      {bytes_to_str("\x48\x80\x00\x00\x0a\x21"), /* 10 */}));
 
   // 5.2) Create indexes and check partitoning verison and structure.
-  ASSERT_NO_FATALS(CreateIndex(Format(
-      "CREATE INDEX idx1v1 ON tblv1 (v ASC) SPLIT AT VALUES (('de'), ('op'))")));
+  ASSERT_NO_FATALS(
+      CreateIndex(Format("CREATE INDEX idx1v1 ON tblv1 (v ASC) SPLIT AT VALUES (('de'), ('op'))")));
   ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("idx1v1", "post-restore")));
-  ASSERT_TRUE(CheckPartitions(ASSERT_RESULT(GetTablets("idx1v1", "post-restore")), {
-      bytes_to_str("\x53\x64\x65\x00\x00\x00\x21"), /* 'de', -Inf */
-      bytes_to_str("\x53\x6f\x70\x00\x00\x00\x21"), /* 'op', -Inf */}));
-  ASSERT_NO_FATALS(CreateIndex(Format(
-      "CREATE UNIQUE INDEX idx2v1 ON tblv1 (v DESC) SPLIT AT VALUES (('pp'), ('cc'))")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "idx1v1")),
+      {bytes_to_str("\x53\x64\x65\x00\x00\x00\x21"), /* 'de', -Inf */
+       bytes_to_str("\x53\x6f\x70\x00\x00\x00\x21"),
+       /* 'op', -Inf */}));
+  ASSERT_NO_FATALS(CreateIndex(
+      Format("CREATE UNIQUE INDEX idx2v1 ON tblv1 (v DESC) SPLIT AT VALUES (('pp'), ('cc'))")));
   ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("idx2v1", "post-restore")));
-  ASSERT_TRUE(CheckPartitions( ASSERT_RESULT(GetTablets("idx2v1", "post-restore")), {
-      bytes_to_str("\x61\x8f\x8f\xff\xff\x00\x21"), /* 'pp', -Inf */
-      bytes_to_str("\x61\x9c\x9c\xff\xff\x00\x21"), /* 'cc', -Inf */}));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "idx2v1")),
+      {bytes_to_str("\x61\x8f\x8f\xff\xff\x00\x21"), /* 'pp', -Inf */
+       bytes_to_str("\x61\x9c\x9c\xff\xff\x00\x21"),
+       /* 'cc', -Inf */}));
 
   // 6) Make sure old tables have been restored with the old patitioning version and structure
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblr0", "post-restore")));
   ASSERT_TRUE(CheckPartitions(
-      ASSERT_RESULT(GetTablets("tblr0", "post-restore")), {}));
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblr0")), {}));
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblv0", "post-restore")));
   ASSERT_TRUE(CheckPartitions(
-      ASSERT_RESULT(GetTablets("tblv0", "post-restore")), expected_splits_tblv0));
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblv0")),
+      expected_splits_tblv0));
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("idx1v0", "post-restore")));
   ASSERT_TRUE(CheckPartitions(
-      ASSERT_RESULT(GetTablets("idx1v0", "post-restore")), expected_splits_idx1v0));
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "idx1v0")),
+      expected_splits_idx1v0));
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("idx2v0", "post-restore")));
   ASSERT_TRUE(CheckPartitions(
-      ASSERT_RESULT(GetTablets("idx2v0", "post-restore")), expected_splits_idx2v0));
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "idx2v0")),
+      expected_splits_idx2v0));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -1031,6 +1051,8 @@ class YBBackupTestOneTablet : public YBBackupTest {
     options->extra_tserver_flags.push_back("--ycql_num_tablets=1");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=1");
   }
+
+  string default_db_ = "yugabyte";
 };
 
 // Test that backups taken after a tablet has been split but before the child tablets are compacted
@@ -1051,7 +1073,7 @@ TEST_F_EX(
       row_count));
   ASSERT_OK(cluster_->WaitForAllIntentsApplied(10s));
 
-  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 1);
 
@@ -1059,9 +1081,9 @@ TEST_F_EX(
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
   ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
 
-  ManualSplitTablet(tablets[0].tablet_id(), table_name, 2, false);
-
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, table_name, /* wait_for_parent_deletion */ false, tablets[0].tablet_id()));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 2);
 
@@ -1075,7 +1097,7 @@ TEST_F_EX(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", db_name), "restore"}));
 
   // Sanity check the tablet count.
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore", db_name));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 2);
   SetDbName(db_name);
@@ -1110,7 +1132,7 @@ TEST_F_EX(
       Format("INSERT INTO $0 SELECT i, i FROM generate_series(1, $1) AS i", table_name, row_count),
       row_count));
 
-  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 1);
 
@@ -1119,9 +1141,10 @@ TEST_F_EX(
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
   ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
   constexpr bool kWaitForParentDeletion = false;
-  ManualSplitTablet(
-      tablets[0].tablet_id(), table_name, /* expected_num_tablets = */ 2, kWaitForParentDeletion);
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
+      tablets[0].tablet_id()));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 2);
 
@@ -1135,99 +1158,35 @@ TEST_F_EX(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", db_name), "restore"}));
 
   // Sanity check the tablet count.
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore", db_name));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 2);
 
   const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablets[0].tablet_id()));
   // Wait for compaction to complete.
   ASSERT_OK(WaitForTabletFullyCompacted(leader_idx, tablets[0].tablet_id()));
-  ManualSplitTablet(
-      tablets[0].tablet_id(), table_name, /* expected_num_tablets = */ 3, kWaitForParentDeletion,
-      db_name);
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore-split", db_name));
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
+      tablets[0].tablet_id()));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);
 }
 
+class YBLegacyColocatedDBBackupTest : public YBBackupTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
+  }
+};
+
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestColocationDuplication)) {
-  // Create a colocated database.
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "CREATE DATABASE demo WITH COLOCATED=TRUE", "CREATE DATABASE"));
+  TestColocatedDBBackupRestore();
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
 
-  // Set this database for creating tables below.
-  SetDbName("demo");
-
-  // Create 10 tables in a loop and insert data.
-  vector<string> table_names;
-  for (int i = 0; i < 10; ++i) {
-    table_names.push_back(Format("mytbl_$0", i));
-  }
-  for (const auto& table_name : table_names) {
-    ASSERT_NO_FATALS(CreateTable(
-        Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
-    ASSERT_NO_FATALS(InsertRows(
-        Format("INSERT INTO $0 VALUES (generate_series(1, 100))", table_name), 100));
-  }
-  LOG(INFO) << "All tables created and data inserted successsfully";
-
-  // Create a backup.
-  const string backup_dir = GetTempDir("backup");
-  ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.demo", "create"}));
-  LOG(INFO) << "Backup finished";
-
-  // Read the SnapshotInfoPB from the given path.
-  master::SnapshotInfoPB snapshot_info;
-  ASSERT_OK(pb_util::ReadPBContainerFromPath(
-      Env::Default(), JoinPathSegments(backup_dir, "SnapshotInfoPB"), &snapshot_info));
-  LOG(INFO) << "SnapshotInfoPB: " << snapshot_info.ShortDebugString();
-
-  // SnapshotInfoPB should contain 1 namespace entry, 1 tablet entry and 11 table entries.
-  // 11 table entries comprise of - 10 entries for the tables created and 1 entry for
-  // the parent colocated table.
-  int32_t num_namespaces = 0, num_tables = 0, num_tablets = 0, num_others = 0;
-  for (const auto& entry : snapshot_info.backup_entries()) {
-    if (entry.entry().type() == master::SysRowEntryType::NAMESPACE) {
-      num_namespaces++;
-    } else if (entry.entry().type() == master::SysRowEntryType::TABLE) {
-      num_tables++;
-    } else if (entry.entry().type() == master::SysRowEntryType::TABLET) {
-      num_tablets++;
-    } else {
-      num_others++;
-    }
-  }
-
-  ASSERT_EQ(num_namespaces, 1);
-  ASSERT_EQ(num_tablets, 1);
-  ASSERT_EQ(num_tables, 11);
-  ASSERT_EQ(num_others, 0);
-  // Snapshot should be complete.
-  ASSERT_EQ(snapshot_info.entry().state(),
-            master::SysSnapshotEntryPB::State::SysSnapshotEntryPB_State_COMPLETE);
-  // We clear all tablet snapshot entries for backup.
-  ASSERT_EQ(snapshot_info.entry().tablet_snapshots_size(), 0);
-  // We've migrated this field to backup_entries so they are already accounted above.
-  ASSERT_EQ(snapshot_info.entry().entries_size(), 0);
-
-  ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
-  LOG(INFO) << "Restored backup to yugabyte_new keyspace successfully";
-
-  SetDbName("yugabyte_new");
-
-  // Post-restore, we should have all the data.
-  for (const auto& table_name : table_names) {
-    ASSERT_NO_FATALS(RunPsqlCommand(
-        Format("SELECT COUNT(*) FROM $0", table_name),
-        R"#(
-           count
-          -------
-             100
-          (1 row)
-        )#"));
-  }
-
+TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestLegacyColocatedDBColocationDuplication),
+          YBLegacyColocatedDBBackupTest) {
+  TestColocatedDBBackupRestore();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

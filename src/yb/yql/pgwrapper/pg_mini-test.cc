@@ -1262,13 +1262,6 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
   }
 
-  static Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
-    if (connection.ok()) {
-      RETURN_NOT_OK((*connection).Execute(query));
-    }
-    return connection;
-  }
-
   static Status StartTxn(PGConn* connection) {
     return TxnHelper<level>::StartTxn(connection);
   }
@@ -1926,6 +1919,22 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPref
   Run(kRows, kBlockSize, kReads, /* compact= */ true, /*select*/ true);
 }
 
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigValue), PgMiniSingleTServerTest) {
+  constexpr size_t kValueSize = 32_MB;
+  constexpr int kKey = 42;
+  const std::string kValue = RandomHumanReadableString(kValueSize);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, '$1')", kKey, kValue));
+
+  auto start = MonoTime::Now();
+  auto result = ASSERT_RESULT(conn.FetchValue<std::string>(
+      Format("SELECT md5(b) FROM t WHERE a = $0", kKey)));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Passed: " << finish - start << ", result: " << result;
+}
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
   SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
   FLAGS_TEST_force_master_leader_resolution = true;
@@ -1997,10 +2006,7 @@ class PgMiniRocksDbIteratorLoggingTest : public PgMiniSingleTServerTest {
       if (!is_warmup) {
         SetAtomicFlag(true, &FLAGS_rocksdb_use_logging_iterator);
       }
-      auto count_result = ASSERT_RESULT(conn.Fetch(count_stmt_str));
-      ASSERT_EQ(PQntuples(count_result.get()), 1);
-
-      auto actual_num_rows = ASSERT_RESULT(GetInt64(count_result.get(), 0, 0));
+      auto actual_num_rows = ASSERT_RESULT(conn.FetchValue<PGUint64>(count_stmt_str));
       const int expected_num_rows = config.last_row_to_scan - config.first_row_to_scan + 1;
       ASSERT_EQ(expected_num_rows, actual_num_rows);
     }
@@ -2888,7 +2894,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
 
   ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
-  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
+      rocksdb::CompactionReason::kManualCompaction));
   uint64_t base_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
 
   PGConn conn = ASSERT_RESULT(Connect());
@@ -2897,13 +2904,15 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
 
   // Make sure compaction works without error for the hybrid_time > history_cutoff case.
-  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
+      rocksdb::CompactionReason::kManualCompaction));
 
   FLAGS_timestamp_history_retention_interval_sec = 0;
   FLAGS_timestamp_syscatalog_history_retention_interval_sec = 0;
   FLAGS_history_cutoff_propagation_interval_ms = 1;
 
-  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
+      rocksdb::CompactionReason::kManualCompaction));
 
   uint64_t new_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
   LOG(INFO) << "Base file size: " << base_file_size << ", new file size: " << new_file_size;

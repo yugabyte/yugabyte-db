@@ -156,7 +156,7 @@ $ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.8" fo
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION
+NAME                    CHART VERSION    APP VERSION     DESCRIPTION
 yugabytedb/yugabyte     {{<yb-version version="v2.8" format="short">}}           {{<yb-version version="v2.8" format="build">}}    YugabyteDB is the high-performance distributed ...
 ```
 

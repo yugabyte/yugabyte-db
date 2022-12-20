@@ -50,7 +50,7 @@
 
 using std::string;
 
-DEFINE_int32(cdc_consumer_handler_thread_pool_size, 0,
+DEFINE_UNKNOWN_int32(cdc_consumer_handler_thread_pool_size, 0,
              "Override the max thread pool size for CDCConsumerHandler, which is used by "
              "CDCPollers. If set to 0, then the thread pool will use the default size (number of "
              "cpus on the system).");
@@ -92,7 +92,12 @@ CDCClient::~CDCClient() {
 }
 
 void CDCClient::Shutdown() {
-  client->Shutdown();
+  if (client) {
+    client->Shutdown();
+  }
+  if (messenger) {
+    messenger->Shutdown();
+  }
 }
 
 Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
@@ -254,7 +259,13 @@ std::vector<std::shared_ptr<CDCPoller>> CDCConsumer::TEST_ListPollers() {
 
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly
 void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_registry,
-    int32_t cluster_config_version) {
+                                      int32_t cluster_config_version) {
+  {
+    std::lock_guard<std::mutex> l(should_run_mutex_);
+    if(!should_run_) {
+      return;
+    }
+  }
   std::lock_guard<rw_spinlock> write_lock_master(master_data_mutex_);
 
   // Only update it if the version is newer.

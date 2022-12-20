@@ -23,6 +23,9 @@
 
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_reader.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/server/hybrid_clock.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
@@ -40,6 +43,15 @@ DECLARE_int64(cdc_intent_retention_ms);
 
 DEFINE_RUNTIME_bool(enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");
+
+DEFINE_RUNTIME_bool(
+    cdc_before_image_mandatory, true,
+    "Need before image for change record, if 'false' and we don't find the before image for the "
+    "record we will fill up with empty values");
+
+DEFINE_test_flag(
+    bool, cdc_snapshot_failure, false,
+    "For testing only, When it is set to true, the CDC snapshot operation will fail.");
 
 namespace yb {
 namespace cdc {
@@ -71,17 +83,19 @@ void SetOperation(RowMessage* row_message, OpType type, const Schema& schema) {
 
 template <class Value>
 Status AddColumnToMap(
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    const ColumnSchema& col_schema,
-    const Value& col,
-    const EnumOidLabelMap& enum_oid_label_map,
-    const CompositeAttsMap& composite_atts_map,
-    DatumMessagePB* cdc_datum_message) {
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const ColumnSchema& col_schema,
+    const Value& col, const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map, DatumMessagePB* cdc_datum_message,
+    const QLValuePB* old_ql_value_passed) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   cdc_datum_message->set_column_name(col_schema.name());
   QLValuePB ql_value;
   if (tablet->table_type() == PGSQL_TABLE_TYPE) {
-    col.ToQLValuePB(col_schema.type(), &ql_value);
+    if (old_ql_value_passed) {
+      ql_value = *old_ql_value_passed;
+    } else {
+      col.ToQLValuePB(col_schema.type(), &ql_value);
+    }
     if (!IsNull(ql_value) && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
       RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
           ql_value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
@@ -93,7 +107,7 @@ Status AddColumnToMap(
   return Status::OK();
 }
 
-DatumMessagePB* AddTuple(RowMessage* row_message) {
+DatumMessagePB* AddTuple(RowMessage* row_message, const StreamMetadata& metadata) {
   if (!row_message) {
     return nullptr;
   }
@@ -104,7 +118,10 @@ DatumMessagePB* AddTuple(RowMessage* row_message) {
     row_message->add_new_tuple();
   } else {
     tuple = row_message->add_new_tuple();
-    row_message->add_old_tuple();
+    if ((metadata.record_type == cdc::CDCRecordType::CHANGE) ||
+        ((metadata.record_type == cdc::CDCRecordType::ALL) &&
+         (row_message->op() == RowMessage_Op_INSERT)))
+      row_message->add_old_tuple();
   }
   return tuple;
 }
@@ -112,19 +129,22 @@ DatumMessagePB* AddTuple(RowMessage* row_message) {
 Status AddPrimaryKey(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const docdb::SubDocKey& decoded_key,
     const Schema& tablet_schema, const EnumOidLabelMap& enum_oid_label_map,
-    const CompositeAttsMap& composite_atts_map, RowMessage* row_message) {
+    const CompositeAttsMap& composite_atts_map, RowMessage* row_message,
+    const StreamMetadata& metadata) {
   size_t i = 0;
   for (const auto& col : decoded_key.doc_key().hashed_group()) {
-    DatumMessagePB* tuple = AddTuple(row_message);
+    DatumMessagePB* tuple = AddTuple(row_message, metadata);
     RETURN_NOT_OK(AddColumnToMap(
-        tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, composite_atts_map, tuple));
+        tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, composite_atts_map, tuple,
+        nullptr));
     i++;
   }
 
   for (const auto& col : decoded_key.doc_key().range_group()) {
-    DatumMessagePB* tuple = AddTuple(row_message);
+    DatumMessagePB* tuple = AddTuple(row_message, metadata);
     RETURN_NOT_OK(AddColumnToMap(
-        tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, composite_atts_map, tuple));
+        tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, composite_atts_map, tuple,
+        nullptr));
     i++;
   }
   return Status::OK();
@@ -158,9 +178,8 @@ bool IsInsertOperation(const RowMessage& row_message) {
 }
 
 bool IsInsertOrUpdate(const RowMessage& row_message) {
-  return row_message.IsInitialized()  &&
-         (row_message.op() == RowMessage_Op_INSERT
-          || row_message.op() == RowMessage_Op_UPDATE);
+  return row_message.IsInitialized() &&
+         (row_message.op() == RowMessage_Op_INSERT || row_message.op() == RowMessage_Op_UPDATE);
 }
 
 void MakeNewProtoRecord(
@@ -186,6 +205,76 @@ void MakeNewProtoRecord(
   *reverse_index_key = intent.reverse_index_key;
 }
 
+Status PopulateBeforeImage(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const ReadHybridTime& read_time,
+    RowMessage* row_message, const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map, const docdb::SubDocKey& decoded_primary_key,
+     const Schema& schema, const SchemaVersion schema_version) {
+  auto tablet = tablet_peer->shared_tablet();
+  auto docdb = tablet->doc_db();
+
+  const auto log_prefix = tablet->LogPrefix();
+  docdb::DocReadContext doc_read_context(log_prefix, schema, schema_version);
+  docdb::DocRowwiseIterator iter(
+      schema, doc_read_context, TransactionOperationContext(), docdb,
+      CoarseTimePoint::max() /* deadline */, read_time);
+
+  const docdb::DocKey& doc_key = decoded_primary_key.doc_key();
+  docdb::DocQLScanSpec spec(schema, doc_key, rocksdb::kDefaultQueryId);
+  RETURN_NOT_OK(iter.Init(spec));
+
+  QLTableRow row;
+  QLValue ql_value;
+  // If CDC is failed to get the before image row, skip adding before image columns.
+  auto result = iter.HasNext();
+  if (result.ok() && *result) {
+    RETURN_NOT_OK(iter.NextRow(&row));
+  } else if (FLAGS_cdc_before_image_mandatory) {
+    return result.ok()
+               ? STATUS_FORMAT(
+                     InternalError,
+                     "Failed to get the beforeimage for tablet_id: $0", tablet_peer->tablet_id())
+               : result.status();
+  }
+
+  std::vector<ColumnSchema> columns(schema.columns());
+
+  size_t found_columns = 0;
+  if (row.ColumnCount() == columns.size()) {
+    for (size_t index = 0; index < row.ColumnCount(); ++index) {
+      bool column_updated = false;
+      RETURN_NOT_OK(row.GetValue(schema.column_id(index), &ql_value));
+      if (!ql_value.IsNull()) {
+        RETURN_NOT_OK(AddColumnToMap(
+            tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map, composite_atts_map,
+            row_message->add_old_tuple(), &ql_value.value()));
+        if (row_message->op() == RowMessage_Op_UPDATE) {
+          const auto& old_tuple_column_name =
+              row_message->old_tuple(static_cast<int>(found_columns)).column_name();
+          for (int new_tuple_index = 0; new_tuple_index < row_message->new_tuple_size();
+               ++new_tuple_index) {
+            if (row_message->new_tuple(static_cast<int>(new_tuple_index)).column_name() ==
+                old_tuple_column_name) {
+              column_updated = true;
+              break;
+            }
+          }
+          if (!column_updated) {
+            auto new_tuple_pb = row_message->mutable_new_tuple()->Add();
+            new_tuple_pb->CopyFrom(row_message->old_tuple(static_cast<int>(found_columns)));
+          }
+        }
+        found_columns += 1;
+      }
+    }
+  } else if (row_message->op() != RowMessage_Op_DELETE) {
+    for (size_t index = 0; index < schema.num_columns(); ++index) {
+      row_message->add_old_tuple();
+    }
+  }
+  return Status::OK();
+}
+
 Result<size_t> PopulatePackedRows(
     const SchemaPackingStorage& schema_packing_storage, const Schema& schema,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
@@ -204,12 +293,29 @@ Result<size_t> PopulatePackedRows(
     }
     const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
     RETURN_NOT_OK(AddColumnToMap(
-        tablet_peer, col, pv, enum_oid_label_map, composite_atts_map,
-        row_message->add_new_tuple()));
+        tablet_peer, col, pv, enum_oid_label_map, composite_atts_map, row_message->add_new_tuple(),
+        nullptr));
     row_message->add_old_tuple();
   }
 
   return packing.columns();
+}
+
+HybridTime GetCDCSDKSafeTimeForTarget(
+    const HybridTime leader_safe_time,
+    HybridTime ht_of_last_returned_message,
+    HaveMoreMessages have_more_messages) {
+  if (have_more_messages) {
+    return ht_of_last_returned_message;
+  }
+
+  if (ht_of_last_returned_message.is_valid()) {
+    if (!leader_safe_time.is_valid() || ht_of_last_returned_message > leader_safe_time) {
+      return ht_of_last_returned_message;
+    }
+  }
+
+  return leader_safe_time;
 }
 
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
@@ -226,7 +332,8 @@ Status PopulateCDCSDKIntentRecord(
     IntraTxnWriteId* write_id,
     std::string* reverse_index_key,
     Schema* old_schema,
-    SchemaVersion schema_version) {
+    SchemaVersion schema_version,
+    const uint64_t& commit_time) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   bool colocated = tablet->metadata()->colocated();
   Schema& schema = *old_schema;
@@ -240,6 +347,7 @@ Status PopulateCDCSDKIntentRecord(
   docdb::IntentKeyValueForCDC prev_intent;
   MicrosTime prev_intent_phy_time = 0;
   bool new_cdc_record_needed = false;
+  docdb::SubDocKey prev_decoded_key;
 
   for (const auto& intent : intents) {
     Slice key(intent.key_buf);
@@ -254,8 +362,8 @@ Status PopulateCDCSDKIntentRecord(
       column_id_opt = column_id;
     }
 
-    Slice sub_doc_key = key;
     docdb::SubDocKey decoded_key;
+    Slice sub_doc_key = key;
     RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
 
     Slice value_slice = intent.value_buf;
@@ -288,10 +396,44 @@ Status PopulateCDCSDKIntentRecord(
 
     if (new_cdc_record_needed) {
       if (FLAGS_enable_single_record_update) {
-        if (col_count > 0) col_count = 0;
+        col_count = 0;
 
         if (proto_record.IsInitialized() && row_message->IsInitialized() &&
             row_message->op() == RowMessage_Op_UPDATE) {
+          if (metadata.record_type == cdc::CDCRecordType::ALL) {
+            VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                    << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                    << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                    << " for change record type: " << row_message->op();
+            if (commit_time > 0) {
+              auto hybrid_time = commit_time - 1;
+              auto result = PopulateBeforeImage(
+                  tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message,
+                  enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version);
+              if (!result.ok()) {
+                LOG(ERROR) << "Failed to get the Beforeimage for tablet: "
+                           << tablet_peer->tablet_id()
+                           << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                           << " for change record type: " << row_message->op()
+                           << " row_message: " << row_message->DebugString()
+                           << " with error status: " << result;
+                return result;
+              }
+              VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                      << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                      << " for change record type: " << row_message->op()
+                      << " row_message: " << row_message->DebugString();
+            } else {
+              for (size_t index = 0; index < schema.num_columns(); ++index) {
+                row_message->add_old_tuple();
+              }
+            }
+          } else {
+            for (int index = 0; index < row_message->new_tuple_size(); ++index) {
+              row_message->add_old_tuple();
+            }
+          }
+
           MakeNewProtoRecord(
               prev_intent, op_id, *row_message, schema, col_count, &proto_record, resp, write_id,
               reverse_index_key);
@@ -335,8 +477,47 @@ Status PopulateCDCSDKIntentRecord(
 
       // Write pair contains record for different row. Create a new CDCRecord in this case.
       row_message->set_transaction_id(transaction_id.ToString());
-      RETURN_NOT_OK(AddPrimaryKey(
-          tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message));
+      row_message->set_commit_time(intent.intent_ht.hybrid_time().ToUint64());
+
+      if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
+          (row_message->op() == RowMessage_Op_DELETE)) {
+        VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                << "  cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                << "  for change record type: " << row_message->op();
+        if (commit_time > 0) {
+          auto hybrid_time = commit_time - 1;
+          auto result = PopulateBeforeImage(
+              tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message, enum_oid_label_map,
+              composite_atts_map, decoded_key, schema, schema_version);
+          if (!result.ok()) {
+            LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                       << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                       << " for change record type: " << row_message->op()
+                       << " row_message: " << row_message->DebugString()
+                       << " with error status: " << result;
+            return result;
+          }
+          VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                  << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                  << " for change record type: " << row_message->op()
+                  << " row_message: " << row_message->DebugString();
+        }
+
+        if (row_message->old_tuple_size() == 0) {
+          RETURN_NOT_OK(AddPrimaryKey(
+              tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message,
+              metadata));
+        } else {
+          for (size_t index = 0; index < schema.num_columns(); ++index) {
+            row_message->add_new_tuple();
+          }
+        }
+      } else {
+        RETURN_NOT_OK(AddPrimaryKey(
+            tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message,
+            metadata));
+      }
     }
 
     prev_key = primary_key;
@@ -364,8 +545,10 @@ Status PopulateCDCSDKIntentRecord(
 
           RETURN_NOT_OK(AddColumnToMap(
               tablet_peer, col, decoded_value.primitive_value(), enum_oid_label_map,
-              composite_atts_map, row_message->add_new_tuple()));
-          row_message->add_old_tuple();
+              composite_atts_map, row_message->add_new_tuple(), nullptr));
+          if (row_message->op() == RowMessage_Op_INSERT) {
+            row_message->add_old_tuple();
+          }
 
         } else if (column_id_opt && column_id_opt->type() != docdb::KeyEntryType::kSystemColumnId) {
           LOG(DFATAL) << "Unexpected value type in key: " << column_id_opt->type()
@@ -384,11 +567,43 @@ Status PopulateCDCSDKIntentRecord(
         col_count = schema.num_columns();
       } else if (row_message->op() == RowMessage_Op_UPDATE) {
         prev_intent = intent;
+        prev_decoded_key = decoded_key;
       }
     } else {
       if ((row_message->op() == RowMessage_Op_INSERT && col_count == schema.num_columns()) ||
           (row_message->op() == RowMessage_Op_UPDATE ||
            row_message->op() == RowMessage_Op_DELETE)) {
+        if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
+            (row_message->op() == RowMessage_Op_UPDATE)) {
+          VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                    << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                    << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                    << " for change record type: " << row_message->op();
+          if (commit_time > 0) {
+            auto hybrid_time = commit_time - 1;
+            auto result = PopulateBeforeImage(
+                tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message,
+                enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version);
+            if (!result.ok()) {
+              LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                         << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                         << " for change record type: " << row_message->op()
+                         << " row_message: " << row_message->DebugString()
+                         << " with error status: " << result;
+              return result;
+            }
+            VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                    << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                    << " for change record type: " << row_message->op()
+                    << " row_message: " << row_message->DebugString();
+          } else {
+            for (size_t index = 0; index < schema.num_columns(); ++index) {
+              row_message->add_old_tuple();
+            }
+          }
+        } else {
+          row_message->add_old_tuple();
+        }
         MakeNewProtoRecord(
             intent, op_id, *row_message, schema, col_count, &proto_record, resp, write_id,
             reverse_index_key);
@@ -399,6 +614,38 @@ Status PopulateCDCSDKIntentRecord(
   if (FLAGS_enable_single_record_update && proto_record.IsInitialized() &&
       row_message->IsInitialized() && row_message->op() == RowMessage_Op_UPDATE) {
     row_message->set_table(table_name);
+    if (metadata.record_type == cdc::CDCRecordType::ALL) {
+      VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+              << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+              << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+              << " for change record type: " << row_message->op();
+      if (commit_time > 0) {
+        auto hybrid_time = commit_time - 1;
+        auto result = PopulateBeforeImage(
+            tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message, enum_oid_label_map,
+            composite_atts_map, prev_decoded_key, schema, schema_version);
+        if (!result.ok()) {
+          LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                     << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                     << " for change record type: " << row_message->op()
+                     << " row_message: " << row_message->DebugString()
+                     << " with error status: " << result;
+          return result;
+        }
+        VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                << " for change record type: " << row_message->op()
+                << " row_message: " << row_message->DebugString();
+      } else {
+        for (size_t index = 0; index < schema.num_columns(); ++index) {
+          row_message->add_old_tuple();
+        }
+      }
+    } else {
+      for (int index = 0; index < row_message->new_tuple_size(); ++index) {
+        row_message->add_old_tuple();
+      }
+    }
     MakeNewProtoRecord(
         prev_intent, op_id, *row_message, schema, col_count, &proto_record, resp, write_id,
         reverse_index_key);
@@ -415,18 +662,20 @@ Status PopulateCDCSDKWriteRecord(
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
     GetChangesResponsePB* resp,
-    const Schema& current_schema) {
+    const Schema& current_schema,
+    const SchemaVersion current_schema_version) {
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   const auto& batch = msg->write().write_batch();
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
+  docdb::SubDocKey prev_decoded_key;
   bool colocated = tablet_ptr->metadata()->colocated();
   // Write batch may contain records from different rows.
   // For CDC, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
   Slice prev_key;
   Schema schema = current_schema;
-  SchemaVersion schema_version = tablet_ptr->metadata()->schema_version();
+  SchemaVersion schema_version = current_schema_version;
   std::string table_name = tablet_ptr->metadata()->table_name();
   SchemaPackingStorage schema_packing_storage;
   schema_packing_storage.AddSchema(schema_version, schema);
@@ -442,10 +691,15 @@ Status PopulateCDCSDKWriteRecord(
     auto value_type = docdb::DecodeValueEntryType(value_slice);
     value_slice.consume_byte();
 
+    Slice sub_doc_key = key;
+    docdb::SubDocKey decoded_key;
+    RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
+
     // Compare key hash with previously seen key hash to determine whether the write pair
     // is part of the same row or not.
     Slice primary_key(key.data(), key_size);
-    if (prev_key != primary_key) {
+    if (prev_key != primary_key || (!FLAGS_enable_single_record_update && row_message &&
+                                    row_message->op() == RowMessage_Op_UPDATE)) {
       Slice sub_doc_key = key;
       docdb::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
@@ -458,6 +712,35 @@ Status PopulateCDCSDKWriteRecord(
         schema_packing_storage.AddSchema(schema_version, schema);
       }
 
+      if (row_message != nullptr && row_message->op() == RowMessage_Op_UPDATE) {
+        if (metadata.record_type == cdc::CDCRecordType::ALL) {
+          VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                  << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                  << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                  << " for change record type: " << row_message->op();
+          auto result = PopulateBeforeImage(
+              tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
+              enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version);
+          if (!result.ok()) {
+            LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                       << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                       << " for change record type: " << row_message->op()
+                       << " row_message: " << row_message->DebugString()
+                       << " with error status: " << result;
+            return result;
+          }
+          VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                  << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                  << " for change record type: " << row_message->op()
+                  << " row_message: " << row_message->DebugString();
+        } else {
+          for (int new_tuple_index = 0; new_tuple_index < row_message->new_tuple_size();
+               ++new_tuple_index) {
+            row_message->add_old_tuple();
+          }
+        }
+      }
+
       // Write pair contains record for different row. Create a new CDCRecord in this case.
       proto_record = resp->add_cdc_sdk_proto_records();
       row_message = proto_record->mutable_row_message();
@@ -465,6 +748,7 @@ Status PopulateCDCSDKWriteRecord(
       row_message->set_table(table_name);
       CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
       SetCDCSDKOpId(msg->id().term(), msg->id().index(), 0, "", cdc_sdk_op_id_pb);
+
       // Check whether operation is WRITE or DELETE.
       if (value_type == docdb::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
         SetOperation(row_message, OpType::DELETE, schema);
@@ -483,10 +767,45 @@ Status PopulateCDCSDKWriteRecord(
         }
       }
 
-      RETURN_NOT_OK(AddPrimaryKey(
-          tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message));
+      if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
+          (row_message->op() == RowMessage_Op_DELETE)) {
+        VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                << " for change record type: " << row_message->op();
+        auto result = PopulateBeforeImage(
+            tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
+            enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version);
+        if (!result.ok()) {
+          LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                     << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                     << " for change record type: " << row_message->op()
+                     << " row_message: " << row_message->DebugString()
+                     << " with error status: " << result;
+          return result;
+        }
+        VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                << " for change record type: " << row_message->op()
+                << " row_message: " << row_message->DebugString();
+
+        if (row_message->old_tuple_size() == 0) {
+          RETURN_NOT_OK(AddPrimaryKey(
+              tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message,
+              metadata));
+        } else {
+          for (size_t index = 0; index < schema.num_columns(); ++index) {
+            row_message->add_new_tuple();
+          }
+        }
+      } else {
+        RETURN_NOT_OK(AddPrimaryKey(
+            tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message,
+            metadata));
+      }
       // Process intent records.
       row_message->set_commit_time(msg->hybrid_time());
+      prev_decoded_key = decoded_key;
     }
     prev_key = primary_key;
     DCHECK(proto_record);
@@ -507,12 +826,41 @@ Status PopulateCDCSDKWriteRecord(
 
           RETURN_NOT_OK(AddColumnToMap(
               tablet_peer, col, decoded_value.primitive_value(), enum_oid_label_map,
-              composite_atts_map, row_message->add_new_tuple()));
-          row_message->add_old_tuple();
-
+              composite_atts_map, row_message->add_new_tuple(), nullptr));
+          if (row_message->op() == RowMessage_Op_INSERT) {
+            row_message->add_old_tuple();
+          }
         } else if (column_id.type() != docdb::KeyEntryType::kSystemColumnId) {
           LOG(DFATAL) << "Unexpected value type in key: " << column_id.type();
         }
+      }
+    }
+  }
+
+  if (row_message && row_message->op() == RowMessage_Op_UPDATE) {
+    if (metadata.record_type == cdc::CDCRecordType::ALL) {
+      VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+              << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+              << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+              << " for change record type: " << row_message->op();
+      auto result = PopulateBeforeImage(
+          tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
+          enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version);
+      if (!result.ok()) {
+        LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                   << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                   << " for change record type: " << row_message->op()
+                   << " row_message: " << row_message->DebugString()
+                   << " with error status: " << result;
+        return result;
+      }
+      VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+              << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+              << " for change record type: " << row_message->op()
+              << " row_message: " << row_message->DebugString();
+    } else {
+      for (int index = 0; index < row_message->new_tuple_size(); ++index) {
+        row_message->add_old_tuple();
       }
     }
   }
@@ -568,6 +916,7 @@ Status PopulateCDCSDKDDLRecord(
   row_message->set_schema_version(msg->change_metadata_request().schema_version());
   row_message->set_new_table_name(msg->change_metadata_request().new_table_name().ToBuffer());
   row_message->set_pgschema_name(schema.SchemaName());
+  row_message->set_commit_time(msg->hybrid_time());
   SetTableProperties(table_properties->ToGoogleProtobuf(), cdc_sdk_table_properties_pb);
 
   return Status::OK();
@@ -672,7 +1021,8 @@ Status ProcessIntents(
     docdb::ApplyTransactionState* stream_state,
     client::YBClient* client,
     std::shared_ptr<Schema>* cached_schema,
-    SchemaVersion* cached_schema_version) {
+    SchemaVersion* cached_schema_version,
+    const uint64_t& commit_time) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   if (stream_state->key.empty() && stream_state->write_id == 0) {
     FillBeginRecord(transaction_id, tablet_peer, resp);
@@ -738,7 +1088,7 @@ Status ProcessIntents(
   RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
       op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
       composite_atts_map, resp, consumption, &write_id, &reverse_index_key, &current_schema,
-      *cached_schema_version));
+      *cached_schema_version, commit_time));
 
   SetTermIndex(op_id.term, op_id.index, checkpoint);
 
@@ -781,8 +1131,8 @@ Status PopulateCDCSDKSnapshotRecord(
     cdc_datum_message = row_message->add_new_tuple();
     cdc_datum_message->set_column_name(col_schema.name());
 
-    if (value && value->value_case() != QLValuePB::VALUE_NOT_SET
-        && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
+    if (value && value->value_case() != QLValuePB::VALUE_NOT_SET &&
+        col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
       RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
           *value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
           cdc_datum_message));
@@ -900,7 +1250,15 @@ Status GetChangesForCDCSDK(
   bool snapshot_operation = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  auto leader_safe_time = tablet_ptr->SafeTime();
+  if (!leader_safe_time.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 10)
+        << "Could not compute safe time: " << leader_safe_time.status();
+    leader_safe_time = HybridTime::kInvalid;
+  }
 
+  auto ht_of_last_returned_message = HybridTime::kInvalid;
+  HaveMoreMessages have_more_messages(false);
   // It is snapshot call.
   if (from_op_id.write_id() == -1) {
     snapshot_operation = true;
@@ -929,6 +1287,9 @@ Status GetChangesForCDCSDK(
           data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
       RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
       time = ReadHybridTime::SingleTime(data.log_ht);
+      // Use the last replicated hybrid time as a safe time for snapshot operation. so that
+      // compaction can be restricted during snapshot operation.
+      *leader_safe_time = data.log_ht;
 
       // This should go to cdc_state table.
       // Below condition update the checkpoint in cdc_state table.
@@ -943,21 +1304,32 @@ Status GetChangesForCDCSDK(
       VLOG(1) << "The after snapshot term " << from_op_id.term() << "index  " << from_op_id.index()
               << "key " << from_op_id.key() << "snapshot time " << from_op_id.snapshot_time();
 
-      Schema schema;
-      SchemaVersion schema_version;
-      auto result = client->GetTableSchemaFromSysCatalog(
-          tablet_ptr->metadata()->table_id(), from_op_id.snapshot_time());
-      // Failed to get specific schema version from the system catalog, use the latest
-      // schema version for the key-value decoding.
-      if (!result.ok()) {
-        schema = *tablet_ptr->schema().get();
-        schema_version = tablet_ptr->metadata()->schema_version();
-        LOG(WARNING) << "Failed to get the specific schema version from system catalog for table: "
-                     << tablet_ptr->metadata()->table_name()
-                     << " proceedings with the latest schema version.";
-      } else {
-        schema = result->first;
-        schema_version = result->second;
+      // This is for test purposes only, to create a snapshot failure scenario from the server.
+      if (PREDICT_FALSE(FLAGS_TEST_cdc_snapshot_failure)) {
+        return STATUS_FORMAT(
+            ServiceUnavailable, "CDC snapshot is failed for tablet: $0 ", tablet_id);
+      }
+
+      Schema schema = **cached_schema;
+      SchemaVersion schema_version = *cached_schema_version;
+      if (!(**cached_schema).initialized()) {
+        auto result = client->GetTableSchemaFromSysCatalog(
+            tablet_ptr->metadata()->table_id(), std::numeric_limits<uint64_t>::max());
+        // Failed to get specific schema version from the system catalog, use the latest
+        // schema version for the key-value decoding.
+        if (!result.ok()) {
+          schema = *tablet_ptr->schema().get();
+          schema_version = tablet_ptr->metadata()->schema_version();
+          LOG(WARNING) << "Failed to get the latest schema version from system catalog for table: "
+                       << tablet_ptr->metadata()->table_name()
+                       << ", with tablet: " << tablet_id
+                       << ", and stream: " << stream_id;
+        } else {
+          schema = result->first;
+          schema_version = result->second;
+          *cached_schema = std::make_shared<Schema>(std::move(result->first));
+          *cached_schema_version = result->second;
+        }
       }
       FillDDLInfo(tablet_peer, schema, schema_version, resp);
 
@@ -999,6 +1371,30 @@ Status GetChangesForCDCSDK(
     docdb::ApplyTransactionState stream_state;
     stream_state.key = from_op_id.key();
     stream_state.write_id = from_op_id.write_id();
+    OpId last_seen_op_id;
+    last_seen_op_id.term = from_op_id.term();
+    last_seen_op_id.index = from_op_id.index();
+    consensus::ReadOpsResult read_ops;
+    uint64_t commit_timestamp = 0;
+
+    read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
+        last_seen_op_id, last_readable_opid_index, deadline, true));
+
+    if (read_ops.messages.size() != 1) {
+      LOG(WARNING) << "Reading more or less than one raft log message while reading intents, read "
+                   << read_ops.messages.size() << " instead";
+    }
+
+    if (read_ops.messages.size() > 0 &&
+        read_ops.messages[0]->op_type() == consensus::OperationType::UPDATE_TRANSACTION_OP &&
+        read_ops.messages[0]->transaction_state().has_commit_hybrid_time()) {
+      commit_timestamp = read_ops.messages[0]->transaction_state().commit_hybrid_time();
+    } else {
+      LOG(WARNING) << "Unable to read the transaction commit time for tablet_id: " << tablet_id
+                   << " with stream_id: " << stream_id
+                   << " because there is no RAFT log message read from WAL with from_op_id: "
+                   << OpId::FromPB(from_op_id) << ", which can impact the safe time.";
+    }
 
     RETURN_NOT_OK(reverse_index_key_slice.consume_byte(docdb::KeyEntryTypeAsChar::kTransactionId));
     auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
@@ -1006,7 +1402,7 @@ Status GetChangesForCDCSDK(
     RETURN_NOT_OK(ProcessIntents(
         op_id, transaction_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
         &consumption, &checkpoint, tablet_peer, &keyValueIntents, &stream_state, client,
-        cached_schema, cached_schema_version));
+        cached_schema, cached_schema_version, commit_timestamp));
 
     if (checkpoint.write_id() == 0 && checkpoint.key().empty()) {
       last_streamed_op_id->term = checkpoint.term();
@@ -1034,6 +1430,7 @@ Status GetChangesForCDCSDK(
       if (txn_participant) {
         request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
       }
+      have_more_messages = read_ops.have_more_messages;
 
       Schema current_schema;
       bool pending_intents = false;
@@ -1092,7 +1489,8 @@ Status GetChangesForCDCSDK(
               RETURN_NOT_OK(ProcessIntents(
                   op_id, txn_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
                   &consumption, &checkpoint, tablet_peer, &intents, &new_stream_state, client,
-                  cached_schema, cached_schema_version));
+                  cached_schema, cached_schema_version,
+                  msg->transaction_state().commit_hybrid_time()));
 
               if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
                 pending_intents = true;
@@ -1112,14 +1510,13 @@ Status GetChangesForCDCSDK(
             if (!batch.has_transaction()) {
               RETURN_NOT_OK(PopulateCDCSDKWriteRecord(
                   msg, stream_metadata, tablet_peer, enum_oid_label_map, composite_atts_map, resp,
-                  current_schema));
+                  current_schema, *cached_schema_version));
 
               SetCheckpoint(
                   msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
               checkpoint_updated = true;
             }
-          }
-          break;
+          } break;
 
           case consensus::OperationType::CHANGE_METADATA_OP: {
             RETURN_NOT_OK(SchemaFromPB(
@@ -1160,8 +1557,7 @@ Status GetChangesForCDCSDK(
             SetCheckpoint(
                 msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
             checkpoint_updated = true;
-          }
-          break;
+          } break;
 
           case consensus::OperationType::TRUNCATE_OP: {
             if (FLAGS_stream_truncate_record) {
@@ -1171,8 +1567,7 @@ Status GetChangesForCDCSDK(
                   msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
               checkpoint_updated = true;
             }
-          }
-          break;
+          } break;
 
           case yb::consensus::OperationType::SPLIT_OP: {
             // It is possible that we found records corresponding to SPLIT_OP even when it failed.
@@ -1213,15 +1608,24 @@ Status GetChangesForCDCSDK(
                 split_op_id = op_id;
               }
             }
-          }
-          break;
+          } break;
 
           default:
             // Nothing to do for other operation types.
             break;
         }
 
-        if (pending_intents) break;
+        if (pending_intents) {
+          // Incase of pending intents use the last replicated intents commit time.
+          have_more_messages = HaveMoreMessages(true);
+          ht_of_last_returned_message =
+              HybridTime::FromPB(resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
+                                     .row_message()
+                                     .commit_time());
+          break;
+        } else {
+          ht_of_last_returned_message = HybridTime(msg->hybrid_time());
+        }
       }
       if (read_ops.messages.size() > 0) {
         *msgs_holder = consensus::ReplicateMsgsHolder(
@@ -1249,6 +1653,10 @@ Status GetChangesForCDCSDK(
   if (consumption) {
     consumption.Add(resp->SpaceUsedLong());
   }
+
+  auto safe_time = GetCDCSDKSafeTimeForTarget(
+      leader_safe_time.get(), ht_of_last_returned_message, have_more_messages);
+  resp->set_safe_hybrid_time(safe_time.ToUint64());
 
   checkpoint_updated ? resp->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint)
                      : resp->mutable_cdc_sdk_checkpoint()->CopyFrom(from_op_id);

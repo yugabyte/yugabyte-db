@@ -49,8 +49,9 @@
 
 #include "yb/util/logging.h"
 #include <glog/logging.h>
+#include "yb/util/flags.h"
 
-DEFINE_int32(memstore_arena_size_kb, 64, "Size of each arena allocation for the memstore");
+DEFINE_UNKNOWN_int32(memstore_arena_size_kb, 64, "Size of each arena allocation for the memstore");
 
 namespace rocksdb {
 
@@ -734,12 +735,13 @@ const int ColumnFamilyData::kCompactToBaseLevel = -2;
 std::unique_ptr<Compaction> ColumnFamilyData::CompactRange(
     const MutableCFOptions& mutable_cf_options, int input_level,
     int output_level, uint32_t output_path_id, const InternalKey* begin,
-    const InternalKey* end, InternalKey** compaction_end, bool* conflict) {
+    const InternalKey* end, CompactionReason compaction_reason,
+    InternalKey** compaction_end, bool* conflict) {
   Version* const current_version = current();
   // TODO: do we need to check that current_version is not nullptr?
   auto result = compaction_picker_->CompactRange(
       GetName(), mutable_cf_options, current_version->storage_info(), input_level,
-      output_level, output_path_id, begin, end, compaction_end, conflict);
+      output_level, output_path_id, begin, end, compaction_reason, compaction_end, conflict);
   if (result != nullptr) {
     result->SetInputVersion(current_version);
   }

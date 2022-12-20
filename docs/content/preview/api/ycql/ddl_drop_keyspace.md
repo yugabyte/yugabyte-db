@@ -25,7 +25,7 @@ Use the `DROP KEYSPACE` statement to remove a keyspace from the system.
 
 ### Grammar
 
-```
+```ebnf
 drop_keyspace ::= DROP { KEYSPACE | SCHEMA } [ IF EXISTS ] keyspace_name;
 ```
 

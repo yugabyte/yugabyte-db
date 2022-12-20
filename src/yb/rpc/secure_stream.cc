@@ -33,21 +33,23 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_bool(allow_insecure_connections, true, "Whether we should allow insecure connections.");
-DEFINE_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
-DEFINE_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
-DEFINE_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");
-DEFINE_string(ssl_protocols, "",
+DEFINE_UNKNOWN_bool(allow_insecure_connections, true,
+    "Whether we should allow insecure connections.");
+DEFINE_UNKNOWN_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
+DEFINE_UNKNOWN_bool(verify_client_endpoint, false, "Whether client endpoint should be verified.");
+DEFINE_UNKNOWN_bool(verify_server_endpoint, true, "Whether server endpoint should be verified.");
+DEFINE_UNKNOWN_string(ssl_protocols, "",
               "List of allowed SSL protocols (ssl2, ssl3, tls10, tls11, tls12). "
                   "Empty to allow TLS only.");
 
-DEFINE_string(cipher_list, "",
+DEFINE_UNKNOWN_string(cipher_list, "",
               "Define the list of available ciphers (TLSv1.2 and below).");
 
-DEFINE_string(ciphersuites, "",
+DEFINE_UNKNOWN_string(ciphersuites, "",
               "Define the available TLSv1.3 ciphersuites.");
 
 #define YB_RPC_SSL_TYPE(name) \
@@ -705,7 +707,7 @@ class SecureRefiner : public StreamRefiner {
 };
 
 Status SecureRefiner::Send(OutboundDataPtr data) {
-  boost::container::small_vector<RefCntBuffer, 10> queue;
+  boost::container::small_vector<RefCntSlice, 10> queue;
   data->Serialize(&queue);
   for (const auto& buf : queue) {
     Slice slice(buf.data(), buf.size());

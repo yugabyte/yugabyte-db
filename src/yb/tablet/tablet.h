@@ -58,6 +58,7 @@
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/mvcc.h"
+#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operation_filter.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
@@ -89,8 +90,6 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(Abortable);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
-
-YB_DEFINE_ENUM(FullCompactionReason, (PostSplit)(Scheduled));
 
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
@@ -310,7 +309,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const TransactionIdSet& transactions) override;
 
   Status GetIntents(
-      const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
+      const TransactionId& id,
+      std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
       docdb::ApplyTransactionState* stream_state);
 
   // Apply all of the row operations associated with this transaction.
@@ -362,7 +362,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
-      QLReadRequestResult* result) override;
+      QLReadRequestResult* result,
+      WriteBuffer* rows_data) override;
 
   Status CreatePagingStateForRead(
       const QLReadRequestPB& ql_read_request, const size_t row_count,
@@ -380,8 +381,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
       const SubTransactionMetadataPB& subtransaction_metadata,
-      PgsqlReadRequestResult* result,
-      size_t* num_rows_read) override;
+      PgsqlReadRequestResult* result) override;
 
   Status CreatePagingStateForRead(
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
@@ -421,7 +421,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // key mismatch, or missing IDs)
   Status CreatePreparedChangeMetadata(
       ChangeMetadataOperation* operation,
-      const Schema* schema);
+      const Schema* schema,
+      IsLeaderSide is_leader_side);
 
   // Apply the Schema of the specified operation.
   Status AlterSchema(ChangeMetadataOperation* operation);
@@ -572,7 +573,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void TEST_ForceRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
-  Status ForceFullRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
+      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
   docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
 
@@ -720,7 +722,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Triggers a full compaction on this tablet (e.g. post tablet split, scheduled).
   // It is an error to call this function if it was called previously
   // and that compaction has not yet finished.
-  Status TriggerFullCompactionIfNeeded(FullCompactionReason reason);
+  Status TriggerFullCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   bool HasActiveFullCompaction();
 
@@ -786,6 +788,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // critical failures.
   Status ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config);
 
+  std::string LogPrefix() const;
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -842,8 +846,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Status DoEnableCompactions();
 
-  std::string LogPrefix() const;
-
   std::string LogPrefix(docdb::StorageDbType db_type) const;
 
   Result<bool> IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
@@ -860,7 +862,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Creates a new client::YBMetaDataCache object and atomically assigns it to metadata_cache_.
   void CreateNewYBMetaDataCache();
 
-  void TriggerFullCompactionSync(FullCompactionReason reason);
+  void TriggerFullCompactionSync(rocksdb::CompactionReason reason);
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   Status OpenDbAndCheckIntegrity(const std::string& db_dir);

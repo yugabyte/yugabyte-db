@@ -386,6 +386,33 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return pb.mutable_schema();
   }
 
+  std::string pb_transaction_id() const {
+    if (!pb.has_transaction()) {
+      return {};
+    }
+    return pb.transaction().transaction_id();
+  }
+
+  bool has_ysql_ddl_txn_verifier_state() const {
+    return pb.ysql_ddl_txn_verifier_state_size() > 0;
+  }
+
+  auto ysql_ddl_txn_verifier_state() const {
+    // Currently DDL with savepoints is disabled, so this repeated field can have only 1 element.
+    DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
+    return pb.ysql_ddl_txn_verifier_state(0);
+  }
+
+  bool is_being_deleted_by_ysql_ddl_txn() const {
+    return has_ysql_ddl_txn_verifier_state() &&
+      ysql_ddl_txn_verifier_state().contains_drop_table_op();
+  }
+
+  bool is_being_created_by_ysql_ddl_txn() const {
+    return has_ysql_ddl_txn_verifier_state() &&
+      ysql_ddl_txn_verifier_state().contains_create_table_op();
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };
@@ -404,10 +431,19 @@ struct TabletWithSplitPartitions {
 //
 // The non-persistent information about the table is protected by an internal
 // spin-lock.
+//
+// N.B. The catalog manager stores this object in a TableIndex data structure with multiple indices.
+// Any change to the value of the fields indexed need to be registered with the TableIndex or the
+// indices will break. The proper value for the indexed fields needs to be set before the TableInfo
+// is added to the TableIndex.
+//
+// Currently indexed values:
+//     colocated
 class TableInfo : public RefCountedThreadSafe<TableInfo>,
                   public MetadataCowWrapper<PersistentTableInfo> {
  public:
-  explicit TableInfo(TableId table_id, scoped_refptr<TasksTracker> tasks_tracker = nullptr);
+  explicit TableInfo(
+      TableId table_id, bool colocated, scoped_refptr<TasksTracker> tasks_tracker = nullptr);
 
   const TableName name() const;
 
@@ -431,9 +467,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // True if all the column schemas have pg_type_oid set.
   bool has_pg_type_oid() const;
 
-  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
-  bool colocated() const;
-
   std::string matview_pg_table_id() const;
   // True if the table is a materialized view.
   bool is_matview() const;
@@ -454,6 +487,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   void set_is_system() { is_system_ = true; }
   bool is_system() const { return is_system_; }
+
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables). This is
+  // cached in memory separately from the underlying proto with the expectation it will never
+  // change.
+  bool colocated() const { return colocated_; }
 
   // Return the table type of the table.
   TableType GetTableType() const;
@@ -646,6 +684,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_backfilling_ = false;
 
   std::atomic<bool> is_system_{false};
+
+  const bool colocated_;
 
   // List of pending tasks (e.g. create/alter tablet requests).
   std::unordered_set<std::shared_ptr<server::MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);

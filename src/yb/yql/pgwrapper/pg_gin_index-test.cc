@@ -13,6 +13,7 @@
 #include <string>
 
 #include "yb/client/client.h"
+#include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
@@ -50,23 +51,6 @@ class PgGinIndexTest : public LibPqTestBase {
  protected:
   std::unique_ptr<PGConn> conn_;
 };
-
-namespace {
-
-// A copy of the same function in pg_libpq-test.cc.  Eventually, issue #6868 should provide a way to
-// do this easily for both this file and that.
-Result<string> GetTableIdByTableName(
-    client::YBClient* client, const string& namespace_name, const string& table_name) {
-  const auto tables = VERIFY_RESULT(client->ListTables());
-  for (const auto& t : tables) {
-    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
-      return t.table_id();
-    }
-  }
-  return STATUS(NotFound, "The table does not exist");
-}
-
-} // namespace
 
 // Test creating a ybgin index on an array whose element type is unsupported for primary key.
 TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(UnsupportedArrayElementType)) {
@@ -126,10 +110,7 @@ TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(SplitOption)) {
   {
     auto query = Format("SELECT count(*) FROM $0 where v @@ 'bc'", kTableName);
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-    auto res = ASSERT_RESULT(conn_->Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    ASSERT_EQ(PQnfields(res.get()), 1);
-    auto value = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+    auto value = ASSERT_RESULT(conn_->FetchValue<PGUint64>(query));
     ASSERT_EQ(value, 1);
   }
   {

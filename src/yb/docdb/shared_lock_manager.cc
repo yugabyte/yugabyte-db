@@ -231,9 +231,9 @@ bool LockedBatchEntry::Lock(IntentTypeSet lock_type, CoarseTimePoint deadline) {
           return false;
         }
       } else {
-        // TODO(pessimistic): Hitting this branch with pessimistic locking could cause deadlocks if
+        // TODO(wait-queues): Hitting this branch with wait queues could cause deadlocks if
         // we never reach the wait queue and register the "waiting for" relationship. We should add
-        // a DCHECK that pessimistic locking is not enabled in this branch, or remove the branch.
+        // a DCHECK that wait queues are not enabled in this branch, or remove the branch.
         cond_var.wait(lock);
       }
     }

@@ -51,13 +51,12 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-
-
 
 namespace yb {
 
@@ -1039,6 +1038,9 @@ struct PointerHash {
     return std::hash<const T*>{}(value);
   }
 };
+
+template <class Value>
+using UnorderedStringMap = std::unordered_map<std::string, Value, StringHash, std::equal_to<void>>;
 
 } // namespace yb
 

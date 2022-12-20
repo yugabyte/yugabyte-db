@@ -3,9 +3,13 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -15,6 +19,7 @@ import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.ws.WSClient;
 import play.mvc.Result;
 
 @Api(
@@ -25,6 +30,12 @@ public class TabletServerController extends AuthenticatedController {
   private final ApiHelper apiHelper;
 
   @Inject
+  public TabletServerController(CustomWsClientFactory wsClientFactory, Config config) {
+    WSClient wsClient = wsClientFactory.forCustomConfig(config.getValue(Util.YB_NODE_UI_WS_KEY));
+    this.apiHelper = new ApiHelper(wsClient);
+  }
+
+  @VisibleForTesting
   public TabletServerController(ApiHelper apiHelper) {
     this.apiHelper = apiHelper;
   }

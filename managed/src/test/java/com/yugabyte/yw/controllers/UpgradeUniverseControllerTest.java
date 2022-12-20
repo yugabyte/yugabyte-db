@@ -38,6 +38,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -45,8 +47,6 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.common.CustomWsClientFactory;
-import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -357,6 +357,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Map<String, String> universeConfig = new HashMap<>();
     universeConfig.put(Universe.HELM2_LEGACY, "helm");
     universe.setConfig(universeConfig);
+    universe.save();
 
     String url =
         "/api/customers/"
@@ -451,6 +452,46 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testDeleteGFlagsThroughNonRestartOption() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    Universe universe = createUniverse(customer.getCustomerId());
+    Universe.UniverseUpdater updater =
+        universeObject -> {
+          UniverseDefinitionTaskParams universeDetails = universeObject.getUniverseDetails();
+          UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+          userIntent.masterGFlags = ImmutableMap.of("master-flag", "123");
+          userIntent.tserverGFlags = ImmutableMap.of("tserver-flag", "456");
+          universeObject.setUniverseDetails(universeDetails);
+        };
+    Universe.saveDetails(universe.universeUUID, updater);
+
+    String url =
+        "/api/customers/"
+            + customer.uuid
+            + "/universes/"
+            + universe.universeUUID
+            + "/upgrade/gflags";
+    JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
+    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag2\": \"456\"}]");
+    ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Non-Restart");
+    bodyJson.set("masterGFlags", masterGFlags);
+    bodyJson.set("tserverGFlags", tserverGFlags);
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Cannot delete gFlags through non-restart upgrade option.");
+
+    ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.GFlagsUpgrade), argCaptor.capture());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
   public void testGFlagsUpgradeWithMalformedFlags() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -503,7 +544,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     // Checking params are merged with universe info.
     Universe universe = Universe.getOrBadRequest(universeUUID);
     assertEquals(universe.getUniverseDetails().rootCA, taskParams.rootCA);
-    assertEquals(universe.getUniverseDetails().clientRootCA, taskParams.clientRootCA);
+    assertEquals(universe.getUniverseDetails().getClientRootCA(), taskParams.getClientRootCA());
     assertEquals(universe.getUniverseDetails().clusters.size(), taskParams.clusters.size());
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
@@ -595,6 +636,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Map<String, String> universeConfig = new HashMap<>();
     universeConfig.put(Universe.HELM2_LEGACY, "helm");
     universe.setConfig(universeConfig);
+    universe.save();
 
     String url =
         "/api/customers/"
@@ -671,7 +713,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CertsRotateParams taskParams = argCaptor.getValue();
     assertEquals(bodyJson.get("rootCA").asText(), taskParams.rootCA.toString());
-    assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.clientRootCA.toString());
+    assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.getClientRootCA().toString());
     assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
 
     // Checking params are merged with universe info.
@@ -714,7 +756,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     CertsRotateParams taskParams = argCaptor.getValue();
     assertEquals(bodyJson.get("rootCA").asText(), taskParams.rootCA.toString());
-    assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.clientRootCA.toString());
+    assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.getClientRootCA().toString());
     assertEquals(1200, (int) taskParams.sleepAfterMasterRestartMillis);
     assertEquals(1300, (int) taskParams.sleepAfterTServerRestartMillis);
     assertEquals(UpgradeOption.NON_ROLLING_UPGRADE, taskParams.upgradeOption);
@@ -1115,7 +1157,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                 userIntent.providerType = CloudType.onprem;
               } else {
                 universeDetails.rootCA = rootCA;
-                universeDetails.clientRootCA = clientRootCA;
+                universeDetails.setClientRootCA(clientRootCA);
                 universeDetails.rootAndClientRootCASame = false;
                 userIntent.providerType = CloudType.aws;
               }
@@ -1148,7 +1190,9 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           date,
           TestHelper.TMP_PATH + "/upgrade_universe_controller_test_ca2.crt",
           customCertInfo);
-      return Json.newObject().put("rootCA", rootCA.toString());
+      return Json.newObject()
+          .put("rootCA", rootCA.toString())
+          .put("clientRootCA", rootCA.toString());
     } else {
       createTempFile("upgrade_universe_controller_test_ca.crt", cert1Contents);
       CertificateInfo.create(
@@ -1191,7 +1235,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           userIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
           universeDetails.rootAndClientRootCASame = true;
           universeDetails.rootCA = rootCA;
-          universeDetails.clientRootCA = rootCA;
+          universeDetails.setClientRootCA(rootCA);
           universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
           universe.setUniverseDetails(universeDetails);
         });

@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -24,6 +25,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
@@ -160,6 +162,14 @@ public class NodeAgent extends Model {
     return nodeAgent;
   }
 
+  public static Collection<NodeAgent> list(UUID customerUuid, String nodeAgentIp /* Optional */) {
+    ExpressionList<NodeAgent> expr = finder.query().where().eq("customer_uuid", customerUuid);
+    if (StringUtils.isNotBlank(nodeAgentIp)) {
+      expr = expr.eq("ip", nodeAgentIp);
+    }
+    return expr.findList();
+  }
+
   public static Set<NodeAgent> getNodeAgents(UUID customerUuid) {
     return finder.query().where().eq("customer_uuid", customerUuid).findSet();
   }
@@ -244,17 +254,15 @@ public class NodeAgent extends Model {
         > 0;
   }
 
-  public void purge() {
-    String val = config == null ? null : config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
-    if (StringUtils.isNotBlank(val)) {
-      Path certDirPath = Paths.get(val);
+  public void purge(Path certDir) {
+    if (certDir != null) {
       try {
-        File file = certDirPath.toFile();
+        File file = certDir.toFile();
         if (file.exists()) {
           FileUtils.deleteDirectory(file);
         }
       } catch (Exception e) {
-        log.warn("Error deleting cert directory {}", certDirPath, e);
+        log.warn("Error deleting cert directory {}", certDir, e);
       }
     }
     delete();
@@ -277,5 +285,20 @@ public class NodeAgent extends Model {
     } catch (Exception e) {
       throw new RuntimeException(e.getMessage(), e);
     }
+  }
+
+  @JsonIgnore
+  public Path getCertFilePath(String certName) {
+    String certDirPath = config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    if (StringUtils.isBlank(certDirPath)) {
+      throw new IllegalArgumentException(
+          "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
+    }
+    return Paths.get(certDirPath, certName);
+  }
+
+  @JsonIgnore
+  public Path getCaCertFilePath() {
+    return getCertFilePath(NodeAgent.ROOT_CA_CERT_NAME);
   }
 }

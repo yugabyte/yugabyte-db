@@ -20,7 +20,10 @@
 
 #include "yb/master/master_client.pb.h"
 
+#include "yb/tools/tools_test_utils.h"
 #include "yb/tools/yb-backup-test_base_ent.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 using namespace std::literals;
 
@@ -767,7 +770,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithLearnerTS))
       }
     }
 
-    auto tablets = ASSERT_RESULT(GetTablets("mytbl", "", "yugabyte_new"));
+    auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations("yugabyte_new", "mytbl"));
     for (const master::TabletLocationsPB& loc : tablets) {
       for (const auto& replica : loc.replicas()) {
         if (replica.role() != PeerRole::LEADER && replica.role() != PeerRole::FOLLOWER) {

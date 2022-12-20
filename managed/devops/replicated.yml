@@ -20,6 +20,7 @@ monitors:
 host_requirements:
   disk_space: 50GB
   docker_space: 10GB
+  docker_version: 20.10.0
 custom_requirements:
   - id: check_free_space
     message: Ensure there is sufficient space for platform installation
@@ -192,17 +193,25 @@ components:
           - filename: /home/enable_ldap.sh
             contents: |
               sleep 5;
-              su - postgres bash -c 'sed -i "s/^host/#&/" /var/lib/postgresql/data/yugaware/pg_hba.conf';
+              cat /home/base_pg_hba.conf > /var/lib/postgresql/data/yugaware/pg_hba.conf;
+
               su - postgres bash -c 'echo host all all all ldap ldapserver=\"{{repl ConfigOption "ldap_server"}}\" ldapprefix=\"{{repl ConfigOption "ldap_dn_prefix"}}\" ldapsuffix=\"{{repl ConfigOption "ldap_base_dn"}}\" ldapport={{repl ConfigOption "ldap_port"}} ldaptls={{repl ConfigOption "secure_ldap"}} >> /var/lib/postgresql/data/yugaware/pg_hba.conf';
               psql -U postgres -f /home/reload_pg_hba_conf.sql;
           - filename: /home/setup_auth.sh
             contents: |
               # Disable all the existing auth mechanism for the host
               sleep 5;
-              su - postgres bash -c 'sed -i "s/^host/#&/" /var/lib/postgresql/data/yugaware/pg_hba.conf';
+              cat /home/base_pg_hba.conf > /var/lib/postgresql/data/yugaware/pg_hba.conf;
+
+              # Enabling sha hash password based auth.
               su - postgres bash -c 'echo host all all all scram-sha-256 >> /var/lib/postgresql/data/yugaware/pg_hba.conf';
               psql -U postgres -f /home/update_password.sql;
               psql -U postgres -f /home/reload_pg_hba_conf.sql;
+          - filename: /home/base_pg_hba.conf
+            contents: |
+              local   all             all                                     trust
+              host    all             all             127.0.0.1/32            trust
+              host    all             all             ::1/128                 trust
           - filename: /home/startup.sh
             contents: |
                 {{repl if ConfigOptionNotEquals "dbuser" "postgres"}} sh /home/create_user_if_missing.sh {{repl end}}
@@ -359,6 +368,8 @@ components:
                       replacement: "$1"
 
                 - job_name: "yugabyte"
+                  tls_config:
+                    insecure_skip_verify: true
                   metrics_path: "/prometheus-metrics"
                   file_sd_configs:
                     - files:
@@ -404,8 +415,6 @@ components:
             container_path: /opt/yugabyte/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/ybc/releases'
             container_path: /opt/yugabyte/ybc/releases
-          - host_path: '{{repl ConfigOption "storage_path"}}/node-agent/releases'
-            container_path: /opt/yugabyte/node-agent/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'

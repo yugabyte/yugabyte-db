@@ -63,11 +63,13 @@ interface RestoreModalProps {
   backup_details: IBackup;
   onHide: Function;
   visible: boolean;
+  isRestoreEntireBackup?: boolean;
 }
 
 const TEXT_RESTORE = 'Restore';
 const TEXT_RENAME_DATABASE = 'Next: Rename Databases/Keyspaces';
-
+const RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG =
+  'Cannot restore ybc backup to non-ybc universe';
 const STEPS = [
   {
     title: 'Restore Backup',
@@ -94,7 +96,12 @@ const isYBCEnabledInUniverse = (universeList: IUniverse[], currentUniverseUUID: 
   return isYbcEnabledUniverse(universe?.universeDetails);
 };
 
-export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHide, visible }) => {
+export const BackupRestoreModal: FC<RestoreModalProps> = ({
+  backup_details,
+  onHide,
+  visible,
+  isRestoreEntireBackup = false
+}) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isFetchingTables, setIsFetchingTables] = useState(false);
   const { data: incrementalBackups, isLoading: isIncBackupLoading, isError } = useQuery(
@@ -122,17 +129,30 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
 
   const restore = useMutation(
     ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) => {
-      if (isYBCEnabledInUniverse(universeList!, values['targetUniverseUUID'].value)) {
+      const isYBCEnabledinTargetUniverse = isYBCEnabledInUniverse(
+        universeList!,
+        values['targetUniverseUUID'].value
+      );
+      if (backup_details.category === 'YB_CONTROLLER' && !isYBCEnabledinTargetUniverse) {
+        toast.error(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
+        return Promise.reject(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
+      }
+
+      if (isYBCEnabledinTargetUniverse && backup_details.category === 'YB_CONTROLLER') {
         values = omit(values, 'parallelThreads');
       }
-      if (backup_details?.hasIncrementalBackups && incrementalBackups && !isError) {
+      if (
+        isRestoreEntireBackup &&
+        backup_details?.hasIncrementalBackups &&
+        incrementalBackups &&
+        !isError
+      ) {
         //Backend is already sending reponse in sorted order
         const recentBackup = incrementalBackups.data.filter(
           (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
         )[0];
         return restoreEntireBackup({ ...backup_details, commonBackupInfo: recentBackup }, values);
-      }
-      return restoreEntireBackup(backup_details, values);
+      } else return restoreEntireBackup(backup_details, values);
     },
     {
       onSuccess: (resp) => {
@@ -387,12 +407,17 @@ function RestoreChooseUniverseForm({
   }
 
   let isYbcEnabledinCurrentUniverse = false;
+  let showParallelThread = true;
 
   if (isDefinedNotNull(values['targetUniverseUUID']?.value)) {
     isYbcEnabledinCurrentUniverse = isYBCEnabledInUniverse(
       universeList,
       values['targetUniverseUUID']?.value
     );
+  }
+
+  if (isYbcEnabledinCurrentUniverse && backup_details.category === 'YB_CONTROLLER') {
+    showParallelThread = false;
   }
 
   return (
@@ -414,6 +439,14 @@ function RestoreChooseUniverseForm({
           <h5>Restore to</h5>
         </Col>
       </Row>
+      {backup_details.category === 'YB_CONTROLLER' &&
+        isDefinedNotNull(values['targetUniverseUUID']?.value) &&
+        !isYbcEnabledinCurrentUniverse && (
+          <div>
+            <Alert bsStyle="danger">{RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG}</Alert>
+          </div>
+        )}
+
       <Row>
         <Col lg={8} className="no-padding">
           <Field
@@ -523,7 +556,7 @@ function RestoreChooseUniverseForm({
           </Col>
         </Row>
       )}
-      {!isYbcEnabledinCurrentUniverse && (
+      {showParallelThread && (
         <Row>
           <Col lg={8} className="no-padding">
             <Field
@@ -580,6 +613,7 @@ export function RenameKeyspace({
               values['searchText'] &&
               keyspace.keyspace &&
               keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
+                // eslint-disable-next-line react/jsx-indent
                 <Row key={index}>
                   <Col lg={6} className="keyspaces-input no-padding">
                     <Field

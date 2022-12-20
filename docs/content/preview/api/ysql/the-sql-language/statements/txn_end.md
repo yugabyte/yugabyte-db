@@ -48,6 +48,7 @@ Use the `END` statement to commit the current transaction. All changes made by t
 
 ```
 END [ TRANSACTION | WORK ]
+```
 
 ### WORK
 

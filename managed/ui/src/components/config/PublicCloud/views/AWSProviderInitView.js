@@ -175,24 +175,24 @@ class renderRegions extends Component {
       </option>,
       ...(this.state.editRegionIndex === undefined
         ? //if add new flow - remove already added regions from region select picker
-          _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
-            <option key={index + 1} value={region.destVpcRegion}>
-              {region.destVpcRegion}
-            </option>
-          ))
+        _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
+          <option key={index + 1} value={region.destVpcRegion}>
+            {region.destVpcRegion}
+          </option>
+        ))
         : //if edit flow - remove already added regions from region select picker except one to edit and mark it selected
-          _.differenceBy(
-            regionsData,
-            _.filter(
-              formRegions,
-              (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion
-            ),
-            'destVpcRegion'
-          ).map((region, index) => (
-            <option key={index + 1} value={region.destVpcRegion}>
-              {region.destVpcRegion}
-            </option>
-          )))
+        _.differenceBy(
+          regionsData,
+          _.filter(
+            formRegions,
+            (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion
+          ),
+          'destVpcRegion'
+        ).map((region, index) => (
+          <option key={index + 1} value={region.destVpcRegion}>
+            {region.destVpcRegion}
+          </option>
+        )))
     ];
 
     //depending on selected region fetch zones matching this region
@@ -555,7 +555,6 @@ class AWSProviderInitView extends Component {
           regionFormVals['sshPrivateKeyContent'] = reader.result;
         };
       }
-      regionFormVals['overrideKeyValidate'] = formValues.overrideKeyValidate;
       return this.props.createAWSProvider(
         formValues.accountName,
         awsProviderConfig,
@@ -780,7 +779,6 @@ class AWSProviderInitView extends Component {
       <Fragment>
         {nameRow}
         {pemContentRow}
-        {this.rowOverrideKeyValidateToggle()}
       </Fragment>
     );
   }
@@ -847,24 +845,8 @@ class AWSProviderInitView extends Component {
           <div>{<NTPConfig onChange={change}/>}</div>
         </Col>
       </Row>
-    )
+    );
 
-  }
-
-  rowOverrideKeyValidateToggle() {
-    const label = 'Override Custom KeyPair Validation'
-    const tooltipContent =
-      'Would you like YugaWare to NOT validate KeyPair with AWS?';
-    return this.generateRow(
-      label,
-      <Field
-        name="overrideKeyValidate"
-        component={YBToggle}
-        defaultChecked={false}
-        infoTitle={label}
-        infoContent={tooltipContent}
-      />
-    )
   }
 
   render() {
@@ -1016,7 +998,7 @@ function validate(values) {
     errors.hostedZoneId = 'Route53 Zone ID is required';
   }
   if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
-    errors.ntpServers = 'NTP servers cannot be empty'
+    errors.ntpServers = 'NTP servers cannot be empty';
   }
   return errors;
 }

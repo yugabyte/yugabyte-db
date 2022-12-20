@@ -148,6 +148,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Time unit for backup expiry time")
   public TimeUnit expiryTimeUnit = TimeUnit.DAYS;
 
+  // For each list item
+  public long timeTakenPartial = 0L;
+
   @JsonIgnore
   public BackupTableParams(BackupRequestParams backupRequestParams) {
     this.customerUuid = backupRequestParams.customerUUID;
@@ -164,9 +167,11 @@ public class BackupTableParams extends TableManagerParams {
     this.isFullBackup = CollectionUtils.isEmpty(backupRequestParams.keyspaceTableList);
     this.scheduleUUID = backupRequestParams.scheduleUUID;
     this.disableChecksum = backupRequestParams.disableChecksum;
+    this.disableMultipart = backupRequestParams.disableMultipart;
     this.useTablespaces = backupRequestParams.useTablespaces;
     this.disableParallelism = backupRequestParams.disableParallelism;
     this.baseBackupUUID = backupRequestParams.baseBackupUUID;
+    this.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
   }
 
   @JsonIgnore
@@ -177,6 +182,35 @@ public class BackupTableParams extends TableManagerParams {
     this.tableUUIDList = new ArrayList<>();
     this.setTableName(null);
     this.tableUUID = null;
+  }
+
+  @JsonIgnore
+  public BackupTableParams(BackupTableParams tableParams) {
+    this.customerUuid = tableParams.customerUuid;
+    this.backupUuid = tableParams.backupUuid;
+    this.ignoreErrors = true;
+    this.storageConfigUUID = tableParams.storageConfigUUID;
+    this.storageLocation = tableParams.storageLocation;
+    this.storageConfigType = tableParams.storageConfigType;
+    this.universeUUID = tableParams.universeUUID;
+    this.sse = tableParams.sse;
+    this.parallelism = tableParams.parallelism;
+    this.timeBeforeDelete = tableParams.timeBeforeDelete;
+    this.expiryTimeUnit = tableParams.expiryTimeUnit;
+    this.backupType = tableParams.backupType;
+    this.isFullBackup = tableParams.isFullBackup;
+    this.scheduleUUID = tableParams.scheduleUUID;
+    this.disableChecksum = tableParams.disableChecksum;
+    this.useTablespaces = tableParams.useTablespaces;
+    this.disableParallelism = tableParams.disableParallelism;
+    this.enableVerboseLogs = tableParams.enableVerboseLogs;
+    this.disableMultipart = tableParams.disableMultipart;
+    this.baseBackupUUID = tableParams.baseBackupUUID;
+    this.setKeyspace(tableParams.getKeyspace());
+    this.tableNameList = new ArrayList<>(tableParams.tableNameList);
+    this.tableUUIDList = new ArrayList<>(tableParams.tableUUIDList);
+    this.setTableName(tableParams.getTableName());
+    this.tableUUID = tableParams.tableUUID;
   }
 
   @JsonIgnore

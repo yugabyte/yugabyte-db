@@ -121,7 +121,7 @@ void BufferAllocator::LogAllocation(size_t requested,
 // TODO(onufry) - test whether the code still tests OK if we set this to true,
 // or remove this code and add a test that Google allocator does not change it's
 // contract - 16-aligned in -c opt and %16 == 8 in debug.
-DEFINE_bool(allocator_aligned_mode, false,
+DEFINE_UNKNOWN_bool(allocator_aligned_mode, false,
             "Use 16-byte alignment instead of 8-byte, "
             "unless explicitly specified otherwise - to boost SIMD");
 TAG_FLAG(allocator_aligned_mode, hidden);

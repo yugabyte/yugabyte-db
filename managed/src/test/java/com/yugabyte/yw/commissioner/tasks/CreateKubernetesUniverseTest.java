@@ -102,6 +102,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters /* setMasters */));
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
 
     nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.code);
     nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.code);
@@ -122,8 +123,12 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       config2.put("KUBENAMESPACE", ns2);
 
       az1.updateConfig(config1);
+      az1.save();
       az2.updateConfig(config2);
+      az2.save();
       az3.updateConfig(config3);
+      az3.save();
+
     } else {
       config.put("KUBECONFIG", "test");
       defaultProvider.setConfig(config);
@@ -217,6 +222,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
 
     ns = NODE_PREFIX;
     if (setNamespace) {
@@ -224,6 +230,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       config.put("KUBECONFIG", "test-kc");
       config.put("KUBENAMESPACE", ns);
       az.updateConfig(config);
+      az.save();
     } else {
       config.put("KUBECONFIG", "test");
       defaultProvider.setConfig(config);
@@ -590,8 +597,11 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     Map<String, String> azConfig =
         ImmutableMap.of("KUBE_POD_ADDRESS_TEMPLATE", "{pod_name}.{namespace}.svc.{cluster_domain}");
     az1.updateConfig(azConfig);
+    az1.save();
     az2.updateConfig(azConfig);
+    az2.save();
     az3.updateConfig(azConfig);
+    az3.save();
 
     setupCommon();
 

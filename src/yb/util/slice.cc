@@ -30,11 +30,13 @@
 // under the License.
 //
 #include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(non_graph_characters_percentage_to_use_hexadecimal_rendering, 10,
+DEFINE_UNKNOWN_int32(non_graph_characters_percentage_to_use_hexadecimal_rendering, 10,
              "Non graph charaters percentage to use hexadecimal rendering");
 
 namespace yb {
@@ -183,36 +185,20 @@ char Slice::consume_byte() {
   return *begin_++;
 }
 
-std::string SliceParts::ToDebugHexString() const {
-  std::string result;
-  for (int i = 0; i != num_parts; ++i) {
-    result += parts[i].ToDebugHexString();
-  }
-  return result;
+void Slice::AppendTo(std::string* out) const {
+  out->append(cdata(), size());
 }
 
-size_t SliceParts::SumSizes() const {
-  size_t result = 0;
-  for (int i = 0; i != num_parts; ++i) {
-    result += parts[i].size();
-  }
-  return result;
+void Slice::AssignTo(std::string* out) const {
+  out->assign(cdata(), size());
 }
 
-char* SliceParts::CopyAllTo(char* out) const {
-  for (int i = 0; i != num_parts; ++i) {
-    if (!parts[i].size()) {
-      continue;
-    }
-    memcpy(out, parts[i].data(), parts[i].size());
-    out += parts[i].size();
-  }
-  return out;
+void Slice::AppendTo(faststring* out) const {
+  out->append(cdata(), size());
 }
 
-Slice SliceParts::TheOnlyPart() const {
-  CHECK_EQ(num_parts, 1);
-  return parts[0];
+bool Slice::Contains(const Slice& rhs) const {
+  return std::string_view(*this).find(rhs) != std::string::npos;
 }
 
 }  // namespace yb

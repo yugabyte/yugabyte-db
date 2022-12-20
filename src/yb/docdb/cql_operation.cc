@@ -46,6 +46,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
@@ -55,21 +56,21 @@
 DEFINE_test_flag(bool, pause_write_apply_after_if, false,
                  "Pause application of QLWriteOperation after evaluating if condition.");
 
-DEFINE_bool(ycql_consistent_transactional_paging, false,
+DEFINE_UNKNOWN_bool(ycql_consistent_transactional_paging, false,
             "Whether to enforce consistency of data returned for second page and beyond for YCQL "
             "queries on transactional tables. If true, read restart errors could be returned to "
             "prevent inconsistency. If false, no read restart errors are returned but the data may "
             "be stale. The latter is preferable for long scans. The data returned for the first "
             "page of results is never stale regardless of this flag.");
 
-DEFINE_bool(ycql_disable_index_updating_optimization, false,
+DEFINE_UNKNOWN_bool(ycql_disable_index_updating_optimization, false,
             "If true all secondary indexes must be updated even if the update does not change "
             "the index data.");
 TAG_FLAG(ycql_disable_index_updating_optimization, advanced);
 
-DEFINE_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
+DEFINE_UNKNOWN_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
 
-DEFINE_uint64(
+DEFINE_UNKNOWN_uint64(
     ycql_packed_row_size_limit, 0,
     "Packed row size limit for YCQL in bytes. 0 to make this equal to SSTable block size.");
 
@@ -1314,6 +1315,13 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         }
       }
 
+      // The index PK cannot be calculated if the table row has already been deleted.
+      if (existing_row.IsEmpty()) {
+        VLOG(3) << "Skip index entry delete of existing row for index_id=" << index->table_id() <<
+          " since existing row is not available";
+        continue;
+      }
+
       QLWriteRequestPB* const index_request =
           NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
       VLOG(3) << "Issue index entry delete of existing row for index_id=" << index->table_id() <<
@@ -1520,6 +1528,10 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 const Schema& projection,
                                 QLResultSet* resultset,
                                 HybridTime* restart_read_ht) {
+  auto se = ScopeExit([resultset] {
+    resultset->Complete();
+  });
+
   const auto& schema = doc_read_context.schema;
   SimulateTimeoutIfTesting(&deadline);
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
@@ -1722,8 +1734,9 @@ Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB*
     pair->dup_key(doc_key.Encode().AsSlice());
   }
   pair->dup_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
-  // Wait policies make sense only for YSQL to support different modes like waiting, erroring out
-  // or skipping on intent conflict. YCQL behaviour matches WAIT_ERROR (see proto for details).
+  // Wait policies make sense only for YSQL to support different modes like waiting, skipping, or
+  // failing on detecting intent conflicts. YCQL behaviour matches Fail-on-Conflict always (see
+  // proto for details).
   out->set_wait_policy(WAIT_ERROR);
   return Status::OK();
 }
@@ -1778,14 +1791,14 @@ Status QLReadOperation::AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
     RETURN_NOT_OK(spec->Match(row, &match));
     if (match) {
       if (*num_rows_skipped >= offset) {
-        (*match_count)++;
+        ++*match_count;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
           RETURN_NOT_OK(PopulateResultSet(spec, row, resultset));
         }
       } else {
-        (*num_rows_skipped)++;
+        ++*num_rows_skipped;
       }
     }
   }

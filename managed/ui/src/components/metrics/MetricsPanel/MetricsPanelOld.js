@@ -187,7 +187,7 @@ export default class MetricsPanelOld extends Component {
       </Tooltip>
     );
     const getMetricsUrl = (internalUrl) => {
-      var url = new URL(internalUrl);
+      const url = new URL(internalUrl);
       url.hostname = window.location.hostname;
       return url.href;
     };

@@ -20,10 +20,11 @@
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+#include "yb/util/flags.h"
 
 using std::string;
 
-DEFINE_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
+DEFINE_UNKNOWN_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
 
 namespace yb {
 namespace tools {

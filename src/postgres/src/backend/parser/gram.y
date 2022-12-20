@@ -156,12 +156,16 @@ typedef struct ImportQual
 #define parser_ybc_beta_feature(pos, feature, has_own_flag) \
 	check_beta_feature(pos, yyscanner, has_own_flag ? "FLAGS_ysql_beta_feature_" feature : NULL, feature)
 
+#define parser_ybc_deprecated_feature_warning(pos, feature) \
+	ybc_deprecated_feature_warning(pos, yyscanner, feature)
+
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
 static void ybc_not_support_signal(int pos, core_yyscan_t yyscanner, const char *msg, int issue, int signal_level);
 static void ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue);
 static void ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg);
 static void check_beta_feature(int pos, core_yyscan_t yyscanner, const char* flag, const char* feature);
+static void ybc_deprecated_feature_warning(int pos, core_yyscan_t yyscanner, const char *feature);
 
 static RawStmt *makeRawStmt(Node *stmt, int stmt_location);
 static void updateRawStmtEnd(RawStmt *rs, int end_location);
@@ -308,7 +312,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		CreateMatViewStmt RefreshMatViewStmt CreateAmStmt
 		CreatePublicationStmt AlterPublicationStmt
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
-		BackfillIndexStmt
+		BackfillIndexStmt YbCreateProfileStmt YbDropProfileStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
@@ -654,7 +658,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  */
 
 /* ordinary key words in alphabetical order */
-%token <keyword> ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER
+%token <keyword> ABORT_P ABSOLUTE_P ACCESS ACCOUNT ACTION ADD_P ADMIN AFTER
 	AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
 	ASSERTION ASSIGNMENT ASYMMETRIC AT ATTACH ATTRIBUTE AUTHORIZATION
 
@@ -663,7 +667,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
-	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLUMN COLUMNS COMMENT COMMENTS COMMIT
+	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLOCATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
 	CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE
 	CROSS CSV CUBE CURRENT_P
@@ -679,8 +683,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN
 	EXTENSION EXTERNAL EXTRACT
 
-	FALSE_P FAMILY FETCH FILTER FIRST_P FLOAT_P FOLLOWING FOR
-	FORCE FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
+	FAILED_LOGIN_ATTEMPTS FALSE_P FAMILY FETCH FILTER FIRST_P FLOAT_P FOLLOWING
+	FOR FORCE FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
 	GENERATED GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING GROUPS
 
@@ -702,7 +706,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	MAPPING MATCH MATERIALIZED MAXVALUE METHOD MINUTE_P MINVALUE MODE MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NONCONCURRENTLY NONE
-	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
+	NOPROFILE NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMERIC
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OPTIONS OR
@@ -711,7 +715,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	PARALLEL PARSER PARTIAL PARTITION PASSING PASSWORD PLACING PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
-	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
+	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROFILE PROGRAM PUBLICATION
 
 	QUOTE
 
@@ -731,8 +735,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	TREAT TRIGGER TRIM TRUE_P
 	TRUNCATE TRUSTED TYPE_P TYPES_P
 
-	UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNLOGGED
-	UNTIL UPDATE USER USING
+	UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNLOCK
+	UNLOGGED UNTIL UPDATE USER USING
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARYING
 	VERBOSE VERSION_P VIEW VIEWS VOLATILE
@@ -966,6 +970,8 @@ stmt :
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+			| YbCreateProfileStmt
+			| YbDropProfileStmt
 
 			/* BETA features */
 			/* TODO(#10263): Fix individual beta flag feature bools */
@@ -981,7 +987,6 @@ stmt :
 			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
 			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
@@ -1016,6 +1021,9 @@ stmt :
 			| ReindexStmt
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
+
+			/* Deprecated statements */
+			| CreateTableGroupStmt
 		;
 
 /*****************************************************************************
@@ -1118,6 +1126,30 @@ AlterOptRoleElem:
 				{
 					$$ = makeDefElem("rolemembers", (Node *)$2, @1);
 				}
+			| PROFILE name
+				{
+					if (!*YBCGetGFlags()->ysql_enable_profile)
+						parser_ybc_not_support(@1, "PROFILE");
+					$$ = makeDefElem("profile", (Node *)makeString($2), @1);
+				}
+			| NOPROFILE
+				{
+					if (!*YBCGetGFlags()->ysql_enable_profile)
+						parser_ybc_not_support(@1, "PROFILE");
+					$$ = makeDefElem("noprofile", (Node *)makeInteger(false), @1);
+				}
+			| ACCOUNT LOCK_P
+				{
+					if (!*YBCGetGFlags()->ysql_enable_profile)
+						parser_ybc_not_support(@1, "PROFILE");
+					$$ = makeDefElem("unlocked", (Node *)makeInteger(false), @1);
+				}
+			| ACCOUNT UNLOCK
+				{
+					if (!*YBCGetGFlags()->ysql_enable_profile)
+						parser_ybc_not_support(@1, "PROFILE");
+					$$ = makeDefElem("unlocked", (Node *)makeInteger(true), @1);
+				}
 			| IDENT
 				{
 					/*
@@ -1145,6 +1177,10 @@ AlterOptRoleElem:
 						$$ = makeDefElem("canlogin", (Node *)makeInteger(true), @1);
 					else if (strcmp($1, "nologin") == 0)
 						$$ = makeDefElem("canlogin", (Node *)makeInteger(false), @1);
+					else if (strcmp($1, "lock") == 0)
+						$$ = makeDefElem("islocked", (Node *)makeInteger(true), @1);
+					else if (strcmp($1, "open") == 0)
+						$$ = makeDefElem("islocked", (Node *)makeInteger(false), @1);
 					else if (strcmp($1, "bypassrls") == 0)
 						$$ = makeDefElem("bypassrls", (Node *)makeInteger(true), @1);
 					else if (strcmp($1, "nobypassrls") == 0)
@@ -4745,6 +4781,7 @@ CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions O
 					n->owner = $4;
 					n->options = $5;
 					n->tablespacename = $6;
+					n->implicit = false;
 					$$ = (Node *) n;
 				}
 		;
@@ -4805,6 +4842,75 @@ DropTableSpaceStmt: DROP TABLESPACE name
 				{
 					DropTableSpaceStmt *n = makeNode(DropTableSpaceStmt);
 					n->tablespacename = $5;
+					n->missing_ok = true;
+					$$ = (Node *) n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *             CREATE PROFILE name LIMIT FAILED_LOGIN_ATTEMPTS <number>
+ *
+ *****************************************************************************/
+
+YbCreateProfileStmt: CREATE PROFILE name LIMIT FAILED_LOGIN_ATTEMPTS Iconst
+				{
+					if (!*YBCGetGFlags()->ysql_enable_profile)
+						parser_ybc_not_support(@1, "PROFILE");
+					YbCreateProfileStmt *n = makeNode(YbCreateProfileStmt);
+
+					n->prfname = $3;
+					if (strcmp(n->prfname, "default") == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_RESERVED_NAME),
+								 errmsg("profile name \"%s\" is reserved",
+										"default"),
+								 parser_errposition(@3)));
+
+					n->prffailedloginattempts = makeInteger($6);
+					$$ = (Node *) n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *             DROP PROFILE [IF EXISTS] name
+ *
+ *****************************************************************************/
+
+YbDropProfileStmt: DROP PROFILE name
+				{
+					if (!*YBCGetGFlags()->ysql_enable_profile)
+						parser_ybc_not_support(@1, "PROFILE");
+					YbDropProfileStmt *n = makeNode(YbDropProfileStmt);
+
+					n->prfname = $3;
+					if (strcmp(n->prfname, "default") == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_RESERVED_NAME),
+								 errmsg("profile name \"%s\" is reserved",
+										"default"),
+								 parser_errposition(@3)));
+
+					n->missing_ok = false;
+					$$ = (Node *) n;
+				}
+			|  DROP PROFILE IF_P EXISTS name
+				{
+					if (!*YBCGetGFlags()->ysql_enable_profile)
+						parser_ybc_not_support(@1, "PROFILE");
+					YbDropProfileStmt *n = makeNode(YbDropProfileStmt);
+
+					n->prfname = $5;
+					if (strcmp(n->prfname, "default") == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_RESERVED_NAME),
+								 errmsg("profile name \"%s\" is reserved",
+										"default"),
+								 parser_errposition(@3)));
+
 					n->missing_ok = true;
 					$$ = (Node *) n;
 				}
@@ -10991,8 +11097,14 @@ createdb_opt_name:
 			| TEMPLATE						{ $$ = pstrdup($1); }
 			| COLOCATED
 				{
+					ereport(WARNING,
+    						(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+							 errmsg("'colocated' syntax will be deprecated in a future release"),
+							 errhint("Use 'colocation' instead of 'colocated'."),
+							 parser_errposition(@1)));
 					$$ = pstrdup($1);
 				}
+			| COLOCATION				    { $$ = pstrdup($1); }
 		;
 
 /*
@@ -15941,6 +16053,7 @@ unreserved_keyword:
 			  ABORT_P
 			| ABSOLUTE_P
 			| ACCESS
+			| ACCOUNT
 			| ACTION
 			| ADD_P
 			| ADMIN
@@ -15972,6 +16085,7 @@ unreserved_keyword:
 			| CLOSE
 			| CLUSTER
 			| COLOCATED
+			| COLOCATION
 			| COLUMNS
 			| COMMENT
 			| COMMENTS
@@ -16025,6 +16139,7 @@ unreserved_keyword:
 			| EXPLAIN
 			| EXTENSION
 			| EXTERNAL
+			| FAILED_LOGIN_ATTEMPTS
 			| FAMILY
 			| FILTER
 			| FIRST_P
@@ -16091,6 +16206,7 @@ unreserved_keyword:
 			| NEW
 			| NEXT
 			| NO
+			| NOPROFILE
 			| NOTHING
 			| NOTIFY
 			| NOWAIT
@@ -16126,6 +16242,7 @@ unreserved_keyword:
 			| PROCEDURAL
 			| PROCEDURE
 			| PROCEDURES
+			| PROFILE
 			| PROGRAM
 			| PUBLICATION
 			| QUOTE
@@ -16212,6 +16329,7 @@ unreserved_keyword:
 			| UNENCRYPTED
 			| UNKNOWN
 			| UNLISTEN
+			| UNLOCK
 			| UNLOGGED
 			| UNTIL
 			| UPDATE
@@ -17376,5 +17494,18 @@ check_beta_feature(int pos, core_yyscan_t yyscanner, const char *flag, const cha
 					         (flag + 6), general_hint) :
 					 errhint("%s", general_hint),
 				 parser_errposition(pos)));
+		if (strcmp(feature, "tablegroup") == 0)
+		{
+			ybc_deprecated_feature_warning(pos, yyscanner, feature);
+		}
 	}
+}
+
+static void
+ybc_deprecated_feature_warning(int pos, core_yyscan_t yyscanner, const char *feature)
+{
+	ereport(WARNING,
+		(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+		 errmsg("'%s' feature will be deprecated in a future release", feature),
+		 parser_errposition(pos)));
 }

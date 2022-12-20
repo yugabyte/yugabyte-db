@@ -39,8 +39,7 @@ type: docs
     </a>
   </li>
 </ul>
-
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
+<br>Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
 
 ## Configure HashiCorp Vault
 
@@ -73,7 +72,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   max_lease_ttl = "8760h"
   ```
 
-  <br>Replace `127.0.0.1` with the vault web address.
+  Replace `127.0.0.1` with the vault web address.
 
   For additional configuration options, see [Parameters](https://www.vaultproject.io/docs/configuration#parameters).
 

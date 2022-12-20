@@ -84,18 +84,19 @@
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(wait_if_no_leader_master, false,
+DEFINE_UNKNOWN_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
             "this flag determines if yb-admin should wait for the entire duration of timeout or"
             "in case a leader master appears in that duration or return error immediately.");
 
-DEFINE_string(certs_dir_name, "",
+DEFINE_UNKNOWN_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
-DEFINE_string(client_node_name, "", "Client node name.");
+DEFINE_UNKNOWN_string(client_node_name, "", "Client node name.");
 
-DEFINE_bool(
+DEFINE_UNKNOWN_bool(
     disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");

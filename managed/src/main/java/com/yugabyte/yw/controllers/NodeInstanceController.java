@@ -320,17 +320,21 @@ public class NodeInstanceController extends AuthenticatedController {
 
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
     NodeTaskParams taskParams = new NodeTaskParams();
+
     if (nodeAction == NodeActionType.REBOOT || nodeAction == HARD_REBOOT) {
-      RebootNodeInUniverse.Params params = new RebootNodeInUniverse.Params();
+      RebootNodeInUniverse.Params params =
+          UniverseControllerRequestBinder.deepCopy(
+              universe.getUniverseDetails(), RebootNodeInUniverse.Params.class);
       params.isHardReboot = nodeAction == HARD_REBOOT;
       taskParams = params;
+    } else {
+      taskParams =
+          UniverseControllerRequestBinder.deepCopy(
+              universe.getUniverseDetails(), NodeTaskParams.class);
     }
+
     taskParams.nodeName = nodeName;
     taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());
-    taskParams =
-        UniverseControllerRequestBinder.mergeWithUniverse(
-            taskParams, universe, NodeTaskParams.class);
-    taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
@@ -343,7 +347,6 @@ public class NodeInstanceController extends AuthenticatedController {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }
-    taskParams.clusters = universe.getUniverseDetails().clusters;
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
         || nodeAction == NodeActionType.START_MASTER

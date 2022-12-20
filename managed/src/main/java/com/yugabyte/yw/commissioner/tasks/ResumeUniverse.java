@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -80,7 +79,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
         } else if (rootCert.certType == CertConfigType.SelfSigned) {
           SubTaskGroupType certRotate = RotatingCert;
           taskParams().rootCA = universeDetails.rootCA;
-          taskParams().clientRootCA = universeDetails.clientRootCA;
+          taskParams().setClientRootCA(universeDetails.getClientRootCA());
           createCertUpdateTasks(
               masterNodeList,
               tserverNodeList,

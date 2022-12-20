@@ -50,6 +50,7 @@
 #include "yb/rocksdb/db/write_thread.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/transaction_log.h"
@@ -319,6 +320,7 @@ class DBImpl : public DB {
                              int output_level, uint32_t output_path_id,
                              const Slice* begin, const Slice* end,
                              bool exclusive,
+                             CompactionReason compaction_reason,
                              bool disallow_trivial_move = false);
 
   // Return an internal iterator over the current state of the database.

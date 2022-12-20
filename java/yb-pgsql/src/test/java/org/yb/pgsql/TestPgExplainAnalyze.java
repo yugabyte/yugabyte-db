@@ -12,45 +12,34 @@
 //
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.assertTrue;
-import java.sql.Statement;
-import java.util.List;
-import java.util.Map;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_VALUES_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_NESTED_LOOP;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_MODIFY_TABLE;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_FUNCTION_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
+import java.sql.Statement;
+import java.util.Map;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 import org.yb.util.json.Checker;
-import org.yb.util.json.ObjectCheckerBuilder;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 import org.yb.util.json.ObjectChecker;
-import org.yb.util.json.ValueChecker;
+import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
+import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 
-/**
- * Test EXPLAIN ANALYZE command. Just verify non-zero values for volatile measures
- * such as RPC wait times.
- */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgExplainAnalyze extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgExplainAnalyze.class);
   private static final String TABLE_NAME = "explain_test_table";
   private static final String INDEX_NAME = String.format("i_%s_c3_c2", TABLE_NAME);
   private static final String PK_INDEX_NAME = String.format("%s_pkey", TABLE_NAME);
-  private static final String NODE_SEQ_SCAN = "Seq Scan";
-  private static final String NODE_INDEX_SCAN = "Index Scan";
-  private static final String NODE_INDEX_ONLY_SCAN = "Index Only Scan";
-  private static final String NODE_VALUES_SCAN = "Values Scan";
-  private static final String NODE_NESTED_LOOP = "Nested Loop";
-  private static final String NODE_MODIFY_TABLE = "ModifyTable";
-  private static final String NODE_FUNCTION_SCAN = "Function Scan";
-  private static final String NODE_RESULT = "Result";
   private static final int TABLE_ROWS = 5000;
 
   @Override
@@ -76,37 +65,18 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
   public void setUp() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format(
-            "CREATE TABLE %s (c1 bigint, c2 bigint, c3 bigint, c4 text, " +
-            "PRIMARY KEY(c1 ASC, c2 ASC, c3 ASC))",
-            TABLE_NAME));
+          "CREATE TABLE %s (c1 bigint, c2 bigint, c3 bigint, c4 text, " +
+          "PRIMARY KEY(c1 ASC, c2 ASC, c3 ASC))",
+          TABLE_NAME));
 
       stmt.execute(String.format(
-            "INSERT INTO %s SELECT i %% 1000, i %% 11, i %% 20, rpad(i::text, 256, '#') " +
-            "FROM generate_series(1, %d) AS i",
-            TABLE_NAME, TABLE_ROWS));
+          "INSERT INTO %s SELECT i %% 1000, i %% 11, i %% 20, rpad(i::text, 256, '#') " +
+          "FROM generate_series(1, %d) AS i",
+          TABLE_NAME, TABLE_ROWS));
 
       stmt.execute(String.format(
-        "CREATE INDEX %s ON %s (c3 ASC, c2 ASC)", INDEX_NAME, TABLE_NAME));
+          "CREATE INDEX %s ON %s (c3 ASC, c2 ASC)", INDEX_NAME, TABLE_NAME));
     }
-  }
-
-  private interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
-    TopLevelCheckerBuilder storageReadRequests(ValueChecker<Long> checker);
-    TopLevelCheckerBuilder storageWriteRequests(ValueChecker<Long> checker);
-    TopLevelCheckerBuilder storageExecutionTime(ValueChecker<Double> checker);
-    TopLevelCheckerBuilder plan(ObjectChecker checker);
-  }
-
-  private interface PlanCheckerBuilder extends ObjectCheckerBuilder {
-    PlanCheckerBuilder nodeType(String value);
-    PlanCheckerBuilder relationName(String value);
-    PlanCheckerBuilder alias(String value);
-    PlanCheckerBuilder indexName(String value);
-    PlanCheckerBuilder storageTableReadRequests(ValueChecker<Long> checker);
-    PlanCheckerBuilder storageTableExecutionTime(ValueChecker<Double> checker);
-    PlanCheckerBuilder storageIndexReadRequests(ValueChecker<Long> checker);
-    PlanCheckerBuilder storageIndexExecutionTime(ValueChecker<Double> checker);
-    PlanCheckerBuilder plans(Checker... checker);
   }
 
   private TopLevelCheckerBuilder makeTopLevelBuilder() {
@@ -114,46 +84,19 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
   }
 
   private static PlanCheckerBuilder makePlanBuilder() {
-    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class);
+    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
   }
 
-  private void testExplain(
-      Statement stmt, String query, Checker checker, boolean timing) throws Exception {
-    LOG.info("Query: " + query);
-    JsonElement json = new JsonParser().parse(getSingleRow(
-        stmt,
-        String.format(
-            "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b) %s",
-            timing, query)).get(0).toString());
-    LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
-    List<String> conflicts = JsonUtil.findConflicts(json.getAsJsonArray().get(0), checker);
-    assertTrue(
-        "Json conflicts:\n" + String.join("\n", conflicts),
-        conflicts.isEmpty());
-  }
-
-  private void testExplain(Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true);
-  }
-
-  private void testExplainNoTiming(Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, false);
-  }
-
-  private void testExplain(String query, Checker checker, boolean timing) throws Exception {
+  public void testExplain(String query, Checker checker) throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      testExplain(stmt, query, checker, timing);
+      ExplainAnalyzeUtils.testExplain(stmt, query, checker);
     }
   }
 
-  private void testExplain(String query, Checker checker) throws Exception {
+  public void testExplainNoTiming(String query, Checker checker) throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      testExplain(stmt, query, checker, true);
+      ExplainAnalyzeUtils.testExplainNoTiming(stmt, query, checker);
     }
-  }
-
-  private void testExplainNoTiming(String query, Checker checker) throws Exception {
-    testExplain(query, checker, false);
   }
 
   @Test
@@ -173,11 +116,10 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
           .build();
 
       // Seq Scan (ybc_fdw ForeignScan)
-      testExplain(stmt, String.format("SELECT * FROM %s", TABLE_NAME), checker);
+      testExplain(String.format("SELECT * FROM %s", TABLE_NAME), checker);
 
       // real Seq Scan
-      testExplain(stmt,
-                  String.format("/*+ SeqScan(texpl) */SELECT * FROM %s", TABLE_NAME),
+      testExplain(String.format("/*+ SeqScan(texpl) */SELECT * FROM %s", TABLE_NAME),
                   checker);
     }
   }
@@ -339,7 +281,6 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
               .build();
 
       testExplain(
-        stmt,
         String.format(
             "INSERT INTO %s VALUES (1001, 0, 0, 'xyz'), (1002, 0, 0, 'wxy'), " +
             "(1003, 0, 0, 'vwx'), (1004, 0, 0, 'vwx')",
@@ -354,7 +295,6 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
       // no buffering
       stmt.execute("SET ysql_session_max_batch_size = 1");
       testExplain(
-        stmt,
         String.format(
             "INSERT INTO %s VALUES (1601, 0, 0, 'xyz'), (1602, 0, 0, 'wxy'), " +
             "(1603, 0, 0, 'vwx'), (1604, 0, 0, 'vwx')",
@@ -458,7 +398,6 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("BEGIN");
       testExplain(
-          stmt,
           query,
           makeTopLevelBuilder()
               .storageReadRequests(Checkers.greater(0))
@@ -481,7 +420,6 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
 
       // Do it again - should be no writes
       testExplain(
-          stmt,
           query,
           makeTopLevelBuilder()
               .storageReadRequests(Checkers.greater(0))

@@ -459,8 +459,13 @@ typedef struct ResultRelInfo
 	/* partition check expression state */
 	ExprState  *ri_PartitionCheckExpr;
 
-	/* relation descriptor for root partitioned table */
-	Relation	ri_PartitionRoot;
+	/*
+	 * RootResultRelInfo gives the target relation mentioned in the query, if
+	 * it's a partitioned table. It is not set if the target relation
+	 * mentioned in the query is an inherited table, nor when tuple routing is
+	 * not needed.
+	 */
+	struct ResultRelInfo *ri_RootResultRelInfo;
 
 	/* true if ready for tuple routing */
 	bool		ri_PartitionReadyForRouting;
@@ -585,11 +590,11 @@ typedef struct EState
 	 */
 
 	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
-																				* and the only stmt in this txn. */
+										  * and the only stmt in this txn. */
 	bool yb_es_is_fk_check_disabled;	/* Is FK check disabled? */
 	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
-																		 * we cache the conflict tuple here when processing and
-																		 * then free the slot after the conflict is resolved. */
+									   * we cache the conflict tuple here when processing and
+									   * then free the slot after the conflict is resolved. */
 	YBCPgExecParameters yb_exec_params;
 
 	/*
@@ -1132,7 +1137,8 @@ typedef struct ModifyTableState
 	TupleConversionMap **mt_per_subplan_tupconv_maps;
 
 	/* YB specific attributes. */
-	bool yb_mt_is_single_row_update_or_delete;
+	bool yb_fetch_target_tuple;	/* Perform initial scan to populate
+								 * the ybctid. */
 } ModifyTableState;
 
 /* ----------------

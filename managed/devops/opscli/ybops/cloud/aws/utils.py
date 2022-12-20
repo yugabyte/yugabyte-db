@@ -975,9 +975,21 @@ def create_instance(args):
     # Volume setup.
     volumes = []
 
+    ami_descr = describe_ami(args.region, args.machine_image)
+    root_volume_size = args.boot_disk_size_gb
+    root_device_name = ami_descr.get("RootDeviceName")
+    block_device_mappings = ami_descr.get("BlockDeviceMappings")
+    if block_device_mappings:
+        root_volume_info = [v.get("Ebs") for v in block_device_mappings
+                            if v.get("DeviceName") == root_device_name]
+        if root_volume_info and root_volume_info[0].get("VolumeSize") > root_volume_size:
+            root_volume_size = root_volume_info[0].get("VolumeSize")
+            logging.warning("Predefined boot volume has larger size: {} vs {}".format(
+                root_volume_size, args.boot_disk_size_gb))
+
     ebs = {
         "DeleteOnTermination": args.auto_delete_boot_disk,
-        "VolumeSize": args.boot_disk_size_gb,
+        "VolumeSize": root_volume_size,
         "VolumeType": "gp2"
     }
 
@@ -989,8 +1001,9 @@ def create_instance(args):
         vars["IamInstanceProfile"] = {
             "Arn": args.iam_profile_arn
         }
+
     volumes.append({
-        "DeviceName": get_root_label(args.region, args.machine_image),
+        "DeviceName": root_device_name,
         "Ebs": ebs
     })
 
@@ -1143,13 +1156,22 @@ def update_disk(args, instance_id):
     vol_ids = list()
     for volume in instance.volumes.all():
         for attachment in volume.attachments:
+            device_name = attachment['Device'].replace('/dev/', '')
             # Format of device name is /dev/xvd{} or /dev/nvme{}n1
-            if attachment['Device'].replace('/dev/', '') in device_names:
-                print("Updating volume {}".format(volume.id))
+            if device_name in device_names and \
+                    (args.force or volume.size != args.volume_size):
+                logging.info(
+                    "Instance %s's volume %s changed to %s",
+                    instance_id, volume.id, args.volume_size)
                 vol_ids.append(volume.id)
                 ec2_client.modify_volume(VolumeId=volume.id, Size=args.volume_size)
+            elif device_name in device_names:
+                logging.info(
+                    "Instance %s's volume %s has not changed from %s",
+                    instance_id, volume.id, volume.size)
     # Wait for volumes to be ready.
-    _wait_for_disk_modifications(ec2_client, vol_ids)
+    if vol_ids:
+        _wait_for_disk_modifications(ec2_client, vol_ids)
 
 
 def change_instance_type(region, instance_id, new_instance_type):
@@ -1158,7 +1180,6 @@ def change_instance_type(region, instance_id, new_instance_type):
     try:
         # Change instance type
         instance.modify_attribute(Attribute='instanceType', Value=new_instance_type)
-        logging.info('Instance {}\'s type changed to {}'.format(instance_id, new_instance_type))
     except Exception as e:
         raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'.format(repr(e)))
 

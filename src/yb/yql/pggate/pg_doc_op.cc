@@ -66,7 +66,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return Status::OK();
   }
 
-  Result<RequestSent> Execute(bool force_non_bufferable) override {
+  Result<RequestSent> Execute(ForceNonBufferable force_non_bufferable) override {
     return RequestSent::kTrue;
   }
 
@@ -241,7 +241,7 @@ const PgExecParameters& PgDocOp::ExecParameters() const {
   return exec_params_;
 }
 
-Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable) {
+Result<RequestSent> PgDocOp::Execute(ForceNonBufferable force_non_bufferable) {
   // As of 09/25/2018, DocDB doesn't cache or keep any execution state for a statement, so we
   // have to call query execution every time.
   // - Normal SQL convention: Exec, Fetch, Fetch, ...
@@ -260,7 +260,7 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
   if (!end_of_data_) {
     // Send request now in case prefetching was suppressed.
     if (suppress_next_result_prefetching_ && !response_.Valid()) {
-      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
+      RETURN_NOT_OK(SendRequest());
     }
 
     DCHECK(response_.Valid());
@@ -270,7 +270,7 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
     DCHECK(!result.empty() || end_of_data_);
     // Prefetch next portion of data if needed.
     if (!(end_of_data_ || suppress_next_result_prefetching_)) {
-      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
+      RETURN_NOT_OK(SendRequest());
     }
   }
 
@@ -290,7 +290,7 @@ void PgDocOp::MoveInactiveOpsOutside() {
   active_op_count_ = inactive_op_begin - pgsql_ops_.begin();
 }
 
-Status PgDocOp::SendRequest(bool force_non_bufferable) {
+Status PgDocOp::SendRequest(ForceNonBufferable force_non_bufferable) {
   DCHECK(exec_status_.ok());
   DCHECK(!response_.Valid());
   exec_status_ = SendRequestImpl(force_non_bufferable);
@@ -298,7 +298,7 @@ Status PgDocOp::SendRequest(bool force_non_bufferable) {
   return exec_status_;
 }
 
-Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
+Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
   RETURN_NOT_OK(CreateRequests());
 
@@ -419,7 +419,7 @@ Status PgDocOp::CompleteRequests() {
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
     PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-    uint64_t in_txn_limit, bool force_non_bufferable) {
+    uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
   auto result = VERIFY_RESULT(session->RunAsync(
       ops, ops_count, table, &in_txn_limit, force_non_bufferable));
   return PgDocResponse(std::move(result), in_txn_limit);
@@ -743,9 +743,6 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
   }
   active_op_count_ = partition_keys.size();
   VLOG(1) << "Number of partitions to sample: " << active_op_count_;
-  // If we have big enough sample after processing some partitions we skip the rest.
-  // By shuffling partitions we randomly select the partition(s) to sample.
-  std::shuffle(pgsql_ops_.begin(), pgsql_ops_.end(), ThreadLocalRandom());
 
   return true;
 }
@@ -797,6 +794,12 @@ Status PgDocReadOp::CompleteProcessResponse() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
   auto send_count = std::min(parallelism_level_, active_op_count_);
+  ::yb::LWPgsqlSamplingStatePB* sampling_state = nullptr;
+
+  // There can be only one op at a time for sampling, since any modifications to the random sampling
+  // state need to be propagated after one op completes to the next.
+  if (read_op_->read_request().has_sampling_state())
+    DCHECK_LE(send_count, 1);
 
   for (size_t op_index = 0; op_index < send_count; op_index++) {
     auto& read_op = GetReadOp(op_index);
@@ -828,31 +831,12 @@ Status PgDocReadOp::CompleteProcessResponse() {
     }
 
     if (res.has_sampling_state()) {
-      VLOG(1) << "Received sampling state:"
-              << " samplerows: " << res.sampling_state().samplerows()
-              << " rowstoskip: " << res.sampling_state().rowstoskip()
-              << " rstate_w: " << res.sampling_state().rstate_w()
-              << " rand_state: " << res.sampling_state().rand_state();
-      if (has_more_arg) {
-        // Copy sampling state from the response to the request, to properly continue to sample
-        // the next block.
-        req.ref_sampling_state(res.mutable_sampling_state());
-        res.clear_sampling_state();
-      } else {
-        // Partition sampling is completed.
-        // If samplerows is greater than or equal to targrows the sampling is complete. There are
-        // enough rows selected to calculate stats and we can estimate total number of rows in the
-        // table by extrapolating samplerows to the partitions that have not been scanned.
-        // If samplerows is less than targrows next partition needs to be sampled. Next pgdoc_op
-        // already has sampling state copied from the template_op_, only couple fields need to be
-        // updated: numrows and samplerows. The targrows never changes, and in reservoir population
-        // phase (before samplerows reaches targrows) 1. numrows and samplerows are always equal;
-        // and 2. random numbers never generated, so random state remains the same.
-        // That essentially means the only thing we need to collect from the partition's final
-        // sampling state is the samplerows. We use that number to either estimate liverows, or to
-        // update numrows and samplerows in next partition's sampling state.
-        sample_rows_ = res.sampling_state().samplerows();
-      }
+      VLOG(1) << "Received sampling state: " << res.sampling_state().ShortDebugString();
+      sample_rows_ = res.sampling_state().samplerows();
+
+      // Copy sampling state from the response to propagate in later requests for continuing further
+      // sampling.
+      sampling_state = res.mutable_sampling_state();
     }
 
     if (has_more_arg) {
@@ -873,27 +857,11 @@ Status PgDocReadOp::CompleteProcessResponse() {
     end_of_data_ = request_population_completed_;
   }
 
-  if (active_op_count_ > 0 && read_op_->read_request().has_sampling_state()) {
+  if (active_op_count_ > 0 && sampling_state != nullptr) {
     auto& read_op = down_cast<PgsqlReadOp&>(*pgsql_ops_[0]);
     auto *req = &read_op.read_request();
-    if (!req->has_paging_state()) {
-      // Current sampling op without paging state means that previous one was completed and moved
-      // outside.
-      auto sampling_state = req->mutable_sampling_state();
-      if (sample_rows_ < sampling_state->targrows()) {
-        // More sample rows are needed, update sampling state and let next partition be scanned
-        VLOG(1) << "Continue sampling next partition from " << sample_rows_;
-        sampling_state->set_numrows(static_cast<int32>(sample_rows_));
-        sampling_state->set_samplerows(sample_rows_);
-      } else {
-        // Have enough of sample rows, estimate total table rows assuming they are evenly
-        // distributed between partitions
-        auto completed_ops = pgsql_ops_.size() - active_op_count_;
-        sample_rows_ = floor((sample_rows_ / completed_ops) * pgsql_ops_.size() + 0.5);
-        VLOG(1) << "Done sampling, prorated rowcount is " << sample_rows_;
-        end_of_data_ = true;
-      }
-    }
+    req->ref_sampling_state(sampling_state);
+    VLOG(1) << "Continue sampling from " << sampling_state->ShortDebugString();
   }
 
   return Status::OK();

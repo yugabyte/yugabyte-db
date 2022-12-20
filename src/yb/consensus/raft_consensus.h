@@ -263,9 +263,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   }
 
   Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
-    const yb::OpId& from,
-    int64_t* last_replicated_opid_index,
-    const CoarseTimePoint deadline = CoarseTimePoint::max()) override;
+      const yb::OpId& from,
+      int64_t* last_replicated_opid_index,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const bool fetch_single_entry = false) override;
 
   void UpdateCDCConsumerOpId(const yb::OpId& op_id) override;
 
@@ -503,7 +504,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Respond to VoteRequest that the vote was not granted because we believe
   // the leader to be alive.
   Status RequestVoteRespondLeaderIsAlive(const VoteRequestPB* request,
-                                         VoteResponsePB* response);
+                                         VoteResponsePB* response,
+                                         const std::string& leader_uuid);
 
   // Respond to VoteRequest that the replica is already in the middle of servicing
   // another vote request or an update from a valid leader.

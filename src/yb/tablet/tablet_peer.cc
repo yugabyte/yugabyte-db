@@ -105,15 +105,16 @@ using std::vector;
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
 
-DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
+DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
 
-DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
+DEFINE_UNKNOWN_bool(propagate_safe_time, true,
+    "Propagate safe time to read from leader to followers");
 
-DEFINE_int32(wait_queue_poll_interval_ms, 1000,
-             "The interval duration between wait queue polls to fetch transaction statuses of "
-             "active blockers.");
+DEFINE_UNKNOWN_int32(wait_queue_poll_interval_ms, 1000,
+    "The interval duration between wait queue polls to fetch transaction statuses of "
+    "active blockers.");
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -233,13 +234,13 @@ Status TabletPeer::InitTabletPeer(
     if (tablet_->wait_queue()) {
       std::weak_ptr<TabletPeer> weak_self = shared_from(this);
       wait_queue_heartbeater_ = rpc::PeriodicTimer::Create(
-        messenger_,
-        [weak_self]() {
-          if (auto shared_self = weak_self.lock()) {
-            shared_self->PollWaitQueue();
-          }
-        },
-        FLAGS_wait_queue_poll_interval_ms * 1ms);
+          messenger_,
+          [weak_self]() {
+            if (auto shared_self = weak_self.lock()) {
+              shared_self->PollWaitQueue();
+            }
+          },
+          FLAGS_wait_queue_poll_interval_ms * 1ms);
       wait_queue_heartbeater_->Start();
     }
 
@@ -1089,6 +1090,16 @@ Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_chec
   return Status::OK();
 }
 
+Status TabletPeer::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
+  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK safe time to " << cdc_sdk_safe_time;
+  RETURN_NOT_OK(meta_->set_cdc_sdk_safe_time(cdc_sdk_safe_time));
+  return Status::OK();
+}
+
+HybridTime TabletPeer::get_cdc_sdk_safe_time() {
+  return meta_->cdc_sdk_safe_time();
+}
+
 OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
   return meta_->cdc_sdk_min_checkpoint_op_id();
 }
@@ -1128,9 +1139,19 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
   auto tablet = VERIFY_RESULT(shared_tablet_safe());
   auto* metadata = tablet->metadata();
   auto namespace_name = metadata->namespace_name();
-  RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */,
-                                         namespace_name,
-                                         boost::none /* database_type */, &resp));
+  auto db_type = YQL_DATABASE_CQL;
+  switch (metadata->table_type()) {
+    case PGSQL_TABLE_TYPE:
+      db_type = YQL_DATABASE_PGSQL;
+      break;
+    case REDIS_TABLE_TYPE:
+      db_type = YQL_DATABASE_REDIS;
+      break;
+    default:
+      db_type = YQL_DATABASE_CQL;
+  }
+
+  RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */, namespace_name, db_type, &resp));
   namespace_id = resp.namespace_().id();
   if (namespace_id.empty()) {
     return STATUS(IllegalState, Format("Could not get namespace id for $0",
@@ -1141,11 +1162,14 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
 }
 
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
-    const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
+    const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
+    const HybridTime& cdc_sdk_safe_time) {
   if (cdc_sdk_op_id == OpId::Invalid()) {
     return Status::OK();
   }
+
   RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
+  RETURN_NOT_OK(set_cdc_sdk_safe_time(cdc_sdk_safe_time));
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
@@ -1547,8 +1571,9 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
       continue;
     }
 
-    switch(peer_pb.member_type()) {
-      case PeerMemberType::OBSERVER: FALLTHROUGH_INTENDED;
+    switch (peer_pb.member_type()) {
+      case PeerMemberType::OBSERVER:
+        FALLTHROUGH_INTENDED;
       case PeerMemberType::VOTER:
         LOG(ERROR) << "Peer " << peer_pb.permanent_uuid() << " is a "
                    << PeerMemberType_Name(peer_pb.member_type())
@@ -1558,7 +1583,8 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
         // tombstone its tablet.
         return Status::OK();
 
-      case PeerMemberType::PRE_OBSERVER: FALLTHROUGH_INTENDED;
+      case PeerMemberType::PRE_OBSERVER:
+        FALLTHROUGH_INTENDED;
       case PeerMemberType::PRE_VOTER: {
         consensus::ChangeConfigRequestPB req;
         consensus::ChangeConfigResponsePB resp;

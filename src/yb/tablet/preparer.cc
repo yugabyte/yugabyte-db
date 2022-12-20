@@ -35,10 +35,10 @@
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
 
-DEFINE_uint64(max_group_replicate_batch_size, 16,
+DEFINE_UNKNOWN_uint64(max_group_replicate_batch_size, 16,
               "Maximum number of operations to submit to consensus for replication in a batch.");
 
-DEFINE_double(estimated_replicate_msg_size_percentage, 0.95,
+DEFINE_UNKNOWN_double(estimated_replicate_msg_size_percentage, 0.95,
               "The estimated percentage of replicate message size in a log entry batch.");
 
 DEFINE_test_flag(int32, preparer_batch_inject_latency_ms, 0,

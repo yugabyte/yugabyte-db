@@ -64,18 +64,18 @@
 
 using namespace std::literals;
 
-DEFINE_int64(memory_limit_hard_bytes, 0,
+DEFINE_UNKNOWN_int64(memory_limit_hard_bytes, 0,
              "Maximum amount of memory this daemon should use, in bytes. "
              "A value of 0 autosizes based on the total system memory. "
              "A value of -1 disables all memory limiting.");
 TAG_FLAG(memory_limit_hard_bytes, stable);
-DEFINE_double(default_memory_limit_to_ram_ratio, 0.85,
+DEFINE_UNKNOWN_double(default_memory_limit_to_ram_ratio, 0.85,
               "If memory_limit_hard_bytes is left unspecified, then it is "
               "set to default_memory_limit_to_ram_ratio * Available RAM.");
 TAG_FLAG(default_memory_limit_to_ram_ratio, advanced);
 TAG_FLAG(default_memory_limit_to_ram_ratio, hidden);
 
-DEFINE_int32(memory_limit_soft_percentage, 85,
+DEFINE_UNKNOWN_int32(memory_limit_soft_percentage, 85,
              "Percentage of the hard memory limit that this daemon may "
              "consume before memory throttling of writes begins. The greater "
              "the excess, the higher the chance of throttling. In general, a "
@@ -83,21 +83,21 @@ DEFINE_int32(memory_limit_soft_percentage, 85,
              "decreased throughput, and vice versa for a higher soft limit.");
 TAG_FLAG(memory_limit_soft_percentage, advanced);
 
-DEFINE_int32(memory_limit_warn_threshold_percentage, 98,
+DEFINE_UNKNOWN_int32(memory_limit_warn_threshold_percentage, 98,
              "Percentage of the hard memory limit that this daemon may "
              "consume before WARNING level messages are periodically logged.");
 TAG_FLAG(memory_limit_warn_threshold_percentage, advanced);
 
 
-DEFINE_int64(server_tcmalloc_max_total_thread_cache_bytes, -1, "Total number of bytes to "
+DEFINE_UNKNOWN_int64(server_tcmalloc_max_total_thread_cache_bytes, -1, "Total number of bytes to "
              "use for the thread cache for tcmalloc across all threads in the tserver/master.");
-DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, -1, "Total number of bytes to "
+DEFINE_UNKNOWN_int64(tserver_tcmalloc_max_total_thread_cache_bytes, -1, "Total number of bytes to "
              "use for the thread cache for tcmalloc across all threads in the tserver. "
              "This is being deprecated and is used to fallback/override the value set "
              "on the tserver by server_tcmalloc_max_total_thread_cache_bytes." );
 
 #ifdef TCMALLOC_ENABLED
-DEFINE_int32(tcmalloc_max_free_bytes_percentage, 10,
+DEFINE_UNKNOWN_int32(tcmalloc_max_free_bytes_percentage, 10,
              "Maximum percentage of the RSS that tcmalloc is allowed to use for "
              "reserved but unallocated memory.");
 TAG_FLAG(tcmalloc_max_free_bytes_percentage, advanced);
@@ -120,14 +120,14 @@ DEFINE_RUNTIME_double(tcmalloc_trace_frequency, 0.0,
 TAG_FLAG(tcmalloc_trace_frequency, advanced);
 #endif
 
-DEFINE_bool(mem_tracker_logging, false,
+DEFINE_UNKNOWN_bool(mem_tracker_logging, false,
             "Enable logging of memory tracker consume/release operations");
 
-DEFINE_bool(mem_tracker_log_stack_trace, false,
+DEFINE_UNKNOWN_bool(mem_tracker_log_stack_trace, false,
             "Enable logging of stack traces on memory tracker consume/release operations. "
             "Only takes effect if mem_tracker_logging is also enabled.");
 
-DEFINE_int64(mem_tracker_update_consumption_interval_us, 2000000,
+DEFINE_UNKNOWN_int64(mem_tracker_update_consumption_interval_us, 2000000,
     "Interval that is used to update memory consumption from external source. "
     "For instance from tcmalloc statistics.");
 

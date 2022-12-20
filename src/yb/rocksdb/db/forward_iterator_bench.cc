@@ -43,17 +43,17 @@
 
 const int MAX_SHARDS = 100000;
 
-DEFINE_int32(writers, 8, "");
-DEFINE_int32(readers, 8, "");
-DEFINE_int64(rate, 100000, "");
-DEFINE_int64(value_size, 300, "");
-DEFINE_int64(shards, 1000, "");
-DEFINE_int64(memtable_size, 500000000, "");
-DEFINE_int64(block_cache_size, 300000000, "");
-DEFINE_int64(block_size, 65536, "");
-DEFINE_double(runtime, 300.0, "");
-DEFINE_bool(cache_only_first, true, "");
-DEFINE_bool(iterate_upper_bound, true, "");
+DEFINE_UNKNOWN_int32(writers, 8, "");
+DEFINE_UNKNOWN_int32(readers, 8, "");
+DEFINE_UNKNOWN_int64(rate, 100000, "");
+DEFINE_UNKNOWN_int64(value_size, 300, "");
+DEFINE_UNKNOWN_int64(shards, 1000, "");
+DEFINE_UNKNOWN_int64(memtable_size, 500000000, "");
+DEFINE_UNKNOWN_int64(block_cache_size, 300000000, "");
+DEFINE_UNKNOWN_int64(block_size, 65536, "");
+DEFINE_UNKNOWN_double(runtime, 300.0, "");
+DEFINE_UNKNOWN_bool(cache_only_first, true, "");
+DEFINE_UNKNOWN_bool(iterate_upper_bound, true, "");
 
 struct Stats {
   char pad1[128] __attribute__((__unused__));

@@ -32,6 +32,7 @@ DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_int32(ysql_output_buffer_size);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_int32(ysql_sequence_cache_minval);
+DECLARE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode);
 
 DECLARE_bool(ysql_suppress_unsupported_error);
 
@@ -45,3 +46,4 @@ DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
 DECLARE_bool(ysql_disable_portal_run_context);
 DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
 DECLARE_bool(TEST_yb_test_fail_matview_refresh_after_creation);
+DECLARE_bool(ysql_enable_read_request_caching);

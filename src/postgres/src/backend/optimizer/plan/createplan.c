@@ -4637,11 +4637,37 @@ get_batched_relids(NestPath *nest)
 	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
 	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
 
-	Relids outer_unbatched = outerppi
-		? outerppi->yb_ppi_req_outer_unbatched : NULL;
+	Relids outer_unbatched =
+		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
 	Relids inner_batched = innerppi ? innerppi->yb_ppi_req_outer_batched : NULL;
 
-	return bms_difference(inner_batched, outer_unbatched);
+	/* Rels not in this join that can't be batched. */
+	Relids param_unbatched =
+		nest->path.param_info ?
+		nest->path.param_info->yb_ppi_req_outer_unbatched : NULL;
+
+	return bms_difference(bms_difference(inner_batched, outer_unbatched),
+						  param_unbatched);
+}
+
+static Relids
+get_unbatched_relids(NestPath *nest)
+{
+	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
+	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
+
+	Relids outer_unbatched =
+		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
+	Relids inner_batched =
+		innerppi ? innerppi->yb_ppi_req_outer_unbatched : NULL;
+
+	/* Rels not in this join that can't be batched. */
+	Relids param_unbatched =
+		nest->path.param_info ?
+		nest->path.param_info->yb_ppi_req_outer_unbatched : NULL;
+
+	return bms_union(outer_unbatched,
+					 bms_union(inner_batched, param_unbatched));
 }
 
 static inline bool
@@ -4726,8 +4752,9 @@ create_nestloop_plan(PlannerInfo *root,
 	outerrelids = best_path->outerjoinpath->parent->relids;
 	nestParams = identify_current_nestloop_params(root, outerrelids);
 
-	Relids batched_outerrellids = bms_intersect(outerrelids,
-												batched_relids);
+	Relids batched_outerrellids =
+		bms_difference(outerrelids,
+					   get_unbatched_relids(best_path));
 
 	Relids inner_relids = best_path->innerjoinpath->parent->relids;
 

@@ -101,7 +101,7 @@ public class YbcManager {
         BackupServiceNfsDirDeleteRequest nfsDirDelRequest =
             BackupServiceNfsDirDeleteRequest.newBuilder()
                 .setNfsDir(nfsDir)
-                .setBucket(NFSUtil.DEFAULT_YUGABYTE_NFS_BUCKET)
+                .setBucket(configData.nfsBucket)
                 .setCloudDir(cloudDir)
                 .build();
         BackupServiceNfsDirDeleteResponse nfsDirDeleteResponse =
@@ -124,11 +124,10 @@ public class YbcManager {
     return true;
   }
 
-  public void abortBackupTask(UUID customerUUID, UUID backupUUID, String taskID) {
+  public void abortBackupTask(
+      UUID customerUUID, UUID backupUUID, String taskID, YbcClient ybcClient) {
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
-    YbcClient ybcClient = null;
     try {
-      ybcClient = ybcBackupUtil.getYbcClient(backup.universeUUID);
       BackupServiceTaskAbortRequest abortTaskRequest =
           BackupServiceTaskAbortRequest.newBuilder().setTaskId(taskID).build();
       BackupServiceTaskAbortResponse abortTaskResponse =
@@ -152,7 +151,7 @@ public class YbcManager {
         return;
       } else {
         LOG.info("Backup {} task is successfully aborted on Yb-controller.", backup.backupUUID);
-        deleteYbcBackupTask(backup.universeUUID, taskID);
+        deleteYbcBackupTask(backup.universeUUID, taskID, ybcClient);
       }
     } catch (Exception e) {
       LOG.error("Backup {} task abort failed with error: {}.", backup.backupUUID, e.getMessage());
@@ -161,10 +160,8 @@ public class YbcManager {
     }
   }
 
-  public void deleteYbcBackupTask(UUID universeUUID, String taskID) {
-    YbcClient ybcClient = null;
+  public void deleteYbcBackupTask(UUID universeUUID, String taskID, YbcClient ybcClient) {
     try {
-      ybcClient = ybcBackupUtil.getYbcClient(universeUUID);
       BackupServiceTaskResultRequest taskResultRequest =
           BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
       BackupServiceTaskResultResponse taskResultResponse =
@@ -242,7 +239,7 @@ public class YbcManager {
       }
       LOG.info("Task {} on YB-Controller to fetch success marker is successful", taskID);
       successMarker = downloadSuccessMarkerResultResponse.getMetadataJson();
-      deleteYbcBackupTask(universeUUID, taskID);
+      deleteYbcBackupTask(universeUUID, taskID, ybcClient);
       return successMarker;
     } catch (Exception e) {
       LOG.error(

@@ -146,6 +146,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
+  "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -304,13 +305,20 @@ cleanPlatform := {
   cleanModules.value
 }
 
+lazy val moveYbcPackageEnvName = "MOVE_YBC_PKG"
+lazy val moveYbcPackage = getBoolEnvVar(moveYbcPackageEnvName)
+
 versionGenerate := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
   val status = Process("../build-support/gen_version_info.py --build-type=" + buildType + " " +
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
-  Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
+  if (moveYbcPackage) {
+    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf" + " -s", baseDirectory.value).!
+  } else {
+    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
+  }
   status
 }
 
@@ -417,8 +425,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b4"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.33-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b11"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.37-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b12"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

@@ -352,6 +352,23 @@ class DocWriteBatch {
   MonoDelta ttl_;
 };
 
+// A helper handler for converting a RocksDB write batch to a string.
+class DocWriteBatchFormatter : public WriteBatchFormatter {
+ public:
+  DocWriteBatchFormatter(
+      StorageDbType storage_db_type,
+      BinaryOutputFormat binary_output_format,
+      WriteBatchOutputFormat batch_output_format,
+      std::string line_prefix);
+ protected:
+  std::string FormatKey(const Slice& key) override;
+
+  std::string FormatValue(const Slice& key, const Slice& value) override;
+
+ private:
+  StorageDbType storage_db_type_;
+};
+
 // Converts a RocksDB WriteBatch to a string.
 // line_prefix is the prefix to be added to each line of the result. Could be used for indentation.
 Result<std::string> WriteBatchToString(

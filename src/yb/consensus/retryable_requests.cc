@@ -40,7 +40,7 @@ DEFINE_RUNTIME_int32(retryable_request_timeout_secs, 660,
 // We use this limit to prevent request range from infinite grow, because it will block log
 // cleanup. I.e. even we have continous request range, it will be split by blocks, that could be
 // dropped independently.
-DEFINE_int32(retryable_request_range_time_limit_secs, 30,
+DEFINE_UNKNOWN_int32(retryable_request_range_time_limit_secs, 30,
              "Max delta in time for single op id range.");
 
 METRIC_DEFINE_gauge_int64(tablet, running_retryable_requests,

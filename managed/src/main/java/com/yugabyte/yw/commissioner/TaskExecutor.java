@@ -10,9 +10,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.BiMap;
-import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.Sets;
+import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -34,7 +33,6 @@ import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +58,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import play.api.Play;
 
 /**
  * TaskExecutor is the executor service for tasks and their subtasks. It is very similar to the
@@ -120,7 +117,7 @@ import play.api.Play;
 public class TaskExecutor {
 
   // This is a map from the task types to the classes.
-  private final BiMap<TaskType, Class<? extends ITask>> taskTypeClassBiMap;
+  private final Map<TaskType, Provider<ITask>> taskTypeMap;
 
   // Task futures are waited for this long before checking abort status.
   private static final long TASK_SPIN_WAIT_INTERVAL_MS = 2000;
@@ -140,6 +137,7 @@ public class TaskExecutor {
 
   // A utility for Platform HA.
   private final PlatformReplicationManager replicationManager;
+  private final Map<Class<? extends ITask>, TaskType> inverseTaskTypeMap;
 
   private final AtomicBoolean isShutdown = new AtomicBoolean();
 
@@ -167,27 +165,6 @@ public class TaskExecutor {
           KnownAlertLabels.TASK_TYPE.labelName(),
           KnownAlertLabels.RESULT.labelName());
 
-  private Map<TaskType, Class<? extends ITask>> buildTaskTypesMap() {
-    // Initialize the map which holds the task types to their task class.
-    Map<TaskType, Class<? extends ITask>> typeMap = new HashMap<>();
-
-    for (TaskType taskType : TaskType.filteredValues()) {
-      // TODO: switch to guice map binder instead of this reflection usage.
-      String className = "com.yugabyte.yw.commissioner.tasks." + taskType.toString();
-      Class<? extends ITask> taskClass;
-      try {
-        taskClass = Class.forName(className).asSubclass(ITask.class);
-        typeMap.put(taskType, taskClass);
-        log.debug("Found task: {}", className);
-      } catch (ClassNotFoundException e) {
-        log.error("Could not find task for task type " + taskType, e);
-        throw new RuntimeException(e);
-      }
-    }
-    log.debug("Done loading tasks.");
-    return typeMap;
-  }
-
   private static Summary buildSummary(String name, String description, String... labelNames) {
     return Summary.build(name, description)
         .quantile(0.5, 0.05)
@@ -211,11 +188,6 @@ public class TaskExecutor {
     COMMISSIONER_TASK_EXECUTION_SEC
         .labels(taskType.name(), state.name())
         .observe(getDurationSeconds(startTime, endTime));
-  }
-
-  Class<? extends ITask> getTaskClass(TaskType taskType) {
-    checkNotNull(taskType, "Task type must be non-null");
-    return taskTypeClassBiMap.get(taskType);
   }
 
   // It looks for the annotation starting from the current class to its super classes until it
@@ -244,25 +216,30 @@ public class TaskExecutor {
    */
   public TaskType getTaskType(Class<? extends ITask> taskClass) {
     checkNotNull(taskClass, "Task class must be non-null");
-    return taskTypeClassBiMap.inverse().get(taskClass);
+    return inverseTaskTypeMap.get(taskClass);
+  }
+
+  public boolean isShutdown() {
+    return isShutdown.get();
   }
 
   @Inject
   public TaskExecutor(
       ShutdownHookHandler shutdownHookHandler,
       ExecutorServiceProvider executorServiceProvider,
-      PlatformReplicationManager replicationManager) {
+      PlatformReplicationManager replicationManager,
+      Map<TaskType, Provider<ITask>> taskTypeMap,
+      Map<Class<? extends ITask>, TaskType> inverseTaskTypeMap) {
     this.executorServiceProvider = executorServiceProvider;
     this.replicationManager = replicationManager;
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
     shutdownHookHandler.addShutdownHook(
         TaskExecutor.this,
-        (taskExecutor) -> {
-          taskExecutor.shutdown(Duration.ofMinutes(5));
-        },
+        (taskExecutor) -> taskExecutor.shutdown(Duration.ofMinutes(5)),
         100 /* weight */);
-    taskTypeClassBiMap = ImmutableBiMap.copyOf(buildTaskTypesMap());
+    this.taskTypeMap = taskTypeMap;
+    this.inverseTaskTypeMap = inverseTaskTypeMap;
   }
 
   // Shuts down the task executor.
@@ -300,6 +277,17 @@ public class TaskExecutor {
   }
 
   /**
+   * Instantiates the task for the task class.
+   *
+   * @param taskClass the task class.
+   * @return the task.
+   */
+  public <T extends ITask> T createTask(Class<T> taskClass) {
+    checkNotNull(taskClass, "Task class must be set");
+    return taskClass.cast(taskTypeMap.get(getTaskType(taskClass)).get());
+  }
+
+  /**
    * Creates a RunnableTask instance for a task with the given parameters.
    *
    * @param taskType the task type.
@@ -308,7 +296,7 @@ public class TaskExecutor {
   public RunnableTask createRunnableTask(TaskType taskType, ITaskParams taskParams) {
     checkNotNull(taskType, "Task type must be set");
     checkNotNull(taskParams, "Task params must be set");
-    ITask task = Play.current().injector().instanceOf(taskTypeClassBiMap.get(taskType));
+    ITask task = taskTypeMap.get(taskType).get();
     task.initialize(taskParams);
     return createRunnableTask(task);
   }
@@ -464,7 +452,7 @@ public class TaskExecutor {
 
   @VisibleForTesting
   TaskInfo createTaskInfo(ITask task) {
-    TaskType taskType = TaskType.valueOf(task.getClass().getSimpleName());
+    TaskType taskType = getTaskType(task.getClass());
     // Create a new task info object.
     TaskInfo taskInfo = new TaskInfo(taskType);
     // Set the task details.
@@ -902,6 +890,7 @@ public class TaskExecutor {
       checkArgument(
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
+      taskInfo.refresh();
       ObjectNode taskDetails = CommonUtils.maskConfig(taskInfo.getTaskDetails().deepCopy());
       String errorString;
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
@@ -933,7 +922,6 @@ public class TaskExecutor {
 
       ObjectNode details = taskDetails.deepCopy();
       details.put("errorString", errorString);
-      taskInfo.refresh();
       taskInfo.setTaskState(state);
       taskInfo.setTaskDetails(details);
       taskInfo.update();
@@ -964,7 +952,7 @@ public class TaskExecutor {
     private final TaskCache taskCache = new TaskCache();
     // Current execution position of subtasks.
     private int subTaskPosition = 0;
-    private AtomicReference<TaskExecutionListener> taskExecutionListenerRef =
+    private final AtomicReference<TaskExecutionListener> taskExecutionListenerRef =
         new AtomicReference<>();
     // Time when the abort is set.
     private volatile Instant abortTime;
@@ -1008,7 +996,7 @@ public class TaskExecutor {
         taskCache.clear();
         // Update the customer task to a completed state.
         CustomerTask customerTask = CustomerTask.findByTaskUUID(taskUUID);
-        if (customerTask != null) {
+        if (customerTask != null && !isShutdown.get()) {
           customerTask.markAsCompleted();
         }
 

@@ -243,6 +243,8 @@ public class RestoreManagerYbTest extends FakeDBApplication {
 
   @Test
   public void testRestoreGcsBackupWithRestoreTimeStamp() {
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    Date date = new Date(System.currentTimeMillis() - 300 * 1000);
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer, "TEST43");
     BackupTableParams backupParams = getBackupUniverseParams(storageConfig.configUUID);
@@ -252,8 +254,6 @@ public class RestoreManagerYbTest extends FakeDBApplication {
             ActionType.RESTORE,
             storageConfig.configUUID,
             testBackup.getBackupInfo().backupList.get(0).storageLocation);
-    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-    Date date = new Date();
     restoreBackupParams.restoreTimeStamp = formatter.format(date);
     try {
       restoreManagerYb.runCommand(restoreBackupParams);
@@ -331,7 +331,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
       podAddrToConfig =
-          PlacementInfoUtil.getKubernetesConfigPerPod(
+          KubernetesUtil.getKubernetesConfigPerPod(
               pi, testUniverse.getUniverseDetails().nodeDetailsSet);
     }
 

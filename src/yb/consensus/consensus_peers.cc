@@ -73,11 +73,11 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(consensus_rpc_timeout_ms, 3000,
+DEFINE_UNKNOWN_int32(consensus_rpc_timeout_ms, 3000,
              "Timeout used for all consensus internal RPC communications.");
 TAG_FLAG(consensus_rpc_timeout_ms, advanced);
 
-DEFINE_int32(max_wait_for_processresponse_before_closing_ms,
+DEFINE_UNKNOWN_int32(max_wait_for_processresponse_before_closing_ms,
              yb::RegularBuildVsSanitizers(5000, 60000),
              "Maximum amount of time we will wait in Peer::Close() for Peer::ProcessResponse() to "
              "finish before returning proceding to close the Peer and return");
@@ -130,7 +130,7 @@ Peer::Peer(
       consensus_(consensus),
       messenger_(messenger) {}
 
-void Peer::TEST_SetTerm(int term, Arena* arena) {
+void Peer::TEST_SetTerm(int term, ThreadSafeArena* arena) {
   update_response_ = arena->NewObject<LWConsensusResponsePB>(arena);
   update_response_->set_responder_term(term);
 }
@@ -221,7 +221,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   bool last_exchange_successful = false;
   PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
   LWReplicateMsgsHolder msgs_holder;
-  std::vector<std::shared_ptr<Arena>> msg_arenas;
+  std::vector<std::shared_ptr<ThreadSafeArena>> msg_arenas;
   Status s = queue_->RequestForPeer(
       peer_pb_.permanent_uuid(), update_request_, &msgs_holder, &needs_remote_bootstrap,
       &member_type, &last_exchange_successful);

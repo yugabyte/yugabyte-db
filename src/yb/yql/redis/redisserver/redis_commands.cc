@@ -64,11 +64,13 @@ static bool ValidateRedisPasswordSeparator(const char* flagname, const string& v
 }
 }
 
-DEFINE_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
-DEFINE_bool(use_hashed_redis_password, true, "Store the hash of the redis passwords instead.");
-DEFINE_string(redis_passwords_separator, ",", "The character used to separate multiple passwords.");
+DEFINE_UNKNOWN_bool(yedis_enable_flush, true, "Enables FLUSHDB and FLUSHALL commands in yedis.");
+DEFINE_UNKNOWN_bool(use_hashed_redis_password, true,
+    "Store the hash of the redis passwords instead.");
+DEFINE_UNKNOWN_string(redis_passwords_separator, ",",
+    "The character used to separate multiple passwords.");
 
-DEFINE_int32(redis_keys_threshold, 10000,
+DEFINE_UNKNOWN_int32(redis_keys_threshold, 10000,
              "Maximum number of keys allowed to be in the db before the KEYS operation errors out");
 
 DEFINE_validator(redis_passwords_separator, &ValidateRedisPasswordSeparator);

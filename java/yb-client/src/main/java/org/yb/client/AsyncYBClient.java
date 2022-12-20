@@ -421,13 +421,15 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<CreateCDCStreamResponse> createCDCStream(YBTable table,
                                                            String nameSpaceName,
                                                            String format,
-                                                           String checkpointType) {
+                                                           String checkpointType,
+                                                           String recordType) {
     checkIsClosed();
     CreateCDCStreamRequest rpc = new CreateCDCStreamRequest(table,
       table.getTableId(),
       nameSpaceName,
       format,
-      checkpointType);
+      checkpointType,
+      recordType);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     Deferred<CreateCDCStreamResponse> d = rpc.getDeferred().addErrback(
         new Callback<Object, Object>() {
@@ -508,10 +510,11 @@ public class AsyncYBClient implements AutoCloseable {
 
   public Deferred<GetTabletListToPollForCDCResponse> getTabletListToPollForCdc(YBTable table,
                                                                                String streamId,
-                                                                               String tableId) {
+                                                                               String tableId,
+                                                                               String tabletId) {
     checkIsClosed();
     GetTabletListToPollForCDCRequest rpc = new GetTabletListToPollForCDCRequest(table, streamId,
-      tableId);
+      tableId, tabletId);
     Deferred<GetTabletListToPollForCDCResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
@@ -643,6 +646,18 @@ public class AsyncYBClient implements AutoCloseable {
                                                               databaseType);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
+  }
+
+  /**
+   * Delete a keyspace(namespace) on the cluster with the specified name.
+   * @param keyspace CQL keyspace to which this table belongs
+   * @return a deferred object to track the progress of the deleteNamespace command
+   */
+  public Deferred<DeleteNamespaceResponse> deleteNamespace(String keyspaceName) {
+    checkIsClosed();
+    DeleteNamespaceRequest delete = new DeleteNamespaceRequest(this.masterTable, keyspaceName);
+    delete.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(delete);
   }
 
   /**
@@ -1364,6 +1379,17 @@ public class AsyncYBClient implements AutoCloseable {
       String nameFilter, boolean excludeSystemTables, String namespace) {
     ListTablesRequest rpc = new ListTablesRequest(
       this.masterTable, nameFilter, excludeSystemTables, namespace);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Get a list of namespaces of a given table type
+   * @param databaseType to fetch namespaces of the given databaseType
+   * @return a deferred that yields the list of table names
+   */
+  public Deferred<ListNamespacesResponse> getNamespacesList(YQLDatabase databaseType) {
+    ListNamespacesRequest rpc = new ListNamespacesRequest(this.masterTable, databaseType);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }

@@ -154,6 +154,9 @@ fi
 readonly YBOPS_TOP_LEVEL_DIR_BASENAME=opscli
 readonly YBOPS_PACKAGE_NAME=ybops
 
+readonly NODE_AGENT_HOME="$yb_devops_home/opscli/ybops/node_agent"
+readonly NODE_AGENT_SRC_DIR="$yb_devops_home/../node-agent"
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -541,13 +544,19 @@ install_ybops_package() {
   if ! is_virtual_env; then
     user_flag="--user"
   fi
+  log "Using python: $( which $PYTHON_EXECUTABLE )"
+  # This is invoked outside of the source tree to install venv.
+  if [[ -f "$NODE_AGENT_SRC_DIR/build.sh" ]]; then
+    $NODE_AGENT_SRC_DIR/build.sh build-pymodule
+    rm -rf "$NODE_AGENT_HOME"
+    cp -rf "$NODE_AGENT_SRC_DIR/generated/ybops/node_agent" "$NODE_AGENT_HOME"
+  fi
   (
     cd "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME"
-    log "Using python: $( which $PYTHON_EXECUTABLE )"
     $PYTHON_EXECUTABLE setup.py install $user_flag
     rm -rf build dist "$YBOPS_PACKAGE_NAME.egg-info"
   )
-  virtualenv_aware_log "Installed the ybops package"
+  virtualenv_aware_log "Installed the $YBOPS_PACKAGE_NAME package"
 }
 
 is_virtual_env() {

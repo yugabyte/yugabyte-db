@@ -74,9 +74,9 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
     if (values['sshUser']) {
       regions['sshUser'] = values['sshUser'];
     }
-    regions['ntpServers'] = values['ntpServers']
-    regions['setUpChrony'] = values['setUpChrony']
-    regions['airGapInstall'] = values['airGapInstall']
+    regions['ntpServers'] = values['ntpServers'];
+    regions['setUpChrony'] = values['setUpChrony'];
+    regions['airGapInstall'] = values['airGapInstall'];
     createAzureProvider(values.providerName, config, regions);
   };
 

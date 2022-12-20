@@ -19,6 +19,14 @@
 namespace yb {
 
 Result<int64_t> CheckedStoll(Slice slice);
+Result<uint64_t> CheckedStoull(Slice slice);
+Result<int64_t> DoCheckedStol(Slice value, int64_t*);
+Result<uint64_t> DoCheckedStol(Slice value, uint64_t*);
+
+template <class T>
+Result<T> CheckedStol(Slice value) {
+  return DoCheckedStol(value, static_cast<T*>(nullptr));
+}
 
 template <class Int>
 Result<Int> CheckedStoInt(Slice slice) {

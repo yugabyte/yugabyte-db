@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
@@ -112,6 +113,8 @@ public class NodeManager extends DevopsBase {
   public static final String YBC_ENABLE_VERBOSE = "yb.ybc_flags.enable_verbose";
   public static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
   public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
+  public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
+  public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -304,13 +307,6 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Wait_For_SSH)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
-      subCommand.add(keyInfo.sshUser);
-    }
-
-    if ((type == NodeCommandType.Configure) && keyInfo.sshUser != null) {
-      // Pass the sudo user on different key, so as to
-      // force reinstall the packages as part of configure.
-      subCommand.add("--ssh_user_update_packages");
       subCommand.add(keyInfo.sshUser);
     }
 
@@ -559,7 +555,7 @@ public class NodeManager extends DevopsBase {
       subcommandStrings.add("--certs_client_dir");
       subcommandStrings.add(CertificateHelper.getCertsForClientDir(ybHomeDir));
 
-      CertificateInfo clientRootCert = CertificateInfo.get(taskParam.clientRootCA);
+      CertificateInfo clientRootCert = CertificateInfo.get(taskParam.getClientRootCA());
       if (clientRootCert == null) {
         throw new RuntimeException("No valid clientRootCA found for " + taskParam.universeUUID);
       }
@@ -584,7 +580,7 @@ public class NodeManager extends DevopsBase {
               }
               CertificateHelper.createServerCertificate(
                   config,
-                  taskParam.clientRootCA,
+                  taskParam.getClientRootCA(),
                   tempStorageDirectory.toString(),
                   commonName,
                   null,
@@ -752,7 +748,8 @@ public class NodeManager extends DevopsBase {
           universe,
           userIntent.providerType,
           taskParam.vmUpgradeTaskType,
-          !taskParam.ignoreUseCustomImageConfig,
+          !(taskParam.ignoreUseCustomImageConfig
+              || universe.getUniverseDetails().overridePrebuiltAmiDBVersion),
           subcommand);
     }
 
@@ -1332,6 +1329,37 @@ public class NodeManager extends DevopsBase {
     }
   }
 
+  private void addNodeAgentCommandArgs(
+      Universe universe,
+      NodeTaskParams nodeTaskParam,
+      List<String> commandArgs,
+      Map<String, String> sensitiveArgs) {
+    String nodeIp = null;
+    UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
+    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+      Optional<NodeInstance> nodeInstanceOp =
+          NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
+      if (nodeInstanceOp.isPresent()) {
+        nodeIp = nodeInstanceOp.get().getDetails().ip;
+      }
+    } else {
+      NodeDetails nodeDetails = universe.getNode(nodeTaskParam.getNodeName());
+      if (nodeDetails != null && nodeDetails.cloudInfo != null) {
+        nodeIp = nodeDetails.cloudInfo.private_ip;
+      }
+    }
+    if (StringUtils.isNotBlank(nodeIp)) {
+      nodeAgentClient
+          .maybeGetNodeAgentClient(nodeIp)
+          .ifPresent(
+              nodeAgent -> {
+                commandArgs.add("--ansible_connection_type");
+                commandArgs.add("node_agent_rpc");
+                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, sensitiveArgs);
+              });
+    }
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     populateNodeUuidFromUniverse(universe, nodeTaskParam);
@@ -1576,8 +1604,6 @@ public class NodeManager extends DevopsBase {
           } else if (taskParam.useSystemd) {
             // Systemd for new universes
             commandArgs.add("--systemd_services");
-          } else if (taskParam.updatePackages) {
-            commandArgs.add("--update_packages");
           }
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
@@ -1722,6 +1748,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
+          if (taskParam.force) {
+            commandArgs.add("--force");
+          }
           break;
         }
       case Update_Mounted_Disks:
@@ -1753,7 +1782,9 @@ public class NodeManager extends DevopsBase {
           commandArgs.add(
               Integer.toString(
                   runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
-
+          if (taskParam.force) {
+            commandArgs.add("--force");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
@@ -1798,8 +1829,8 @@ public class NodeManager extends DevopsBase {
               getCommunicationPortsParams(userIntent, accessKey, nodeTaskParam.communicationPorts));
 
           boolean rootAndClientAreTheSame =
-              nodeTaskParam.clientRootCA == null
-                  || Objects.equals(nodeTaskParam.rootCA, nodeTaskParam.clientRootCA);
+              nodeTaskParam.getClientRootCA() == null
+                  || Objects.equals(nodeTaskParam.rootCA, nodeTaskParam.getClientRootCA());
           appendCertPathsToCheck(
               commandArgs,
               nodeTaskParam.rootCA,
@@ -1807,7 +1838,7 @@ public class NodeManager extends DevopsBase {
               rootAndClientAreTheSame && userIntent.enableNodeToNodeEncrypt);
 
           if (!rootAndClientAreTheSame) {
-            appendCertPathsToCheck(commandArgs, nodeTaskParam.clientRootCA, true, false);
+            appendCertPathsToCheck(commandArgs, nodeTaskParam.getClientRootCA(), true, false);
           }
 
           Config config = runtimeConfigFactory.forUniverse(universe);
@@ -1824,6 +1855,16 @@ public class NodeManager extends DevopsBase {
         }
       case Delete_Root_Volumes:
         {
+          if (nodeTaskParam instanceof DeleteRootVolumes.Params) {
+            DeleteRootVolumes.Params params = (DeleteRootVolumes.Params) nodeTaskParam;
+            if (params.volumeIds != null) {
+              params.volumeIds.forEach(
+                  id -> {
+                    commandArgs.add("--volume_id");
+                    commandArgs.add(id);
+                  });
+            }
+          }
           addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           break;
         }
@@ -1927,6 +1968,7 @@ public class NodeManager extends DevopsBase {
           break;
         }
     }
+    addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, sensitiveData);
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       return execCommand(
@@ -2054,6 +2096,31 @@ public class NodeManager extends DevopsBase {
     tags.put("customer-uuid", customer.uuid.toString());
     tags.put("universe-uuid", universe.universeUUID.toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
+    UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
+    if (userIntent.providerType.equals(Common.CloudType.gcp)) {
+      // GCP does not allow special characters other than - and _
+      // Special characters being replaced here
+      // https://cloud.google.com/compute/docs/labeling-resources#requirements
+      if (nodeTaskParam.creatingUser != null) {
+        String email =
+            SPECIAL_CHARACTERS_PATTERN
+                .matcher(nodeTaskParam.creatingUser.getEmail())
+                .replaceAll("_");
+        tags.put("yb_user_email", email);
+      }
+      if (nodeTaskParam.platformUrl != null) {
+        String url = SPECIAL_CHARACTERS_PATTERN.matcher(nodeTaskParam.platformUrl).replaceAll("_");
+        tags.put("yb_yba_url", url);
+      }
+
+    } else {
+      if (nodeTaskParam.creatingUser != null) {
+        tags.put("yb_user_email", nodeTaskParam.creatingUser.getEmail());
+      }
+      if (nodeTaskParam.platformUrl != null) {
+        tags.put("yb_yba_url", nodeTaskParam.platformUrl);
+      }
+    }
   }
 
   private Map<String, String> getReleaseSensitiveData(AnsibleConfigureServers.Params taskParam) {
@@ -2102,7 +2169,7 @@ public class NodeManager extends DevopsBase {
   public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
     KeyInfo keyInfo = params.accessKey.getKeyInfo();
     Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
-    Integer sshPort = keyInfo.sshPort == null ? provider.sshPort : keyInfo.sshPort;
+    Integer sshPort = keyInfo.sshPort == null ? provider.details.sshPort : keyInfo.sshPort;
     String sshUser = params.sshUser;
     String vaultPasswordFile = keyInfo.vaultPasswordFile;
     String vaultFile = keyInfo.vaultFile;

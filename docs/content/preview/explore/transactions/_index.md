@@ -14,24 +14,21 @@ type: indexpage
 ---
 YugabyteDB is a transactional database that supports distributed transactions. A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation** and **Durability** - commonly abbreviated as ACID.
 
+The following table summarizes the support for transactions across the YSQL and YCQL APIs.
 
-The table below summarizes the support for transactions across YSQL and YCQL APIs.
-
-| <span style="font-size:20px;">Property</span> | <span style="font-size:20px;">YSQL</span> | <span style="font-size:20px;">YCQL</span> | <span style="font-size:20px;">Comments</span> |
-|--------------------------------------------------|-------------|----------|----------|
-| <span style="font-size:16px;">[Distributed transactions](distributed-transactions-ysql/)</span> | <span style="font-size:16px;">Yes</span> | <span style="font-size:16px;">Yes</span> | Perform multi-row or multi-table transactions. <br/> Application can connect to any node of the cluster. |
-| <span style="font-size:16px;">[Isolation levels](isolation-levels/)</span> | <span style="font-size:16px;">Serializable <br/>Snapshot</span>  | <span style="font-size:16px;">Snapshot</span> | *Repeatable read* isolation level in PostgreSQL maps to <br/>*snapshot* isolation in YSQL |
-| Set `AUTOCOMMIT = false` | <span style="font-size:16px;">Yes</span> | <span style="font-size:16px;">No</span> | The transaction must be expressed as one statement in YCQL. |
-
+| Property | YSQL | YCQL | Comments |
+| :------- | :--- | :--- | :------- |
+| [Distributed transactions](distributed-transactions-ysql/) | Yes | Yes | Perform multi-row or multi-table transactions.<br/>Application can connect to any node of the cluster. |
+| [Isolation levels](isolation-levels/) | Serializable<br/>Snapshot | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
+| Set `AUTOCOMMIT = false` | Yes | No | The transaction must be expressed as one statement in YCQL. |
 
 <!--
-| <span style="font-size:16px;">[Explicit locking](explicit-locking/)</span>         | <span style="font-size:16px;">Yes</span> | <span style="font-size:16px;">No</span>       | Ability to perform row and table level locking |
-| <span style="font-size:16px;">[DDL statements](ddl-operations/)</span> | <span style="font-size:16px;">Transaction per <br/>DDL-statement</span>  | <span style="font-size:16px;">Transaction per <br/>DDL-statement</span> | Each DDL statement is a transaction in both YSQL and YCQL, <br/>even if other DDL statements are in a transaction block in YSQL. |
-| <span style="font-size:16px;">[Non-transactional tables](non-transactional-tables/)</span> | <span style="font-size:16px;">No</span>         | <span style="font-size:16px;">Yes</span>      | Ability to disable multi-row transactions on a per-table basis. <br/>Useful for some features like automatic data expiry. |
-
+| [Explicit locking](explicit-locking/) | Yes | No | Ability to perform row- and table-level locking |
+| [DDL statements](ddl-operations/) | Transaction per DDL statement  | Transaction per DDL statement | Each DDL statement is a transaction in both YSQL and YCQL, even if other DDL statements are in a transaction block in YSQL. |
+| [Non-transactional tables](non-transactional-tables/) | No | Yes | Ability to disable multi-row transactions on a per-table basis. <br/>Useful for some features such as automatic data expiry. |
 -->
 
-The various features are explained in the sections below.
+The various features are explained in the following sections.
 
 <div class="row">
 
@@ -39,7 +36,7 @@ The various features are explained in the sections below.
     <a class="section-link icon-offset" href="distributed-transactions-ysql/">
       <div class="head">
         <div class="icon"><i class="fa-solid fa-sitemap"></i></div>
-        <div class="title">Distributed Transactions</div>
+        <div class="title">Distributed transactions</div>
       </div>
       <div class="body">
         Understand how distributed transactions work in YugabyteDB.
@@ -50,10 +47,10 @@ The various features are explained in the sections below.
     <a class="section-link icon-offset" href="isolation-levels/">
       <div class="head">
         <div class="icon"><i class="fa-solid fa-bars-staggered"></i></div>
-        <div class="title">Isolation Levels</div>
+        <div class="title">Isolation levels</div>
       </div>
       <div class="body">
-        Details about isolation levels in YugabyteDB.
+        Serializable, Snapshot, and Read committed isolation in YugabyteDB.
       </div>
     </a>
   </div>
@@ -61,7 +58,7 @@ The various features are explained in the sections below.
     <a class="section-link icon-offset" href="explicit-locking/">
       <div class="head">
         <div class="icon"><i class="fa-solid fa-lock"></i></div>
-        <div class="title">Explicit Locking</div>
+        <div class="title">Explicit locking</div>
       </div>
       <div class="body">
         Explicit row-level locking in YSQL.

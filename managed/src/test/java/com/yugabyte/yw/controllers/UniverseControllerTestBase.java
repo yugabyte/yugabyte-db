@@ -26,6 +26,8 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -35,6 +37,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -101,6 +104,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected Config mockRuntimeConfig;
   protected QueryHelper mockQueryHelper;
   protected ReleaseManager mockReleaseManager;
+  protected RuntimeConfigFactory runtimeConfigFactory;
 
   @Override
   protected Application provideApplication() {
@@ -147,6 +151,8 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .overrides(bind(QueryHelper.class).toInstance(mockQueryHelper))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 
@@ -217,6 +223,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
             .put("api_key", "some_api_token");
     kmsConfig = ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", kmsConfigReq);
     authToken = user.createAuthToken();
+    runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
 
     when(mockAppConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());

@@ -8,13 +8,14 @@ menu:
   preview:
     identifier: go-drivers
     parent: drivers-orms
-    weight: 550
+    weight: 510
 type: indexpage
+showRightNav: true
 ---
 
-The following projects can be used to implement Golang applications using the YugabyteDB YSQL API.
-
 ## Supported projects
+
+The following projects can be used to implement Golang applications using the YugabyteDB YSQL and YCQL APIs.
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
@@ -25,14 +26,14 @@ The following projects can be used to implement Golang applications using the Yu
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------- |
-| GORM [Recommended] | [Documentation](gorm/) | [Hello World](../../develop/build-apps/go/ysql-gorm)|
-| GO-PG | [Documentation](pg/) | [Hello World](../../develop/build-apps/go/ysql-pg) |
+| GORM [Recommended] | [Documentation](gorm/) <br/> [Hello World](../orms/go/ysql-gorm)| [GORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/golang/gorm)
+| GO-PG | [Documentation](pg/) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yb-pgx/) or [Use an ORM](gorm/).
 
 For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/go/pgx-reference/) pages.
 
-### Prerequisites
+## Prerequisites
 
 To develop Golang applications for YugabyteDB, you need the following:
 
