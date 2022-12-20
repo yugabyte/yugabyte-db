@@ -361,7 +361,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
         .thenReturn(formData);
     Result result =
         assertPlatformException(() -> createAccessKey(UUID.randomUUID(), "foo", false, false));
-    assertBadRequest(result, "Invalid Provider/Region UUID");
+    assertBadRequest(result, "provider");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 

@@ -141,8 +141,9 @@ public class CloudProviderHandler {
 
     // TODO: move this to task framework
     for (AccessKey accessKey : AccessKey.getAll(provider.uuid)) {
-      if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
-        new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
+      final String provisionInstanceScript = provider.details.provisionInstanceScript;
+      if (!provisionInstanceScript.isEmpty()) {
+        new File(provisionInstanceScript).delete();
       }
       accessManager.deleteKeyByProvider(
           provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
@@ -794,7 +795,7 @@ public class CloudProviderHandler {
     if (MapUtils.isEmpty(providerConfig)) {
       return;
     }
-    Map<String, String> existingConfig = null;
+    Map<String, String> existingConfig;
     if ("gcp".equalsIgnoreCase(fromProvider.code)) {
       // For GCP, the config in the DB is derived from the credentials file.
       existingConfig = accessManager.readCredentialsFromFile(fromProvider.uuid);

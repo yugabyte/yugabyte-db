@@ -19,7 +19,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -61,11 +60,11 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import lombok.Getter;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -670,17 +669,8 @@ public class Util {
   public static boolean isOnPremManualProvisioning(Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
-      boolean manualProvisioning = false;
-      try {
-        AccessKey accessKey =
-            AccessKey.getOrBadRequest(
-                UUID.fromString(userIntent.provider), userIntent.accessKeyCode);
-        AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-        manualProvisioning = keyInfo.skipProvisioning;
-      } catch (PlatformServiceException ex) {
-        // no access code
-      }
-      return manualProvisioning;
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      return provider.details.skipProvisioning;
     }
     return false;
   }

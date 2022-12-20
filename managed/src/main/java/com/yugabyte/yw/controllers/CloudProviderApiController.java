@@ -10,13 +10,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
@@ -36,12 +29,18 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
-
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Result;
@@ -168,7 +167,6 @@ public class CloudProviderApiController extends AuthenticatedController {
     Provider reqProvider = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.customerUUID = customerUUID;
-
     CloudType providerCode = CloudType.valueOf(reqProvider.code);
     Provider providerEbean;
     if (providerCode.equals(CloudType.kubernetes)) {
@@ -245,7 +243,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             customerUUID, providerUUID, universeUUIDs, newKeyCode);
 
     // contains taskUUID and resourceUUID (universeUUID) for each universe
-    List<YBPTask> tasksResponseList = new ArrayList<YBPTask>();
+    List<YBPTask> tasksResponseList = new ArrayList<>();
     tasks.forEach(
         (universeUUID, taskUUID) -> {
           tasksResponseList.add(new YBPTask(taskUUID, universeUUID));
