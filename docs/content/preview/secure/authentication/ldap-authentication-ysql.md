@@ -87,7 +87,7 @@ The following configurations are supported for search + bind mode.
 | `ldapsearchfilter` | (empty) | The search filter to use when doing search + bind authentication. |
 | `ldapurl` | (empty) | An RFC 4516 LDAP URL. This is an alternative way to write LDAP options in a more compact and standard form. |
 
-## Creating secrets for Kubernetes
+## Create secrets for Kubernetes
 
 In Kubernetes, you can create secrets with sensitive information in the namespace where you are running YugabyteDB. Later, when creating universe pods, you can refer to those secrets in environment variables to use in configuring LDAP.
 
