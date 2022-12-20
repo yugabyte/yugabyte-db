@@ -2,19 +2,16 @@
 
 package com.yugabyte.yw.common;
 
-import play.libs.Json;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.PRECONDITION_FAILED;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static java.util.stream.Collectors.joining;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
@@ -23,13 +20,12 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,7 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.ConstraintViolation;
 import javax.validation.Valid;
@@ -50,22 +45,22 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
+import org.yb.ybc.BackupServiceTaskExtendedArgs;
 import org.yb.ybc.BackupServiceTaskProgressRequest;
 import org.yb.ybc.BackupServiceTaskResultRequest;
 import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.CloudStoreSpec;
+import org.yb.ybc.CloudType;
+import org.yb.ybc.NamespaceType;
 import org.yb.ybc.TableBackup;
 import org.yb.ybc.TableBackupSpec;
 import org.yb.ybc.UserChangeSpec;
-import org.yb.ybc.BackupServiceTaskExtendedArgs;
-import org.yb.ybc.NamespaceType;
-import org.yb.ybc.CloudType;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
@@ -609,7 +604,7 @@ public class YbcBackupUtil {
   public YbcClient getYbcClient(UUID universeUUID, String nodeIp) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     if (StringUtils.isBlank(nodeIp)) {
-      nodeIp = getMasterLeaderAddress(universe);
+      nodeIp = Util.getYbcNodeIp(universe);
     }
     String certificate = universe.getCertificateNodetoNode();
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
@@ -619,11 +614,5 @@ public class YbcBackupUtil {
           INTERNAL_SERVER_ERROR, "Could not create Yb-controller client.");
     }
     return ybcClient;
-  }
-
-  public String getMasterLeaderAddress(Universe universe) {
-    HostAndPort hostPort = universeInfoHandler.getMasterLeaderIP(universe);
-    String leaderIP = hostPort.getHost();
-    return leaderIP;
   }
 }
