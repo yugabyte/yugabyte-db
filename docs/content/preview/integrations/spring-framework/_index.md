@@ -8,7 +8,7 @@ aliases:
   - /preview/reference/drivers/spring-data-yugabytedb
 image: /images/section_icons/develop/ecosystem/spring.png
 menu:
-  preview:
+  preview_integrations:
     identifier: spring-framework
     parent: integrations
     weight: 571

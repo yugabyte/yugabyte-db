@@ -383,14 +383,6 @@
     showSection = true
 
 [[preview]]
-  name = "Integrations"
-  weight = 11
-  identifier = "integrations"
-  url = "/preview/integrations/"
-  [preview.params]
-    showSection = true
-
-[[preview]]
   name = "Reference"
   weight = 12
   identifier = "reference"
@@ -408,6 +400,25 @@
   identifier = "contribute"
   url = "/preview/contribute/"
   [preview.params]
+    showSection = true
+
+########## Menus (in preview) for Integrations
+
+[[preview_integrations]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  [preview_integrations.params]
+    classes = "separator"
+    showSection = true
+
+[[preview_integrations]]
+  name = "Integrations"
+  weight = 2
+  identifier = "integrations"
+  url = "/preview/integrations/"
+  [preview_integrations.params]
     showSection = true
 
 ########## Menus (in preview) for APIs
