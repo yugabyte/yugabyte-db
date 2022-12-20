@@ -215,6 +215,12 @@ If a new table is added to a namespace on which there is an active stream ID, th
 
 The YugabyteDB source connector caches schema at the tablet level, this means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, CDC service emits a record with the new schema for all the tablets, the YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
 
+{{< warning title="No backfill support" >}}
+
+If you alter the schema of the source table to add a default value for an existing column, the connector will NOT emit any event for the schema change. The default value will only be published in the records created after schema change is made. In such cases, it is recommended to alter the schema in your sinks to add the default value there as well.
+
+{{< /warning >}}
+
 ## Data change events
 
 The Debezium YugabyteDB connector generates a data change event for each row-level `INSERT`, `UPDATE`, and `DELETE` operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
@@ -811,7 +817,7 @@ Mappings for YugabyteDB basic data types:
 | TSTZRANGE | STRING | The string representation of a timestamp range with the local system time zone. |
 | DATERANGE | STRING | The string representation of a date range. Always has an _exclusive_ upper bound. |
 | ARRAY | ARRAY | N/A |
-| UDT | | Not currently supported |
+| ENUM | STRING | The string representation |
 
 ### Temporal types
 
