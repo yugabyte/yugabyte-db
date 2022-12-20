@@ -2097,13 +2097,13 @@ response_sizes:
   group_by: "service_method"
   panel_group: "YCQL Ops & Latency"
   layout:
-    title: "Response Size (bytes)"
+    title: "Response Size"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "ResponseSize": "Response Size"
-      ticksuffix: "&nbsp;\u00B5s"
+      ticksuffix: "&nbsp;B"
 
 tserver_rpc_queue_size_master:
   metric: "rpcs_in_queue_yb_master_MasterService"

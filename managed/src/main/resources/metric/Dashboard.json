@@ -12659,7 +12659,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "us"
+      "format" : "B"
     }, {
       "format" : "short",
       "label" : null,
@@ -12672,7 +12672,7 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Response Size (bytes)",
+    "title" : "Response Size",
     "id" : 105,
     "targets" : [ {
       "hide" : false,
