@@ -53,6 +53,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -467,13 +468,13 @@ public class UniverseCRUDHandler {
       // Set the node exporter config based on the provider
       if (!c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
         AccessKey accessKey = AccessKey.get(provider.uuid, c.userIntent.accessKeyCode);
-        AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-        boolean installNodeExporter = keyInfo.installNodeExporter;
-        String nodeExporterUser = keyInfo.nodeExporterUser;
+        ProviderDetails providerDetails = provider.details;
+        boolean installNodeExporter = providerDetails.installNodeExporter;
+        String nodeExporterUser = providerDetails.nodeExporterUser;
         taskParams.extraDependencies.installNodeExporter = installNodeExporter;
 
         if (c.userIntent.providerType.equals(Common.CloudType.onprem)) {
-          int nodeExporterPort = keyInfo.nodeExporterPort;
+          int nodeExporterPort = providerDetails.nodeExporterPort;
           taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
 
           for (NodeDetails node : taskParams.nodeDetailsSet) {
@@ -543,7 +544,7 @@ public class UniverseCRUDHandler {
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
     // for this customer id.
-    Universe universe = null;
+    Universe universe;
     TaskType taskType = TaskType.CreateUniverse;
 
     Ebean.beginTransaction();

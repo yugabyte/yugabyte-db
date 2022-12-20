@@ -6053,16 +6053,13 @@
           "type" : "boolean"
         },
         "installNodeExporter" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "nodeExporterPort" : {
           "format" : "int32",
-          "readOnly" : true,
           "type" : "integer"
         },
         "nodeExporterUser" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "ntpServers" : {
@@ -6072,11 +6069,9 @@
           "type" : "array"
         },
         "passwordlessSudoAccess" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "provisionInstanceScript" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "setUpChrony" : {
@@ -6086,7 +6081,6 @@
           "type" : "boolean"
         },
         "skipProvisioning" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "sshPort" : {
@@ -11035,7 +11029,7 @@
     "/api/v1/customers/{cUUID}/access_keys" : {
       "get" : {
         "description" : "",
-        "operationId" : "listAllForProviders",
+        "operationId" : "listAllForCustomer",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",

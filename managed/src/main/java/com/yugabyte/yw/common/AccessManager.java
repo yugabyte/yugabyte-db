@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -218,15 +219,21 @@ public class AccessManager extends DevopsBase {
     }
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
-    keyInfo.sshUser = sshUser;
-    keyInfo.sshPort = sshPort;
-    keyInfo.airGapInstall = airGapInstall;
-    keyInfo.skipProvisioning = skipProvisioning;
-    keyInfo.ntpServers = ntpServers;
-    keyInfo.setUpChrony = setUpChrony;
-    keyInfo.showSetUpChrony = showSetUpChrony;
     keyInfo.deleteRemote = deleteRemote;
+
+    // TODO: Move this code for ProviderDetails update elsewhere
+    ProviderDetails details = region.provider.details;
+    details.sshUser = sshUser;
+    details.sshPort = sshPort;
+    details.airGapInstall = airGapInstall;
+    details.skipProvisioning = skipProvisioning;
+    details.ntpServers = ntpServers;
+    details.setUpChrony = setUpChrony;
+    details.showSetUpChrony = showSetUpChrony;
+    region.provider.save();
+
     writeKeyFileData(keyInfo);
+
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
@@ -408,7 +415,7 @@ public class AccessManager extends DevopsBase {
       keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
       if (sshUser != null) {
-        keyInfo.sshUser = sshUser;
+        region.provider.details.sshUser = sshUser;
       } else {
         switch (Common.CloudType.valueOf(region.provider.code)) {
           case aws:
@@ -416,18 +423,19 @@ public class AccessManager extends DevopsBase {
           case gcp:
             String defaultSshUser = Common.CloudType.valueOf(region.provider.code).getSshUser();
             if (defaultSshUser != null && !defaultSshUser.isEmpty()) {
-              keyInfo.sshUser = defaultSshUser;
+              region.provider.details.sshUser = defaultSshUser;
             }
         }
       }
-      keyInfo.sshPort = sshPort;
-      keyInfo.airGapInstall = airGapInstall;
-      keyInfo.skipProvisioning = skipProvisioning;
-      keyInfo.setUpChrony = setUpChrony;
-      keyInfo.ntpServers = ntpServers;
-      keyInfo.showSetUpChrony = showSetupChrony;
+      region.provider.details.sshPort = sshPort;
+      region.provider.details.airGapInstall = airGapInstall;
+      region.provider.details.skipProvisioning = skipProvisioning;
+      region.provider.details.setUpChrony = setUpChrony;
+      region.provider.details.ntpServers = ntpServers;
+      region.provider.details.showSetUpChrony = showSetupChrony;
       writeKeyFileData(keyInfo);
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
+      region.provider.save();
     }
 
     // Save if key needs to be deleted
@@ -639,7 +647,8 @@ public class AccessManager extends DevopsBase {
     }
     // fill missing access key params using latest created key
     AccessKey latestAccessKey = AccessKey.getLatestKey(providerUUID);
-    AccessKey.KeyInfo keyInfo = latestAccessKey.getKeyInfo();
+    final Provider provider = Provider.getOrBadRequest(providerUUID);
+    AccessKey.MigratedKeyInfoFields keyInfo = provider.details;
     formData.sshUser = setOrValidate(formData.sshUser, keyInfo.sshUser, "sshUser");
     formData.sshPort = setOrValidate(formData.sshPort, keyInfo.sshPort, "sshPort");
     formData.nodeExporterUser =

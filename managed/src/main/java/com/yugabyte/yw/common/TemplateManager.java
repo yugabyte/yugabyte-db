@@ -53,8 +53,8 @@ public class TemplateManager extends DevopsBase {
       String nodeExporterUser,
       boolean setUpChrony,
       List<String> ntpServers) {
-    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String path = getOrCreateProvisionFilePath(accessKey.getProviderUUID());
+    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
 
     // Construct template command.
     List<String> commandArgs = new ArrayList<>();
@@ -62,8 +62,12 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(PROVISION_SCRIPT);
     commandArgs.add("--destination");
     commandArgs.add(path);
+
+    Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
+    ProviderDetails details = provider.details;
     commandArgs.add("--ssh_user");
-    commandArgs.add(keyInfo.sshUser);
+    commandArgs.add(details.sshUser);
+
     commandArgs.add("--vars_file");
     commandArgs.add(keyInfo.vaultFile);
     commandArgs.add("--vault_password_file");
@@ -72,8 +76,9 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(keyInfo.privateKey);
     commandArgs.add("--local_package_path");
     commandArgs.add(appConfig.getString("yb.thirdparty.packagePath"));
+
     commandArgs.add("--custom_ssh_port");
-    commandArgs.add(keyInfo.sshPort.toString());
+    commandArgs.add(details.sshPort.toString());
 
     if (airGapInstall) {
       commandArgs.add("--air_gap");
@@ -105,8 +110,6 @@ public class TemplateManager extends DevopsBase {
         execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
 
     if (result.get("error") == null) {
-      final Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
-      final ProviderDetails details = provider.details;
       details.passwordlessSudoAccess = passwordlessSudoAccess;
       details.provisionInstanceScript = path + "/" + PROVISION_SCRIPT;
       details.airGapInstall = airGapInstall;
@@ -116,17 +119,6 @@ public class TemplateManager extends DevopsBase {
       details.setUpChrony = setUpChrony;
       details.ntpServers = ntpServers;
       provider.save();
-
-      // TODO: remove following redundant access_key data.
-      keyInfo.passwordlessSudoAccess = passwordlessSudoAccess;
-      keyInfo.provisionInstanceScript = path + "/" + PROVISION_SCRIPT;
-      keyInfo.airGapInstall = airGapInstall;
-      keyInfo.installNodeExporter = installNodeExporter;
-      keyInfo.nodeExporterPort = nodeExporterPort;
-      keyInfo.nodeExporterUser = nodeExporterUser;
-      keyInfo.setUpChrony = setUpChrony;
-      keyInfo.ntpServers = ntpServers;
-      accessKey.setKeyInfo(keyInfo);
     } else {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, result);
     }
