@@ -164,11 +164,14 @@ struct BootstrapTabletData {
   consensus::RetryableRequests* retryable_requests = nullptr;
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks = nullptr;
   bool bootstrap_retryable_requests = true;
+  consensus::ConsensusMetadata* consensus_meta = nullptr;
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet
 // has blocks and log segments, this method rebuilds the soft state by replaying
 // the Log.
+// It might update ConsensusMetadata file and will also update data.consensus_meta
+// if it's set.
 //
 // This is a synchronous method, but is typically called within a thread pool by
 // TSTabletManager.

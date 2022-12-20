@@ -30,6 +30,7 @@ namespace consensus {
 class Consensus;
 class ConsensusContext;
 class ConsensusRoundCallback;
+class ConsensusMetadata;
 class LWReplicateMsgsHolder;
 class MultiRaftManager;
 class PeerProxyFactory;
