@@ -31,9 +31,7 @@ Change data capture (CDC) is a process to capture changes made to data in the da
 * The database and its tables must be created using YugabyteDB version 2.13 or later.
 * CDC supports YSQL tables only. (See [Limitations](#limitations).)
 
-Be aware of the following:
-
-* You can't stream data out of system tables.
+Be aware that you can't stream data out of system tables.
 
 {{< note title="Note" >}}
 
@@ -81,15 +79,15 @@ To facilitate the streaming of data, you have to create a DB Stream. This stream
 
 ### Stream expiry
 
-While reading the changes from WAL/IntentDB, the intents are retained and the retention time is controlled by the GFlag `cdc_intent_retention_ms`.
+When a client reads the changes from WAL (Write-ahead Log) /IntentDB, the intents are retained and the retention time is controlled by the gflag [cdc_intent_retention_ms](https://github.com/yugabyte/yugabyte-db/reference/configuration/yb-tserver/#cdc-intent-retention-ms).
 
-When a stream is created the checkpoint for a tablet is set as soon as the client requests for changes. Now if the client doesn't request for changes within the `cdc_intent_retention_ms` time, CDC service considers the `tablet_id, stream_id` combination to be expired and allows the garbage collection process to clean those intents.
+When you create a stream, the checkpoint for a tablet is set as soon as the client requests changes. If the client doesn't request changes within `cdc_intent_retention_ms` milliseconds, the CDC service considers the `tablet_id, stream_id` combination to be expired, and allows those intents to be removed by the garbage collection process.
 
-Once a stream is expired, a new stream ID needs to be created in order to proceed.
+Once a stream has expired, you need to create a new stream ID in order to proceed.
 
 {{< warning title="Warning" >}}
 
-If `cdc_intent_retention_ms` is set to a high value and in case the stream lags for any reasons, this will cause the intents to be retained for a longer period and it may destabilize your cluster if the number intents keep growing.
+If you set `cdc_intent_retention_ms` to a high value, and the stream lags for any reason, the intents will be retained for a longer period. This may destabilize your cluster if the number of intents keeps growing.
 
 {{< /warning >}}
 
