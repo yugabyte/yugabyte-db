@@ -16,7 +16,7 @@ A virtual private cloud (VPC) is a virtual network that you can define in a clou
 
 In the context of YugabyteDB Managed, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays in the cloud provider's network. The VPCs can be in different regions.
 
-A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Within the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network.
+A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). In the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network.
 
 ![Peered VPCs](/images/yb-cloud/managed-vpc-diagram.png)
 
