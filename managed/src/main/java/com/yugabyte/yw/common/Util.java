@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
@@ -60,6 +61,7 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import lombok.Getter;
 import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -813,5 +815,17 @@ public class Util {
           isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
     }
     return isKubernetesUniverse;
+  }
+
+  public static String getYbcNodeIp(Universe universe) {
+    HostAndPort hostPort = universe.getMasterLeader();
+    String nodeIp = hostPort.getHost();
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes) {
+      List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+      if (CollectionUtils.isNotEmpty(nodeList)) {
+        nodeIp = nodeList.get(0).cloudInfo.private_ip;
+      }
+    }
+    return nodeIp;
   }
 }
