@@ -133,17 +133,13 @@ Initially, if you create a stream for a particular table that already contains s
 
 The snapshot feature uses the `cdc_snapshot_batch_size` GFlag. This flag's default value is 250 records included per batch in response to an internal call to get the snapshot. If the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. You can also choose not to take a snapshot by modifying the [Debezium](../change-data-capture/debezium-connector-yugabytedb/) configuration.
 
-If the snapshot fails due to some reasons, then you will need to restart the connector. Upon restart, if the connector detects that snapshot has been completed for a given tablet, then the tablet will be skipped in the snapshot process and the connector will resume streaming the changes for that tablet.
+If the snapshot fails, you need to restart the connector. Upon restart, if the connector detects that the snapshot has been completed for a given tablet, the connector skips that tablet in the snapshot process and resumes streaming the changes for that tablet.
 
-{{< note title="Note" >}}
+{{< tip title="Taking a snapshot again" >}}
 
-In case there is a need to forecefully take the snapshot again, then the recommended way of doing it is to clean up the Kafka topics manually and delete all the contents, create a new stream ID and then deploy the connector again with the newly created stream ID.
+If you need to force the connector to take a snapshot again, you should clean up the Kafka topics manually and delete their contents. Then, create a new stream ID, and deploy the connector again with that newly-created stream ID.
 
-{{< /note >}}
-
-{{< note title="Note" >}}
-
-It is not possible to take a snapshot of the table again using an existing stream ID i.e. if for a given stream ID, the snapshot process is completed successfully, then the snapshot cannot be taken again using the same stream ID.
+You can't take another snapshot of the table using an existing stream ID. In other words, for a given stream ID, if the snapshot process is _completed successfully_, you can't use that stream ID to take the snapshot again.
 
 {{< /note >}}
 
