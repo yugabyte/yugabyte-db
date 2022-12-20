@@ -675,12 +675,11 @@ If you set the property to `false` to prevent the connector from saving tombston
 
 ## Before image
 
-[Before image](../change-data-capture/_index/#before-image) refers to the state of the row before the change event occurred. The YugabyteDB connector will send the before image of the row when it will be configured using a stream ID enabled with before image, to know more about how to create stream ID for before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
-
+[Before image](../#before-image) refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. For more information about how to create the stream ID for a before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
 
 {{< tip title="Use transformers" >}}
 
-We recommend adding a transformer in the source connector while using with before image, the below property can be added to your configuration directly:
+It is recommend to add a transformer in the source connector while using with before image; the following property can be added to your configuration directly:
 
 ```properties
 ...
@@ -690,7 +689,7 @@ We recommend adding a transformer in the source connector while using with befor
 ...
 ```
 
-Additionally, you will need another transformer in the sink connectors:
+You also need a transformer in the sink connectors:
 
 ```properties
 ...
@@ -702,13 +701,13 @@ Additionally, you will need another transformer in the sink connectors:
 
 {{< /tip >}}
 
-Once before image is enabled and the mentioned transformer is used, the effect of an update statement with the record structure would be:
+Once you've enabled before image and are using the suggested transformers, the effect of an update statement with the record structure is as follows:
 
 ```sql
 UPDATE customers SET email = 'service@example.com' WHERE id = 1;
 ```
 
-```output.json
+```output.json {hl_lines=[4,9,14,28]}
 {
   "schema": {...},
   "payload": {
@@ -743,13 +742,13 @@ UPDATE customers SET email = 'service@example.com' WHERE id = 1;
 }
 ```
 
-The fields in the update event are:
+The highlighted fields in the update event are:
 
 | Item | Field name | Description |
 | :--- | :--------- | :---------- |
 | 1 | before | The value of the row before the update operation. |
-| 2 | after | Specifies the state of the row after the change event happened. In this example, the value of `email` has now changed to `service@example.com`. |
-| 3 | source | Mandatory field that describes the source metadata for the event. The source field structure has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
+| 2 | after | Specifies the state of the row after the change event occurred. In this example, the value of `email` has changed to `service@example.com`. |
+| 3 | source | Mandatory field that describes the source metadata for the event. This has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
 ## Datatype mappings
@@ -1010,6 +1009,9 @@ See the following section for more details on `YBExtractNewRecordState`.
 {{< /note >}}
 
 ### Transformers
+
+There are two transformers available: YBExtractNewRecordState, and PGCompatible.
+
 #### YBExtractNewRecordState SMT
 
 Transformer type: `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState`
@@ -1026,9 +1028,9 @@ To avoid this problem when you're using a schema registry, use the `YBExtractNew
 
 Transformer type: `io.debezium.connector.yugabytedb.transforms.PGCompatible`
 
-YugabyteDB CDC service publishes events by default with a schema that only includes columns that have been modified. The source connector then sends the value as `null` for columns that are missing in the payload. Each column payload includes a `set` field that is used to signal if a column has been set to `null` or is not present in the payload from YugabyteDB.
+By default, the YugabyteDB CDC service publishes events with a schema that only includes columns that have been modified. The source connector then sends the value as `null` for columns that are missing in the payload. Each column payload includes a `set` field that is used to signal if a column has been set to `null` because it wasn't present in the payload from YugabyteDB.
 
-However, some sink connectors may not understand the above format. `PGCompatible` transforms the payload to a format that is compatible with the format of the standard change data events. Specifically, it transforms column schema and value to remove the set field and collapse the payload such it only contains the data type schema and value.
+However, some sink connectors may not understand the preceding format. `PGCompatible` transforms the payload to a format that is compatible with the format of the standard change data events. Specifically, it transforms column schema and value to remove the set field and collapse the payload such that it only contains the data type schema and value.
 
 PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all the fields in a payload.
 
@@ -1086,7 +1088,7 @@ Advanced connector configuration properties:
 | Property | Default | Description |
 | :------- | :------ | :---------- |
 | snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started <br/><br/> `initial_only` - Only take a snapshot of the table, do not stream further changes |
-| snapshot.include.collection.list | All tables specified in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (<schemaName>.<tableName>) of the tables to include in a snapshot. The specified items must also be named in the connector’s `table.include.list` property. This property takes effect only if the connector’s `snapshot.mode` property is set to a value other than `never`. |
+| snapshot.include.collection.list | All tables specified in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (<schemaName>.<tableName>) of the tables to include in a snapshot. The specified items must also be named in the connector's `table.include.list` property. This property takes effect only if the connector's `snapshot.mode` property is set to a value other than `never`. |
 | cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. |
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (such as createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
@@ -1108,75 +1110,75 @@ Advanced connector configuration properties:
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
 
-### Monitoring status of the deployed connector
+### Monitor status of the deployed connector
 
-You can use the rest APIs to monitor your deployed connectors.
+You can use the rest APIs to monitor your deployed connectors. The following operations are available:
 
-1. Get the list of all connectors
+* List all connectors
 
    ```sh
    curl -X GET localhost:8083/connectors/
    ```
 
-2. Get the configuration of a connector
+* Get a connector's configuration
 
    ```sh
    curl -X GET localhost:8083/connectors/<connector-name>
    ```
 
-3. Get the list of tasks with their configuration
+* Get the status of all tasks with their configuration
 
    ```sh
    curl -X GET localhost:8083/connectors/<connector-name>/tasks
    ```
 
-   Additionally, you can also view the status of one task by providing its task ID:
+* Get the status of the specified task
 
    ```sh
    curl -X GET localhost:8083/connectors/<connector-name>/tasks/<task-id>
    ```
 
-4. Get the status of the connector with the status of its tasks
+* Get the connector's status, and the status of its tasks
 
    ```sh
    curl -X GET localhost:8083/connectors/<connector-name>/status
    ```
 
-## Monitoring
+## Source connector metrics
 
-The YugabyteDB source connector provides two types of metrics that are in addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide.
+In addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide, the YugabyteDB source connector provides two other types of metrics:
 
-* Snapshot metrics provide information about connector operation while performing a snapshot.
-* Streaming metrics provide information about connector operation when the connector is capturing changes and streaming change event records.
+* _Snapshot metrics_ provide information about connector operation while performing a snapshot.
+* _Streaming metrics_ provide information about connector operation when the connector is capturing changes and streaming change event records.
 
 ### Snapshot metrics
 
 The **MBean** is `debezium.yugabytedb:type=connector-metrics,server=<database.server.name>,task=<task.id>,context=snapshot`.
 
-Snapshot metrics are not exposed unless a snapshot operation is active, or if a snapshot has occurred since the last connector start. The following table lists the shapshot metrics that are available.
+Snapshot metrics are only available when a snapshot operation is active, or if a snapshot has occurred since the last connector start. The following snapshot metrics are available:
 
 | Metric name | Type | Description |
 | :---- | :---- | :---- |
 | LastEvent | `string` | The last snapshot event that the connector has read. |
 | MilliSecondsSinceLastEvent | `long` | The number of milliseconds since the connector has read and processed the most recent event. |
-| TotalNumberOfEventsSeen | `long` | The total number of events that this connector has seen since last started or reset. |
+| TotalNumberOfEventsSeen | `long` | The total number of events that this connector has seen since the last start or metrics reset. |
 | NumberOfEventsFiltered | `long` | The number of events that have been filtered by include/exclude list filtering rules configured on the connector. |
 | QueueTotalCapacity | `int` | The length the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
 | QueueRemainingCapacity | `int` | The free capacity of the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
-| SnapshotRunning | `boolean` | Whether the snapshot was started. |
-| SnapshotPaused | `boolean` | Whether the snapshot was paused. |
-| SnapshotAborted | `boolean` | Whether the snapshot was aborted. |
-| SnapshotCompleted | `boolean` | Whether the snapshot completed. |
+| SnapshotRunning | `boolean` | Whether the snapshot is currently running. |
+| SnapshotPaused | `boolean` | Whether the snapshot was paused one or more times. |
+| SnapshotAborted | `boolean` | Whether the snapshot has been aborted. |
+| SnapshotCompleted | `boolean` | Whether the snapshot has been completed. |
 | SnapshotDurationInSeconds | `long` | The total number of seconds that the snapshot has taken so far, even if not complete. Includes also time when snapshot was paused.|
-| SnapshotPausedDurationInSeconds | `long` | The total number of seconds that the snapshot was paused. If the snapshot was paused several times, the paused time adds up. |
-| MaxQueueSizeInBytes | `long` | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
+| SnapshotPausedDurationInSeconds | `long` | The total number of seconds that the snapshot was paused. If the snapshot was paused more than once, this is the cumulative pause time. |
+| MaxQueueSizeInBytes | `long` | The maximum buffer of the queue, in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
 | CurrentQueueSizeInBytes | `long` | The current volume, in bytes, of records in the queue. |
 
 ### Streaming metrics
 
 The **MBean** is `debezium.yugabytedb:type=connector-metrics,server=<database.server.name>,task=<task.id>,context=streaming`.
 
-The following table lists the streaming metrics that are available.
+The following streaming metrics are available:
 
 | Metric name | Type | Description |
 | :---- | :---- | :---- |
@@ -1189,8 +1191,8 @@ The following table lists the streaming metrics that are available.
 | NumberOfEventsFiltered | `long` | The number of events that have been filtered by include/exclude list filtering rules configured on the connector. |
 | QueueTotalCapacity | `int` | The length the queue used to pass events between the streamer and the main Kafka Connect loop. |
 | QueueRemainingCapacity | `int` | The free capacity of the queue used to pass events between the streamer and the main Kafka Connect loop. |
-| Connected | `boolean` | Flag that denotes whether the connector is currently connected to the database server. |
-| MilliSecondsBehindSource | `long` | The number of milliseconds between the last change event’s timestamp and the connector processing it. The values will incoporate any differences between the clocks on the machines where the database server and the connector are running. |
+| Connected | `boolean` | Indicates whether the connector is currently connected to the database server. |
+| MilliSecondsBehindSource | `long` | The number of milliseconds between the last change event’s timestamp and when the connector processed it. The value incorporates any differences between the clocks on the machines where the database server and the connector are running. |
 | SourceEventPosition | `Map<String, String>` | The coordinates of the last received event. |
 | LastTransactionId | `string` | Transaction identifier of the last processed transaction. |
 | MaxQueueSizeInBytes | `long` | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
@@ -1198,7 +1200,7 @@ The following table lists the streaming metrics that are available.
 
 ## Usage examples
 
-For examples on how to configure CDC in different setup configurations, you can see our [list of examples on GitHub](https://github.com/yugabyte/cdc-examples) for usage with various sinks and configuration information.
+For examples on how to configure CDC in different setup configurations, refer to the list of [CDC examples] on GitHub(https://github.com/yugabyte/cdc-examples) for usage with various sinks and configuration information.
 ## Troubleshooting
 
 Debezium is a distributed system that captures all changes in multiple upstream databases; it never misses or loses an event. When the system is operating normally or being managed carefully then Debezium provides exactly once delivery of every change event record.

@@ -31,9 +31,7 @@ Change data capture (CDC) is a process to capture changes made to data in the da
 * The database and its tables must be created using YugabyteDB version 2.13 or later.
 * CDC supports YSQL tables only. (See [Limitations](#limitations).)
 
-Be aware of the following:
-
-* You can't stream data out of system tables.
+Be aware that you can't stream data out of system tables.
 
 {{< note title="Note" >}}
 
@@ -81,15 +79,15 @@ To facilitate the streaming of data, you have to create a DB Stream. This stream
 
 ### Stream expiry
 
-While reading the changes from WAL/IntentDB, the intents are retained and the retention time is controlled by the GFlag `cdc_intent_retention_ms`.
+When a client reads the changes from WAL (Write-ahead Log) /IntentDB, the intents are retained and the retention time is controlled by the gflag [cdc_intent_retention_ms](https://github.com/yugabyte/yugabyte-db/reference/configuration/yb-tserver/#cdc-intent-retention-ms).
 
-When a stream is created the checkpoint for a tablet is set as soon as the client requests for changes. Now if the client doesn't request for changes within the `cdc_intent_retention_ms` time, CDC service considers the `tablet_id, stream_id` combination to be expired and allows the garbage collection process to clean those intents.
+When you create a stream, the checkpoint for a tablet is set as soon as the client requests changes. If the client doesn't request changes within `cdc_intent_retention_ms` milliseconds, the CDC service considers the `tablet_id, stream_id` combination to be expired, and allows those intents to be removed by the garbage collection process.
 
-Once a stream is expired, a new stream ID needs to be created in order to proceed.
+Once a stream has expired, you need to create a new stream ID in order to proceed.
 
 {{< warning title="Warning" >}}
 
-If `cdc_intent_retention_ms` is set to a high value and in case the stream lags for any reasons, this will cause the intents to be retained for a longer period and it may destabilize your cluster if the number intents keep growing.
+If you set `cdc_intent_retention_ms` to a high value, and the stream lags for any reason, the intents will be retained for a longer period. This may destabilize your cluster if the number of intents keeps growing.
 
 {{< /warning >}}
 
@@ -135,35 +133,31 @@ Initially, if you create a stream for a particular table that already contains s
 
 The snapshot feature uses the `cdc_snapshot_batch_size` GFlag. This flag's default value is 250 records included per batch in response to an internal call to get the snapshot. If the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. You can also choose not to take a snapshot by modifying the [Debezium](../change-data-capture/debezium-connector-yugabytedb/) configuration.
 
-If the snapshot fails due to some reasons, then you will need to restart the connector. Upon restart, if the connector detects that snapshot has been completed for a given tablet, then the tablet will be skipped in the snapshot process and the connector will resume streaming the changes for that tablet.
+If the snapshot fails, you need to restart the connector. Upon restart, if the connector detects that the snapshot has been completed for a given tablet, the connector skips that tablet in the snapshot process and resumes streaming the changes for that tablet.
 
-{{< note title="Note" >}}
+{{< tip title="Taking a snapshot again" >}}
 
-In case there is a need to forecefully take the snapshot again, then the recommended way of doing it is to clean up the Kafka topics manually and delete all the contents, create a new stream ID and then deploy the connector again with the newly created stream ID.
+If you need to force the connector to take a snapshot again, you should clean up the Kafka topics manually and delete their contents. Then, create a new stream ID, and deploy the connector again with that newly-created stream ID.
 
-{{< /note >}}
-
-{{< note title="Note" >}}
-
-It is not possible to take a snapshot of the table again using an existing stream ID i.e. if for a given stream ID, the snapshot process is completed successfully, then the snapshot cannot be taken again using the same stream ID.
+You can't take another snapshot of the table using an existing stream ID. In other words, for a given stream ID, if the snapshot process is _completed successfully_, you can't use that stream ID to take the snapshot again.
 
 {{< /note >}}
 
 ## Before image
 
-This refers to the state of the row before the change event occurred. This will only be populated in case of UPDATE and DELETE event as in case of INSERT and READ (Snapshot) events, the change is for the creation of new content.
+Before image refers to the state of the row before the change event occurred. This state is populated during UPDATE and DELETE events as in case of INSERT and READ (Snapshot) events, the change is for the creation of new content.
 
-At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. By default, the history retention period is controlled by the [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec) applied cluster-wide to every YSQL database.
+At any moment, YugabyteDB not only stores the latest state of the data, but also the recent history of changes. By default, the history retention period is controlled by the [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec), applied cluster-wide to every YSQL database.
 
-However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream. Now when a CDC active stream's lag increases, the amount of space required for the database grows as more data is retained.
+However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream. When a CDC active stream's lag increases, the amount of space required for the database grows as more data is retained.
 
-There are no technical limitations on the retention target. The actual overhead depends on the workload, therefore it is recommended to estimate it by running tests based on your applications.
+There are no technical limitations on the retention target. The actual overhead depends on the workload, and you'll need to estimate it by running tests based on your applications.
 
-You will need to create a CDC DB stream indicating the server to send the before image of the changed rows with the streams. To know more on how to create streams with before image enabled, see [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands).
+You'll need to create a CDC DB stream indicating the server to send the before image of the changed rows with the streams. To learn more about creating streams with before image enabled, see [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands).
 
 {{< note title="Note" >}}
 
-Any write operations done within the current transaction will not be visible as before image. In other words, the before image will only be available for records which are/were committed prior to the current transaction.
+Write operations within the current transaction aren't visible in the before image. In other words, the before image is only available for _records committed prior to the current transaction_.
 
 {{< /note >}}
 

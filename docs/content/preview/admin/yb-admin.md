@@ -1482,7 +1482,8 @@ For example:
 ```
 
 ##### Enabling before image
-To create a change data capture (CDC) DB stream which also supports sending the before image of the record, use this command.
+
+To create a change data capture (CDC) DB stream which also supports sending the before image of the record, use the following command.
 
 **Syntax**
 
@@ -1492,7 +1493,7 @@ yb-admin \
     create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
 ```
 
-* * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
 * `IMPLICIT`: Checkpointing type on the server.
 * `ALL`: Record type indicating the server that the stream should send the before image too.
