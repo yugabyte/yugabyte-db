@@ -16,7 +16,7 @@ A virtual private cloud (VPC) is a virtual network that you can define in a clou
 
 In the context of YugabyteDB Managed, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays in the cloud provider's network. The VPCs can be in different regions.
 
-A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Within the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network.
+A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). In the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network.
 
 ![Peered VPCs](/images/yb-cloud/managed-vpc-diagram.png)
 
@@ -81,13 +81,46 @@ The block of [private IP addresses](#private-ip-address-ranges) used to define y
 
 Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
-When entering the range for your VPC in YugabyteDB Managed, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Managed supports network sizes from `/26` to `/16` as shown in the following table. For typical applications, `/26` is more than sufficient.
+When entering the range for your VPC in YugabyteDB Managed, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Managed supports network sizes from `/26` to `/16`. For typical applications, `/25` is sufficient.
 
-| Provider | Network Size (prefix length) | Number of Usable IP Addresses | Notes |
+The number of available addresses and sizing recommendation depends on the cloud provider where you are deploying.
+
+{{< tabpane text=true >}}
+
+  {{% tab header="AWS" lang="aws" %}}
+
+In AWS, you assign the range to a single region. If you need multiple regions, you create a separate VPC for each region.
+
+Use at least `/25` for production deployments, and `/24` if deploying multiple clusters in a single VPC. `/26` should only be used for testing and development.
+
+When sizing the VPC, you need to take into account that the address range is split into subnets, each in a separate availability zone, and that AWS reserves 5 addresses per subnet. A further 8 addresses are required by AWS when creating the load balancer (though typically only one or two addresses are used while running). If you enable public access on your cluster, then two load balancers are created, one for VPC peered connections, and one for public connections.
+
+For example, in a size `/26` VPC, each subnet is size `/28`, which is 16 addresses per subnet; 5 addresses are reserved by AWS, and 8 addresses are required to create a load balancer, which leaves only 3 usable addresses. This limits you to 3 nodes per zone in a `/26` VPC with the regular load balancer, and only 2 nodes if you want to enable public access.
+
+| Network Size<br/>(prefix length) | IP Addresses | IP addresses per subnet | Available IP addresses per subnet |
+| :--- | :--- | :--- | :--- |
+| /26<br/>/25<br/>/24 | 64<br/>128<br/>256 | 16<br/>32<br/>64 | 2-3<br/>18-19<br/>50-51 |
+
+For more information, refer to [Subnets for your VPC](https://docs.aws.amazon.com/vpc/latest/userguide/configure-subnets.html) in the AWS documentation.
+
+  {{% /tab %}}
+
+  {{% tab header="GCP" lang="gcp" %}}
+
+For a custom GCP network, a size of `/26` per region is sufficient for typical applications.
+
+For an automatic GCP network, a minimum size of `/18` is recommended to have enough addresses to distribute among all the regions.
+
+| Type | Network Size (prefix length) | IP Addresses | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| GCP (custom) | /24<br>/25<br>/26 | 256<br>128<br>64 | In a GCP custom network, you can customize the regions for the VPC. |
-| GCP (auto)| /16<br>/17<br>/18 | 65536<br>32768<br>16384 | In a GCP auto network, the range is split across all supported regions.<br>For information on GCP custom and auto VPCs, refer to [Subnet creation mode](https://cloud.google.com/vpc/docs/vpc#subnet-ranges) in the GCP documentation. |
-| AWS | /26 | 64 | In AWS, you assign the range to a single region. If you need multiple regions, you must create a separate VPC for each. |
+| GCP custom | /24<br>/25<br>/26 | 256<br>128<br>64 | In a GCP custom network, you customize the regions for the VPC and assign a range to each. |
+| GCP auto| /16<br>/17<br>/18 | 65536<br>32768<br>16384 | In a GCP auto network, the range is split across all supported regions. |
+
+For information on GCP custom and auto VPCs, refer to [Subnet creation mode](https://cloud.google.com/vpc/docs/vpc#subnet-ranges) in the GCP documentation.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Private IP address ranges
 
