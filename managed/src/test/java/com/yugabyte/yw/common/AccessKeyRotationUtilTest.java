@@ -53,7 +53,6 @@ import com.typesafe.config.Config;
 public class AccessKeyRotationUtilTest extends FakeDBApplication {
 
   @InjectMocks AccessKeyRotationUtil accessKeyRotationUtil;
-  @Mock Config mockRuntimeConfig;
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
   @Mock Config mockConfigUniverseScope;
 
@@ -70,11 +69,10 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
         .thenReturn(365);
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    defaultProvider.details.sshUser = "ssh_user";
+    defaultProvider.details.sshPort = 22;
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
-    AccessKey.KeyInfo defaultKeyInfo = new AccessKey.KeyInfo();
-    defaultKeyInfo.sshUser = "ssh_user";
-    defaultKeyInfo.sshPort = 22;
-    defaultAccessKey = AccessKey.create(defaultProvider.uuid, "default-key", defaultKeyInfo);
+    defaultAccessKey = AccessKey.create(defaultProvider.uuid, "default-key", new KeyInfo());
   }
 
   @Test
@@ -110,6 +108,8 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     mockAccessKey
         .when(() -> AccessKey.getLatestKey(eq(defaultProvider.uuid)))
         .thenReturn(defaultAccessKey);
+    // TODO(?): Fix this test - it should have broken after this diff that moved sshUser setup to
+    //  provider.details but it keeps working. Definitely not testing anything.
     when(mockAccessManager.addKey(
             any(UUID.class),
             eq(defaultAccessKey.getKeyCode()),

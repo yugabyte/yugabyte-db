@@ -11,6 +11,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.Query;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -18,6 +19,7 @@ import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.io.File;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -35,18 +37,10 @@ import play.data.validation.Constraints;
         "Access key for the cloud provider. This helps to "
             + "authenticate the user and get access to the provider.")
 public class AccessKey extends Model {
-  @ApiModel
-  @JsonInclude(JsonInclude.Include.NON_NULL)
-  public static class KeyInfo {
-    @ApiModelProperty public String publicKey;
-    @ApiModelProperty public String privateKey;
-    @ApiModelProperty public String vaultPasswordFile;
-    @ApiModelProperty public String vaultFile;
-    @ApiModelProperty public boolean deleteRemote = true;
-
-    // Below fields should be moved to provider details
+  public static class MigratedKeyInfoFields {
+    // Below fields are moved to provider details
     @ApiModelProperty public String sshUser;
-    @ApiModelProperty public Integer sshPort;
+    @ApiModelProperty public Integer sshPort = 22;
     @ApiModelProperty public boolean airGapInstall = false;
     @ApiModelProperty public boolean passwordlessSudoAccess = true;
     @ApiModelProperty public String provisionInstanceScript = "";
@@ -55,12 +49,37 @@ public class AccessKey extends Model {
     @ApiModelProperty public String nodeExporterUser = "prometheus";
     @ApiModelProperty public boolean skipProvisioning = false;
     @ApiModelProperty public boolean setUpChrony = false;
-    @ApiModelProperty public List<String> ntpServers;
+    @ApiModelProperty public List<String> ntpServers = Collections.emptyList();;
 
     // Indicates whether the provider was created before or after PLAT-3009
     // True if it was created after, else it was created before.
     // Dictates whether or not to show the set up NTP option in the provider UI
     @ApiModelProperty public boolean showSetUpChrony = false;
+
+    public void mergeFrom(MigratedKeyInfoFields keyInfo) {
+      sshUser = keyInfo.sshUser;
+      sshPort = keyInfo.sshPort;
+      airGapInstall = keyInfo.airGapInstall;
+      passwordlessSudoAccess = keyInfo.passwordlessSudoAccess;
+      provisionInstanceScript = keyInfo.provisionInstanceScript;
+      installNodeExporter = keyInfo.installNodeExporter;
+      nodeExporterPort = keyInfo.nodeExporterPort;
+      nodeExporterUser = keyInfo.nodeExporterUser;
+      skipProvisioning = keyInfo.skipProvisioning;
+      setUpChrony = keyInfo.setUpChrony;
+      showSetUpChrony = keyInfo.showSetUpChrony;
+      ntpServers = keyInfo.ntpServers;
+    }
+  }
+
+  @ApiModel
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public static class KeyInfo extends MigratedKeyInfoFields {
+    @ApiModelProperty public String publicKey;
+    @ApiModelProperty public String privateKey;
+    @ApiModelProperty public String vaultPasswordFile;
+    @ApiModelProperty public String vaultFile;
+    @ApiModelProperty public boolean deleteRemote = true;
   }
 
   public static String getDefaultKeyCode(Provider provider) {
@@ -186,10 +205,6 @@ public class AccessKey extends Model {
   private static final Finder<AccessKeyId, AccessKey> find =
       new Finder<AccessKeyId, AccessKey>(AccessKey.class) {};
 
-  public static AccessKey get(AccessKeyId accessKeyId) {
-    return find.byId(accessKeyId);
-  }
-
   public static AccessKey getOrBadRequest(UUID providerUUID, String keyCode) {
     AccessKey accessKey = get(providerUUID, keyCode);
     if (accessKey == null) {
@@ -205,6 +220,10 @@ public class AccessKey extends Model {
 
   public static List<AccessKey> getAll(UUID providerUUID) {
     return find.query().where().eq("provider_uuid", providerUUID).findList();
+  }
+
+  public void mergeProviderDetails() {
+    keyInfo.mergeFrom(Provider.getOrBadRequest(getProviderUUID()).details);
   }
 
   public static List<AccessKey> getByProviderUuids(List<UUID> providerUUIDs) {
@@ -236,11 +255,14 @@ public class AccessKey extends Model {
   // returns the most recently created access key
   // this can be used to set the params during creating another key
   public static AccessKey getLatestKey(UUID providerUUID) {
+    return getLatestAccessKeyQuery(providerUUID).findOne();
+  }
+
+  public static Query<AccessKey> getLatestAccessKeyQuery(UUID providerUUID) {
     return find.query()
         .where()
         .eq("provider_uuid", providerUUID)
         .orderBy("creation_date DESC")
-        .findList()
-        .get(0);
+        .setMaxRows(1);
   }
 }

@@ -54,6 +54,7 @@ public class AccessKeyController extends AuthenticatedController {
     Provider.getOrBadRequest(customerUUID, providerUUID);
 
     AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
+    accessKey.mergeProviderDetails();
     return PlatformResults.withData(accessKey);
   }
 
@@ -67,6 +68,7 @@ public class AccessKeyController extends AuthenticatedController {
 
     List<AccessKey> accessKeys;
     accessKeys = AccessKey.getAll(providerUUID);
+    accessKeys.forEach(AccessKey::mergeProviderDetails);
     return PlatformResults.withData(accessKeys);
   }
 
@@ -74,7 +76,7 @@ public class AccessKeyController extends AuthenticatedController {
       value = "List access keys for all providers of a customer",
       response = AccessKey.class,
       responseContainer = "List")
-  public Result listAllForProviders(UUID customerUUID) {
+  public Result listAllForCustomer(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<UUID> providerUUIDs =
         Provider.getAll(customerUUID)
@@ -82,6 +84,7 @@ public class AccessKeyController extends AuthenticatedController {
             .map(provider -> provider.uuid)
             .collect(Collectors.toList());
     List<AccessKey> accessKeys = AccessKey.getByProviderUuids(providerUUIDs);
+    accessKeys.forEach(AccessKey::mergeProviderDetails);
     return PlatformResults.withData(accessKeys);
   }
 
@@ -89,7 +92,8 @@ public class AccessKeyController extends AuthenticatedController {
       nickname = "create_accesskey",
       value = "Create an access key",
       response = AccessKey.class)
-  public Result create(UUID customerUUID, UUID providerUUID) throws IOException {
+  public Result create(UUID customerUUID, UUID providerUUID) {
+    final Provider provider = Provider.getOrBadRequest(providerUUID);
     AccessKeyFormData formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class).get();
     formData = accessManager.setOrValidateRequestDataWithExistingKey(formData, providerUUID);
     AccessKeyFormData finalFormData = formData;
@@ -98,7 +102,7 @@ public class AccessKeyController extends AuthenticatedController {
             providerUUID,
             () -> {
               try {
-                return create(customerUUID, providerUUID, finalFormData);
+                return create(customerUUID, provider, finalFormData);
               } catch (IOException e) {
                 LOG.error("Failed to create access key", e);
                 throw new PlatformServiceException(
@@ -116,10 +120,10 @@ public class AccessKeyController extends AuthenticatedController {
     return PlatformResults.withData(accessKey);
   }
 
-  private AccessKey create(UUID customerUUID, UUID providerUUID, AccessKeyFormData formData)
+  private AccessKey create(UUID customerUUID, Provider provider, AccessKeyFormData formData)
       throws IOException {
     UUID regionUUID = formData.regionUUID;
-    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    Region region = Region.getOrBadRequest(customerUUID, provider.uuid, regionUUID);
     String keyCode = formData.keyCode;
     String keyContent = formData.keyContent;
     AccessManager.KeyType keyType = formData.keyType;
@@ -138,10 +142,7 @@ public class AccessKeyController extends AuthenticatedController {
     AccessKey accessKey;
 
     LOG.info(
-        "Creating access key {} for customer {}, provider {}.",
-        keyCode,
-        customerUUID,
-        providerUUID);
+        "Creating access key {} for customer {}, provider {}.", keyCode, customerUUID, provider);
 
     if (setUpChrony
         && region.provider.code.equals(onprem.name())
@@ -231,6 +232,8 @@ public class AccessKeyController extends AuthenticatedController {
     if (expirationThresholdDays != null) {
       accessKey.updateExpirationDate(expirationThresholdDays);
     }
+
+    accessKey.getKeyInfo().mergeFrom(provider.details);
     return accessKey;
   }
 
