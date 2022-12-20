@@ -1111,6 +1111,9 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   }
 
   ProducerTabletInfo producer_tablet{"" /* UUID */, req.stream_id(), req.tablet_id()};
+  RETURN_NOT_OK_SET_CODE(
+      CheckTabletValidForStream(producer_tablet), CDCError(CDCErrorPB::INVALID_REQUEST));
+
   OpId checkpoint;
   bool set_latest_entry = req.bootstrap();
 
