@@ -675,12 +675,11 @@ If you set the property to `false` to prevent the connector from saving tombston
 
 ## Before image
 
-[Before image](../change-data-capture/_index/#before-image) refers to the state of the row before the change event occurred. The YugabyteDB connector will send the before image of the row when it will be configured using a stream ID enabled with before image, to know more about how to create stream ID for before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
-
+[Before image](../#before-image) refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. For more information about how to create the stream ID for a before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
 
 {{< tip title="Use transformers" >}}
 
-We recommend adding a transformer in the source connector while using with before image, the below property can be added to your configuration directly:
+It is recommend to add a transformer in the source connector while using with before image; the following property can be added to your configuration directly:
 
 ```properties
 ...
@@ -690,7 +689,7 @@ We recommend adding a transformer in the source connector while using with befor
 ...
 ```
 
-Additionally, you will need another transformer in the sink connectors:
+You also need a transformer in the sink connectors:
 
 ```properties
 ...
@@ -702,13 +701,13 @@ Additionally, you will need another transformer in the sink connectors:
 
 {{< /tip >}}
 
-Once before image is enabled and the mentioned transformer is used, the effect of an update statement with the record structure would be:
+Once you've enabled before image and are using the suggested transformers, the effect of an update statement with the record structure is as follows:
 
 ```sql
 UPDATE customers SET email = 'service@example.com' WHERE id = 1;
 ```
 
-```output.json
+```output.json {hl_lines=[4,9,14,28]}
 {
   "schema": {...},
   "payload": {
@@ -743,12 +742,12 @@ UPDATE customers SET email = 'service@example.com' WHERE id = 1;
 }
 ```
 
-The fields in the update event are:
+The highlighted fields in the update event are:
 
 | Item | Field name | Description |
 | :--- | :--------- | :---------- |
 | 1 | before | The value of the row before the update operation. |
-| 2 | after | Specifies the state of the row after the change event happened. In this example, the value of `email` has now changed to `service@example.com`. |
+| 2 | after | Specifies the state of the row after the change event occurred. In this example, the value of `email` has changed to `service@example.com`. |
 | 3 | source | Mandatory field that describes the source metadata for the event. The source field structure has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 

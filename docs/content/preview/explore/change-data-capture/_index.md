@@ -157,7 +157,7 @@ You'll need to create a CDC DB stream indicating the server to send the before i
 
 {{< note title="Note" >}}
 
-Any write operations done within the current transaction will not be visible as before image. In other words, the before image will only be available for records which are/were committed prior to the current transaction.
+Write operations within the current transaction aren't visible in the before image. In other words, the before image is only available for _records committed prior to the current transaction_.
 
 {{< /note >}}
 
