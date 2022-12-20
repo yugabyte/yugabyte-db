@@ -173,4 +173,4 @@ watch-topic -a dbserver1.public.test
 
 ## Other examples
 
-To explore other examples on the usage of CDC, visit our [examples repository on GitHub](https://github.com/yugabyte/cdc-examples).
+To explore other examples on the usage of CDC, refer to [CDC examples](https://github.com/yugabyte/cdc-examples).
