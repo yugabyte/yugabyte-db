@@ -52,7 +52,7 @@ You can scale multi-node single-region clusters horizontally and vertically, as 
 
 To add or remove read replicas, refer to [Read replicas](../managed-read-replica/).
 
-For availability zone-level fault tolerant clusters, you must scale nodes in increments of 3.
+For Availability zone-level fault tolerant clusters, you must scale nodes in increments of 3.
 
 To scale a single-region cluster:
 
@@ -119,7 +119,11 @@ To scale a partition-by-region cluster:
 
 1. To add a region, click **Add Region**, choose the region, select the VPC where you want to deploy the cluster, and enter the number of nodes. The new region has the same fault tolerance as the primary cluster.
 
-1. To scale the cluster, enter the number of nodes, vCPUs per node, and disk size in GB per node. The same number of nodes and node sizes apply across all regions.
+1. To scale the cluster horizontally, enter the number of nodes for each region.
+
+1. To scale the cluster vertically, enter the number of vCPUs per node, and disk size in GB per node.
+
+    You can scale the number of nodes in each region independently, however the same node sizes apply across all regions.
 
     Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
