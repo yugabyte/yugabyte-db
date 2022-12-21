@@ -394,7 +394,10 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 EndTimestamp:   endTime,
         }
 
-        session := c.Session
+        session, err := c.GetSession()
+        if err != nil {
+            return ctx.String(http.StatusInternalServerError, err.Error())
+        }
 
         for _, metric := range metricsParam {
                 // Read from the table.
@@ -720,12 +723,15 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                                     query :=
                                         fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk",
                                             hostToUuid[hostName])
-                                    iter := c.Session.Query(query).Iter()
-                                    var ts int64
-                                    var value int64
-                                    var details string
-                                    iter.Scan(&ts, &value, &details)
-                                    totalDiskBytes = value
+                                    session, err := c.GetSession()
+                                    if err == nil {
+                                        iter := session.Query(query).Iter()
+                                        var ts int64
+                                        var value int64
+                                        var details string
+                                        iter.Scan(&ts, &value, &details)
+                                        totalDiskBytes = value
+                                    }
                                 }
                         }
                         totalSstFileSizeBytes := int64(nodeData.TotalSstFileSizeBytes)
@@ -933,9 +939,12 @@ func (c *Container) GetSlowQueries(ctx echo.Context) error {
         // do each node in parallel
         futures := []chan SlowQueriesFuture{}
         for _, nodeHost := range nodes {
-                future := make(chan SlowQueriesFuture)
-                futures = append(futures, future)
-                go getSlowQueriesFuture(nodeHost, c.Conn, future)
+                conn, err := c.GetConnectionFromMap(nodeHost)
+                if err == nil {
+                    future := make(chan SlowQueriesFuture)
+                    futures = append(futures, future)
+                    go getSlowQueriesFuture(nodeHost, conn, future)
+                }
         }
         // Keep track of stats for each query so we can aggregrate the states over all nodes
         queryMap := map[string]*models.SlowQueryResponseYsqlQueryItem{}
