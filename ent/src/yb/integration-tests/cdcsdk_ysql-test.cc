@@ -1347,8 +1347,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint32_t replication_factor, bool add_tables_without_primary_key = false) {
     ASSERT_OK(SetUpWithParams(replication_factor, 1, false));
 
-    auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
-
     if (add_tables_without_primary_key) {
       // Adding tables without primary keys, they should not disturb any CDC related processes.
       std::string tables_wo_pk[] = {"table_wo_pk_1", "table_wo_pk_2", "table_wo_pk_3"};
@@ -1358,6 +1356,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       }
     }
 
+    auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(test_client()->GetTablets(
         table, 0, &tablets,
@@ -10019,6 +10018,43 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionDeleteRowsWit
   }
   LOG(INFO) << "Total insert count: " << insert_count << " update counts: " << delete_count;
   ASSERT_EQ(insert_count, 2 * delete_count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPrimaryKey)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  // Adding tables without primary keys, they should not disturb any CDC related processes.
+  std::vector<std::string> tables_wo_pk{"table_wo_pk_1", "table_wo_pk_2", "table_wo_pk_3"};
+  std::vector<YBTableName> table_list(3);
+  uint32_t idx = 0;
+  for (const auto& table_name : tables_wo_pk) {
+    table_list[idx] = ASSERT_RESULT(
+        CreateTable(&test_cluster_, kNamespaceName, table_name, 1 /* num_tablets */, false));
+    idx += 1;
+  }
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table_list[0], 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, tables_wo_pk[0]));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+
+  // Set checkpoint should throw an error, for the tablet that is not part of the stream, because
+  // it's non-primary key table.
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  LOG(INFO) << "Response for setcheckpoint: " << resp.DebugString();
+  ASSERT_TRUE(resp.has_error());
+
+  ASSERT_OK(WriteRowsHelper(
+      0 /* start */, 1 /* end */, &test_cluster_, true, 2, tables_wo_pk[0].c_str()));
+
+  // Get changes should throw an error, for the tablet that is not part of the stream, because
+  // it's non-primary key table.
+  auto change_resp = GetChangesFromCDC(stream_id, tablets);
+  ASSERT_FALSE(change_resp.ok());
 }
 
 }  // namespace enterprise
