@@ -450,8 +450,7 @@ void PgExpr::TranslateData(Slice *yb_cursor, const PgWireDataHeader& header, int
 
 InternalType PgExpr::internal_type() const {
   DCHECK(type_entity_) << "Type entity is not set up";
-  return client::YBColumnSchema::ToInternalDataType(
-      QLType::Create(static_cast<DataType>(type_entity_->yb_type)));
+  return client::YBColumnSchema::ToInternalDataType(static_cast<DataType>(type_entity_->yb_type));
 }
 
 int PgExpr::get_pg_typid() const {

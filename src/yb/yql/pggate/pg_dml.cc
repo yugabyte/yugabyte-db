@@ -218,8 +218,9 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   PgColumn& column = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
 
   // Check datatype.
-  if (attr_value->internal_type() != InternalType::kGinNullValue) {
-    SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
+  const auto attr_internal_type = attr_value->internal_type();
+  if (attr_internal_type != InternalType::kGinNullValue) {
+    SCHECK_EQ(column.internal_type(), attr_internal_type, Corruption,
               "Attribute value type does not match column type");
   }
 
