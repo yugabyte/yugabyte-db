@@ -1280,7 +1280,7 @@ In case one of the tablet servers crashes, the replicas on other TServer nodes w
 
 In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable (using a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
 
-### Connector throws exception saying that the table is not a part of the stream ID
+### Connector throws exception saying table is not a part of the stream ID
 
 This can happen in the following 2 scenarios:
 
