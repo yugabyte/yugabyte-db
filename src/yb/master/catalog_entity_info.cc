@@ -372,7 +372,7 @@ bool TableInfo::has_pg_type_oid() const {
   return true;
 }
 
-std::string TableInfo::matview_pg_table_id() const {
+TableId TableInfo::matview_pg_table_id() const {
   return LockForRead()->pb.matview_pg_table_id();
 }
 
@@ -380,7 +380,7 @@ bool TableInfo::is_matview() const {
   return LockForRead()->pb.is_matview();
 }
 
-std::string TableInfo::indexed_table_id() const {
+TableId TableInfo::indexed_table_id() const {
   return LockForRead()->indexed_table_id();
 }
 

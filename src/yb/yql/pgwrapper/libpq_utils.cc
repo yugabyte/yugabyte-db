@@ -424,7 +424,18 @@ Status PGConn::RollbackTransaction() {
 
 Status PGConn::TestFailDdl(const std::string& ddl_to_fail) {
   RETURN_NOT_OK(Execute("SET yb_test_fail_next_ddl=true"));
-  return Execute(ddl_to_fail);
+  Status s = Execute(ddl_to_fail);
+  if (s.ok()) {
+    return STATUS_FORMAT(InternalError,
+                         "DDL '$0' should have failed, we explicitly instructed it to!",
+                         ddl_to_fail);
+  }
+  std::string msg = reinterpret_cast<const char*>(s.message().data());
+  if (msg.find("Failed DDL operation as requested") != std::string::npos) {
+    return Status::OK();
+  }
+  // Unexpected error.
+  return s;
 }
 
 Result<bool> PGConn::HasIndexScan(const std::string& query) {
