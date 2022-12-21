@@ -125,6 +125,7 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 		"yamlPath":          GetYamlPathData,
 		"installRoot":       common.GetInstallRoot,
 		"installVersionDir": common.GetInstallVersionDir,
+		"baseInstall":			 common.GetBaseInstall,
 	}
 
 	tmpl, err := template.New(configYmlFileName).
