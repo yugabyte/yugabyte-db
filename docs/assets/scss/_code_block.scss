@@ -34,6 +34,7 @@ main {
     li p > a > code,
     li > code,
     li > em code,
+    p > strong > code,
     p > a > code,
     p > code {
       font-size: 12px !important;

@@ -576,6 +576,11 @@ body {
                         content: "";
                         width: calc(100% + 30px);
                         height: auto;
+
+                        @media (max-width: 991px) {
+                          margin: 0 0 24px -40px;
+                          width: calc(100% + 56px);
+                        }
                       }
                     }
 

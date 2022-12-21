@@ -25,7 +25,11 @@ function setCookie(name, value, monthToLive) {
 function leftMenuShowHide(conditionCheck) {
   let preWidth = 300;
   if (conditionCheck === 'true') {
-    $('aside.td-sidebar').attr('data-pwidth', $('aside.td-sidebar').outerWidth());
+    let leftMenuWith = $('aside.td-sidebar').outerWidth();
+    if ($('aside.td-sidebar').outerWidth() < 300) {
+      leftMenuWith = 300;
+    }
+    $('aside.td-sidebar').attr('data-pwidth', leftMenuWith);
     $('.left-sidebar-wrap-inner').animate({
       opacity: '0',
     });
