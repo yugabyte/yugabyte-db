@@ -89,8 +89,8 @@ class YBOperation;
 
 class YBColumnSchema {
  public:
+  static InternalType ToInternalDataType(DataType type);
   static InternalType ToInternalDataType(const std::shared_ptr<QLType>& ql_type);
-  static std::string DataTypeToString(DataType type);
 
   // DEPRECATED: use YBSchemaBuilder instead.
   // TODO(KUDU-809): make this hard-to-use constructor private. Clients should use
