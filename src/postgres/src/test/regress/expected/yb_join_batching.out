@@ -468,6 +468,38 @@ INSERT INTO s3 select i,i from generate_series(1,100) i;
 DROP TABLE s3;
 DROP TABLE s2;
 DROP TABLE s1;
+create table s1(a int, primary key (a asc));
+create table s2(a int, primary key (a asc));
+create table s3(a int, primary key (a asc));
+insert into s1 values (24), (25);
+insert into s2 values (24), (25);
+insert into s3 values (24), (25);
+explain (costs off) /*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from s1 left outer join s2
+on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (s2.a = s3.a)
+   ->  Merge Left Join
+         Merge Cond: (s1.a = s2.a)
+         ->  Index Scan using s1_pkey on s1
+               Index Cond: (a > 20)
+         ->  Index Scan using s2_pkey on s2
+   ->  Index Scan using s3_pkey on s3
+         Index Cond: (a = ANY (ARRAY[s2.a, $1, $2]))
+(9 rows)
+
+/*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/ select * from s1 left outer join s2
+on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
+ a  | a  | a  
+----+----+----
+ 24 | 24 | 24
+ 25 | 25 | 25
+(2 rows)
+
+drop table s1;
+drop table s2;
+drop table s3;
 -- Test on unhashable join operations. These should use the tuplestore
 -- strategy.
 SET yb_bnl_batch_size = 3;
