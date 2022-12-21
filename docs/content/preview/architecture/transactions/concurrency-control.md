@@ -13,15 +13,17 @@ type: docs
 
 [Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time.
 
-YugabyteDB provides 2 policies to handle conflicts between concurrent transactions as described below. Also, see section at the end for information on how row-level explicit locking clauses behave with these concurrency control policies.
+YugabyteDB provides two policies to handle conflicts between concurrent transactions as described in the following sections. 
+
+For information on how row-level explicit locking clauses behave with these concurrency control policies, refer to [Row-level explicit locking clauses](#row-level-explicit-locking-clauses) .
 
 ## Fail-on-Conflict
 
 This is the default concurrency control strategy and is applicable for `REPEATABLE READ` and `SERIALIZABLE` isolation levels.
 It is not applicable for [Read Committed](../read-committed/) isolation.
 
-1. In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/).
-2. If a conflict occurs, the transaction with lower priority is aborted. There are two possibilities when a transaction T1 tries to read/ write/ lock a row in a mode conflicting with a other concurrent transactions:
+In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/).
+If a conflict occurs, a transaction with the lower priority is aborted. There are two possibilities when a transaction T1 tries to read or write or lock a row in a mode conflicting with a other concurrent transactions as follows:
    - **Wound:** If T1 has a priority higher than all the other conflicting transactions, T1 will abort them and make progress.
    - **Die:** If any other conflicting transaction has an equal or higher priority than T1, T1 will abort itself.
 
