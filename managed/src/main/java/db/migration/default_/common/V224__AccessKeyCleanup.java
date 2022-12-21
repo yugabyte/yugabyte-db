@@ -47,7 +47,9 @@ public class V224__AccessKeyCleanup extends BaseJdbcMigration {
   public static void migrateAllAccessKeys() {
     for (Customer customer : Customer.getAll()) {
       for (Provider provider : Provider.getAll(customer.uuid)) {
-        ProviderDetails providerDetails = provider.details;
+        if (provider.details == null) {
+          provider.details = new ProviderDetails();
+        }
         final Optional<AccessKeyTmpDto> optAcccessKey =
             AccessKey.getLatestAccessKeyQuery(provider.uuid)
                 .select("keyInfo")
@@ -55,7 +57,7 @@ public class V224__AccessKeyCleanup extends BaseJdbcMigration {
                 .findOneOrEmpty();
         optAcccessKey.ifPresent(
             latestKey -> {
-              providerDetails.mergeFrom(latestKey.keyInfo);
+              provider.details.mergeFrom(latestKey.keyInfo);
               log.debug(
                   "Migrated KeyInfo fields to ProviderDetails:\n"
                       + Json.toJson(provider.details).toPrettyString());
