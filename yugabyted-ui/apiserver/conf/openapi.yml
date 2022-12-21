@@ -251,6 +251,31 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
+  /is_load_balancer_idle:
+    get:
+      summary: Check if cluster load balancer is idle
+      description: Check if cluster load balancer is idle
+      tags:
+        - cluster-info
+      operationId: getIsLoadBalancerIdle
+      responses:
+        '200':
+          description: Is load balancer idle
+          content:
+            application/json:
+              schema:
+                title: Is load balancer idle
+                description: Is load balancer idle
+                type: object
+                properties:
+                  is_idle:
+                    type: boolean
+                required:
+                  - is_idle
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
 components:
   schemas:
     CloudEnum:
@@ -582,16 +607,21 @@ components:
           type: integer
         max_time:
           type: number
+          format: double
         mean_time:
           type: number
+          format: double
         min_time:
           type: number
+          format: double
         rows:
           type: integer
         stddev_time:
           type: number
+          format: double
         total_time:
           type: number
+          format: double
     SlowQueryResponseYSQLData:
       title: Slow Query Response YSQL Data
       description: Schema for Slow Query Response YSQL Data
@@ -625,11 +655,18 @@ components:
         name:
           type: string
           nullable: false
+        host:
+          type: string
+          nullable: false
         is_node_up:
           type: boolean
         is_master:
           type: boolean
         is_tserver:
+          type: boolean
+        is_master_up:
+          type: boolean
+        is_bootstrapping:
           type: boolean
         metrics:
           type: object
@@ -656,12 +693,88 @@ components:
               type: number
               format: double
               default: 0
+            time_since_hb_sec:
+              type: number
+              format: double
+              default: 0
+            uptime_seconds:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            user_tablets_total:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            user_tablets_leaders:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            system_tablets_total:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            system_tablets_leaders:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            active_connections:
+              type: object
+              properties:
+                ysql:
+                  type: integer
+                  format: int64
+                  default: 0
+                  minimum: 0
+                ycql:
+                  type: integer
+                  format: int64
+                  default: 0
+                  minimum: 0
+              required:
+                - ysql
+                - ycql
+            master_uptime_us:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            ram_used_bytes:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            ram_provisioned_bytes:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
+            disk_provisioned_bytes:
+              type: integer
+              format: int64
+              default: 0
+              minimum: 0
           required:
             - memory_used_bytes
             - total_sst_file_size_bytes
             - uncompressed_sst_file_size_bytes
             - read_ops_per_sec
             - write_ops_per_sec
+            - time_since_hb_sec
+            - uptime_seconds
+            - user_tablets_total
+            - user_tablets_leaders
+            - system_tablets_total
+            - system_tablets_leaders
+            - active_connections
+            - master_uptime_us
+            - ram_used_bytes
+            - ram_provisioned_bytes
+            - disk_provisioned_bytes
         cloud_info:
           type: object
           properties:
@@ -678,9 +791,12 @@ components:
           type: string
       required:
         - name
+        - host
         - is_node_up
         - is_master
         - is_tserver
+        - is_master_up
+        - is_bootstrapping
         - cloud_info
         - metrics
         - software_version

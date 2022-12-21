@@ -20,8 +20,9 @@ import (
 )
 
 const SLOW_QUERY_STATS_SQL string = "SELECT a.rolname, t.datname, t.queryid, " +
-        "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, t.stddev_time, " +
-        "t.local_blks_hit, t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM " +
+        "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, " +
+        "t.stddev_time, t.local_blks_hit, t.local_blks_written FROM " +
+        "pg_authid a JOIN (SELECT * FROM " +
         "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid"
 
 var EXCLUDED_QUERY_STATEMENTS = map[string]bool{
@@ -64,7 +65,7 @@ func getNodes() ([]string, error) {
         if tabletServersResponse.Error != nil {
                 return hostNames, tabletServersResponse.Error
         }
-        // to get hostnames, get all second level keys and only keep them if net.SpliHostPort succeeds.
+        // to get hostnames, get all second level keys and only keep if net.SpliHostPort succeeds.
         for _, obj := range tabletServersResponse.Tablets {
                 for hostport := range obj {
                         host, _, err := net.SplitHostPort(hostport)
@@ -94,8 +95,8 @@ func getSlowQueriesFuture(nodeHost string, conn *pgxpool.Pool, future chan SlowQ
                 rowStruct := models.SlowQueryResponseYsqlQueryItem{}
                 err := rows.Scan(&rowStruct.Rolname, &rowStruct.Datname, &rowStruct.Queryid,
                         &rowStruct.Query, &rowStruct.Calls, &rowStruct.TotalTime, &rowStruct.Rows,
-                        &rowStruct.MinTime, &rowStruct.MaxTime, &rowStruct.MeanTime, &rowStruct.StddevTime,
-                        &rowStruct.LocalBlksHit, &rowStruct.LocalBlksWritten)
+                        &rowStruct.MinTime, &rowStruct.MaxTime, &rowStruct.MeanTime,
+                        &rowStruct.StddevTime, &rowStruct.LocalBlksHit, &rowStruct.LocalBlksWritten)
                 if err != nil {
                         slowQueries.Error = err
                         future <- slowQueries
@@ -134,15 +135,18 @@ func divideMetricForAllNodes(
                 }
                 resultMetric[i] = make([][]float64, numIntervals)
                 for j := 0; j < numIntervals; j++ {
-                        if len(nodeValuesNumerator[i][j]) < 2 || len(nodeValuesDenominator[i][j]) < 2 {
+                        if len(nodeValuesNumerator[i][j]) < 2 ||
+                           len(nodeValuesDenominator[i][j]) < 2 {
                                 // Handle case where data at window is empty
                                 resultMetric[i][j] = []float64{nodeValuesNumerator[i][j][0]}
                         } else if nodeValuesDenominator[i][j][1] != 0 {
                                 // Handle divide by 0 case
                                 // Note: we are comparing a float to 0 to avoid dividing by 0.
-                                // This will only catch the cases where the float value is exactly 0.
-                                resultMetric[i][j] = []float64{nodeValuesNumerator[i][j][0],
-                                        nodeValuesNumerator[i][j][1] / nodeValuesDenominator[i][j][1]}
+                                // This will only catch the cases where the float value is exactly 0
+                                resultMetric[i][j] = []float64{
+                                        nodeValuesNumerator[i][j][0],
+                                        nodeValuesNumerator[i][j][1] /
+                                            nodeValuesDenominator[i][j][1]}
                         } else {
                                 resultMetric[i][j] = []float64{nodeValuesNumerator[i][j][0], 0}
                         }
@@ -238,9 +242,10 @@ func reduceGranularity(startTime int64,
                 for values[i][0] >= currentTime+intervalLength && newValuesIndex < numIntervals {
                         if counter > 1 && isAverage {
                                 // average out values for this interval
-                                newValues[newValuesIndex][1] = newValues[newValuesIndex][1] / float64(counter)
+                                newValues[newValuesIndex][1] =
+                                    newValues[newValuesIndex][1] / float64(counter)
                         } else if counter == 0 {
-                                // if no data for this interval, make it so that this timestamp has no value
+                                // if no data for this interval, set this timestamp to have no value
                                 newValues[newValuesIndex] = []float64{newValues[newValuesIndex][0]}
                         }
                         // increment values for next interval
@@ -276,7 +281,11 @@ func reduceGranularityForAllNodes(
 ) [][][]float64 {
         newNodeValues := make([][][]float64, len(nodeValues))
         for i := 0; i < len(nodeValues); i++ {
-                newNodeValues[i] = reduceGranularity(startTime, endTime, nodeValues[i], numIntervals,
+                newNodeValues[i] = reduceGranularity(
+                        startTime,
+                        endTime,
+                        nodeValues[i],
+                        numIntervals,
                         isAverage)
         }
         return newNodeValues
@@ -305,9 +314,13 @@ func getRawMetricsForAllNodes(
                         if detailsValue {
                                 detailObj := DetailObj{}
                                 json.Unmarshal([]byte(details), &detailObj)
-                                values = append(values, []float64{float64(ts) / 1000, detailObj.Value})
+                                values = append(
+                                    values,
+                                    []float64{float64(ts) / 1000, detailObj.Value})
                         } else {
-                                values = append(values, []float64{float64(ts) / 1000, float64(value)})
+                                values = append(
+                                    values,
+                                    []float64{float64(ts) / 1000, float64(value)})
                         }
                 }
                 if err := iter.Close(); err != nil {
@@ -363,7 +376,7 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
         if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
         }
-        // in case of errors parsing start/end time, set to defaults of start = 1 hour ago, end = now
+        // in case of errors parsing start/end time, set default start = 1 hour ago, end = now
         startTime, err := strconv.ParseInt(ctx.QueryParam("start_time"), 10, 64)
         if err != nil {
                 now := time.Now()
@@ -391,36 +404,36 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 // need node uuid
                 switch metric {
                 case "READ_OPS_PER_SEC":
-                        rawMetricValues, err := getRawMetricsForAllNodes(READ_COUNT_METRIC, nodeList,
-                                hostToUuid, startTime, endTime, session, false)
+                        rawMetricValues, err := getRawMetricsForAllNodes(READ_COUNT_METRIC,
+                                nodeList, hostToUuid, startTime, endTime, session, false)
                         if err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
                         }
                         rateMetrics := convertRawMetricsToRates(rawMetricValues)
-                        nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime, rateMetrics,
-                                GRANULARITY_NUM_INTERVALS, true)
+                        nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
+                                rateMetrics, GRANULARITY_NUM_INTERVALS, true)
                         metricValues := calculateCombinedMetric(nodeMetricValues, false)
                         metricResponse.Data = append(metricResponse.Data, models.MetricData{
                                 Name:   metric,
                                 Values: metricValues,
                         })
                 case "WRITE_OPS_PER_SEC":
-                        rawMetricValues, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC, nodeList,
-                                hostToUuid, startTime, endTime, session, false)
+                        rawMetricValues, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
+                                nodeList, hostToUuid, startTime, endTime, session, false)
                         if err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
                         }
                         rateMetrics := convertRawMetricsToRates(rawMetricValues)
-                        nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime, rateMetrics,
-                                GRANULARITY_NUM_INTERVALS, true)
+                        nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
+                                rateMetrics, GRANULARITY_NUM_INTERVALS, true)
                         metricValues := calculateCombinedMetric(nodeMetricValues, false)
                         metricResponse.Data = append(metricResponse.Data, models.MetricData{
                                 Name:   metric,
                                 Values: metricValues,
                         })
                 case "CPU_USAGE_USER":
-                        metricValues, err := getAveragePercentageMetricData("cpu_usage_user", nodeList,
-                                hostToUuid, startTime, endTime, session, true)
+                        metricValues, err := getAveragePercentageMetricData("cpu_usage_user",
+                                nodeList, hostToUuid, startTime, endTime, session, true)
                         if err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
                         }
@@ -429,8 +442,8 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                                 Values: metricValues,
                         })
                 case "CPU_USAGE_SYSTEM":
-                        metricValues, err := getAveragePercentageMetricData("cpu_usage_system", nodeList,
-                                hostToUuid, startTime, endTime, session, true)
+                        metricValues, err := getAveragePercentageMetricData("cpu_usage_system",
+                                nodeList, hostToUuid, startTime, endTime, session, true)
                         if err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
                         }
@@ -440,13 +453,14 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                         })
                 case "DISK_USAGE_GB":
                         // For disk usage, we assume every node reports the same metrics
-                        query := fmt.Sprintf(QUERY_FORMAT, "system.metrics", "total_disk", startTime*1000,
-                                endTime*1000)
+                        query := fmt.Sprintf(QUERY_FORMAT, "system.metrics", "total_disk",
+                                startTime*1000, endTime*1000)
                         iter := session.Query(query).Iter()
                         values := [][]float64{}
                         for iter.Scan(&ts, &value, &details) {
                                 values = append(values,
-                                        []float64{float64(ts) / 1000, float64(value) / helpers.BYTES_IN_GB})
+                                        []float64{float64(ts) / 1000,
+                                            float64(value) / helpers.BYTES_IN_GB})
                         }
                         if err := iter.Close(); err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -454,13 +468,14 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                         sort.Slice(values, func(i, j int) bool {
                                 return values[i][0] < values[j][0]
                         })
-                        query = fmt.Sprintf(QUERY_FORMAT, "system.metrics", "free_disk", startTime*1000,
-                                endTime*1000)
+                        query = fmt.Sprintf(QUERY_FORMAT, "system.metrics", "free_disk",
+                                startTime*1000, endTime*1000)
                         iter = session.Query(query).Iter()
                         freeValues := [][]float64{}
                         for iter.Scan(&ts, &value, &details) {
                                 freeValues = append(freeValues,
-                                        []float64{float64(ts) / 1000, float64(value) / helpers.BYTES_IN_GB})
+                                        []float64{float64(ts) / 1000,
+                                            float64(value) / helpers.BYTES_IN_GB})
                         }
                         if err := iter.Close(); err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -469,7 +484,7 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                                 return freeValues[i][0] < freeValues[j][0]
                         })
 
-                        // we assume the query results for free and total disk have the same timestamps
+                        // assume query results for free and total disk have the same timestamps
                         for index, pair := range freeValues {
                                 if index >= len(values) {
                                         break
@@ -478,17 +493,18 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                         }
                         metricResponse.Data = append(metricResponse.Data, models.MetricData{
                                 Name: metric,
-                                Values: reduceGranularity(startTime, endTime, values, GRANULARITY_NUM_INTERVALS,
-                                        true),
+                                Values: reduceGranularity(startTime, endTime, values,
+                                        GRANULARITY_NUM_INTERVALS, true),
                         })
                 case "PROVISIONED_DISK_SPACE_GB":
-                        query := fmt.Sprintf(QUERY_FORMAT, "system.metrics", "total_disk", startTime*1000,
-                                endTime*1000)
+                        query := fmt.Sprintf(QUERY_FORMAT, "system.metrics", "total_disk",
+                                startTime*1000, endTime*1000)
                         iter := session.Query(query).Iter()
                         values := [][]float64{}
                         for iter.Scan(&ts, &value, &details) {
                                 values = append(values,
-                                        []float64{float64(ts) / 1000, float64(value) / helpers.BYTES_IN_GB})
+                                        []float64{float64(ts) / 1000,
+                                            float64(value) / helpers.BYTES_IN_GB})
                         }
                         if err := iter.Close(); err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -498,18 +514,18 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                         })
                         metricResponse.Data = append(metricResponse.Data, models.MetricData{
                                 Name: metric,
-                                Values: reduceGranularity(startTime, endTime, values, GRANULARITY_NUM_INTERVALS,
-                                        true),
+                                Values: reduceGranularity(startTime, endTime, values,
+                                        GRANULARITY_NUM_INTERVALS, true),
                         })
                 case "AVERAGE_READ_LATENCY_MS":
-                        rawMetricValuesCount, err := getRawMetricsForAllNodes(READ_COUNT_METRIC, nodeList,
-                                hostToUuid, startTime, endTime, session, false)
+                        rawMetricValuesCount, err := getRawMetricsForAllNodes(READ_COUNT_METRIC,
+                                nodeList, hostToUuid, startTime, endTime, session, false)
                         if err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
                         }
 
-                        rawMetricValuesSum, err := getRawMetricsForAllNodes(READ_SUM_METRIC, nodeList,
-                                hostToUuid, startTime, endTime, session, false)
+                        rawMetricValuesSum, err := getRawMetricsForAllNodes(READ_SUM_METRIC,
+                                nodeList, hostToUuid, startTime, endTime, session, false)
                         if err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
                         }
@@ -523,10 +539,13 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                         rateMetricsSumReduced := reduceGranularityForAllNodes(startTime, endTime,
                                 rateMetricsSum, GRANULARITY_NUM_INTERVALS, false)
 
-                        rateMetricsCountCombined := calculateCombinedMetric(rateMetricsCountReduced, false)
-                        rateMetricsSumCombined := calculateCombinedMetric(rateMetricsSumReduced, false)
+                        rateMetricsCountCombined :=
+                            calculateCombinedMetric(rateMetricsCountReduced, false)
+                        rateMetricsSumCombined :=
+                            calculateCombinedMetric(rateMetricsSumReduced, false)
 
-                        latencyMetric := divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
+                        latencyMetric :=
+                            divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
                                 [][][]float64{rateMetricsCountCombined})
 
                         metricValues := latencyMetric[0]
@@ -537,14 +556,14 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                                 Values: metricValues,
                         })
                 case "AVERAGE_WRITE_LATENCY_MS":
-                        rawMetricValuesCount, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC, nodeList,
-                                hostToUuid, startTime, endTime, session, false)
+                        rawMetricValuesCount, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
+                                nodeList, hostToUuid, startTime, endTime, session, false)
                         if err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
                         }
 
-                        rawMetricValuesSum, err := getRawMetricsForAllNodes(WRITE_SUM_METRIC, nodeList,
-                                hostToUuid, startTime, endTime, session, false)
+                        rawMetricValuesSum, err := getRawMetricsForAllNodes(WRITE_SUM_METRIC,
+                                nodeList, hostToUuid, startTime, endTime, session, false)
                         if err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
                         }
@@ -558,10 +577,13 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                         rateMetricsSumReduced := reduceGranularityForAllNodes(startTime, endTime,
                                 rateMetricsSum, GRANULARITY_NUM_INTERVALS, false)
 
-                        rateMetricsCountCombined := calculateCombinedMetric(rateMetricsCountReduced, false)
-                        rateMetricsSumCombined := calculateCombinedMetric(rateMetricsSumReduced, false)
+                        rateMetricsCountCombined :=
+                            calculateCombinedMetric(rateMetricsCountReduced, false)
+                        rateMetricsSumCombined :=
+                            calculateCombinedMetric(rateMetricsSumReduced, false)
 
-                        latencyMetric := divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
+                        latencyMetric :=
+                            divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
                                 [][][]float64{rateMetricsCountCombined})
 
                         metricValues := latencyMetric[0]
@@ -572,13 +594,13 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                                 Values: metricValues,
                         })
                 case "TOTAL_LIVE_NODES":
-                        rawMetricValues, err := getRawMetricsForAllNodes("node_up", nodeList, hostToUuid,
-                                startTime, endTime, session, false)
+                        rawMetricValues, err := getRawMetricsForAllNodes("node_up", nodeList,
+                                hostToUuid, startTime, endTime, session, false)
                         if err != nil {
                                 return ctx.String(http.StatusInternalServerError, err.Error())
                         }
-                        reducedMetric := reduceGranularityForAllNodes(startTime, endTime, rawMetricValues,
-                                GRANULARITY_NUM_INTERVALS, true)
+                        reducedMetric := reduceGranularityForAllNodes(startTime, endTime,
+                                rawMetricValues, GRANULARITY_NUM_INTERVALS, true)
                         metricValues := calculateCombinedMetric(reducedMetric, false)
                         // In cases where there is no data, set to 0
                         for i, metric := range metricValues {
@@ -604,8 +626,13 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
         go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
         tabletServersResponse := <-tabletServersFuture
         if tabletServersResponse.Error != nil {
-                return ctx.String(http.StatusInternalServerError, tabletServersResponse.Error.Error())
+                return ctx.String(http.StatusInternalServerError,
+                        tabletServersResponse.Error.Error())
         }
+
+        mastersFuture := make(chan helpers.MastersFuture)
+        go helpers.GetMastersFuture(helpers.HOST, mastersFuture)
+
         nodeList := helpers.GetNodesList(tabletServersResponse)
         versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
         for _, nodeHost := range nodeList {
@@ -613,6 +640,35 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 versionInfoFutures[nodeHost] = versionInfoFuture
                 go helpers.GetVersionFuture(nodeHost, versionInfoFuture)
         }
+        activeYsqlConnectionsFutures := map[string]chan helpers.ActiveYsqlConnectionsFuture{}
+        activeYcqlConnectionsFutures := map[string]chan helpers.ActiveYcqlConnectionsFuture{}
+        masterMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
+        tserverMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
+        for _, nodeHost := range nodeList {
+            activeYsqlConnectionsFuture := make(chan helpers.ActiveYsqlConnectionsFuture)
+            activeYsqlConnectionsFutures[nodeHost] = activeYsqlConnectionsFuture
+            go helpers.GetActiveYsqlConnectionsFuture(nodeHost, activeYsqlConnectionsFuture)
+            activeYcqlConnectionsFuture := make(chan helpers.ActiveYcqlConnectionsFuture)
+            activeYcqlConnectionsFutures[nodeHost] = activeYcqlConnectionsFuture
+            go helpers.GetActiveYcqlConnectionsFuture(nodeHost, activeYcqlConnectionsFuture)
+            masterMemTrackerFuture := make(chan helpers.MemTrackersFuture)
+            masterMemTrackersFutures[nodeHost] = masterMemTrackerFuture
+            go helpers.GetMemTrackersFuture(nodeHost, true, masterMemTrackerFuture)
+            tserverMemTrackerFuture := make(chan helpers.MemTrackersFuture)
+            tserverMemTrackersFutures[nodeHost] = tserverMemTrackerFuture
+            go helpers.GetMemTrackersFuture(nodeHost, false, tserverMemTrackerFuture)
+        }
+        masters := map[string] helpers.Master{}
+        mastersResponse := <- mastersFuture
+        if mastersResponse.Error == nil {
+            for _, master := range mastersResponse.Masters {
+                if len(master.Registration.PrivateRpcAddresses) > 0 {
+                    masters[master.Registration.PrivateRpcAddresses[0].Host] = master
+                }
+            }
+        }
+        currentTime := time.Now().UnixMicro()
+        hostToUuid, errHostToUuidMap := helpers.GetHostToUuidMap(helpers.HOST)
         for _, obj := range tabletServersResponse.Tablets {
                 for hostport, nodeData := range obj {
                         host, _, err := net.SplitHostPort(hostport)
@@ -621,29 +677,108 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                         // However, we can only get version information if we can get the host
                         hostName := hostport
                         versionNumber := ""
+                        activeYsqlConnections := int64(0)
+                        activeYcqlConnections := int64(0)
+                        isMasterUp := true
+                        ramUsedTserver := int64(0)
+                        ramUsedMaster := int64(0)
+                        ramLimitTserver := int64(0)
+                        ramLimitMaster := int64(0)
+                        masterUptimeUs := int64(0)
+                        totalDiskBytes := int64(0)
                         if err == nil {
                                 hostName = host
                                 versionInfo := <-versionInfoFutures[hostName]
                                 if versionInfo.Error == nil {
-                                        versionNumber = versionInfo.VersionInfo.VersionNumber
+                                    versionNumber = versionInfo.VersionInfo.VersionNumber
+                                }
+                                ysqlConnections := <-activeYsqlConnectionsFutures[hostName]
+                                if ysqlConnections.Error == nil {
+                                    activeYsqlConnections += ysqlConnections.YsqlConnections
+                                }
+                                ycqlConnections := <-activeYcqlConnectionsFutures[hostName]
+                                if ycqlConnections.Error == nil {
+                                    activeYcqlConnections += ycqlConnections.YcqlConnections
+                                }
+                                masterMemTracker := <-masterMemTrackersFutures[hostName]
+                                if masterMemTracker.Error == nil {
+                                    ramUsedMaster = masterMemTracker.Consumption
+                                    ramLimitMaster = masterMemTracker.Limit
+                                }
+                                tserverMemTracker := <-tserverMemTrackersFutures[hostName]
+                                if tserverMemTracker.Error == nil {
+                                    ramUsedTserver = tserverMemTracker.Consumption
+                                    ramLimitTserver = tserverMemTracker.Limit
+                                }
+                                if master, ok := masters[hostName]; ok {
+                                    isMasterUp = master.Error == nil
+                                    if isMasterUp {
+                                        masterUptimeUs = currentTime - master.InstanceId.StartTimeUs
+                                    }
+                                }
+                                if errHostToUuidMap == nil {
+                                    query :=
+                                        fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk",
+                                            hostToUuid[hostName])
+                                    iter := c.Session.Query(query).Iter()
+                                    var ts int64
+                                    var value int64
+                                    var details string
+                                    iter.Scan(&ts, &value, &details)
+                                    totalDiskBytes = value
                                 }
                         }
                         totalSstFileSizeBytes := int64(nodeData.TotalSstFileSizeBytes)
                         uncompressedSstFileSizeBytes :=
                                 int64(nodeData.UncompressedSstFileSizeBytes)
+                        userTabletsTotal := int64(nodeData.UserTabletsTotal)
+                        userTabletsLeaders := int64(nodeData.UserTabletsLeaders)
+                        systemTabletsTotal := int64(nodeData.SystemTabletsTotal)
+                        systemTabletsLeaders := int64(nodeData.SystemTabletsLeaders)
+                        activeConnections := models.NodeDataMetricsActiveConnections{
+                            Ysql: activeYsqlConnections,
+                            Ycql: activeYcqlConnections,
+                        }
+                        ramUsedBytes := ramUsedMaster + ramUsedTserver
+                        ramProvisionedBytes := ramLimitMaster + ramLimitTserver
+                        isBootstrapping := true
+                        // For now we hard code isBootstrapping here, and we use the
+                        // GetIsLoadBalancerIdle endpoint separately to determine if
+                        // a node is bootstrapping on the frontend, since yb-admin is a
+                        // bit slow. Once we get a faster way of doing this we can move
+                        // the implementation here.
                         // For now, assuming that IsMaster and IsTserver are always true
                         // The UI frontend doesn't use these values so this should be ok for now
                         response.Data = append(response.Data, models.NodeData{
-                                Name:      hostName,
-                                IsNodeUp:  nodeData.Status == "ALIVE",
-                                IsMaster:  true,
-                                IsTserver: true,
+                                Name:            hostName,
+                                Host:            hostName,
+                                IsNodeUp:        nodeData.Status == "ALIVE",
+                                IsMaster:        true,
+                                IsTserver:       true,
+                                IsMasterUp:      isMasterUp,
+                                IsBootstrapping: isBootstrapping,
                                 Metrics: models.NodeDataMetrics{
+                                    // Eventually we want to change models.NodeDataMetrics so that
+                                    // all the int64 fields are uint64. But currently openapi
+                                    // generator only generates int64s. Ideally if we set
+                                    // minimum: 0 in the specs, the generator should use uint64.
+                                    // We should try to implement this into openapi-generator.
                                         MemoryUsedBytes:              int64(nodeData.RamUsedBytes),
                                         TotalSstFileSizeBytes:        &totalSstFileSizeBytes,
                                         UncompressedSstFileSizeBytes: &uncompressedSstFileSizeBytes,
                                         ReadOpsPerSec:                nodeData.ReadOpsPerSec,
                                         WriteOpsPerSec:               nodeData.WriteOpsPerSec,
+                                        TimeSinceHbSec:               nodeData.TimeSinceHbSec,
+                                        UptimeSeconds:                int64(nodeData.UptimeSeconds),
+                                        UserTabletsTotal:             userTabletsTotal,
+                                        UserTabletsLeaders:           userTabletsLeaders,
+                                        SystemTabletsTotal:           systemTabletsTotal,
+                                        SystemTabletsLeaders:         systemTabletsLeaders,
+                                        ActiveConnections:            activeConnections,
+                                        MasterUptimeUs:               masterUptimeUs,
+                                        RamUsedBytes:                 ramUsedBytes,
+                                        RamProvisionedBytes:          ramProvisionedBytes,
+                                        DiskProvisionedBytes:         totalDiskBytes,
                                 },
                                 CloudInfo: models.NodeDataCloudInfo{
                                         Cloud:  nodeData.Cloud,
@@ -676,7 +811,8 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
         case "YSQL":
                 for _, table := range tablesList.Tables {
                         if table.IsYsql {
-                                tableListResponse.Data = append(tableListResponse.Data, models.ClusterTable{
+                                tableListResponse.Data = append(tableListResponse.Data,
+                                    models.ClusterTable{
                                         Name:      table.Name,
                                         Keyspace:  table.Keyspace,
                                         Type:      models.YBAPIENUM_YSQL,
@@ -687,7 +823,8 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
         case "YCQL":
                 for _, table := range tablesList.Tables {
                         if !table.IsYsql {
-                                tableListResponse.Data = append(tableListResponse.Data, models.ClusterTable{
+                                tableListResponse.Data = append(tableListResponse.Data,
+                                    models.ClusterTable{
                                         Name:      table.Name,
                                         Keyspace:  table.Keyspace,
                                         Type:      models.YBAPIENUM_YCQL,
@@ -815,28 +952,26 @@ func (c *Container) GetSlowQueries(ctx echo.Context) error {
                                 // item is new query, val is previous queries
 
                                 // Defining values to reuse.
-                                // The OpenAPI spec has these set to "number" which becomes float32 in go.
-                                // Since functions like math.Max, math.Min, math.Pow operate on float64 only,
-                                // we convert to float64 for calculation then convert to float32 for assignment.
-                                // We could set format: double in schemas/_index.yaml to make all the fields
-                                // into float64 to avoid conversion, or define our own math functions for float32.
-                                X_a := float64(val.MeanTime)
-                                X_b := float64(item.MeanTime)
+                                X_a := val.MeanTime
+                                X_b := item.MeanTime
                                 n_a := float64(val.Calls)
                                 n_b := float64(item.Calls)
-                                S_a := float64(val.StddevTime)
-                                S_b := float64(item.StddevTime)
+                                S_a := val.StddevTime
+                                S_b := item.StddevTime
 
                                 val.TotalTime += item.TotalTime
                                 val.Calls += item.Calls
                                 val.Rows += item.Rows
-                                val.MaxTime = float32(math.Max(float64(val.MaxTime), float64(item.MaxTime)))
-                                val.MinTime = float32(math.Min(float64(val.MinTime), float64(item.MinTime)))
+                                val.MaxTime = math.Max(float64(val.MaxTime), float64(item.MaxTime))
+                                val.MinTime = math.Min(float64(val.MinTime), float64(item.MinTime))
                                 val.LocalBlksWritten += item.LocalBlksWritten
                                 /*
-                                 * Formula to calculate std dev of two samples: Let mean, std dev, and size of
-                                 * sample A be X_a, S_a, n_a respectively; and mean, std dev, and size of sample B
-                                 * be X_b, S_b, n_b respectively. Then mean of combined sample X is given by
+                                 * Formula to calculate std dev of two samples:
+                                 * Let mean, std dev, and size of
+                                 * sample A be X_a, S_a, n_a respectively;
+                                 * and mean, std dev, and size of sample B
+                                 * be X_b, S_b, n_b respectively.
+                                 * Then mean of combined sample X is given by
                                  *     n_a X_a + n_b X_b
                                  * X = -----------------
                                  *         n_a + n_b
@@ -848,11 +983,12 @@ func (c *Container) GetSlowQueries(ctx echo.Context) error {
                                  */
                                 totalCalls := float64(val.Calls)
                                 averageTime := (n_a*X_a + n_b*X_b) / totalCalls
-                                stdDevTime := math.Sqrt((n_a*(math.Pow(S_a, 2)+math.Pow(X_a-averageTime, 2)) +
+                                stdDevTime := math.Sqrt(
+                                        (n_a*(math.Pow(S_a, 2)+math.Pow(X_a-averageTime, 2)) +
                                         n_b*(math.Pow(S_b, 2)+math.Pow(X_b-averageTime, 2))) /
                                         totalCalls)
-                                val.MeanTime = float32(averageTime)
-                                val.StddevTime = float32(stdDevTime)
+                                val.MeanTime = averageTime
+                                val.StddevTime = stdDevTime
                         } else {
                                 // If the query is not already in the map, add it to the map.
                                 queryMap[item.Query] = item
@@ -861,7 +997,8 @@ func (c *Container) GetSlowQueries(ctx echo.Context) error {
         }
         // put queries into slice and return
         for _, value := range queryMap {
-                slowQueryResponse.Data.Ysql.Queries = append(slowQueryResponse.Data.Ysql.Queries, *value)
+                slowQueryResponse.Data.Ysql.Queries =
+                    append(slowQueryResponse.Data.Ysql.Queries, *value)
         }
         return ctx.JSON(http.StatusOK, slowQueryResponse)
 }
@@ -910,5 +1047,44 @@ func (c *Container) GetVersion(ctx echo.Context) error {
     smallestVersion := helpers.GetSmallestVersion(versionInfoFutures)
     return ctx.JSON(http.StatusOK, models.VersionInfo{
         Version: smallestVersion,
+    })
+}
+
+// GetIsLoadBalancerIdle - Check if cluster load balancer is idle
+func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
+    mastersFuture := make(chan helpers.MastersFuture)
+    go helpers.GetMastersFuture(helpers.HOST, mastersFuture)
+    masters := map[string] helpers.Master{}
+    mastersResponse := <- mastersFuture
+    // Build comma separated master addresses list for yb-admin
+    csvMasterAddresses := ""
+    if mastersResponse.Error == nil {
+        for _, master := range mastersResponse.Masters {
+            if len(master.Registration.PrivateRpcAddresses) > 0 {
+                masters[master.Registration.PrivateRpcAddresses[0].Host] = master
+                csvMasterAddresses += fmt.Sprintf(
+                    "%s:%d,",
+                    master.Registration.PrivateRpcAddresses[0].Host,
+                    master.Registration.PrivateRpcAddresses[0].Port)
+            }
+        }
+    }
+    // Assume idle by default
+    isLoadBalancerIdle := true
+    params := []string{
+        "--master_addresses",
+        csvMasterAddresses,
+        "get_is_load_balancer_idle",
+    }
+    loadBalancerIdleFuture := make(chan helpers.YBAdminFuture)
+    go helpers.RunYBAdminFuture(params, loadBalancerIdleFuture)
+    loadBalancerResult := <-loadBalancerIdleFuture
+    if loadBalancerResult.Error != nil {
+        c.logger.Errorf(loadBalancerResult.Error.Error())
+    } else {
+        isLoadBalancerIdle = strings.Contains(loadBalancerResult.Result, "1")
+    }
+    return ctx.JSON(http.StatusOK, models.IsLoadBalancerIdle{
+        IsIdle: isLoadBalancerIdle,
     })
 }
