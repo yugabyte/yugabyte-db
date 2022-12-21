@@ -223,7 +223,12 @@ public class AccessKey extends Model {
   }
 
   public void mergeProviderDetails() {
-    keyInfo.mergeFrom(Provider.getOrBadRequest(getProviderUUID()).details);
+    Provider provider = Provider.getOrBadRequest(getProviderUUID());
+    if (provider.details != null) {
+      keyInfo.mergeFrom(provider.details);
+    } else {
+      keyInfo.mergeFrom(new ProviderDetails());
+    }
   }
 
   public static List<AccessKey> getByProviderUuids(List<UUID> providerUUIDs) {
