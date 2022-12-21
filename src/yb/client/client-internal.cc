@@ -737,7 +737,8 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                                         const std::string& namespace_name,
                                         const std::string& namespace_id,
                                         const std::string& tablegroup_id,
-                                        const std::string& tablespace_id) {
+                                        const std::string& tablespace_id,
+                                        const TransactionMetadata* txn) {
   CreateTablegroupRequestPB req;
   CreateTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
@@ -746,6 +747,10 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
 
   if (!tablespace_id.empty()) {
     req.set_tablespace_id(tablespace_id);
+  }
+
+  if (txn) {
+    txn->ToPB(req.mutable_transaction());
   }
 
   int attempts = 0;
