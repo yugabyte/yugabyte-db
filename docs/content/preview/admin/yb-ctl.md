@@ -164,7 +164,7 @@ and [Wipe and restart with placement info flags](#wipe-and-restart-with-placemen
 
 ##### --replication_factor, -rf
 
-Specifies the number of replicas for each tablet. This parameter is also known as Replication Factor (RF). Should be an odd number so that a majority consensus can be established. A miniumum value of `3` is needed to create a fault-tolerant cluster since `1` signifies that there is no only 1 replica with no fault tolerance.
+Specifies the number of replicas for each tablet. This parameter is also known as Replication Factor (RF). Should be an odd number so that a majority consensus can be established. A minimum value of `3` is needed to create a fault-tolerant cluster as `1` signifies that there is no only 1 replica with no fault tolerance.
 
 This value also sets the default number of YB-Master servers.
 
