@@ -228,17 +228,18 @@ public class AccessManagerTest extends FakeDBApplication {
       }
     }
 
-    if (commandType.equals("add-key")) {
-      return Json.toJson(
-          accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null, false));
-    } else if (commandType.equals("list-keys")) {
-      return accessManager.listKeys(regionUUID);
-    } else if (commandType.equals("create-vault")) {
-      String tmpPrivateFile =
-          TMP_KEYS_PATH + File.separator + defaultProvider.uuid + "/private.key";
-      return accessManager.createVault(regionUUID, tmpPrivateFile);
-    } else if (commandType.equals("delete-key")) {
-      return accessManager.deleteKey(regionUUID, "foo");
+    switch (commandType) {
+      case "add-key":
+        return Json.toJson(
+            accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null, false));
+      case "list-keys":
+        return accessManager.listKeys(regionUUID);
+      case "create-vault":
+        String tmpPrivateFile =
+            TMP_KEYS_PATH + File.separator + defaultProvider.uuid + "/private.key";
+        return accessManager.createVault(regionUUID, tmpPrivateFile);
+      case "delete-key":
+        return accessManager.deleteKey(regionUUID, "foo");
     }
     return null;
   }
@@ -280,10 +281,7 @@ public class AccessManagerTest extends FakeDBApplication {
     }
     cloudCredentials
         .getAllValues()
-        .forEach(
-            (cloudCredential) -> {
-              assertTrue(cloudCredential.isEmpty());
-            });
+        .forEach((cloudCredential) -> assertTrue(cloudCredential.isEmpty()));
     assertValidAccessKey(json);
     List<FileData> fd = FileData.getAll();
     assertEquals(fd.size(), 4);
@@ -326,10 +324,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
     cloudCredentials
         .getAllValues()
-        .forEach(
-            (cloudCredential) -> {
-              assertEquals(config, cloudCredential);
-            });
+        .forEach((cloudCredential) -> assertEquals(config, cloudCredential));
     assertValidAccessKey(json);
 
     List<FileData> fd = FileData.getAll();
@@ -465,15 +460,15 @@ public class AccessManagerTest extends FakeDBApplication {
 
   @Test
   public void testManageUploadKeyDuplicateKeyCode_PureKeyCode() throws IOException {
-    doTestManageUploadKeyDuplicateKeyCode(TEST_KEY_CODE);
+    doTestManageUploadKeyDuplicateKeyCode();
   }
 
   @Test
   public void testManageUploadKeyDuplicateKeyCode_KeyCodeWithPath() throws IOException {
-    doTestManageUploadKeyDuplicateKeyCode(TEST_KEY_CODE_WITH_PATH);
+    doTestManageUploadKeyDuplicateKeyCode();
   }
 
-  private void doTestManageUploadKeyDuplicateKeyCode(String keyCode) throws IOException {
+  private void doTestManageUploadKeyDuplicateKeyCode() throws IOException {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = TMP_KEYS_PATH + "/private.key";
     AccessKey.create(defaultProvider.uuid, TEST_KEY_CODE, keyInfo);
@@ -574,10 +569,7 @@ public class AccessManagerTest extends FakeDBApplication {
     Mockito.verify(shellProcessHandler, times(0)).run(command.capture(), anyMap());
     RuntimeException re =
         assertThrows(
-            RuntimeException.class,
-            () -> {
-              runCommand(defaultRegion.uuid, "add-key", false);
-            });
+            RuntimeException.class, () -> runCommand(defaultRegion.uuid, "add-key", false));
     assertThat(
         re.getMessage(), allOf(notNullValue(), equalTo("Key path /sys/foo/keys doesn't exist.")));
   }
@@ -616,7 +608,7 @@ public class AccessManagerTest extends FakeDBApplication {
   public void testDeleteKeyWithValidRegionInGCP() {
     Provider testProvider = ModelFactory.gcpProvider(defaultCustomer);
     Region testRegion = Region.create(testProvider, "us-west-2", "US West 2", "yb-image");
-    JsonNode result = runCommand(testRegion.uuid, "delete-key", false);
+    runCommand(testRegion.uuid, "delete-key", false);
     Mockito.verify(shellProcessHandler, times(0))
         .run(command.capture(), cloudCredentials.capture());
   }
