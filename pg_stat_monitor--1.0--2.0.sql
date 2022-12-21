@@ -8,6 +8,7 @@ DROP FUNCTION pgsm_create_11_view CASCADE;
 DROP FUNCTION pgsm_create_13_view CASCADE;
 DROP FUNCTION pgsm_create_14_view CASCADE;
 DROP FUNCTION pgsm_create_view CASCADE;
+DROP FUNCTION pg_stat_monitor_settings CASCADE;
 
 -- pg_stat_monitor internal function, must not call outside from this file.
 CREATE FUNCTION pg_stat_monitor_internal(
@@ -369,7 +370,6 @@ SELECT pgsm_create_view();
 
 REVOKE ALL ON FUNCTION range FROM PUBLIC;
 REVOKE ALL ON FUNCTION get_cmd_type FROM PUBLIC;
-REVOKE ALL ON FUNCTION pg_stat_monitor_settings FROM PUBLIC;
 REVOKE ALL ON FUNCTION decode_error_level FROM PUBLIC;
 REVOKE ALL ON FUNCTION pg_stat_monitor_internal FROM PUBLIC;
 REVOKE ALL ON FUNCTION get_histogram_timings FROM PUBLIC;
