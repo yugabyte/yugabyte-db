@@ -37,7 +37,7 @@ For installation overview, select one of the following installation types:
   </li>
 </ul>
 
-<br>The following diagram depicts the YugabyteDB Anywhere installation process in the Kubernetes environment:
+The following diagram depicts the YugabyteDB Anywhere installation process in the Kubernetes environment:
 
 <div class="image-with-map">
 <img src="/images/ee/flowchart/yb-install-k8s.png" usemap="#image-map">

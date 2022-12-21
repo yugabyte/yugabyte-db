@@ -38,11 +38,11 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 
 A Kubernetes node is expected to meet the following requirements: 
 
-- 4 cores (minimum) or 8 cores (recommended)
+- 5 cores (minimum) or 8 cores (recommended)
 
 - 15 GB RAM (minimum)
 
-- 250 GB SSD disk (minimum) allocated to YugabyteDB Anywhere. 
+- 250 GB SSD disk (minimum) allocated to YugabyteDB Anywhere 
 
   Since resizing StatefulSets after their creation is challenging, it is recommended to plan for long-term storage needs and allocate more storage initially.
 
@@ -88,7 +88,7 @@ The YugabyteDB Anywhere Helm chart has been tested using the following software 
 - Helm 3.10
 
 
-Before installing the YugabyteDB Admin Console, verify that you have the following:
+Before installing YugabyteDB Anywhere, verify that you have the following:
 
 - A Kubernetes cluster configured with [Helm](https://helm.sh/).
 - A Kubernetes secret obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
@@ -97,9 +97,9 @@ In addition, ensure the following:
 
 - The host can pull container images from the [quay.io](https://quay.io/) container registry. If the host cannot do this, you need to prepare these images in your internal registry by following instructions provided in [Pull and push YugabyteDB Docker images to private container registry](../prepare-environment/kubernetes#pull-and-push-yugabytedb-docker-images-to-private-container-registry). 
 - Core dumps are enabled and configured on the underlying Kubernetes node. For details, see [Specify ulimit and remember the location of core dumps](#specify-ulimit-and-remember-the-location-of-core-dumps).
-- You have the kube-state-metrics add-on version 1.9 in your Kubernetes cluster. For more information, see [Install kube-state-metrics](../install-kube-state-metrics).
+- You have the kube-state-metrics add-on version 1.9 in your Kubernetes cluster. For more information, see [Install kube-state-metrics](../prepare-environment/kubernetes#install-kube-state-metrics).
 - A load balancer controller is available in your Kubernetes cluster.
-- A StorageClass is available with the SSD and `WaitForFirstConsumer` preferably set to `allowVolumeExpansion`. For more information, see [Control placement of YugabyteDB Anywhere pod](../install-software/kubernetes/#control-placement-of-yugabytedb-anywhere-pod)
+- A StorageClass is available with the SSD and `WaitForFirstConsumer` preferably set to `allowVolumeExpansion`. For more information, see [Control placement of YugabyteDB Anywhere pod](../install-software/kubernetes/#control-placement-of-yugabytedb-anywhere-pod).
 
 #### Specify ulimit and remember the location of core dumps
 
@@ -107,7 +107,7 @@ The core dump collection in Kubernetes requires special care due to the fact tha
 
 You need to ensure that core dumps are enabled on the underlying Kubernetes node. Running the `ulimit -c` command within a Kubernetes pod or node must produce a large non-zero value or the `unlimited` value as an output. For more information, see [How to enable core dumps](https://www.ibm.com/support/pages/how-do-i-enable-core-dumps). 
 
-To be able to locate your core dumps, you should be aware of the fact that the location to which core dumps are written depends on the sysctl `kernel.core_pattern` setting. For more information, see [Linux manual: core(5)](https://man7.org/linux/man-pages/man5/core.5.html#:~:text=Naming of core dump files).
+To be able to locate your core dumps, you should be aware of the fact that the location to which core dumps are written depends on the sysctl `kernel.core_pattern` setting. For more information, see [Linux manual: core dump file](https://man7.org/linux/man-pages/man5/core.5.html#:~:text=Naming).
 
 To inspect the value of the sysctl within a Kubernetes pod or node, execute the following:
 
@@ -115,7 +115,7 @@ To inspect the value of the sysctl within a Kubernetes pod or node, execute the 
 cat /proc/sys/kernel/core_pattern
 ```
 
-If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. To be able to retrieve core dump files in case of a crash within the Kubernetes pod, it is important that you understand where these files are written.
+If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E` ), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. To be able to retrieve core dump files in case of a crash within the Kubernetes pod, it is important that you understand where these files are written.
 
 If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, no action is required on your part, as core dumps will be copied by the YugabyteDB node to the persistent volume directory `/mnt/disk0/cores` for future analysis. 
 

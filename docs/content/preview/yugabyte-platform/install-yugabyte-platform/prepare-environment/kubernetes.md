@@ -59,7 +59,7 @@ type: docs
 
 </ul>
 
-<br>Before configuring the environment, consult [Prerequisites](../../prerequisites). 
+Before configuring the environment, consult [Prerequisites](../../prerequisites). 
 
 ## Install kube-state-metrics
 
@@ -71,7 +71,7 @@ Since this add-on might already be installed and running, you should perform a c
 kubectl get svc kube-state-metrics -n kube-system
 ```
 
-If the add-on is not installed, install it into the `kube-system` namespace by exectuting the following commands as a user of a service account with appropriate roles:
+If the add-on is not installed, install it into the `kube-system` namespace by executing the following commands as a user of a service account with appropriate roles:
 
 ```sh
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -107,10 +107,10 @@ Generally, the process involves the following:
 
 You need to perform the following steps:
 
-1. Login to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret `yaml` file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
+1. Login to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
 
    ```sh
-   docker login -u “your_yugabyte_username” -p “yugabyte_provided_password” quay.io
+   docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.io
    
    docker search yugabytedb # You should see images
    ```
@@ -274,7 +274,7 @@ You need to perform the following steps:
    docker.io/janeczku/go-dnsmasq:release-1.0.7
    ```
 
-1. Login to your target container registry, as per the following example that uses Google Container Registry (GCR) :
+1. Login to your target container registry, as per the following example that uses Google Container Registry (GCR):
 
    ```sh
    docker login -u _json_key --password-stdin https://gcr.io < .ssh/my-service-account-key.json
@@ -323,7 +323,7 @@ You need to perform the following steps:
    ```properties
    image:
       commonRegistry: "**gcr.io/dataengineeringdemos**"
-      repository: **“”**
+      repository: **""**
       tag: **2.5.1.0-b153**
       pullPolicy: IfNotPresent
       pullSecret: yugabyte-k8s-pull-secret
