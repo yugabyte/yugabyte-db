@@ -333,12 +333,12 @@ The following ways can be used to start a Read Committed transaction after setti
 3. `BEGIN [TRANSACTION]; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494))
 4. `BEGIN [TRANSACTION]; SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after #12494)
 
-Semantics of Read Committed isolation make sense only with the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict-beta-preview-faq-general-what-is-the-definition-of-the-beta-feature-tag) conflict mangagement policy. This is because a Read Committed transaction has to wait for other Read Committed transactions to commit or rollback in case of a conflict, and then perform the Recheck steps to make progress.
+Semantics of Read Committed isolation adheres only with the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict-beta-preview-faq-general-what-is-the-definition-of-the-beta-feature-tag) concurrency control policy. This is because a Read Committed transaction has to wait for other transactions to commit or rollback in case of a conflict, and then perform the re-check steps to make progress.
 
-Since the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy doesn't make sense for Read Committed, even if this policy is set for use on the cluster, transactions in Read Committed isolation provide `Wait-on-Conflict` semantics. This is done even without wait queues i.e., even when `enable_wait_queues=false`, by relying on a indefinite retry-backoff mechanism with exponential delays when conflicts are detected. However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist -
-1. there might be a need to manually tune the exponential backoff parameters for performance as explained [here](../read-committed/#performance-tuning).
-1. the app will have to [rely on statement timeouts to avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
-1. there can be unfairness and high P99 latencies during contention due to the retry-backoff mechanism.
+As the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy doesn't make sense for Read Committed, even if this policy is set for use on the cluster, transactions in Read Committed isolation provide `Wait-on-Conflict` semantics. This is done even without wait queues, that is, even when `enable_wait_queues=false`, by relying on an indefinite retry-backoff mechanism with exponential delays when conflicts are detected. However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist:
+- You may have to manually tune the exponential backoff parameters for performance as explained in [Performance tuning](../read-committed/#performance-tuning).
+- The app may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
+- There may be unfairness and high P99 latencies during contention due to the retry-backoff mechanism.
 
 ## Examples
 
@@ -350,7 +350,7 @@ create table test (k int primary key, v int);
 
 ### Avoid deadlocks in Read Committed transactions
 
-When wait queues are not enabled i.e., `enable_wait_queues=false`, be sure to configure a statement timeout to avoid deadlocks (by setting the `statement_timeout` parameter in `ysql_pg_conf_csv` YB-TServer gflag on cluster startup).
+When wait queues are not enabled, that is, `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks by setting the `statement_timeout` parameter in `ysql_pg_conf_csv` YB-TServer gflag on cluster startup.
 
 ```sql
 truncate table test;
