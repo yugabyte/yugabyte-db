@@ -28,6 +28,26 @@
       "required" : [ "idKey", "keyInfo" ],
       "type" : "object"
     },
+    "AccessKeyFormData" : {
+      "properties" : {
+        "expirationThresholdDays" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "keyCode" : {
+          "type" : "string"
+        },
+        "keyContent" : {
+          "type" : "string"
+        },
+        "keyType" : {
+          "enum" : [ "PUBLIC", "PRIVATE" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "keyCode", "keyContent", "keyType" ],
+      "type" : "object"
+    },
     "AccessKeyId" : {
       "properties" : {
         "keyCode" : {
@@ -13923,8 +13943,8 @@
         "tags" : [ "Access Keys" ]
       },
       "post" : {
-        "description" : "",
-        "operationId" : "create_accesskey",
+        "description" : "UNSTABLE - This API will undergo changes in future.",
+        "operationId" : "createAccesskey",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -13937,6 +13957,13 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "AccessKeyFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AccessKeyFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -13949,7 +13976,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create an access key",
+        "summary" : "Create/Upload an access key for onprem Provider region",
         "tags" : [ "Access Keys" ]
       }
     },
