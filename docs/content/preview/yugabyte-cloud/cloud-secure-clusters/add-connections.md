@@ -88,11 +88,11 @@ IP allow lists are limited to a maximum of 100 allow list rules (that is, the ma
 To create an IP allow list:
 
 1. On the **Network Access** page, select the **IP Allow List** tab.
-1. Click **Add IP Address** to display the **Add IP Allow List** sheet.
+1. Click **Add IP Address** to display the **Create New Allow List** sheet.
 1. Enter a name and description for the allow list.
 1. Enter the IP addresses and ranges. Each entry can either be a single IP address, a CIDR-notated range of addresses, or multiple comma-delimited addresses.
-1. Click **Detect and add my IP to this list** to add the IP address of the computer you are using to access YugabyteDB Managed.
-1. Click **Add** when you are done.
+1. Click **Add Current IP Address** to add the IP address of the computer you are using to access YugabyteDB Managed.
+1. Click **Create** when you are done.
 
 The allow list takes up to 30 seconds to become active.
 

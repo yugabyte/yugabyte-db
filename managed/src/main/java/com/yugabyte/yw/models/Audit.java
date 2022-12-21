@@ -2,9 +2,6 @@
 
 package com.yugabyte.yw.models;
 
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
@@ -14,10 +11,10 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.validation.Constraints;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
@@ -26,8 +23,16 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.SequenceGenerator;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import java.util.function.Consumer;
+
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.perf_advisor.models.PerformanceRecommendation;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Audit logging for requests and responses")
@@ -140,7 +145,10 @@ public class Audit extends Model {
     NodeAgent,
 
     @EnumValue("CustomerLicense")
-    CustomerLicense
+    CustomerLicense,
+
+    @EnumValue("PerformanceRecommendation")
+    PerformanceRecommendation
   }
 
   public enum ActionType {
@@ -224,6 +232,9 @@ public class Audit extends Model {
 
     @EnumValue("Update Options")
     UpdateOptions,
+
+    @EnumValue("Update Load Balancer Config")
+    UpdateLoadBalancerConfig,
 
     @EnumValue("Refresh Pricing")
     RefreshPricing,

@@ -38,9 +38,8 @@ func (p portCheck) Execute() Result {
 		Status: StatusPassed,
 	}
 	var ports []int = []int{
-		viper.GetInt("prometheus.externalPort"),
-		viper.GetInt("platform.externalPort"), //This is currently the same port as postgres.
-		viper.GetInt("platform.containerExposedPort"),
+		viper.GetInt("prometheus.port"),
+		viper.GetInt("platform.port"),
 		viper.GetInt("postgres.port"),
 	}
 

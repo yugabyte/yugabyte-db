@@ -26,6 +26,8 @@
 
 namespace rocksdb {
 
+class Comparator;
+
 class InternalIterator : public Cleanable {
  public:
   InternalIterator() {}
@@ -116,8 +118,8 @@ class InternalIterator : public Cleanable {
   //  callback failed (i.e. returned false) or lower layer ran into some issue when reading data.
   //  status() call should be used to figure out the callback failure vs lower layer failure.
   virtual bool ScanForward(
-      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
-      ScanCallback* scan_callback) {
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
     LOG(FATAL) << "ScanForward is not supported yet";
     return false;
   }

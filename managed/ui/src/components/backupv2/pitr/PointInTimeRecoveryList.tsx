@@ -9,6 +9,7 @@
 
 import React, { useState } from 'react';
 import moment from 'moment';
+import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { DropdownButton, MenuItem, Row } from 'react-bootstrap';
 import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-table';
@@ -67,7 +68,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
         <MenuItem
           onClick={(e: any) => {
             e.stopPropagation();
-            row.minRecoverTimeInMillis && setRecoveryItem(row);
+            row.minRecoverTimeInMillis && setRecoveryItem(_.cloneDeep(row));
           }}
           disabled={!row.minRecoverTimeInMillis}
         >
@@ -76,7 +77,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
         <MenuItem
           onClick={(e: any) => {
             e.stopPropagation();
-            row.minRecoverTimeInMillis && setItemToDisable(row);
+            row.minRecoverTimeInMillis && setItemToDisable(_.cloneDeep(row));
           }}
           className="action-danger"
           disabled={!row.minRecoverTimeInMillis}

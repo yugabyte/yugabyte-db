@@ -4,7 +4,7 @@ services:
     contents: |
       include classpath("application.common.conf")
 
-      log.override.path="{{ installRoot }}/{{ yamlPath "platform.logPath" }}"
+      log.override.path="{{ baseInstall }}/data/logs"
 
       play.crypto.secret="{{ yamlPath "platform.appSecret" }}"
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
@@ -15,7 +15,7 @@ services:
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
       db {
-        default.url="jdbc:postgresql://127.0.0.1:{{ yamlPath "platform.externalPort" }}/yugaware"
+        default.url="jdbc:postgresql://127.0.0.1:{{ yamlPath "postgres.port" }}/yugaware"
         default.driver=org.postgresql.Driver
         default.username="{{ yamlPath "platform.platformDbUser" }}"
         default.password="{{ yamlPath "platform.platformDbPassword" }}"
@@ -29,14 +29,14 @@ services:
 
       yb {
         devops.home = "{{ installRoot }}/yb-platform/devops"
-        swamper.targetPath = "{{ installRoot }}/data/prometheus/swamper_targets"
-        swamper.rulesPath = "{{ installRoot }}/data/prometheus/swamper_rules"
-        metrics.url = "http://127.0.0.1:{{ yamlPath "prometheus.externalPort" }}/api/v1"
-        metrics.management.url = "http://127.0.0.1:{{ yamlPath "prometheus.externalPort" }}/-"
-        storage.path = "{{ installRoot }}/data/yb-platform"
+        swamper.targetPath = "{{ baseInstall }}/data/prometheus/swamper_targets"
+        swamper.rulesPath = "{{ baseInstall }}/data/prometheus/swamper_rules"
+        metrics.url = "http://127.0.0.1:{{ yamlPath "prometheus.port" }}/api/v1"
+        metrics.management.url = "http://127.0.0.1:{{ yamlPath "prometheus.port" }}/-"
+        storage.path = "{{ .DataDir }}"
         seedData = false
         multiTenant = false
-        releases.path = "{{ installRoot }}/data/yb-platform/releases"
+        releases.path = "{{ .DataDir }}/releases"
         thirdparty.packagePath = "{{ installVersionDir }}/third-party"
         # Interval at which to check the status of every universe. Default: 5 minutes.
         health.check_interval_ms = 300000
@@ -66,8 +66,8 @@ services:
       }
 
       ybc {
-        releases.path = "{{ installRoot }}/data/yb-platform/ybc/releases"
-        docker.release = "{{ installRoot }}/data/yb-platform/ybc/release"
+        releases.path = "{{ .DataDir }}/ybc/releases"
+        docker.release = "{{ .DataDir }}/ybc/release"
       }
 
       play.filters {
@@ -121,7 +121,7 @@ services:
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware \
         -Dconfig.file={{ .ConfFileLocation }} \
         -Dhttp.port=disabled \
-        -Dhttps.port={{ yamlPath "platform.containerExposedPort" }}
+        -Dhttps.port={{ yamlPath "platform.port" }}
 
       Restart=always
       RestartSec={{ yamlPath "platform.restartSeconds"}}

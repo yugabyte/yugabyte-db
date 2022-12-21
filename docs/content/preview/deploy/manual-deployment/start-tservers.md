@@ -50,7 +50,7 @@ For the full list of configuration flags, see the [YB-TServer reference](../../.
 
 {{< note title="Note" >}}
 
-The number of comma-separated values in the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs)) flag should match the total number of YB-Master servers (or the replication factor).
+The number of comma-separated values in the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs) flag should match the total number of YB-Master servers (or the replication factor).
 
 {{< /note >}}
 

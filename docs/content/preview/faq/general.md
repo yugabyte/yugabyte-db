@@ -216,7 +216,7 @@ In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c
 
 - During network partitions or node failures, the replicas of the impacted tablets (whose leaders got partitioned out or lost) form two groups: a majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus (given the lack of quorum). The replicas in the majority partition elect a new leader among themselves in a matter of seconds and are ready to accept new writes after the leader election completes. For these few seconds till the new leader is elected, the DB is unable to accept new writes given the design choice of prioritizing consistency over availability. All the leader replicas in the minority partition lose their leadership during these few seconds and hence become followers.
 
-- Majority partitions are available for both reads and writes. Minority partitions are available for reads only (even if the data may get stale as time passes), but not available for writes. **Multi-active availability** refers to YugabyteDB's ability to serve writes on any node of a non-partitioned cluster and reads on any node of a partitioned cluster.
+- Majority partitions are available for both reads and writes. Minority partitions are not available for writes, but may serve stale reads (up to a staleness as configured by the [--max_stale_read_bound_time_ms](../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) flag). **Multi-active availability** refers to YugabyteDB's ability to dynamically adjust to the state of the cluster and serve consistent writes at any replica in the majority partition.
 
 - The approach above obviates the need for any unpredictable background anti-entropy operations as well as need to establish quorum at read time. As shown in the [YCSB benchmarks against Apache Cassandra](https://forum.yugabyte.com/t/ycsb-benchmark-results-for-yugabyte-and-apache-cassandra-again-with-p99-latencies/99), YugabyteDB delivers predictable p99 latencies as well as 3x read throughput that is also timeline-consistent (given no quorum is needed at read time).
 
@@ -228,6 +228,7 @@ A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Co
 
 YugabyteDB has had the following major (stable) releases:
 
+- [v2.16]() in December 2022
 - [v2.14](https://blog.yugabyte.com/announcing-yugabytedb-2-14-higher-performance-and-security/) in July 2022.
 - [v2.12](https://blog.yugabyte.com/announcing-yugabytedb-2-12/) in February 2022. (There was no v2.10 release.)
 - [v2.8](https://blog.yugabyte.com/announcing-yugabytedb-2-8/) in November 2021.

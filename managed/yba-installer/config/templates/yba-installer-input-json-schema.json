@@ -15,7 +15,7 @@
               "scrapeTimeout": {
                 "type": "integer"
               },
-              "externalPort": {
+              "port": {
                 "type": "integer"
               },
               "maxConcurrency": {
@@ -28,16 +28,13 @@
                 "type": "integer"
               }
             },
-            "required": ["scrapeInterval", "scrapeTimeout", "externalPort", "maxConcurrency",
+            "required": ["scrapeInterval", "scrapeTimeout", "port", "maxConcurrency",
               "maxSamples", "timeout"]
         },
         "platform": {
           "description": "Platform Config Parameters",
           "type": "object",
           "properties": {
-            "logPath": {
-              "type": "string"
-            },
             "platformDbUser": {
               "type": "string"
             },
@@ -96,22 +93,16 @@
                   }
               ]
             },
-            "externalPort": {
-              "type": "integer"
-            },
-            "containerExposedPort": {
+            "port": {
               "type": "integer"
             } ,
             "keyStorePassword": {
               "type": "string"
             }
           },
-          "required": ["platformDbUser",
-          "platformDbPassword",
-          "useOauth", "ybSecurityType", "ybOidcClientId",
-          "ybOidcSecret", "ybOidcDiscoveryUri", "ywUrl",
-          "ybOidcScope", "ybOidcEmailAttr", "externalPort",
-          "containerExposedPort", "keyStorePassword", "logPath"]
+          "required": ["platformDbUser", "platformDbPassword", "useOauth", "ybSecurityType",
+          "ybOidcClientId", "ybOidcSecret", "ybOidcDiscoveryUri", "ywUrl", "ybOidcScope",
+          "ybOidcEmailAttr", "port", "keyStorePassword"]
         },
       "preflight": {
           "description": "Preflight Config parameters",

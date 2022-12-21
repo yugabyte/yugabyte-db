@@ -18,10 +18,12 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetSta
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Provider;
@@ -39,6 +41,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -60,6 +63,7 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import play.api.Play;
+import play.mvc.Http.Status;
 
 @Slf4j
 public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase {
@@ -71,6 +75,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static final String SOURCE_ROOT_CERTS_DIR_GFLAG = "certs_for_cdc_dir";
   public static final String DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
   public static final String SOURCE_ROOT_CERTIFICATE_NAME = "ca.crt";
+  public static final String ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG =
+      "enable_replicate_transaction_status_table";
+  public static final boolean ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_DEFAULT = false;
+  public static final String TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME = "system";
 
   public static final List<XClusterConfig.XClusterConfigStatusType>
       X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST =
@@ -432,10 +440,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.error("{} hit error : {}", getName(), e.getMessage());
       Throwables.propagate(e);
     }
-  }
-
-  protected SubTaskGroup createTransferXClusterCertsRemoveTasks() {
-    return createTransferXClusterCertsRemoveTasks(getXClusterConfigFromTaskParams());
   }
 
   /**
@@ -1396,4 +1400,50 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
   // --------------------------------------------------------------------------------
   // End of TableInfo helpers.
+
+  public static boolean isTransactionalReplication(
+      @Nullable Universe sourceUniverse, Universe targetUniverse) {
+    UniverseDefinitionTaskParams.UserIntent targetUniverseUserIntent =
+        targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    String gflagValueOnTarget =
+        targetUniverseUserIntent.masterGFlags.get(ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
+    Boolean gflagValueOnTargetBoolean =
+        gflagValueOnTarget != null ? Boolean.valueOf(gflagValueOnTarget) : null;
+
+    if (sourceUniverse != null) {
+      // Replication between a universe with the gflag `enable_replicate_transaction_status_table`
+      // and a universe without it is not allowed.
+      UniverseDefinitionTaskParams.UserIntent sourceUniverseUserIntent =
+          sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+      String gflagValueOnSource =
+          sourceUniverseUserIntent.masterGFlags.get(
+              ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG);
+      Boolean gflagValueOnSourceBoolean =
+          gflagValueOnSource != null ? Boolean.valueOf(gflagValueOnSource) : null;
+      if (!Objects.equals(gflagValueOnSourceBoolean, gflagValueOnTargetBoolean)) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            String.format(
+                "The gflag %s must be set to the same value on both universes",
+                ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG));
+      }
+    }
+
+    return gflagValueOnTargetBoolean == null
+        ? ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_DEFAULT
+        : gflagValueOnTargetBoolean;
+  }
+
+  public static boolean isTransactionalReplication(Universe targetUniverse) {
+    return isTransactionalReplication(null /* sourceUniverse */, targetUniverse);
+  }
+
+  public static boolean otherXClusterConfigsAsTargetExist(
+      UUID universeUuid, UUID xClusterConfigUuid) {
+    List<XClusterConfig> xClusterConfigs = XClusterConfig.getByTargetUniverseUUID(universeUuid);
+    if (xClusterConfigs.size() == 0) {
+      return false;
+    }
+    return xClusterConfigs.size() != 1 || !xClusterConfigs.get(0).uuid.equals(xClusterConfigUuid);
+  }
 }

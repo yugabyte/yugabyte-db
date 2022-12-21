@@ -46,7 +46,8 @@ constexpr uint8_t kDeterministicCollation = 0x01;
 constexpr uint8_t kCollationMarker = 0x80;
 
 Slice MakeCollationEncodedString(
-  Arena* arena, const char* value, int64_t bytes, uint8_t collation_flags, const char* sortkey) {
+  ThreadSafeArena* arena, const char* value, int64_t bytes, uint8_t collation_flags,
+  const char* sortkey) {
   // A postgres character value cannot have \0 byte.
   DCHECK(memchr(value, '\0', bytes) == nullptr);
 
@@ -538,7 +539,7 @@ void PgExpr::InitializeTranslateData() {
 
 //--------------------------------------------------------------------------------------------------
 
-PgConstant::PgConstant(Arena* arena,
+PgConstant::PgConstant(ThreadSafeArena* arena,
                        const YBCPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c,
                        const char *collation_sortkey,
@@ -687,7 +688,7 @@ PgConstant::PgConstant(Arena* arena,
   InitializeTranslateData();
 }
 
-PgConstant::PgConstant(Arena* arena,
+PgConstant::PgConstant(ThreadSafeArena* arena,
                        const YBCPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c,
                        PgDatumKind datum_kind,
@@ -839,7 +840,7 @@ Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb)
 
 //--------------------------------------------------------------------------------------------------
 
-PgOperator::PgOperator(Arena* arena,
+PgOperator::PgOperator(ThreadSafeArena* arena,
                        const char *opname,
                        const YBCPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c)

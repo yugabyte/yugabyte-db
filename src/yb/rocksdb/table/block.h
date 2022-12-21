@@ -222,6 +222,10 @@ class BlockIter : public InternalIterator {
     return restart_index_;
   }
 
+  bool ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
+
  private:
   const Comparator* comparator_;
   const char* data_;       // underlying block contents

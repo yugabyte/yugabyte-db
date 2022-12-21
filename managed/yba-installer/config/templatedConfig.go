@@ -5,11 +5,12 @@
 package config
 
 import (
-	"encoding/base64"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
+
 	// "path/filepath"
 	"crypto/rand"
 	"strings"
@@ -19,8 +20,8 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 	"sigs.k8s.io/yaml"
 
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
 // PlatformAppSecret is special cased because it is not configurable by the user.
@@ -36,9 +37,9 @@ var randomKeystorePassword string = generateRandomStringURLSafe(32)
 // valid by turning the input YAML file into a JSON file, and then validating that
 // the parameters have been specified appropriately using the available
 // JSON schema.
-func validateJSONSchema(filename string) {
+func validateJSONSchema() {
 
-	createdBytes, err := os.ReadFile(filename)
+	createdBytes, err := os.ReadFile(common.InputFile)
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Error: %v.", err))
 	}
@@ -121,9 +122,10 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 
 		// The name "yamlPath" is what the function will be called
 		// in the template text.
-		"yamlPath":          		GetYamlPathData,
-		"installRoot":       		common.GetInstallRoot,
-		"installVersionDir": 		common.GetInstallVersionDir,
+		"yamlPath":          GetYamlPathData,
+		"installRoot":       common.GetInstallRoot,
+		"installVersionDir": common.GetInstallVersionDir,
+		"baseInstall":			 common.GetBaseInstall,
 	}
 
 	tmpl, err := template.New(configYmlFileName).
@@ -166,7 +168,7 @@ func readYAMLtoJSON(createdBytes []byte) (map[string]interface{}, error) {
 func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
 	fileNameString := string(fileName)
-
+	log.Info("Creating file (and directory path): " + fileNameString)
 	file, createErr := common.Create(fileNameString)
 
 	if createErr != nil {
@@ -188,7 +190,7 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 // GenerateTemplate of a particular component.
 func GenerateTemplate(component common.Component) {
 
-	validateJSONSchema(common.InputFile)
+	validateJSONSchema()
 
 	createdBytes, _ := readConfigAndTemplate(component.TemplateFile(), component)
 

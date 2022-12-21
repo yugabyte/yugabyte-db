@@ -24,6 +24,12 @@ DOCUMENTATION = """
         - Run commands or put/fetch files to a node agent server.
     version_added: 2.8
     options:
+      user:
+        description:
+          - Default connection user similar to SSH user.
+        vars:
+          - name: rpc_user
+        required: False
       ip:
         description:
           - IP of the node agent server.
@@ -69,6 +75,7 @@ class Connection(ConnectionBase):
         if self._connected:
             return
         try:
+            self.user = self.get_option("user")
             self.ip = self.get_option("ip")
             self.port = self.get_option("port")
             self.cert_path = self.get_option("cert_path")
@@ -78,6 +85,7 @@ class Connection(ConnectionBase):
             assert self.cert_path is not None, 'Node agent cert_path is required'
             assert self.auth_token is not None, 'Node agent auth_token is required'
             connect_params = {
+                "user": self.user,
                 "ip": self.ip,
                 "port": self.port,
                 "cert_path": self.cert_path,

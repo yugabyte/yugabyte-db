@@ -9,17 +9,13 @@ import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
-import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.Collections;
-import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
@@ -34,7 +30,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.SnapshotInfo;
 import org.yb.client.YBClient;
 import org.yb.CommonTypes.TableType;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
@@ -82,12 +77,12 @@ public class PitrController extends AuthenticatedController {
 
     if (taskParams.retentionPeriodInSeconds <= 0L) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config retention period can't be less than 1 second");
+          BAD_REQUEST, "PITR Config retention period cannot be less than 1 second");
     }
 
     if (taskParams.retentionPeriodInSeconds <= taskParams.intervalInSeconds) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config interval can't be less than retention period");
+          BAD_REQUEST, "PITR Config interval cannot be less than retention period");
     }
 
     TableType type = BackupUtil.API_TYPE_TO_TABLE_TYPE_MAP.get(ApiType.valueOf(tableType));

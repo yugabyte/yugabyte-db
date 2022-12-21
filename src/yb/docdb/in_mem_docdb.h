@@ -19,6 +19,7 @@
 
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/value.h"
 #include "yb/util/status_fwd.h"
 

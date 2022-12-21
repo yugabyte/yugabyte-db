@@ -6,7 +6,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
 import lombok.extern.slf4j.Slf4j;
 
@@ -18,7 +17,9 @@ public class ChangeInstanceType extends NodeTaskBase {
     super(baseTaskDependencies, nodeManager);
   }
 
-  public static class Params extends NodeTaskParams {}
+  public static class Params extends NodeTaskParams {
+    public boolean force = false;
+  }
 
   @Override
   protected Params taskParams() {

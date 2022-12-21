@@ -67,7 +67,7 @@ struct PerformData {
   rpc::RpcController controller;
   PerformCallback callback;
 
-  explicit PerformData(Arena* arena) : resp(arena) {
+  explicit PerformData(ThreadSafeArena* arena) : resp(arena) {
   }
 
   Status Process() {

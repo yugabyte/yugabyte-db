@@ -352,5 +352,3 @@ You need to perform the following steps:
    ```sh
    helm install yugaware **.** -f values.yaml
    ```
-
-   

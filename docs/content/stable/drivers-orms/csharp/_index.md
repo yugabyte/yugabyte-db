@@ -8,34 +8,30 @@ menu:
   stable:
     identifier: csharp-drivers
     parent: drivers-orms
-    weight: 570
+    weight: 560
 type: indexpage
+showRightNav: true
 ---
+
+## Supported projects
 
 The following projects can be used to implement C# applications using the YugabyteDB YSQL API.
 
-## Supported Projects
-
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
-| ------- | ------------------------ | ------------------------ | ---------------------|
-| PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql/) <br /> [Hello World App](../../quick-start/build-apps/csharp/ysql)<br /> [Reference Page](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
+| :------ | :----------------------- | :-------------------- | :--------------------------- |
+| PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql/) <br /> [Reference](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
+| YugabyteDB C# Driver for YCQL | [Documentation](ycql/) |
 
 | Project | Documentation and Guides | Example Apps |
-| ------- | ------------------------ | ------------ |
-| Entity Framework ORM | [Documentation](entityframework/) | [Hello World App](../../quick-start/build-apps/csharp/ysql-entity-framework/) |
+| :------ | :----------------------- | :---------- |
+| Entity Framework | [Documentation](entityframework/) <br/> [Hello World](../orms/csharp/ysql-entity-framework/) | [Entity Framework ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/csharp/entityframework) |
+| Dapper | [Hello World](../orms/csharp/ysql-dapper/) | [Dapper ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/csharp/dapper/DapperORM) |
 
-<!-- | Project | Type | Support | Examples |
-| :------ | :--- | :-------| :------- |
-| [PostgreSQL Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql)<br />[CRUD](postgres-npgsql) |
-| [EntityFramework](entityframework) | ORM |  Full | [Hello World](/preview/quick-start/build-apps/csharp/ysql-entity-framework/)<br />[CRUD](entityframework) | -->
-
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
-
-For fully-runnable code snippets and explanations of common operations, see the **example apps**. Before running the example apps, make sure you have installed the prerequisites.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](postgres-npgsql/) or [Use an ORM](entityframework/).
 
 For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/csharp/postgres-npgsql-reference/) pages.
 
-### Prerequisites
+## Prerequisites
 
 To develop C# applications for YugabyteDB, you need the following:
 
@@ -52,10 +48,9 @@ To develop C# applications for YugabyteDB, you need the following:
     ```
 
 - **YugabyteDB cluster**
-  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
+  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
-## Next steps
+## Next step
 
-- Learn how to build C# applications using [Entity Framework ORM](entityframework/).
-- Learn how to use [Entity Framework core](/preview/integrations/entity-framework/) with YugabyteDB.
+- [Connect an app](postgres-npgsql/)

@@ -28,9 +28,13 @@ type: docs
 
 </ul>
 
-YugabyteDB Anywhere installations include configuration settings, certificates and keys, as well as other components required for creating and managing YugabyteDB universes.
+<br>YugabyteDB Anywhere installations include configuration settings, certificates and keys, as well as other components required for creating and managing YugabyteDB universes.
 
-You can use the YugabyteDB Anywhere backup script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
+You can use the YugabyteDB Anywhere `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
+
+## Prerequisites
+
+To perform backups and restores in a Replicated environment, you must have a permission to run `docker` commands. This means that on systems with the default `docker` configuration, the `yb_platform_backup.sh` backup and restore script must be run using `sudo` or run as the `root` user (or another member of the `docker` group).
 
 ## Back up a YugabyteDB Anywhere server
 
@@ -48,7 +52,7 @@ To back up the YugabyteDB Anywhere server, perform the following:
     ./yb_platform_backup.sh create --output <output_path> [--data_dir <data_dir>] [--exclude_prometheus]
     ```
 
-    <br>*create* runs the backup of the YugabyteDB Anywhere server.<br>
+    *create* runs the backup of the YugabyteDB Anywhere server.<br>
 
     *output_path* specifies the location for the `.tar` output file.<br>
 
@@ -78,7 +82,7 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
     ./yb_platform_backup.sh restore --input <input_path> [--destination <destination>]
     ```
 
-    <br>*restore* restores the YugabyteDB Anywhere content.<br>
+    *restore* restores the YugabyteDB Anywhere content.<br>
 
     *input_path* is the path to the input `.tar` file.<br>
 

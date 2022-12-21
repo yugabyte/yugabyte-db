@@ -503,6 +503,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
+                '--enable-nls',
                 '--with-icu',
                 '--with-ldap',
                 '--with-openssl',
@@ -889,14 +890,6 @@ class PostgresBuilder(YbBuildToolBase):
             self.clean_postgres()
 
         mkdir_p(self.pg_build_root)
-        if self.should_configure:
-            # Regardless of build stamp, the postgres code in src should be synced to the code in
-            # build.  It's fine to do this only for the configure step because the make step depends
-            # on the configure step as defined in src/postgres/CMakeLists.txt.
-            with WorkDirContext(self.pg_build_root):
-                self.sync_postgres_source()
-
-        self.set_env_vars('configure')
         saved_build_stamp = self.get_saved_build_stamp()
         initial_build_stamp = self.get_build_stamp(include_env_vars=True)
         initial_build_stamp_no_env = self.get_build_stamp(include_env_vars=False)
@@ -913,6 +906,15 @@ class PostgresBuilder(YbBuildToolBase):
                     "PostgreSQL is already up-to-date in directory %s, skipping %s.",
                     self.pg_build_root, self.steps_description())
                 return
+
+        if self.should_configure:
+            # Regardless of build stamp, the postgres code in src should be synced to the code in
+            # build.  It's fine to do this only for the configure step because the make step depends
+            # on the configure step as defined in src/postgres/CMakeLists.txt.
+            with WorkDirContext(self.pg_build_root):
+                self.sync_postgres_source()
+
+        self.set_env_vars('configure')
 
         with WorkDirContext(self.pg_build_root):
             if self.should_configure:

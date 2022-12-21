@@ -1,10 +1,9 @@
 ---
-title: Install YugabyteDB Anywhere
-headerTitle: Select installation type
-linkTitle: Install
-description: Installing YugabyteDB Anywhere on public cloud
+title: Install YugabyteDB Anywhere Overview
+headerTitle: Overview
+linkTitle: Overview
+description: Installing YugabyteDB Anywhere on public clouds
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Installing YugabyteDB Anywhere on public cloud
 menu:
   stable_yugabyte-platform:
     identifier: install-1-public-cloud

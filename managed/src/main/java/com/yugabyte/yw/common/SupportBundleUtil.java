@@ -436,7 +436,7 @@ public class SupportBundleUtil {
         kubernetesCluster.namespaceToAzNameMap.entrySet()) {
       String namespace = namespaceToAzName.getKey();
       String helmReleaseName =
-          PlacementInfoUtil.getHelmReleaseName(
+          KubernetesUtil.getHelmReleaseName(
               isMultiAz, nodePrefix, namespaceToAzName.getValue(), isReadOnlyUniverseCluster);
 
       String masterStorageClassName =

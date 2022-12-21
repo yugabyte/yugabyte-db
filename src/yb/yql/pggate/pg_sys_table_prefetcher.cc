@@ -291,7 +291,7 @@ class Loader {
  public:
   Loader(PgSession* session, size_t estimated_size, uint64_t latest_known_ysql_catalog_version)
       : session_(session),
-        arena_(std::make_shared<Arena>()),
+        arena_(SharedArena()),
         latest_known_ysql_catalog_version_(latest_known_ysql_catalog_version) {
     op_info_.reserve(estimated_size);
   }
@@ -366,7 +366,7 @@ class Loader {
  private:
   PgSession* session_;
   std::vector<OperationInfo> op_info_;
-  std::shared_ptr<Arena> arena_;
+  std::shared_ptr<ThreadSafeArena> arena_;
   const uint64_t latest_known_ysql_catalog_version_;
 };
 

@@ -375,7 +375,16 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       }
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
     }
+
+    // Collect min schema version from all DB entries. I.e. stored in memory and flushed to disk.
     std::unordered_map<Uuid, SchemaVersion, UuidHash> table_id_to_min_schema_version;
+    {
+      auto smallest = db->CalcMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+      if (smallest) {
+        down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
+            &table_id_to_min_schema_version);
+      }
+    }
     for (const auto& file : db->GetLiveFilesMetaData()) {
       if (!file.smallest.user_frontier) {
         continue;
@@ -1286,7 +1295,7 @@ Status Tablet::WriteTransactionalBatch(
 namespace {
 
 std::vector<docdb::LWKeyValueWriteBatchPB*> SplitWriteBatchByTransaction(
-    const docdb::LWKeyValueWriteBatchPB& put_batch, Arena* arena) {
+    const docdb::LWKeyValueWriteBatchPB& put_batch, ThreadSafeArena* arena) {
   std::map<Slice, docdb::LWKeyValueWriteBatchPB*> map;
   for (const auto& write_pair : put_batch.write_pairs()) {
     if (!write_pair.has_transaction()) {
@@ -1296,7 +1305,7 @@ std::vector<docdb::LWKeyValueWriteBatchPB*> SplitWriteBatchByTransaction(
     auto transaction_id = write_pair.transaction().transaction_id();
     auto& write_batch_ref = map[transaction_id];
     if (!write_batch_ref) {
-      write_batch_ref = arena->NewObject<docdb::LWKeyValueWriteBatchPB>(arena);
+      write_batch_ref = arena->NewArenaObject<docdb::LWKeyValueWriteBatchPB>();
     }
     auto* write_batch = write_batch_ref;
     if (!write_batch->has_transaction()) {
@@ -1343,7 +1352,7 @@ Status Tablet::ApplyKeyValueRowOperations(
       if (!metadata_->is_under_twodc_replication()) {
         RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
       }
-      Arena arena;
+      ThreadSafeArena arena;
       auto batches_by_transaction = SplitWriteBatchByTransaction(put_batch, &arena);
       for (const auto& write_batch : batches_by_transaction) {
         RETURN_NOT_OK(WriteTransactionalBatch(
@@ -1404,6 +1413,14 @@ void Tablet::WriteToRocksDB(
   rocksdb::WriteOptions write_options;
   InitRocksDBWriteOptions(&write_options);
 
+  std::optional<docdb::DocWriteBatchFormatter> formatter;
+  if (FLAGS_TEST_docdb_log_write_batches) {
+    formatter.emplace(
+        storage_db_type, BinaryOutputFormat::kEscapedAndHex, WriteBatchOutputFormat::kArrow,
+        "  " + LogPrefix(storage_db_type));
+    write_batch->SetHandlerForLogging(&*formatter);
+  }
+
   auto rocksdb_write_status = dest_db->Write(write_options, write_batch);
   if (!rocksdb_write_status.ok()) {
     LOG_WITH_PREFIX(FATAL) << "Failed to write a batch with " << write_batch->Count()
@@ -1412,13 +1429,9 @@ void Tablet::WriteToRocksDB(
 
   if (FLAGS_TEST_docdb_log_write_batches) {
     LOG_WITH_PREFIX(INFO)
-        << "Wrote " << write_batch->Count() << " key/value pairs to " << storage_db_type
-        << " RocksDB:\n" << docdb::WriteBatchToString(
-            *write_batch,
-            storage_db_type,
-            BinaryOutputFormat::kEscapedAndHex,
-            WriteBatchOutputFormat::kArrow,
-            "  " + LogPrefix(storage_db_type));
+        << "Wrote " << formatter->Count()
+        << " key/value pairs to " << storage_db_type
+        << " RocksDB:\n" << formatter->str();
   }
 }
 
@@ -1930,16 +1943,20 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
 }
 
 Status Tablet::CreatePreparedChangeMetadata(
-    ChangeMetadataOperation *operation, const Schema* schema) {
+    ChangeMetadataOperation *operation, const Schema* schema, IsLeaderSide is_leader_side) {
   if (schema) {
-    auto key_schema = GetKeySchema(
-        operation->has_table_id() ? operation->table_id().ToBuffer() : "");
-    if (!key_schema.KeyEquals(*schema)) {
-      return STATUS_FORMAT(
-          InvalidArgument,
-          "Schema keys cannot be altered. New schema key: $0. Existing schema key: $1",
-          schema->CreateKeyProjection(),
-          key_schema);
+    // On follower, the previous op for adding table may not finish applying.
+    // GetKeySchema might fail in this case.
+    if (is_leader_side) {
+      auto key_schema = GetKeySchema(
+          operation->has_table_id() ? operation->table_id().ToBuffer() : "");
+      if (!key_schema.KeyEquals(*schema)) {
+        return STATUS_FORMAT(
+            InvalidArgument,
+            "Schema keys cannot be altered. New schema key: $0. Existing schema key: $1",
+            schema->CreateKeyProjection(),
+            key_schema);
+      }
     }
 
     if (!schema->has_column_ids()) {

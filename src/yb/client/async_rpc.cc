@@ -660,8 +660,8 @@ Status WriteRpc::SwapResponses() {
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
           // TODO avoid copying sidecar here.
-          RETURN_NOT_OK(retrier().controller().AssignSidecarTo(
-              ql_response.rows_data_sidecar(), ql_op->mutable_rows_data()));
+          ql_op->set_rows_data(VERIFY_RESULT(
+              retrier().controller().ExtractSidecar(ql_response.rows_data_sidecar())));
         }
         ql_idx++;
         break;
@@ -790,8 +790,8 @@ Status ReadRpc::SwapResponses() {
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
           // TODO avoid copying sidecar here.
-          RETURN_NOT_OK(retrier().controller().AssignSidecarTo(
-              ql_response.rows_data_sidecar(), ql_op->mutable_rows_data()));
+          ql_op->set_rows_data(VERIFY_RESULT(
+              retrier().controller().ExtractSidecar(ql_response.rows_data_sidecar())));
         }
         ql_idx++;
         break;

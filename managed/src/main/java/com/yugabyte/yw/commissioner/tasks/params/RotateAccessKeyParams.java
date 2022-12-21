@@ -5,7 +5,7 @@ import java.util.UUID;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 
-public class RotateAccessKeyParams extends UniverseTaskParams {
+public class RotateAccessKeyParams extends UniverseTaskParams implements IProviderTaskParams {
   public UUID customerUUID;
   public UUID providerUUID;
   public UUID universeUUID;
@@ -17,5 +17,10 @@ public class RotateAccessKeyParams extends UniverseTaskParams {
     this.providerUUID = providerUUID;
     this.universeUUID = universeUUID;
     this.newAccessKey = newAccessKey;
+  }
+
+  @Override
+  public UUID getProviderUUID() {
+    return providerUUID;
   }
 }

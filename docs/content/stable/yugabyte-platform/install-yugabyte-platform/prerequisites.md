@@ -87,7 +87,6 @@ The YugabyteDB Anywhere Helm chart has been tested using the following software 
 - Kubernetes 1.22
 - Helm 3.10
 
-
 Before installing YugabyteDB Anywhere, verify that you have the following:
 
 - A Kubernetes cluster configured with [Helm](https://helm.sh/).
@@ -123,3 +122,4 @@ Note the following:
 
 - ulimits and sysctl are inherited from Kubernetes nodes and cannot be changed for an individual pod. 
 - New Kubernetes nodes might be using [systemd-coredump](https://www.freedesktop.org/software/systemd/man/systemd-coredump.html) to manage core dumps on the node. 
+

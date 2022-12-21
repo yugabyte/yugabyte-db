@@ -1154,7 +1154,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.clientRootCA = taskParams().getClientRootCA();
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
@@ -1214,7 +1214,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     params.allowInsecure = universe.getUniverseDetails().allowInsecure;
     params.setTxnTableWaitCountFlag = universe.getUniverseDetails().setTxnTableWaitCountFlag;
     params.rootCA = universe.getUniverseDetails().rootCA;
-    params.clientRootCA = universe.getUniverseDetails().clientRootCA;
+    params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
     params.enableYEDIS = userIntent.enableYEDIS;
     params.useSystemd = userIntent.useSystemd;
 
@@ -1241,7 +1241,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
       params.allowInsecure = taskParams().allowInsecure;
       params.rootCA = taskParams().rootCA;
-      params.clientRootCA = taskParams().clientRootCA;
+      params.setClientRootCA(taskParams().getClientRootCA());
       params.nodeToNodeChange = getNodeToNodeChangeForToggleTls(userIntent, taskParams());
     }
 

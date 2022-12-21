@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -45,6 +46,8 @@ public class RegionController extends AuthenticatedController {
   @Inject NetworkManager networkManager;
 
   @Inject CloudQueryHelper cloudQueryHelper;
+
+  @Inject ProviderEditRestrictionManager providerEditRestrictionManager;
 
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
   // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ
@@ -103,6 +106,11 @@ public class RegionController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.RegionFormData",
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID) {
+    return providerEditRestrictionManager.tryEditProvider(
+        providerUUID, () -> doCreateRegion(customerUUID, providerUUID));
+  }
+
+  private Result doCreateRegion(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Form<RegionFormData> formData = formFactory.getFormDataOrBadRequest(RegionFormData.class);
     RegionFormData form = formData.get();

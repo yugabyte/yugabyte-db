@@ -22,6 +22,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 <ul class="nav yb-pills">
 
   <li>
+    <a href="akka/">
+      <img src="/images/section_icons/develop/ecosystem/akka-icon.png">
+      Akka Persistence Cassandra
+    </a>
+  </li>
+
+  <li>
     <a href="apache-kafka/">
       <img src="/images/section_icons/develop/ecosystem/apache-kafka-icon.png">
       Apache Kafka

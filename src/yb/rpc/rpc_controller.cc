@@ -110,8 +110,8 @@ const ErrorStatusPB* RpcController::error_response() const {
   return nullptr;
 }
 
-Status RpcController::AssignSidecarTo(int idx, std::string* out) const {
-  return call_->AssignSidecarTo(idx, out);
+Result<RefCntSlice> RpcController::ExtractSidecar(int idx) const {
+  return call_->ExtractSidecar(idx);
 }
 
 size_t RpcController::TransferSidecars(Sidecars* dest) {

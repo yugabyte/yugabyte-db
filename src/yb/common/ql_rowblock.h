@@ -21,6 +21,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -117,17 +118,18 @@ class QLRowBlock {
   //----------------------------- serializer / deserializer ---------------------------------
   void Serialize(QLClient client, WriteBuffer* buffer) const;
   std::string SerializeToString() const;
+  RefCntSlice SerializeToRefCntSlice() const;
   Status Deserialize(QLClient client, Slice* data);
 
   //-------------------------- utility functions for rows data ------------------------------
   // Return row count.
-  static Result<size_t> GetRowCount(QLClient client, const std::string& data);
+  static Result<size_t> GetRowCount(QLClient client, const std::string_view& data);
 
   // Append rows data. Caller should ensure the column schemas are the same.
-  static Status AppendRowsData(QLClient client, const std::string& src, std::string* dst);
+  static Status AppendRowsData(QLClient client, const RefCntSlice& src, RefCntSlice* dst);
 
   // Return rows data of 0 (empty) rows.
-  static std::string ZeroRowsData(QLClient client);
+  static RefCntBuffer ZeroRowsData(QLClient client);
 
  private:
   // Schema of the selected columns. (Note: this schema has no key column definitions)

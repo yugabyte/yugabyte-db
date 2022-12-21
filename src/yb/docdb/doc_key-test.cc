@@ -11,13 +11,14 @@
 // under the License.
 //
 
-#include "yb/docdb/doc_key.h"
-
 #include <memory>
+
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb_filter_policy.h"
+#include "yb/docdb/docdb_test_util.h"
 
 #include "yb/rocksdb/table.h"
 
-#include "yb/docdb/docdb_test_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/decimal.h"
@@ -393,49 +394,6 @@ TEST_F(DocKeyTest, TestSubDocKeyStartsWith) {
       ASSERT_FALSE(subdoc_key.StartsWith(with_another_doc_gen_ht));
     }
   }
-}
-
-std::string EncodeSubDocKey(const std::string& hash_key,
-    const std::string& range_key, const std::string& sub_key, uint64_t time) {
-  DocKey dk(DocKey(0, KeyEntryValues(hash_key), KeyEntryValues(range_key)));
-  return SubDocKey(
-      dk, KeyEntryValue(sub_key), HybridTime::FromMicros(time)).Encode().ToStringBuffer();
-}
-
-std::string EncodeSimpleSubDocKey(const std::string& hash_key) {
-  return EncodeSubDocKey(hash_key, "range_key", "sub_key", 12345L);
-}
-
-std::string EncodeSimpleSubDocKeyWithDifferentNonHashPart(const std::string& hash_key) {
-  return EncodeSubDocKey(hash_key, "another_range_key", "another_sub_key", 55555L);
-}
-
-TEST_F(DocKeyTest, TestKeyMatching) {
-  DocDbAwareV2FilterPolicy policy(rocksdb::FilterPolicy::kDefaultFixedSizeFilterBits, nullptr);
-  std::string keys[] = { "foo", "bar", "test" };
-  std::string absent_key = "fake";
-
-  std::unique_ptr<FilterBitsBuilder> builder(policy.GetFilterBitsBuilder());
-  ASSERT_NE(builder, nullptr);
-  // Policy supports GetFilterBitsBuilder/Reader interface (see description in filter_policy.h) -
-  // lets test it.
-  for (const auto& key : keys) {
-    builder->AddKey(policy.GetKeyTransformer()->Transform(EncodeSimpleSubDocKey(key)));
-  }
-  std::unique_ptr<const char[]> buf;
-  rocksdb::Slice filter = builder->Finish(&buf);
-
-  std::unique_ptr<FilterBitsReader> reader(policy.GetFilterBitsReader(filter));
-
-  auto may_match = [&](const std::string& sub_doc_key_str) {
-    return reader->MayMatch(policy.GetKeyTransformer()->Transform(sub_doc_key_str));
-  };
-
-  for (const auto &key : keys) {
-    ASSERT_TRUE(may_match(EncodeSimpleSubDocKey(key))) << "Key: " << key;
-    ASSERT_TRUE(may_match(EncodeSimpleSubDocKeyWithDifferentNonHashPart(key))) << "Key: " << key;
-  }
-  ASSERT_FALSE(may_match(EncodeSimpleSubDocKey(absent_key))) << "Key: " << absent_key;
 }
 
 TEST_F(DocKeyTest, TestWriteId) {

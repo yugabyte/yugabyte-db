@@ -503,6 +503,7 @@ class AwsCloud(AbstractCloud):
     def clone_disk(self, args, volume_id, num_disks):
         output = []
         snapshot = None
+        ec2 = boto3.client('ec2', args.region)
 
         try:
             resource_tags = []
@@ -520,23 +521,27 @@ class AwsCloud(AbstractCloud):
                 'ResourceType': 'volume',
                 'Tags': resource_tags
             }]
-            ec2 = boto3.resource('ec2', args.region)
-            volume = ec2.Volume(volume_id)
+            wait_config = {
+                'Delay': 15,
+                'MaxAttempts': 80
+            }
             logging.info("==> Going to create a snapshot from {}".format(volume_id))
-            snapshot = volume.create_snapshot(TagSpecifications=snapshot_tag_specs)
-            snapshot.wait_until_completed()
-            logging.info("==> Created a snapshot {}".format(snapshot.id))
+            snapshot = ec2.create_snapshot(VolumeId=volume_id, TagSpecifications=snapshot_tag_specs)
+            snapshot_id = snapshot['SnapshotId']
+            waiter = ec2.get_waiter('snapshot_completed')
+            waiter.wait(SnapshotIds=[snapshot_id], WaiterConfig=wait_config)
+            logging.info("==> Created a snapshot {}".format(snapshot_id))
 
             for _ in range(num_disks):
                 vol = ec2.create_volume(
                     AvailabilityZone=args.zone,
-                    SnapshotId=snapshot.id,
+                    SnapshotId=snapshot_id,
                     TagSpecifications=volume_tag_specs
                 )
-                output.append(vol.id)
+                output.append(vol['VolumeId'])
         finally:
             if snapshot:
-                snapshot.delete()
+                ec2.delete_snapshot(SnapshotId=snapshot['SnapshotId'])
 
         return output
 

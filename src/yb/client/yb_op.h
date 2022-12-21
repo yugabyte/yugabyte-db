@@ -302,16 +302,18 @@ class YBqlOp : public YBOperation {
 
   QLResponsePB* mutable_response() { return ql_response_.get(); }
 
-  const std::string& rows_data() { return rows_data_; }
+  const RefCntSlice& rows_data() { return rows_data_; }
 
-  std::string* mutable_rows_data() { return &rows_data_; }
+  void set_rows_data(const RefCntSlice& value) {
+    rows_data_ = value;
+  }
 
   bool succeeded() const override;
 
  protected:
   explicit YBqlOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<QLResponsePB> ql_response_;
-  std::string rows_data_;
+  RefCntSlice rows_data_;
 };
 
 class YBqlWriteOp : public YBqlOp {

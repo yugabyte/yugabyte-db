@@ -22,7 +22,7 @@ Use the `INSERT` statement to add a row to a specified table.
 
 ### using_expression
 
-```
+```ebnf
 using_expression = ttl_or_timestamp_expression { 'AND' ttl_or_timestamp_expression };
 ```
 
@@ -30,7 +30,7 @@ using_expression = ttl_or_timestamp_expression { 'AND' ttl_or_timestamp_expressi
 
 ### ttl_or_timestamp_expression
 
-```
+```ebnf
 ttl_or_timestamp_expression = 'TTL' ttl_expression | 'TIMESTAMP' timestamp_expression;
 ```
 
@@ -38,7 +38,7 @@ ttl_or_timestamp_expression = 'TTL' ttl_expression | 'TIMESTAMP' timestamp_expre
 
 ### Grammar
 
-```
+```ebnf
 insert ::= INSERT INTO table_name ( column_name [ , ... ] ) VALUES (
            expression [ , ... ] )
            [ IF { [ NOT ] EXISTS | if_expression } ]
@@ -61,7 +61,7 @@ Where
   timestamp provided by the user. The timestamp is the number of microseconds since epoch.
 - By default `INSERT` has `upsert` semantics, that is, if the row already exists, it behaves like an `UPDATE`. If pure
  `INSERT` semantics is desired then the `IF NOT EXISTS` clause can be used to make sure an existing row is not overwritten by the `INSERT`.
-- **NOTE**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
+- **Note**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
   them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
   very confusing results.
 - Inserting rows with TTL is not supported on tables with [transactions enabled](./../ddl_create_table#table-properties-1).
@@ -105,7 +105,7 @@ ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           1 | John
@@ -120,7 +120,7 @@ Example 1
 ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe') IF name = null;
 ```
 
-```
+```output
  [applied]
 -----------
       True
@@ -132,7 +132,7 @@ Example 2
 ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Jack') IF NOT EXISTS;
 ```
 
-```
+```output
  [applied]
 -----------
      False
@@ -144,7 +144,7 @@ Example 3
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
@@ -166,7 +166,7 @@ Now query the employees table.
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
@@ -181,7 +181,7 @@ Again query the employees table after 11 seconds or more.
 ycqlsh:example> SELECT * FROM employees; -- 11 seconds after the insert.
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
@@ -203,7 +203,7 @@ Now query the employees table.
 ycqlsh:foo> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           1 | John
@@ -224,7 +224,7 @@ ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3
 ycqlsh:foo> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+-------
              1 |           1 |  John
@@ -245,7 +245,7 @@ ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 3
 ycqlsh:foo> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+-------
              1 |           1 |  John
@@ -261,8 +261,6 @@ ycqlsh:foo> SELECT * FROM employees;
 When executing a batch in YCQL, the protocol returns only one error or return status. The `RETURNS STATUS AS ROW` feature addresses this limitation and adds a status row for each statement.
 
 See examples in [batch docs](../batch#row-status).
-
-
 
 ## See also
 

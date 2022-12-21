@@ -308,7 +308,15 @@ Result<bool> DocRowwiseIterator::HasNext() {
         // We must have seeked past the target key we are looking for (no result) so we can safely
         // skip all scan targets between the current target and row key (excluding row_key_ itself).
         // Update the target key and iterator and call HasNext again to try the next target.
-        RETURN_NOT_OK(scan_choices_->SkipTargetsUpTo(row_key_));
+        if (!VERIFY_RESULT(scan_choices_->SkipTargetsUpTo(row_key_))) {
+          // SkipTargetsUpTo returns false when it fails to decode the key. ValidateSystemKey()
+          // checks if current key is a known system key. This is a temporary fix until we address
+          // GH15304 (https://github.com/yugabyte/yugabyte-db/issues/15304) which will remove key
+          // decoding from ScanChoices completely.
+          RETURN_NOT_OK(ValidateSystemKey());
+          db_iter_->SeekOutOfSubDoc(&iter_key_);
+          continue;
+        }
 
         // We updated scan target above, if it goes past the row_key_ we will seek again, and
         // process the found key in the next loop.
@@ -449,6 +457,21 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
 
   row_ready_ = false;
   return Status::OK();
+}
+
+Status DocRowwiseIterator::ValidateSystemKey() {
+  // Currently we only have Table tombstone key as system key.
+  DocKeyDecoder decoder(row_key_);
+  if (VERIFY_RESULT(decoder.DecodeColocationId())) {
+    RETURN_NOT_OK(decoder.ConsumeGroupEnd());
+
+    if (decoder.left_input().size() == 0) {
+      return Status::OK();
+    }
+  }
+
+  return STATUS_FORMAT(
+      Corruption, "Key parsing failed for non-system key $0", row_key_.ToDebugHexString());
 }
 
 bool DocRowwiseIterator::LivenessColumnExists() const {

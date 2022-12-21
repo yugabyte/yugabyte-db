@@ -8,10 +8,11 @@ import { RouteComponentProps } from 'react-router-dom';
 import { fetchGlobalRunTimeConfigs } from '../api/admin';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
 import { isAvailable, showOrRedirect } from '../utils/LayoutUtils';
-import { HAInstances, HAReplication } from '../components/ha';
+import { HAReplication } from '../components/ha';
 import { AlertConfigurationContainer } from '../components/alerts';
 import { UserManagementContainer } from '../components/users';
 import { RuntimeConfigContainer } from '../components/advanced';
+import { HAInstancesContainer } from '../components/ha/instances/HAInstanceContainer';
 
 import './Administration.scss';
 
@@ -77,10 +78,12 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const globalRuntimeConfigs = useQuery(['globalRuntimeConfigs'], () =>
     fetchGlobalRunTimeConfigs().then((res: any) => res.data)
   );
-  const isCongifUIEnabled = globalRuntimeConfigs?.data?.configEntries?.find(
-    (c: any) => c.key === 'yb.runtime_conf_ui.enable_for_all')?.value === 'true'
-    || test['enableRunTimeConfig']
-    || released['enableRunTimeConfig'];
+  const isCongifUIEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (c: any) => c.key === 'yb.runtime_conf_ui.enable_for_all'
+    )?.value === 'true' ||
+    test['enableRunTimeConfig'] ||
+    released['enableRunTimeConfig'];
   const defaultTab = isAvailable(currentCustomer.data.features, 'administration.highAvailability')
     ? AdministrationTabs.HA
     : AdministrationTabs.AC;
@@ -137,7 +140,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
             }
             unmountOnExit
           >
-            <HAInstances />
+            <HAInstancesContainer />
           </Tab>
         </YBTabsPanel>
       </Tab>

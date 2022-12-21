@@ -124,6 +124,9 @@ public class BackupUniverse extends UniverseTaskBase {
         // third_party directory to the DB nodes.
         installThirdPartyPackagesTask(universe)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
+      } else {
+        installThirdPartyPackagesTaskK8s(universe)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
       }
 
       try {
