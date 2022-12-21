@@ -94,6 +94,24 @@ DROP TABLE s3;
 DROP TABLE s2;
 DROP TABLE s1;
 
+create table s1(a int, primary key (a asc));
+create table s2(a int, primary key (a asc));
+create table s3(a int, primary key (a asc));
+
+insert into s1 values (24), (25);
+insert into s2 values (24), (25);
+insert into s3 values (24), (25);
+
+explain (costs off) /*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from s1 left outer join s2
+on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
+
+/*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/ select * from s1 left outer join s2
+on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
+
+drop table s1;
+drop table s2;
+drop table s3;
+
 -- Test on unhashable join operations. These should use the tuplestore
 -- strategy.
 SET yb_bnl_batch_size = 3;
