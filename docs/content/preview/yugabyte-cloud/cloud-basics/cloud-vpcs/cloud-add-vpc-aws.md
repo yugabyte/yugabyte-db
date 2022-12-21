@@ -72,6 +72,7 @@ To create a VPC, do the following:
 1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). Ensure the following:
     - the address _does not overlap_ with that of the application VPC.
     - the address _does not overlap_ with the VPCs that will be used for the other regions of a multi-region cluster.
+    - for production clusters, use network sizes of /24 or /25.
 1. Click **Save**.
 
 YugabyteDB Managed adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.

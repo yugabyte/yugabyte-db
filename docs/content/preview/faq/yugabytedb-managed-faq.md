@@ -150,13 +150,16 @@ YugabyteDB Managed uses a shared responsibility model for security. For more inf
 
 ### What cluster configurations can I create?
 
-Using YugabyteDB Managed, you can create single region clusters that can be deployed across multiple and single availability zones.
+Using YugabyteDB Managed, you can create single- and multi-region clusters that can be deployed across multiple and single availability zones.
 
-The Fault Tolerance of a cluster determines how resilient the cluster is to node and availability zone failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in YugabyteDB Managed:
+The Fault Tolerance of a cluster determines how resilient the cluster is to failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in YugabyteDB Managed:
 
-- **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of an availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
-- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
+- **Region Level** - a minimum of 3 nodes spread across 3 regions with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of an region failure. This configuration provides the maximum protection for a region failure. For horizontal scaling, nodes are scaled in increments of 3.
+- **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of an availability zone failure. This configuration provides the protection for a data center failure. For horizontal scaling, nodes are scaled in increments of 3.
+- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
+
+For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
 For multi-region deployments, you can deploy a variety of topologies, including synchronously replicated, geo-level partitioned, cross-cluster, and read replicas. For more information, refer to [Topologies](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 
