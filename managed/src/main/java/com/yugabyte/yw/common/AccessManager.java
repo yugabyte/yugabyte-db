@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -14,7 +13,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
@@ -44,7 +42,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
 @Singleton
@@ -179,10 +176,11 @@ public class AccessManager extends DevopsBase {
       boolean deleteRemote)
       throws IOException {
     Region region = Region.get(regionUUID);
-    String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
+    final Provider provider = region.provider;
+    String keyFilePath = getOrCreateKeyFilePath(provider.uuid);
     // Removing paths from keyCode.
     keyCode = FileUtils.getFileName(keyCode);
-    AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
+    AccessKey accessKey = AccessKey.get(provider.uuid, keyCode);
     if (accessKey != null) {
       // This means the key must have been created before, so nothing to do.
       return accessKey;
@@ -222,7 +220,7 @@ public class AccessManager extends DevopsBase {
     keyInfo.deleteRemote = deleteRemote;
 
     // TODO: Move this code for ProviderDetails update elsewhere
-    ProviderDetails details = region.provider.details;
+    ProviderDetails details = provider.details;
     details.sshUser = sshUser;
     details.sshPort = sshPort;
     details.airGapInstall = airGapInstall;
@@ -230,11 +228,11 @@ public class AccessManager extends DevopsBase {
     details.ntpServers = ntpServers;
     details.setUpChrony = setUpChrony;
     details.showSetUpChrony = showSetUpChrony;
-    region.provider.save();
+    provider.save();
 
     writeKeyFileData(keyInfo);
 
-    return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
+    return AccessKey.create(provider.uuid, keyCode, keyInfo);
   }
 
   public AccessKey saveAndAddKey(
@@ -640,76 +638,18 @@ public class AccessManager extends DevopsBase {
     return taskUUIDs;
   }
 
-  public AccessKeyFormData setOrValidateRequestDataWithExistingKey(
-      AccessKeyFormData formData, UUID providerUUID) {
-    if (AccessKey.getAll(providerUUID).size() == 0) {
-      return formData;
-    }
-    // fill missing access key params using latest created key
-    AccessKey latestAccessKey = AccessKey.getLatestKey(providerUUID);
-    final Provider provider = Provider.getOrBadRequest(providerUUID);
-    AccessKey.MigratedKeyInfoFields keyInfo = provider.details;
-    formData.sshUser = setOrValidate(formData.sshUser, keyInfo.sshUser, "sshUser");
-    formData.sshPort = setOrValidate(formData.sshPort, keyInfo.sshPort, "sshPort");
-    formData.nodeExporterUser =
-        setOrValidate(formData.nodeExporterUser, keyInfo.nodeExporterUser, "nodeExporterUser");
-    formData.nodeExporterPort =
-        setOrValidate(formData.nodeExporterPort, keyInfo.nodeExporterPort, "nodeExporterPort");
-
-    // These fields are not required during creating a new access key. This information
-    // will be missing during rotation. Therefore, copying the information present in the latest
-    // access key(for the first access key creation information will be populated during provider
-    // creation, which will be passed on during subsequent creation).
-    formData.airGapInstall = keyInfo.airGapInstall;
-    formData.skipProvisioning = keyInfo.skipProvisioning;
-    formData.setUpChrony = keyInfo.setUpChrony;
-    formData.showSetUpChrony = keyInfo.showSetUpChrony;
-    formData.passwordlessSudoAccess = keyInfo.passwordlessSudoAccess;
-    formData.installNodeExporter = keyInfo.installNodeExporter;
-    return formData;
-  }
-
-  private void failAccessKeyRequest(String unmatchedParam) {
-    throw new PlatformServiceException(
-        BAD_REQUEST,
-        "Request parameters do not match with existing keys of the provider. Alter param: "
-            + unmatchedParam);
-  }
-
-  // for objects - set or fail if not equal
-  private <T> T setOrValidate(T formParam, T providerKeyParam, String param) {
-    if (formParam == null) {
-      // set if null
-      return providerKeyParam;
-    } else if (ObjectUtils.notEqual(formParam, providerKeyParam)) {
-      // fail if not matching
-      failAccessKeyRequest(param);
-    }
-    // were equal
-    return formParam;
-  }
-
-  // for primitive types
-  private <T> void checkEqual(T formParam, T providerKeyParam, String param) {
-    if (formParam != providerKeyParam) {
-      failAccessKeyRequest(param);
-    }
-  }
-
   /**
    * Checks whether the private access keys have the valid permission.
    *
-   * @param universe
-   * @param allAccessKeyMap
    * @return true if access keys permission is unchanged.
    */
   public boolean checkAccessKeyPermissionsValidity(
       Universe universe, Map<AccessKeyId, AccessKey> allAccessKeysMap) {
-    return !universe
+    return universe
         .getUniverseDetails()
         .clusters
         .stream()
-        .anyMatch(
+        .noneMatch(
             cluster -> {
               String keyCode = cluster.userIntent.accessKeyCode;
               UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
@@ -725,7 +665,7 @@ public class AccessManager extends DevopsBase {
                     return true;
                   }
                 } catch (IOException e) {
-                  log.error("Error while fetching permissions of access key: {}", e);
+                  log.error("Error while fetching permissions of access key: {}", keyFilePath, e);
                   return true;
                 }
               }
