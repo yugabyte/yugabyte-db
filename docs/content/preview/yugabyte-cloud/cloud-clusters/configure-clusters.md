@@ -37,7 +37,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 
 ## Limitations
 
-- You can horizontally scale nodes in clusters with Node level fault tolerance in increments of 1. Nodes in clusters with Region and Availability zone level fault tolerance are scaled in increments of 3.
+- You can horizontally scale nodes in clusters with Node level fault tolerance in increments of 1. Nodes in clusters with Region and Availability Zone Level fault tolerance are scaled in increments of 3.
 - You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{% support-cloud %}}.
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
 - You can't change the fault tolerance of a cluster after it is created.
@@ -52,7 +52,7 @@ You can scale multi-node single-region clusters horizontally and vertically, as 
 
 To add or remove read replicas, refer to [Read replicas](../managed-read-replica/).
 
-For Availability zone-level fault tolerant clusters, you must scale nodes in increments of 3.
+For Availability Zone Level fault tolerant clusters, you must scale nodes in increments of 3.
 
 To scale a single-region cluster:
 
@@ -108,7 +108,7 @@ New regions must be deployed in a VPC. New regions have the same fault tolerance
 
 Before you can delete a region, you must drop all the tablespaces located in the region. You can't delete the primary region.
 
-For Availability zone-level fault tolerant clusters, you must scale nodes in each region in increments of 3.
+For Availability Zone Level fault tolerant clusters, you must scale nodes in each region in increments of 3.
 
 To scale a partition-by-region cluster:
 
