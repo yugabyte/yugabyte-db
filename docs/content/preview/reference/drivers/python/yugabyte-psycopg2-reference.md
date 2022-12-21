@@ -83,13 +83,13 @@ To enable uniform load balancing across all servers, you set the `load-balance` 
 - Connection String
 
     ```python
-    conn = psycopg2.connect("dbname=database_name host=hostname port=port user=username  password=password load_balance=true")
+    conn = psycopg2.connect("dbname=database_name host=hostname port=5433 user=username password=password load_balance=true")
     ```
 
 - Connection Dictionary
 
     ```python
-    conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True')
+    conn = psycopg2.connect(user = 'username', password='password', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True')
     ```
 
 To specify topology keys, you set the `topology_keys` property to comma-separated values in the Connection string or dictionary, as per the following examples:
@@ -97,13 +97,13 @@ To specify topology keys, you set the `topology_keys` property to comma-separate
 - Connection String
 
     ```python
-    conn = psycopg2.connect("dbname=database_name host=hostname port=port user=username  password=password load_balance=true topology_keys=cloud1.region1.zone1,cloud2.region2.zone2")
+    conn = psycopg2.connect("dbname=database_name host=hostname port=5433 user=username password=password load_balance=true topology_keys=cloud.region.zone1,cloud.region.zone2")
     ```
 
 - Connection Dictionary
 
     ```python
-    conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True', topology_keys='cloud1.region1.zone1,cloud2.region2.zone2')
+    conn = psycopg2.connect(user = 'username', password='password', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True', topology_keys='cloud.region.zone1,cloud.region.zone2')
     ```
 
 To configure a SimpleConnectionPool, specify load balance as follows:
@@ -120,7 +120,7 @@ conn = yb_pool.getconn()
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/#root) utility.
+This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/) utility.
 
 Next, you use Python shell terminal to demonstrate the driver's load balancing features by running a few python scripts.
 
@@ -148,11 +148,13 @@ Log into your Python terminal and run the following script:
 import psycopg2
 conns = []
 for i in range(30):
-    conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True')
+    conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True')
     conns.append(conn)
 ```
 
 The application creates 30 connections. To verify the behavior, wait for the app to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes. This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
+
+![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
 
 You can also verify the number of connections by running the following script in the same terminal:
 
@@ -162,9 +164,7 @@ obj = lb()
 obj.printHostToConnMap()
 ```
 
-This displays a key value pair map where the keys are the host and the values are the number of connections on them (This is the client side perspective of the number of connections).
-
-![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
+This displays a key value pair map where the keys are the host and the values are the number of connections on them. (This is the client-side perspective of the number of connections.)
 
 ### Check topology-aware load balancing using yb-sample-apps
 
@@ -174,7 +174,7 @@ Run the following script in your new Python terminal with the `topology_keys` pr
 import psycopg2
 conns = []
 for i in range(30):
-    conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True',    topology_keys='aws.us-west.us-west-2a')
+    conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True', topology_keys='aws.us-west.us-west-2a')
     conns.append(conn)
 ```
 
@@ -188,7 +188,7 @@ When you're done experimenting, run the following command to destroy the local c
 ./bin/yb-ctl destroy
 ```
 
-### Limitations
+## Limitations
 
 Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
 

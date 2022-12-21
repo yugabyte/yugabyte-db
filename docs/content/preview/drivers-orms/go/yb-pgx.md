@@ -342,7 +342,7 @@ func printAZInfo() {
 
 The **const** values are set to the defaults for a local installation of YugabyteDB. If you're using YugabyteDB Managed, replace the values as follows:
 
-- **host** - The host address of your cluster. The host address is displayed on the cluster Settings tab.
+- **host** - The host address of your cluster. The host address is displayed on the cluster **Settings** tab.
 - **user** - Your YugabyteDB database username. In YugabyteDB Managed, the default user is **admin**.
 - **password** - Your YugabyteDB database password.
 - **dbname** - The name of the YugabyteDB database. The default name is **yugabyte**.
@@ -581,6 +581,8 @@ func printAZInfo() {
 ```
 
 The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Managed, replace the **const** values in the file as mentioned in [pgx.Connect()](#step-3-write-your-application-with-pgx-connect).
+
+## Run the application
 
 Run the project `QuickStartApp2.go` using the following command:
 

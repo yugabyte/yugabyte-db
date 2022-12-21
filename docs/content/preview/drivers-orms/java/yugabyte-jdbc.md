@@ -201,6 +201,8 @@ public class QuickStartApp {
 }
 ```
 
+## Run the application
+
 Run the project `QuickStartApp.java` using the following command:
 
 ```sh

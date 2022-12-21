@@ -93,13 +93,13 @@ You can provide the connection details in one of the following ways:
 - Connection string:
 
   ```python
-  "dbname=database_name host=hostname port=port user=username password=password load_balance=true topology_keys=cloud.region.zone1,cloud.region.zone2"
+  "dbname=database_name host=hostname port=5433 user=username password=password load_balance=true topology_keys=cloud.region.zone1,cloud.region.zone2"
   ```
 
 - Connection dictionary:
 
   ```python
-  user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True', topology_keys='cloud.region.zone1,cloud.region.zone2'
+  user = 'username', password='xxx', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='true', topology_keys='cloud.region.zone1,cloud.region.zone2'
   ```
 
 The following is an example connection string for connecting to YugabyteDB.
@@ -187,6 +187,8 @@ cur.close()
 conn.close()
 ```
 
+## Run the application
+
 Run the project `QuickStartApp.py` using the following command:
 
 ```python
@@ -203,7 +205,7 @@ Query returned: John, 35, Python
 
 If there is no output or you get an error, verify the parameters included in the connection string.
 
-### Limitations
+## Limitations
 
 Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
 

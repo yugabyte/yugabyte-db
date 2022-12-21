@@ -81,7 +81,7 @@ The following table describes the connection parameters required to connect, inc
 Create a client to connect to the cluster using a connection string. The following is an example connection string for connecting to a YugabyteDB cluster with uniform and topology load balancing:
 
 ```sh
-postgresql://user:password@host:port/database?loadBalance=true?
+postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true?
     topology_keys=cloud.region.zone1,cloud.region.zone2
 ```
 
@@ -97,7 +97,7 @@ The following table describes the connection parameters required to connect usin
 The following is an example connection string for connecting to a YugabyteDB cluster with SSL enabled.
 
 ```sh
-postgresql://user:password@host:port/database?loadBalance=true&ssl=true& \
+postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true&ssl=true& \
     sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
@@ -105,7 +105,7 @@ Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-refer
 
 #### Use SSL with YugabyeDB Managed
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on YugabyteDB Managed, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 With clusters in YugabyteDB Managed, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the `ssl` object with the following parameters:
 
@@ -119,14 +119,14 @@ For example:
 
 ```javascript
 async function createConnection(i){
-        const config = {
-               connectionString: "postgresql://admin:yugabyte@us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.cloudportal.yugabyte.com:5433/yugabyte?loadBalance=true",
-        ssl: {
+    const config = {
+        connectionString: "postgresql://admin:yugabyte@us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.ybdb.io:5433/yugabyte?loadBalance=true",
+    ssl: {
         rejectUnauthorized: true,
             ca: fs.readFileSync('./root.crt').toString(),
-            servername: 'us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.cloudportal.yugabyte.com',
+            servername: 'us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.ybdb.io',
         },
-      }
+    }
 ```
 
 ### Step 3: Write your application
@@ -191,6 +191,8 @@ async function fetchData(client){
     }
 })();
 ```
+
+## Run the application
 
 Run the application `QuickStartApp.js` using the following command:
 
