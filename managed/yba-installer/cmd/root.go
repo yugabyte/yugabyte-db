@@ -182,7 +182,7 @@ func createBackupCmd() *cobra.Command {
 		},
 	}
 
-	createBackup.Flags().StringVar(&dataDir, "data_dir", "/opt/yugabyte",
+	createBackup.Flags().StringVar(&dataDir, "data_dir", common.GetBaseInstall(),
 		"data directory to be backed up")
 	createBackup.Flags().BoolVar(&excludePrometheus, "exclude_prometheus", false,
 		"exclude prometheus metric data from backup (default: false)")
@@ -222,7 +222,7 @@ func restoreBackupCmd() *cobra.Command {
 		},
 	}
 
-	restoreBackup.Flags().StringVar(&destination, "destination", "/opt/yugabyte",
+	restoreBackup.Flags().StringVar(&destination, "destination", common.GetBaseInstall(),
 		"where to un-tar the backup")
 	restoreBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
 		"don't restart processes during execution (default: false)")
