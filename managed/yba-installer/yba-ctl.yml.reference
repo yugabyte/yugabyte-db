@@ -141,13 +141,10 @@ prometheus:
 # will be generated), override if you wish to change the
 # password.
 
-# logPath: Directory (relative to install root) to store YBA logs.
-
 # restartSeconds: time in seconds for systemd to wait before restarting
 # the platform
 
 platform:
-   logPath: "data/logs"
    platformDbUser: "yugabyte"
    platformDbPassword: ""
    useOauth: false

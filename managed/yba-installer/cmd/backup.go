@@ -57,7 +57,8 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	}
 
 	args := []string{"restore", "--input", inputPath,
-		"--destination", destination, "--disable_version_check", "--yba_installer"}
+		"--destination", destination, "--data_dir", destination, "--disable_version_check",
+		"--yba_installer"}
 	if skipRestart {
 		args = append(args, "--skip_restart")
 	}
