@@ -32,7 +32,7 @@ type: docs
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-solid fa-cubes"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
 </ul>

@@ -43,7 +43,7 @@ type: docs
 
 <li>
     <a href="../openshift/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
