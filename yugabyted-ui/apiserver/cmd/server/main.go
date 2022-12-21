@@ -150,7 +150,7 @@ func main() {
 
         gocqlSession, err := cluster.CreateSession()
         if err != nil {
-                log.Errorf("Error initializing the pgx client.")
+                log.Errorf("Error initializing the gocql session.")
                 log.Errorf(err.Error())
         }
         defer gocqlSession.Close()
@@ -235,6 +235,9 @@ func main() {
 
         // GetVersion - Get YugabyteDB version
         e.GET("/api/version", c.GetVersion)
+
+        // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
+        e.GET("/api/is_load_balancer_idle", c.GetIsLoadBalancerIdle)
 
         render_htmls := templates.NewTemplate()
 
