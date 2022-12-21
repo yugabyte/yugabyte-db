@@ -70,7 +70,7 @@ You can't change the Fault tolerance of a cluster after it's created.
 
 **Region**: Choose the [region](../../../release-notes#cloud-provider-regions) where the cluster will be located, or click **Request a multi-region cluster** to contact Yugabyte Support to arrange multi-region deployment.
 
-**Nodes**: Enter the number of nodes for the cluster. Node and Availability zone level clusters have a minimum of 3 nodes; Availability zone level clusters increment by 3.
+**Nodes**: Enter the number of nodes for the cluster. Node and Availability Zone Level clusters have a minimum of 3 nodes; Availability Zone Level clusters increment by 3.
 
 **vCPU/Node**: Enter the number of virtual CPUs per node.
 

@@ -24,7 +24,7 @@ Cluster edit operations are performed using the **Edit Infrastructure** option o
 
 {{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
-For multi-region clusters, or single region clusters with Node or Availability zone level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
+For clusters with Region, Availability Zone, or Node Level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
 The **Regions** section on the cluster **Settings** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region.
 
@@ -37,7 +37,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 
 ## Limitations
 
-- You can horizontally scale nodes in clusters with Node level fault tolerance in increments of 1. Nodes in clusters with Region and Availability Zone Level fault tolerance are scaled in increments of 3.
+- You can horizontally scale nodes in clusters with Node Level fault tolerance in increments of 1. Nodes in clusters with Region and Availability Zone Level fault tolerance are scaled in increments of 3.
 - You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{% support-cloud %}}.
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
 - You can't change the fault tolerance of a cluster after it is created.
