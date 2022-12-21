@@ -521,10 +521,14 @@ Status PgClientSession::CreateTablegroup(
     rpc::RpcContext* context) {
   const auto id = PgObjectId::FromPB(req.tablegroup_id());
   auto tablespace_id = PgObjectId::FromPB(req.tablespace_id());
+  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
+      true /* use_transaction */, context->GetClientDeadline()));
   auto s = client().CreateTablegroup(
-      req.database_name(), GetPgsqlNamespaceId(id.database_oid),
+      req.database_name(),
+      GetPgsqlNamespaceId(id.database_oid),
       id.GetYbTablegroupId(),
-      tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "");
+      tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "",
+      metadata);
   if (s.ok()) {
     return Status::OK();
   }

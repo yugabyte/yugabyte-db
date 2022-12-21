@@ -700,6 +700,9 @@ Status PgApiImpl::NewCreateTablegroup(const char *database_name,
                                       const PgOid tablegroup_oid,
                                       const PgOid tablespace_oid,
                                       PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Tablegroup is being created outside of DDL mode");
   auto stmt = std::make_unique<PgCreateTablegroup>(pg_session_, database_name,
                                                    database_oid, tablegroup_oid, tablespace_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
