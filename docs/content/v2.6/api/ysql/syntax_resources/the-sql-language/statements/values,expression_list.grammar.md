@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 values ::= VALUES ( expression_list ) [ ,(expression_list ... ]  
            [ ORDER BY { order_expr [ , ... ] } ]  
            [ LIMIT { integer | ALL } ]  
