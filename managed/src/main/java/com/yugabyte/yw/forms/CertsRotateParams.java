@@ -273,7 +273,9 @@ public class CertsRotateParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "rootCA is null. Cannot perform any upgrade.");
     }
 
-    if (clientRootCA != null) {
+    // clientRootCA will always be populated for 'hot cert reload' feature
+    // just that it should not be different from rootCA in k8s universes
+    if (clientRootCA != null && !rootCA.equals(clientRootCA)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "clientRootCA not applicable for Kubernetes certificate rotation.");
     }
