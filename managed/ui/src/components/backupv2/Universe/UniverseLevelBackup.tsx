@@ -91,8 +91,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
               <MenuItem
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (currentUniverse?.data?.universeDetails?.universePaused) return;
                   setShowThrottleParametersModal(true);
                 }}
+                disabled={currentUniverse?.data?.universeDetails?.universePaused}
               >
                 Configure Throttle Parameters
               </MenuItem>
