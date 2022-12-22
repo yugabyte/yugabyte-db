@@ -10,7 +10,7 @@
 
 import os
 
-from ybops.common.exceptions import YBOpsRecoverableError
+from ybops.common.exceptions import YBOpsRecoverableError, YBOpsRuntimeError
 from ybops.utils.ssh import SSHClient
 from ybops.node_agent.shell_client import RpcShellClient
 
@@ -31,7 +31,46 @@ class RemoteShellOutput(object):
 
 
 class RemoteShell(object):
-    """RemoteShell class is used run remote shell commands against nodes using paramiko.
+    """RemoteShell class is used run remote shell commands against nodes using
+    the connection type.
+    """
+
+    def __init__(self, options):
+        connection_type = options.get('connection_type')
+        if connection_type is None or connection_type == 'ssh':
+            self.delegate = _SshRemoteShell(options)
+        elif connection_type == 'rpc' or connection_type == 'node_agent_rpc':
+            self.delegate = _RpcRemoteShell(options)
+        else:
+            raise YBOpsRuntimeError("Unknown connection_type '{}'".format(connection_type))
+
+    def close(self):
+        self.delegate.close()
+
+    def run_command_raw(self, command, **kwargs):
+        return self.delegate.run_command_raw(command, **kwargs)
+
+    def run_command(self, command, **kwargs):
+        return self.delegate.run_command(command, **kwargs)
+
+    def exec_command(self, command, **kwargs):
+        return self.delegate.exec_command(command, **kwargs)
+
+    def exec_script(self, local_script_name, params):
+        return self.delegate.exec_script(local_script_name, params)
+
+    def put_file(self, local_path, remote_path, **kwargs):
+        self.delegate.put_file(local_path, remote_path, **kwargs)
+
+    def put_file_if_not_exists(self, local_path, remote_path, file_name, **kwargs):
+        self.delegate.put_file_if_not_exists(local_path, remote_path, file_name, **kwargs)
+
+    def fetch_file(self, remote_file_name, local_file_name, **kwargs):
+        self.delegate.fetch_file(remote_file_name, local_file_name, **kwargs)
+
+
+class _SshRemoteShell(object):
+    """_SshRemoteShell class is used run remote shell commands against nodes using paramiko.
     """
 
     def __init__(self, options):
@@ -104,17 +143,17 @@ class RemoteShell(object):
         self.ssh_conn.download_file_from_remote_server(remote_file_name, local_file_name, **kwargs)
 
 
-class RpcRemoteShell(object):
-    """RpcRemoteShell class is used run remote shell commands against nodes using gRPC.
+class _RpcRemoteShell(object):
+    """_RpcRemoteShell class is used run remote shell commands against nodes using gRPC.
     """
 
     def __init__(self, options):
         client_options = {
-            "user": options.get("user"),
-            "ip": options.get("ip"),
-            "port": options.get("port"),
-            "cert_path": options.get("cert_path"),
-            "auth_token": options.get("auth_token"),
+            "user": options.get("node_agent_user"),
+            "ip": options.get("node_agent_ip"),
+            "port": options.get("node_agent_port"),
+            "cert_path": options.get("node_agent_cert_path"),
+            "auth_token": options.get("node_agent_auth_token"),
         }
         self.client = RpcShellClient(client_options)
         self.client.connect()
