@@ -289,10 +289,10 @@ Replace the following:
 - `<host name>` - the host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
 - `<dbname>` - the name of the database you are connecting to (the default is yugabyte).
 - `<dbuser>` and `<dbpassword>` - the username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
-- `<cloud.region.zone>` - the zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
+- `<cloud.region.zone>` - the zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
 
     ```sh
-    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
+    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-2a,aws.us-east-1.us-east-3a
     ```
 
 - `<path-to-cluster-certificate>` with the path to the [cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
