@@ -165,23 +165,26 @@ function rightnavAppend() {
 }
 
 /**
- * Scroll left navigation depending on the tabs.
+ * Scroll left navigation depending on the tabs/pills.
  */
-function yugabyteScrollLeftNav(scrollPath) {
-  const currentVarIn = scrollPath;
-  $('aside.td-sidebar nav:not(.fixed-nav)').css('overflow', 'hidden');
+function yugabyteScrollLeftNav(activeLink) {
+  const leftSidebar = document.querySelector('aside.td-sidebar nav:not(.fixed-nav)');
+
+  if (!leftSidebar || !activeLink) {
+    return;
+  }
+
+  leftSidebar.style.overflow = 'hidden';
+  const sidebarInnerHeight = leftSidebar.clientHeight;
+  const currentTop = activeLink.getBoundingClientRect().top;
+  leftSidebar.scrollTop = currentTop - sidebarInnerHeight;
   setTimeout(() => {
-    const sidebarInnerHeight = $('aside.td-sidebar nav:not(.fixed-nav)').height();
-    const currentTop = $(currentVarIn).offset().top;
-    $('aside.td-sidebar nav:not(.fixed-nav)').scrollTop(currentTop - sidebarInnerHeight);
-    setTimeout(() => {
-      $('aside.td-sidebar nav:not(.fixed-nav)').css('overflow', 'auto');
-    }, 600);
-  }, 300);
+    leftSidebar.style.overflow = 'auto';
+  }, 600);
 }
 
 /**
- * Active left navigation depending on the tabs.
+ * Active left navigation depending on the tabs/pills.
  */
 function yugabyteActiveLeftNav() {
   const currentUrl = location.pathname;
@@ -222,7 +225,7 @@ function yugabyteActiveLeftNav() {
       if ($(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`).length > 0) {
         $(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`).addClass('current');
         $(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`).parents('li.submenu').addClass('open');
-        yugabyteScrollLeftNav($(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`));
+        yugabyteScrollLeftNav(document.querySelector(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`));
         return false;
       }
     }
