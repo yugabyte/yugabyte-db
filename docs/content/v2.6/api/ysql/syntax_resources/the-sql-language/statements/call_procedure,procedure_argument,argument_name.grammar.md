@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 call_procedure ::= CALL qualified_name ( 
                    [ procedure_argument [ , ... ] ] )
 
