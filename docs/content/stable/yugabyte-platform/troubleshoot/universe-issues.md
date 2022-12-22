@@ -398,19 +398,6 @@ You can create a support bundle as follows:
 
   The **Support Bundles** dialog allows you to either download the bundle or delete it if it is no longer needed. By default, bundles expire after ten days to free up space.
 
-## Configure storage class volume binding
-
-On Kubernetes, it is recommended to set volume binding mode on a StorageClass to `WaitForFirstConsumer` for dynamically provisioned volumes. This will delay provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints will be respected. However, scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments.
-
-For more information, see [Kubernetes: volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode).
-
-On Google Cloud Provider (GCP), if you choose not to set binding mode to `WaitForFirstConsumer`, you might use regional persistent disks to replicate data between two zones in the same region on Google Kubernetes Engine (GKE). This can be used by the pod, in cases when the pod reschedules to another node in a different  zone.
-
-For more information, see the following:
-
-- [Google Kubernetes Engine: persistent volumes and dynamic provisioning](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
-- [Google Cloud: regional persistent disks](https://cloud.google.com/compute/docs/disks/high-availability-regional-persistent-disk)
-
 ## Collect core dumps in Kubernetes environments
 
 When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prerequisites#specify-ulimit-and-remember-the-location-of-core-dumps).
