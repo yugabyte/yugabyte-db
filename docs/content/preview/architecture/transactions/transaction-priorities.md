@@ -24,33 +24,26 @@ type: docs
 
 When using the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy, transactions are assigned priorities that help decide which transactions should be aborted on conflicts.
 
-For distributed transactions, the priority space is `unit64_t`. The 64 bit range is split into 2 priority buckets -
+There are two priority buckets, each having a priority range of [reals](https://www.postgresql.org/docs/current/datatype.html) in [0, 1]:
 
-1. Normal-priority bucket: `[yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound]` i.e., 0 to  `uint32_t_max`-1
-2. High-priority bucket: `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]` i.e., `uint32_t_max` to `uint64_t_max`
+1. `High-priority` bucket: in case the first statement in a transaction takes a `FOR UPDATE/ FOR SHARE/ FOR NO KEY UPDATE` explicit row lock using SELECT, it will be assigned a priority from this bucket.
+2. `Normal-priority` bucket: all other transactions are assigned a priority from this bucket.
 
-All transactions are usually randomly assigned a priority in the first bucket (normal). However, in case the first statement in a transaction takes a `FOR UPDATE/ FOR SHARE/ FOR NO KEY UPDATE` explicit row lock using SELECT, it will be assigned a priority from the high-priority bucket.
+Note that a transaction with any priority P1 from the high-priority bucket can abort a transaction with any priority P2 from the low-priority bucket. As an example, a transaction with priority 0.1 from the high-priority bucket can abort a transaction with priority 0.9 from the low-priority bucket.
 
-Apart from the above rule, there are two other user configurable session variables that can help control the priority assigned to transaction is a specific session. These are `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. These help set lower and upper bounds on the randomly assigned priority a transaction should receive from the respective bucket that applies to it. For ease of use, the bounds are expressed as a float in [0, 1] specifying which range of the applicable bucket we should use to assign priorities. Also note that the same floating point bounds apply to both buckets.
+Priorities are randomly chosen from the applicable bucket. However, there are two user configurable session variables that can help control the priority assigned to transaction is a specific session: `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. These help set lower and upper bounds on the randomly assigned priority a transaction should receive from the applicable bucket. These variables accept a value of `real` datatype in the range [0, 1]. Also note that the same bounds apply to both buckets.
 
-For example, if `yb_transaction_priority_lower_bound=0.5` and `yb_transaction_priority_upper_bound=0.75`:
-
-1. a transaction that is assigned a priority from the normal bucket will get one between the 0.5-0.75 marks such that the `[yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound]` range proportionally maps to 0-1.
-
-2. a transaction that is assigned a priority from the high-priority bucket will get between the 0.5-0.75 marks such that the `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]` range proportionally maps to 0-1.
-
-{{< note title="All single shard transactions have a priority of kHighPriTxnLowerBound-1" >}}
+{{< note title="All single shard transactions have a priority of 1 in the normal-priority bucket" >}}
 {{</note >}}
 
-The `yb_get_current_transaction_priority` function can be used to fetch the transaction prriority of the current active transaction. It returns of a pair of two values -
+The `yb_get_current_transaction_priority` function can be used to fetch the transaction priority of the current active transaction. It returns of the pair `<priority> (bucket)`, where -
 
-1. A float between 0-1 inclusive with 9 decimal units of precision that such that it proportionally maps to the priority assigned in the range of the priority bucket the transaction belongs in.
+1. `<priority>` is a real in [0, 1] with 9 decimal units of precision.
+2. `<bucket>` is either `Normal` or `High`.
 
-2. The bucket in which the transaction's priority lies - `Normal` or `High` priority.
+NOTE: As an exception, if a transaction is assigned the highest priority possible, that is, a priority of 1 in the high-priority bucket, then a single value `Highest priority transaction` is returned without any real.
 
-NOTE: As an exception, if a transaction is assigned the highest priority possible i.e., `kHighPriTxnUpperBound`, then a single value `Highest priority transaction` is returned without any float.
-
-A transaction's priority is 0 until a transaction is really started.
+A transaction's priority is `0.000000000 (Normal priority transaction)` until a transaction is really started.
 
 ## Examples
 
@@ -71,7 +64,7 @@ SET yb_transaction_priority_upper_bound = 0.6;
 
 ```sql
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SELECT yb_get_current_transaction_priority(); -- 0 since a distributed transaction hasn't started
+SELECT yb_get_current_transaction_priority(); -- 0 due to an optimization which doesn't really start a real transaction internally unless a write occurs
 ```
 
 ```output
@@ -93,7 +86,7 @@ SELECT * FROM test;
 ```
 
 ```sql
-SELECT yb_get_current_transaction_priority(); -- still 0 because the read-only operation above doesn't really start a distributed transaction
+SELECT yb_get_current_transaction_priority(); -- still 0 due to the optimization which doesn't really start a real transaction internally unless a write occurs
 ```
 
 ```output
@@ -104,7 +97,7 @@ SELECT yb_get_current_transaction_priority(); -- still 0 because the read-only o
 ```
 
 ```sql
-INSERT INTO test VALUES (2, '2'); -- start a distributed txn
+INSERT INTO test VALUES (2, '2'); -- perform a write which starts a real transaction
 SELECT yb_get_current_transaction_priority(); -- non-zero now
 ```
 
@@ -178,3 +171,13 @@ SELECT yb_get_current_transaction_priority();
 ```sql
 COMMIT;
 ```
+
+{{< note title="Internal representation of priorities" >}}
+
+Internally, both the normal and high-priority buckets are mapped to a `unit64_t` space. The 64 bit range is used by the two priority buckets as follows -
+
+1. Normal priority bucket: `[yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound]` i.e., 0 to  `uint32_t_max`-1
+2. High priority bucket: `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]` i.e., `uint32_t_max` to `uint64_t_max`
+
+For ease of use, the bounds are expressed as a [0, 1] real range for each bucket in the lower/upper bound session variables and the `yb_get_current_transaction_priority` function. The [0, 1] real range map proportionally to the integer ranges for both buckets. In other words, the [0, 1] range in the normal-priority bucket maps to `[0, uint32_t_max-1]` and the [0, 1] range in the high-priority bucket maps to `[uint32_t_max, uint64_t_max]`.
+{{</note >}}
