@@ -14,7 +14,6 @@ import { Backup_States, IBackup, Keyspace_Table } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import {
-  convertBackupToFormValues,
   FormatUnixTimeStampTimeToTimezone,
   RevealBadge,
   calculateDuration
@@ -29,10 +28,12 @@ import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { isFunction } from 'lodash';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
-import { useQuery } from 'react-query';
-import { getKMSConfigs } from '../common/BackupAPI';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
 
-import { BackupCreateModal } from './BackupCreateModal';
+import { YBConfirmModal } from '../../modals';
+import { toast } from 'react-toastify';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 import './BackupDetails.scss';
 
 interface BackupDetailsProps {
@@ -71,13 +72,30 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
   currentUniverseUUID
 }) => {
   const [searchKeyspaceText, setSearchKeyspaceText] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-
-  const [formValues, setFormValues] = useState<Record<string, any>>();
-
+  const [showAddIncrementalBackupModal, setShowAddIncrementalBackupModal] = useState(false);
+  const queryClient = useQueryClient();
   const { data: kmsConfigs } = useQuery(['kms_configs'], () => getKMSConfigs(), {
     enabled: backupDetails?.kmsConfigUUID !== undefined
   });
+
+  const doAddIncrementalBackup = useMutation(
+    () => {
+      return addIncrementalBackup(backupDetails!);
+    },
+    {
+      onSuccess: () => {
+        toast.success('Incremental backup added successfully!');
+        queryClient.invalidateQueries([
+          'incremental_backups',
+          backupDetails!.commonBackupInfo.baseBackupUUID
+        ]);
+        setShowAddIncrementalBackupModal(false);
+      },
+      onError: (resp: any) => {
+        toast.error(createErrorMessage(resp));
+      }
+    }
+  );
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
@@ -264,10 +282,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                     btnIcon="fa fa-plus"
                     className="add-increment-backup-btn"
                     disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
-                    onConfirm={() => {}}
                     onClick={() => {
-                      setFormValues(convertBackupToFormValues(backupDetails, storageConfig));
-                      setShowCreateModal(true);
+                      setShowAddIncrementalBackupModal(true);
                     }}
                   />
                 </Col>
@@ -293,15 +309,18 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
           )}
         </div>
       </div>
-      <BackupCreateModal
-        visible={showCreateModal}
-        onHide={() => {
-          setShowCreateModal(false);
-        }}
-        editValues={formValues}
-        currentUniverseUUID={currentUniverseUUID}
-        isIncrementalBackup={true}
-      />
+      <YBConfirmModal
+        name="add-incremental-modal"
+        title="Add Incremental Backup"
+        visibleModal={showAddIncrementalBackupModal}
+        currentModal={true}
+        modalClassname="backup-modal"
+        onConfirm={() => doAddIncrementalBackup.mutate()}
+        hideConfirmModal={() => setShowAddIncrementalBackupModal(false)}
+      >
+        You are about to add an incremental backup to your existing backup. This will back up only
+        the data that has changed since your full backup.
+      </YBConfirmModal>
     </div>
   );
 };
