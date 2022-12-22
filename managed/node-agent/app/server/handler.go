@@ -82,8 +82,8 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 		UnregisterNodeAgent(ctx, apiToken)
 		return err
 	}
-	util.FileLogger().Info("Setting node agent state to LIVE.")
-	agentStateHandler := task.NewPutAgentStateHandler(model.Live, version)
+	util.FileLogger().Info("Setting node agent state to Ready.")
+	agentStateHandler := task.NewPutAgentStateHandler(model.Ready, version)
 	// TODO add generic retry for HTTP calls.
 	err = executor.GetInstance(ctx).ExecuteTask(
 		ctx,

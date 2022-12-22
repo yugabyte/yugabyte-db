@@ -255,7 +255,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     }
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
     Optional<Boolean> optional =
-        universeTaskBase.instanceExists(
+        UniverseTaskBase.instanceExists(
             taskParams,
             ImmutableMap.of(
                 "universe_uuid",
@@ -290,7 +290,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     }
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
     Optional<Boolean> optional =
-        universeTaskBase.instanceExists(
+        UniverseTaskBase.instanceExists(
             taskParams,
             ImmutableMap.of("universe_uuid", "blah", "node_uuid", taskParams.nodeUuid.toString()));
     assertEquals(true, optional.isPresent());
@@ -306,7 +306,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     ShellResponse response = new ShellResponse();
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
     Optional<Boolean> optional =
-        universeTaskBase.instanceExists(
+        UniverseTaskBase.instanceExists(
             taskParams,
             ImmutableMap.of(
                 "universe_uuid",
