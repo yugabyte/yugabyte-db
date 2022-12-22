@@ -97,6 +97,7 @@ main {
       font-size: 13px;
       margin-top: 20px;
       margin-bottom: 20px;
+      max-width:calc(100% - 5px);
 
       > code {
         font-size: 100%;
@@ -115,6 +116,10 @@ main {
         word-break: keep-all;
         overflow: auto;
         scrollbar-width: thin;
+        
+        &:only-child{
+          padding: 11px 15px;
+        }
 
         &:not(:only-child) {
           > span > span {
@@ -211,7 +216,7 @@ main {
         }
       }
     }
-
+    
     table {
       pre {
         > code {

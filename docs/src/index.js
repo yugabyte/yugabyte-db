@@ -385,12 +385,10 @@ $(document).ready(() => {
    */
   (() => {
     // Open current page menu in sidebar.
-    if ($(`.left-sidebar-wrap nav:not(.fixed-nav) > ul a[href="${window.location.pathname}"]`).length > 0) {
-      $(`.left-sidebar-wrap nav:not(.fixed-nav) > ul a[href="${window.location.pathname}"]`).addClass('current').parents('.submenu').addClass('open');
-      yugabyteScrollLeftNav($(`.left-sidebar-wrap nav:not(.fixed-nav) > ul a[href="${window.location.pathname}"]`));
-    } else {
+    if ($('.left-sidebar-wrap nav:not(.fixed-nav) > ul a.current').length === 0) {
       yugabyteActiveLeftNav();
     }
+
     // Left Nav draggabble.
     yugabyteDraggabbleSideNav();
 
