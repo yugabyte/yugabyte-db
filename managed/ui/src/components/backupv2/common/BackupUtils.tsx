@@ -16,6 +16,8 @@ import { Backup_States } from '../common/IBackup';
 import { TableType } from '../../../redesign/helpers/dtos';
 import './BackupUtils.scss';
 
+export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
+
 /**
  * Calculates the difference between two dates
  * @param startTime start time
