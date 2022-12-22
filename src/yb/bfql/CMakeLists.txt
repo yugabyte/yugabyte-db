@@ -25,7 +25,7 @@ SET(BF_GENERATED_FILES
     ${CMAKE_CURRENT_BINARY_DIR}/gen_opspec_table.cc
     ${CMAKE_CURRENT_BINARY_DIR}/gen_opcodes.h
     ${CMAKE_CURRENT_BINARY_DIR}/gen_operator.h
-    ${CMAKE_CURRENT_BINARY_DIR}/gen_bfunc_table.h)
+    ${CMAKE_CURRENT_BINARY_DIR}/gen_bfunc_table.cc)
 
 add_custom_command(OUTPUT ${BF_GENERATED_FILES}
                    DEPENDS bfql_codegen
@@ -38,6 +38,8 @@ set(YB_BFQL_SRCS
     ${BF_GENERATED_FILES})
 
 set(YB_BFQL_LIBS
+    gutil
+    yb_bfcommon
     yb_util
     yb_common_base)
 
@@ -47,7 +49,3 @@ ADD_YB_LIBRARY(yb_bfql
 
 # Make sure code-generator is built before yb_bfql library.
 add_dependencies(yb_bfql bfql_codegen)
-
-# Build the test cases.
-set(YB_TEST_LINK_LIBS yb_bfql ${YB_MIN_TEST_LIBS} yb_common)
-ADD_YB_TEST(bfql-test)
