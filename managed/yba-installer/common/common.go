@@ -26,6 +26,11 @@ func Install(version string) {
 	if _, err := os.Stat(InstalledFile); err == nil {
 		log.Fatal("Install of YBA already completed, cannot perform reinstall without clean.")
 	}
+
+	// Change into the dir we are in so that we can specify paths relative to ourselves
+	// TODO(minor): probably not a good idea in the long run
+	os.Chdir(GetBinaryDir())
+
 	MarkInstallStart()
 	createYugabyteUser()
 	createInstallDirs()
@@ -53,6 +58,16 @@ func MarkInstallStart() {
 	if err := os.WriteFile(installingFile, data, 0666); err != nil {
 		log.Fatal("failed to mark instal as in progress: " + err.Error())
 	}
+}
+
+func PostInstall() {
+	// Symlink at /usr/local/bin/yba-ctl -> /opt/yba-ctl/yba-ctl -> actual yba-ctl
+	if HasSudoAccess() {
+		CreateSymlink(GetInstallVersionDir(), filepath.Dir(InputFile), goBinaryName)
+		CreateSymlink(filepath.Dir(InputFile), "/usr/local/bin", goBinaryName)
+	}
+
+	MarkInstallComplete()
 }
 
 // MarkInstallComplete moves the .installing file to .installed to indicate install success.
