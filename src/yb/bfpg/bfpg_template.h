@@ -46,37 +46,5 @@ Status FindOpcodeByType(const std::string& ql_name,
                         const BFDecl **bfdecl,
                         DataType *return_type);
 
-// The effect is the same as function "FindOpcodeByType()", but it takes arguments instead types.
-// NOTE:
-//   RTypePtr can be either a raw (*) or shared (const shared_ptr&) pointer.
-//   PTypePtrCollection can be any standard collection of PType raw or shared pointer.
-//     std::vector<PTypePtr>, std::list<PTypePtr>,  std::set<PTypePtr>, ...
-template<typename PTypePtrCollection, typename RTypePtr>
-Status FindOpcode(const std::string& ql_name,
-                  const PTypePtrCollection& params,
-                  BFOpcode *opcode,
-                  const BFDecl **bfdecl,
-                  RTypePtr result) {
-
-  // Read argument types.
-  std::vector<DataType> actual_types(params.size(), DataType::UNKNOWN_DATA);
-  int pindex = 0;
-  for (const auto& param : params) {
-    actual_types[pindex] = param->ql_type_id();
-    pindex++;
-  }
-
-  // Get the opcode and declaration.
-  if (result == nullptr) {
-    return FindOpcodeByType(ql_name, actual_types, opcode, bfdecl, nullptr);
-  }
-
-  // Get the opcode, declaration, and return type.
-  DataType return_type = result->ql_type_id();
-  RETURN_NOT_OK(FindOpcodeByType(ql_name, actual_types, opcode, bfdecl, &return_type));
-  result->set_ql_type_id(return_type);
-
-  return Status::OK();
-}
 } // namespace bfpg
 } // namespace yb
