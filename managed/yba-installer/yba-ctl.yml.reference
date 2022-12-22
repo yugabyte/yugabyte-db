@@ -131,7 +131,7 @@ prometheus:
 # email address).
 
 # port: The container exposed port that is used by
-# the running Platform instance for HTTPS. Defaults to 9443, override
+# the running Platform instance for HTTPS. Defaults to 443, override
 # if you want to use a different port for running Yugabyte Platform
 # through HTTPS.
 

@@ -29,6 +29,8 @@ const Systemctl string = "systemctl"
 // InputFile where installer config settings are specified.
 var InputFile = "/opt/yba-ctl/yba-ctl.yml"
 
+var YbaCtlLogFile = "/opt/yba-ctl/yba-ctl.log"
+
 var installingFile = "/opt/yba-ctl/.installing"
 
 // InstalledFile is location of install completed marker file.
@@ -64,18 +66,15 @@ func DetectOS() string {
 // GetVersion gets the version at execution time so that yba-installer
 // installs the correct version of Yugabyte Anywhere.
 func GetVersion() string {
-	ex, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-	exPath := filepath.Dir(ex)
 
+	// locate the version metadata json file in the same dir as the yba-ctl
+	// binary
 	var configViper = viper.New()
-	configViper.SetConfigName("version_metadata.json")
+	configViper.SetConfigName(versionMetadataJSON)
 	configViper.SetConfigType("json")
-	configViper.AddConfigPath(exPath)
+	configViper.AddConfigPath(GetBinaryDir())
 
-	err = configViper.ReadInConfig()
+	err := configViper.ReadInConfig()
 	if err != nil {
 		panic(err)
 	}

@@ -46,7 +46,7 @@ var installCmd = &cobra.Command{
 			}
 		}
 
-		common.MarkInstallComplete()
+		common.PostInstall()
 		log.Info("Successfully installed Yugabyte Anywhere!")
 	},
 }
