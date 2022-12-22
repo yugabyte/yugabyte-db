@@ -182,7 +182,7 @@ Next, join two more nodes with the previous node. By default, [yugabyted](../ref
 ```
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone
+./bin/yugabyted configure --fault_tolerance=zone --base_dir=/tmp/ybd1
 ```
 
 To destroy the multi-node cluster, do the following:
@@ -277,7 +277,7 @@ java -Dnode=<host name> \
     -Ddbname=<dbname> \
     -Ddbuser=<dbuser> \
     -Ddbpassword=<dbpassword> \
-    -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone>
+    -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone> \
     -Dssl=true \
     -Dsslmode=verify-full \
     -Dsslrootcert=<path-to-cluster-certificate> \
