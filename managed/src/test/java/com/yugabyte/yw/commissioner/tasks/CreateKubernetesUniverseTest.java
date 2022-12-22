@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
@@ -75,6 +76,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   private Map<String, String> config1 = new HashMap<>();
   private Map<String, String> config2 = new HashMap<>();
   private Map<String, String> config3 = new HashMap<>();
+
+  private String universeName = "TestUniverse";
 
   private YBClient mockClient;
 
@@ -190,15 +193,51 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     List<Pod> pods1 =
         TestUtils.deserialize(String.format(podInfosMessage, helmNameSuffix1, ns1), PodList.class)
             .getItems();
-    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix1), eq(ns1))).thenReturn(pods1);
+    when(mockKubernetesManager.getPodInfos(
+            any(),
+            eq(
+                (newNamingStyle
+                    ? "yb"
+                        + universeName.toLowerCase().substring(0, 11)
+                        + "-"
+                        + az1.code
+                        + "-"
+                        + Util.base36hash(nodePrefix1)
+                    : nodePrefix1)),
+            eq(ns1)))
+        .thenReturn(pods1);
     List<Pod> pods2 =
         TestUtils.deserialize(String.format(podInfosMessage, helmNameSuffix2, ns2), PodList.class)
             .getItems();
-    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix2), eq(ns2))).thenReturn(pods2);
+    when(mockKubernetesManager.getPodInfos(
+            any(),
+            eq(
+                (newNamingStyle
+                    ? "yb"
+                        + universeName.toLowerCase().substring(0, 11)
+                        + "-"
+                        + az2.code
+                        + "-"
+                        + Util.base36hash(nodePrefix2)
+                    : nodePrefix2)),
+            eq(ns2)))
+        .thenReturn(pods2);
     List<Pod> pods3 =
         TestUtils.deserialize(String.format(podInfosMessage, helmNameSuffix3, ns3), PodList.class)
             .getItems();
-    when(mockKubernetesManager.getPodInfos(any(), eq(nodePrefix3), eq(ns3))).thenReturn(pods3);
+    when(mockKubernetesManager.getPodInfos(
+            any(),
+            eq(
+                (newNamingStyle
+                    ? "yb"
+                        + universeName.toLowerCase().substring(0, 11)
+                        + "-"
+                        + az3.code
+                        + "-"
+                        + Util.base36hash(nodePrefix3)
+                    : nodePrefix3)),
+            eq(ns3)))
+        .thenReturn(pods3);
   }
 
   private void setupUniverse(boolean setMasters, boolean enabledYEDIS, boolean setNamespace) {
@@ -378,7 +417,6 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.expectedUniverseVersion = universeVersion;
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
-
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateKubernetesUniverse, taskParams);
       return waitForTask(taskUUID);
@@ -415,7 +453,6 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       taskParams.useNewHelmNamingStyle = true;
     }
     TaskInfo taskInfo = submitTask(taskParams);
-
     if (newNamingStyle) {
       verify(mockKubernetesManager, times(3)).createNamespace(config1, ns1);
     } else if (setNamespace) {
@@ -433,32 +470,89 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             eq(YB_SOFTWARE_VERSION),
             eq(config1),
             eq(defaultProvider.uuid),
-            eq(nodePrefix1),
-            eq(ns1),
+            eq(
+                (newNamingStyle
+                    ? "yb"
+                        + universeName.toLowerCase().substring(0, 11)
+                        + "-"
+                        + az1.code
+                        + "-"
+                        + Util.base36hash(nodePrefix1)
+                    : nodePrefix1)),
+            eq(newNamingStyle ? NODE_PREFIX : ns1),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
             eq(YB_SOFTWARE_VERSION),
             eq(config2),
             eq(defaultProvider.uuid),
-            eq(nodePrefix2),
-            eq(ns2),
+            eq(
+                (newNamingStyle
+                    ? "yb"
+                        + universeName.toLowerCase().substring(0, 11)
+                        + "-"
+                        + az2.code
+                        + "-"
+                        + Util.base36hash(nodePrefix2)
+                    : nodePrefix2)),
+            eq(newNamingStyle ? NODE_PREFIX : ns2),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
             eq(YB_SOFTWARE_VERSION),
             eq(config3),
             eq(defaultProvider.uuid),
-            eq(nodePrefix3),
-            eq(ns3),
+            eq(
+                (newNamingStyle
+                    ? "yb"
+                        + universeName.toLowerCase().substring(0, 11)
+                        + "-"
+                        + az3.code
+                        + "-"
+                        + Util.base36hash(nodePrefix3)
+                    : nodePrefix3)),
+            eq(newNamingStyle ? NODE_PREFIX : ns3),
             expectedOverrideFile.capture());
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
-    verify(mockKubernetesManager, times(1)).getPodInfos(config1, nodePrefix1, ns1);
-    verify(mockKubernetesManager, times(1)).getPodInfos(config2, nodePrefix2, ns2);
-    verify(mockKubernetesManager, times(1)).getPodInfos(config3, nodePrefix3, ns3);
+    verify(mockKubernetesManager, times(1))
+        .getPodInfos(
+            config1,
+            newNamingStyle
+                ? "yb"
+                    + universeName.toLowerCase().substring(0, 11)
+                    + "-"
+                    + az1.code
+                    + "-"
+                    + Util.base36hash(nodePrefix1)
+                : nodePrefix1,
+            newNamingStyle ? NODE_PREFIX : ns1);
+    verify(mockKubernetesManager, times(1))
+        .getPodInfos(
+            config2,
+            newNamingStyle
+                ? "yb"
+                    + universeName.toLowerCase().substring(0, 11)
+                    + "-"
+                    + az2.code
+                    + "-"
+                    + Util.base36hash(nodePrefix2)
+                : nodePrefix2,
+            newNamingStyle ? NODE_PREFIX : ns2);
+    verify(mockKubernetesManager, times(1))
+        .getPodInfos(
+            config3,
+            newNamingStyle
+                ? "yb"
+                    + universeName.toLowerCase().substring(0, 11)
+                    + "-"
+                    + az3.code
+                    + "-"
+                    + Util.base36hash(nodePrefix3)
+                : nodePrefix3,
+            newNamingStyle ? NODE_PREFIX : ns3);
     verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.universeUUID);
 
     Universe u = Universe.getOrBadRequest(defaultUniverse.universeUUID);
