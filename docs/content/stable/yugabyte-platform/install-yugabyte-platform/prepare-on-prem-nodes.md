@@ -13,7 +13,7 @@ type: docs
 
 For on-premises deployments of YugabyteDB universes, you need to import nodes that can be managed by YugabyteDB Anywhere.
 
-## Ports
+## Prepare ports
 
 The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the YugabyteDB Anywhere node):
 
@@ -123,3 +123,16 @@ curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runt
 --header 'Content-Type: text/plain'
 --data-raw '"true"'
 ```
+
+## Configure storage class volume binding
+
+On Kubernetes, it is recommended to set volume binding mode on a StorageClass to `WaitForFirstConsumer` for dynamically provisioned volumes. This will delay provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints will be respected. However, scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments.
+
+For more information, see [Kubernetes: volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode).
+
+On Google Cloud Provider (GCP), if you choose not to set binding mode to `WaitForFirstConsumer`, you might use regional persistent disks to replicate data between two zones in the same region on Google Kubernetes Engine (GKE). This can be used by the pod, in cases when the pod reschedules to another node in a different  zone.
+
+For more information, see the following:
+
+- [Google Kubernetes Engine: persistent volumes and dynamic provisioning](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
+- [Google Cloud: regional persistent disks](https://cloud.google.com/compute/docs/disks/high-availability-regional-persistent-disk)
