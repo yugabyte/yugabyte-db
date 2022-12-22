@@ -25,14 +25,17 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
@@ -40,6 +43,7 @@ import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
 
@@ -47,40 +51,82 @@ import play.mvc.Http.Status;
 @Entity
 public class NodeAgent extends Model {
 
+  /** Node agent server OS type. */
+  public enum OSType {
+    DARWIN,
+    LINUX;
+
+    public static OSType parse(String strType) {
+      OSType osType = EnumUtils.getEnumIgnoreCase(OSType.class, strType);
+      if (osType == null) {
+        throw new IllegalArgumentException("Unknown OS type: " + strType);
+      }
+      return osType;
+    }
+  }
+
+  /** Node agent server arch type. */
+  public enum ArchType {
+    ARM64("aarch64"),
+    AMD64("x86_64");
+
+    private final Set<String> aliases;
+
+    private ArchType(String... aliases) {
+      this.aliases =
+          aliases == null
+              ? Collections.emptySet()
+              : Collections.unmodifiableSet(
+                  Arrays.stream(aliases).map(String::toLowerCase).collect(Collectors.toSet()));
+    }
+
+    public static ArchType parse(String strType) {
+      String lower = strType.toLowerCase();
+      for (ArchType archType : EnumSet.allOf(ArchType.class)) {
+        if (archType.name().equalsIgnoreCase(lower) || archType.aliases.contains(lower)) {
+          return archType;
+        }
+      }
+      throw new IllegalArgumentException("Unknown arch type: " + strType);
+    }
+  }
+
   /** State and the transitions. */
   public enum State {
     REGISTERING {
       @Override
       public Set<State> nextStates() {
-        return toSet(REGISTERING, LIVE);
+        return toSet(READY);
       }
     },
     UPGRADE {
       @Override
       public Set<State> nextStates() {
-        return toSet(UPGRADING);
-      }
-    },
-    UPGRADING {
-      @Override
-      public Set<State> nextStates() {
-        return toSet(UPGRADING, UPGRADED);
+        return toSet(UPGRADED);
       }
     },
     UPGRADED {
       @Override
       public Set<State> nextStates() {
-        return toSet(LIVE);
+        return toSet(READY);
       }
     },
-    LIVE {
+    READY {
       @Override
       public Set<State> nextStates() {
-        return toSet(LIVE, UPGRADE);
+        return toSet(READY, UPGRADE);
       }
     };
 
     public abstract Set<State> nextStates();
+
+    public static State parse(String strType) {
+      State state = EnumUtils.getEnumIgnoreCase(State.class, strType);
+      if (state == null) {
+        throw new IllegalArgumentException("Unknown state: " + state);
+      }
+      return state;
+    }
 
     private static Set<State> toSet(State... states) {
       return states == null
@@ -106,6 +152,7 @@ public class NodeAgent extends Model {
   public static final String ROOT_CA_KEY_NAME = "ca.key.pem";
   public static final String SERVER_CERT_NAME = "server.crt";
   public static final String SERVER_KEY_NAME = "server.key";
+  public static final String MERGED_ROOT_CA_CERT_NAME = "merged.ca.key.crt";
 
   @Id
   @ApiModelProperty(accessMode = READ_ONLY)
@@ -139,6 +186,14 @@ public class NodeAgent extends Model {
   @Column(nullable = false)
   @DbJson
   public Map<String, String> config;
+
+  @Enumerated(EnumType.STRING)
+  @ApiModelProperty(accessMode = READ_ONLY)
+  public OSType osType;
+
+  @Enumerated(EnumType.STRING)
+  @ApiModelProperty(accessMode = READ_ONLY)
+  public ArchType archType;
 
   public static Optional<NodeAgent> maybeGet(UUID uuid) {
     NodeAgent nodeAgent = finder.byId(uuid);
@@ -174,12 +229,15 @@ public class NodeAgent extends Model {
     return finder.query().where().eq("customer_uuid", customerUuid).findSet();
   }
 
+  public static Set<NodeAgent> getAll() {
+    return finder.query().findSet();
+  }
+
   public static Set<NodeAgent> getUpdatableNodeAgents(UUID customerUuid, String softwareVersion) {
     return finder
         .query()
         .where()
         .eq("customer_uuid", customerUuid)
-        .eq("state", State.LIVE)
         .ne("version", softwareVersion)
         .findSet();
   }
@@ -206,7 +264,7 @@ public class NodeAgent extends Model {
 
   @JsonIgnore
   public byte[] getServerCert() {
-    Path serverCertPath = getFilePath(SERVER_CERT_NAME);
+    Path serverCertPath = getCertDirPath().resolve(SERVER_CERT_NAME);
     Objects.requireNonNull(serverCertPath, "Server cert must exist");
     try {
       return Files.readAllBytes(serverCertPath);
@@ -217,7 +275,7 @@ public class NodeAgent extends Model {
 
   @JsonIgnore
   public byte[] getServerKey() {
-    Path serverKeyPath = getFilePath(SERVER_KEY_NAME);
+    Path serverKeyPath = getCertDirPath().resolve(SERVER_KEY_NAME);
     Objects.requireNonNull(serverKeyPath, "Server key must exist");
     try {
       return Files.readAllBytes(serverKeyPath);
@@ -226,32 +284,18 @@ public class NodeAgent extends Model {
     }
   }
 
-  @JsonIgnore
-  public Path getFilePath(String fileName) {
-    String dirPath = config.get(CERT_DIR_PATH_PROPERTY);
-    Objects.requireNonNull(dirPath, "Cert directory must exist");
-    return Paths.get(dirPath, fileName);
-  }
-
-  public void saveConfig(Map<String, String> config) {
-    this.config = config;
-    save();
-  }
-
   public void saveState(State state) {
+    validateStateTransition(state);
     this.state = state;
     save();
   }
 
-  public boolean updateState(State newState) {
-    return db().update(NodeAgent.class)
-            .set("state", newState)
-            .set("updatedAt", new Date())
-            .where()
-            .eq("uuid", uuid)
-            .eq("state", state)
-            .update()
-        > 0;
+  public void heartbeat() {
+    Date current = new Date();
+    if (db().update(NodeAgent.class).set("updatedAt", current).where().eq("uuid", uuid).update()
+        > 0) {
+      updatedAt = current;
+    }
   }
 
   public void purge(Path certDir) {
@@ -288,17 +332,37 @@ public class NodeAgent extends Model {
   }
 
   @JsonIgnore
-  public Path getCertFilePath(String certName) {
+  public Path getCertDirPath() {
     String certDirPath = config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
     if (StringUtils.isBlank(certDirPath)) {
       throw new IllegalArgumentException(
           "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
     }
-    return Paths.get(certDirPath, certName);
+    return Paths.get(certDirPath);
   }
 
   @JsonIgnore
   public Path getCaCertFilePath() {
-    return getCertFilePath(NodeAgent.ROOT_CA_CERT_NAME);
+    return getCertDirPath().resolve(NodeAgent.ROOT_CA_CERT_NAME);
+  }
+
+  @JsonIgnore
+  public Path getMergedCaCertFilePath() {
+    return getCertDirPath().resolve(NodeAgent.MERGED_ROOT_CA_CERT_NAME);
+  }
+
+  @JsonIgnore
+  public Path getServerCertFilePath() {
+    return getCertDirPath().resolve(NodeAgent.SERVER_CERT_NAME);
+  }
+
+  @JsonIgnore
+  public Path getServerKeyFilePath() {
+    return getCertDirPath().resolve(NodeAgent.SERVER_KEY_NAME);
+  }
+
+  public void updateCertDirPath(Path certDirPath) {
+    config.put(NodeAgent.CERT_DIR_PATH_PROPERTY, certDirPath.toString());
+    save();
   }
 }

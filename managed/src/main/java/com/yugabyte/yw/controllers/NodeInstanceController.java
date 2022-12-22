@@ -200,7 +200,7 @@ public class NodeInstanceController extends AuthenticatedController {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {
         if (clientTypeOp.isPresent() && clientTypeOp.get() == ClientType.NODE_AGENT) {
           NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, getJWTClientUuid());
-          nodeAgent.ensureState(State.LIVE);
+          nodeAgent.ensureState(State.READY);
           List<ValidationResult> failedResults =
               nodeConfigValidator
                   .validateNodeConfigs(provider, nodeData)
