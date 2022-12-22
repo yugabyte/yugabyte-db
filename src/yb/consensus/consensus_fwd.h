@@ -31,6 +31,7 @@ namespace consensus {
 class Consensus;
 class ConsensusContext;
 class ConsensusRoundCallback;
+class ConsensusMetadata;
 class MultiRaftManager;
 class PeerProxyFactory;
 class PeerMessageQueue;

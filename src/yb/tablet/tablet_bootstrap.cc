@@ -496,6 +496,7 @@ class TabletBootstrap {
         meta_(data.tablet_init_data.metadata),
         mem_tracker_(data.tablet_init_data.parent_mem_tracker),
         listener_(data.listener),
+        cmeta_(data.consensus_meta),
         append_pool_(data.append_pool),
         allocation_pool_(data.allocation_pool),
         skip_wal_rewrite_(GetAtomicFlag(&FLAGS_skip_wal_rewrite)),
@@ -513,9 +514,12 @@ class TabletBootstrap {
     // Replay requires a valid Consensus metadata file to exist in order to compare the committed
     // consensus configuration seqno with the log entries and also to persist committed but
     // unpersisted changes.
-    RETURN_NOT_OK_PREPEND(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id,
-                                                  meta_->fs_manager()->uuid(), &cmeta_),
-                          "Unable to load Consensus metadata");
+    if (!cmeta_) {
+      RETURN_NOT_OK_PREPEND(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id,
+                                                    meta_->fs_manager()->uuid(), &cmeta_holder_),
+                            "Unable to load Consensus metadata");
+      cmeta_ = cmeta_holder_.get();
+    }
 
     // Make sure we don't try to locally bootstrap a tablet that was in the middle of a remote
     // bootstrap. It's likely that not all files were copied over successfully.
@@ -1660,7 +1664,8 @@ class TabletBootstrap {
   std::unique_ptr<log::LogReader> log_reader_;
   std::unique_ptr<ReplayState> replay_state_;
 
-  std::unique_ptr<consensus::ConsensusMetadata> cmeta_;
+  consensus::ConsensusMetadata* cmeta_;
+  std::unique_ptr<consensus::ConsensusMetadata> cmeta_holder_;
 
   // Thread pool for append task for bootstrap.
   ThreadPool* append_pool_;

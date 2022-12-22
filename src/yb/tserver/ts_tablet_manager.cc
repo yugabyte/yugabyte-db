@@ -1475,6 +1475,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .allocation_pool = allocation_pool_.get(),
       .retryable_requests = &retryable_requests,
       .bootstrap_retryable_requests = bootstrap_retryable_requests,
+      .consensus_meta = cmeta.get(),
     };
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
