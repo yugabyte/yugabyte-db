@@ -21,7 +21,11 @@ import copy from 'copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { YBLoadingCircleIcon } from '../../common/indicators';
-import { calculateDuration, FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
+import {
+  BACKUP_REFETCH_INTERVAL,
+  calculateDuration,
+  FormatUnixTimeStampTimeToTimezone
+} from '../common/BackupUtils';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { TableType } from '../../../redesign/helpers/dtos';
@@ -225,7 +229,10 @@ export const IncrementalTableBackupList: FC<YSQLTableProps> = ({
 }) => {
   const { data: incrementalBackups, isLoading, isError } = useQuery(
     ['incremental_backups', backup.commonBackupInfo.baseBackupUUID],
-    () => fetchIncrementalBackup(backup.commonBackupInfo.baseBackupUUID)
+    () => fetchIncrementalBackup(backup.commonBackupInfo.baseBackupUUID),
+    {
+      refetchInterval: BACKUP_REFETCH_INTERVAL
+    }
   );
 
   if (isLoading) {
