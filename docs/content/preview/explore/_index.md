@@ -240,10 +240,10 @@ The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-dr
 
 YB Workload Simulator requires Java 11 or later installed on your computer. {{% jdk-setup %}}
 
-Download the YB Workload Simulator JAR file (`yb-simu-base-app.jar`) using the following command:
+Download the YB Workload Simulator JAR file using the following command:
 
 ```sh
-wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/1.0/yb-simu-base-app.jar
+wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.2/yb-workload-sim-0.0.2.jar
 ```
 
 ### Use the application
@@ -281,7 +281,7 @@ java -Dnode=<host name> \
     -Dssl=true \
     -Dsslmode=verify-full \
     -Dsslrootcert=<path-to-cluster-certificate> \
-    -jar ./yb-simu-base-app.jar
+    -jar ./yb-workload-sim-0.0.2.jar
 ```
 
 Replace the following:
@@ -306,7 +306,7 @@ To start the application against a running local cluster, use the following comm
 java -jar \
     -Dnode=127.0.0.1 \
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a \
-    ./yb-simu-base-app.jar
+    ./yb-workload-sim-0.0.2.jar
 ```
 
 The `-Dnode` flag specifies the IP address of the node to connect to.
