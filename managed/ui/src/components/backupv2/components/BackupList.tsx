@@ -20,6 +20,7 @@ import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { BackupDetails } from './BackupDetails';
 import {
+  BACKUP_REFETCH_INTERVAL,
   BACKUP_STATUS_OPTIONS,
   CALDENDAR_ICON,
   convertArrayToMap,
@@ -183,7 +184,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         storage_config_uuid
       ),
     {
-      refetchInterval: 1000 * 20,
+      refetchInterval: BACKUP_REFETCH_INTERVAL,
       onSuccess(resp) {
         if (showDetails) {
           setShowDetails(
