@@ -345,7 +345,7 @@ Add two more nodes to the cluster using the join option:
 After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone
+./bin/yugabyted configure --fault_tolerance=zone --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
 ```
 
 ### Create and configure the Java project
