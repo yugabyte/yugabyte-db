@@ -551,7 +551,6 @@ public class UniverseCRUDHandler {
     try {
       universe = Universe.create(taskParams, customer.getCustomerId());
       LOG.info("Created universe {} : {}.", universe.universeUUID, universe.name);
-
       if (taskParams.runtimeFlags != null) {
         // iterate through the flags and set via runtime config
         for (Map.Entry<String, String> entry : taskParams.runtimeFlags.entrySet()) {
@@ -575,15 +574,16 @@ public class UniverseCRUDHandler {
           universe.updateConfig(
               ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
           universe.save();
-          // TODO(bhavin192): remove the flag once the new naming style
-          // is stable enough.
+          // This flag will be used for testing purposes as well. Don't remove.
           if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.use_new_helm_naming")) {
-            if (Util.compareYbVersions(primaryIntent.ybSoftwareVersion, "2.8.0.0") >= 0) {
+            if (Util.compareYbVersions(primaryIntent.ybSoftwareVersion, "2.15.4.0") >= 0) {
               taskParams.useNewHelmNamingStyle = true;
+            } else {
+              if (taskParams.useNewHelmNamingStyle) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST, "New naming style is not supported for versions < 2.15.4.0");
+              }
             }
-            // TODO(bhavin192): check if
-            // taskParams.useNewHelmNamingStyle is set to true for
-            // ybSoftwareVersion < 2.8.0.0? If so, respond with error.
           }
         } else {
           if (primaryCluster.userIntent.enableIPV6) {

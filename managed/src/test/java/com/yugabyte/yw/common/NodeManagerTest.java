@@ -232,7 +232,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private Universe createUniverse() {
     UUID universeUUID = UUID.randomUUID();
-    return ModelFactory.createUniverse("Test Universe - " + universeUUID, universeUUID);
+    return ModelFactory.createUniverse("Test Universe-" + universeUUID, universeUUID);
   }
 
   private NodeTaskParams buildValidParams(

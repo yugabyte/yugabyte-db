@@ -10,6 +10,9 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,11 +31,11 @@ public class KubernetesUtil {
   // Get the zones with the kubeconfig for that zone.
   public static Map<UUID, Map<String, String>> getConfigPerAZ(PlacementInfo pi) {
     Map<UUID, Map<String, String>> azToConfig = new HashMap<>();
-    for (PlacementInfo.PlacementCloud pc : pi.cloudList) {
+    for (PlacementCloud pc : pi.cloudList) {
       Map<String, String> cloudConfig = Provider.get(pc.uuid).getUnmaskedConfig();
-      for (PlacementInfo.PlacementRegion pr : pc.regionList) {
+      for (PlacementRegion pr : pc.regionList) {
         Map<String, String> regionConfig = Region.get(pr.uuid).getUnmaskedConfig();
-        for (PlacementInfo.PlacementAZ pa : pr.azList) {
+        for (PlacementAZ pa : pr.azList) {
           Map<String, String> zoneConfig = AvailabilityZone.get(pa.uuid).getUnmaskedConfig();
           if (cloudConfig.containsKey("KUBECONFIG")) {
             azToConfig.put(pa.uuid, cloudConfig);
@@ -180,10 +183,11 @@ public class KubernetesUtil {
       PlacementInfo pi,
       Map<UUID, Integer> azToNumMasters,
       String nodePrefix,
+      String universeName,
       Provider provider,
       int masterRpcPort,
       boolean newNamingStyle) {
-    List<String> masters = new ArrayList<String>();
+    List<String> masters = new ArrayList<>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
     for (Map.Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
@@ -199,7 +203,8 @@ public class KubernetesUtil {
               false /*isReadOnlyCluster*/);
       String domain = azToDomain.get(entry.getKey());
       String helmFullName =
-          getHelmFullNameWithSuffix(isMultiAZ, nodePrefix, az.code, newNamingStyle, false);
+          getHelmFullNameWithSuffix(
+              isMultiAZ, nodePrefix, universeName, az.code, newNamingStyle, false);
       for (int idx = 0; idx < entry.getValue(); idx++) {
         String masterIP =
             formatPodAddress(
@@ -217,9 +222,9 @@ public class KubernetesUtil {
 
   public static Map<UUID, String> getDomainPerAZ(PlacementInfo pi) {
     Map<UUID, String> azToDomain = new HashMap<>();
-    for (PlacementInfo.PlacementCloud pc : pi.cloudList) {
-      for (PlacementInfo.PlacementRegion pr : pc.regionList) {
-        for (PlacementInfo.PlacementAZ pa : pr.azList) {
+    for (PlacementCloud pc : pi.cloudList) {
+      for (PlacementRegion pr : pc.regionList) {
+        for (PlacementAZ pa : pr.azList) {
           Map<String, String> config = AvailabilityZone.get(pa.uuid).getUnmaskedConfig();
           if (config.containsKey("KUBE_DOMAIN")) {
             azToDomain.put(pa.uuid, config.get("KUBE_DOMAIN"));
@@ -233,22 +238,66 @@ public class KubernetesUtil {
     return azToDomain;
   }
 
-  // This method decides the value of isMultiAZ based on the value of
-  // azName. In case of single AZ providers, the azName is passed as
-  // null.
+  // This method decides the value of isMultiAZ based on the value of azName.
+  // In case of single AZ providers, the azName is passed as null.
   public static String getHelmReleaseName(
-      String nodePrefix, String azName, boolean isReadOnlyCluster) {
+      String nodePrefix,
+      String universeName,
+      String azName,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle) {
     boolean isMultiAZ = (azName != null);
-    return getHelmReleaseName(isMultiAZ, nodePrefix, azName, isReadOnlyCluster);
+    return getHelmReleaseName(
+        isMultiAZ, nodePrefix, universeName, azName, isReadOnlyCluster, newNamingStyle);
   }
 
-  // TODO(bhavin192): have the release name sanitization call here,
-  // TODO(bhavin192): have the release name sanitization call here,
-  // instead of doing it in KubernetesManager implementations.
   public static String getHelmReleaseName(
-      boolean isMultiAZ, String nodePrefix, String azName, boolean isReadOnlyCluster) {
-    String helmReleaseName = isReadOnlyCluster ? nodePrefix + "-rr" : nodePrefix;
-    return isMultiAZ ? String.format("%s-%s", helmReleaseName, azName) : helmReleaseName;
+      boolean isMultiAZ,
+      String nodePrefix,
+      String universeName,
+      String azName,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle) {
+    // Remove spaces in unvierse/az names.
+    universeName = universeName.replaceAll("\\s", "");
+    if (azName != null) azName = azName.replaceAll("\\s", "");
+    // Using nodePrefix as universe names can be same from two different platforms using same k8s
+    // cluster.
+    // If user names are same then nodePrefix will also be same. Can we use user uuid instead?
+    String tempName = isReadOnlyCluster ? nodePrefix + "-rr" : nodePrefix;
+    tempName = isMultiAZ ? String.format("%s-%s", tempName, azName) : tempName;
+    if (!newNamingStyle) {
+      // Helm release name can't be more than 53 characters length.
+      // sanitizeKubernetesNamespace limits length(tempName)+reserveSuffixLength to 63 characters.
+      return Util.sanitizeKubernetesNamespace(tempName, 10);
+    }
+
+    // Need hash in relname to distinguish pods from multiple releases in same namespace.
+    String hash = Util.base36hash(tempName);
+
+    // helmReleaseName fromat: "yb" + prefix(11 chars of univ) + "-" + suffix(13 chars of AZ + rr) +
+    // "-" + hash(4)
+    String azRR = (isMultiAZ ? azName : "") + (isReadOnlyCluster ? "rr" : "");
+    String uniqueRelName;
+    if (azRR.length() == 0) {
+      uniqueRelName =
+          String.format(
+              "%s%s-%s",
+              "yb",
+              universeName.toLowerCase().substring(0, Math.min(universeName.length(), 25)),
+              hash);
+      // 25 because 11 chars dedicated chars for univ, 1 -, 13 chars from azRR.
+    } else {
+      uniqueRelName =
+          String.format(
+              "%s%s-%s-%s",
+              "yb",
+              universeName.toLowerCase().substring(0, Math.min(universeName.length(), 11)),
+              azRR.toLowerCase().substring(Math.max(0, azRR.length() - 13), azRR.length()),
+              hash);
+    }
+
+    return uniqueRelName;
   }
 
   // Returns a string which is exactly the same as yugabyte chart's
@@ -259,20 +308,16 @@ public class KubernetesUtil {
   public static String getHelmFullNameWithSuffix(
       boolean isMultiAZ,
       String nodePrefix,
+      String universeName,
       String azName,
       boolean newNamingStyle,
       boolean isReadOnlyCluster) {
     if (!newNamingStyle) {
       return "";
     }
-    String releaseName = getHelmReleaseName(isMultiAZ, nodePrefix, azName, isReadOnlyCluster);
-    // TODO(bhavin192): remove this once we make the sanitization to
-    // be 43 characters long.
-    // <release name> | truncate 43
-    if (releaseName.length() > 43) {
-      releaseName = releaseName.substring(0, 43);
-    }
-    return releaseName + "-";
+    return getHelmReleaseName(
+            isMultiAZ, nodePrefix, universeName, azName, isReadOnlyCluster, newNamingStyle)
+        + "-";
   }
 
   /**
