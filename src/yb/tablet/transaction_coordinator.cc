@@ -1588,7 +1588,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
           << state.ShortDebugString();
       return STATUS_EC_FORMAT(
           Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
-          "Transaction $0 expired or aborted by a conflict", *id);
+          "Transaction $0 expired or aborted by a conflict", id);
     }
 
     if (deleting_.load(std::memory_order_acquire)) {
