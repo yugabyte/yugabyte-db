@@ -156,6 +156,10 @@
     > div {
       padding: 24px 17px 24px 24px;
 
+      &.card-multi-links {
+        padding: 24px;
+      }
+
       .card-img {
         width: 32px;
         height: 32px;

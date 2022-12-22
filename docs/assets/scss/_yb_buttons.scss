@@ -1,12 +1,12 @@
 body {
   button,
   .primary-btn {
-    height: 32px;
+    min-height: 32px;
     border-radius: 8px;
     font-weight: 600;
     font-size: 13px;
     line-height: 16px;
-    padding: 8px 15px 8px 12px;
+    padding: 3px 15px 3px 12px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

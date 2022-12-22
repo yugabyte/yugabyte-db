@@ -67,6 +67,7 @@ html {
 
     @-moz-document url-prefix() {
       max-width: calc(100% - 270px);
+      max-width: calc(100% - 60px);
     }
 
     &.search-content {
@@ -262,6 +263,18 @@ html {
         padding-left: 0;
       }
     }
+  }
+}
+
+@media (max-width: 1359px) and (min-width: 1200px) {
+  aside.td-sidebar[style*="width: 4"] + div .td-sidebar-toc,
+  aside.td-sidebar[style*="width: 5"] + div .td-sidebar-toc {
+    display: none !important;
+  }
+
+  aside.td-sidebar[style*="width: 4"] + div .td-sidebar-toc.d-xl-block + main,
+  aside.td-sidebar[style*="width: 5"] + div .td-sidebar-toc.d-xl-block + main {
+    max-width: 100% !important;
   }
 }
 
