@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
 // InputFile initializes the check
@@ -43,9 +44,16 @@ func (i inputFileCheck) Execute() Result {
 		res.Status = StatusWarning
 
 		// Copy over reference yaml and reinit viper.
-		common.CreateDir(filepath.Dir(common.InputFile), 0600)
+		// TODO: performing actions in preflight checks doesn't seem very clean
+		common.CreateDir(filepath.Dir(common.InputFile), 0744)
 		common.CopyFileGolang(common.GetReferenceYaml(), common.InputFile)
+		os.Chmod(common.InputFile, 0600)
 		common.InitViper()
+
+		// TODO(minor): we might want to log restarts and other cmds but
+		// this preflight check is only called for install/upgrade
+		log.AddOutputFile(common.YbaCtlLogFile)
+
 	}
 
 	return res
