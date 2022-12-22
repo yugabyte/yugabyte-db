@@ -250,7 +250,7 @@ rollback;
 
 ### Best-effort internal retries for first statement in a transaction
 
-Note in the above example that the error message says `All transparent retries exhausted`. This is because, if the transaction T1, while exeuting the first statement, finds other concurrent conflicting transactions with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transactions will be done in some time. The number of retries are configurable by the `ysql_max_write_restart_attempts` TServer gflag and the exponential backoff parameters are the same as the ones described [here](../read-committed/#performance-tuning).
+Note that the error message `All transparent retries exhausted` in the preceding example is because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `ysql_max_write_restart_attempts` YB-TServer gflag and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
 
 Each retry will work a newer snapshot of the database in anticipation that the conflicts might not occur (if an earlier conflicting transaction T2 has committed with a commit time before the read time of the new snapshot, the conflicts with T2 would essentially be voided since T1 and T2 would no longer be "concurrent").
 
@@ -298,7 +298,7 @@ insert into test values (2, 2);
 
 
 
-#### Conflict between 2 explicit row-level locks
+#### Conflict between two explicit row-level locks
 
 
 <table class="no-alter-colors">
@@ -1024,7 +1024,7 @@ commit;
 
 ### Distributed deadlock detection
 
-In the Wait-on-Conflict mode, transactions can wait on each other and result in a deadlock. Setting the TServer gflag `enable_deadlock_detection=true`, runs a distributed deadlock detection algorithm in the background to detect and break deadlocks. It is always recommended to keep deadlock detection on when `enable_wait_queues=true`, unless the application/ workload is such that no deadlocks can occur. A rolling restart is required for the change to take effect.
+In the Wait-on-Conflict mode, transactions can wait for each other and result in a deadlock. Setting the YB-TServer gflag `enable_deadlock_detection=true` runs a distributed deadlock detection algorithm in the background to detect and break deadlocks. It is always recommended to keep deadlock detection on when `enable_wait_queues=true`, unless the application or workload is such that no deadlocks can occur. A rolling restart is required for the change to take effect.
 
 Add `enable_deadlock_detection=true` to the list of TServer gflags and restart the cluster.
 
@@ -1161,6 +1161,6 @@ Refer to [#5680](https://github.com/yugabyte/yugabyte-db/issues/5680) for limita
 
 ## Row-level explicit locking clauses
 
-The `NOWAIT` clause for row-level explicit locking doesn't make sense in the `Fail-on-Conflict` mode since there is no waiting. It makes sense for the `Wait-on-Conflict` policy but is currently only supported for Read Committed isolation. [#12166](https://github.com/yugabyte/yugabyte-db/issues/12166) will extend support for this in the `Wait-on-Conflict` mode for the other isolation levels.
+The `NOWAIT` clause for row-level explicit locking doesn't apply to the `Fail-on-Conflict` mode as there is no waiting. However, it applies to the `Wait-on-Conflict` policy but is currently supported only for Read Committed isolation. [#12166](https://github.com/yugabyte/yugabyte-db/issues/12166) will extend support for this in the `Wait-on-Conflict` mode for the other isolation levels.
 
-The `SKIP LOCKED` clause is supported in both concurrency control policies and provides a transaction the capability to skip locking without any error when a conflict is detected. However, it isn't supported for Serializable isolation. [#11761](https://github.com/yugabyte/yugabyte-db/issues/5683) tracks support for `SKIP LOCKED` in Serializable isolation.
+The `SKIP LOCKED` clause is supported in both concurrency control policies and provides a transaction with the capability to skip locking without any error when a conflict is detected. However, it isn't supported for Serializable isolation. [#11761](https://github.com/yugabyte/yugabyte-db/issues/5683) tracks support for `SKIP LOCKED` in Serializable isolation.
