@@ -27,9 +27,6 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-#include "lib/dshash.h"
-#include "utils/dsa.h"
-
 #include "access/hash.h"
 #include "catalog/pg_authid.h"
 #include "executor/instrument.h"
@@ -182,6 +179,20 @@ typedef struct CallTime
 	double		sum_var_time;	/* sum of variances in execution time in msec */
 }			CallTime;
 
+/*
+ * Entry type for queries hash table (query ID).
+ *
+ * We use a hash table to keep track of query IDs that have their
+ * corresponding query text added to the query buffer (pgsm_query_shared_buffer).
+ *
+ * This allow us to avoid adding duplicated queries to the buffer, therefore
+ * leaving more space for other queries and saving some CPU.
+ */
+typedef struct pgssQueryEntry
+{
+	uint64		queryid;		/* query identifier, also the key. */
+	size_t		query_pos;		/* query location within query buffer */
+}			pgssQueryEntry;
 
 typedef struct PlanInfo
 {
@@ -205,7 +216,6 @@ typedef struct pgssHashKey
 typedef struct QueryInfo
 {
 	uint64		parentid;		/* parent queryid of current query */
-	dsa_pointer	parent_query;
 	int64		type;			/* type of query, options are query, info,
 								 * warning, error, fatal */
 	char		application_name[APPLICATIONNAME_LEN];
@@ -312,7 +322,7 @@ typedef struct pgssEntry
 	Counters	counters;		/* the statistics for this query */
 	int			encoding;		/* query text encoding */
 	slock_t		mutex;			/* protects the counters only */
-	dsa_pointer	query_pos;		/* query location within query buffer */
+	size_t		query_pos;		/* query location within query buffer */
 } pgssEntry;
 
 /*
@@ -343,18 +353,9 @@ typedef struct pgssSharedState
 	 * This allows us to avoid having a large file on disk that would also
 	 * slowdown queries to the pg_stat_monitor view.
 	 */
+	bool		overflow;
 	size_t		n_bucket_cycles;
-	int         hash_tranche_id;
-	void        *raw_dsa_area;
-	dshash_table_handle hash_handle;
 } pgssSharedState;
-
-typedef struct pgsmLocalState
-{
-	pgssSharedState *shared_pgssState;
-	dsa_area   *dsa;
-	dshash_table *shared_hash;
-}pgsmLocalState;
 
 #define ResetSharedState(x) \
 do { \
@@ -417,22 +418,27 @@ void		init_guc(void);
 GucVariable *get_conf(int i);
 
 /* hash_create.c */
-dsa_area   *get_dsa_area_for_query_text(void);
-dshash_table	*get_pgssHash(void);
-void		pgsm_attach_shmem(void);
 bool		IsHashInitialize(void);
 void		pgss_shmem_startup(void);
 void		pgss_shmem_shutdown(int code, Datum arg);
 int			pgsm_get_bucket_size(void);
 pgssSharedState *pgsm_get_ss(void);
+HTAB	   *pgsm_get_plan_hash(void);
+HTAB	   *pgsm_get_hash(void);
+HTAB	   *pgsm_get_query_hash(void);
+HTAB	   *pgsm_get_plan_hash(void);
 void		hash_entry_reset(void);
 void		hash_query_entryies_reset(void);
 void		hash_query_entries();
 void		hash_query_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
 void		hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer);
 pgssEntry  *hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
-Size		pgsm_ShmemSize(void);
+Size		hash_memsize(void);
+
+int			read_query_buffer(int bucket_id, uint64 queryid, char *query_txt, size_t pos);
+uint64		read_query(unsigned char *buf, uint64 queryid, char *query, size_t pos);
 void		pgss_startup(void);
+void		set_qbuf(unsigned char *);
 
 /* hash_query.c */
 void		pgss_startup(void);
