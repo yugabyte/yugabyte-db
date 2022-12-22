@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 alter_table ::= ALTER TABLE [ ONLY ] name [ * ] alter_table_action 
                 [ , ... ]
 
