@@ -22,7 +22,6 @@ On this page:
 
 - Ability to add IP addresses to the cluster IP allow list during cluster creation. The **Create Cluster** wizard includes the new **Network Access** page to configure connectivity for your cluster. Automatically detect and add your current IP address or the addresses of any peered VPC to the cluster.
 - Ability to connect to clusters deployed in VPCs from public IP addresses. For clusters deployed in VPCs, enable **Public Access** on the **Settings** tab to connect from addresses outside the peered network. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
-- Ability to view and copy the project ID from your Profile. If you are using the [YugabyteDB Managed API](https://yugabyte.stoplight.io/docs/managed-apis), the project ID is used in conjunction with the account ID when making REST API calls. The project ID is the unique identifier for a YugabyteDB Managed project under which database clusters can be deployed.
 
 **Database**
 
