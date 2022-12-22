@@ -60,7 +60,7 @@ You can restore YugabyteDB universe YSQL data from a backup as follows:
 
 4. If your backup includes incremental backups, you can either restore the complete backup, as per step 3, or restore a part of an incremental backup chain by selecting an increment from the list in the **Backup Details** view and clicking its **Restore to this point**.
 
-    During the restore, only successful incremental backups are stored and any failed backups are discarded.
+    During the restore, only successful complete and incremental backups are used, whereas failed backups are discarded.
 
 5. To confirm that the restore succeeded, select **Tables** to compare the original table with the table to which you restored.
 

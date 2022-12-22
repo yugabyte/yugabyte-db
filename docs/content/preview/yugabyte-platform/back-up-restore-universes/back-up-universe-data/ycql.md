@@ -67,9 +67,7 @@ To view detailed information about an existing backup, click on it to open **Bac
 
 ![Backup details](/images/yp/backup-details-ycql.png)
 
-In addition to actions such as deleting and restoring the backup, as well as restoring tables and copying their locations, you can use **Backup Details** to add an incremental backup for universes that had the YB Controller automatically installed during their creation. To do so, click **Add Incremental Backup** and complete the dialog shown in the following illustration:
-
-![Incremental Backup](/images/yp/backup-increment-ycql.png)
+In addition to actions such as deleting and restoring the backup, as well as restoring tables and copying their locations, you can use **Backup Details** to add an incremental backup for universes that had the YB Controller automatically installed during their creation. To do so, click **Add Incremental Backup**, and then click **Confirm** on the **Add Incremental Backup** dialog.
 
 YB Controller-enabled universes can have their throttle parameters configured for more efficient backups and restore. For more information, see [Back up universe YSQL data](../../back-up-universe-data/ysql/).
 

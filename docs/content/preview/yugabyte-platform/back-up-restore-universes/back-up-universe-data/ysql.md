@@ -86,7 +86,7 @@ To access a list of all backups from all universes, including the deleted univer
 
 ## Create incremental backups
 
-Incremental backups are a way of taking differential backups on top of a complete backup. To reduce the length of time spent on each backup, only SST files that are new to YugabyteDB and not present in the previous backups are incrementally backed up. For example, in most cases, for incremental backups occurring every hour, the 1-hour delta would be significantly smaller compared to the complete backup. The restore happens until the point of the defined increment.
+Incremental backups are taken on top of a complete backup. To reduce the length of time spent on each backup, only SST files that are new to YugabyteDB and not present in the previous backups are incrementally backed up. For example, in most cases, for incremental backups occurring every hour, the 1-hour delta would be significantly smaller compared to the complete backup. The restore happens until the point of the defined increment.
 
 You can create an incremental backup on any complete or incremental backup taken using YB-Controller, as follows:
 
@@ -94,7 +94,7 @@ You can create an incremental backup on any complete or incremental backup taken
 
 - In the  **Backup Details** view, click **Add Incremental Backup**.
 
-- Modify settings in the **Create Incremental Backup** dialog, if required, and then click **Backup**.
+- On the **Add Incremental Backup** dialog, click **Confirm**.
 
 
 A successful incremental backup appears in the list of backups. 
