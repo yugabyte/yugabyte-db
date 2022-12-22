@@ -27,6 +27,8 @@ If a conflict occurs, a transaction with the lower priority is aborted. There ar
    - **Wound:** If T1 has a priority higher than all the other conflicting transactions, T1 will abort them and make progress.
    - **Die:** If any other conflicting transaction has an equal or higher priority than T1, T1 will abort itself.
 
+Suppose you have a table with some data in it, the following examples describe the wound and die approaches when a conflict occurs.
+
 ```sql
 create table test (k int primary key, v int);
 insert into test values (1, 1);
@@ -54,6 +56,7 @@ insert into test values (1, 1);
 ```sql
 SET yb_transaction_priority_upper_bound = 0.4;
 ```
+<br>
 
    </td>
   </tr>
@@ -63,6 +66,7 @@ SET yb_transaction_priority_upper_bound = 0.4;
 ```sql
 SET yb_transaction_priority_lower_bound = 0.6;
 ```
+<br>
 
    </td>
    <td>
@@ -76,6 +80,7 @@ SET yb_transaction_priority_lower_bound = 0.6;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
   </tr>
@@ -87,6 +92,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+<br>
 
 ```output
  k | v
@@ -103,6 +109,7 @@ select * from test where k=1 for update;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -114,7 +121,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
-
+<br>
 
 ```output
  k | v
@@ -172,6 +179,7 @@ rollback;
 ```sql
 SET yb_transaction_priority_lower_bound = 0.6;
 ```
+<br>
 
    </td>
   </tr>
@@ -181,6 +189,7 @@ SET yb_transaction_priority_lower_bound = 0.6;
 ```sql
 SET yb_transaction_priority_upper_bound = 0.4;
 ```
+<br>
 
    </td>
    <td>
@@ -194,6 +203,7 @@ SET yb_transaction_priority_upper_bound = 0.4;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
   </tr>
@@ -205,6 +215,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+<br>
 
 ```output
  k | v
@@ -220,6 +231,7 @@ select * from test where k=1 for update;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -231,6 +243,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+<br>
 
 ```output
 ERROR:  All transparent retries exhausted. could not serialize
@@ -319,6 +332,7 @@ insert into test values (2, 2);
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -332,6 +346,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
   </tr>
@@ -341,6 +356,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+<br>
 
 ```output
  k | v
@@ -362,6 +378,7 @@ select * from test where k=1 for update;
 ```sql
 select * from test where k=1 for update;
 ```
+<br>
 
 ```output
 (waits)
@@ -429,6 +446,7 @@ commit;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -442,6 +460,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
   </tr>
@@ -451,6 +470,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for share;
 ```
+<br>
 
 ```output
  k | v
@@ -542,6 +562,7 @@ commit;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -555,6 +576,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
   </tr>
@@ -581,6 +603,7 @@ UPDATE 1
 ```sql
 select * from test where k=1 for share;
 ```
+<br>
 
 ```output
 (waits)
@@ -658,6 +681,7 @@ rollback;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -671,6 +695,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
   </tr>
@@ -774,6 +799,7 @@ A transaction can jump the queue even if it does conflict with waiting transacti
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -781,6 +807,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -788,6 +815,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
   </tr>
@@ -797,6 +825,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for share;
 ```
+<br>
 
 ```output
  k | v
@@ -819,6 +848,7 @@ select * from test where k=1 for share;
 ```sql
 select * from test where k=1 for update;
 ```
+<br>
 
 ```
 (waits for T1 to end...)
@@ -838,6 +868,7 @@ select * from test where k=1 for update;
 ```sql
 select * from test where k=1 for share;
 ```
+<br>
 
 ```output
  k | v
@@ -930,6 +961,7 @@ commit;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -943,6 +975,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
   </tr>
@@ -1046,6 +1079,7 @@ Add `enable_deadlock_detection=true` to the list of TServer gflags and restart t
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
    <td>
@@ -1059,6 +1093,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;   
 ```
+<br>
 
    </td>
   </tr>

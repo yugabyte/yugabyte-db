@@ -338,7 +338,7 @@ Semantics of Read Committed isolation adheres only with the [Wait-on-Conflict](.
 As the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy doesn't make sense for Read Committed, even if this policy is set for use on the cluster, transactions in Read Committed isolation provide `Wait-on-Conflict` semantics. This is done even without wait queues, that is, even when `enable_wait_queues=false`, by relying on an indefinite retry-backoff mechanism with exponential delays when conflicts are detected. However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist:
 - You may have to manually tune the exponential backoff parameters for performance as explained in [Performance tuning](../read-committed/#performance-tuning).
 - The app may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
-- There may be unfairness and high P99 latencies during contention due to the retry-backoff mechanism.
+- There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
 
 ## Examples
 

@@ -26,18 +26,18 @@ When using the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) conc
 
 For distributed transactions, the priority space is `unit64_t`. The 64 bit range is split into 2 priority buckets -
 
-1. Normal priority bucket: `[yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound]` i.e., 0 to  `uint32_t_max`-1
-2. High priority bucket: `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]` i.e., `uint32_t_max` to `uint64_t_max`
+1. Normal-priority bucket: `[yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound]` i.e., 0 to  `uint32_t_max`-1
+2. High-priority bucket: `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]` i.e., `uint32_t_max` to `uint64_t_max`
 
-All transactions are usually randomly assigned a priority in the first bucket (normal). However, in case a transaction has the first query which takes a `FOR UPDATE/ FOR SHARE/ FOR NO KEY UPDATE` explicit row lock using SELECT, it is randomly assigned a priority from the high priority bucket.
+All transactions are usually randomly assigned a priority in the first bucket (normal). However, in case the first statement in a transaction takes a `FOR UPDATE/ FOR SHARE/ FOR NO KEY UPDATE` explicit row lock using SELECT, it will be assigned a priority from the high-priority bucket.
 
-Apart from the above rule, there are two other user configurable session variables that can help control the priority assigned to transaction is a specific session. These are `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. These help set lower and upper bounds on the randomly assigned priority a transaction should receive from the respective bucket that applies to it. For ease of use, the bounds are expressed as a float such that the numerical ranges of a bucket are proportionally map to floats from 0-1. Also note that the same floating point bounds apply to both buckets.
+Apart from the above rule, there are two other user configurable session variables that can help control the priority assigned to transaction is a specific session. These are `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. These help set lower and upper bounds on the randomly assigned priority a transaction should receive from the respective bucket that applies to it. For ease of use, the bounds are expressed as a float in [0, 1] specifying which range of the applicable bucket we should use to assign priorities. Also note that the same floating point bounds apply to both buckets.
 
 For example, if `yb_transaction_priority_lower_bound=0.5` and `yb_transaction_priority_upper_bound=0.75`:
 
 1. a transaction that is assigned a priority from the normal bucket will get one between the 0.5-0.75 marks such that the `[yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound]` range proportionally maps to 0-1.
 
-2. a transaction that is assigned a priority from the high priority bucket will get between the 0.5-0.75 marks such that the `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]` range proportionally maps to 0-1.
+2. a transaction that is assigned a priority from the high-priority bucket will get between the 0.5-0.75 marks such that the `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]` range proportionally maps to 0-1.
 
 {{< note title="All single shard transactions have a priority of kHighPriTxnLowerBound-1" >}}
 {{</note >}}
@@ -67,7 +67,7 @@ SET yb_transaction_priority_lower_bound = 0.4;
 SET yb_transaction_priority_upper_bound = 0.6;
 ```
 
-3. Create a transaction in the normal priority bucket
+3. Create a transaction in the normal-priority bucket
 
 ```sql
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -119,11 +119,11 @@ SELECT yb_get_current_transaction_priority(); -- non-zero now
 COMMIT;
 ```
 
-4. Create a transaction in the high priority bucket
+4. Create a transaction in the high-priority bucket
 
 ```sql
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SELECT * FROM test WHERE k = 1 FOR UPDATE; -- starts a transaction in high priority bucket
+SELECT * FROM test WHERE k = 1 FOR UPDATE; -- starts a transaction in high-priority bucket
 ```
 
 ```output
