@@ -120,7 +120,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     PlacementInfo placementInfo = primaryCluster.placementInfo;
     createSingleKubernetesExecutorTask(
-        CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
+        universe.name, CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
@@ -139,12 +139,14 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             placementInfo,
             placement.masters,
             taskParams().nodePrefix,
+            universe.name,
             provider,
             universeDetails.communicationPorts.masterRpcPort,
             newNamingStyle);
 
     if (isMasterChanged) {
       upgradePodsTask(
+          universe.name,
           placement,
           masterAddresses,
           null,
@@ -166,6 +168,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       }
 
       upgradePodsTask(
+          universe.name,
           placement,
           masterAddresses,
           null,
@@ -185,12 +188,16 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         PlacementInfo readClusterPlacementInfo =
             universeDetails.getReadOnlyClusters().get(0).placementInfo;
         createSingleKubernetesExecutorTask(
-            CommandType.POD_INFO, readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
+            universe.name,
+            CommandType.POD_INFO,
+            readClusterPlacementInfo, /*isReadOnlyCluster*/
+            true);
 
         KubernetesPlacement readClusterPlacement =
             new KubernetesPlacement(readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
 
         upgradePodsTask(
+            universe.name,
             readClusterPlacement,
             masterAddresses,
             null,

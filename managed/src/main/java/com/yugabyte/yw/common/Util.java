@@ -602,11 +602,23 @@ public class Util {
     return Hex.encodeHexString(bytes);
   }
 
-  // TODO(bhavin192): Helm allows the release name to be 53 characters
-  // long, and with new naming style this becomes 43 for our case.
-  // Sanitize helm release name.
-  public static String sanitizeHelmReleaseName(String name) {
-    return sanitizeKubernetesNamespace(name, 0);
+  // Converts input string to base36 string of length 4.
+  // return string will contain characters a-z, 0-9.
+  public static String base36hash(String inputStr) {
+    int hashCode = inputStr.hashCode();
+    byte[] bytes = new byte[4];
+    char[] chars = new char[4];
+    for (int i = 0; i < bytes.length; i++) {
+      // 1 byte.
+      int val = hashCode & 0xFF;
+      if (val >= 0 && val <= 9) {
+        chars[i] = (char) ('0' + val);
+      } else {
+        chars[i] = (char) ('a' + (val - 10) % 26);
+      }
+      hashCode >>= 8;
+    }
+    return new String(chars);
   }
 
   // Sanitize kubernetes namespace name. Additional suffix length can be reserved.

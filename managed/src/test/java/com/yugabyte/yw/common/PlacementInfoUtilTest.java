@@ -117,7 +117,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       provider = ModelFactory.newProvider(customer, cloud);
 
       // Set up base Universe
-      univName = "Test Universe " + provider.code;
+      univName = "Test Universe" + provider.code;
       universe = createUniverse(univName, customer.getCustomerId());
       univUuid = universe.universeUUID;
 
@@ -1667,13 +1667,15 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   @Parameters({
     ", false, demo, az-1, false, false",
     ", false, demo, az-1, false, true",
-    "demo-, false, demo, az-1, true, false",
-    "demo-rr-, false, demo, az-1, true, true",
-    "demo-az-1-, true, demo, az-1, true, false",
-    "demo-node-prefix-which-is-longer-1234567-az-, "
+    "ybdemo-jjk0-, false, demo, az-1, true, false",
+    "ybdemo-rr-skje-, false, demo, az-1, true, true",
+    "ybdemo-az-1-jdfi-, true, demo, az-1, true, false",
+    "ybdemo-node-p-az-1-1zcx-, "
         + "true, demo-node-prefix-which-is-longer-1234567, az-1, true, false",
-    "demo-node-prefix-which-is-longer-1234567-rr-, "
-        + "true, demo-node-prefix-which-is-longer-1234567, az-1, true, true"
+    "ybdemo-node-p-az-1rr-cvqf-, "
+        + "true, demo-node-prefix-which-is-longer-1234567, az-1, true, true",
+    "ybdemo-baddns-az-1rr-enly-, true, demo-badDNS-check--abc----------------------z,"
+        + " az-1, true, true",
   })
   public void testGetHelmFullNameWithSuffix(
       String helmName,
@@ -1685,29 +1687,65 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(
         helmName,
         KubernetesUtil.getHelmFullNameWithSuffix(
-            isMultiAZ, nodePrefix, azName, newNamingStyle, isReadOnlyCluster));
+            isMultiAZ,
+            nodePrefix,
+            /* universename */ nodePrefix,
+            azName,
+            newNamingStyle,
+            isReadOnlyCluster));
   }
 
   @Test
   @Parameters({
-    "demo, false, demo, null, false",
-    "demo-az-1, true, demo, az-1, false",
-    "demo-rr, false, demo, az-1, true",
-    "demo-rr-az-1, true, demo, az-1, true"
+    "demo, false, demo, demo, null, false, false",
+    "demo-az-1, true, demo, demouniverse, az-1, false, false",
+    "demo-rr, false, demo, demo, az-1, true, false",
+    "demo-rr-5ab8da4a, false, deMo, demouniverse, az-1, true, false",
+    "demo-rr-az-1, true, demo, demo, az-1, true, false",
+    "ybdemomorethan11chars-lwg0, false, yb-admin-demo, demomorethan11chars, null, false, true",
+    "ybdemomoretha-az-1-tvks, true, yb-admin-demo, demomorethan11chars, az-1, false, true",
+    "ybdemomoretha-az-1rr-yovk, true, yb-admin-demo, demomorethan11chars, az-1, true, true",
+    "ybdemo-az-1-ybgi, true, yb-15-demo, demo, az-1, false, true",
+    "ybdemo-az-1rr-njvc, true, yb-15-demo, demo, az-1, true, true",
+    "ybdemo-rr-awuk, false, yb-user-deMo, deMo, az-1, true, true",
+    "ybdemo-az-1rr-yovk, true, yb-admin-demo, demo, az-1, true, true",
+    "ybdemo--------n-long-azname-jvrv, true, "
+        + "yb-admin-demo--------longstring-abcdefghijklmnopqrstuvwxyz,"
+        + "demo------------longstring-abcdefghijklmnopqrstuvwxyz, again-long-azname, false, true",
+    "ybdemo--------long-aznamerr-otni, true, "
+        + "yb-admin-demo--------longstring-abcdefghijklmnopqrstuvwxyz,"
+        + "demo------------longstring-abcdefghijklmnopqrstuvwxyz, again-long-azname, true, true",
   })
   public void testGetHelmReleaseName(
       String releaseName,
       boolean isMultiAZ,
       String nodePrefix,
+      String universeName,
       String azName,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle) {
     assertEquals(
         releaseName,
-        KubernetesUtil.getHelmReleaseName(isMultiAZ, nodePrefix, azName, isReadOnlyCluster));
+        KubernetesUtil.getHelmReleaseName(
+            isMultiAZ, nodePrefix, universeName, azName, isReadOnlyCluster, newNamingStyle));
   }
 
   @Test
-  public void testK8sComputeMasterAddressesMultiAZ() {
+  @Parameters({
+    "yb-master-0.yb-masters.demo-universe-az-1.svc.cluster.local:1234\\,yb-master-0.yb-masters."
+        + "demo-universe-az-2.svc.cluster.local:1234\\,yb-master-0.yb-masters.demo-universe-az-3"
+        + ".svc.cluster.local:1234, demo-universe, demo-universe, false",
+    "ybdemo-univer-az-1-vjoo-yb-master-0.ybdemo-univer-az-1-vjoo-yb-masters.demo-universe."
+        + "svc.cluster.local:1234\\,ybdemo-univer-az-2-wjoo-yb-master-0.ybdemo-univer-az-2-wjoo"
+        + "-yb-masters.demo-universe.svc.cluster.local:1234\\,ybdemo-univer-az-3-xjoo-yb-master-0."
+        + "ybdemo-univer-az-3-xjoo-yb-masters.demo-universe.svc.cluster.local:1234,"
+        + " demo-universe, test-uni verse, true",
+  })
+  public void testK8sComputeMasterAddressesMultiAZ(
+      String expectedMasterAddresses,
+      String nodePrefix,
+      String universeName,
+      boolean newNamingStyle) {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer =
         ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
@@ -1722,38 +1760,33 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi);
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1, az2.uuid, 1, az3.uuid, 1);
-    String nodePrefix = "demo-universe";
-
     // New naming style
     String masterAddresses =
         KubernetesUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true);
-    String masterAddressFormat =
-        "%s-%s-yb-master-0.%1$s-%2$s-yb-masters.%1$s.svc.cluster.local:1234";
-    String expectedMasterAddresses =
-        String.format(masterAddressFormat, nodePrefix, az1.code)
-            + ","
-            + String.format(masterAddressFormat, nodePrefix, az2.code)
-            + ","
-            + String.format(masterAddressFormat, nodePrefix, az3.code);
-    assertEquals(expectedMasterAddresses, masterAddresses);
-
-    // Old naming style
-    masterAddresses =
-        KubernetesUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false);
-    masterAddressFormat = "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234";
-    expectedMasterAddresses =
-        String.format(masterAddressFormat, nodePrefix, az1.code)
-            + ","
-            + String.format(masterAddressFormat, nodePrefix, az2.code)
-            + ","
-            + String.format(masterAddressFormat, nodePrefix, az3.code);
+            pi,
+            azToNumMasters,
+            nodePrefix, /*universeName*/
+            nodePrefix,
+            k8sProvider,
+            1234,
+            newNamingStyle);
     assertEquals(expectedMasterAddresses, masterAddresses);
   }
 
   @Test
-  public void testK8sComputeMasterAddressesSingleAZ() {
+  @Parameters({
+    "yb-master-0.yb-masters.demo-universe.svc.cluster.local:1234, demo-universe, demo-universe, "
+        + "false",
+    "ybdemo-universe-vyss-yb-master-0.ybdemo-universe-vyss-yb-masters.demo-universe.svc."
+        + "cluster.local:1234, demo-universe, demo-universe, true",
+    "ybdemo-universe-vyss-yb-master-0.ybdemo-universe-vyss-yb-masters.demo-universe.svc."
+        + "cluster.local:1234, demo-universe, de mo-universe, true", // space in the universe name.
+  })
+  public void testK8sComputeMasterAddressesSingleAZ(
+      String expectedMasterAddress,
+      String nodePrefix,
+      String universeName,
+      boolean newNamingStyle) {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer =
         ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
@@ -1766,10 +1799,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     String masterAddresses =
         KubernetesUtil.computeMasterAddresses(
-            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
-    assertEquals(
-        "demo-universe-yb-master-0.demo-universe-yb-masters.demo-universe.svc.cluster.local:1234",
-        masterAddresses);
+            pi,
+            azToNumMasters,
+            nodePrefix,
+            universeName, // Universe name
+            k8sProvider,
+            1234,
+            newNamingStyle);
+    assertEquals(expectedMasterAddress, masterAddresses);
   }
 
   @Test
@@ -2333,7 +2370,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     // Update userIntent for the universe/cluster.
     UserIntent userIntent = new UserIntent();
-    userIntent.universeName = "Test universe";
+    userIntent.universeName = "Testuniverse";
     userIntent.replicationFactor = 3;
     userIntent.numNodes = 5;
     userIntent.provider = provider.code;

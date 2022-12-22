@@ -618,9 +618,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   @Test
   // @formatter:off
   @Parameters({
-    "2.8.0.0-b12, true",
-    "2.6.0.0-b1, false",
-    "2.12.1.0-b11, true",
+    "2.15.4.0-b12, true",
+    "2.15.3.0-b1, false",
+    "2.16.1.0-b11, true",
   })
   // @formatter:on
   public void testK8sUniverseCreateNewHelmNaming(String ybVersion, boolean newNamingStyle) {
