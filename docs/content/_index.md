@@ -42,7 +42,7 @@ resources:
 {{< sections/3-boxes-top-image >}}
   {{< sections/3-box-card
     title="Build a Hello world application"
-    description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster and performs basic SQL operations."
+    description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
     buttonText="Get started"
     buttonUrl="/preview/develop/build-apps/"
     imageAlt="Build a Hello world application"
@@ -60,7 +60,7 @@ resources:
 
   {{< sections/3-box-card
     title="Explore Distributed SQL capabilities"
-    description="Learn about YugabyteDB's PostgreSQL compatibility."
+    description="Test YugabyteDB's compatibility with standard PostgreSQL features, such as data types, queries, expressions, and more."
     buttonText="Get started"
     buttonUrl="/preview/explore/"
     imageAlt="Explore Distributed SQL capabilities"
@@ -73,7 +73,7 @@ resources:
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
     title="YugabyteDB"
-    description="Open source cloud-native distributed SQL database for mission-critical applications."
+    description="Explore the features of the open source cloud-native distributed SQL database."
     buttonText="Explore YugabyteDB"
     buttonUrl="/preview/explore/"
     imageAlt="Explore YugabyteDB"
@@ -82,7 +82,7 @@ resources:
 
   {{< sections/3-box-card
     title="YugabyteDB Anywhere"
-    description="YugabyteDB delivered as a private database-as-a-service for enterprises."
+    description="Deploy YugabyteDB across any cloud and manage deployments via automation."
     buttonText="Documentation"
     buttonUrl="/preview/yugabyte-platform/"
     imageAlt="YugabyteDB Anywhere"
@@ -91,7 +91,7 @@ resources:
 
   {{< sections/3-box-card
     title="YugabyteDB Managed"
-    description="Fully managed YugabyteDB-as-a-Service without the operational overhead of managing a database."
+    description="Create and connect to a scalable, resilient, PostgreSQL-compatible database in minutes."
     buttonText="Documentation"
     buttonUrl="/preview/yugabyte-cloud/"
     imageAlt="YugabyteDB Managed"
@@ -104,7 +104,7 @@ resources:
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
     title="Understand availability"
-    description="YugabyteDB clusters can continue to do reads and writes even in case of node failures."
+    description="Find out how a YugabyteDB cluster continues to do reads and writes when a node fails."
     buttonText="Read real world availability usecases"
     buttonUrl="/preview/explore/fault-tolerance/macos/"
     imageAlt="Understand availability"
@@ -113,7 +113,7 @@ resources:
 
   {{< sections/3-box-card
     title="Understand scalability"
-    description="Scale YugabyteDB clusters to handle more transactions per second, more concurrent client connections, and larger datasets."
+    description="Scale a cluster and see how YugabyteDB dynamically distributes transactions."
     buttonText="Read real world scalability usecases"
     buttonUrl="/preview/explore/linear-scalability/"
     imageAlt="Understand scalability"
@@ -122,7 +122,7 @@ resources:
 
   {{< sections/3-box-card
     title="Understand geo-partitioning"
-    description="Use geo-partitioning to meet data residency requirements and achieve lower latency and higher performance."
+    description="See how moving data closer to users can reduce latency and improve performance."
     buttonText="Read real world Geo usecases"
     buttonUrl="/preview/explore/multi-region-deployments/row-level-geo-partitioning/"
     imageAlt="Understand Geo"
