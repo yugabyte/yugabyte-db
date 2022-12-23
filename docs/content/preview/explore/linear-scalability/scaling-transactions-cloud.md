@@ -64,7 +64,7 @@ You can add a node to the cluster in YugabyteDB Managed as follows:
 
 1. Click **Confirm and Save Changes** when you are done.
 
-The scaling operation can take several minutes, during which time some cluster operations will not be available.
+The scaling operation can take several minutes, during which time some cluster operations are not available.
 
 Verify that the node has been added on the cluster **Nodes** tab.
 
@@ -92,7 +92,7 @@ You can remove a node from the cluster in YugabyteDB Managed as follows:
 
 1. Click **Confirm and Save Changes** when you are done.
 
-Again, the scale operation can take several minutes, during which time some cluster operations will not be available.
+Again, the scale operation can take several minutes, during which time some cluster operations are not available.
 
 Verify the details by selecting the **Nodes** tab. The load is moved off the removed node and redistributed to the other nodes.
 
