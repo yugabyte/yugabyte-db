@@ -94,11 +94,9 @@ You can remove a node from the cluster in YugabyteDB Managed as follows:
 
 Again, the scale operation can take several minutes, during which time some cluster operations will not be available.
 
-Verify the details by selecting the **Nodes** tab. Observe the load (tablets) and IOPS getting moved off the removed node and redistributed to the other nodes.
+Verify the details by selecting the **Nodes** tab. The load and is moved off the removed node and redistributed to the other nodes.
 
-![Read and write IOPS with 4th node dead](/images/ce/stop-node.png)
-
-Navigate to the [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/) tab to notice a slight spike and drop in the latency and YSQL Operations/Sec charts when the node is added, and then both return to normal, as shown in the following illustration:
+Navigate to the **Performance** tab to notice a slight spike and drop in the latency and YSQL Operations/Sec charts when the node is added, and then both return to normal, as shown in the following illustration:
 
 ![Performance metrics with 4th node dead](/images/ce/stop-node-chart.png)
 
