@@ -33,6 +33,10 @@
     + div:has(iframe) {
       margin: 20px 0;
     }
+
+    + .admonition + p {
+      margin-top: 24px;
+    }
   }
 
   h1[id],
