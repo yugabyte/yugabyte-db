@@ -15,7 +15,7 @@ type: docs
 
 With YugabyteDB, you can add nodes to upscale your cluster efficiently and reliably to achieve more read and write IOPS (input/output operations per second), without any downtime.
 
-This tutorial shows how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Workload Simulator application](https://github.com/yugabyte/yb-simulation-base-demo-app) against a single region three-node cluster on YugabyteDB Managed with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+This tutorial shows how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a single region three-node cluster on YugabyteDB Managed with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -38,15 +38,15 @@ Follow the setup instructions to start a three-node cluster in YugabyteDB Manage
 
 ## Observe IOPS per node
 
-To view a table of per-node statistics for the cluster from YugabyteDB Managed UI, do the following:
+To view a table of per-node statistics for the cluster, in YugabyteDB Managed, do the following:
 
-1. On the **Clusters** tab, select the cluster.
+1. On the **Clusters** page, select the cluster.
 
 1. Select **Nodes** to view the total read and write IOPS per node and other statistics as shown in the following illustration. Note that both the reads and the writes are roughly the same across all the nodes, indicating uniform load across the nodes.
 
 ![Read and write IOPS with 3 nodes](/images/ce/transactions_cloud_observe1.png)
 
-To view your cluster metrics such as YSQL operations/second and Latency from YugabyteDB Managed UI, refer to [Performance metrics](preview/yugabyte-cloud/cloud-monitor/overview/). You should see similar charts as shown in the following illustration:
+To view your cluster metrics such as YSQL operations/second and Latency, in YugabyteDB Managed, select the cluster [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
 
 ![Performance charts for 3 nodes](/images/ce/transactions_cloud_chart.png)
 
@@ -56,18 +56,17 @@ To view the latency and throughput on the cluster while the workload is running,
 
 ## Add node and observe linear scale-out
 
-You can add a node to the cluster from the YugabyteDB Managed UI as follows:
+You can add a node to the cluster in YugabyteDB Managed as follows:
 
-1. On the **Clusters** page, select your cluster.
+1. On the cluster **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
-1. On the **Settings** tab or under Actions, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
-
-1. Change the number of nodes to **4** to add a new node.
+1. Change the number of nodes to 4 to add a new node.
 
 1. Click **Confirm and Save Changes** when you are done.
 
-Note that the scaling operation can take several minutes, during which time some cluster operations will not be available.
-You should have 4 nodes after sometime and you can verify the details by selecting **Nodes** from your cluster's page as mentioned in [Observe IOPS per node](#observe-iops-per-node).
+The scaling operation can take several minutes, during which time some cluster operations are not available.
+
+Verify that the node has been added on the cluster **Nodes** tab.
 
 ![Read and write IOPS with 4 nodes](/images/ce/add-node-cloud.png)
 
@@ -75,7 +74,7 @@ Shortly, you should see the new node performing a comparable number of reads and
 
 The cluster automatically lets the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes.
 
-Navigate to the [Performance metrics](preview/yugabyte-cloud/cloud-monitor/overview/) section to notice a slight spike and drop in the latency and YSQL Operations/Sec charts when the node is added, and then both return to normal, as shown in the following illustration:
+Navigate to the [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/) tab to notice a slight spike and drop in the latency and YSQL Operations/Sec charts when the node is added, and then both return to normal, as shown in the following illustration:
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-cloud-chart.png)
 
@@ -85,22 +84,19 @@ Alternatively, you can navigate to the [simulation application UI](http://127.0.
 
 ## Remove node and observe linear scale in
 
-You can add a node to the cluster from the YugabyteDB Managed UI as follows:
+You can remove a node from the cluster in YugabyteDB Managed as follows:
 
-1. On the **Clusters** page, select your cluster.
-
-1. On the **Settings** tab or under Actions, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. On the cluster **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
 1. Change the number of nodes to **3** to remove a node.
 
 1. Click **Confirm and Save Changes** when you are done.
 
-Note that the scale in operation can take several minutes, during which time some cluster operations will not be available.
-You should have 3 nodes after sometime and you can verify the details by selecting **Nodes** from your cluster's page as mentioned in [Observe IOPS per node](#observe-iops-per-node). Observe the load (tablets) and IOPS getting moved off the removed node and redistributed to the other nodes.
+Again, the scale operation can take several minutes, during which time some cluster operations are not available.
 
-![Read and write IOPS with 4th node dead](/images/ce/stop-node.png)
+Verify the details by selecting the **Nodes** tab. The load is moved off the removed node and redistributed to the other nodes.
 
-Navigate to the [Performance metrics](preview/yugabyte-cloud/cloud-monitor/overview/) section to notice a slight spike and drop in the latency and YSQL Operations/Sec charts when the node is added, and then both return to normal, as shown in the following illustration:
+Navigate to the **Performance** tab to notice a slight spike and drop in the latency and YSQL Operations/Sec charts when the node is added, and then both return to normal, as shown in the following illustration:
 
 ![Performance metrics with 4th node dead](/images/ce/stop-node-chart.png)
 
