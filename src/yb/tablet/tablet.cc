@@ -376,13 +376,33 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
     }
 
-    // Collect min schema version from all DB entries. I.e. stored in memory and flushed to disk.
-    std::unordered_map<Uuid, SchemaVersion, UuidHash> table_id_to_min_schema_version;
+    MinSchemaVersionMap table_id_to_min_schema_version;
+    {
+      auto scoped_read_operation = tablet_.CreateNonAbortableScopedRWOperation();
+      if (!scoped_read_operation.ok()) {
+        VLOG_WITH_FUNC(4) << "Skip";
+        return;
+      }
+
+      // Collect min schema version from all DB entries. I.e. stored in memory and flushed to disk.
+      FillMinSchemaVersion(db, &table_id_to_min_schema_version);
+      FillMinSchemaVersion(tablet_.intents_db_.get(), &table_id_to_min_schema_version);
+    }
+    ERROR_NOT_OK(metadata.OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
+  }
+
+ private:
+  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion, UuidHash>;
+
+  void FillMinSchemaVersion(rocksdb::DB* db, MinSchemaVersionMap* table_id_to_min_schema_version) {
+    if (!db) {
+      return;
+    }
     {
       auto smallest = db->CalcMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
       if (smallest) {
         down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
-            &table_id_to_min_schema_version);
+            table_id_to_min_schema_version);
       }
     }
     for (const auto& file : db->GetLiveFilesMetaData()) {
@@ -390,12 +410,10 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
         continue;
       }
       auto& smallest = down_cast<docdb::ConsensusFrontier&>(*file.smallest.user_frontier);
-      smallest.MakeExternalSchemaVersionsAtMost(&table_id_to_min_schema_version);
+      smallest.MakeExternalSchemaVersionsAtMost(table_id_to_min_schema_version);
     }
-    ERROR_NOT_OK(metadata.OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
   }
 
- private:
   Tablet& tablet_;
   const std::string log_prefix_;
 };
