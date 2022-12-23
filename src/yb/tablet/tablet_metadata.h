@@ -575,7 +575,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const std::string& wal_dir);
 
   // Constructor for loading an existing Raft group.
-  RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id);
+  RaftGroupMetadata(FsManager* fs_manager, const RaftGroupId& raft_group_id);
 
   Status LoadFromDisk();
 
