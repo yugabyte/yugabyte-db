@@ -202,6 +202,13 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     }
   }
 
+  auto shared_tablet = operation->tablet();
+  auto& metadata = *shared_tablet->metadata();
+
+  for (const auto& sv : operation->request()->write_batch().table_schema_version()) {
+    CHECK_LE(metadata.schema_version(), sv.schema_version());
+  }
+
   Complete(status);
 }
 
