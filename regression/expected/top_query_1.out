@@ -1,5 +1,5 @@
 CREATE EXTENSION pg_stat_monitor;
-Set pg_stat_monitor.pgsm_track='all';
+SET pg_stat_monitor.pgsm_track='all';
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 
 -----------------------
@@ -11,7 +11,7 @@ $$
 BEGIN
 	return (select $1 + $2);
 END; $$ language plpgsql;
-CREATE OR REPLACE function add2(int, int) RETURNS int as
+CREATE OR REPLACE FUNCTION add2(int, int) RETURNS INTEGER AS
 $$
 BEGIN
 	return add($1,$2);
@@ -24,22 +24,22 @@ SELECT add2(1,2);
 (1 row)
 
 SELECT query, top_query FROM pg_stat_monitor ORDER BY query COLLATE "C";
-                            query                            |    top_query     
--------------------------------------------------------------+------------------
- (select $1 + $2)                                            | SELECT add2(1,2)
- CREATE OR REPLACE FUNCTION add(int, int) RETURNS INTEGER AS+| 
- $$                                                         +| 
- BEGIN                                                      +| 
-         return (select $1 + $2);                           +| 
- END; $$ language plpgsql                                    | 
- CREATE OR REPLACE function add2(int, int) RETURNS int as   +| 
- $$                                                         +| 
- BEGIN                                                      +| 
-         return add($1,$2);                                 +| 
- END;                                                       +| 
- $$ language plpgsql                                         | 
- SELECT add2(1,2)                                            | 
- SELECT pg_stat_monitor_reset()                              | 
+                            query                             |    top_query     
+--------------------------------------------------------------+------------------
+ CREATE OR REPLACE FUNCTION add(int, int) RETURNS INTEGER AS +| 
+ $$                                                          +| 
+ BEGIN                                                       +| 
+         return (select $1 + $2);                            +| 
+ END; $$ language plpgsql                                     | 
+ CREATE OR REPLACE FUNCTION add2(int, int) RETURNS INTEGER AS+| 
+ $$                                                          +| 
+ BEGIN                                                       +| 
+         return add($1,$2);                                  +| 
+ END;                                                        +| 
+ $$ language plpgsql                                          | 
+ SELECT (select $1 + $2)                                      | SELECT add2(1,2)
+ SELECT add2(1,2)                                             | 
+ SELECT pg_stat_monitor_reset()                               | 
 (5 rows)
 
 SELECT pg_stat_monitor_reset();

@@ -1,3 +1,4 @@
+DROP ROLE IF EXISTS su;
 CREATE USER su WITH SUPERUSER;
 SET ROLE su;
 
@@ -10,6 +11,6 @@ SELECT routine_schema, routine_name, routine_type, data_type FROM information_sc
 SET ROLE u1;
 SELECT routine_schema, routine_name, routine_type, data_type FROM information_schema.routines WHERE routine_schema = 'public' ORDER BY routine_name COLLATE "C";
 
-set role su;
+SET ROLE su;
 DROP USER u1;
 DROP EXTENSION pg_stat_monitor;

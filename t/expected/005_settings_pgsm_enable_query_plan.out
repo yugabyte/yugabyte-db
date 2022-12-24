@@ -5,10 +5,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_enable_query_plan';
-                  name                  | value | default_value |             description              | minimum | maximum | options | restart 
-----------------------------------------+-------+---------------+--------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_enable_query_plan | yes   | no            | Enable/Disable query plan monitoring |         |         | yes, no | no
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_enable_query_plan';
+                  name                  | setting | unit | context | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+----------------------------------------+---------+------+---------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_enable_query_plan | on      |      | user    | bool    | configuration file |         |         |          | off      | on        | f
 (1 row)
 
 CREATE TABLE TBL_0(key text primary key, txt_0 text, value_0 int);
@@ -26,29 +26,29 @@ SELECT key, txt_0, value_0 FROM TBL_0;
 (1 row)
 
 UPDATE TBL_0 SET value_0 = 1681692777;
-select substr(query, 0,50) as query, calls, query_plan from pg_stat_monitor order by query,calls;
+SELECT substr(query, 0,50) AS query, calls, query_plan FROM pg_stat_monitor ORDER BY query,calls;
                        query                       | calls |                            query_plan                             
 ---------------------------------------------------+-------+-------------------------------------------------------------------
  CREATE TABLE TBL_0(key text primary key, txt_0 te |     1 | 
  INSERT INTO TBL_0(key, txt_0, value_0) VALUES('00 |     1 | 
- SELECT * from pg_stat_monitor_settings where name |     1 | Function Scan on pg_stat_monitor_settings                        +
-                                                   |       |   Filter: (name = 'pg_stat_monitor.pgsm_enable_query_plan'::text)
  SELECT key, txt_0, value_0 FROM TBL_0             |     2 | Seq Scan on tbl_0
+ SELECT name, setting, unit, context, vartype, sou |     1 | Function Scan on pg_show_all_settings a                          +
+                                                   |       |   Filter: (name = 'pg_stat_monitor.pgsm_enable_query_plan'::text)
  SELECT pg_stat_monitor_reset()                    |     1 | Result
  UPDATE TBL_0 SET value_0 = 1681692777             |     1 | 
 (6 rows)
 
-Drop TABLE TBL_0;
+DROP TABLE TBL_0;
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 
 -----------------------
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_enable_query_plan';
-                  name                  | value | default_value |             description              | minimum | maximum | options | restart 
-----------------------------------------+-------+---------------+--------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_enable_query_plan | no    | no            | Enable/Disable query plan monitoring |         |         | yes, no | no
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_enable_query_plan';
+                  name                  | setting | unit | context | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+----------------------------------------+---------+------+---------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_enable_query_plan | off     |      | user    | bool    | configuration file |         |         |          | off      | off       | f
 (1 row)
 
 CREATE TABLE TBL_0(key text primary key, txt_0 text, value_0 int);
@@ -66,15 +66,15 @@ SELECT key, txt_0, value_0 FROM TBL_0;
 (1 row)
 
 UPDATE TBL_0 SET value_0 = 1681692777;
-select substr(query, 0,50) as query, calls, query_plan from pg_stat_monitor order by query,calls;
+SELECT substr(query, 0,50) AS query, calls, query_plan FROM pg_stat_monitor ORDER BY query,calls;
                        query                       | calls | query_plan 
 ---------------------------------------------------+-------+------------
  CREATE TABLE TBL_0(key text primary key, txt_0 te |     1 | 
  INSERT INTO TBL_0(key, txt_0, value_0) VALUES('00 |     1 | 
- SELECT * from pg_stat_monitor_settings where name |     1 | 
  SELECT key, txt_0, value_0 FROM TBL_0             |     2 | 
+ SELECT name, setting, unit, context, vartype, sou |     1 | 
  SELECT pg_stat_monitor_reset()                    |     1 | 
  UPDATE TBL_0 SET value_0 = 1681692777             |     1 | 
 (6 rows)
 
-Drop extension pg_stat_monitor;
+DROP EXTENSION pg_stat_monitor;

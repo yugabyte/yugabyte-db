@@ -5,14 +5,14 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_query_shared_buffer';
-                   name                   | value | default_value |                                        description                                        | minimum | maximum | options | restart 
-------------------------------------------+-------+---------------+-------------------------------------------------------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_query_shared_buffer | 1     | 20            | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor. |       1 |   10000 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_shared_buffer';
+                   name                   | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_shared_buffer | 1       | MB   | postmaster | integer | configuration file | 1       | 10000   |          | 20       | 1         | f
 (1 row)
 
 CREATE database example;
-select datname, substr(query,0,150) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;
+SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
  datname |                                                     query                                                     | calls 
 ---------+---------------------------------------------------------------------------------------------------------------+-------
  example | BEGIN                                                                                                         | 10000
@@ -43,13 +43,13 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_query_shared_buffer';
-                   name                   | value | default_value |                                        description                                        | minimum | maximum | options | restart 
-------------------------------------------+-------+---------------+-------------------------------------------------------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_query_shared_buffer | 100   | 20            | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor. |       1 |   10000 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_shared_buffer';
+                   name                   | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_shared_buffer | 100     | MB   | postmaster | integer | configuration file | 1       | 10000   |          | 20       | 100       | f
 (1 row)
 
-select datname, substr(query,0,150) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;
+SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
  datname |                                                     query                                                     | calls 
 ---------+---------------------------------------------------------------------------------------------------------------+-------
  example | BEGIN                                                                                                         | 10000
@@ -80,13 +80,13 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_query_shared_buffer';
-                   name                   | value | default_value |                                        description                                        | minimum | maximum | options | restart 
-------------------------------------------+-------+---------------+-------------------------------------------------------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_query_shared_buffer | 20    | 20            | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor. |       1 |   10000 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_shared_buffer';
+                   name                   | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_shared_buffer | 20      | MB   | postmaster | integer | configuration file | 1       | 10000   |          | 20       | 20        | f
 (1 row)
 
-select datname, substr(query,0,150) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;
+SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
  datname |                                                     query                                                     | calls 
 ---------+---------------------------------------------------------------------------------------------------------------+-------
  example | BEGIN                                                                                                         | 10000
@@ -111,4 +111,4 @@ select datname, substr(query,0,150) as query, calls from pg_stat_monitor order b
  example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |  1000
 (20 rows)
 
-Drop extension pg_stat_monitor;
+DROP EXTENSION pg_stat_monitor;

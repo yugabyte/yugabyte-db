@@ -31,8 +31,7 @@ COLLATE "C";
  pg_stat_monitor.pgsm_query_max_len       | 2048    |      | postmaster | integer | default | 1024    | 2147483647 |                | 2048     | 2048      | f
  pg_stat_monitor.pgsm_query_shared_buffer | 20      | MB   | postmaster | integer | default | 1       | 10000      |                | 20       | 20        | f
  pg_stat_monitor.pgsm_track               | top     |      | user       | enum    | default |         |            | {none,top,all} | top      | top       | f
- pg_stat_monitor.pgsm_track_planning      | off     |      | user       | bool    | default |         |            |                | off      | off       | f
  pg_stat_monitor.pgsm_track_utility       | on      |      | user       | bool    | default |         |            |                | on       | on        | f
-(15 rows)
+(14 rows)
 
 DROP EXTENSION pg_stat_monitor;

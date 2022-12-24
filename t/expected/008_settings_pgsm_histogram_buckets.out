@@ -5,10 +5,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_buckets';
-                  name                  | value | default_value |                 description                  | minimum | maximum | options | restart 
-----------------------------------------+-------+---------------+----------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_histogram_buckets | 10    | 10            | Sets the maximum number of histogram buckets |       2 |      50 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_buckets';
+                  name                  | setting | unit |  context   | vartype | source  | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+----------------------------------------+---------+------+------------+---------+---------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_buckets | 20      |      | postmaster | integer | default | 2       | 50      |          | 20       | 20        | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -17,10 +17,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_buckets';
-                  name                  | value | default_value |                 description                  | minimum | maximum | options | restart 
-----------------------------------------+-------+---------------+----------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_histogram_buckets | 10    | 10            | Sets the maximum number of histogram buckets |       2 |      50 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_buckets';
+                  name                  | setting | unit |  context   | vartype | source  | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+----------------------------------------+---------+------+------------+---------+---------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_buckets | 20      |      | postmaster | integer | default | 2       | 50      |          | 20       | 20        | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -29,10 +29,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_buckets';
-                  name                  | value | default_value |                 description                  | minimum | maximum | options | restart 
-----------------------------------------+-------+---------------+----------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_histogram_buckets | 10    | 10            | Sets the maximum number of histogram buckets |       2 |      50 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_buckets';
+                  name                  | setting | unit |  context   | vartype | source  | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+----------------------------------------+---------+------+------------+---------+---------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_buckets | 20      |      | postmaster | integer | default | 2       | 50      |          | 20       | 20        | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -41,10 +41,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_buckets';
-                  name                  | value | default_value |                 description                  | minimum | maximum | options | restart 
-----------------------------------------+-------+---------------+----------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_histogram_buckets | 10    | 10            | Sets the maximum number of histogram buckets |       2 |      50 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_buckets';
+                  name                  | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+----------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_buckets | 10      |      | postmaster | integer | configuration file | 2       | 50      |          | 20       | 10        | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -53,10 +53,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_buckets';
-                  name                  | value | default_value |                 description                  | minimum | maximum | options | restart 
-----------------------------------------+-------+---------------+----------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_histogram_buckets | 5     | 10            | Sets the maximum number of histogram buckets |       2 |      50 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_buckets';
+                  name                  | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+----------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_buckets | 5       |      | postmaster | integer | configuration file | 2       | 50      |          | 20       | 5         | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -65,10 +65,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_buckets';
-                  name                  | value | default_value |                 description                  | minimum | maximum | options | restart 
-----------------------------------------+-------+---------------+----------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_histogram_buckets | 10    | 10            | Sets the maximum number of histogram buckets |       2 |      50 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_buckets';
+                  name                  | setting | unit |  context   | vartype | source  | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+----------------------------------------+---------+------+------------+---------+---------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_buckets | 20      |      | postmaster | integer | default | 2       | 50      |          | 20       | 20        | f
 (1 row)
 
-Drop extension pg_stat_monitor;
+DROP EXTENSION pg_stat_monitor;

@@ -5,49 +5,49 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings;
-                   name                   | value  | default_value |                                               description                                                | minimum |  maximum   |    options     | restart 
-------------------------------------------+--------+---------------+----------------------------------------------------------------------------------------------------------+---------+------------+----------------+---------
- pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
- pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
- pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
- pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
- pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
- pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
- pg_stat_monitor.pgsm_histogram_max       | 100000 | 100000        | Sets the time in millisecond.                                                                            |      10 | 2147483647 |                | yes
- pg_stat_monitor.pgsm_histogram_buckets   | 10     | 10            | Sets the maximum number of histogram buckets                                                             |       2 |         50 |                | yes
- pg_stat_monitor.pgsm_query_shared_buffer | 20     | 20            | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.                |       1 |      10000 |                | yes
- pg_stat_monitor.pgsm_overflow_target     | 1      | 1             | Sets the overflow target for pg_stat_monitor                                                             |       0 |          1 |                | yes
- pg_stat_monitor.pgsm_enable_query_plan   | no     | no            | Enable/Disable query plan monitoring                                                                     |         |            | yes, no        | no
- pg_stat_monitor.pgsm_track               | top    | top           | Selects which statements are tracked by pg_stat_monitor.                                                 |         |            | none, top, all | no
- pg_stat_monitor.pgsm_extract_comments    | no     | no            | Enable/Disable extracting comments from queries.                                                         |         |            | yes, no        | no
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name LIKE '%pg_stat_monitor%';
+                   name                   | setting | unit |  context   | vartype | source  | min_val |  max_val   |    enumvals    | boot_val | reset_val | pending_restart 
+------------------------------------------+---------+------+------------+---------+---------+---------+------------+----------------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_bucket_time         | 60      |      | postmaster | integer | default | 1       | 2147483647 |                | 60       | 60        | f
+ pg_stat_monitor.pgsm_enable_query_plan   | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_extract_comments    | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_histogram_buckets   | 20      |      | postmaster | integer | default | 2       | 50         |                | 20       | 20        | f
+ pg_stat_monitor.pgsm_histogram_max       | 100000  |      | postmaster | integer | default | 10      | 2147483647 |                | 100000   | 100000    | f
+ pg_stat_monitor.pgsm_histogram_min       | 1       |      | postmaster | integer | default | 0       | 2147483647 |                | 1        | 1         | f
+ pg_stat_monitor.pgsm_max                 | 100     | MB   | postmaster | integer | default | 1       | 1000       |                | 100      | 100       | f
+ pg_stat_monitor.pgsm_max_buckets         | 10      |      | postmaster | integer | default | 1       | 10         |                | 10       | 10        | f
+ pg_stat_monitor.pgsm_normalized_query    | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_overflow_target     | 1       |      | postmaster | integer | default | 0       | 1          |                | 1        | 1         | f
+ pg_stat_monitor.pgsm_query_max_len       | 2048    |      | postmaster | integer | default | 1024    | 2147483647 |                | 2048     | 2048      | f
+ pg_stat_monitor.pgsm_query_shared_buffer | 20      | MB   | postmaster | integer | default | 1       | 10000      |                | 20       | 20        | f
+ pg_stat_monitor.pgsm_track               | top     |      | user       | enum    | default |         |            | {none,top,all} | top      | top       | f
+ pg_stat_monitor.pgsm_track_utility       | on      |      | user       | bool    | default |         |            |                | on       | on        | f
 (14 rows)
 
-select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;
- datname  |                 query                  | calls 
-----------+----------------------------------------+-------
- postgres | SELECT * from pg_stat_monitor_settings |     1
- postgres | SELECT pg_stat_monitor_reset()         |     1
+SELECT datname, substr(query,0,100) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
+ datname  |                                                query                                                | calls 
+----------+-----------------------------------------------------------------------------------------------------+-------
+ postgres | SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_v |     1
+ postgres | SELECT pg_stat_monitor_reset()                                                                      |     1
 (2 rows)
 
-SELECT * from pg_stat_monitor_settings;
-                   name                   | value  | default_value |                                               description                                                | minimum |  maximum   |    options     | restart 
-------------------------------------------+--------+---------------+----------------------------------------------------------------------------------------------------------+---------+------------+----------------+---------
- pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
- pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
- pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
- pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
- pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
- pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
- pg_stat_monitor.pgsm_histogram_max       | 100000 | 100000        | Sets the time in millisecond.                                                                            |      10 | 2147483647 |                | yes
- pg_stat_monitor.pgsm_histogram_buckets   | 10     | 10            | Sets the maximum number of histogram buckets                                                             |       2 |         50 |                | yes
- pg_stat_monitor.pgsm_query_shared_buffer | 20     | 20            | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.                |       1 |      10000 |                | yes
- pg_stat_monitor.pgsm_overflow_target     | 1      | 1             | Sets the overflow target for pg_stat_monitor                                                             |       0 |          1 |                | yes
- pg_stat_monitor.pgsm_enable_query_plan   | no     | no            | Enable/Disable query plan monitoring                                                                     |         |            | yes, no        | no
- pg_stat_monitor.pgsm_track               | top    | top           | Selects which statements are tracked by pg_stat_monitor.                                                 |         |            | none, top, all | no
- pg_stat_monitor.pgsm_extract_comments    | no     | no            | Enable/Disable extracting comments from queries.                                                         |         |            | yes, no        | no
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name LIKE '%pg_stat_monitor%';
+                   name                   | setting | unit |  context   | vartype | source  | min_val |  max_val   |    enumvals    | boot_val | reset_val | pending_restart 
+------------------------------------------+---------+------+------------+---------+---------+---------+------------+----------------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_bucket_time         | 60      |      | postmaster | integer | default | 1       | 2147483647 |                | 60       | 60        | f
+ pg_stat_monitor.pgsm_enable_query_plan   | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_extract_comments    | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_histogram_buckets   | 20      |      | postmaster | integer | default | 2       | 50         |                | 20       | 20        | f
+ pg_stat_monitor.pgsm_histogram_max       | 100000  |      | postmaster | integer | default | 10      | 2147483647 |                | 100000   | 100000    | f
+ pg_stat_monitor.pgsm_histogram_min       | 1       |      | postmaster | integer | default | 0       | 2147483647 |                | 1        | 1         | f
+ pg_stat_monitor.pgsm_max                 | 100     | MB   | postmaster | integer | default | 1       | 1000       |                | 100      | 100       | f
+ pg_stat_monitor.pgsm_max_buckets         | 10      |      | postmaster | integer | default | 1       | 10         |                | 10       | 10        | f
+ pg_stat_monitor.pgsm_normalized_query    | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_overflow_target     | 1       |      | postmaster | integer | default | 0       | 1          |                | 1        | 1         | f
+ pg_stat_monitor.pgsm_query_max_len       | 2048    |      | postmaster | integer | default | 1024    | 2147483647 |                | 2048     | 2048      | f
+ pg_stat_monitor.pgsm_query_shared_buffer | 20      | MB   | postmaster | integer | default | 1       | 10000      |                | 20       | 20        | f
+ pg_stat_monitor.pgsm_track               | top     |      | user       | enum    | default |         |            | {none,top,all} | top      | top       | f
+ pg_stat_monitor.pgsm_track_utility       | on      |      | user       | bool    | default |         |            |                | on       | on        | f
 (14 rows)
 
 SELECT pg_stat_monitor_reset();
@@ -56,4 +56,4 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-Drop extension pg_stat_monitor;
+DROP EXTENSION pg_stat_monitor;

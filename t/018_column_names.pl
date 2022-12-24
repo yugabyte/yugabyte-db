@@ -10,14 +10,14 @@ use Test::More;
 use lib 't';
 use pgsm;
 
-# Get filename and create out file name and dirs where requried
+# Get file name and CREATE out file name and dirs WHERE requried
 PGSM::setup_files_dir(basename($0));
 
-# Create new PostgreSQL node and do initdb
+# CREATE new PostgreSQL node and do initdb
 my $node = PGSM->pgsm_init_pg();
 my $pgdata = $node->data_dir;
 
-# Update postgresql.conf to include/load pg_stat_monitor library
+# UPDATE postgresql.conf to include/load pg_stat_monitor library
 open my $conf, '>>', "$pgdata/postgresql.conf";
 print $conf "shared_preload_libraries = 'pg_stat_monitor'\n";
 close $conf;
@@ -74,27 +74,27 @@ my %pg_versions_pgsm_columns = ( 15 => "application_name,blk_read_time," .
 my $rt_value = $node->start;
 ok($rt_value == 1, "Start Server");
 
-# Create extension and change out file permissions
+# CREATE EXTENSION and change out file permissions
 my ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'CREATE EXTENSION pg_stat_monitor;', extra_params => ['-a']);
-ok($cmdret == 0, "Create PGSM Extension");
+ok($cmdret == 0, "CREATE PGSM EXTENSION");
 PGSM::append_to_file($stdout . "\n");
 
-# Get PGSM columns names from PGSM installation in server 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT column_name  FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'pg_stat_monitor' order by column_name;", extra_params => ['-A', '-R,', '-Ptuples_only=on']);
+# Get PGSM columns names FROM PGSM installation in server
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT column_name  FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'pg_stat_monitor' ORDER BY column_name;", extra_params => ['-A', '-R,', '-Ptuples_only=on']);
 ok($cmdret == 0, "Get columns names in PGSM installation for PG version $PGSM::PG_MAJOR_VERSION");
 PGSM::append_to_file($stdout . "\n");
 
 # Compare PGSM column names in installation to expected column names
 ok($stdout eq $pg_versions_pgsm_columns{$PGSM::PG_MAJOR_VERSION}, "Compare supported columns names for PG version $PGSM::PG_MAJOR_VERSION against expected");
 
-# Run Select statement against expected column names
-($cmdret, $stdout, $stderr) = $node->psql('postgres', "Select $pg_versions_pgsm_columns{$PGSM::PG_MAJOR_VERSION} from pg_stat_monitor;", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
-ok($cmdret == 0, "Select statement against expected column names");
+# Run SELECT statement against expected column names
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT $pg_versions_pgsm_columns{$PGSM::PG_MAJOR_VERSION} FROM pg_stat_monitor;", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+ok($cmdret == 0, "SELECT statement against expected column names");
 PGSM::append_to_file($stdout);
 
-# Drop extension
-$stdout = $node->safe_psql('postgres', 'Drop extension pg_stat_monitor;',  extra_params => ['-a']);
-ok($cmdret == 0, "Drop PGSM  Extension");
+# DROP EXTENSION
+$stdout = $node->safe_psql('postgres', 'DROP EXTENSION pg_stat_monitor;', extra_params => ['-a']);
+ok($cmdret == 0, "DROP PGSM EXTENSION");
 PGSM::append_to_file($stdout);
 
 # Stop the server
