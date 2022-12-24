@@ -28,8 +28,6 @@ Environment="YB_USE_VIRTUAL_ENV=1"
 
 ExecStart=/opt/yugabyte/yugaware/bin/yugaware -Dconfig.file=/opt/yugabyte/platform.conf
 
-# allow platform to bind to port 443
-AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
