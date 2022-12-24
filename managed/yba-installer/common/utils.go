@@ -9,12 +9,14 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -86,8 +88,16 @@ func GetVersion() string {
 
 	versionNumber := fmt.Sprint(configViper.Get("version_number"))
 	buildNumber := fmt.Sprint(configViper.Get("build_number"))
+	if os.Getenv("YBA_MODE") == "dev" {
+		// in dev itest builds, build_number is set to PRE_RELEASE
+		buildNumber = fmt.Sprint(configViper.Get("build_id"))
+	}
 
 	version := versionNumber + "-b" + buildNumber
+
+	if !IsValidVersion(version) {
+		log.Fatal(fmt.Sprintf("Invalid version in metadata file '%s'", version))
+	}
 
 	return version
 }
@@ -108,7 +118,7 @@ func ExecuteBashCommand(command string, args []string) (o string, e error) {
 	err := cmd.Run()
 
 	if err == nil {
-		log.Debug(fmt.Sprintf("Completed running command: %s [took %d secs]", fullCmd, time.Since(startTime)))
+		log.Debug(fmt.Sprintf("Completed running command: %s [took %f secs]", fullCmd, time.Since(startTime).Seconds()))
 		log.Trace(fmt.Sprintf("Stdout for command %s was \n%s\n", fullCmd, execOut.String()))
 		log.Trace(fmt.Sprintf("Stderr for command %s was \n%s\n", fullCmd, execErr.String()))
 	} else {
@@ -320,15 +330,135 @@ func InitViper() {
 
 func GetBinaryDir() string {
 
-	ex, err := os.Executable()
+	exPath, err := os.Executable()
 	if err != nil {
 		log.Fatal("Error determining yba-ctl binary path.")
 	}
-	return filepath.Dir(ex)
+	realPath, err := filepath.EvalSymlinks(exPath)
+	if err != nil {
+		log.Fatal("Error eval symlinks for yba-ctl binary path.")
+	}
+	return filepath.Dir(realPath)
 }
 
 func GetReferenceYaml() string {
 	return filepath.Join(GetBinaryDir(), "yba-ctl.yml.reference")
+}
+
+type YBVersion struct {
+
+	// ex: 2.17.1.0-b235-foo
+	// major, minor, patch, subpatch in order
+	// ex: 2.17.1.0
+	PublicVersionDigits []int
+
+	// ex: 235
+	BuildNum int
+
+	// ex: foo
+	Remainder string
+}
+
+func NewYBVersion(versionString string) (*YBVersion, error) {
+	version := &YBVersion{
+		PublicVersionDigits: []int{-1, -1, -1, -1},
+		BuildNum:            -1,
+	}
+
+	if versionString == "" {
+		return version, nil
+	}
+
+	re := regexp.MustCompile(
+		`^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.(?P<patch>[0-9]+)\.(?P<subpatch>[0-9]+)(?:-b(?P<build>[0-9]+)[-a-z]*)?$`)
+	matches := re.FindStringSubmatch(versionString)
+	if matches == nil || len(matches) < 5 {
+		return version, fmt.Errorf("invalid version string %s", versionString)
+	}
+
+	var err error
+	version.PublicVersionDigits[0], err = strconv.Atoi(matches[1])
+	if err != nil {
+		return version, err
+	}
+
+	version.PublicVersionDigits[1], err = strconv.Atoi(matches[2])
+	if err != nil {
+		return version, err
+	}
+
+	version.PublicVersionDigits[2], err = strconv.Atoi(matches[3])
+	if err != nil {
+		return version, err
+	}
+
+	version.PublicVersionDigits[3], err = strconv.Atoi(matches[4])
+	if err != nil {
+		return version, err
+	}
+
+	if len(matches) > 5 && matches[5] != "" {
+		version.BuildNum, err = strconv.Atoi(matches[5])
+		if err != nil {
+			return version, err
+		}
+	}
+
+	if len(matches) > 6 && matches[6] != "" {
+		version.Remainder = matches[6]
+	}
+
+	return version, nil
+
+}
+
+func (ybv YBVersion) String() string {
+	reprStr, _ := json.Marshal(ybv)
+	return string(reprStr)
+}
+
+func IsValidVersion(fullVersion string) bool {
+	_, err := NewYBVersion(fullVersion)
+	return err == nil
+}
+
+// returns true if version1 < version2
+func LessVersions(version1, version2 string) bool {
+	ybversion1, err := NewYBVersion(version1)
+	if err != nil {
+		panic(err)
+	}
+
+	ybversion2, err := NewYBVersion(version2)
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < 4; i++ {
+		if ybversion1.PublicVersionDigits[i] != ybversion2.PublicVersionDigits[i] {
+			return ybversion1.PublicVersionDigits[i] < ybversion2.PublicVersionDigits[i]
+		}
+	}
+	if ybversion1.BuildNum != ybversion2.BuildNum {
+		return ybversion1.BuildNum < ybversion2.BuildNum
+	}
+
+	return ybversion1.Remainder < ybversion2.Remainder
+}
+
+// only keep elements which eval to true on filter func
+func FilterList[T any](sourceList []T, filterFunc func(T) bool) (result []T) {
+	for _, s := range sourceList {
+		if filterFunc(s) {
+			result = append(result, s)
+		}
+	}
+	return
+}
+
+func GetJsonRepr[T any](obj T) []byte {
+	reprStr, _ := json.Marshal(obj)
+	return reprStr
 }
 
 func init() {

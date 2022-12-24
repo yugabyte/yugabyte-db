@@ -95,7 +95,6 @@ func (pg Postgres) getPgUserName() string {
 
 // Install postgres and create the yugaware DB for YBA.
 func (pg Postgres) Install() {
-	log.Info("Starting Postgres install")
 	config.GenerateTemplate(pg)
 	pg.extractPostgresPackage()
 	pg.runInitDB()
@@ -108,7 +107,6 @@ func (pg Postgres) Install() {
 	if !common.HasSudoAccess() {
 		pg.CreateCronJob()
 	}
-	log.Info("Finishing Postgres install")
 }
 
 // TODO: This should generate the correct start string based on installation mode
@@ -263,7 +261,7 @@ func (pg Postgres) RestoreBackup() {
 // This function should be primarily used for major version changes for postgres.
 // TODO: we should gate this to only postgres.install.enabled = true
 func (pg Postgres) UpgradeMajorVersion() {
-	log.Info("Starting Postgres upgrade")
+	log.Info("Starting Postgres major upgrade")
 	pg.CreateBackup()
 	pg.Stop()
 	pg.postgresDirectories = newPostgresDirectories()
@@ -278,7 +276,7 @@ func (pg Postgres) UpgradeMajorVersion() {
 	if !common.HasSudoAccess() {
 		pg.CreateCronJob()
 	}
-	log.Info("Finishing Postgres upgrade")
+	log.Info("Completed Postgres major upgrade")
 }
 
 // Upgrade will do a minor version upgrade of postgres
@@ -294,7 +292,6 @@ func (pg Postgres) Upgrade() {
 		pg.CreateCronJob()
 	}
 
-	log.Info("Finishing Postgres upgrade")
 }
 
 func (pg Postgres) extractPostgresPackage() {

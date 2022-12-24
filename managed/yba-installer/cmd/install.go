@@ -34,13 +34,15 @@ var installCmd = &cobra.Command{
 		common.Install(common.GetVersion())
 
 		for _, name := range serviceOrder {
+			log.Info("About to install component " + name)
 			services[name].Install()
+			log.Info("Completed installing component " + name)
 		}
 
 		for _, name := range serviceOrder {
 			status := services[name].Status()
 			if status.Status != common.StatusRunning {
-				log.Fatal(status.Service + " is not running! Install failed")
+				log.Fatal(status.Service + " is not running! Install might have failed, please check " + common.YbaCtlLogFile)
 			}
 		}
 
