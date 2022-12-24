@@ -194,7 +194,6 @@ func (prom Prometheus) Uninstall(removeData bool) {
 // Upgrade will upgrade prometheus and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be runnins
 func (prom Prometheus) Upgrade() {
-	log.Info("Starting Prometheus upgrade")
 	prom.prometheusDirectories = newPrometheusDirectories()
 	config.GenerateTemplate(prom) // No need to reload systemd, start takes care of that for us.
 	prom.moveAndExtractPrometheusPackage()
@@ -212,7 +211,6 @@ func (prom Prometheus) Upgrade() {
 		prom.CreateCronJob()
 	}
 	prom.Start()
-	log.Info("Finishing Prometheus upgrade")
 }
 
 func (prom Prometheus) moveAndExtractPrometheusPackage() {

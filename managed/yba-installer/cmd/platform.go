@@ -372,7 +372,6 @@ func (plat Platform) Status() common.Status {
 // Upgrade will upgrade the platform and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (plat Platform) Upgrade() {
-	log.Info("Starting Platform upgrade")
 	plat.platformDirectories = newPlatDirectories()
 	config.GenerateTemplate(plat) // systemctl reload is not needed, start handles it for us.
 	plat.createNecessaryDirectories()
@@ -395,7 +394,6 @@ func (plat Platform) Upgrade() {
 		common.Chown(common.GetInstallRoot(), userName, userName, true)
 	}
 	plat.Start()
-	log.Info("Finishing Platform upgrade")
 }
 
 func convertCertsToKeyStoreFormat() {
