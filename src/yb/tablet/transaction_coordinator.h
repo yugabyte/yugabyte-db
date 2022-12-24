@@ -68,7 +68,7 @@ class TransactionCoordinatorContext {
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
       std::shared_ptr<LWTransactionStatePB> request) = 0;
-  virtual void SubmitUpdateTransaction(
+  virtual Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
   server::Clock& clock() const {

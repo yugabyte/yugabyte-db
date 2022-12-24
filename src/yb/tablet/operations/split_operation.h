@@ -57,8 +57,8 @@ class SplitOperation
   Status Prepare(IsLeaderSide is_leader_side) override;
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;
   Status DoAborted(const Status& status) override;
-  void AddedAsPending() override;
-  void RemovedFromPending() override;
+  void AddedAsPending(const TabletPtr& tablet) override;
+  void RemovedFromPending(const TabletPtr& tablet) override;
 
   Status CheckOperationAllowed(
       const OpId& id, consensus::OperationType op_type) const override;
