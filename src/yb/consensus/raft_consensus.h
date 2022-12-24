@@ -504,7 +504,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Respond to VoteRequest that the vote was not granted because we believe
   // the leader to be alive.
   Status RequestVoteRespondLeaderIsAlive(const VoteRequestPB* request,
-                                         VoteResponsePB* response);
+                                         VoteResponsePB* response,
+                                         const std::string& leader_uuid);
 
   // Respond to VoteRequest that the replica is already in the middle of servicing
   // another vote request or an update from a valid leader.

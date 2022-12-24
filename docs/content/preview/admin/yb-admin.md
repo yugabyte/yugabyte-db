@@ -1840,6 +1840,38 @@ The CDC bootstrap ids are the ones that should be used with [`setup_universe_rep
 
 ---
 
+#### get_replication_status
+
+Returns the replication status of all consumer streams. If *producer_universe_uuid* is provided, this will only return streams that belong to an associated universe key.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> get_replication_status [ <producer_universe_uuid> ]
+```
+
+* *producer_universe_uuid*: Optional universe-unique identifier (can be any string, such as a string of a UUID).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    get_replication_status e260b8b6-e89f-4505-bb8e-b31f74aa29f3
+```
+
+```output
+statuses {
+  table_id: "03ee1455f2134d5b914dd499ccad4377"
+  stream_id: "53441ad2dd9f4e44a76dccab74d0a2ac"
+  errors {
+    error: REPLICATION_MISSING_OP_ID
+    error_detail: "Unable to find expected op id on the producer"
+  }
+}
+```
+
 ### Decommissioning commands
 
 #### get_leader_blacklist_completion

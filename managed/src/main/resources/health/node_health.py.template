@@ -1555,6 +1555,10 @@ def main():
                         help='Time to wait between retries of failed checks.')
     args = parser.parse_args()
 
+    if args.metrics_only:
+        logger = logging.getLogger()
+        logger.disabled = True
+
     # Allow passing node info as argument, otherwise get pre-defined during script upload
     n = NodeInfo(json.loads(args.node_info if args.node_info is not None else NODE_INFO))
     coordinator = CheckCoordinator(args.retry_interval_secs)
@@ -1644,8 +1648,6 @@ def main():
 
         # Write to stdout to be caught by YW subprocess.
         print(report)
-    else:
-        print(report.to_prom_format())
 
 
 if __name__ == '__main__':

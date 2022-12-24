@@ -43,6 +43,7 @@ The **Create Cluster** wizard has the following pages:
 
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
+1. [Network Access](#network-access)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
@@ -69,7 +70,7 @@ You can't change the Fault tolerance of a cluster after it's created.
 
 **Region**: Choose the [region](../../../release-notes#cloud-provider-regions) where the cluster will be located, or click **Request a multi-region cluster** to contact Yugabyte Support to arrange multi-region deployment.
 
-**Nodes**: Enter the number of nodes for the cluster. Node and Availability zone level clusters have a minimum of 3 nodes; Availability zone level clusters increment by 3.
+**Nodes**: Enter the number of nodes for the cluster. Node and Availability Zone Level clusters have a minimum of 3 nodes; Availability Zone Level clusters increment by 3.
 
 **vCPU/Node**: Enter the number of virtual CPUs per node.
 
@@ -84,6 +85,8 @@ Monthly total costs for the cluster are based on the number of vCPUs and estimat
 ![Add Cluster Wizard - Configure VPC](/images/yb-cloud/cloud-addcluster-paid3.3.png)
 
 To use a VPC for network isolation and security, select **Use VPC peering**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+
+{{% includeMarkdown "network-access.md" %}}
 
 ### Database Credentials
 

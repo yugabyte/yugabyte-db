@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -41,6 +42,9 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -62,6 +66,7 @@ import com.yugabyte.yw.models.helpers.TaskTypesModule;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
+import io.prometheus.client.CollectorRegistry;
 import java.security.Security;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.validator.routines.DomainValidator;
@@ -74,9 +79,9 @@ import org.pac4j.oidc.config.OidcConfiguration;
 import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+import org.yb.perf_advisor.module.PerfAdvisor;
 import play.Configuration;
 import play.Environment;
-import io.prometheus.client.CollectorRegistry;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -97,6 +102,7 @@ public class Module extends AbstractModule {
 
   @Override
   public void configure() {
+
     if (!config.getBoolean("play.evolutions.enabled")) {
       // We want to init flyway only when evolutions are not enabled
       bind(YBFlywayInit.class).asEagerSingleton();
@@ -109,7 +115,9 @@ public class Module extends AbstractModule {
     Security.addProvider(new BouncyCastleProvider());
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CustomerConfKeys());
-    // TODO: Other scopes
+    install(new ProviderConfKeys());
+    install(new GlobalConfKeys());
+    install(new UniverseConfKeys());
 
     install(new CloudModules());
     CollectorRegistry.defaultRegistry.clear();
@@ -130,6 +138,7 @@ public class Module extends AbstractModule {
 
     // We only needed to bind below ones for Platform mode.
     if (config.getString("yb.mode", "PLATFORM").equals("PLATFORM")) {
+      bind(PerfAdvisor.class).asEagerSingleton();
       bind(SwamperHelper.class).asEagerSingleton();
       bind(NodeManager.class).asEagerSingleton();
       bind(MetricQueryHelper.class).asEagerSingleton();
@@ -172,6 +181,7 @@ public class Module extends AbstractModule {
       bind(AccessKeyRotationUtil.class).asEagerSingleton();
       bind(GcpEARServiceUtil.class).asEagerSingleton();
       bind(YbcUpgrade.class).asEagerSingleton();
+      bind(PerfAdvisorScheduler.class).asEagerSingleton();
     }
   }
 

@@ -20,6 +20,7 @@ monitors:
 host_requirements:
   disk_space: 50GB
   docker_space: 10GB
+  docker_version: 20.10.0
 custom_requirements:
   - id: check_free_space
     message: Ensure there is sufficient space for platform installation
@@ -414,8 +415,6 @@ components:
             container_path: /opt/yugabyte/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/ybc/releases'
             container_path: /opt/yugabyte/ybc/releases
-          - host_path: '{{repl ConfigOption "storage_path"}}/node-agent/releases'
-            container_path: /opt/yugabyte/node-agent/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
@@ -462,12 +461,6 @@ components:
                 default.port="{{repl ConfigOption "db_external_port"}}"
                 default.username="{{repl ConfigOption "dbuser"}}"
                 default.password="{{repl ConfigOption "dbpass"}}"
-                default.logStatements=true
-                default.migration.initOnMigrate=true
-                default.migration.auto=true
-              }
-              ebean {
-                default = ["com.yugabyte.yw.models.*"]
               }
 
               play.filters {

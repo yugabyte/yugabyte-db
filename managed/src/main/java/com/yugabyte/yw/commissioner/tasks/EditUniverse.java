@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -26,6 +27,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -36,8 +40,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
@@ -295,6 +297,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           true /* isShell */,
           false /* ignore node status check */,
           ignoreUseCustomImageConfig);
+
+      // Copy the source root certificate to the provisioned nodes.
+      createTransferXClusterCertsCopyTasks(
+          nodesToProvision, universe, SubTaskGroupType.Provisioning);
     }
 
     Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
@@ -369,12 +375,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
-
-    if (!removeMasters.isEmpty() || !newMasters.isEmpty()) {
-      // Update placement info on master leader.
-      createPlacementInfoTask(null /* additional blacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-    }
+    // Update placement info on master leader.
+    createPlacementInfoTask(null /* additional blacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     if (!newTservers.isEmpty()
         || !newMasters.isEmpty()
@@ -401,10 +404,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
     }
 
-    if (cluster.clusterType == ClusterType.PRIMARY
-        && PlacementInfoUtil.didAffinitizedLeadersChange(
-            universe.getUniverseDetails().getPrimaryCluster().placementInfo,
-            cluster.placementInfo)) {
+    // Add new nodes to load balancer.
+    createManageLoadBalancerTasks(
+        createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null, null));
+
+    if (cluster.clusterType == ClusterType.PRIMARY) {
       createWaitForLeadersOnPreferredOnlyTask();
     }
 
@@ -481,6 +485,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
+      // Remove nodes from load balancer.
+      createManageLoadBalancerTasks(
+          createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), nodesToBeRemoved, null));
+
       // Set the node states to Removing.
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);

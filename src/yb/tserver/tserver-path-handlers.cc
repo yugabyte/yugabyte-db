@@ -445,6 +445,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       "/api/v1/version", "YB Version Information",
       std::bind(&TabletServerPathHandlers::HandleVersionInfoDump, this, _1, _2),
       false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/masters", "Master servers and their role (Leader/Follower)",
+      std::bind(&TabletServerPathHandlers::HandleListMasterServers, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
   return Status::OK();
 }
 
@@ -701,7 +705,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
 
     // TODO: would be nice to include some other stuff like memory usage
     shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
-    (*output) << Substitute(
+    (*output) << Format(
         // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
         // State, Hidden, num SST files, on-disk size, consensus configuration, last status
@@ -720,6 +724,19 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         EscapeForHtmlToString(status.last_status()));  // $10
   }
   *output << "</table>\n";
+}
+
+void TabletServerPathHandlers::HandleListMasterServers(const Webserver::WebRequest& req,
+                                                       Webserver::WebResponse* resp) {
+  // Get the version info.
+  ListMasterServersRequestPB list_masters_req;
+  ListMasterServersResponsePB list_masters_resp;
+
+  const Status s = tserver_->ListMasterServers(&list_masters_req, &list_masters_resp);
+
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::PRETTY);
+  jw.Protobuf(list_masters_resp);
 }
 
 namespace {

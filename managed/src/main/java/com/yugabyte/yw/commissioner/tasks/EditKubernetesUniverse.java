@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckStorageClass;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -102,10 +103,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
       String masterAddresses =
-          PlacementInfoUtil.computeMasterAddresses(
+          KubernetesUtil.computeMasterAddresses(
               primaryPI,
               primaryPlacement.masters,
               taskParams().nodePrefix,
+              universe.name,
               provider,
               universeDetails.communicationPorts.masterRpcPort,
               newNamingStyle);
@@ -127,7 +129,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               taskParams().getPrimaryCluster(),
               universeDetails.getPrimaryCluster(),
               masterAddresses,
-              /*restartAllPods*/ false);
+              false /* restartAllPods */);
 
       // read cluster edit.
       for (Cluster cluster : taskParams().clusters) {
@@ -191,6 +193,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);
     Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     boolean instanceTypeChanged = false;
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
@@ -236,7 +239,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             isMultiAZ,
             isReadOnlyCluster);
 
-    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
     PlacementInfo activeZones = new PlacementInfo();
     for (UUID currAZs : curPlacement.configs.keySet()) {
       PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
@@ -248,6 +250,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // If starting new masters, we want them to come up in shell-mode.
       restartAllPods = true;
       startNewPods(
+          universe.name,
           mastersToAdd,
           ServerType.MASTER,
           activeZones,
@@ -263,6 +266,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Bring up new tservers.
     if (!tserversToAdd.isEmpty()) {
       startNewPods(
+          universe.name,
           tserversToAdd,
           ServerType.TSERVER,
           activeZones,
@@ -298,6 +302,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // This will update the master addresses as well as the instance type changes.
     if (restartAllPods) {
       upgradePodsTask(
+          universe.name,
           newPlacement,
           masterAddresses,
           curPlacement,
@@ -313,6 +318,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     if (instanceTypeChanged || restartAllPods) {
       upgradePodsTask(
+          universe.name,
           newPlacement,
           masterAddresses,
           curPlacement,
@@ -334,6 +340,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // Using currPlacement, newPlacement we figure out what pods need to be removed. So no need to
       // pass tserversRemoved.
       deletePodsTask(
+          universe.name,
           curPlacement,
           masterAddresses,
           newPlacement,
@@ -355,12 +362,25 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           "Creating task for disk size change from {} to {}",
           curIntent.deviceInfo.volumeSize,
           newIntent.deviceInfo.volumeSize);
-      createResizeDiskTask(newPlacement, masterAddresses, newIntent, isReadOnlyCluster);
+      createResizeDiskTask(
+          universe.name,
+          newPlacement,
+          masterAddresses,
+          newIntent,
+          isReadOnlyCluster,
+          newNamingStyle);
     }
 
     // Update the universe to the new state.
     createSingleKubernetesExecutorTask(
-        KubernetesCommandExecutor.CommandType.POD_INFO, newPI, isReadOnlyCluster);
+        universe.name, KubernetesCommandExecutor.CommandType.POD_INFO, newPI, isReadOnlyCluster);
+
+    if (!mastersToAdd.isEmpty()) {
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
+    }
+
     return !mastersToAdd.isEmpty();
   }
 
@@ -417,6 +437,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   Starts up the new pods as requested by the user.
   */
   public void startNewPods(
+      String universeName,
       Set<NodeDetails> podsToAdd,
       ServerType serverType,
       PlacementInfo activeZones,
@@ -425,10 +446,23 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       KubernetesPlacement newPlacement,
       KubernetesPlacement currPlacement) {
     createPodsTask(
-        newPlacement, masterAddresses, currPlacement, serverType, activeZones, isReadOnlyCluster);
+        universeName,
+        newPlacement,
+        masterAddresses,
+        currPlacement,
+        serverType,
+        activeZones,
+        isReadOnlyCluster);
 
     createSingleKubernetesExecutorTask(
-        KubernetesCommandExecutor.CommandType.POD_INFO, activeZones, isReadOnlyCluster);
+        universeName,
+        KubernetesCommandExecutor.CommandType.POD_INFO,
+        activeZones,
+        isReadOnlyCluster);
+
+    // Copy the source root certificate to the new pods.
+    createTransferXClusterCertsCopyTasks(
+        podsToAdd, getUniverse(), SubTaskGroupType.ConfigureUniverse);
 
     createWaitForServersTasks(podsToAdd, serverType)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -439,10 +473,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    * universe.
    */
   protected void createResizeDiskTask(
+      String universeName,
       KubernetesPlacement placement,
       String masterAddresses,
       UserIntent userIntent,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle) {
 
     // The method to expand disk size is:
     // 1. Delete statefulset without deleting the pods
@@ -462,9 +498,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               : null;
       Map<String, String> azConfig = entry.getValue();
       // Validate that the StorageClass has allowVolumeExpansion=true
-      createTaskToValidateExpansion(azConfig, azName, isReadOnlyCluster, providerUUID);
+      createTaskToValidateExpansion(
+          universeName, azConfig, azName, isReadOnlyCluster, newNamingStyle, providerUUID);
       // create the three tasks to update volume size
       createSingleKubernetesExecutorTaskForServerType(
+          universeName,
           KubernetesCommandExecutor.CommandType.STS_DELETE,
           placement.placementInfo,
           azName,
@@ -480,6 +518,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           null,
           newDiskSizeGi);
       createSingleKubernetesExecutorTaskForServerType(
+          universeName,
           KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE,
           placement.placementInfo,
           azName,
@@ -496,6 +535,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newDiskSizeGi,
           true);
       createSingleKubernetesExecutorTaskForServerType(
+          universeName,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           placement.placementInfo,
           azName,
@@ -514,15 +554,21 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   private void createTaskToValidateExpansion(
-      Map<String, String> config, String azName, boolean isReadOnlyCluster, UUID providerUUID) {
+      String universeName,
+      Map<String, String> config,
+      String azName,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle,
+      UUID providerUUID) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor()
             .createSubTaskGroup(KubernetesCheckStorageClass.getSubTaskGroupName(), executor);
     KubernetesCheckStorageClass.Params params = new KubernetesCheckStorageClass.Params();
     params.config = config;
+    params.newNamingStyle = newNamingStyle;
     if (config != null) {
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               azName,
               config,
@@ -531,7 +577,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     params.providerUUID = providerUUID;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, azName, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            azName,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
     KubernetesCheckStorageClass task = createTask(KubernetesCheckStorageClass.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

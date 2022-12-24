@@ -11,6 +11,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.directory.api.ldap.model.cursor.EntryCursor;
@@ -55,6 +56,7 @@ public class LdapUtil {
     String serviceAccountUserName;
     String serviceAccountPassword;
     String ldapSearchAttribute;
+    boolean enableDetailedLogs;
   }
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
@@ -91,6 +93,8 @@ public class LdapUtil {
         runtimeConfigFactory
             .globalRuntimeConf()
             .getString("yb.security.ldap.ldap_search_attribute");
+    boolean enabledDetailedLogs =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.enable_detailed_logs");
 
     LdapConfiguration ldapConfiguration =
         new LdapConfiguration(
@@ -104,7 +108,8 @@ public class LdapUtil {
             useLdapSearchAndBind,
             serviceAccountUserName,
             serviceAccountPassword,
-            ldapSearchAttribute);
+            ldapSearchAttribute,
+            enabledDetailedLogs);
     Users user = authViaLDAP(data.getEmail(), data.getPassword(), ldapConfiguration);
 
     if (user == null) {
@@ -151,7 +156,10 @@ public class LdapUtil {
   }
 
   private Pair<String, String> searchAndBind(
-      String email, LdapConfiguration ldapConfiguration, LdapNetworkConnection connection)
+      String email,
+      LdapConfiguration ldapConfiguration,
+      LdapNetworkConnection connection,
+      boolean enableDetailedLogs)
       throws Exception {
     String distinguishedName = "", role = "";
     String serviceAccountDistinguishedName =
@@ -174,19 +182,41 @@ public class LdapUtil {
               "(" + ldapConfiguration.getLdapSearchAttribute() + "=" + email + ")",
               SearchScope.SUBTREE,
               "*");
+      log.info("Connection cursor: {}", cursor);
       while (cursor.next()) {
         Entry entry = cursor.get();
+        if (enableDetailedLogs) {
+          log.info("LDAP server returned response: {}", entry.toString());
+        }
         Attribute parseDn = entry.get("distinguishedName");
-        distinguishedName = parseDn.getString();
+        log.info("parseDn: {}", parseDn);
+        if (parseDn == null) {
+          distinguishedName = entry.getDn().toString();
+          log.info("parsedDn: {}", distinguishedName);
+        } else {
+          distinguishedName = parseDn.getString();
+        }
+        log.info("Distinguished name parsed: {}", distinguishedName);
         Attribute parseRole = entry.get("yugabytePlatformRole");
         if (parseRole != null) {
           role = parseRole.getString();
         }
+
+        // Cursor.next returns true in some environments
+        if (!StringUtils.isEmpty(distinguishedName)) {
+          log.info("Successfully fetched DN");
+          break;
+        }
       }
-      cursor.close();
-      connection.unBind();
+
+      try {
+        cursor.close();
+        connection.unBind();
+      } catch (Exception e) {
+        log.error("Failed closing connections", e);
+      }
     } catch (Exception e) {
-      log.error(String.format("LDAP query failed with %s.", e.getMessage()));
+      log.error("LDAP query failed.", e);
       throw new PlatformServiceException(BAD_REQUEST, "LDAP search failed.");
     }
     return new ImmutablePair<>(distinguishedName, role);
@@ -223,7 +253,9 @@ public class LdapUtil {
               "Service account and LDAP Search Attribute must be configured"
                   + " to use search and bind.");
         }
-        Pair<String, String> dnAndRole = searchAndBind(email, ldapConfiguration, connection);
+        Pair<String, String> dnAndRole =
+            searchAndBind(
+                email, ldapConfiguration, connection, ldapConfiguration.isEnableDetailedLogs());
         String fetchedDistinguishedName = dnAndRole.getKey();
         if (!fetchedDistinguishedName.isEmpty()) {
           distinguishedName = fetchedDistinguishedName;

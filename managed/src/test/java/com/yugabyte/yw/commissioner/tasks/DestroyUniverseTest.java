@@ -12,6 +12,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -127,6 +128,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.TRUE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
+    doNothing().when(mockBackupUtil).validateBackupStorageConfig(any());
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -197,6 +199,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.TRUE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
+    doNothing().when(mockBackupUtil).validateBackupStorageConfig(any());
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
     b.setTaskUUID(taskInfo.getTaskUUID());

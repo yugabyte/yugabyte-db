@@ -1,12 +1,10 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import javax.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.NodeManager;
-
-import lombok.extern.slf4j.Slf4j;
-
 import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
+import com.yugabyte.yw.common.NodeManager;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class VerifyNodeSSHAccess extends NodeTaskBase {

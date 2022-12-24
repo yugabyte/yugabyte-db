@@ -15,12 +15,10 @@
 #include "yb/client/ql-dml-test-base.h"
 
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master_backup.pb.h"
 
 #include "yb/tools/yb-backup-test_base_ent.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/pb_util.h"
 
 using namespace std::chrono_literals;
 using namespace std::literals;
@@ -1174,85 +1172,21 @@ TEST_F_EX(
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);
 }
 
+class YBLegacyColocatedDBBackupTest : public YBBackupTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
+  }
+};
+
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestColocationDuplication)) {
-  // Create a colocated database.
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "CREATE DATABASE demo WITH COLOCATED=TRUE", "CREATE DATABASE"));
+  TestColocatedDBBackupRestore();
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
 
-  // Set this database for creating tables below.
-  SetDbName("demo");
-
-  // Create 10 tables in a loop and insert data.
-  vector<string> table_names;
-  for (int i = 0; i < 10; ++i) {
-    table_names.push_back(Format("mytbl_$0", i));
-  }
-  for (const auto& table_name : table_names) {
-    ASSERT_NO_FATALS(CreateTable(
-        Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
-    ASSERT_NO_FATALS(InsertRows(
-        Format("INSERT INTO $0 VALUES (generate_series(1, 100))", table_name), 100));
-  }
-  LOG(INFO) << "All tables created and data inserted successsfully";
-
-  // Create a backup.
-  const string backup_dir = GetTempDir("backup");
-  ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.demo", "create"}));
-  LOG(INFO) << "Backup finished";
-
-  // Read the SnapshotInfoPB from the given path.
-  master::SnapshotInfoPB snapshot_info;
-  ASSERT_OK(pb_util::ReadPBContainerFromPath(
-      Env::Default(), JoinPathSegments(backup_dir, "SnapshotInfoPB"), &snapshot_info));
-  LOG(INFO) << "SnapshotInfoPB: " << snapshot_info.ShortDebugString();
-
-  // SnapshotInfoPB should contain 1 namespace entry, 1 tablet entry and 11 table entries.
-  // 11 table entries comprise of - 10 entries for the tables created and 1 entry for
-  // the parent colocated table.
-  int32_t num_namespaces = 0, num_tables = 0, num_tablets = 0, num_others = 0;
-  for (const auto& entry : snapshot_info.backup_entries()) {
-    if (entry.entry().type() == master::SysRowEntryType::NAMESPACE) {
-      num_namespaces++;
-    } else if (entry.entry().type() == master::SysRowEntryType::TABLE) {
-      num_tables++;
-    } else if (entry.entry().type() == master::SysRowEntryType::TABLET) {
-      num_tablets++;
-    } else {
-      num_others++;
-    }
-  }
-
-  ASSERT_EQ(num_namespaces, 1);
-  ASSERT_EQ(num_tablets, 1);
-  ASSERT_EQ(num_tables, 11);
-  ASSERT_EQ(num_others, 0);
-  // Snapshot should be complete.
-  ASSERT_EQ(snapshot_info.entry().state(),
-            master::SysSnapshotEntryPB::State::SysSnapshotEntryPB_State_COMPLETE);
-  // We clear all tablet snapshot entries for backup.
-  ASSERT_EQ(snapshot_info.entry().tablet_snapshots_size(), 0);
-  // We've migrated this field to backup_entries so they are already accounted above.
-  ASSERT_EQ(snapshot_info.entry().entries_size(), 0);
-
-  ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
-  LOG(INFO) << "Restored backup to yugabyte_new keyspace successfully";
-
-  SetDbName("yugabyte_new");
-
-  // Post-restore, we should have all the data.
-  for (const auto& table_name : table_names) {
-    ASSERT_NO_FATALS(RunPsqlCommand(
-        Format("SELECT COUNT(*) FROM $0", table_name),
-        R"#(
-           count
-          -------
-             100
-          (1 row)
-        )#"));
-  }
-
+TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestLegacyColocatedDBColocationDuplication),
+          YBLegacyColocatedDBBackupTest) {
+  TestColocatedDBBackupRestore();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

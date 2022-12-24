@@ -3706,6 +3706,8 @@ YbPreloadRelCacheHelper()
  */
 static void YBRefreshCache()
 {
+	Assert(OidIsValid(MyDatabaseId));
+
 	/*
 	 * Check that we are not already inside a transaction or we might end up
 	 * leaking cache references for any open relations (i.e. relations in-use by
@@ -4329,6 +4331,8 @@ yb_restart_portal(const char* portal_name)
 	if (portal->holdContext)
 		MemoryContextDelete(portal->holdContext);
 
+	/* the portal run context might not have been reset, so do it now */
+	MemoryContextReset(portal->ybRunContext);
 
 	/* -------------------------------------------------------------------------
 	 * YB NOTE:
@@ -4401,7 +4405,9 @@ static void yb_maybe_sleep_on_txn_conflict(int attempt)
 		 * read/ write rpc which faced a kConflict error is unblocked only when all
 		 * conflicting transactions have ended (either committed or aborted).
 		 */
+		pgstat_report_wait_start(WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF);
 		pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
+		pgstat_report_wait_end();
 	}
 }
 

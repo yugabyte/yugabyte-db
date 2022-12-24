@@ -1156,6 +1156,9 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
       CDCError(CDCErrorPB::LEADER_NOT_READY));
 
   ProducerTabletInfo producer_tablet{"" /* UUID */, req.stream_id(), req.tablet_id()};
+  RETURN_NOT_OK_SET_CODE(
+      CheckTabletValidForStream(producer_tablet), CDCError(CDCErrorPB::INVALID_REQUEST));
+
   OpId checkpoint;
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
   bool set_latest_entry = req.bootstrap();
@@ -1679,6 +1682,7 @@ void CDCServiceImpl::GetChanges(
     tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
   }
 
+  VLOG(1) << "Sending GetChanges response " << resp->ShortDebugString();
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
@@ -2163,20 +2167,26 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     }
 
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
-    uint64_t safe_time = 0;
     int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
     if (!row.column(4).IsNull()) {
       auto& map_value = row.column(4).map_value();
-      safe_time = VERIFY_RESULT(GetIntValueFromMap<uint64_t>(map_value, kCDCSDKSafeTime));
-      cdc_sdk_safe_time = HybridTime::FromPB(safe_time);
-      last_active_time_cdc_state_table =
-          VERIFY_RESULT(GetIntValueFromMap<int64_t>(map_value, kCDCSDKActiveTime));
+
+      auto safe_time_result = GetIntValueFromMap<uint64_t>(map_value, kCDCSDKSafeTime);
+      if (safe_time_result.ok()) {
+        cdc_sdk_safe_time = HybridTime::FromPB(safe_time_result.get());
+      }
+
+      auto last_active_time_result = GetIntValueFromMap<int64_t>(map_value, kCDCSDKActiveTime);
+      if (last_active_time_result.ok()) {
+        last_active_time_cdc_state_table = last_active_time_result.get();
+      }
     }
 
     VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
             << ", checkpoint: " << checkpoint
             << ", last replicated time: " << last_replicated_time_str
-            << ", last active time: " << last_active_time_cdc_state_table;
+            << ", last active time: " << last_active_time_cdc_state_table
+            << ", cdc_sdk_safe_time: " << cdc_sdk_safe_time;
 
     // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
     if (tablet_stream_to_be_deleted && checkpoint == OpId::Max().ToString()) {
@@ -2347,7 +2357,8 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
     VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index
             << " term " << current_term
             << " cdc_sdk_op_id: " << tablet_info->cdc_sdk_op_id.ToString()
-            << " expiration: " << tablet_info->cdc_sdk_op_id_expiration.ToMilliseconds();
+            << " expiration: " << tablet_info->cdc_sdk_op_id_expiration.ToMilliseconds()
+            << " cdc_sdk_safe_time: " << tablet_info->cdc_sdk_safe_time;
     s = UpdatePeersCdcMinReplicatedIndex(tablet_id, *tablet_info, ignore_rpc_failures);
     WARN_NOT_OK(s, "UpdatePeersCdcMinReplicatedIndex failed");
     if (!ignore_rpc_failures && !s.ok()) {
@@ -2653,7 +2664,7 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
 
   auto duration = CoarseMonoClock::Now() - start;
   if (duration > (kMaxDurationForTabletLookup * 1ms)) {
-    LOG(WARNING) << "LookupTabletByKey took long time: " << duration << " ms";
+    LOG(WARNING) << "LookupTabletByKey took long time: " << duration;
   }
 
   auto remote_tablet = VERIFY_RESULT(future.get());

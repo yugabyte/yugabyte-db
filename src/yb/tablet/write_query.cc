@@ -205,6 +205,13 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     }
   }
 
+  auto shared_tablet = operation->tablet();
+  auto& metadata = *shared_tablet->metadata();
+
+  for (const auto& sv : operation->request()->write_batch().table_schema_version()) {
+    CHECK_LE(metadata.schema_version(), sv.schema_version());
+  }
+
   Complete(status);
 }
 
@@ -388,7 +395,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
         req,
         rpc::SharedField(table_info, table_info->doc_read_context.get()),
         txn_op_ctx,
-        rpc_context_);
+        rpc_context_ ? &rpc_context_->sidecars() : nullptr);
     RETURN_NOT_OK(write_op->Init(resp));
     doc_ops_.emplace_back(std::move(write_op));
   }

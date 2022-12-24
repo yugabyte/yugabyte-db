@@ -536,7 +536,9 @@ public class Backup extends Model {
   public synchronized void transitionState(BackupState newState) {
     // Need updated backup state as multiple threads can access backup object.
     this.refresh();
-    if (ALLOWED_TRANSITIONS.containsEntry(this.state, newState)) {
+    if (this.state.equals(newState)) {
+      LOG.debug("Skipping state transition as backup is already in the {} state", this.state);
+    } else if (ALLOWED_TRANSITIONS.containsEntry(this.state, newState)) {
       LOG.debug("Backup state transitioned from {} to {}", this.state, newState);
       this.state = newState;
       save();
@@ -650,6 +652,37 @@ public class Backup extends Model {
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList.size() != 0;
+  }
+
+  public static Optional<BackupTableParams> findBackupParamsWithStorageLocation(
+      String storageLocation) {
+    List<Backup> backupList = find.query().findList();
+    List<BackupTableParams> backupParams = new ArrayList<>();
+
+    for (Backup b : backupList) {
+      BackupTableParams backupInfo = b.getBackupInfo();
+      if (CollectionUtils.isEmpty(backupInfo.backupList)) {
+        BackupTableParams backupTableParams =
+            b.getBackupInfo().storageLocation.equals(storageLocation) ? b.getBackupInfo() : null;
+        if (backupTableParams != null) {
+          backupParams.add(backupTableParams);
+        }
+      } else {
+        Optional<BackupTableParams> backupTableParams =
+            backupInfo
+                .backupList
+                .stream()
+                .filter(bL -> bL.storageLocation.equals(storageLocation))
+                .findFirst();
+        if (backupTableParams.isPresent()) {
+          backupParams.add(backupTableParams.get());
+        }
+      }
+    }
+    if (backupParams.size() == 0) {
+      return Optional.empty();
+    }
+    return Optional.of(backupParams.get(0));
   }
 
   public static Set<Universe> getAssociatedUniverses(UUID customerUUID, UUID configUUID) {

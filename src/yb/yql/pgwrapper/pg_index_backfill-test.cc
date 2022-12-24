@@ -131,13 +131,13 @@ class PgIndexBackfillTest : public LibPqTestBase {
     }
 
     IndexStateFlags index_state_flags;
-    if (VERIFY_RESULT(GetBool(res.get(), 0, 0))) {
+    if (VERIFY_RESULT(GetValue<bool>(res.get(), 0, 0))) {
       index_state_flags.Set(IndexStateFlag::kIndIsLive);
     }
-    if (VERIFY_RESULT(GetBool(res.get(), 0, 1))) {
+    if (VERIFY_RESULT(GetValue<bool>(res.get(), 0, 1))) {
       index_state_flags.Set(IndexStateFlag::kIndIsReady);
     }
-    if (VERIFY_RESULT(GetBool(res.get(), 0, 2))) {
+    if (VERIFY_RESULT(GetValue<bool>(res.get(), 0, 2))) {
       index_state_flags.Set(IndexStateFlag::kIndIsValid);
     }
 
@@ -251,10 +251,7 @@ void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
       "SELECT COUNT(*) FROM $0 WHERE i > 0",
       kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-  PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 1);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  auto actual_num_rows = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  auto actual_num_rows = ASSERT_RESULT(conn_->FetchValue<PGUint64>(query));
   ASSERT_EQ(actual_num_rows, num_rows);
 }
 
@@ -1396,7 +1393,7 @@ TEST_F_EX(PgIndexBackfillTest,
       Result<PGResultPtr> result = conn_->FetchFormat("SELECT count(*) FROM $0", kTableName);
       if (result.ok()) {
         PGResultPtr res = std::move(*result);
-        const int64_t main_table_size = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+        const auto main_table_size = ASSERT_RESULT(GetValue<PGUint64>(res.get(), 0, 0));
         ASSERT_EQ(main_table_size, 2);
         break;
       }
@@ -1462,7 +1459,7 @@ TEST_F_EX(PgIndexBackfillTest,
   const Result<PGResultPtr>& result = conn_->FetchFormat(
       "SELECT count(*) FROM $0 WHERE j = 'a'", kTableName);
   if (result.ok()) {
-    auto count = ASSERT_RESULT(GetInt64(result.get().get(), 0, 0));
+    auto count = ASSERT_RESULT(GetValue<PGUint64>(result.get().get(), 0, 0));
     ASSERT_EQ(count, 0);
   } else if (result.status().IsNetworkError()) {
     Status s = result.status();
@@ -1603,9 +1600,8 @@ TEST_F_EX(PgIndexBackfillTest,
 
   // Make sure that the index is gone.
   // Check postgres metadata.
-  auto res = ASSERT_RESULT(conn_->FetchFormat(
-      "SELECT COUNT(*) FROM pg_class WHERE relname = '$0'", kIndexName));
-  int64_t value = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  auto value = ASSERT_RESULT(conn_->FetchValue<PGUint64>(
+      Format("SELECT COUNT(*) FROM pg_class WHERE relname = '$0'", kIndexName)));
   ASSERT_EQ(value, 0);
   // Check DocDB metadata.
   tables = ASSERT_RESULT(client->ListTables());
@@ -1779,8 +1775,7 @@ TEST_F_EX(PgIndexBackfillTest,
   // Index scan to verify contents of index table.
   const std::string query = Format("SELECT COUNT(*) FROM $0 WHERE i > 0", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-  PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-  auto count = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  auto count = ASSERT_RESULT(conn_->FetchValue<PGUint64>(query));
   ASSERT_EQ(count, 2);
 }
 

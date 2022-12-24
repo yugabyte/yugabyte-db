@@ -62,12 +62,12 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
   return inbound_call_;
 }
 
-Status LocalOutboundCall::AssignSidecarTo(size_t idx, std::string* out) const {
-  return inbound_call_->AssignSidecarTo(narrow_cast<int>(idx), out);
+Result<RefCntSlice> LocalOutboundCall::ExtractSidecar(size_t idx) const {
+  return inbound_call_->sidecars().Extract(narrow_cast<int>(idx));
 }
 
-size_t LocalOutboundCall::TransferSidecars(rpc::RpcContext* context) {
-  return inbound_call_->TransferSidecars(context);
+size_t LocalOutboundCall::TransferSidecars(Sidecars* dest) {
+  return inbound_call_->sidecars().Transfer(dest);
 }
 
 LocalYBInboundCall::LocalYBInboundCall(

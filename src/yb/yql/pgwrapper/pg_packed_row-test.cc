@@ -37,6 +37,8 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
+DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
+
 namespace yb {
 namespace pgwrapper {
 
@@ -657,6 +659,27 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CoveringIndex)) {
   ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t_idx ON t(v2) INCLUDE (v1)"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'odin')"));
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Transaction)) {
+  // Set retention interval to 0, to repack all recently flushed entries.
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  FLAGS_TEST_skip_aborting_active_transactions_during_schema_change = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key) VALUES (1)"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key) VALUES (2)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v TEXT"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(cluster_->CompactTablets());
 }
 
 } // namespace pgwrapper

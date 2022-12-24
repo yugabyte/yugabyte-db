@@ -48,9 +48,6 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
 #include "catalog/pg_tablespace.h"
-#include "catalog/pg_yb_catalog_version.h"
-#include "catalog/pg_yb_tablegroup.h"
-#include "catalog/yb_catalog_version.h"
 #include "libpq/auth.h"
 #include "libpq/libpq-be.h"
 #include "mb/pg_wchar.h"
@@ -82,6 +79,11 @@
 #include "utils/tqual.h"
 
 #include "pg_yb_utils.h"
+#include "catalog/pg_yb_catalog_version.h"
+#include "catalog/pg_yb_tablegroup.h"
+#include "catalog/yb_catalog_version.h"
+#include "catalog/pg_yb_profile.h"
+#include "catalog/pg_yb_role_profile.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -684,6 +686,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
+		HandleYBStatus(YBCPgTableExists(TemplateDbOid,
+										YbRoleProfileRelationId,
+										&YbLoginProfileCatalogsExist));
+
 		const uint64_t catalog_master_version =
 			YbGetCatalogCacheVersionForTablePrefetching();
 		YBCPgResetCatalogReadTime();
@@ -697,16 +703,23 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 				DbRoleSettingRelationId); // pg_db_role_setting
 		YbRegisterSysTableForPrefetching(
 				AuthMemRelationId);       // pg_auth_members
+
+		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
+		{
+			YbRegisterSysTableForPrefetching(
+					YbProfileRelationId); // pg_yb_profile
+			YbRegisterSysTableForPrefetching(
+					YbRoleProfileRelationId);	// pg_yb_role_profile
+		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
 		/*
 		 * If per database catalog version mode is enabled, this will load the
 		 * catalog version of template1. It is fine because at this time we
-		 * only read the above shared relations and therefore can use any
-		 * database OID. We will update yb_catalog_cache_version to match
-		 * MyDatabaseId once the latter is resolved so we will never use
-		 * the catalog version of template1 to query relations that are
-		 * private to MyDatabaseId.
+		 * only read shared relations and therefore can use any database OID.
+		 * We will update yb_catalog_cache_version to match MyDatabaseId once
+		 * the latter is resolved so we will never use the catalog version of
+		 * template1 to query relations that are private to MyDatabaseId.
 		 */
 		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 	}

@@ -164,7 +164,6 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 				}
 				else
 				{
-					LOCAL_JOIN_FN(FreeBatch, bnlstate);
 					return NULL;
 				}
 
@@ -362,6 +361,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 		palloc(bnlstate->numLookupAttrs * sizeof(AttrNumber));
 	int numattrs = plan->nl.nestParams->length;
 	ExprState **keyexprs = palloc(numattrs * (sizeof(ExprState*)));
+	List *outerParamExprs = NIL;
 
 	forthree(lc, plan->hashOps,
 			 lc2, plan->innerHashAttNos,
@@ -374,13 +374,14 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 		bnlstate->innerAttrs[i] = lfirst_int(lc2);
 		Expr *outerExpr = (Expr *) lfirst(lc3);
 		keyexprs[i] = ExecInitExpr(outerExpr, (PlanState *) bnlstate);
+		outerParamExprs = lappend(outerParamExprs, outerExpr);
 		i++;
 	}
 	Oid *eqFuncOids;
 	execTuplesHashPrepare(i, eqops, &eqFuncOids, &bnlstate->hashFunctions);
 
 	ExprState *tab_eq_fn =
-		ybPrepareOuterExprsEqualFn(plan->outerParamExprs,
+		ybPrepareOuterExprsEqualFn(outerParamExprs,
 								   eqops,
 								   (PlanState *) bnlstate);
 
@@ -399,7 +400,8 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 								 eqFuncOids, bnlstate->hashFunctions,
 								 GetBatchSize(plan), 0,
 								 econtext->ecxt_per_query_memory, tablecxt,
-								 econtext->ecxt_per_tuple_memory, false);
+								 econtext->ecxt_per_tuple_memory, econtext,
+								 false);
 
 	bnlstate->hashiterinit = false;
 	bnlstate->current_hash_entry = NULL;
@@ -706,9 +708,8 @@ EndTS(YbBatchedNestLoopState *bnlstate)
 bool
 CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 {
-	bool outer_done = false;
 	YbBatchedNestLoop   *batchnl = (YbBatchedNestLoop *) bnlstate->js.ps.plan;
-	TupleTableSlot *outerTupleSlot;
+	TupleTableSlot *outerTupleSlot = NULL;
 	PlanState  *outerPlan = outerPlanState(bnlstate);
 	PlanState  *innerPlan = innerPlanState(bnlstate);
 	LOCAL_JOIN_FN(FreeBatch, bnlstate);
@@ -716,24 +717,26 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	for (int batchno = 0; batchno < GetBatchSize(batchnl); batchno++)
 	{
 		elog(DEBUG2, "getting new outer tuple");
-		if (!outer_done)
+		if (!bnlstate->bnl_outerdone)
 		{
 			outerTupleSlot = ExecProcNode(outerPlan);
+			/*
+			 * We want to wrap up our current batch if the outerPlan has just been
+			 * exhausted but don't want future invocations of CreateBatch to attempt
+			 * ExecProcNode on outerPlan.
+			 */
+			bnlstate->bnl_outerdone = TupIsNull(outerTupleSlot);
 		}
 
 		/*
 		 * if there are no more outer tuples, then the join is complete..
 		 */
-		if (outer_done || TupIsNull(outerTupleSlot))
+		if (bnlstate->bnl_outerdone)
 		{
 			if (batchno == 0)
 			{
 				elog(DEBUG2, "no outer tuple, ending join");
 				return false;
-			}
-			else
-			{
-				outer_done = true;
 			}
 		}
 		else
@@ -759,7 +762,7 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 			Assert(IsA(nlp->paramval, Var));
 			Assert(nlp->paramval->varno == OUTER_VAR);
 			Assert(nlp->paramval->varattno > 0);
-			if (!outer_done)
+			if (!bnlstate->bnl_outerdone)
 			{
 				prm->value = slot_getattr(outerTupleSlot,
 										  nlp->paramval->varattno,
@@ -899,6 +902,7 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	bnlstate->bnl_currentstatus = BNL_INIT;
 	bnlstate->bnl_batchMatchedInfo = NIL;
 	bnlstate->bnl_batchTupNo = 0;
+	bnlstate->bnl_outerdone = false;
 	
 	if (UseHash(plan, bnlstate))
 	{
@@ -979,6 +983,7 @@ ExecReScanYbBatchedNestLoop(YbBatchedNestLoopState *bnlstate)
 		ExecReScan(outerPlan);
 	
 	LOCAL_JOIN_FN(FreeBatch, bnlstate);
+	bnlstate->bnl_outerdone = false;
 	bnlstate->bnl_currentstatus = BNL_INIT;
 
 	/*

@@ -252,16 +252,17 @@ public class TlsToggleTest extends UpgradeTaskTest {
         TestHelper.TMP_PATH + "/tls_toggle_test_ca.crt",
         CertConfigType.SelfSigned);
 
-    CertificateInfo.create(
-        clientRootCA,
-        defaultCustomer.uuid,
-        "test1",
-        new Date(),
-        new Date(),
-        "privateKey",
-        TestHelper.TMP_PATH + "/tls_toggle_test_ca.crt",
-        CertConfigType.SelfSigned);
-
+    if (!clientRootCA.equals(rootCA)) {
+      CertificateInfo.create(
+          clientRootCA,
+          defaultCustomer.uuid,
+          "test1",
+          new Date(),
+          new Date(),
+          "privateKey",
+          TestHelper.TMP_PATH + "/tls_toggle_test_ca.crt",
+          CertConfigType.SelfSigned);
+    }
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.universeUUID,
@@ -278,10 +279,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
                   nodeToNode, clientToNode, rootAndClientRootCASame)) {
                 universeDetails.rootCA = rootCA;
               }
-              universeDetails.clientRootCA = null;
+              universeDetails.setClientRootCA(null);
               if (EncryptionInTransitUtil.isClientRootCARequired(
                   nodeToNode, clientToNode, rootAndClientRootCASame)) {
-                universeDetails.clientRootCA = clientRootCA;
+                universeDetails.setClientRootCA(clientRootCA);
               }
               if (nodeToNode || clientToNode) {
                 universeDetails.allowInsecure = false;
@@ -305,8 +306,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
     taskParams.enableClientToNodeEncrypt = clientToNode;
     taskParams.rootAndClientRootCASame = rootAndClientRootCASame;
     taskParams.rootCA = rootCA;
-    if (!taskParams.rootAndClientRootCASame) {
-      taskParams.clientRootCA = clientRootCA;
+    if (clientToNode) {
+      taskParams.setClientRootCA(rootAndClientRootCASame ? rootCA : clientRootCA);
     }
     return taskParams;
   }
@@ -421,11 +422,11 @@ public class TlsToggleTest extends UpgradeTaskTest {
     "true, true, false, false, false, true",
     "true, false, false, false, true, true",
     "true, false, false, false, false, true",
-    "false, true, false, true, true, true",
-    "false, true, false, true, false, true",
+    //    "false, true, false, true, true, true",//clientRootCA cannot be changed
+    "false, true, false, true, false, true", // both cannot be same, when clientToNode is disabled
     "false, false, false, true, true, true",
     "false, false, false, true, false, true",
-    "true, true, false, true, false, true",
+    "true, true, false, true, false, true", // both cannot be same, when clientToNode is disabled
     "true, false, false, true, true, true",
     "false, true, false, false, false, true",
     "false, false, false, false, true, true",
@@ -433,7 +434,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     "true, true, true, false, false, true",
     "true, false, true, false, true, true",
     "true, false, true, false, false, true",
-    "false, true, true, true, true, true",
+    //    "false, true, true, true, true, true",//both cannot be same, when nodeToNode is disabled
     "false, true, true, true, false, true",
     "false, false, true, true, true, true",
     "false, false, true, true, false, true",
@@ -478,8 +479,14 @@ public class TlsToggleTest extends UpgradeTaskTest {
       boolean clientToNode,
       boolean rootAndClientRootCASame)
       throws IOException, NoSuchAlgorithmException {
+
+    if (rootAndClientRootCASame && (!clientToNode || !nodeToNode)) {
+      // when clientToNode is off, bothCASame flag cannot be true
+      rootAndClientRootCASame = false;
+    }
+
     UUID rootCA = UUID.randomUUID();
-    UUID clientRootCA = UUID.randomUUID();
+    UUID clientRootCA = currRootAndClientRootCASame ? rootCA : UUID.randomUUID();
     prepareUniverse(
         currentNodeToNode, currentClientToNode, currRootAndClientRootCASame, rootCA, clientRootCA);
     TlsToggleParams taskParams =
@@ -529,15 +536,15 @@ public class TlsToggleTest extends UpgradeTaskTest {
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     if (EncryptionInTransitUtil.isRootCARequired(
         nodeToNode, clientToNode, rootAndClientRootCASame)) {
-      assertEquals(rootCA, universe.getUniverseDetails().rootCA);
+      assertEquals(taskParams.rootCA, universe.getUniverseDetails().rootCA);
     } else {
       assertNull(universe.getUniverseDetails().rootCA);
     }
     if (EncryptionInTransitUtil.isClientRootCARequired(
         nodeToNode, clientToNode, rootAndClientRootCASame)) {
-      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+      assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
     } else {
-      assertNull(universe.getUniverseDetails().clientRootCA);
+      assertNull(universe.getUniverseDetails().getClientRootCA());
     }
     assertEquals(
         nodeToNode,
@@ -554,7 +561,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     "true, true, false, false, false, true",
     "true, false, false, false, true, true",
     "true, false, false, false, false, true",
-    "false, true, false, true, true, true",
+    //    "false, true, false, true, true, true",//client CA cannot be changed
     "false, true, false, true, false, true",
     "false, false, false, true, true, true",
     "false, false, false, true, false, true",
@@ -566,7 +573,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     "true, true, true, false, false, true",
     "true, false, true, false, true, true",
     "true, false, true, false, false, true",
-    "false, true, true, true, true, true",
+    //    "false, true, true, true, true, true",//client CA cannot be changed
     "false, true, true, true, false, true",
     "false, false, true, true, true, true",
     "false, false, true, true, false, true",
@@ -611,8 +618,14 @@ public class TlsToggleTest extends UpgradeTaskTest {
       boolean clientToNode,
       boolean rootAndClientRootCASame)
       throws IOException, NoSuchAlgorithmException {
+
+    if (rootAndClientRootCASame && (!clientToNode || !nodeToNode)) {
+      // when clientToNode is off, bothCASame flag cannot be true
+      rootAndClientRootCASame = false;
+    }
+
     UUID rootCA = UUID.randomUUID();
-    UUID clientRootCA = UUID.randomUUID();
+    UUID clientRootCA = currRootAndClientRootCASame ? rootCA : UUID.randomUUID();
     prepareUniverse(
         currentNodeToNode, currentClientToNode, currRootAndClientRootCASame, rootCA, clientRootCA);
     TlsToggleParams taskParams =
@@ -631,6 +644,20 @@ public class TlsToggleTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     if (taskInfo == null) {
       fail();
+    }
+
+    UniverseDefinitionTaskParams universeDetails = defaultUniverse.getUniverseDetails();
+    // failure cases
+    boolean clientToNodeTurnedOn = clientToNode && !currentClientToNode;
+    boolean clientRootCAChanged =
+        clientToNode && !clientRootCA.equals(taskParams.getClientRootCA());
+    boolean nodeToNodeTurnedOn = nodeToNode && !currentNodeToNode;
+    boolean rootCAChanged = nodeToNode && !rootCA.equals(taskParams.rootCA);
+
+    // CA changed, but not because of 'turning on' TLS is a failure case
+    if ((clientRootCAChanged && !clientToNodeTurnedOn) || (rootCAChanged && !nodeToNodeTurnedOn)) {
+      assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+      return;
     }
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -670,15 +697,15 @@ public class TlsToggleTest extends UpgradeTaskTest {
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     if (EncryptionInTransitUtil.isRootCARequired(
         nodeToNode, clientToNode, rootAndClientRootCASame)) {
-      assertEquals(rootCA, universe.getUniverseDetails().rootCA);
+      assertEquals(taskParams.rootCA, universe.getUniverseDetails().rootCA);
     } else {
       assertNull(universe.getUniverseDetails().rootCA);
     }
     if (EncryptionInTransitUtil.isClientRootCARequired(
         nodeToNode, clientToNode, rootAndClientRootCASame)) {
-      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+      assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
     } else {
-      assertNull(universe.getUniverseDetails().clientRootCA);
+      assertNull(universe.getUniverseDetails().getClientRootCA());
     }
     assertEquals(
         nodeToNode,

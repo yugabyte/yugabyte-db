@@ -59,7 +59,8 @@ public class AuditTest extends FakeDBApplication {
   }
 
   public Audit createEntry(UUID taskUUID, Users user) {
-    return Audit.create(user, "/test/api/call", "PUT", null, null, null, null, taskUUID, null);
+    return Audit.create(
+        user, "/test/api/call", "PUT", null, null, null, null, taskUUID, null, null);
   }
 
   @Test
@@ -90,6 +91,7 @@ public class AuditTest extends FakeDBApplication {
     assertNull(entries.get(0).getTaskUUID());
     assertNull(entries.get(0).getPayload());
     assertNotNull(entries.get(0).getTimestamp());
+    assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
   }
 
   @Test
@@ -108,6 +110,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getTaskUUID(), randUUID);
     assertNull(entries.get(0).getPayload());
     assertNotNull(entries.get(0).getTimestamp());
+    assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
   }
 
   @Test
@@ -128,6 +131,7 @@ public class AuditTest extends FakeDBApplication {
     assertNull(entries.get(0).getTaskUUID());
     assertNull(entries.get(0).getPayload());
     assertNotNull(entries.get(0).getTimestamp());
+    assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
   }
 
   @Test
@@ -155,6 +159,7 @@ public class AuditTest extends FakeDBApplication {
     assertNull(entries.get(0).getTaskUUID());
     assertEquals(entries.get(0).getPayload(), expectedPayload);
     assertNotNull(entries.get(0).getTimestamp());
+    assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
   }
 
   @Test
@@ -174,6 +179,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getTaskUUID(), randUUID);
     assertEquals(entries.get(0).getPayload(), testPayload);
     assertNotNull(entries.get(0).getTimestamp());
+    assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
   }
 
   @Test
@@ -195,6 +201,7 @@ public class AuditTest extends FakeDBApplication {
     assertNull(entries.get(0).getTaskUUID());
     assertEquals(entries.get(0).getPayload(), testPayload);
     assertNotNull(entries.get(0).getTimestamp());
+    assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
   }
 
   @Test
@@ -220,6 +227,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getPayload(), testPayload);
     assertEquals(entries.get(0).getAdditionalDetails(), testAdditionalDetails);
     assertNotNull(entries.get(0).getTimestamp());
+    assertEquals(entries.get(0).getUserAddress(), request.remoteAddress());
   }
 
   @Test

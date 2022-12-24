@@ -7,6 +7,8 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MAS
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -98,9 +100,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   private static final List<TaskType> RESIZE_VOLUME_SEQ =
       ImmutableList.of(TaskType.InstanceActions);
 
-  private static final List<TaskType> UPDATE_INSTANCE_TYPE_SEQ =
-      ImmutableList.of(TaskType.ChangeInstanceType, TaskType.UpdateNodeDetails);
-
   @InjectMocks private ResizeNode resizeNode;
 
   @Override
@@ -117,6 +116,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
               userIntent.deviceInfo = new DeviceInfo();
               userIntent.deviceInfo.numVolumes = 1;
               userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
+              userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
               userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
               userIntent.provider = defaultProvider.uuid.toString();
               universe
@@ -335,6 +335,35 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testChangingNumVolumesFails() {
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.clusters.get(0).userIntent.deviceInfo.volumeSize += 10;
+    taskParams.clusters.get(0).userIntent.deviceInfo.numVolumes++;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertThat(
+        taskInfo.getErrorMessage(),
+        containsString("Only volume size should be changed to do smart resize"));
+    verifyNoMoreInteractions(mockNodeManager);
+  }
+
+  @Test
+  public void testChangingStorageTypeFails() {
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.clusters.get(0).userIntent.deviceInfo.volumeSize += 10;
+    taskParams.clusters.get(0).userIntent.deviceInfo.storageType =
+        PublicCloudConstants.StorageType.GP2;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertThat(
+        taskInfo.getErrorMessage(),
+        containsString("Only volume size should be changed to do smart resize"));
+    verifyNoMoreInteractions(mockNodeManager);
+  }
+
+  @Test
   public void testChangingVolume() {
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
@@ -547,9 +576,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                     .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE));
 
     ResizeNodeParams taskParams = createResizeParams();
-    taskParams.clusters =
-        Collections.singletonList(
-            defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getReadOnlyClusters().get(0).userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
     taskParams.getReadOnlyClusters().get(0).userIntent.instanceType = NEW_INSTANCE_TYPE;
     taskParams.getReadOnlyClusters().get(0).userIntent.providerType = Common.CloudType.aws;
@@ -933,11 +960,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean waitForMasterLeader,
       boolean isRf1) {
     List<TaskType> nodeUpgradeTasks = new ArrayList<>();
-    if (increaseVolume) {
-      nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
-    }
     if (changeInstance) {
       nodeUpgradeTasks.add(TaskType.ChangeInstanceType);
+    }
+    if (increaseVolume) {
+      nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
     }
     List<UniverseTaskBase.ServerType> processTypes =
         onlyTserver ? ImmutableList.of(TSERVER) : ImmutableList.of(MASTER, TSERVER);

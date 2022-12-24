@@ -8,7 +8,7 @@ import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
 import { CpuMeasureRecommendation } from '../../../redesign/helpers/dtos';
 import './styles.scss';
 
-var Plotly = require('plotly.js/lib/index-basic.js');
+const Plotly = require('plotly.js/lib/index-basic.js');
 
 export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
   const { t } = useTranslation();
@@ -22,7 +22,7 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
     width: 0.2,
     orientation: 'h',
     type: 'bar'
-  }
+  };
 
   const avgNodeConnections = {
     x: [data.otherNodesAvgValue],
@@ -32,14 +32,14 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
     width: 0.2,
     orientation: 'h',
     type: 'bar'
-  }
+  };
 
   useEffect(() => {
     if (
       !_.isEqual(previousData, data)
     ) {
       const chartData = [avgNodeConnections, maxNodeConnections];
-      var layout = {
+      const layout = {
         showlegend: false,
         height: 170,
         autosize: true,
@@ -80,5 +80,5 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
       <div id="cpuSkewGraph" >
       </div>
     </div>
-  )
-}
+  );
+};

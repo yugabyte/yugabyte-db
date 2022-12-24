@@ -1560,6 +1560,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .log_sync_pool = log_sync_pool(),
       .retryable_requests = &retryable_requests,
       .bootstrap_retryable_requests = bootstrap_retryable_requests,
+      .consensus_meta = cmeta.get(),
     };
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
@@ -1624,16 +1625,26 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
 }
 
-Status TSTabletManager::TriggerCompactionAndWait(const TabletPtrs& tablets) {
+Status TSTabletManager::TriggerAdminCompactionAndWait(const TabletPtrs& tablets) {
   CountDownLatch latch(tablets.size());
   auto token = admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+  std::vector<TabletId> tablet_ids;
+  auto start_time = CoarseMonoClock::Now();
+  uint64_t total_size = 0U;
   for (auto tablet : tablets) {
     RETURN_NOT_OK(token->SubmitFunc([&latch, tablet]() {
-      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(), "Failed to submit compaction for tablet.");
+      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kAdminCompaction),
+          "Failed to submit compaction for tablet.");
       latch.CountDown();
     }));
+    tablet_ids.push_back(tablet->tablet_id());
+    total_size += tablet->GetCurrentVersionSstFilesSize();
   }
+  VLOG(1) << yb::Format("Beginning batch admin compaction for tablets $0, $1 bytes",
+      tablet_ids, total_size);
   latch.Wait();
+  LOG(INFO) << yb::Format("Admin compaction finished for tablets $0, $1 bytes took $2 seconds",
+      tablet_ids, total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
   return Status::OK();
 }
 
@@ -1691,7 +1702,7 @@ void TSTabletManager::StartShutdown() {
           }
         }
         LOG_WITH_PREFIX(DFATAL)
-            << "Waited for " << waited << "ms. Still had "
+            << "Waited for " << waited.ToMilliseconds() << "ms. Still had "
             << remaining_rbs << " pending remote bootstraps: " + addr;
       } else {
         LOG_WITH_PREFIX(WARNING)
@@ -2611,8 +2622,12 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
   auto schedules = metadata->SnapshotSchedules();
   if (schedules.empty()) {
     if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
+      VLOG(1) << "Setting the allowed historycutoff: " << metadata->cdc_sdk_safe_time()
+              << " for tablet: " << metadata->raft_group_id();
       return metadata->cdc_sdk_safe_time();
     }
+    VLOG(1) << "Setting the allowed historycutoff: " << HybridTime::kMax
+            << " for tablet: " << metadata->raft_group_id();
     return HybridTime::kMax;
   }
   std::vector<SnapshotScheduleId> schedules_to_remove;
@@ -2657,6 +2672,8 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
   if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
     result = std::min(result, metadata->cdc_sdk_safe_time());
   }
+  VLOG(1) << "Setting the allowed historycutoff: " << result
+          << " for tablet: " << metadata->raft_group_id();
   return result;
 }
 

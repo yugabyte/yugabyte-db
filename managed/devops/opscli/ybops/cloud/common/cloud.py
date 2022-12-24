@@ -24,7 +24,7 @@ from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path, remote_exec_command)
 from ybops.utils.remote_shell import RemoteShell
 from ybops.common.exceptions import YBOpsRecoverableError
-from ybops.utils.ssh import wait_for_ssh, scp_to_tmp, get_ssh_host_port
+from ybops.utils.ssh import wait_for_ssh, scp_to_tmp, get_ssh_host_port, DEFAULT_SSH_PORT
 
 
 class AbstractCloud(AbstractCommandParser):
@@ -240,9 +240,7 @@ class AbstractCloud(AbstractCommandParser):
             extra_vars["ssh_host"], extra_vars["ssh_port"],
             extra_vars["ssh_user"], args.private_key_file, cmd,
             ssh2_enabled=args.ssh2_enabled)
-        # It is possible this failed since the routing was already set up.
-        # If so, ignore the error if the code is permission denied
-        if rc and rc != 3:
+        if rc:
             raise YBOpsRecoverableError(
                 "Could not configure second nic {} {}".format(stdout, stderr))
         # Since this is on start, wait for ssh on default port
@@ -659,6 +657,8 @@ class AbstractCloud(AbstractCommandParser):
 
         while retry_count < self.SSH_RETRY_COUNT:
             logging.info("[app] Waiting for ssh ports: {}:{}".format(private_ip, str(ssh_ports)))
+            # Sleep just as a precaution
+            time.sleep(self.SSH_WAIT_SECONDS)
             # Try connecting with the given ssh ports in succession.
             for ssh_port in ssh_ports:
                 ssh_port = int(ssh_port)

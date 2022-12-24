@@ -334,7 +334,7 @@ public class UsersControllerTest extends FakeDBApplication {
                 .cookie(validCookie)
                 .bodyJson(params));
     testUser1 = Users.get(testUser1.uuid);
-    assertEquals(testUser1.getTimezone(), "");
+    assertEquals(testUser1.getTimezone(), "America/Toronto");
     assertTrue(hashBuilder.isValid("new-Password1!", testUser1.passwordHash));
     assertEquals(testUser1.getRole(), Role.ReadOnly);
     assertAuditEntry(1, customer1.uuid);

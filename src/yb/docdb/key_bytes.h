@@ -17,7 +17,7 @@
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 #include "yb/util/kv_util.h"
 #include "yb/util/slice.h"

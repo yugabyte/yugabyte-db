@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,14 +12,16 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.AccessKeyFormData;
-import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -43,6 +45,7 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -216,15 +219,21 @@ public class AccessManager extends DevopsBase {
     }
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
-    keyInfo.sshUser = sshUser;
-    keyInfo.sshPort = sshPort;
-    keyInfo.airGapInstall = airGapInstall;
-    keyInfo.skipProvisioning = skipProvisioning;
-    keyInfo.ntpServers = ntpServers;
-    keyInfo.setUpChrony = setUpChrony;
-    keyInfo.showSetUpChrony = showSetUpChrony;
     keyInfo.deleteRemote = deleteRemote;
+
+    // TODO: Move this code for ProviderDetails update elsewhere
+    ProviderDetails details = region.provider.details;
+    details.sshUser = sshUser;
+    details.sshPort = sshPort;
+    details.airGapInstall = airGapInstall;
+    details.skipProvisioning = skipProvisioning;
+    details.ntpServers = ntpServers;
+    details.setUpChrony = setUpChrony;
+    details.showSetUpChrony = showSetUpChrony;
+    region.provider.save();
+
     writeKeyFileData(keyInfo);
+
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
@@ -240,7 +249,7 @@ public class AccessManager extends DevopsBase {
       boolean setUpChrony,
       List<String> ntpServers,
       boolean showSetUpChrony,
-      boolean overrideKeyValidate) {
+      boolean skipKeyPairValidate) {
     AccessKey key = null;
     Path tempFile = null;
 
@@ -266,7 +275,7 @@ public class AccessManager extends DevopsBase {
 
       File pemFile = new File(key.getKeyInfo().privateKey);
       // Delete is always false and we don't even try to make AWS calls.
-      if (!overrideKeyValidate) {
+      if (!skipKeyPairValidate) {
         key =
             addKey(
                 regionUUID,
@@ -406,7 +415,7 @@ public class AccessManager extends DevopsBase {
       keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
       if (sshUser != null) {
-        keyInfo.sshUser = sshUser;
+        region.provider.details.sshUser = sshUser;
       } else {
         switch (Common.CloudType.valueOf(region.provider.code)) {
           case aws:
@@ -414,18 +423,19 @@ public class AccessManager extends DevopsBase {
           case gcp:
             String defaultSshUser = Common.CloudType.valueOf(region.provider.code).getSshUser();
             if (defaultSshUser != null && !defaultSshUser.isEmpty()) {
-              keyInfo.sshUser = defaultSshUser;
+              region.provider.details.sshUser = defaultSshUser;
             }
         }
       }
-      keyInfo.sshPort = sshPort;
-      keyInfo.airGapInstall = airGapInstall;
-      keyInfo.skipProvisioning = skipProvisioning;
-      keyInfo.setUpChrony = setUpChrony;
-      keyInfo.ntpServers = ntpServers;
-      keyInfo.showSetUpChrony = showSetupChrony;
+      region.provider.details.sshPort = sshPort;
+      region.provider.details.airGapInstall = airGapInstall;
+      region.provider.details.skipProvisioning = skipProvisioning;
+      region.provider.details.setUpChrony = setUpChrony;
+      region.provider.details.ntpServers = ntpServers;
+      region.provider.details.showSetUpChrony = showSetupChrony;
       writeKeyFileData(keyInfo);
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
+      region.provider.save();
     }
 
     // Save if key needs to be deleted
@@ -637,7 +647,8 @@ public class AccessManager extends DevopsBase {
     }
     // fill missing access key params using latest created key
     AccessKey latestAccessKey = AccessKey.getLatestKey(providerUUID);
-    AccessKey.KeyInfo keyInfo = latestAccessKey.getKeyInfo();
+    final Provider provider = Provider.getOrBadRequest(providerUUID);
+    AccessKey.MigratedKeyInfoFields keyInfo = provider.details;
     formData.sshUser = setOrValidate(formData.sshUser, keyInfo.sshUser, "sshUser");
     formData.sshPort = setOrValidate(formData.sshPort, keyInfo.sshPort, "sshPort");
     formData.nodeExporterUser =
@@ -683,5 +694,42 @@ public class AccessManager extends DevopsBase {
     if (formParam != providerKeyParam) {
       failAccessKeyRequest(param);
     }
+  }
+
+  /**
+   * Checks whether the private access keys have the valid permission.
+   *
+   * @param universe
+   * @param allAccessKeyMap
+   * @return true if access keys permission is unchanged.
+   */
+  public boolean checkAccessKeyPermissionsValidity(
+      Universe universe, Map<AccessKeyId, AccessKey> allAccessKeysMap) {
+    return !universe
+        .getUniverseDetails()
+        .clusters
+        .stream()
+        .anyMatch(
+            cluster -> {
+              String keyCode = cluster.userIntent.accessKeyCode;
+              UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+              if (!StringUtils.isEmpty(keyCode)) {
+                AccessKeyId id = AccessKeyId.create(providerUUID, keyCode);
+                AccessKey accessKey = allAccessKeysMap.get(id);
+                String keyFilePath = accessKey.getKeyInfo().privateKey;
+                try {
+                  String permissions =
+                      PosixFilePermissions.toString(
+                          Files.getPosixFilePermissions(Paths.get(keyFilePath)));
+                  if (!permissions.equals(PEM_PERMISSIONS)) {
+                    return true;
+                  }
+                } catch (IOException e) {
+                  log.error("Error while fetching permissions of access key: {}", e);
+                  return true;
+                }
+              }
+              return false;
+            });
   }
 }

@@ -141,10 +141,10 @@ class RpcController {
   MonoDelta timeout() const;
 
   // Assign sidecar with specified index to out.
-  Status AssignSidecarTo(int idx, std::string* out) const;
+  Result<RefCntSlice> ExtractSidecar(int idx) const;
 
   // Transfer all sidecars to specified context.
-  size_t TransferSidecars(RpcContext* dest);
+  size_t TransferSidecars(Sidecars* dest);
 
   int32_t call_id() const;
 

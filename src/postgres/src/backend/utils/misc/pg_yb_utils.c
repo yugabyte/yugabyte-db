@@ -65,8 +65,11 @@
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_type.h"
+#include "catalog/pg_yb_profile.h"
+#include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/variable.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
 #include "optimizer/cost.h"
@@ -1298,6 +1301,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 
 		case T_CreateDomainStmt:
 		case T_CreateEnumStmt:
+		case T_YbCreateProfileStmt:
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
@@ -1468,6 +1472,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropUserMappingStmt:
 			break;
 
+		case T_YbDropProfileStmt:
 		case T_DropStmt:
 			*is_breaking_catalog_change = false;
 			break;
@@ -2390,10 +2395,53 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(range_split_clause);
 }
 
+const char*
+yb_fetch_current_transaction_priority(void)
+{
+	TxnPriorityRequirement txn_priority_type;
+	double				   txn_priority;
+	static char			   buf[50];
+
+	txn_priority_type = YBCGetTransactionPriorityType();
+	txn_priority	  = YBCGetTransactionPriority();
+
+	if (txn_priority_type == kHighestPriority)
+		snprintf(buf, sizeof(buf), "Highest priority transaction");
+	else if (txn_priority_type == kHigherPriorityRange)
+		snprintf(buf, sizeof(buf),
+				 "%.9lf (High priority transaction)", txn_priority);
+	else
+		snprintf(buf, sizeof(buf),
+				 "%.9lf (Normal priority transaction)", txn_priority);
+
+	return buf;
+}
+
+Datum
+yb_get_current_transaction_priority(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_CSTRING(yb_fetch_current_transaction_priority());
+}
+
+Datum
+yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
+}
+
+/*
+ * This PG function takes one optional bool input argument (legacy).
+ * If the input argument is not specified or its value is false, this function
+ * returns whether the current database is a colocated database.
+ * If the value of the input argument is true, this function returns whether the
+ * current database is a legacy colocated database.
+ */
 Datum
 yb_is_database_colocated(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_BOOL(MyDatabaseColocated);
+	if (!PG_GETARG_BOOL(0))
+		PG_RETURN_BOOL(MyDatabaseColocated);
+	PG_RETURN_BOOL(MyDatabaseColocated && MyColocatedDatabaseLegacy);
 }
 
 /*
@@ -2883,6 +2931,12 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case YBCatalogVersionRelationId:                    // pg_yb_catalog_version
 			db_id = TemplateDbOid;
 			break;
+		case YbProfileRelationId:							// pg_yb_profile
+			db_id = TemplateDbOid;
+			break;
+		case YbRoleProfileRelationId:					  // pg_yb_role_profile
+			db_id = TemplateDbOid;
+			break;
 
 		// MyDb tables
 		case AccessMethodProcedureRelationId:             // pg_amproc
@@ -2939,7 +2993,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		{
 			ereport(FATAL,
 			        (errcode(ERRCODE_INTERNAL_ERROR),
-			         errmsg("Sys table '%d' is not yet inteded for preloading", sys_table_id)));
+			         errmsg("Sys table '%d' is not yet intended for preloading", sys_table_id)));
 
 		}
 	}
@@ -3039,4 +3093,13 @@ void YBUpdateRowLockPolicyForSerializable(
 		 */
 		*effectiveWaitPolicy = LockWaitError;
 	}
+}
+
+uint32_t YbGetNumberOfDatabases()
+{
+	Assert(YBIsDBCatalogVersionMode());
+	uint32_t num_databases = 0;
+	HandleYBStatus(YBCGetNumberOfDatabases(&num_databases));
+	Assert(num_databases > 0);
+	return num_databases;
 }

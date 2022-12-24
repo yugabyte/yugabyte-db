@@ -47,7 +47,7 @@ CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 
 ## Example
 
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ycqlsh](../../../admin/ycqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
+{{% explore-setup-single %}}
 
 Create a keyspace and a table as follows:
 

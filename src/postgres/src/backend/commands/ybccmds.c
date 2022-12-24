@@ -96,6 +96,21 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 void
 YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
 {
+	if (YBIsDBCatalogVersionMode())
+	{
+		/*
+		 * In per database catalog version mode, disallow create database
+		 * if we come too close to the limit.
+		 */
+		int64_t num_databases = YbGetNumberOfDatabases();
+		int64_t num_reserved =
+			*YBCGetGFlags()->ysql_num_databases_reserved_in_db_catalog_version_mode;
+		if (kYBCMaxNumDbCatalogVersions - num_databases <= num_reserved)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("too many databases")));
+	}
+
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewCreateDatabase(dbname,
@@ -1213,8 +1228,21 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			if (cmd->subtype == AT_AttachPartition ||
 				cmd->subtype == AT_DetachPartition)
 			{
-				dependent_rel = heap_openrv(((PartitionCmd *)cmd->def)->name,
-											AccessExclusiveLock);
+				RangeVar *partition_rv = ((PartitionCmd *)cmd->def)->name;
+				Relation r = relation_openrv(partition_rv, AccessExclusiveLock);
+				char relkind = r->rd_rel->relkind;
+				relation_close(r, AccessShareLock);
+				/*
+				 * If alter is performed on an index as opposed to a table
+				 * skip schema version increment.
+				 */
+				if (relkind == RELKIND_INDEX ||
+					relkind == RELKIND_PARTITIONED_INDEX)
+				{
+					return handles;
+				}
+
+				dependent_rel = heap_openrv(partition_rv, AccessExclusiveLock);
 				/*
 				 * If the partition table is not YB supported table including
 				 * foreign table, skip schema version increment.
@@ -1246,7 +1274,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					SearchSysCache1(RELOID, ObjectIdGetDatum(relationId));
 				if (!HeapTupleIsValid(reltup))
 					elog(ERROR,
-						 "Cache lookup failed for relation %u",
+						 "cache lookup failed for relation %u",
 						  relationId);
 				Form_pg_class relform = (Form_pg_class) GETSTRUCT(reltup);
 				ReleaseSysCache(reltup);

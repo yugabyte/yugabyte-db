@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
@@ -53,7 +54,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
-import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
@@ -102,8 +103,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SupportBundleComponentFactory mockSupportBundleComponentFactory;
   protected ReleaseManager mockReleaseManager;
   protected GFlagsValidation mockGFlagsValidation;
+  protected BackupUtil mockBackupUtil;
 
-  @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
+  protected BaseTaskDependencies mockBaseTaskDependencies =
+      Mockito.mock(BaseTaskDependencies.class);
 
   protected Customer defaultCustomer;
   protected Provider defaultProvider;
@@ -178,6 +181,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockSupportBundleComponentFactory = mock(SupportBundleComponentFactory.class);
     mockGFlagsValidation = mock(GFlagsValidation.class);
     mockReleaseManager = mock(ReleaseManager.class);
+    mockBackupUtil = mock(BackupUtil.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -214,6 +218,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
+                .overrides(bind(BackupUtil.class).toInstance(mockBackupUtil))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
         .build();
   }

@@ -233,7 +233,7 @@ public enum AlertTemplate {
           + "up{export_type=\"node_export\",node_prefix=\"__nodePrefix__\"}[15m])"
           + ", \"exported_instance\", \"$1\", \"instance\", \"(.*)\") < 1 and on"
           + " (node_prefix, export_type, exported_instance) (min_over_time("
-          + "ybp_universe_node_function{node_prefix=\"__nodePrefix__\"}[15m]) == 1)) "
+          + "ybp_universe_node_process_status{node_prefix=\"__nodePrefix__\"}[1m]) == 1)) "
           + "{{ query_condition }} {{ query_threshold }}",
       "{{ $value | printf \\\"%.0f\\\" }} DB node(s) are down "
           + "for more than 15 minutes for universe '{{ $labels.source_name }}'.",
@@ -371,7 +371,7 @@ public enum AlertTemplate {
           + "up{export_type=~\"master_export|tserver_export\",node_prefix=\"__nodePrefix__\"}[15m])"
           + ", \"exported_instance\", \"$1\", \"instance\", \"(.*)\") < 1 and on"
           + " (node_prefix, export_type, exported_instance) (min_over_time("
-          + "ybp_universe_node_function{node_prefix=\"__nodePrefix__\"}[15m]) == 1)) "
+          + "ybp_universe_node_process_status{node_prefix=\"__nodePrefix__\"}[1m]) == 1)) "
           + "{{ query_condition }} {{ query_threshold }}",
       "{{ $value | printf \\\"%.0f\\\" }} DB Master/TServer instance(s) are down "
           + "for more than 15 minutes for universe '{{ $labels.source_name }}'.",
@@ -969,7 +969,19 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, "yb.alert.leaderless_tablets_secs_severe")
           .defaultThresholdUnit(SECOND)
           .thresholdMinValue(1.0)
-          .build());
+          .build()),
+
+  PRIVATE_ACCESS_KEY_STATUS(
+      "Private access key permission status",
+      "Change in universe private access keys file permissions",
+      "last_over_time(ybp_universe_private_access_key_status{universe_uuid = \"__universeUuid__\"}[1d])"
+          + " {{ query_condition }} 1",
+      "Invalid Permissions of private access key file for universe '{{ $labels.source_name }}'"
+          + " - check YBA logs or contact support YB support team.",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build());
 
   // @formatter:on
 

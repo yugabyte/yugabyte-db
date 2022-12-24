@@ -1,2 +1,3 @@
 test: yb-wait-queues-single-shard-waiter-unlocks
 test: yb-wait-queues-single-shard-waiters-same-tablet
+test: lock-update-traversal

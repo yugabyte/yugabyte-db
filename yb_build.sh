@@ -74,7 +74,7 @@ Build options:
     Skip PostgreSQL build
   --no-latest-symlink
     Disable the creation/overwriting of the "latest" symlink in the build directory.
-  --no-tests
+  --no-tests, --skip-tests
     Do not build tests
   --no-tcmalloc
     Do not use tcmalloc.
@@ -177,6 +177,10 @@ Build options:
   --skip-final-lto-link
     For LTO builds, skip the final linking step for server executables, which could take many
     minutes.
+  --cxx-test-filter-re, --cxx-test-filter-regex
+    Regular expression for filtering C++ tests to build. This regular expression is not anchored
+    on either end, so e.g. you can specify a substring of the test name. Use ^ or $ as needed.
+
 Linting options:
 
   --shellcheck
@@ -449,9 +453,6 @@ run_cxx_build() {
           ! -f ${make_file}
         ) && ${force_no_run_cmake} == "false" ]]
   then
-    if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
-      build_compiler_if_necessary
-    fi
     local cmake_binary
     if is_mac && [[ "${YB_TARGET_ARCH:-}" == "arm64" ]]; then
       cmake_binary=/opt/homebrew/bin/cmake
@@ -461,6 +462,9 @@ run_cxx_build() {
     log "Using cmake binary: $cmake_binary"
     log "Running cmake in $PWD"
     capture_sec_timestamp "cmake_start"
+    local cmake_stdout_path=${BUILD_ROOT}/cmake_stdout.txt
+    local cmake_stderr_path=${BUILD_ROOT}/cmake_stderr.txt
+    set +e
     (
       # Always disable remote build (running the compiler on a remote worker node) when running the
       # CMake step.
@@ -472,9 +476,53 @@ run_cxx_build() {
       set -x
       # We are not double-quoting $cmake_extra_args on purpose to allow multiple arguments.
       # shellcheck disable=SC2086
-      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}"
+      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}" \
+        >"${cmake_stdout_path}" 2>"${cmake_stderr_path}"
     )
+    local cmake_exit_code=$?
+    set -e
     capture_sec_timestamp "cmake_end"
+
+    # Show the contents of special CMake output files before we show CMake output itself.
+    if [[ ${cmake_exit_code} != 0 ]]; then
+      log "CMake failed with exit code ${cmake_exit_code}."
+      (
+        find "${BUILD_ROOT}" -name "CMake*.log" | while read -r cmake_log_path; do
+          echo
+          echo "--------------------------------------------------------------------------------"
+          echo "Contents of ${cmake_log_path}:"
+          echo "--------------------------------------------------------------------------------"
+          echo
+          cat "${cmake_log_path}"
+          echo
+          echo "--------------------------------------------------------------------------------"
+          echo
+        done
+      ) >&2
+    fi
+
+    if [[ -s ${cmake_stdout_path} ]]; then
+      if [[ ${cmake_exit_code} != 0 ]]; then
+        # Only mark CMake standard output as such in case of an error. Otherwise, just pass it
+        # through.
+        echo "CMake standard output (also saved to ${cmake_stdout_path}):"
+        echo
+      fi
+      cat "${cmake_stdout_path}"
+      if [[ ${cmake_exit_code} != 0 ]]; then
+        echo
+      fi
+    fi
+    if [[ -s ${cmake_stderr_path} ]]; then
+      echo "CMake standard error (also saved to ${cmake_stderr_path}):" >&2
+      echo >&2
+      cat "${cmake_stderr_path}" >&2
+      echo >&2
+    fi
+
+    if [[ ${cmake_exit_code} != 0 ]]; then
+      fatal "CMake failed with exit code ${cmake_exit_code}. See additional logging above."
+    fi
   fi
 
   if [[ ${cmake_only} == "true" ]]; then
@@ -679,6 +727,10 @@ set_initdb_target() {
   build_java=false
 }
 
+disable_initdb() {
+  export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
+}
+
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report
@@ -703,6 +755,12 @@ enable_clangd_index_build() {
   export YB_EXPORT_COMPILE_COMMANDS=1
 }
 
+set_cxx_test_filter_regex() {
+  expect_num_args 1 "$@"
+  force_run_cmake=true
+  cmake_opts+=( "-DYB_TEST_FILTER_RE=$1" )
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
@@ -724,6 +782,7 @@ run_java_tests=false
 save_log=false
 make_targets=()
 no_tcmalloc=false
+use_google_tcmalloc=false
 cxx_test_name=""
 test_existence_check=true
 object_files_to_delete=()
@@ -750,6 +809,9 @@ make_ninja_extra_args=""
 java_lint=false
 collect_java_tests=false
 
+# This will be set to true/false based on --no-tests / --with-tests.
+build_tests=""
+
 # The default value of this parameter will be set based on whether we're running on Jenkins.
 reduce_log_output=""
 
@@ -774,6 +836,9 @@ if [[ ${YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT:-} == "1" ]]; then
 fi
 
 export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
+
+cxx_test_filter_regex=""
+reset_cxx_test_filter=false
 
 yb_build_args=( "$@" )
 
@@ -886,6 +951,9 @@ while [[ $# -gt 0 ]]; do
     --no-tcmalloc)
       no_tcmalloc=true
     ;;
+    --use-google-tcmalloc)
+      use_google_tcmalloc=true
+    ;;
     --cxx-test|--ct)
       set_cxx_test_name "$2"
       shift
@@ -979,7 +1047,7 @@ while [[ $# -gt 0 ]]; do
       export YB_MAKE_PARALLELISM=$2
       shift
     ;;
-    -j[1-9])
+    -j[1-9]|-j[1-9][0-9]|-j[1-9][0-9][0-9]|-j[1-9][0-9][0-9][0-9])
       export YB_MAKE_PARALLELISM=${1#-j}
     ;;
     --remote)
@@ -1183,8 +1251,11 @@ while [[ $# -gt 0 ]]; do
     --resolve-java-dependencies)
       resolve_java_dependencies=true
     ;;
-    --no-tests)
-      export YB_DO_NOT_BUILD_TESTS=1
+    --no-tests|--skip-tests)
+      build_tests=false
+    ;;
+    --with-tests)
+      build_tests=true
     ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
@@ -1232,13 +1303,20 @@ while [[ $# -gt 0 ]]; do
       export YB_USE_LINUXBREW=0
     ;;
     --no-initdb)
-      export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
+      disable_initdb
     ;;
     --skip-test-log-rewrite)
       export YB_SKIP_TEST_LOG_REWRITE=1
     ;;
     --skip-final-lto-link)
       export YB_SKIP_FINAL_LTO_LINK=1
+    ;;
+    --cxx-test-filter-re|--cxx-test-filter-regex)
+      cxx_test_filter_regex=$2
+      shift
+    ;;
+    --reset-cxx-test-filter)
+      reset_cxx_test_filter=true
     ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
@@ -1296,8 +1374,29 @@ fi
 decide_whether_to_use_ninja
 handle_predefined_build_root
 
-unset cmake_opts
+# Setting CMake options.
+cmake_opts=()
 set_cmake_build_type_and_compiler_type
+if [[ -n ${build_tests} ]]; then
+  force_run_cmake=true
+  # YB_BUILD_TESTS will get stored in CMake cache and take effect on further runs.
+  if [[ ${build_tests} == "true" ]]; then
+    cmake_opts+=( -DYB_BUILD_TESTS=ON )
+  else
+    cmake_opts+=( -DYB_BUILD_TESTS=OFF )
+  fi
+fi
+
+if [[ -n ${cxx_test_filter_regex} ]]; then
+  if [[ ${reset_cxx_test_filter} == "true" ]]; then
+    fatal "--cxx-test-filter-regex is incompatible with --reset-cxx-filter-regex"
+  fi
+  set_cxx_test_filter_regex "${cxx_test_filter_regex}"
+fi
+if [[ ${reset_cxx_test_filter} == "true" ]]; then
+  set_cxx_test_filter_regex ""
+fi
+
 log "YugabyteDB build is running on host '$HOSTNAME'"
 log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 
@@ -1306,7 +1405,7 @@ if [[ ${verbose} == "true" ]]; then
 fi
 export BUILD_TYPE=$build_type
 
-if "$force_run_cmake" && "$force_no_run_cmake"; then
+if [[ ${force_run_cmake} == "true" && ${force_no_run_cmake} == "true" ]]; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
 fi
 
@@ -1332,7 +1431,7 @@ if [[ $num_test_repetitions -lt 1 ]]; then
   fatal "Invalid number of test repetitions: $num_test_repetitions. Must be 1 or more."
 fi
 
-if "$java_only" && ! "$build_java"; then
+if [[ ${java_only} == "true" && ${build_java} == "false" ]]; then
   fatal "--java-only specified along with an option that implies skipping the Java build, e.g." \
         "--cxx-test or --skip-java-build."
 fi
@@ -1562,6 +1661,13 @@ if [[ ${no_tcmalloc} == "true" ]]; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
 fi
 
+if [[ ${use_google_tcmalloc} == "true" ]]; then
+  if [[ ${is_linux} != "true" ]]; then
+    fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
+  fi
+  cmake_opts+=( -DYB_GOOGLE_TCMALLOC=1 )
+fi
+
 if [[ $pgo_data_path != "" ]]; then
   cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
 fi
@@ -1586,6 +1692,7 @@ fi
 if [[ $build_type == "compilecmds" ]]; then
   if [[ ${#make_targets[@]} -eq 0 ]]; then
     make_targets+=( gen_proto postgres yb_bfpg yb_bfql ql_parser_flex_bison_output)
+    disable_initdb
   else
     log "Custom targets specified for a compilecmds build, not adding default targets"
   fi
@@ -1599,6 +1706,8 @@ if [[ $build_type == "compilecmds" ]]; then
   # script and that is where the top-level combined compile_commands.json file is created.
   build_java=false
 fi
+
+readonly build_java=${build_java}
 
 if [[ ${build_cxx} == "true" ||
       ${force_run_cmake} == "true" ||

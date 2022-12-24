@@ -488,9 +488,8 @@ class YBClient {
   Status DeleteUDType(const std::string &namespace_name, const std::string &type_name);
 
   // Retrieve a (user-defined) type by name.
-  Status GetUDType(const std::string &namespace_name,
-                   const std::string &type_name,
-                   std::shared_ptr<QLType> *ql_type);
+  Result<std::shared_ptr<QLType>> GetUDType(
+        const std::string &namespace_name, const std::string &type_name);
 
   // CDC Stream related methods.
 

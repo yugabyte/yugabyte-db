@@ -32,21 +32,18 @@ set(DOCDB_ENCODING_SRCS
     doc_key.cc
     doc_kv_util.cc
     doc_path.cc
-    key_bounds.cc
+    doc_scanspec_util.cc
+    intent.cc
     key_bytes.cc
     primitive_value.cc
     primitive_value_util.cc
-    intent.cc
-    doc_scanspec_util.cc
-    doc_key_base.cc
-    pgsql_ybctid.cc
+    value.cc
     )
 
+# DocDB Encoding lib is shared with PG process as well. Avoid
+# including tserver specific dependencies for it.
 set(DOCDB_ENCODING_DEPS
-        docdb_proto
-        server_common
         yb_common
-        yb_rocksutil
         yb_util
         )
 
@@ -68,6 +65,7 @@ set(DOCDB_SRCS
         doc_boundary_values_extractor.cc
         docdb.cc
         docdb_debug.cc
+        docdb_filter_policy.cc
         docdb_pgapi.cc
         docdb_util.cc
         doc_ttl_util.cc
@@ -90,6 +88,7 @@ set(DOCDB_SRCS
         compaction_file_filter.cc
         intent_aware_iterator.cc
         intent_iterator.cc
+        key_bounds.cc
         lock_batch.cc
         packed_row.cc
         pgsql_operation.cc
@@ -103,7 +102,6 @@ set(DOCDB_SRCS
         subdocument.cc
         transaction_dump.cc
         transaction_status_cache.cc
-        value.cc
         local_waiting_txn_registry.cc
         wait_queue.cc
         kv_debug.cc
@@ -115,6 +113,7 @@ set(DOCDB_DEPS
         yb_util
         yb_rocksutil
         yb_common
+        yb_ql_common
         docdb_proto
         server_common
         rpc_introspection_proto
@@ -155,6 +154,7 @@ set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIB
 ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)
 ADD_YB_TEST(doc_operation-test)
+ADD_YB_TEST(docdb_filter_policy-test)
 ADD_YB_TEST(docdb_rocksdb_util-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docrowwiseiterator-test)
@@ -162,6 +162,7 @@ ADD_YB_TEST(intent_iterator-test)
 ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(randomized_docdb-test)
+ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(subdocument-test)
 ADD_YB_TEST(consensus_frontier-test)

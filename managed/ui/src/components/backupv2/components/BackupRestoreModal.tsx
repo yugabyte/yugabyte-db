@@ -63,6 +63,7 @@ interface RestoreModalProps {
   backup_details: IBackup;
   onHide: Function;
   visible: boolean;
+  isRestoreEntireBackup?: boolean;
 }
 
 const TEXT_RESTORE = 'Restore';
@@ -95,7 +96,12 @@ const isYBCEnabledInUniverse = (universeList: IUniverse[], currentUniverseUUID: 
   return isYbcEnabledUniverse(universe?.universeDetails);
 };
 
-export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHide, visible }) => {
+export const BackupRestoreModal: FC<RestoreModalProps> = ({
+  backup_details,
+  onHide,
+  visible,
+  isRestoreEntireBackup = false
+}) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isFetchingTables, setIsFetchingTables] = useState(false);
   const { data: incrementalBackups, isLoading: isIncBackupLoading, isError } = useQuery(
@@ -132,17 +138,21 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
         return Promise.reject(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
       }
 
-      if (isYBCEnabledinTargetUniverse) {
+      if (isYBCEnabledinTargetUniverse && backup_details.category === 'YB_CONTROLLER') {
         values = omit(values, 'parallelThreads');
       }
-      if (backup_details?.hasIncrementalBackups && incrementalBackups && !isError) {
+      if (
+        isRestoreEntireBackup &&
+        backup_details?.hasIncrementalBackups &&
+        incrementalBackups &&
+        !isError
+      ) {
         //Backend is already sending reponse in sorted order
         const recentBackup = incrementalBackups.data.filter(
           (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
         )[0];
         return restoreEntireBackup({ ...backup_details, commonBackupInfo: recentBackup }, values);
-      }
-      return restoreEntireBackup(backup_details, values);
+      } else return restoreEntireBackup(backup_details, values);
     },
     {
       onSuccess: (resp) => {
@@ -185,7 +195,8 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     keyspaces: Array(backup_details?.commonBackupInfo.responseList.length).fill(''),
     kmsConfigUUID: null,
     should_rename_keyspace: false,
-    disable_keyspace_rename: false
+    disable_keyspace_rename: false,
+    allow_YCQL_conflict_keyspace: false
   };
 
   const validateTablesAndRestore = async (
@@ -203,6 +214,23 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
       if (options.doRestore) {
         restore.mutate({ backup_details: backup_details as IBackup, values });
       }
+      return;
+    }
+    // in YCQL, if we try to restore a single keyspace, while the keyspace already exists in the db, with no conflicting tables, we should allow it
+    // see https://yugabyte.atlassian.net/browse/PLAT-6460
+    if (!isRestoreEntireBackup && values['backup']['backupType'] === BACKUP_API_TYPES.YCQL) {
+      if (options.doRestore) {
+        restore.mutate({
+          backup_details,
+          values
+        });
+        return;
+      }
+
+      options.setFieldValue('allow_YCQL_conflict_keyspace', true, false);
+      options.setFieldValue('should_rename_keyspace', false, false);
+      options.setFieldValue('disable_keyspace_rename', false, false);
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
       return;
     }
 
@@ -309,7 +337,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
         if (values['should_rename_keyspace'] && currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
           setOverrideSubmitLabel(TEXT_RESTORE);
-        } else if (currentStep === STEPS.length - 1) {
+        } else if (currentStep === STEPS.length - 1 || values['allow_YCQL_conflict_keyspace']) {
           await validateTablesAndRestore(values, {
             setFieldValue,
             setFieldError,
@@ -397,12 +425,17 @@ function RestoreChooseUniverseForm({
   }
 
   let isYbcEnabledinCurrentUniverse = false;
+  let showParallelThread = true;
 
   if (isDefinedNotNull(values['targetUniverseUUID']?.value)) {
     isYbcEnabledinCurrentUniverse = isYBCEnabledInUniverse(
       universeList,
       values['targetUniverseUUID']?.value
     );
+  }
+
+  if (isYbcEnabledinCurrentUniverse && backup_details.category === 'YB_CONTROLLER') {
+    showParallelThread = false;
   }
 
   return (
@@ -541,7 +574,7 @@ function RestoreChooseUniverseForm({
           </Col>
         </Row>
       )}
-      {!isYbcEnabledinCurrentUniverse && backup_details.category !== 'YB_CONTROLLER' && (
+      {showParallelThread && (
         <Row>
           <Col lg={8} className="no-padding">
             <Field
@@ -598,6 +631,7 @@ export function RenameKeyspace({
               values['searchText'] &&
               keyspace.keyspace &&
               keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
+                // eslint-disable-next-line react/jsx-indent
                 <Row key={index}>
                   <Col lg={6} className="keyspaces-input no-padding">
                     <Field

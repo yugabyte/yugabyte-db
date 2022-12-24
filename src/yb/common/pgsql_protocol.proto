@@ -250,7 +250,7 @@ message PgsqlWriteRequestPB {
   optional uint32 ysql_db_oid = 24;
 
   // True only if this changes a system catalog table (or index).
-  optional bool is_ysql_catalog_change = 17 [default = false];
+  optional bool is_ysql_catalog_change_using_protobuf = 17 [default = false];
 
   // Does this request correspond to backfilling an index table?
   optional bool is_backfill = 19 [default = false];

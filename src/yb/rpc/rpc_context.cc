@@ -192,35 +192,8 @@ void RpcContext::RespondApplicationError(int error_ext_id, const std::string& me
   responded_ = true;
 }
 
-WriteBuffer& RpcContext::StartRpcSidecar() {
-  return call_->StartRpcSidecar();
-}
-
-size_t RpcContext::CompleteRpcSidecar() {
-  return call_->CompleteRpcSidecar();
-}
-
-size_t RpcContext::TakeSidecars(
-    WriteBuffer* sidecar_buffer, google::protobuf::RepeatedField<uint32_t>* offsets) {
-  return call_->TakeSidecars(sidecar_buffer, offsets);
-}
-
-size_t RpcContext::TakeSidecars(
-    const RefCntBuffer& buffer,
-    const boost::container::small_vector_base<const uint8_t*>& sidecar_bounds) {
-  return call_->TakeSidecars(buffer, sidecar_bounds);
-}
-
-void RpcContext::ResetRpcSidecars() {
-  call_->ResetRpcSidecars();
-}
-
-Slice RpcContext::GetFirstSidecar() const {
-  return call_->GetFirstSidecar();
-}
-
-RefCntSlice RpcContext::ExtractSidecar(size_t index) const {
-  return call_->ExtractSidecar(index);
+Sidecars& RpcContext::sidecars() {
+  return call_->sidecars();
 }
 
 const Endpoint& RpcContext::remote_address() const {

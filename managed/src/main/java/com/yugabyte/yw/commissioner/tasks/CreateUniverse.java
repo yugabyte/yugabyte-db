@@ -11,6 +11,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -19,13 +20,17 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
+import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import javax.inject.Inject;
-import lombok.AllArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Abortable
@@ -176,6 +181,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createConfigureUniverseTasks(primaryCluster);
 
+      // Create Load Balancer map to add nodes to load balancer
+      Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =
+          createLoadBalancerMap(taskParams(), null, null, null);
+      createManageLoadBalancerTasks(loadBalancerMap);
+
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
@@ -188,6 +198,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       if (universe != null && universe.getUniverseDetails().updateSucceeded) {
         log.debug("Removing passwords for {}", universe.universeUUID);
         passwordStore.invalidate(universe.universeUUID);
+        if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")
+            && taskParams().overridePrebuiltAmiDBVersion) {
+          universe.updateConfig(
+              ImmutableMap.of(Universe.USE_CUSTOM_IMAGE, Boolean.toString(false)));
+          universe.save();
+        }
       }
     }
     log.info("Finished {} task.", getName());

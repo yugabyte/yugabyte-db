@@ -302,16 +302,18 @@ class YBqlOp : public YBOperation {
 
   QLResponsePB* mutable_response() { return ql_response_.get(); }
 
-  const std::string& rows_data() { return rows_data_; }
+  const RefCntSlice& rows_data() { return rows_data_; }
 
-  std::string* mutable_rows_data() { return &rows_data_; }
+  void set_rows_data(const RefCntSlice& value) {
+    rows_data_ = value;
+  }
 
   bool succeeded() const override;
 
  protected:
   explicit YBqlOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<QLResponsePB> ql_response_;
-  std::string rows_data_;
+  RefCntSlice rows_data_;
 };
 
 class YBqlWriteOp : public YBqlOp {
@@ -445,7 +447,7 @@ class YBPgsqlOp : public YBOperation {
  public:
   YBPgsqlOp(
       const std::shared_ptr<YBTable>& table, std::string* partition_key,
-      rpc::RpcContext* rpc_context);
+      rpc::Sidecars* sidecars);
   ~YBPgsqlOp();
 
   const PgsqlResponsePB& response() const { return *response_; }
@@ -468,8 +470,8 @@ class YBPgsqlOp : public YBOperation {
     return sidecar_index_;
   }
 
-  rpc::RpcContext& rpc_context() const {
-    return rpc_context_;
+  rpc::Sidecars& sidecars() const {
+    return sidecars_;
   }
 
   Status GetPartitionKey(std::string* partition_key) const override {
@@ -481,13 +483,13 @@ class YBPgsqlOp : public YBOperation {
   std::unique_ptr<PgsqlResponsePB> response_;
   int64_t sidecar_index_ = -1;
   std::string partition_key_;
-  rpc::RpcContext& rpc_context_;
+  rpc::Sidecars& sidecars_;
 };
 
 class YBPgsqlWriteOp : public YBPgsqlOp {
  public:
   YBPgsqlWriteOp(
-      const std::shared_ptr<YBTable>& table, rpc::RpcContext* rpc_context,
+      const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars,
       PgsqlWriteRequestPB* request = nullptr);
   ~YBPgsqlWriteOp();
 
@@ -516,9 +518,9 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 
   Status GetPartitionKey(std::string* partition_key) const override;
 
-  static YBPgsqlWriteOpPtr NewInsert(const YBTablePtr& table, rpc::RpcContext* context);
-  static YBPgsqlWriteOpPtr NewUpdate(const YBTablePtr& table, rpc::RpcContext* context);
-  static YBPgsqlWriteOpPtr NewDelete(const YBTablePtr& table, rpc::RpcContext* context);
+  static YBPgsqlWriteOpPtr NewInsert(const YBTablePtr& table, rpc::Sidecars* sidecars);
+  static YBPgsqlWriteOpPtr NewUpdate(const YBTablePtr& table, rpc::Sidecars* sidecars);
+  static YBPgsqlWriteOpPtr NewDelete(const YBTablePtr& table, rpc::Sidecars* sidecars);
 
  protected:
   virtual Type type() const override { return PGSQL_WRITE; }
@@ -537,11 +539,11 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 class YBPgsqlReadOp : public YBPgsqlOp {
  public:
   YBPgsqlReadOp(
-      const std::shared_ptr<YBTable>& table, rpc::RpcContext* rpc_context,
+      const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars,
       PgsqlReadRequestPB* request = nullptr);
 
   static YBPgsqlReadOpPtr NewSelect(
-      const std::shared_ptr<YBTable>& table, rpc::RpcContext* context);
+      const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars);
 
   // Note: to avoid memory copy, this PgsqlReadRequestPB is moved into tserver ReadRequestPB
   // when the request is sent to tserver. It is restored after response is received from tserver

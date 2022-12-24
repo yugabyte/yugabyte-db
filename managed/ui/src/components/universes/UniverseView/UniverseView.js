@@ -276,23 +276,23 @@ export const UniverseView = (props) => {
           {isPausableUniverse(row) &&
             !isEphemeralAwsStorage &&
             (featureFlags.test['pausedUniverse'] || featureFlags.released['pausedUniverse']) && (
-              <YBMenuItem
-                onClick={() => {
-                  setFocusedUniverse(row);
-                  showToggleUniverseStateModal();
-                }}
-                availability={getFeatureState(
-                  currentCustomer.data.features,
-                  'universes.details.overview.pausedUniverse'
-                )}
+            <YBMenuItem
+              onClick={() => {
+                setFocusedUniverse(row);
+                showToggleUniverseStateModal();
+              }}
+              availability={getFeatureState(
+                currentCustomer.data.features,
+                'universes.details.overview.pausedUniverse'
+              )}
+            >
+              <YBLabelWithIcon
+                icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
               >
-                <YBLabelWithIcon
-                  icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
-                >
-                  {universePaused ? 'Resume Universe' : 'Pause Universe'}
-                </YBLabelWithIcon>
-              </YBMenuItem>
-            )}
+                {universePaused ? 'Resume Universe' : 'Pause Universe'}
+              </YBLabelWithIcon>
+            </YBMenuItem>
+          )}
 
           <YBMenuItem
             onClick={() => {
@@ -534,11 +534,13 @@ export const UniverseView = (props) => {
   );
 
   let numNodes = 0;
+  let numOfCores = 0;
   let totalCost = 0;
   if (universes) {
     universes.forEach(function (universeItem) {
       if (isNonEmptyObject(universeItem.universeDetails)) {
         numNodes += getUniverseNodeCount(universeItem.universeDetails.nodeDetailsSet);
+        numOfCores += universeItem.resources.numCores;
       }
       if (isDefinedNotNull(universeItem.pricePerHour)) {
         totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
@@ -608,6 +610,13 @@ export const UniverseView = (props) => {
           separatorLine
           icon="fa-braille"
           size={numNodes}
+        />
+        <YBResourceCount
+          kind="Core"
+          pluralizeKind
+          separatorLine
+          icon="fa-microchip"
+          size={numOfCores}
         />
         <YBResourceCount
           kind="per Month"

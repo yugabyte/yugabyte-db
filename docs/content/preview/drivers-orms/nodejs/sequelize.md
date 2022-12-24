@@ -38,6 +38,12 @@ Currently, you can use [sequelize-yugabytedb](https://github.com/yugabyte/sequel
 
 This section describes how to use Node.js models (domain objects) to store and retrieve data from a YugabyteDB cluster.
 
+## CRUD operations
+
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Node.js ORM example application](../../orms/nodejs/ysql-sequelize/) page.
+
+The following steps break down the example to demonstrate how to perform common tasks required for Node.js application development using Sequelize.
+
 ### Step 1: Install the sequelize-yugabytedb ORM package
 
 Before proceeding with the next steps, you need to have Node.js installed on your machine. Refer to [Downloading and installing Node.js and npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm).
@@ -210,6 +216,7 @@ This configuration can be used while connecting to a YugabyteDB Managed cluster 
       });
     ```
 
-## Next steps
+## Learn more
 
-Explore [Scaling Node Applications](../../../explore/linear-scalability/) with YugabyteDB
+- Build Node.js applications using [Prisma ORM](../prisma/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

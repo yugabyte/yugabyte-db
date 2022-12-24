@@ -1141,7 +1141,7 @@ Status Executor::GenerateEmptyResult(const PTSelectStmt* tnode) {
   QLRowBlock empty_row_block(tnode->table()->InternalSchema(), {});
   WriteBuffer buffer(1024);
   empty_row_block.Serialize(select_op->request().client(), &buffer);
-  buffer.AssignTo(select_op->mutable_rows_data());
+  select_op->set_rows_data(buffer.ToContinuousBlock());
   result_ = std::make_shared<RowsResult>(select_op.get());
 
   return Status::OK();
@@ -1426,7 +1426,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
       // Leave the rest of the columns null in this case.
 
       result_ = std::make_shared<RowsResult>(
-          table->name(), columns, result_row_block.SerializeToString());
+          table->name(), columns, result_row_block.SerializeToRefCntSlice());
     } else if (tnode->if_clause() != nullptr) {
       // Return row with [applied] = false.
       std::shared_ptr<std::vector<ColumnSchema>> columns =
@@ -1438,7 +1438,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
       row.mutable_column(0)->set_bool_value(false);
 
       result_ = std::make_shared<RowsResult>(
-          table->name(), columns, result_row_block.SerializeToString());
+          table->name(), columns, result_row_block.SerializeToRefCntSlice());
     }
 
     return Status::OK();
@@ -1628,7 +1628,7 @@ Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
     }
   }
   result_ = std::make_shared<RowsResult>(
-      explainTable, explainColumns, row_block.SerializeToString());
+      explainTable, explainColumns, row_block.SerializeToRefCntSlice());
   return Status::OK();
 }
 
@@ -2031,7 +2031,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
               for (auto& other : tnode_context->ops()) {
                 if (other != op) {
                   other->mutable_response()->set_status(QLResponsePB::YQL_STATUS_OK);
-                  other->mutable_rows_data()->clear();
+                  other->set_rows_data(RefCntSlice());
                 }
               }
               return false; // not done
@@ -2129,17 +2129,16 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
     const auto* select_stmt = static_cast<const PTSelectStmt *>(tnode);
     const auto* child_select = static_cast<const PTSelectStmt *>(child_tnode);
 
-    string& rows_data = child_context->rows_result()->rows_data();
-    if (!child_select->covers_fully() && !rows_data.empty()) {
+    auto data = child_context->rows_result()->rows_data();
+    if (!child_select->covers_fully() && !data.empty()) {
       QLRowBlock* keys = tnode_context->keys();
       keys->rows().clear();
-      Slice data(rows_data);
       RETURN_NOT_OK(keys->Deserialize(YQL_CLIENT_CQL,  &data));
       const YBqlReadOpPtr& select_op = tnode_context->uncovered_select_op();
       if (VERIFY_RESULT(FetchRowsByKeys(select_stmt, select_op, *keys, tnode_context))) {
         has_buffered_ops = true;
       }
-      rows_data.clear();
+      child_context->rows_result()->set_rows_data(RefCntSlice());
     }
 
     // Finalize the execution.  We will send this result to users, and they send us subsequent
@@ -2530,7 +2529,7 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
     row.mutable_column(1)->set_string_value(resp.error_message());
     // Leave the rest of the columns null in this case.
 
-    *op->mutable_rows_data() = result_row_block.SerializeToString();
+    op->set_rows_data(result_row_block.SerializeToRefCntSlice());
     return Status::OK();
   }
 

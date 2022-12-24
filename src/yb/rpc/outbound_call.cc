@@ -50,6 +50,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -502,12 +503,12 @@ bool OutboundCall::IsFinished() const {
   return FinishedState(state_.load(std::memory_order_acquire));
 }
 
-Status OutboundCall::AssignSidecarTo(size_t idx, std::string* out) const {
-  return call_response_.AssignSidecarTo(idx, out);
+Result<RefCntSlice> OutboundCall::ExtractSidecar(size_t idx) const {
+  return call_response_.ExtractSidecar(idx);
 }
 
-size_t OutboundCall::TransferSidecars(rpc::RpcContext* context) {
-  return call_response_.TransferSidecars(context);
+size_t OutboundCall::TransferSidecars(Sidecars* dest) {
+  return call_response_.TransferSidecars(dest);
 }
 
 string OutboundCall::ToString() const {
@@ -590,11 +591,11 @@ CallResponse::CallResponse()
     : parsed_(false) {
 }
 
-Status CallResponse::AssignSidecarTo(size_t idx, std::string* out) const {
+Result<RefCntSlice> CallResponse::ExtractSidecar(size_t idx) const {
   SCHECK(parsed_, IllegalState, "Calling $0 on non parsed response", __func__);
   SCHECK_LT(idx + 1, sidecar_bounds_.size(), InvalidArgument, "Sidecar out of bounds");
-  Slice(sidecar_bounds_[idx], sidecar_bounds_[idx + 1]).AssignTo(out);
-  return Status::OK();
+  return RefCntSlice(response_data_.buffer(),
+                     Slice(sidecar_bounds_[idx], sidecar_bounds_[idx + 1]));
 }
 
 Result<SidecarHolder> CallResponse::GetSidecarHolder(size_t idx) const {
@@ -602,8 +603,8 @@ Result<SidecarHolder> CallResponse::GetSidecarHolder(size_t idx) const {
       response_data_.buffer(), Slice(sidecar_bounds_[idx], sidecar_bounds_[idx + 1]));
 }
 
-size_t CallResponse::TransferSidecars(rpc::RpcContext* context) {
-  return context->TakeSidecars(response_data_.buffer(), sidecar_bounds_);
+size_t CallResponse::TransferSidecars(Sidecars* dest) {
+  return dest->Take(response_data_.buffer(), sidecar_bounds_);
 }
 
 Status CallResponse::ParseFrom(CallData* call_data) {

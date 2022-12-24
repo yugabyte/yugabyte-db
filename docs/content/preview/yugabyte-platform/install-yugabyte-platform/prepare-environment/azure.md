@@ -77,11 +77,11 @@ You may choose not to create a new security group and instead use an existing on
 
 To access the YugabyteDB Anywhere from outside the Azure environment, you would need to enable access by assigning an appropriate network security group to the YugabyteDB Anywhere machine. At a minimum, you need to be able to do the following:
 
-* Access the YugabyteDB Anywhere instance over SSH (port tcp:22).
-* Check, manage, and upgrade YugabyteDB Anywhere (port tcp:8800).
-* View the YugabyteDB Anywhere UI (port tcp:80).
+* Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
+* Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
+* View the YugabyteDB Anywhere UI (port `tcp:80`).
 
-If you are using your own custom Virtual Private Cloud (VPC), as it is typically the case for a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own custom Virtual Private Cloud (VPC), as it is typically the case for a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 18018, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
 YugabyteDB Anywhere will provision and access database nodes in a later step; you need to provide a virtual network where YugabyteDB Anywhere will create the database nodes. Therefore, you have to ensure connectivity between the YugabyteDB Anywhere VM virtual network and database VMs virtual network. You may also require virtual network peering based on your network configuration. Ensure that YugabyteDB Anywhere can access these nodes on the database VM’s virtual network.
 
@@ -90,7 +90,7 @@ To create a security group that enables these artifacts, navigate to **Network S
 * In the Name field, enter yugaware-sg or any other name.
 * Edit inbound security rules, as follows:
   * Add the appropriate IP addresses to the **Source IP ranges** field. To allow access from any machine, enter 0.0.0.0/0, but note that this is not very secure.
-  * Add the ports 22, 8800, and 80 to the **Port Range** field. The protocol selected must be TCP. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379 to the **Port Range** field.
+  * Add the ports 22, 8800, and 80 to the **Port Range** field. The protocol selected must be TCP. For a self-managed configuration, also add 7000, 7100, 9000, 9100, 18018, 11000, 12000, 9300, 9042, 5433, and 6379 to the **Port Range** field.
 
 ## Create a service principal
 
@@ -106,7 +106,7 @@ Follow these steps to create the application registration:
 * Specify who can use the application. You can use either single or multiple tenant options.
 * Do not enter anything for **Redirect URI** and click **Register** to complete the initial application registration, as per the following illustration:
 
-![Prepare Azure cloud](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-1.png)
+  ![Prepare Azure cloud](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-1.png)
 
 * When registration completes, the Azure portal displays the application registration's **Overview**, which includes its Application (client) ID. Also referred to as just client ID, this value uniquely identifies your Microsoft identity platform application.
 * For the application authentication, select **Certificates & secrets > New client secret**.
@@ -115,7 +115,7 @@ Follow these steps to create the application registration:
 * Click **Add**.
 * Record the secret's value to be used later for configuring YugabyteDB Anywhere, as it is never displayed again after you leave this page.
 
-![Prepare Azure cloud](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-2.png)
+  ![Prepare Azure cloud](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-2.png)
 
 ## Assign a role to the application
 
@@ -126,13 +126,13 @@ Proceed by performing the following:
 * In the Azure portal, navigate to the resource group and select **Access control (IAM)**.
 * Select **Add > Add role assignment**, as per the following illustration:
 
-![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-3.png)
+  ![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-3.png)
 
 * Select  Network Contributor and Virtual Machine Contributor roles.
 
 * Select your application created in the previous step.
 
-* Click Save.
+* Click **Save**.
 
   You should be able to see your application in the list of users with a role for that scope.
 

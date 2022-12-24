@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -61,21 +62,17 @@ import play.mvc.Result;
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
 
+  // All these fields must be kept the same from the old authConfig (if it has)
+  public static final List<String> awsKmsNonEditableFields =
+      AwsKmsAuthConfigField.getNonEditableFields();
+  // Below AWS fields can be editable. If no new field is specified, use the same old one.
+  public static final List<String> awsKmsEditableFields = AwsKmsAuthConfigField.getEditableFields();
+
   private static Set<String> API_URL =
       ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
 
-  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
-  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
-  public static final String AWS_REGION_FIELDNAME = "AWS_REGION";
-  public static final String AWS_KMS_ENDPOINT_FIELDNAME = "AWS_KMS_ENDPOINT";
-
   public static final String SMARTKEY_API_KEY_FIELDNAME = "api_key";
   public static final String SMARTKEY_BASE_URL_FIELDNAME = "base_url";
-
-  public static final String HC_ADDR_FNAME = HashicorpVaultConfigParams.HC_VAULT_ADDRESS;
-  public static final String HC_TOKEN_FNAME = HashicorpVaultConfigParams.HC_VAULT_TOKEN;
-  public static final String HC_ENGINE_FNAME = HashicorpVaultConfigParams.HC_VAULT_ENGINE;
-  public static final String HC_MPATH_FNAME = HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH;
 
   @Inject EncryptionAtRestManager keyManager;
 
@@ -127,7 +124,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         break;
       case HASHICORP:
-        if (formData.get(HC_ADDR_FNAME) == null || formData.get(HC_TOKEN_FNAME) == null) {
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS) == null
+            || formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null) {
           throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
         }
         try {
@@ -179,24 +177,32 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
     switch (keyProvider) {
       case AWS:
-        if (formData.get(AWS_REGION_FIELDNAME) != null
-            && !authconfig.get(AWS_REGION_FIELDNAME).equals(formData.get(AWS_REGION_FIELDNAME))) {
-          throw new PlatformServiceException(BAD_REQUEST, "KmsConfig region cannot be changed.");
+        for (String field : awsKmsNonEditableFields) {
+          if (formData.has(field)) {
+            if (!authconfig.has(field)
+                || (authconfig.has(field) && !authconfig.get(field).equals(formData.get(field)))) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, String.format("AWS KmsConfig field '%s' cannot be changed.", field));
+            }
+          }
         }
+        LOG.debug("Verified that all the fields in the AWS KMS request are editable");
         break;
       case SMARTKEY:
         // NO checks required
         break;
       case HASHICORP:
-        if (formData.get(HC_ENGINE_FNAME) != null
-            && !authconfig.get(HC_ENGINE_FNAME).equals(formData.get(HC_ENGINE_FNAME))) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "KmsConfig vault engine cannot be changed.");
-        }
-        if (formData.get(HC_MPATH_FNAME) != null
-            && !authconfig.get(HC_MPATH_FNAME).equals(formData.get(HC_MPATH_FNAME))) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "KmsConfig vault engine path cannot be changed.");
+        List<String> hashicorpKmsNonEditableFields =
+            Arrays.asList(
+                HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+                HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+                HashicorpVaultConfigParams.HC_VAULT_ADDRESS);
+        for (String field : hashicorpKmsNonEditableFields) {
+          if (formData.get(field) != null && !authconfig.get(field).equals(formData.get(field))) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format("Hashicorp KmsConfig field '%s' cannot be changed.", field));
+          }
         }
         break;
       case GCP:
@@ -250,17 +256,15 @@ public class EncryptionAtRestController extends AuthenticatedController {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     switch (keyProvider) {
       case AWS:
-        formData.set(AWS_REGION_FIELDNAME, authConfig.get(AWS_REGION_FIELDNAME));
-        if (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) == null
-            && authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
-          formData.set(AWS_ACCESS_KEY_ID_FIELDNAME, authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME));
+        // Make a copy of the original authConfig object and edit the editable fields.
+        ObjectNode updatedFormData = authConfig.deepCopy();
+        for (String fieldName : awsKmsEditableFields) {
+          if (formData.has(fieldName)) {
+            updatedFormData.set(fieldName, formData.get(fieldName));
+          }
         }
-        if (formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) == null
-            && authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null) {
-          formData.set(
-              AWS_SECRET_ACCESS_KEY_FIELDNAME, authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME));
-        }
-        break;
+        LOG.debug("Added all required AWS KMS fields to the formData to be edited");
+        return updatedFormData;
       case SMARTKEY:
         if (formData.get(SMARTKEY_API_KEY_FIELDNAME) == null
             && authConfig.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
@@ -268,11 +272,18 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         break;
       case HASHICORP:
-        formData.set(HC_ENGINE_FNAME, authConfig.get(HC_ENGINE_FNAME));
-        formData.set(HC_MPATH_FNAME, authConfig.get(HC_MPATH_FNAME));
+        formData.set(
+            HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+            authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ENGINE));
+        formData.set(
+            HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+            authConfig.get(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
 
-        if (formData.get(HC_TOKEN_FNAME) == null && authConfig.get(HC_TOKEN_FNAME) != null) {
-          formData.set(HC_TOKEN_FNAME, authConfig.get(HC_TOKEN_FNAME));
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
+            && authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null) {
+          formData.set(
+              HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+              authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
         }
         break;
       case GCP:

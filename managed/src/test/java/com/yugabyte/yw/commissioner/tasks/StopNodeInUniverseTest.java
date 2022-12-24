@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -359,7 +360,11 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+            ClusterType.PRIMARY,
+            userIntent,
+            userIntent.replicationFactor,
+            null,
+            Collections.emptyList());
     universe =
         Universe.saveDetails(
             universe.universeUUID,
@@ -427,7 +432,11 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+            ClusterType.PRIMARY,
+            userIntent,
+            userIntent.replicationFactor,
+            null,
+            Collections.emptyList());
     universe =
         Universe.saveDetails(
             universe.universeUUID,

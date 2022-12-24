@@ -83,6 +83,7 @@ class AbstractMethod(object):
         self.parser.add_argument("--ask_sudo_pass", action='store_true', default=False)
         self.parser.add_argument("--vars_file", default=None)
         self.parser.add_argument("--ssh2_enabled", action='store_true', default=False)
+        self.parser.add_argument("--ansible_connection_type", default=None, required=False)
 
     def preprocess_args(self, args):
         """Hook for pre-processing args before actually executing the callback. Useful for shared
@@ -238,6 +239,8 @@ class AbstractInstancesMethod(AbstractMethod):
         else:
             updated_args["ssh_user"] = self.SSH_USER
 
+        if args.ansible_connection_type:
+            updated_args["ansible_connection_type"] = args.ansible_connection_type
         if args.node_agent_ip:
             updated_args["node_agent_ip"] = args.node_agent_ip
         if args.node_agent_port:
@@ -881,6 +884,11 @@ class UpdateDiskMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(UpdateDiskMethod, self).__init__(base_command, "disk_update")
 
+    def add_extra_args(self):
+        super(UpdateDiskMethod, self).add_extra_args()
+        self.parser.add_argument("--force", action="store_true",
+                                 default=False, help="Force disk update.")
+
     def prepare(self):
         super(UpdateDiskMethod, self).prepare()
 
@@ -933,6 +941,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
                                  help="Max memory for postgress process.")
         self.parser.add_argument("--air_gap", action="store_true",
                                  default=False, help="Run airgapped install.")
+        self.parser.add_argument("--force", action="store_true",
+                                 default=False, help="Force instance type change.")
 
     def prepare(self):
         super(ChangeInstanceTypeMethod, self).prepare()
@@ -959,22 +969,28 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
                                     " using --instance_type argument.")
 
     def _resize_instance(self, args, host_info):
-        logging.info("Stopping instance {}".format(args.search_pattern))
-        self.cloud.stop_instance(host_info)
-        logging.info('Instance {} is stopped'.format(args.search_pattern))
-
         try:
-            # Change instance type
-            self._change_instance_type(args, host_info)
-            logging.info('Instance {}\'s type changed to {}'
-                         .format(args.search_pattern, args.instance_type))
+            if args.instance_type != host_info['instance_type'] or args.force:
+                logging.info("Stopping instance {}".format(args.search_pattern))
+                self.cloud.stop_instance(host_info)
+
+                logging.info('Instance {} is stopped'.format(args.search_pattern))
+
+                # Change instance type
+                self._change_instance_type(args, host_info)
+                logging.info(
+                    "Instance %s\'s type changed to %s",
+                    args.search_pattern, args.instance_type)
+            else:
+                logging.info(
+                    "Instance %s\'s type has not changed from %s. Skipping.",
+                    args.search_pattern, args.instance_type)
         except Exception as e:
             raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
                                     .format(repr(e)))
         finally:
             self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
             logging.info('Instance {} is started'.format(args.search_pattern))
-
         # Make sure we are using the updated cgroup value if instance type is changing.
         self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
@@ -1069,14 +1085,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--gcs_credentials_json')
         self.parser.add_argument('--http_remote_download', action="store_true")
         self.parser.add_argument('--http_package_checksum', default='')
-        self.parser.add_argument('--update_packages', action="store_true", default=False)
         self.parser.add_argument('--install_third_party_packages',
                                  action="store_true",
                                  default=False)
         self.parser.add_argument("--local_package_path",
                                  required=False,
                                  help="Path to local directory with the third-party tarball.")
-        self.parser.add_argument('--ssh_user_update_packages')
         # Development flag for itests.
         self.parser.add_argument('--itest_s3_package_path',
                                  help="Path to download packages for itest. Only for AWS/onprem.")
@@ -1291,16 +1305,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 "install-third-party.yml", self.extra_vars, host_info)
             return
 
-        # Update packages as "sudo" user as part of software upgrade.
-        if args.update_packages:
-            # Defaulting to sudo user, in case not provided as part of seeting up provider
-            self.extra_vars["ssh_user"] = args.ssh_user_update_packages if \
-                args.ssh_user_update_packages else self.SSH_USER
-            self.cloud.setup_ansible(args).run(
-                "reinstall-package.yml", self.extra_vars, host_info)
-            # As the Update package run as a seprate subtask returning, need not to
-            # configure the clusters as part of the same
-            return
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
             "ssh_user": self.get_ssh_user(),
@@ -1430,6 +1434,13 @@ class ControlInstanceMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError("Instance: {} is of type {}, not {}, cannot configure".format(
                 args.search_pattern, host_info['server_type'],
                 self.YB_SERVER_TYPE))
+
+        # Skip if instance is not running.
+        if not host_info.get("is_running", True):
+            logging.info(
+                "Skipping ctl command %s for process: %s due to node not in running state",
+                self.name, self.base_command.name)
+            return
 
         logging.info("Running ctl command {} for process: {} in instance: {}".format(
             self.name, self.base_command.name, args.search_pattern))

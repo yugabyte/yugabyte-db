@@ -169,12 +169,12 @@ class CallResponse {
 
   Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
 
-  // Assign sidecar with specified index to out.
-  Status AssignSidecarTo(size_t idx, std::string* out) const;
+  // Extract sidecar with specified index to out.
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 
   // Transfer all sidecars to specified context, returning the first transferred sidecar index in
   // the context.
-  size_t TransferSidecars(rpc::RpcContext* context);
+  size_t TransferSidecars(Sidecars* dest);
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_) +
@@ -342,8 +342,8 @@ class OutboundCall : public RpcCall {
   friend class RpcController;
 
   // See appropriate comments in CallResponse.
-  virtual Status AssignSidecarTo(size_t idx, std::string* out) const;
-  virtual size_t TransferSidecars(rpc::RpcContext* dest);
+  virtual Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+  virtual size_t TransferSidecars(Sidecars* dest);
 
   ConnectionId conn_id_;
   const std::string* hostname_;

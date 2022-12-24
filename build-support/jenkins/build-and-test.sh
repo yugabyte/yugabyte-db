@@ -199,8 +199,10 @@ log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
 decide_whether_to_use_linuxbrew
 
 if [[ -z ${YB_LINKING_TYPE:-} ]]; then
-  if using_linuxbrew && [[ "${YB_COMPILER_TYPE}" =~ ^clang[0-9]+$ && "${BUILD_TYPE}" == "release" ]]
-  then
+  if ! is_mac && [[
+        ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
+        ${BUILD_TYPE} == "release"
+      ]]; then
     export YB_LINKING_TYPE=full-lto
   else
     export YB_LINKING_TYPE=dynamic

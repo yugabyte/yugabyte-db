@@ -1303,15 +1303,13 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
 
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
 
-  std::atomic<bool> stop(false);
-  std::vector<std::thread> threads;
+  TestThreadHolder thread_holder;
 
   for (int i = 0; i != kWriteThreads; ++i) {
-    threads.emplace_back([this, i, &stop] {
-      CDSAttacher attacher;
+    thread_holder.AddThreadFunctor([this, i, &stop = thread_holder.stop_flag()] {
       auto session = CreateSession();
       int32_t value = 0;
-      while (!stop) {
+      while (!stop.load()) {
         ASSERT_OK(WriteRow(session, i, ++value));
       }
     });
@@ -1327,7 +1325,7 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
   for (size_t i = 0; i != kCycles; ++i) {
     latch.Reset(kConcurrentReads);
     for (size_t j = 0; j != kConcurrentReads; ++j) {
-      values[j].clear();
+      reads[j].clear();
       auto session = CreateSession(CreateTransaction());
       for (int key = 0; key != kWriteThreads; ++key) {
         reads[j].push_back(ReadRow(session, key));
@@ -1359,10 +1357,7 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
     }
   }
 
-  stop = true;
-  for (auto& thread : threads) {
-    thread.join();
-  }
+  thread_holder.Stop();
 }
 
 TEST_F(QLTransactionTest, InsertDelete) {

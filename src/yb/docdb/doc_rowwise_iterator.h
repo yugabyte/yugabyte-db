@@ -111,6 +111,9 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) override;
 
+  // Iterates over records until callback fails or returns false to stop iteration.
+  Status Iterate(const YQLScanCallback& callback) override;
+
   void set_debug_dump(bool value) {
     debug_dump_ = value;
   }
@@ -135,6 +138,9 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
   // Read next row into a value map using the specified projection.
   Status DoNextRow(const Schema& projection, QLTableRow* table_row) override;
+
+  // Returns OK if row_key_ is pointing to a system key.
+  Status ValidateSystemKey();
 
   const Schema& projection_;
   // Used to maintain ownership of projection_.

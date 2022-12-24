@@ -38,10 +38,6 @@
 #include <boost/optional/optional.hpp>
 #include <glog/logging.h>
 
-#ifdef TCMALLOC_ENABLED
-#include <gperftools/malloc_extension.h>
-#endif
-
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/consensus_queue.h"
 

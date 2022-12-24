@@ -8,21 +8,21 @@ menu:
   preview:
     identifier: java-orm-ebean
     parent: java-drivers
-    weight: 500
+    weight: 600
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="../ebean/" class="nav-link active">
-      Ebean ORM
+    <a href="../hibernate/" class="nav-link">
+      Hibernate ORM
     </a>
   </li>
 
   <li >
-    <a href="../hibernate/" class="nav-link">
-      Hibernate ORM
+    <a href="../ebean/" class="nav-link active">
+      Ebean ORM
     </a>
   </li>
 
@@ -36,7 +36,7 @@ Ebean ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and th
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../develop/build-apps/java/ysql-ebean/) page.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Java ORM example application](../../orms/java/ysql-ebean/) page.
 
 The following sections demonstrate how to perform common tasks required for Java-based [Play Framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html) application development using the Ebean ORM.
 
@@ -238,6 +238,7 @@ To run the application and insert a new row, execute the following steps:
     ["{'empId' = '1', firstName ='John', 'lastName' ='Smith', 'email' ='jsmith@xyz.com' }"]
     ```
 
-## Next steps
+## Learn more
 
-Explore [scaling Java applications](../../../explore/linear-scalability) with YugabyteDB.
+- Build Java applications using [Hibernate ORM](../hibernate/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

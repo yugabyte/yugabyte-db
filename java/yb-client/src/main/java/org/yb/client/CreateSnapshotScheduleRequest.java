@@ -14,7 +14,6 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import io.netty.buffer.ByteBuf;
-import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.UUID;
 import org.yb.annotations.InterfaceAudience;

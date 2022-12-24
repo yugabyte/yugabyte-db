@@ -41,9 +41,9 @@ CREATE UNIQUE INDEX index_name ON table_name(column_list);
 
 ## Example
 
-This example uses the `categories` table from the [Northwind sample database](../../../sample-data/northwind/).
+{{% explore-setup-single %}}
 
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and [install](../../../sample-data/northwind/#install-the-northwind-sample-database) the sample Northwind database.
+This example uses the `categories` table from the [Northwind sample database](../../../sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `categories` table:
 

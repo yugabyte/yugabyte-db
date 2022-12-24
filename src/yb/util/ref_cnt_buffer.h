@@ -116,6 +116,10 @@ class RefCntBuffer {
     size_reference() = new_size;
   }
 
+  bool unique() const {
+    return counter_reference().load(std::memory_order_acquire) == 1;
+  }
+
  private:
   void DoReset(char* data);
 
@@ -229,6 +233,10 @@ class RefCntSlice {
     return slice_;
   }
 
+  bool empty() const {
+    return slice_.empty();
+  }
+
   size_t size() const {
     return slice_.size();
   }
@@ -239,6 +247,26 @@ class RefCntSlice {
 
   const char* data() const {
     return slice_.cdata();
+  }
+
+  uint8_t* data() {
+    return slice_.mutable_data();
+  }
+
+  uint8_t* end() {
+    return slice_.mutable_data() + slice_.size();
+  }
+
+  size_t SpaceAfterSlice() const {
+    return holder_.AsSlice().end() - slice_.end();
+  }
+
+  void Grow(size_t delta) {
+    slice_ = Slice(slice_.data(), slice_.end() + delta);
+  }
+
+  bool unique() const {
+    return holder_.unique();
   }
 
  private:

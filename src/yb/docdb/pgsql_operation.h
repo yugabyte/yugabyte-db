@@ -40,11 +40,11 @@ class PgsqlWriteOperation :
   PgsqlWriteOperation(std::reference_wrapper<const PgsqlWriteRequestPB> request,
                       DocReadContextPtr doc_read_context,
                       const TransactionOperationContext& txn_op_context,
-                      rpc::RpcContext* rpc_context)
+                      rpc::Sidecars* sidecars)
       : DocOperationBase(request),
         doc_read_context_(std::move(doc_read_context)),
         txn_op_context_(txn_op_context),
-        rpc_context_(rpc_context) {
+        sidecars_(sidecars) {
   }
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
@@ -127,7 +127,7 @@ class PgsqlWriteOperation :
   RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.
-  rpc::RpcContext* const rpc_context_;
+  rpc::Sidecars* const sidecars_;
 
   int64_t result_rows_ = 0;
   WriteBufferPos row_num_pos_;
@@ -203,16 +203,12 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Status EvalAggregate(const QLTableRow& table_row);
 
-  Status PopulateAggregate(const QLTableRow& table_row,
-                           WriteBuffer *result_buffer);
+  Status PopulateAggregate(WriteBuffer *result_buffer);
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  Status SetPagingStateIfNecessary(
+  Status SetPagingState(
       YQLRowwiseIteratorIf* iter,
-      size_t fetched_rows,
-      const size_t row_count_limit,
-      const bool scan_time_exceeded,
       const Schema& schema,
       const ReadHybridTime& read_time,
       bool* has_paging_state);
