@@ -56,12 +56,16 @@ var upgradeCmd = &cobra.Command{
 		// Here is the postgres minor version/no upgrade workflow
 		common.Upgrade(common.GetVersion())
 		for _, name := range serviceOrder {
+			log.Info("About to upgrade component " + name)
 			services[name].Upgrade()
+			log.Info("Completed upgrade of component " + name)
 		}
 
 		for _, name := range serviceOrder {
+			log.Info("About to restart component " + name)
 			services[name].Stop()
 			services[name].Start()
+			log.Info("Completed restart of component " + name)
 		}
 
 		for _, name := range serviceOrder {
@@ -72,8 +76,7 @@ var upgradeCmd = &cobra.Command{
 		}
 		// Here ends the postgres minor version/no upgrade workflow
 
-		common.CreateInstallMarker()
-		common.SetActiveInstallSymlink()
+		common.PostUpgrade()
 
 	},
 }

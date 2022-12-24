@@ -40,7 +40,6 @@ func Install(version string) {
 	renameThirdPartyDependencies()
 	setupJDK()
 	setJDKEnvironmentVariable()
-	log.Info("Finishing Common install")
 }
 
 // MarkInstallStart creates the marker file we use to show an in-progress install.
@@ -73,13 +72,22 @@ func PostInstall() {
 
 // MarkInstallComplete moves the .installing file to .installed to indicate install success.
 func MarkInstallComplete() {
+	_, err := os.Stat(InstalledFile)
+	if err == nil {
+		return
+	}
+	if !os.IsNotExist(err) {
+		log.Fatal(fmt.Sprintf("Error querying file status %s : %s", InstalledFile, err))
+	}
 	MoveFileGolang(installingFile, InstalledFile)
+
 }
 
 func createInstallDirs() {
 	createDirs := []string{
-		GetInstallOne(),
-		GetInstallTwo(),
+		//GetInstallOne(),
+		//GetInstallTwo(),
+		dm.WorkingDirectory(),
 		filepath.Join(GetBaseInstall(), "data"),
 		filepath.Join(GetBaseInstall(), "data/logs"),
 		GetInstallVersionDir(),
@@ -96,11 +104,6 @@ func createInstallDirs() {
 			log.Fatal("failed to change ownership of " + dir + " to " +
 				viper.GetString("service_username") + ": " + err.Error())
 		}
-	}
-
-	// Mark our active directory
-	if err := CreateInstallMarker(); err != nil {
-		log.Fatal("could not create active install marker file: " + err.Error())
 	}
 
 	// Remove the symlink if one exists
@@ -211,8 +214,6 @@ func Uninstall(serviceNames []string, removeData bool) {
 
 // Upgrade performs the upgrade procedures common to all services.
 func Upgrade(version string) {
-	log.Info("Starting common upgrade")
-	dm.CleanAltInstall()
 	createUpgradeDirs()
 	copyBits(version)
 	extractPlatformSupportPackageAndYugabundle(version)
@@ -220,7 +221,16 @@ func Upgrade(version string) {
 	setupJDK()
 	setJDKEnvironmentVariable()
 
-	log.Info("Finishing common upgrade")
+}
+
+func PostUpgrade() {
+
+	SetActiveInstallSymlink()
+
+	PostInstall()
+
+	PrunePastInstalls()
+
 }
 
 // SetActiveInstallSymlink will create <installRoot>/active symlink
