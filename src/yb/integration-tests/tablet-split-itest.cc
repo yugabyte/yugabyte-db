@@ -971,11 +971,11 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
           // This tablet might has been shut down or in the process of shutting down.
           // Thus, we need to check whether shared_tablet is nullptr or not
           // TEST_CountIntent return non ok status also means shutdown has started.
-          const auto shared_tablet = peer->shared_tablet();
-          if (!shared_tablet) {
+          const auto tablet = peer->shared_tablet();
+          if (!tablet) {
             return true;
           }
-          auto result = shared_tablet->transaction_participant()->TEST_CountIntents();
+          auto result = tablet->transaction_participant()->TEST_CountIntents();
           return !result.ok() || result->first == 0;
         }, 30s, "Did not apply write transactions from intents db in time."));
 
@@ -1001,12 +1001,12 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       LOG(INFO) << "Active peers: " << peers.size();
       if (peers.size() == 2) {
         for (const auto& peer : peers) {
-          const auto shared_tablet = peer->shared_tablet();
-          SCHECK_NOTNULL(shared_tablet.get());
+          const auto tablet = peer->shared_tablet();
+          SCHECK_NOTNULL(tablet.get());
 
           // Since we've disabled compactions, each post-split subtablet should be larger than the
           // split size threshold.
-          auto peer_size = shared_tablet->GetCurrentVersionSstFilesSize();
+          auto peer_size = tablet->GetCurrentVersionSstFilesSize();
           EXPECT_GE(peer_size, threshold);
         }
         break;
@@ -1029,9 +1029,9 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       //    shared_tablet->GetCurrentVersionSstFilesSize() will return 0 as default.
       //    Then next loop of inserting and flush, the code will detect splitting
       //    happen and break the loop. Thus, we don't need to handle it here.
-      const auto shared_tablet = leader_peer->shared_tablet();
-      if (shared_tablet) {
-        current_size = shared_tablet->GetCurrentVersionSstFilesSize();
+      const auto tablet = leader_peer->shared_tablet();
+      if (tablet) {
+        current_size = tablet->GetCurrentVersionSstFilesSize();
       } else {
         break;
       }
@@ -3023,11 +3023,11 @@ TEST_F(TabletSplitITest, ParentRemoteBootstrapAfterWritesToChildren) {
           if ((*result)->state() != tablet::RaftGroupStatePB::RUNNING) {
             return false;
           }
-          const auto shared_tablet = (*result)->shared_tablet();
-          if (!shared_tablet) {
+          const auto tablet = (*result)->shared_tablet();
+          if (!tablet) {
             return false;
           }
-          return shared_tablet->metadata()->tablet_data_state() ==
+          return tablet->metadata()->tablet_data_state() ==
                  tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
         },
         30s * kTimeMultiplier,

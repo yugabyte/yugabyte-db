@@ -45,11 +45,13 @@ Status ChangeAutoFlagsConfigOperation::DoAborted(const Status& status) {
 Status ChangeAutoFlagsConfigOperation::Apply() {
   VLOG_WITH_PREFIX_AND_FUNC(2) << "Started";
 
+  auto tablet = VERIFY_RESULT(tablet_safe());
+
   // Store the new AutoFlags config to disk and then applies it. Error Status is returned only for
   // critical failures like IO issues and invalid flags (indicating we are running an unsupported
   // code version). Execution must stop immediately to protect data correctness, so we return the
   // Status directly instead of setting complete_status.
-  RETURN_NOT_OK(tablet()->ApplyAutoFlagsConfig(request()->ToGoogleProtobuf()));
+  RETURN_NOT_OK(tablet->ApplyAutoFlagsConfig(request()->ToGoogleProtobuf()));
 
   VLOG_WITH_PREFIX_AND_FUNC(2) << "Completed";
 

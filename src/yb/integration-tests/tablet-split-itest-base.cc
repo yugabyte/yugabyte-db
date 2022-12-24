@@ -298,11 +298,11 @@ Status TabletSplitITest::WaitForTableIntentsApplied(const TableId& table_id) {
         // This tablet might has been shut down or in the process of shutting down.
         // Thus, we need to check whether shared_tablet is nullptr or not
         // TEST_CountIntent return non ok status also means shutdown has started.
-        const auto shared_tablet = peer->shared_tablet();
-        if (!shared_tablet) {
+        const auto tablet = peer->shared_tablet();
+        if (!tablet) {
           return true;
         }
-        auto result = shared_tablet->transaction_participant()->TEST_CountIntents();
+        auto result = tablet->transaction_participant()->TEST_CountIntents();
         return !result.ok() || result->first == 0;
       }, 30s, "Did not apply write transactions from intents db in time."));
   }
@@ -803,10 +803,10 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
     LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
               << AsString(peer->shared_consensus()->GetLastAppliedOpId());
 
-    const auto shared_tablet = VERIFY_RESULT(peer->shared_tablet_safe());
-    const SchemaPtr schema = shared_tablet->metadata()->schema();
+    const auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+    const SchemaPtr schema = tablet->metadata()->schema();
     auto client_schema = schema->CopyWithoutColumnIds();
-    auto iter = VERIFY_RESULT(shared_tablet->NewRowIterator(client_schema));
+    auto iter = VERIFY_RESULT(tablet->NewRowIterator(client_schema));
     QLTableRow row;
     std::unordered_set<size_t> tablet_keys;
     while (VERIFY_RESULT(iter->HasNext())) {
@@ -818,12 +818,12 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
       SCHECK(
           tablet_keys.insert(key).second,
           InternalError,
-          Format("Duplicate key $0 in tablet $1", key, shared_tablet->tablet_id()));
+          Format("Duplicate key $0 in tablet $1", key, tablet->tablet_id()));
       SCHECK_GT(
           keys[key - 1]--,
           0U,
           InternalError,
-          Format("Extra key $0 in tablet $1", key, shared_tablet->tablet_id()));
+          Format("Extra key $0 in tablet $1", key, tablet->tablet_id()));
       key_replicas[key - 1].push_back(peer->LogPrefix());
     }
   }
