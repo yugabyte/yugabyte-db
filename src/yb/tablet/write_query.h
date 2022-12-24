@@ -176,7 +176,7 @@ class WriteQuery {
   bool CqlCheckSchemaVersion();
   bool PgsqlCheckSchemaVersion();
 
-  Result<TabletPtr> tablet() const;
+  Result<TabletPtr> tablet_safe() const;
 
   std::unique_ptr<WriteOperation> operation_;
 

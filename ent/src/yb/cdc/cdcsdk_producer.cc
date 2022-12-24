@@ -1165,7 +1165,7 @@ void FillDDLInfo(
     }
     SchemaPB schema_pb;
     if (tablet->metadata()->colocated()) {
-       schema_version = tablet_peer->tablet()->metadata()->schema_version(table_id);
+       schema_version = tablet->metadata()->schema_version(table_id);
        SchemaToPB(*tablet->metadata()->schema(table_id).get(), &schema_pb);
     } else {
       schema_version = current_schema_version;

@@ -34,7 +34,7 @@ class UpdateTxnOperation
   }
 
  private:
-  TransactionCoordinator& transaction_coordinator() const;
+  Result<TransactionCoordinator*> transaction_coordinator() const;
   Status Prepare(IsLeaderSide is_leader_side) override;
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;
   Status DoAborted(const Status& status) override;

@@ -2645,15 +2645,15 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
 template <class Req, class Resp, class Action>
 Status CatalogManager::PerformOnSysCatalogTablet(const Req& req, Resp* resp, const Action& action) {
   auto tablet_peer = sys_catalog_->tablet_peer();
-  auto shared_tablet = tablet_peer ? tablet_peer->shared_tablet() : nullptr;
-  if (!shared_tablet) {
+  auto tablet = tablet_peer ? tablet_peer->shared_tablet() : nullptr;
+  if (!tablet) {
     return SetupError(
         resp->mutable_error(),
         MasterErrorPB::TABLET_NOT_RUNNING,
         STATUS(NotFound, "The sys catalog tablet was not found."));
   }
 
-  auto s = action(shared_tablet);
+  auto s = action(tablet);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
   }
