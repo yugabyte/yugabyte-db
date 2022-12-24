@@ -178,7 +178,8 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT wal_fpi 			int8,
     OUT wal_bytes 			numeric,
     OUT comments 			TEXT,
-    OUT toplevel            BOOLEAN
+    OUT toplevel            BOOLEAN,
+	OUT	bucket_done			BOOLEAN
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
@@ -396,6 +397,12 @@ REVOKE ALL ON FUNCTION get_cmd_type FROM PUBLIC;
 REVOKE ALL ON FUNCTION pg_stat_monitor_settings FROM PUBLIC;
 REVOKE ALL ON FUNCTION decode_error_level FROM PUBLIC;
 REVOKE ALL ON FUNCTION pg_stat_monitor_internal FROM PUBLIC;
+REVOKE ALL ON FUNCTION get_histogram_timings FROM PUBLIC;
+REVOKE ALL ON FUNCTION pgsm_create_view FROM PUBLIC;
+REVOKE ALL ON FUNCTION pgsm_create_11_view FROM PUBLIC;
+REVOKE ALL ON FUNCTION pgsm_create_13_view FROM PUBLIC;
+REVOKE ALL ON FUNCTION pgsm_create_14_view FROM PUBLIC;
+REVOKE ALL ON FUNCTION pgsm_create_15_view FROM PUBLIC;
 
 GRANT SELECT ON pg_stat_monitor TO PUBLIC;
 

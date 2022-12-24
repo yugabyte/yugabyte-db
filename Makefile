@@ -12,7 +12,7 @@ LDFLAGS_SL += $(filter -lm, $(LIBS))
 
 TAP_TESTS = 1
 REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/pg_stat_monitor/pg_stat_monitor.conf --inputdir=regression
-REGRESS = basic version guc counters relations database error_insert application_name application_name_unique top_query cmd_type error rows tags 
+REGRESS = basic version guc functions counters relations database error_insert application_name application_name_unique top_query cmd_type error rows tags 
 
 # Disabled because these tests require "shared_preload_libraries=pg_stat_statements",
 # which typical installcheck users do not have (e.g. buildfarm clients).

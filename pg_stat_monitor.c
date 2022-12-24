@@ -23,10 +23,25 @@
 #include "commands/explain.h"
 #include "pg_stat_monitor.h"
 
+ /*
+  * Extension version number, for supporting older extension versions' objects
+  */
+ typedef enum pgsmVersion
+ {
+     PGSM_V1_0 = 0,
+     PGSM_V2_0
+ } pgsmVersion;
+
+
 PG_MODULE_MAGIC;
 
-#define BUILD_VERSION                   "1.1.1"
-#define PG_STAT_STATEMENTS_COLS         52	/* maximum of above */
+#define BUILD_VERSION                   "2.0.0-dev"
+
+/* Number of output arguments (columns) for various API versions */
+#define PG_STAT_MONITOR_COLS_V1_0    52
+#define PG_STAT_MONITOR_COLS_V2_0    61
+#define PG_STAT_MONITOR_COLS         61	/* maximum of above */
+
 #define PGSM_TEXT_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "pg_stat_monitor_query"
 
 #define roundf(x,d) ((floor(((x)*pow(10,d))+.5))/pow(10,d))
@@ -107,8 +122,9 @@ static ExecutorCheckPerms_hook_type prev_ExecutorCheckPerms_hook = NULL;
 
 PG_FUNCTION_INFO_V1(pg_stat_monitor_version);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_reset);
+PG_FUNCTION_INFO_V1(pg_stat_monitor_1_0);
+PG_FUNCTION_INFO_V1(pg_stat_monitor_2_0);
 PG_FUNCTION_INFO_V1(pg_stat_monitor);
-PG_FUNCTION_INFO_V1(pg_stat_monitor_settings);
 PG_FUNCTION_INFO_V1(get_histogram_timings);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_hook_stats);
 
@@ -174,10 +190,12 @@ static void pgss_store(uint64 queryid,
 					   uint64 rows,
 					   BufferUsage *bufusage,
 					   WalUsage *walusage,
+					   const struct JitInstrumentation *jitusage,
 					   JumbleState *jstate,
 					   pgssStoreKind kind);
 
 static void pg_stat_monitor_internal(FunctionCallInfo fcinfo,
+									 pgsmVersion api_version,
 									 bool showtext);
 
 #if PG_VERSION_NUM < 140000
@@ -228,7 +246,7 @@ _PG_init(void)
 	 * In order to create our shared memory area, we have to be loaded via
 	 * shared_preload_libraries.  If not, fall out without hooking into any of
 	 * the main system.  (We don't throw error here because it seems useful to
-	 * allow the pg_stat_statements functions to be created even when the
+	 * allow the pg_stat_monitor functions to be created even when the
 	 * module isn't active.  The functions must protect themselves against
 	 * being called then, however.)
 	 */
@@ -419,6 +437,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 					0,                      /* rows */
 					NULL,                   /* bufusage */
 					NULL,                   /* walusage */
+					NULL,					/* jitusage */
 					jstate,                 /* JumbleState */
 					PGSS_PARSE);            /* pgssStoreKind */
 }
@@ -477,6 +496,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 							0,                  /* rows */
 							NULL,               /* bufusage */
 							NULL,               /* walusage */
+							NULL,				/* jitusage */
 							&jstate,            /* JumbleState */
 							PGSS_PARSE);        /* pgssStoreKind */
 }
@@ -649,6 +669,11 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 #else
 				   NULL,
 #endif
+#if PG_VERSION_NUM >= 150000
+				   queryDesc->estate->es_jit ? &queryDesc->estate->es_jit->instr : NULL,
+#else
+				   NULL,
+#endif
 				   NULL,
 				   PGSS_FINISHED);	/* pgssStoreKind */
 	}
@@ -791,6 +816,7 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 				   &bufusage,	/* bufusage */
 				   &walusage,	/* walusage */
 				   NULL,		/* JumbleState */
+				   NULL,
 				   PGSS_PLAN);	/* pgssStoreKind */
 	}
 	else
@@ -980,6 +1006,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 #else
 				   NULL,		/* walusage, NULL for PG <= 12 */
 #endif
+				   NULL,
 				   NULL,		/* JumbleState */
 				   PGSS_FINISHED);	/* pgssStoreKind */
 	}
@@ -1126,7 +1153,7 @@ pg_get_client_addr(bool *ok)
 
 static void
 pgss_update_entry(pgssEntry *entry,
-				  int bucketid,
+				  uint64 bucketid,
 				  uint64 queryid,
 				  const char *query,
 				  const char *comments,
@@ -1138,6 +1165,7 @@ pgss_update_entry(pgssEntry *entry,
 				  uint64 rows,
 				  BufferUsage *bufusage,
 				  WalUsage *walusage,
+				  const struct JitInstrumentation *jitusage,
 				  bool reset,
 				  pgssStoreKind kind,
 				  const char *app_name,
@@ -1259,6 +1287,10 @@ pgss_update_entry(pgssEntry *entry,
 			e->counters.blocks.temp_blks_written += bufusage->temp_blks_written;
 			e->counters.blocks.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
 			e->counters.blocks.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
+			#if PG_VERSION_NUM >= 150000
+				e->counters.blocks.temp_blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->temp_blk_read_time);
+				e->counters.blocks.temp_blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->temp_blk_write_time);
+			#endif
 		}
 		e->counters.calls.usage += USAGE_EXEC(total_time);
 		if (sys_info)
@@ -1271,6 +1303,23 @@ pgss_update_entry(pgssEntry *entry,
 			e->counters.walusage.wal_records += walusage->wal_records;
 			e->counters.walusage.wal_fpi += walusage->wal_fpi;
 			e->counters.walusage.wal_bytes += walusage->wal_bytes;
+		}
+		if (jitusage)
+		{
+			e->counters.jitinfo.jit_functions += jitusage->created_functions;
+			e->counters.jitinfo.jit_generation_time += INSTR_TIME_GET_MILLISEC(jitusage->generation_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->inlining_counter))
+				e->counters.jitinfo.jit_inlining_count++;
+			e->counters.jitinfo.jit_inlining_time += INSTR_TIME_GET_MILLISEC(jitusage->inlining_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->optimization_counter))
+				e->counters.jitinfo.jit_optimization_count++;
+			e->counters.jitinfo.jit_optimization_time += INSTR_TIME_GET_MILLISEC(jitusage->optimization_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->emission_counter))
+				e->counters.jitinfo.jit_emission_count++;
+			e->counters.jitinfo.jit_emission_time += INSTR_TIME_GET_MILLISEC(jitusage->emission_counter);
 		}
 		SpinLockRelease(&e->mutex);
 	}
@@ -1300,6 +1349,7 @@ pgss_store_error(uint64 queryid,
 			   NULL,			/* bufusage */
 			   NULL,			/* walusage */
 			   NULL,			/* JumbleState */
+			   NULL,
 			   PGSS_ERROR);		/* pgssStoreKind */
 }
 
@@ -1326,6 +1376,7 @@ pgss_store(uint64 queryid,
 		   uint64 rows,
 		   BufferUsage *bufusage,
 		   WalUsage *walusage,
+		   const struct JitInstrumentation *jitusage,
 		   JumbleState *jstate,
 		   pgssStoreKind kind)
 {
@@ -1540,6 +1591,7 @@ pgss_store(uint64 queryid,
 						  rows, /* rows */
 						  bufusage, /* bufusage */
 						  walusage, /* walusage */
+						  jitusage,
 						  reset,	/* reset */
 						  kind, /* kind */
 						  app_name_ptr,
@@ -1574,24 +1626,38 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 }
 
 Datum
+pg_stat_monitor_1_0(PG_FUNCTION_ARGS)
+{
+	pg_stat_monitor_internal(fcinfo, PGSM_V1_0, true);
+	return (Datum) 0;
+}
+
+Datum
+pg_stat_monitor_2_0(PG_FUNCTION_ARGS)
+{
+	pg_stat_monitor_internal(fcinfo, PGSM_V2_0, true);
+	return (Datum) 0;
+}
+
+/*
+  * Legacy entry point for pg_stat_monitor() API versions 1.0
+  */
+Datum
 pg_stat_monitor(PG_FUNCTION_ARGS)
 {
-	pg_stat_monitor_internal(fcinfo, true);
+	pg_stat_monitor_internal(fcinfo, PGSM_V1_0, true);
 	return (Datum) 0;
 }
 
 static bool
 IsBucketValid(uint64 bucketid)
 {
-	struct tm	tm;
 	time_t		bucket_t,
 				current_t;
 	double		diff_t;
 	pgssSharedState *pgss = pgsm_get_ss();
 
-	memset(&tm, 0, sizeof(tm));
-	strptime(pgss->bucket_start_time[bucketid], "%Y-%m-%d %H:%M:%S", &tm);
-	bucket_t = mktime(&tm);
+	bucket_t = mktime(&pgss->bucket_start_time[bucketid]);
 
 	time(&current_t);
 	diff_t = difftime(current_t, bucket_t);
@@ -1600,9 +1666,10 @@ IsBucketValid(uint64 bucketid)
 	return true;
 }
 
-/* Common code for all versions of pg_stat_statements() */
+/* Common code for all versions of pg_stat_monitor() */
 static void
 pg_stat_monitor_internal(FunctionCallInfo fcinfo,
+						 pgsmVersion api_version,
 						 bool showtext)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -1617,6 +1684,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	HTAB	   *pgss_hash = pgsm_get_hash();
 	char	   *query_txt = (char *) palloc0(PGSM_QUERY_MAX_LEN + 1);
 	char	   *parent_query_txt = (char *) palloc0(PGSM_QUERY_MAX_LEN + 1);
+	int        expected_columns = (api_version >= PGSM_V2_0)?PG_STAT_MONITOR_COLS_V2_0:PG_STAT_MONITOR_COLS_V1_0;
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
@@ -1643,7 +1711,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "pg_stat_monitor: return type must be a row type");
 
-	if (tupdesc->natts != 51)
+	if (tupdesc->natts != expected_columns)
 		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
 
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
@@ -1658,18 +1726,18 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
-		Datum		values[PG_STAT_STATEMENTS_COLS] = {0};
-		bool		nulls[PG_STAT_STATEMENTS_COLS] = {0};
+		Datum		values[PG_STAT_MONITOR_COLS] = {0};
+		bool		nulls[PG_STAT_MONITOR_COLS] = {0};
 		int			i = 0;
 		Counters	tmp;
 		double		stddev;
 		char		queryid_text[32] = {0};
 		char		planid_text[32] = {0};
 		uint64		queryid = entry->key.queryid;
-		uint64		bucketid = entry->key.bucket_id;
+		int64		bucketid = entry->key.bucket_id;
 		uint64		dbid = entry->key.dbid;
 		uint64		userid = entry->key.userid;
-		uint64		ip = entry->key.ip;
+		int64		ip = entry->key.ip;
 		uint64		planid = entry->key.planid;
 #if PG_VERSION_NUM < 140000
 		bool		toplevel = 1;
@@ -1718,7 +1786,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		{
 			if (read_query(pgss_qbuf, tmp.info.parentid, parent_query_txt, 0) == 0)
 			{
-				int			rc = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt, 0);
+				int rc = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt, 0);
 
 				if (rc != 1)
 					snprintf(parent_query_txt, 32, "%s", "<insufficient disk/shared space>");
@@ -1788,8 +1856,9 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum("<insufficient privilege>");
 		}
 
-		/* state at column number 8 */
-		values[i++] = Int64GetDatumFast(tmp.state);
+		/* state at column number 8 for V1.0 API*/
+		if (api_version <= PGSM_V1_0)
+			values[i++] = Int64GetDatumFast(tmp.state);
 
 		/* parentid at column number 9 */
 		if (tmp.info.parentid != UINT64CONST(0))
@@ -1843,7 +1912,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		if (tmp.info.cmd_type == CMD_NOTHING)
 			nulls[i++] = true;
 		else
-			values[i++] = Int64GetDatumFast(tmp.info.cmd_type);
+			values[i++] = Int64GetDatumFast((int64)tmp.info.cmd_type);
 
 		/* elevel at column number 12 */
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);
@@ -1861,7 +1930,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum(tmp.error.message);
 
 		/* bucket_start_time at column number 15 */
-		values[i++] = CStringGetDatum(pgss->bucket_start_time[entry->key.bucket_id]);
+		{
+			TimestampTz tm;
+			tm2timestamp((struct pg_tm*) &pgss->bucket_start_time[entry->key.bucket_id], 0, NULL, &tm);
+			values[i++] = TimestampGetDatum(tm);
+		}
 		if (tmp.calls.calls == 0)
 		{
 			/* Query of pg_stat_monitor itslef started from zero count */
@@ -1937,6 +2010,12 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_read_time);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_write_time);
 
+		if (api_version >= PGSM_V2_0)
+		{
+			values[i++] = Float8GetDatumFast(tmp.blocks.temp_blk_read_time);
+			values[i++] = Float8GetDatumFast(tmp.blocks.temp_blk_write_time);
+		}
+
 		/* resp_calls at column number 41 */
 		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, PGSM_HISTOGRAM_BUCKETS);
 
@@ -1970,8 +2049,24 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 				values[i++] = CStringGetTextDatum(tmp.info.comments);
 			else
 				nulls[i++] = true;
+
+			if (api_version >= PGSM_V2_0)
+			{
+				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_functions);
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_generation_time);
+				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_inlining_count);
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_inlining_time);
+				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_optimization_count);
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_optimization_time);
+				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_emission_count);
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_emission_time);
+			}
+
 		}
 		values[i++] = BoolGetDatum(toplevel);
+		values[i++] = BoolGetDatum(pg_atomic_read_u64(&pgss->current_wbucket) != bucketid);
+
+		/* clean up and return the tuplestore */
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 	/* clean up and return the tuplestore */
@@ -2055,13 +2150,16 @@ get_next_wbucket(pgssSharedState *pgss)
 
 		tv.tv_sec = (tv.tv_sec) - (tv.tv_sec % PGSM_BUCKET_TIME);
 		lt = localtime(&tv.tv_sec);
+		/*
+		 * Year is 1900 behind and month is 0 based, therefore we need to
+		 * adjust that.
+		 */
+		lt->tm_year += 1900;
+		lt->tm_mon += 1;
 
 		/* Allign the value in prev_bucket_sec to the bucket start time */
 		pg_atomic_exchange_u64(&pgss->prev_bucket_sec, (uint64)tv.tv_sec);
-
-		snprintf(pgss->bucket_start_time[new_bucket_id], sizeof(pgss->bucket_start_time[new_bucket_id]),
-			"%04d-%02d-%02d %02d:%02d:%02d", lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
-
+		memcpy(&pgss->bucket_start_time[new_bucket_id], lt, sizeof(struct tm));
 		return new_bucket_id;
 	}
 
@@ -3204,136 +3302,6 @@ SaveQueryText(uint64 bucketid,
 	memcpy(buf, &buf_len, sizeof(uint64));
 	return true;
 }
-
-Datum
-pg_stat_monitor_settings(PG_FUNCTION_ARGS)
-{
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
-	int			i;
-
-	/* Safety check... */
-	if (!IsSystemInitialized())
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
-
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("pg_stat_monitor: set-valued function called in context that cannot accept a set")));
-
-	/* Switch into long-lived context to construct returned data structures */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-	{
-		elog(ERROR, "pg_stat_monitor_settings: return type must be a row type");
-		return (Datum) 0;
-	}
-
-	if (tupdesc->natts != 8)
-	{
-		elog(ERROR, "pg_stat_monitor_settings: incorrect number of output arguments, required: 7, found %d", tupdesc->natts);
-		return (Datum) 0;
-	}
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	for (i = 0; i < MAX_SETTINGS; i++)
-	{
-		Datum		values[8];
-		bool		nulls[8];
-		int			j = 0;
-		char		options[1024] = "";
-		GucVariable *conf;
-
-		memset(values, 0, sizeof(values));
-		memset(nulls, 0, sizeof(nulls));
-
-		conf = get_conf(i);
-
-		values[j++] = CStringGetTextDatum(conf->guc_name);
-
-		/* Handle current and default values. */
-		switch (conf->type)
-		{
-			case PGC_ENUM:
-				values[j++] = CStringGetTextDatum(conf->guc_options[conf->guc_variable]);
-				values[j++] = CStringGetTextDatum(conf->guc_options[conf->guc_default]);
-				break;
-
-			case PGC_INT:
-				{
-					char		value[32];
-
-					sprintf(value, "%d", conf->guc_variable);
-					values[j++] = CStringGetTextDatum(value);
-
-					sprintf(value, "%d", conf->guc_default);
-					values[j++] = CStringGetTextDatum(value);
-					break;
-				}
-
-			case PGC_BOOL:
-				values[j++] = CStringGetTextDatum(conf->guc_variable ? "yes" : "no");
-				values[j++] = CStringGetTextDatum(conf->guc_default ? "yes" : "no");
-				break;
-
-			default:
-				Assert(false);
-		}
-
-		values[j++] = CStringGetTextDatum(get_conf(i)->guc_desc);
-
-		/* Minimum and maximum displayed only for integers or real numbers. */
-		if (conf->type != PGC_INT)
-		{
-			nulls[j++] = true;
-			nulls[j++] = true;
-		}
-		else
-		{
-			values[j++] = Int64GetDatumFast(get_conf(i)->guc_min);
-			values[j++] = Int64GetDatumFast(get_conf(i)->guc_max);
-		}
-
-		if (conf->type == PGC_ENUM)
-		{
-			size_t		i;
-
-			strcat(options, conf->guc_options[0]);
-			for (i = 1; i < conf->n_options; ++i)
-			{
-				strcat(options, ", ");
-				strcat(options, conf->guc_options[i]);
-			}
-		}
-		else if (conf->type == PGC_BOOL)
-		{
-			strcat(options, "yes, no");
-		}
-
-		values[j++] = CStringGetTextDatum(options);
-		values[j++] = CStringGetTextDatum(get_conf(i)->guc_restart ? "yes" : "no");
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-	}
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-	return (Datum) 0;
-}
-
 
 Datum
 pg_stat_monitor_hook_stats(PG_FUNCTION_ARGS)
