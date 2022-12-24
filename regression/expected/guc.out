@@ -1,280 +1,39 @@
 CREATE EXTENSION pg_stat_monitor;
-\x
-SELECT  name
-        , setting
-        , unit
-        , category
-        , short_desc
-        , extra_desc
-        , context
-        , vartype
-        , source
-        , min_val
-        , max_val
-        , enumvals
-        , boot_val
-        , reset_val
-        , sourcefile
-        , sourceline
-        , pending_restart 
-FROM    pg_settings
-WHERE   name     LIKE     'pg_stat_monitor.%'
-        AND name NOT LIKE 'pg_stat_monitor.pgsm_track_planning'
-ORDER
-BY      name
-COLLATE "C";
--[ RECORD 1 ]---+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_bucket_time
-setting         | 60
-unit            | 
-category        | Customized Options
-short_desc      | Sets the time in seconds per bucket.
-extra_desc      | 
-context         | postmaster
-vartype         | integer
-source          | default
-min_val         | 1
-max_val         | 2147483647
-enumvals        | 
-boot_val        | 60
-reset_val       | 60
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 2 ]---+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_enable_query_plan
-setting         | off
-unit            | 
-category        | Customized Options
-short_desc      | Enable/Disable query plan monitoring
-extra_desc      | 
-context         | user
-vartype         | bool
-source          | default
-min_val         | 
-max_val         | 
-enumvals        | 
-boot_val        | off
-reset_val       | off
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 3 ]---+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_extract_comments
-setting         | off
-unit            | 
-category        | Customized Options
-short_desc      | Enable/Disable extracting comments from queries.
-extra_desc      | 
-context         | user
-vartype         | bool
-source          | default
-min_val         | 
-max_val         | 
-enumvals        | 
-boot_val        | off
-reset_val       | off
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 4 ]---+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_histogram_buckets
-setting         | 10
-unit            | 
-category        | Customized Options
-short_desc      | Sets the maximum number of histogram buckets
-extra_desc      | 
-context         | postmaster
-vartype         | integer
-source          | default
-min_val         | 2
-max_val         | 50
-enumvals        | 
-boot_val        | 10
-reset_val       | 10
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 5 ]---+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_histogram_max
-setting         | 100000
-unit            | 
-category        | Customized Options
-short_desc      | Sets the time in millisecond.
-extra_desc      | 
-context         | postmaster
-vartype         | integer
-source          | default
-min_val         | 10
-max_val         | 2147483647
-enumvals        | 
-boot_val        | 100000
-reset_val       | 100000
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 6 ]---+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_histogram_min
-setting         | 0
-unit            | 
-category        | Customized Options
-short_desc      | Sets the time in millisecond.
-extra_desc      | 
-context         | postmaster
-vartype         | integer
-source          | default
-min_val         | 0
-max_val         | 2147483647
-enumvals        | 
-boot_val        | 0
-reset_val       | 0
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 7 ]---+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_max
-setting         | 100
-unit            | MB
-category        | Customized Options
-short_desc      | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor.
-extra_desc      | 
-context         | postmaster
-vartype         | integer
-source          | default
-min_val         | 1
-max_val         | 1000
-enumvals        | 
-boot_val        | 100
-reset_val       | 100
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 8 ]---+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_max_buckets
-setting         | 10
-unit            | 
-category        | Customized Options
-short_desc      | Sets the maximum number of buckets.
-extra_desc      | 
-context         | postmaster
-vartype         | integer
-source          | default
-min_val         | 1
-max_val         | 10
-enumvals        | 
-boot_val        | 10
-reset_val       | 10
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 9 ]---+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_normalized_query
-setting         | off
-unit            | 
-category        | Customized Options
-short_desc      | Selects whether save query in normalized format.
-extra_desc      | 
-context         | user
-vartype         | bool
-source          | default
-min_val         | 
-max_val         | 
-enumvals        | 
-boot_val        | off
-reset_val       | off
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 10 ]--+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_overflow_target
-setting         | 1
-unit            | 
-category        | Customized Options
-short_desc      | Sets the overflow target for pg_stat_monitor
-extra_desc      | 
-context         | postmaster
-vartype         | integer
-source          | default
-min_val         | 0
-max_val         | 1
-enumvals        | 
-boot_val        | 1
-reset_val       | 1
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 11 ]--+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_query_max_len
-setting         | 2048
-unit            | 
-category        | Customized Options
-short_desc      | Sets the maximum length of query.
-extra_desc      | 
-context         | postmaster
-vartype         | integer
-source          | default
-min_val         | 1024
-max_val         | 2147483647
-enumvals        | 
-boot_val        | 2048
-reset_val       | 2048
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 12 ]--+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_query_shared_buffer
-setting         | 20
-unit            | MB
-category        | Customized Options
-short_desc      | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.
-extra_desc      | 
-context         | postmaster
-vartype         | integer
-source          | default
-min_val         | 1
-max_val         | 10000
-enumvals        | 
-boot_val        | 20
-reset_val       | 20
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 13 ]--+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_track
-setting         | top
-unit            | 
-category        | Customized Options
-short_desc      | Selects which statements are tracked by pg_stat_monitor.
-extra_desc      | 
-context         | user
-vartype         | enum
-source          | default
-min_val         | 
-max_val         | 
-enumvals        | {none,top,all}
-boot_val        | top
-reset_val       | top
-sourcefile      | 
-sourceline      | 
-pending_restart | f
--[ RECORD 14 ]--+---------------------------------------------------------------------------------------------------------
-name            | pg_stat_monitor.pgsm_track_utility
-setting         | on
-unit            | 
-category        | Customized Options
-short_desc      | Selects whether utility commands are tracked.
-extra_desc      | 
-context         | user
-vartype         | bool
-source          | default
-min_val         | 
-max_val         | 
-enumvals        | 
-boot_val        | on
-reset_val       | on
-sourcefile      | 
-sourceline      | 
-pending_restart | f
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
 
-\x
+select pg_sleep(.5);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT * FROM pg_stat_monitor_settings WHERE name NOT LIKE 'pg_stat_monitor.pgsm_track_planning' ORDER BY name COLLATE "C";
+                   name                   | value  | default_value |                                               description                                                | minimum |  maximum   |    options     | restart 
+------------------------------------------+--------+---------------+----------------------------------------------------------------------------------------------------------+---------+------------+----------------+---------
+ pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_enable_query_plan   | no     | no            | Enable/Disable query plan monitoring                                                                     |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_extract_comments    | no     | no            | Enable/Disable extracting comments from queries.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_histogram_buckets   | 20     | 20            | Sets the maximum number of histogram buckets                                                             |       2 |         50 |                | yes
+ pg_stat_monitor.pgsm_histogram_max       | 100000 | 100000        | Sets the time in millisecond.                                                                            |      10 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_histogram_min       | 1      | 1             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
+ pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
+ pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_overflow_target     | 1      | 1             | Sets the overflow target for pg_stat_monitor                                                             |       0 |          1 |                | yes
+ pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
+ pg_stat_monitor.pgsm_query_shared_buffer | 20     | 20            | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.                |       1 |      10000 |                | yes
+ pg_stat_monitor.pgsm_track               | top    | top           | Selects which statements are tracked by pg_stat_monitor.                                                 |         |            | none, top, all | no
+ pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
+(14 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
 DROP EXTENSION pg_stat_monitor;

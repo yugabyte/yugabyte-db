@@ -119,7 +119,7 @@ init_guc(void)
 	{
 		.guc_name = "pg_stat_monitor.pgsm_histogram_min",
 			.guc_desc = "Sets the time in millisecond.",
-			.guc_default = 0,
+			.guc_default = 1,
 			.guc_min = 0,
 			.guc_max = INT_MAX,
 			.guc_restart = true,
@@ -145,7 +145,7 @@ init_guc(void)
 	{
 		.guc_name = "pg_stat_monitor.pgsm_histogram_buckets",
 			.guc_desc = "Sets the maximum number of histogram buckets",
-			.guc_default = 10,
+			.guc_default = 20,
 			.guc_min = 2,
 			.guc_max = MAX_RESPONSE_BUCKET,
 			.guc_restart = true,
