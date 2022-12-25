@@ -79,6 +79,10 @@ DEFINE_bool(ysql_disable_server_file_access, false,
             "If true, disables read, write, and execute of local server files. "
             "File access can be re-enabled if set to false.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
+TAG_FLAG(ysql_enable_profile, advanced);
+TAG_FLAG(ysql_enable_profile, hidden);
+
 namespace yb {
 namespace pggate {
 
@@ -1268,7 +1272,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching
+      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching,
+      .ysql_enable_profile                     = &FLAGS_ysql_enable_profile
   };
   return &accessor;
 }
