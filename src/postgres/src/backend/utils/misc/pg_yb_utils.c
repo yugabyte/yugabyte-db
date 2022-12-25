@@ -63,6 +63,8 @@
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_type.h"
+#include "catalog/pg_yb_profile.h"
+#include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "common/pg_yb_common.h"
@@ -1157,6 +1159,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 
 		case T_CreateDomainStmt:
 		case T_CreateEnumStmt:
+		case T_YbCreateProfileStmt:
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreatedbStmt:
@@ -1322,6 +1325,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropUserMappingStmt:
 			break;
 
+		case T_YbDropProfileStmt:
 		case T_DropStmt:
 			*is_breaking_catalog_change = false;
 			break;
@@ -2310,6 +2314,12 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 
 		case DbRoleSettingRelationId:                     // pg_db_role_setting
+			db_id = TemplateDbOid;
+			break;
+		case YbProfileRelationId:							// pg_yb_profile
+			db_id = TemplateDbOid;
+			break;
+		case YbRoleProfileRelationId:					  // pg_yb_role_profile
 			db_id = TemplateDbOid;
 			break;
 

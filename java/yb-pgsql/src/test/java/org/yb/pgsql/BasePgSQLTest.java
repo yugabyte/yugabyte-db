@@ -79,6 +79,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String DEFAULT_PG_USER = "yugabyte";
   protected static final String DEFAULT_PG_PASS = "yugabyte";
   protected static final String TEST_PG_USER = "yugabyte_test";
+  protected static final String TEST_PG_PASS = "pass";
 
   // Non-standard PSQL states defined in yb_pg_errcodes.h
   protected static final String SERIALIZATION_FAILURE_PSQL_STATE = "40001";
@@ -289,15 +290,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection = null;
     }
 
-    // Create test role.
-    try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER).connect();
-         Statement statement = initialConnection.createStatement()) {
+    connection = createTestRole();
+    pgInitialized = true;
+  }
+
+  protected Connection createTestRole() throws Exception {
+    try (Connection initialConnection = getConnectionBuilder()
+          .withUser(DEFAULT_PG_USER)
+          .connect();
+      Statement statement = initialConnection.createStatement()) {
       statement.execute(
-          "CREATE ROLE " + TEST_PG_USER + " SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN");
+        String.format("CREATE ROLE %s SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN ",
+                      TEST_PG_USER));
     }
 
-    connection = getConnectionBuilder().connect();
-    pgInitialized = true;
+    return getConnectionBuilder().connect();
   }
 
   public void restartClusterWithFlags(

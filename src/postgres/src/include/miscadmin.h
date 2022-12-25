@@ -191,6 +191,8 @@ extern PGDLLIMPORT bool MyDatabaseColocated;
 
 extern PGDLLIMPORT bool YbTablegroupCatalogExists;
 
+extern PGDLLIMPORT bool YbLoginProfileCatalogsExist;
+
 /*
  * Date/Time Configuration
  *
