@@ -5,14 +5,13 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
+	"github.com/jimmidyson/pemtokeystore"
 	"github.com/spf13/viper"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
@@ -97,7 +96,7 @@ func (plat Platform) Install() {
 	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
 	plat.renameAndCreateSymlinks()
-	configureConfHTTPS()
+	convertCertsToKeyStoreFormat()
 
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
@@ -329,10 +328,11 @@ func (plat Platform) Uninstall(removeData bool) {
 // Status prints the status output specific to yb-platform.
 func (plat Platform) Status() common.Status {
 	status := common.Status{
-		Service:   plat.Name(),
-		Port:      viper.GetInt("platform.port"),
-		Version:   plat.version,
-		ConfigLoc: plat.ConfFileLocation,
+		Service:    plat.Name(),
+		Port:       viper.GetInt("platform.port"),
+		Version:    plat.version,
+		ConfigLoc:  plat.ConfFileLocation,
+		LogFileLoc: common.GetBaseInstall() + "/data/logs/application.log",
 	}
 
 	// Set the systemd service file location if one exists
@@ -381,7 +381,6 @@ func (plat Platform) Upgrade() {
 	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
 	plat.renameAndCreateSymlinks()
-	configureConfHTTPS()
 
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
@@ -399,34 +398,27 @@ func (plat Platform) Upgrade() {
 	log.Info("Finishing Platform upgrade")
 }
 
-func configureConfHTTPS() {
+func convertCertsToKeyStoreFormat() {
 
-	generateCertGolang()
+	keyStorePath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerKeyStorePath)
+	// ignore errors if the file doesn't exist
+	os.Remove(keyStorePath)
 
-	os.MkdirAll(common.GetInstallRoot()+"/yb-platform/certs", os.ModePerm)
-	log.Debug(common.GetInstallRoot() + "/yb-platform/certs directory successfully created.")
-
-	// Do not use viper because we might have to return the default.
-	keyStorePassword := config.GetYamlPathData("platform.keyStorePassword")
-	if _, err := os.Stat("server.ks"); !errors.Is(err, os.ErrNotExist) {
-		os.Remove("server.ks")
-	}
-
-	_, err := common.ExecuteBashCommand("bash",
-		[]string{"-c", "./pemtokeystore-linux-amd64 -keystore server.ks " +
-			"-keystore-password " + keyStorePassword +
-			" -cert-file myserver=cert.pem " +
-			"-key-file myserver=key.pem"})
+	log.Info(fmt.Sprintf("Generating key store from %s %s ", viper.GetString("server_cert_path"), viper.GetString("server_key_path")))
+	var opts pemtokeystore.Options
+	opts.KeystorePath = keyStorePath
+	opts.KeystorePassword = viper.GetString("platform.keyStorePassword")
+	opts.CertFiles = map[string]string{"myserver": viper.GetString("server_cert_path")}
+	opts.PrivateKeyFiles = map[string]string{"myserver": viper.GetString("server_key_path")}
+	err := pemtokeystore.CreateKeystore(opts)
 	if err != nil {
-		log.Fatal("failed to create keystore file: " + err.Error())
+		log.Fatal(fmt.Sprintf("failed to convert cert to keystore: %s", err))
+		return
 	}
-
-	common.ExecuteBashCommand("bash",
-		[]string{"-c", "cp " + "server.ks" + " " + common.GetInstallRoot() + "/yb-platform/certs"})
 
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
-		common.Chown(common.GetInstallRoot()+"/yb-platform/certs", userName, userName, true)
+		common.Chown(common.GetSelfSignedCertsDir(), userName, userName, true)
 
 	}
 }
@@ -439,16 +431,4 @@ func (plat Platform) CreateCronJob() {
 		"(crontab -l 2>/dev/null; echo \"@reboot " + plat.cronScript + " " +
 			common.GetInstallVersionDir() + " " + containerExposedPort + " " + restartSeconds +
 			"\") | sort - | uniq - | crontab - "})
-}
-
-// GenerateCORSOrigin determines the IP address of the host to populate CORS origin field in conf.
-func (plat Platform) GenerateCORSOrigin() string {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return "https:" + localAddr.IP.String()
 }
