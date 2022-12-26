@@ -558,7 +558,8 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 }
 
 /*
- * YbSetRoleProfileStatus - set rolprfstatus to given status
+ * YbSetRoleProfileStatus - set rolprfstatus to given status. If the status
+ * is YB_ROLPRFSTATUS_OPEN, then reset the login attempt count.
  *
  * roleid - the oid of the role
  * rolename - Name of the role. Used in the error message
@@ -567,9 +568,25 @@ YbCreateRoleProfile(Oid roleid, const char *rolename, const char *prfname)
 void
 YbSetRoleProfileStatus(Oid roleid, const char *rolename, char status)
 {
+	HeapTuple rolprftuple;
+	Form_pg_yb_role_profile rolprfform;
 	Datum		new_record[Natts_pg_yb_role_profile];
 	bool		new_record_nulls[Natts_pg_yb_role_profile];
 	bool		new_record_repl[Natts_pg_yb_role_profile];
+	int			new_login_attempts;
+
+	rolprftuple = yb_get_role_profile_tuple_by_role_oid(roleid);
+
+	if (!HeapTupleIsValid(rolprftuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("role \"%s\" is not associated with a profile", rolename)));
+
+	rolprfform = (Form_pg_yb_role_profile) GETSTRUCT(rolprftuple);
+
+	new_login_attempts = (status == YB_ROLPRFSTATUS_OPEN)
+		? 0
+		: rolprfform->rolprffailedloginattempts;
 
 	/*
 	 * Build an updated tuple with is_enabled set to the new value
@@ -580,7 +597,8 @@ YbSetRoleProfileStatus(Oid roleid, const char *rolename, char status)
 
 	new_record[Anum_pg_yb_role_profile_rolprfstatus - 1] = status;
 	new_record_repl[Anum_pg_yb_role_profile_rolprfstatus - 1] = true;
-	new_record[Anum_pg_yb_role_profile_rolprffailedloginattempts - 1] = Int16GetDatum(0);
+	new_record[Anum_pg_yb_role_profile_rolprffailedloginattempts - 1] =
+		Int16GetDatum(new_login_attempts);
 	new_record_repl[Anum_pg_yb_role_profile_rolprffailedloginattempts - 1] = true;
 
 	yb_update_role_profile(roleid, rolename, new_record, new_record_nulls,
@@ -632,17 +650,20 @@ YbMaybeIncFailedAttemptsAndDisableProfile(Oid roleid)
 	Form_pg_yb_profile 		prfform;
 	HeapTuple 				prftuple;
 	int 					failed_attempts_limit;
-	int						current_failed_attempts;
 	int 					new_failed_attempts;
 	char 					rolprfstatus;
 
 	rolprftuple = yb_get_role_profile_tuple_by_role_oid(roleid);
 
 	if (!HeapTupleIsValid(rolprftuple))
-		// Role is not associated with a profile.
+		/* Role is not associated with a profile. */
 		return false;
 
 	rolprfform = (Form_pg_yb_role_profile) GETSTRUCT(rolprftuple);
+
+	if (rolprfform->rolprfstatus != YB_ROLPRFSTATUS_OPEN)
+		/* Role is locked, do not change the count. */
+		return true;
 
 	prftuple = yb_get_profile_tuple(DatumGetObjectId(rolprfform->rolprfprofile));
 	if (!HeapTupleIsValid(prftuple))
@@ -652,23 +673,16 @@ YbMaybeIncFailedAttemptsAndDisableProfile(Oid roleid)
 
 	prfform = (Form_pg_yb_profile) GETSTRUCT(prftuple);
 
-	current_failed_attempts = DatumGetInt16(rolprfform->rolprffailedloginattempts);
+	new_failed_attempts = DatumGetInt16(rolprfform->rolprffailedloginattempts) + 1;
 	failed_attempts_limit = DatumGetInt16(prfform->prfmaxfailedloginattempts);
-
-	new_failed_attempts = current_failed_attempts < failed_attempts_limit
-						? current_failed_attempts + 1
-						: failed_attempts_limit + 1;
 
 	/* Keep role enabled IFF role is enabled AND failed attempts < limit */
 	rolprfstatus = rolprfform->rolprfstatus == YB_ROLPRFSTATUS_OPEN &&
-						(new_failed_attempts <= failed_attempts_limit) ?
+						(new_failed_attempts < failed_attempts_limit) ?
 						YB_ROLPRFSTATUS_OPEN :
 						YB_ROLPRFSTATUS_LOCKED;
 
-	/* Do not write unless the values have changed */
-	if (rolprfstatus != rolprfform->rolprfstatus
-		|| new_failed_attempts != current_failed_attempts)
-		YBCExecuteUpdateLoginAttempts(roleid, new_failed_attempts, rolprfstatus);
+	YBCExecuteUpdateLoginAttempts(roleid, new_failed_attempts, rolprfstatus);
 
 	return rolprfstatus != YB_ROLPRFSTATUS_OPEN;
 }
