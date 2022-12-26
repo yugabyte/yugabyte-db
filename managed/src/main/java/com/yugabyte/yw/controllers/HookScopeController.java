@@ -4,6 +4,8 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.HookScopeFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -38,6 +40,8 @@ public class HookScopeController extends AuthenticatedController {
   @Inject private TokenAuthenticator tokenAuthenticator;
 
   @Inject RuntimeConfigFactory rConfigFactory;
+
+  @Inject RuntimeConfGetter confGetter;
 
   @ApiOperation(
       value = "List scopes",
@@ -154,7 +158,7 @@ public class HookScopeController extends AuthenticatedController {
   }
 
   public void verifyAuth(Customer customer) {
-    if (!rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableCustomHooks))
       throw new PlatformServiceException(
           UNAUTHORIZED, "Custom hooks is not enabled on this Anywhere instance");
     boolean cloudEnabled = rConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");

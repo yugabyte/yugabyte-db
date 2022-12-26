@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.Com
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -40,11 +41,10 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   public void runUpgrade(Runnable upgradeLambda) {
     try {
       isBlacklistLeaders =
-          runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
+          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaders);
       leaderBacklistWaitTimeMs =
-          runtimeConfigFactory
-              .forUniverse(getUniverse())
-              .getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
+          confGetter.getConfForScope(
+              getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.

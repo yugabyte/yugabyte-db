@@ -17,7 +17,9 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -54,6 +56,7 @@ import play.mvc.Results;
 public class UniverseInfoController extends AuthenticatedController {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
   @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private HttpExecutionContext ec;
 
@@ -209,7 +212,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.health.trigger_api.enabled")) {
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableTriggerAPI)) {
       throw new PlatformServiceException(
           METHOD_NOT_ALLOWED, "Manual health check trigger is disabled.");
     }

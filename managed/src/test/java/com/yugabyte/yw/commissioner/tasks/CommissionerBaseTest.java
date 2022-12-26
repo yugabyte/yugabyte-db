@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.BackupUtil;
@@ -113,6 +114,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Provider gcpProvider;
   protected Provider onPremProvider;
   protected SettableRuntimeConfigFactory factory;
+  protected RuntimeConfGetter confGetter;
 
   protected Commissioner commissioner;
 
@@ -133,6 +135,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
     factory.globalRuntimeConf().setValue(ENABLE_CUSTOM_HOOKS_PATH, "true");
     factory.globalRuntimeConf().setValue(ENABLE_SUDO_PATH, "true");
 
@@ -146,6 +149,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getTableManagerYb()).thenReturn(mockTableManagerYb);
     when(mockBaseTaskDependencies.getMetricService()).thenReturn(metricService);
     when(mockBaseTaskDependencies.getRuntimeConfigFactory()).thenReturn(configFactory);
+    when(mockBaseTaskDependencies.getConfGetter()).thenReturn(confGetter);
     when(mockBaseTaskDependencies.getAlertConfigurationService())
         .thenReturn(alertConfigurationService);
     when(mockBaseTaskDependencies.getExecutorFactory())
