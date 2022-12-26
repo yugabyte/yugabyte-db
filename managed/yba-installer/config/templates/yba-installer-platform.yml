@@ -8,21 +8,57 @@ services:
 
       play.crypto.secret="{{ yamlPath "platform.appSecret" }}"
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
-      play.server.https.keyStore.path = "{{ installRoot }}/yb-platform/certs/server.ks"
+      play.server.https.keyStore.path = "{{ baseInstall }}/data/yba-installer/certs/server.ks"
       play.server.https.keyStore.type = "JKS"
       play.server.https.keyStore.password = "{{ yamlPath "platform.keyStorePassword" }}"
 
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
+
       db {
-        default.url="jdbc:postgresql://127.0.0.1:{{ yamlPath "postgres.port" }}/yugaware"
-        default.driver=org.postgresql.Driver
-        default.username="{{ yamlPath "platform.platformDbUser" }}"
-        default.password="{{ yamlPath "platform.platformDbPassword" }}"
-        default.logStatements=true
-        default.migration.initOnMigrate=true
-        default.migration.auto=true
+        # Tracking default postgresql connection details
+          default {
+            {{if eq (yamlPath "postgres.useExisting.enabled") "true" }}
+            username="{{ yamlPath "postgres.useExisting.username" }}"
+            password="{{ yamlPath "postgres.useExisting.password" }}"
+            host="{{ yamlPath "postgres.useExisting.host" }}"
+            port="{{ yamlPath "postgres.useExisting.port" }}"
+            dbname="yugaware"
+            {{end}}
+
+            {{if eq (yamlPath "postgres.install.enabled") "true" }}
+            username="postgres"
+            password=""
+            host="localhost"
+            port="{{ yamlPath "postgres.install.port" }}"
+            dbname="yugaware"
+            {{end}}
+            username=${?DB_USERNAME}
+            password=${?DB_PASSWORD}
+            driver="org.postgresql.Driver"
+            url="jdbc:postgresql://"${db.default.host}":"${db.default.port}"/"${db.default.dbname}
+            logStatements=true
+            # Config about flyway migrations.
+            migration {
+              initOnMigrate=true
+              auto=true
+              ignoreMissingMigrations=true
+              outOfOrder=true
+              # We want to use postgres db in production
+              # The migration scripts will be under resources/db.migration.default.postgres
+              # with common scripts under resources/db.migration.default.common
+              locations=["common","postgres"]
+           }
+        }
+        perf_advisor {
+          # We assume both databases are on the same PG instance. If not - this needs to be overriden
+          username=${db.default.username}
+          password=${db.default.password}
+          url="jdbc:postgresql://"${db.default.host}":"${db.default.port}"/"${db.perf_advisor.dbname}
+          createDatabaseUrl="jdbc:postgresql://"${db.default.host}":"${db.default.port}"/"${db.default.dbname}
+        }
       }
+
       ebean {
         default = ["com.yugabyte.yw.models.*"]
       }
@@ -90,7 +126,7 @@ services:
         }
         cors {
           pathPrefixes = ["/"]
-          allowedOrigins =  ["{{ .GenerateCORSOrigin }}"]
+          allowedOrigins =  ["https://{{ yamlPath "host" }}"]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
           allowedHttpHeaders = [
