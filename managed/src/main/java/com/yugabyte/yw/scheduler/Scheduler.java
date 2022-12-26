@@ -113,7 +113,8 @@ public class Scheduler {
         .forEach(
             (schedule) -> {
               if (schedule.getStatus().equals(Schedule.State.Active)
-                  && Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
+                  && (schedule.getNextScheduleTaskTime() == null
+                      || Util.isTimeExpired(schedule.getNextScheduleTaskTime()))) {
                 schedule.updateNextScheduleTaskTime(Schedule.nextExpectedTaskTime(null, schedule));
               }
             });
