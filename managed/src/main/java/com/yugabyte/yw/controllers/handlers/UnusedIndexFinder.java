@@ -15,14 +15,12 @@ import static com.yugabyte.yw.common.TableSpaceStructures.QueryUniverseDBListRes
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -50,16 +48,16 @@ public class UnusedIndexFinder {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final PlatformExecutorFactory platformExecutorFactory;
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   public UnusedIndexFinder(
       NodeUniverseManager nodeUniverseManager,
       PlatformExecutorFactory platformExecutorFactory,
-      RuntimeConfigFactory runtimeConfigFactory) {
+      RuntimeConfGetter confGetter) {
     this.nodeUniverseManager = nodeUniverseManager;
     this.platformExecutorFactory = platformExecutorFactory;
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.confGetter = confGetter;
   }
 
   private static final String GET_DB_LIST_STATEMENT =
@@ -110,8 +108,7 @@ public class UnusedIndexFinder {
     log.trace("getDBList: {}", getDBList);
 
     boolean parseDBSuccess = false;
-    final Config config = runtimeConfigFactory.forUniverse(universe);
-    int maxParallelThreads = config.getInt(QUERY_EXECUTOR_THREAD_POOL_CONFIG_KEY);
+    int maxParallelThreads = confGetter.getConfForScope(universe, UniverseConfKeys.maxThreads);
 
     try {
       ObjectMapper objectMapper = new ObjectMapper();

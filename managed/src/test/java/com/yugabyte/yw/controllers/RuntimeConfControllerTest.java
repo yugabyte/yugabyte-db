@@ -134,7 +134,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
       expectedInfo.add(objMapper.writeValueAsString(CustomerConfKeys.taskGcRetentionDuration));
       expectedInfo.add(objMapper.writeValueAsString(ProviderConfKeys.allowUnsupportedInstances));
       expectedInfo.add(objMapper.writeValueAsString(UniverseConfKeys.allowDowngrades));
-      expectedInfo.add(objMapper.writeValueAsString(GlobalConfKeys.ansibleDebug));
+      expectedInfo.add(objMapper.writeValueAsString(GlobalConfKeys.auditMaxHistory));
 
       for (String info : expectedInfo) {
         assertTrue(info, actualInfo.contains(info));
