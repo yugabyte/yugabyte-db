@@ -13,6 +13,8 @@ import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.DELETE;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -157,7 +159,7 @@ public class TableManagerYb extends DevopsBase {
           } else {
             commandArgs.add(taskParams.getKeyspace());
           }
-          if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.pg_based")) {
+          if (confGetter.getConfForScope(universe, UniverseConfKeys.pgBasedBackup)) {
             commandArgs.add("--pg_based_backup");
           }
         }
@@ -307,7 +309,7 @@ public class TableManagerYb extends DevopsBase {
     }
     Universe universe = Universe.getOrBadRequest(backupTableParams.universeUUID);
     boolean verboseLogsEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+        confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);
     if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }
@@ -323,10 +325,10 @@ public class TableManagerYb extends DevopsBase {
     if (backupTableParams.disableParallelism) {
       commandArgs.add("--disable_parallelism");
     }
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
       commandArgs.add("--ssh2_enabled");
     }
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.disableXxHashChecksum)) {
       commandArgs.add("--disable_xxhash_checksum");
     }
   }
