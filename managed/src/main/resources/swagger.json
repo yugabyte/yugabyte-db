@@ -1180,6 +1180,10 @@
           "description" : "AZ name",
           "type" : "string"
         },
+        "secondarySubnet" : {
+          "description" : "AZ subnet",
+          "type" : "string"
+        },
         "subnet" : {
           "description" : "AZ subnet",
           "type" : "string"
@@ -6196,6 +6200,21 @@
       "required" : [ "zones" ],
       "type" : "object"
     },
+    "RegionEditFormData" : {
+      "properties" : {
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnetName" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "securityGroupId", "vnetName", "ybImage" ],
+      "type" : "object"
+    },
     "RegionFormData" : {
       "properties" : {
         "code" : {
@@ -6221,11 +6240,17 @@
         "name" : {
           "type" : "string"
         },
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnetName" : {
+          "type" : "string"
+        },
         "ybImage" : {
           "type" : "string"
         }
       },
-      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
+      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "securityGroupId", "vnetName", "ybImage" ],
       "type" : "object"
     },
     "RegionLocations" : {
@@ -14443,6 +14468,50 @@
         } ],
         "summary" : "Delete a region",
         "tags" : [ "Region management" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editRegion",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "region edit form data",
+          "in" : "body",
+          "name" : "region",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RegionEditFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Modify a region",
+        "tags" : [ "Region management" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
@@ -14574,6 +14643,56 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Delete an availability zone",
+        "tags" : [ "Availability Zones" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editAZ",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "azUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "Availability zone edit form data",
+          "in" : "body",
+          "name" : "azFormData",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AvailabilityZone"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Modify an availability zone",
         "tags" : [ "Availability Zones" ]
       }
     },

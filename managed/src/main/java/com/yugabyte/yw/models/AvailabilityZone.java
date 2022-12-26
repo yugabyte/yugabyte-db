@@ -105,6 +105,16 @@ public class AvailabilityZone extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZone.class);
 
+  @JsonIgnore
+  public long getNodeCount() {
+    return Customer.get(region.provider.customerUUID)
+        .getUniversesForProvider(region.provider.uuid)
+        .stream()
+        .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
+        .filter(nd -> nd.azUuid.equals(uuid))
+        .count();
+  }
+
   public static AvailabilityZone createOrThrow(
       Region region, String code, String name, String subnet) {
     return createOrThrow(region, code, name, subnet, null);
