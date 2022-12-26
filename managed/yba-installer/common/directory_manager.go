@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -49,6 +50,10 @@ const SystemdDir string = "/etc/systemd/system"
 // GetBaseInstall returns the base install directory, as defined by the user
 func GetBaseInstall() string {
 	return viper.GetString("installRoot")
+}
+
+func GetDataRoot() string {
+	return filepath.Join(viper.GetString("installRoot"), "data")
 }
 
 // GetInstallRoot returns the InstallRoot where YBA is installed.
@@ -167,4 +172,27 @@ func (dm directoryManager) getInstallName(active bool) string {
 		// log.Fatal is the same as panic, but the compiler doesn't catch that so we need a return.
 		return ""
 	}
+}
+
+func getFileMatchingGlob(glob string) string {
+	matches, err := filepath.Glob(glob)
+	if err != nil || len(matches) != 1 {
+		log.Fatal(fmt.Sprintf("Expect to find one match for glob %s (err %s)", matches, err))
+	}
+	return matches[0]
+}
+
+func GetPostgresPackagePath() string {
+	return getFileMatchingGlob(PostgresPackageGlob)
+}
+
+func GetJavaPackagePath() string {
+	return getFileMatchingGlob(javaBinaryGlob)
+}
+
+func GetYBAInstallerDataDir() string {
+	return filepath.Join(GetDataRoot(), "yba-installer")
+}
+func GetSelfSignedCertsDir() string {
+	return filepath.Join(GetYBAInstallerDataDir(), "certs")
 }

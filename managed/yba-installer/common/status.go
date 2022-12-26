@@ -11,7 +11,7 @@ func PrintStatus(statuses ...Status) {
 	statusHeader()
 	for _, status := range statuses {
 		outString := status.Service + "\t" + status.Version + "\t" + strconv.Itoa(status.Port) +
-			"\t" + status.ConfigLoc + "\t" + status.ServiceFileLoc + "\t" + string(status.Status) + "\t"
+			"\t" + status.LogFileLoc + "\t" + string(status.Status) + "\t"
 		fmt.Fprintln(StatusOutput, outString)
 	}
 	StatusOutput.Flush()
@@ -24,9 +24,8 @@ var StatusOutput = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ',
 // Status prints out the header information for the main
 // status command.
 func statusHeader() {
-	outString := "Name" + "\t" + "Version" + "\t" + "Port" + "\t" +
-		"Config File Locations" + "\t" + "Systemd File Locations" +
-		"\t" + "Running Status" + "\t"
+	outString := "Systemd service" + "\t" + "Version" + "\t" + "Port" + "\t" +
+		"Log File Locations" + "\t" + "Running Status" + "\t"
 	fmt.Fprintln(StatusOutput, outString)
 }
 
@@ -37,6 +36,7 @@ type Status struct {
 	ConfigLoc      string
 	ServiceFileLoc string
 	Status         StatusType
+	LogFileLoc     string
 }
 
 type StatusType string

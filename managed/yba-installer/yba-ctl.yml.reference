@@ -1,3 +1,18 @@
+
+
+
+
+# Hostname/IP address that Platform and prometheus will bind to
+# When left empty, the installer will guess the primary IP as best
+# as it can
+host: ""
+
+# HTTPS server cert and key in PEM format. If empty, a self-signed cert will be generated
+# The certificate SAN/CN must match the host setting above
+server_cert_path: "" 
+server_key_path: ""
+
+
 # Configurable parameters:
 
 # scrapeInterval, evaluationInterval, scrapeTimeout,
@@ -145,7 +160,7 @@ prometheus:
 # the platform
 
 platform:
-   platformDbUser: "yugabyte"
+   platformDbUser: "postgres"
    platformDbPassword: ""
    useOauth: false
    ybSecurityType: ""
@@ -157,6 +172,7 @@ platform:
    ybOidcEmailAttr: ""
    port: 443
    keyStorePassword: ""
+   appSecret: ""
    environmentVariables:
       platformAppSecret: "PLATFORM_APP_SECRET"
       corsOrigin: "CORS_ORIGIN"
@@ -202,14 +218,21 @@ additional: |
 # all the required fields correctly, and specify
 # bringOwn = true (defaults to false).
 
-# restartSeconds: time in seconds for systemd to wait before restarting
-# postgress
 postgres:
-   bringOwn: false
-   port: 5432
-   username: "postgres"
-   password: ""
-   restartSeconds: 10
+
+   useExisting:
+      enabled: false # enable to use an existing postgres install
+      username: ""
+      password: ""
+      host: ""
+      port: 5432
+      # a database named yugaware must already be created on this db
+
+   install:
+      enabled: true # yba-ctl will set up its own postgres
+      port: 5432
+      restartSeconds: 10 # restart interval on exit
+
 
 # The dataVolumes section refers to any directories that are not
 # deleted during the uninstall operation of yba-installer. Edit this
@@ -239,18 +262,6 @@ dataVolumes:
 # to create user-level systemd unit files for the current user. If not, please
 # select "crontab" as your desired service management mode.
 serviceManagementMode: "systemd"
-
-# Parameter for configuring the level of logging that you want for your YBA Installer.
-# Possible options (in increasing order of severity, setting a particular Log Level will
-# only log entries with that severity, or anything above it).
-# trace
-# debug
-# info
-# warn
-# error
-# fatal
-# panic
-logLevel: "info"
 
 # Parameter for configuring the InstallRoot. Should change if executing in non-root mode.
 installRoot: "/opt/yugabyte"

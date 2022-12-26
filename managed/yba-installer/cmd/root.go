@@ -8,15 +8,10 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
-
-// List of services required for YBA installation.
-var services map[string]common.Component
-var serviceOrder []string
 
 // Service Names
 const (
@@ -37,10 +32,7 @@ var rootCmd = &cobra.Command{
     Anywhere instance through our command line CLI, such as clean, createBackup,
     restoreBackup, install, and upgrade! View the CLI menu to learn more!`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if len(logLevel) == 0 {
-			logLevel = viper.GetString("logLevel")
-		}
-		log.Init(logLevel)
+		initAfterFlagsParsed(cmd.Name())
 	},
 }
 
@@ -57,11 +49,13 @@ func cleanCmd() *cobra.Command {
 
 			// TODO: Only clean up per service.
 			// Clean up services in reverse order.
+			serviceNames := []string{}
 			for i := len(serviceOrder) - 1; i >= 0; i-- {
 				services[serviceOrder[i]].Uninstall(removeData)
+				serviceNames = append(serviceNames, services[serviceOrder[i]].Name())
 			}
 
-			common.Uninstall()
+			common.Uninstall(serviceNames, removeData)
 		},
 	}
 	clean.Flags().BoolVar(&removeData, "all", false, "also clean out data (default: false)")
@@ -238,21 +232,13 @@ func restoreBackupCmd() *cobra.Command {
 	return restoreBackup
 }
 
+// called on module init
 func init() {
-	// services is an ordered map so services that depend on others should go later in the chain.
-	services = make(map[string]common.Component)
-	services[PostgresServiceName] = NewPostgres("9.6")
-	services[PrometheusServiceName] = NewPrometheus("2.39.0")
-	services[YbPlatformServiceName] = NewPlatform(common.GetVersion())
-	// serviceOrder = make([]string, len(services))
-	serviceOrder = []string{PostgresServiceName, PrometheusServiceName, YbPlatformServiceName}
-	// populate names of services for valid args
-
 	rootCmd.AddCommand(cleanCmd(), licenseCmd, versionCmd,
 		createBackupCmd(), restoreBackupCmd(),
 		upgradeCmd, startCmd, stopCmd, restartCmd, statusCmd)
 	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "skip user confirmation")
-	rootCmd.PersistentFlags().StringVar(&logLevel, "log_level", "", "log level for this command")
+	rootCmd.PersistentFlags().StringVar(&logLevel, "log_level", "info", "log level for this command")
 
 }
 

@@ -30,35 +30,40 @@ func Debug(debugMsg string) {
 	log.Debugln(debugMsg)
 }
 
+func Trace(msg string) {
+	log.Traceln(msg)
+}
+
 func AddOutputFile(filePath string) {
 	logFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
-		panic(err)
+		log.Fatalln("Unable to create log file " + filePath)
 	}
 	log.Infoln(fmt.Sprintf("Opened log file %s", filePath))
 
 	// log file is always at trace level
-	// set log file as a hook for all levels
+	levels := []log.Level{}
 	for level := log.PanicLevel; level <= log.TraceLevel; level++ {
-		log.AddHook(&writer.Hook{
-			Writer: logFile,
-			LogLevels: []log.Level{
-				level,
-			},
-		})
+		levels = append(levels, level)
 	}
+
+	log.AddHook(&writer.Hook{
+		Writer:    logFile,
+		LogLevels: levels,
+	})
 }
 
 // Init sets up the logger according to the right level.
 func Init(logLevel string) {
 
-	// Currently only the log message with an info level severity or above are logged.
-	// Change the log level to debug for more verbose logging output.
+	// TODO: use different formatters for tty and log file, similar to
+	// https://github.com/sirupsen/logrus/issues/894#issuecomment-1284051207
 	log.SetFormatter(&log.TextFormatter{
-		ForceColors:   true,
-		DisableColors: false,
+		ForceColors:   true, // without this, logrus logs in logfmt output by default
 		FullTimestamp: true,
 	})
+
+	log.SetLevel(log.TraceLevel)
 
 	stdErrLogLevel, err := log.ParseLevel(logLevel)
 	if err != nil {
@@ -69,12 +74,14 @@ func Init(logLevel string) {
 	log.SetOutput(ioutil.Discard) // Send all logs to nowhere by default
 
 	// set ourselves as a handler for each level below the specified level
+	levels := []log.Level{}
 	for level := log.PanicLevel; level <= stdErrLogLevel; level++ {
-		log.AddHook(&writer.Hook{
-			Writer: os.Stdout,
-			LogLevels: []log.Level{
-				level,
-			},
-		})
+		levels = append(levels, level)
 	}
+
+	log.AddHook(&writer.Hook{
+		Writer:    os.Stdout,
+		LogLevels: levels,
+	})
+
 }

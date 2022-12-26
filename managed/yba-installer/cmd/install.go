@@ -21,9 +21,7 @@ var installCmd = &cobra.Command{
         `,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		if force {
-			common.DisableUserConfirm()
-		}
+
 		// Preflight checks
 		results := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
 		// Only print results if we should fail.
