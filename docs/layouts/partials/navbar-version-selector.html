@@ -1,7 +1,7 @@
-<a class="nav-link dropdown-toggle version-selector" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+<a class="nav-link dropdown-toggle version-selector" href="#" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
 	{{- .Site.Params.version_menu -}}
 </a>
-<div class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink">
+<div class="dropdown-menu">
 	{{- range .Site.Params.versions -}}
     {{ $versionName := .version }}
     {{- if in .version "(Preview)" -}}

@@ -108,9 +108,6 @@
     }
 
     .card-link {
-      position: relative;
-      z-index: 1;
-
       a {
         &::before {
           content: "";

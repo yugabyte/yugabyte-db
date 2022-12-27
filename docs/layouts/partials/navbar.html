@@ -51,7 +51,7 @@
       <ul class="navbar-nav right-nav">
         {{- range .Site.Menus.top_nav -}}
           <li class="nav-item">
-            <a {{- if .Params.classes }} class="{{ .Params.classes }}"{{ end }} {{- if .URL }} href="{{ .URL }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}{{- else -}}role="button"{{- end }} title="{{ .Name }}">
+            <a {{- if .Params.classes }} class="{{ .Params.classes }}"{{ end }} {{- if .URL }} href="{{ .URL }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}{{- else }} role="button"{{- end }} title="{{ .Name }}">
               <span>{{ .Name }}</span>
               {{ .Post }}
             </a>
@@ -155,7 +155,7 @@
 
             {{- if .Params.imageUrl -}}
               <div class="icon">
-                <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" title="{{ .Name }}"width="24" height="24">
+                <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" title="{{ .Name }}" width="24" height="24">
               </div>
             {{- end -}}
 

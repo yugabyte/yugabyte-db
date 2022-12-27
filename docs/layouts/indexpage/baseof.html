@@ -16,7 +16,7 @@
         <div class="row flex-xl-nowrap {{- if (.Params.showRightNav)}} right-sidebar{{- else}} no-right-sidebar{{- end }} content-parent">
           <div class="content-child">
             <div>
-              <main class="content-area col-xl-12" role="main">
+              <main class="content-area col-xl-12">
                 {{- partial "version-banner.html" . -}}
                 {{- if and (not .Site.Params.ui.breadcrumb_disable) (not .Params.breadcrumbDisable) -}}
                   {{- partial "breadcrumb.html" . -}}
