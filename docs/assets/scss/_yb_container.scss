@@ -32,7 +32,7 @@ html {
     margin-left: -10px;
   }
 
-  .td-sidebar:not(.close-bar) {
+  .td-sidebar {
     flex: 1 1 60%;
     transition: none;
     border-right: 1px solid #e9eef2;
@@ -66,7 +66,6 @@ html {
     }
 
     @-moz-document url-prefix() {
-      max-width: calc(100% - 270px);
       max-width: calc(100% - 60px);
     }
 
@@ -113,23 +112,22 @@ html {
       padding-left: 0;
       padding-right: 0;
       max-width: 100%;
+
+      &:not(:only-child) {
+        flex: none;
+        width: 828px;
+        max-width: calc(100% - 200px) !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
     }
 
-    .td-sidebar:not(.close-bar) {
+    .td-sidebar {
       width: 300px;
       margin-right: 0;
 
       @media (max-width: 1380px) {
         width: 280px;
-      }
-
-      + {
-        main {
-          flex: none;
-          max-width: calc(100% - 60px) !important;
-          padding-left: 0 !important;
-          padding-right: 0 !important;
-        }
       }
     }
 
@@ -141,16 +139,6 @@ html {
       padding-top: 80px;
       background: transparent;
       border: 0;
-
-      + {
-        main {
-          flex: none;
-          width: 828px;
-          max-width: calc(100% - 200px) !important;
-          padding-left: 0 !important;
-          padding-right: 0 !important;
-        }
-      }
     }
   }
 }
@@ -160,24 +148,6 @@ html {
     .td-sidebar-toc.d-xl-block {
       width: 252px !important;
       padding-left: 40px;
-    }
-
-    + {
-      main {
-        max-width: calc(100% - 252px) !important;
-      }
-    }
-  }
-}
-
-@media (min-width: 1500px) {
-  .td-main {
-    .td-sidebar:not(.close-bar) {
-      + {
-        main {
-          max-width: calc(828px + 60px + 110px) !important;
-        }
-      }
     }
   }
 }
@@ -189,10 +159,9 @@ html {
 
     .content-parent {
       padding: 0 20px;
-      //min-width: 1px;
     }
 
-    .td-sidebar:not(.close-bar) {
+    .td-sidebar {
       margin-left: 0;
       min-width: 11px;
     }
@@ -244,7 +213,7 @@ html {
       padding-right: 0;
     }
 
-    .td-sidebar:not(.close-bar) {
+    .td-sidebar {
       width: 100%;
       max-width: 100%;
       border-right: 0 solid;
@@ -272,8 +241,8 @@ html {
     display: none !important;
   }
 
-  aside.td-sidebar[style*="width: 4"] + div .td-sidebar-toc.d-xl-block + main,
-  aside.td-sidebar[style*="width: 5"] + div .td-sidebar-toc.d-xl-block + main {
+  aside.td-sidebar[style*="width: 4"] + div main:not(:only-child),
+  aside.td-sidebar[style*="width: 5"] + div main:not(:only-child) {
     max-width: 100% !important;
   }
 }

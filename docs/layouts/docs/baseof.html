@@ -17,22 +17,23 @@
         <div class="flex-xl-nowrap content-parent">
           <div class="content-child">
             <div>
+              <main class="content-area" role="main">
+                {{- partial "version-banner.html" . -}}
+                {{- if not .Site.Params.ui.breadcrumb_disable -}}
+                  {{- partial "breadcrumb.html" . -}}
+                {{- end -}}
+                {{- block "main" . -}}{{- end -}}
+              </main>
               <aside class="d-none d-xl-block td-sidebar-toc d-print-none">
-                <!-- {{ partial "page-meta-links.html" . }} -->
                 {{- partial "toc.html" . -}}
                 {{- partial "taxonomy_terms_clouds.html" . -}}
               </aside>
-              <main class="content-area" role="main">
-                {{ partial "version-banner.html" . }}
-                {{ if not .Site.Params.ui.breadcrumb_disable }}{{ partial "breadcrumb.html" . }}{{ end }}
-                {{ block "main" . }}{{ end }}
-              </main>
             </div>
-            {{ partial "footer.html" . }}
+            {{- partial "footer.html" . -}}
           </div>
         </div>
       </div>
     </div>
-    {{ partial "scripts.html" . }}
+    {{- partial "scripts.html" . -}}
   </body>
 </html>

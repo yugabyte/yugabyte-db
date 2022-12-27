@@ -35,7 +35,6 @@
       position: sticky;
       margin-top: 0;
       top: 112px;
-      //transition: width 0.5s linear;
       transition: width 100ms ease-in-out;
       max-width: 100%;
 
@@ -50,9 +49,8 @@
       height: calc(100vh - 112px);
       display: flex;
       flex-flow: column;
-      //opacity: 1;
       overflow-x: hidden;
-      //transition:opacity .1s  ease-in;
+
       @media (max-width: 991px) {
         height: calc(100vh - 75px);
       }
@@ -119,11 +117,9 @@
       background: transparent;
       border: 0;
       max-width: 60px;
-      max-width: 60px;
       min-width: 0;
 
       .side-nav-collapse-toggle-2 {
-        //right: calc(100% - 46px);
         &::before {
           content: "\f101";
         }
@@ -145,7 +141,6 @@
       }
 
       .left-sidebar-wrap .left-sidebar-wrap-inner {
-        //opacity: 0;
         display: none;
       }
 
@@ -161,13 +156,7 @@
         height: 100%;
         display: flex;
         flex-flow: column;
-        //transition: width 0.5s linear, opacity 0.2s 0.3s linear;
         min-width: 268px;
-        //min-width: 1px;
-
-        &.smoothscoll {
-          //scroll-behavior: smooth;
-        }
       }
 
       &.collapse {
@@ -236,7 +225,7 @@
               }
             }
 
-            a {
+            a ~ ul {
               &::after {
                 content: "";
                 width: 1px;
@@ -245,12 +234,6 @@
                 position: absolute;
                 left: 15px;
                 background: #e9eef2;
-              }
-
-              &[href*="quick-start"] {
-                &::after {
-                  height: calc(100% - 32px);
-                }
               }
             }
           }
@@ -375,7 +358,7 @@
               }
 
               &.open > {
-                a {
+                a ~ ul {
                   &::after {
                     left: 0;
                   }
@@ -523,52 +506,6 @@
         }
       }
     }
-
-    &.close-bar {
-      width: 50px;
-      max-width: 50px;
-      padding-left: 0;
-    }
-
-    &.collapse-side {
-      width: 50px;
-      max-width: 50px;
-
-      &::before {
-        content: "";
-        background: darkgreen;
-        background: #f5f1f2;
-        width: 50px;
-        height: 100%;
-        top: 0;
-        position: absolute;
-        z-index: 2;
-      }
-
-      nav {
-        opacity: 0;
-      }
-
-      .side-nav-collapse-toggle::before {
-        transform: rotate(45deg);
-        margin-right: 4px;
-      }
-
-      &.collapse-hover:hover {
-        width: auto;
-        max-width: 16.66666667%;
-        padding-left: 15px;
-
-        &::before {
-          display: none;
-        }
-
-        nav {
-          transition: width 0.5s linear, opacity 0.2s 0s linear;
-          opacity: 1;
-        }
-      }
-    }
   }
 }
 
@@ -576,7 +513,7 @@
   .td-main {
     aside.td-sidebar {
       top: 8rem;
-      z-index: 999;
+      z-index: 10000;
 
       .docs-menu.desktop-hide {
         display: block;
