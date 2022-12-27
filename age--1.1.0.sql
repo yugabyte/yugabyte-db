@@ -4022,7 +4022,7 @@ AS 'MODULE_PATHNAME';
 CREATE FUNCTION ag_catalog.agtype_typecast_path(variadic "any")
 RETURNS agtype
 LANGUAGE c
-STABLE
+IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
