@@ -218,7 +218,7 @@ SET search_path = ag_catalog, "$user", public;
 To create a graph, use the create_graph function located in the ag_catalog namespace.
 
 ```bash
-create_graph(graph_name);
+SELECT create_graph('graph_name');
 ```
 
 To create a single vertex, use the CREATE clause. 
