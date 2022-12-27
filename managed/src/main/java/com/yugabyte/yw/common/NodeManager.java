@@ -1280,13 +1280,12 @@ public class NodeManager extends DevopsBase {
     List<String> cloudArgs = Arrays.asList("--node_metadata", Json.stringify(nodeDetails));
 
     return execCommand(
-        nodeTaskParam.getRegion().uuid,
-        null,
-        null,
-        type.toString().toLowerCase(),
-        commandArgs,
-        cloudArgs,
-        Collections.emptyMap());
+        DevopsCommand.builder()
+            .regionUUID(nodeTaskParam.getRegion().uuid)
+            .command(type.toString().toLowerCase())
+            .commandArgs(commandArgs)
+            .cloudArgs(cloudArgs)
+            .build());
   }
 
   private Path addBootscript(
@@ -2038,14 +2037,14 @@ public class NodeManager extends DevopsBase {
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       return execCommand(
-          nodeTaskParam.getRegion().uuid,
-          null,
-          null,
-          type.toString().toLowerCase(),
-          commandArgs,
-          getCloudArgs(nodeTaskParam),
-          getAnsibleEnvVars(nodeTaskParam.universeUUID),
-          sensitiveData);
+          DevopsCommand.builder()
+              .regionUUID(nodeTaskParam.getRegion().uuid)
+              .command(type.toString().toLowerCase())
+              .commandArgs(commandArgs)
+              .cloudArgs(getCloudArgs(nodeTaskParam))
+              .envVars(getAnsibleEnvVars(nodeTaskParam.universeUUID))
+              .sensitiveData(sensitiveData)
+              .build());
     } finally {
       if (bootScriptFile != null) {
         try {
