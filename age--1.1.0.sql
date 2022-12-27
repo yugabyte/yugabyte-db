@@ -3987,21 +3987,21 @@ CREATE AGGREGATE ag_catalog.age_collect(variadic "any")
 CREATE FUNCTION ag_catalog.agtype_typecast_int(variadic "any")
 RETURNS agtype
 LANGUAGE c
-STABLE
+IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION ag_catalog.agtype_typecast_numeric(variadic "any")
 RETURNS agtype
 LANGUAGE c
-STABLE
+IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION ag_catalog.agtype_typecast_float(variadic "any")
 RETURNS agtype
 LANGUAGE c
-STABLE
+IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
