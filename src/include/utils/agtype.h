@@ -303,7 +303,7 @@ typedef struct
 
 /*
  * IMPORTANT NOTE: For agtype_value_type, IS_A_AGTYPE_SCALAR() checks that the
- * type is between AGTV_NULL and AGTV_BOOL, inclusive. So, new scalars need to
+ * type is between AGTV_NULL and AGTV_ARRAY, excluding AGTV_ARRAY. So, new scalars need to
  * be between these values.
  */
 enum agtype_value_type
