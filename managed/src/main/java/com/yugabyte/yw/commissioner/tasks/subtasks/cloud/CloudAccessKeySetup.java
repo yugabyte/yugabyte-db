@@ -52,8 +52,6 @@ public class CloudAccessKeySetup extends CloudTaskBase {
       throw new RuntimeException("Region " + regionCode + " not setup.");
     }
     AccessManager accessManager = Play.current().injector().instanceOf(AccessManager.class);
-
-    // TODO(bogdan): validation at higher level?
     String accessKeyCode =
         Strings.isNullOrEmpty(taskParams().keyPairName)
             ? AccessKey.getDefaultKeyCode(provider)

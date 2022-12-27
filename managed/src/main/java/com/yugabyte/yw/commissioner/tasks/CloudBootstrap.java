@@ -34,8 +34,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import org.apache.commons.collections.CollectionUtils;
 import play.libs.Json;
 
 public class CloudBootstrap extends CloudTaskBase {
@@ -52,9 +54,10 @@ public class CloudBootstrap extends CloudTaskBase {
 
     public static Params fromProvider(Provider provider, List<Region> regions) {
       Params taskParams = new Params();
-      AccessKey accessKey = null;
+      // This is the case of initial provider creation.
+      // If user provides his own access keys, we should take the first one in the list.
       if (provider.allAccessKeys != null && provider.allAccessKeys.size() > 0) {
-        accessKey = provider.allAccessKeys.get(0);
+        AccessKey accessKey = provider.allAccessKeys.get(0);
         taskParams.keyPairName = accessKey.getKeyInfo().keyPairName;
         taskParams.sshPrivateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
       }
@@ -244,13 +247,12 @@ public class CloudBootstrap extends CloudTaskBase {
     // Dictates whether or not to show the set up NTP option in the provider UI.
     public boolean showSetUpChrony = true;
 
-    // Whether or not task is a pure region add.
     // This dictates whether the task skips the initialization and bootstrapping of the cloud.
-    public boolean regionAddOnly = false;
-  }
+    public boolean skipBootstrapRegion = false;
 
-  // TODO: these fields should probably be persisted with provider but currently these are lost
-  public static class ProviderTransientData {}
+    // Whether or not task is a pure region add.
+    public Set<String> addedRegionCodes = null;
+  }
 
   @Override
   protected Params taskParams() {
@@ -260,29 +262,29 @@ public class CloudBootstrap extends CloudTaskBase {
   @Override
   public void run() {
     Provider p = Provider.get(taskParams().providerUUID);
-    if (!taskParams().regionAddOnly) {
-      if (p.code.equals(Common.CloudType.gcp.toString())
-          || p.code.equals(Common.CloudType.aws.toString())
-          || p.code.equals(Common.CloudType.azu.toString())) {
-        createCloudSetupTask()
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
-      }
+    Common.CloudType cloudType = Common.CloudType.valueOf(p.code);
+    if (cloudType.isRequiresBootstrap()
+        && cloudType != Common.CloudType.onprem
+        && !taskParams().skipBootstrapRegion) {
+      createCloudSetupTask()
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+    }
+    Map<String, Params.PerRegionMetadata> regionsToInit =
+        new HashMap<>(taskParams().perRegionMetadata);
+    if (!CollectionUtils.isEmpty(taskParams().addedRegionCodes)) {
+      regionsToInit.keySet().retainAll(taskParams().addedRegionCodes);
     }
 
-    taskParams()
-        .perRegionMetadata
-        .forEach(
-            (regionCode, metadata) -> {
-              createRegionSetupTask(regionCode, metadata)
-                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
-            });
-    taskParams()
-        .perRegionMetadata
-        .forEach(
-            (regionCode, metadata) -> {
-              createAccessKeySetupTask(regionCode)
-                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
-            });
+    regionsToInit.forEach(
+        (regionCode, metadata) -> {
+          createRegionSetupTask(regionCode, metadata)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
+        });
+    regionsToInit.forEach(
+        (regionCode, metadata) -> {
+          createAccessKeySetupTask(regionCode)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
+        });
 
     // Need not to init CloudInitializer task for onprem provider.
     if (!p.getCloudCode().equals(Common.CloudType.onprem)) {
