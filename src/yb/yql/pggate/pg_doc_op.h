@@ -550,6 +550,8 @@ class PgDocReadOp : public PgDocOp {
   // Set the read_time for our backfill's read request based on our exec control parameter.
   void SetReadTimeForBackfill();
 
+  void SetDistinctScan();
+
   Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
 
   // Get the read_op for a specific operation index from pgsql_ops_.

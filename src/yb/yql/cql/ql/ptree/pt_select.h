@@ -387,6 +387,10 @@ class PTSelectStmt : public PTDmlStmt {
     return covers_fully_;
   }
 
+  size_t prefix_length() const {
+    return prefix_length_;
+  }
+
   // Certain tables can be read by any authorized role specifically because they are being used
   // by the Cassandra driver:
   // system_schema.keyspaces
@@ -492,6 +496,8 @@ class PTSelectStmt : public PTDmlStmt {
   // For nested select from an index: the index id and whether it covers the query fully.
   TableId index_id_;
   bool covers_fully_ = false;
+
+  size_t prefix_length_ = 0;
 
   // Name of all columns the SELECT statement is referenced. Similar to the list "column_refs_",
   // but this is a list of column names instead of column ids.

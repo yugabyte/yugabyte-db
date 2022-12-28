@@ -987,6 +987,9 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
 
   // Specify distinct columns or non.
   req->set_distinct(tnode->distinct());
+  if (tnode->distinct()) {
+    req->set_prefix_length(tnode->prefix_length());
+  }
 
   // Default row count limit is the page size.
   // We should return paging state when page size limit is hit.
