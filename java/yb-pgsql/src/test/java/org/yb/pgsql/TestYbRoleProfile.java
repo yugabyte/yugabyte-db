@@ -15,12 +15,16 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collections;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.junit.After;
 import org.junit.Before;
@@ -43,10 +47,14 @@ public class TestYbRoleProfile extends BasePgSQLTest {
   private static final String PROFILE_2_NAME = "prf2";
   private static final int PRF_1_FAILED_ATTEMPTS = 3;
   private static final int PRF_2_FAILED_ATTEMPTS = 2;
-  private static final String AUTHENTICATION_FAILED =
-                              "FATAL: password authentication failed for user \"%s\"";
-  private static final String ROLE_IS_LOCKED_OUT =
-                              "FATAL: role \"%s\" is locked. Contact your database administrator.";
+  private static final Pattern AUTHENTICATION_FAILED_RE = Pattern.compile(
+      "FATAL: password authentication failed for user");
+  private static final Pattern ROLE_IS_LOCKED_OUT_RE = Pattern.compile(
+      "FATAL: role .* is locked. Contact your database administrator.");
+  private static final Pattern AUTHENTICATION_REJECTED_RE = Pattern.compile(
+      "FATAL: pg_hba.conf rejects connection for host .*, user .*, database \"yugabyte\", SSL off");
+  private static final Pattern NO_HBA_ENTRY_RE = Pattern.compile(
+      "FATAL: no pg_hba.conf entry for host .*, user .*, database \"yugabyte\", SSL off");
 
 
   @Override
@@ -74,7 +82,7 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   private void attemptLogin(String username,
       String password,
-      String expectedError) throws Exception {
+      Pattern expectedErrorRe) throws Exception {
     try {
       getConnectionBuilder()
         .withTServer(0)
@@ -83,7 +91,9 @@ public class TestYbRoleProfile extends BasePgSQLTest {
         .connect();
       fail("Expected incorrect password");
     } catch (PSQLException e) {
-      assertEquals(String.format(expectedError, username), e.getMessage());
+      String msg = e.getMessage();
+      Matcher matcher = expectedErrorRe.matcher(msg);
+      assertTrue(msg + "does not match regex %s" + expectedErrorRe, matcher.find());
     }
   }
 
@@ -160,9 +170,24 @@ public class TestYbRoleProfile extends BasePgSQLTest {
   private void exceedAttempts(int attemptLimit, String username) throws Exception {
     /* Exceed the failed attempts limit */
     for (int i = 0; i < attemptLimit - 1; i++) {
-      attemptLogin(username, "wrong", AUTHENTICATION_FAILED);
+      attemptLogin(username, "wrong", AUTHENTICATION_FAILED_RE);
     }
-    attemptLogin(username, "wrong", ROLE_IS_LOCKED_OUT);
+    attemptLogin(username, "wrong", ROLE_IS_LOCKED_OUT_RE);
+  }
+
+  /** Restart cluster with specified hba conf. */
+  private void restartWithHba(String hba) throws Exception {
+    Map<String, String> flagMap = super.getTServerFlags();
+
+    // ysql_enable_auth auto-adds an HBA entry, so turn it off.
+    flagMap.put("ysql_enable_auth", "false");
+
+    // Add given hba.
+    flagMap.put("ysql_hba_conf_csv", hba);
+    LOG.info("Restarting with the following HBA config: {}", flagMap.get("ysql_hba_conf_csv"));
+
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+    setup();
   }
 
   @After
@@ -248,7 +273,7 @@ public class TestYbRoleProfile extends BasePgSQLTest {
   @Test
   public void testRegularUserCanFailLoginManyTimes() throws Exception {
     for (int i = 0; i < 10; i++) {
-      attemptLogin(TEST_PG_USER, "wrong", AUTHENTICATION_FAILED);
+      attemptLogin(TEST_PG_USER, "wrong", AUTHENTICATION_FAILED_RE);
     }
     login(TEST_PG_USER, TEST_PG_PASS);
   }
@@ -259,7 +284,7 @@ public class TestYbRoleProfile extends BasePgSQLTest {
     assertProfileStateForUser(USERNAME, PRF_1_FAILED_ATTEMPTS, false);
 
     /* Now the user cannot login */
-    attemptLogin(USERNAME, PASSWORD, ROLE_IS_LOCKED_OUT);
+    attemptLogin(USERNAME, PASSWORD, ROLE_IS_LOCKED_OUT_RE);
 
     /* After an admin resets, the user can login again */
     unlockUserProfile(USERNAME);
@@ -270,14 +295,14 @@ public class TestYbRoleProfile extends BasePgSQLTest {
   @Test
   public void testAdminCanLockAndUnlock() throws Exception {
     /* Make one failed attempt. */
-    attemptLogin(USERNAME, "wrong", AUTHENTICATION_FAILED);
+    attemptLogin(USERNAME, "wrong", AUTHENTICATION_FAILED_RE);
     assertProfileStateForUser(USERNAME, 1, true);
 
     lockUserProfile(USERNAME);
 
     /* With a locked profile, the user cannot login. The count should not increment. */
     assertProfileStateForUser(USERNAME, 1, false);
-    attemptLogin(USERNAME, PASSWORD, ROLE_IS_LOCKED_OUT);
+    attemptLogin(USERNAME, PASSWORD, ROLE_IS_LOCKED_OUT_RE);
     assertProfileStateForUser(USERNAME, 1, false);
 
     /* After an admin unlocks, the user can login again */
@@ -294,7 +319,7 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
     /* Use up all allowed failed attempts */
     for (int i = 0; i < PRF_1_FAILED_ATTEMPTS - 1; i++) {
-      attemptLogin(USERNAME, "wrong", AUTHENTICATION_FAILED);
+      attemptLogin(USERNAME, "wrong", AUTHENTICATION_FAILED_RE);
       assertProfileStateForUser(USERNAME, i + 1, true);
     }
 
@@ -309,8 +334,80 @@ public class TestYbRoleProfile extends BasePgSQLTest {
      * Now even the correct password will not let us in.
      * Failed attempts above the limit + 1 are not counted.
      */
-    attemptLogin(USERNAME, PASSWORD, ROLE_IS_LOCKED_OUT);
-    attemptLogin(USERNAME, "wrong", ROLE_IS_LOCKED_OUT);
+    attemptLogin(USERNAME, PASSWORD, ROLE_IS_LOCKED_OUT_RE);
+    attemptLogin(USERNAME, "wrong", ROLE_IS_LOCKED_OUT_RE);
     assertProfileStateForUser(USERNAME, PRF_1_FAILED_ATTEMPTS, false);
+  }
+
+  @Test
+  public void testRejectLogin() throws Exception {
+    restartWithHba(String.format("\"host all %s all reject\",\"host all all all md5\"", USERNAME));
+
+    // Initial state is rolprffailedloginattempts = 0.
+    assertProfileStateForUser(USERNAME, 0, true);
+
+    // Login with correct password fails as auth method is reject.
+    attemptLogin(USERNAME, PASSWORD, AUTHENTICATION_REJECTED_RE);
+    // Even though login failed, rolprffailedloginattempts does not change.
+    assertProfileStateForUser(USERNAME, 0, true);
+
+    // Restart the cluster with default flags.
+    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
+  }
+
+  @Test
+  public void testImplicitRejectLogin() throws Exception {
+    restartWithHba(String.format(
+          "\"host all %s all trust\",\"host all %s all trust\",\"host all %s all trust\"",
+          TEST_PG_USER, "postgres", "yugabyte"));
+
+    // Initial state is rolprffailedloginattempts = 0.
+    assertProfileStateForUser(USERNAME, 0, true);
+
+    // Login with correct password fails as auth method is implicit reject.
+    attemptLogin(USERNAME, PASSWORD, NO_HBA_ENTRY_RE);
+    // Even though login failed, rolprffailedloginattempts does not change.
+    assertProfileStateForUser(USERNAME, 0, true);
+
+    // Restart the cluster with default flags.
+    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
+  }
+
+  @Test
+  public void testTrustLogin() throws Exception {
+    restartWithHba(String.format("\"host all %s all trust\",\"host all all all md5\"", USERNAME));
+
+    lockUserProfile(USERNAME);
+    assertProfileStateForUser(USERNAME, 0, false);
+
+    // Login with any password as auth method is trust
+    login(USERNAME, "wrong");
+    // Even though login is successful, account remains locked.
+    assertProfileStateForUser(USERNAME, 0, false);
+
+    // Restart the cluster with default flags.
+    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
+  }
+
+  @Test
+  public void testYbTserverKeyLogin() throws Exception {
+    final String backfillProfile = "backfill_profile";
+    final String backfillUser = "postgres";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE PROFILE %s LIMIT FAILED_LOGIN_ATTEMPTS %d",
+                                 backfillProfile, 3));
+      stmt.execute(String.format("ALTER USER %s PROFILE %s", backfillUser, backfillProfile));
+    }
+
+    attemptLogin(backfillUser, "wrong", AUTHENTICATION_FAILED_RE);
+    lockUserProfile(backfillUser);
+    assertProfileStateForUser(backfillUser, 1, false);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE tab (i int)");
+      stmt.execute("CREATE INDEX ON tab (i)");
+    }
+    // Even though login via index backfill is successful, account status is not changed.
+    assertProfileStateForUser(backfillUser, 1, false);
   }
 }

@@ -25,7 +25,10 @@
 #ifndef YB_PROFILE_H
 #define YB_PROFILE_H
 
+#include "libpq/hba.h"
 #include "nodes/parsenodes.h"
+
+extern bool IsProfileHandlingRequired(UserAuth auth_method);
 
 extern Oid	YbCreateProfile(YbCreateProfileStmt* stmt);
 extern void YbDropProfile(YbDropProfileStmt* stmt);
