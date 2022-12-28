@@ -635,7 +635,12 @@ ClientAuthentication(Port *port)
 		(*ClientAuthentication_hook) (port, status);
 
 
-	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
+	/*
+	 * If conditions are met, update the role's profile entry.  Specific
+	 * authentication methods are isolated from profile handling.
+	 */
+	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist &&
+		IsProfileHandlingRequired(port->hba->auth_method))
 	{
 		bool profile_is_disabled = false;
 		HeapTuple roleTuple, profileTuple = NULL;
