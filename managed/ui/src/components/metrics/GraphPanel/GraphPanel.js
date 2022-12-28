@@ -106,6 +106,7 @@ export const panelTypes = {
       'tserver_log_bytes_written',
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
+      'tserver_write_lock_latency',
       'tserver_tc_malloc_stats',
       'tserver_log_stats',
       'tserver_cache_reader_num_ops',
@@ -253,6 +254,7 @@ export const panelTypes = {
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
       'tserver_log_stats',
+      'tserver_write_lock_latency',
       'tserver_cache_reader_num_ops'
     ]
   },
