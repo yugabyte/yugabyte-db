@@ -1,0 +1,91 @@
+CREATE EXTENSION pg_stat_monitor;
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+\c db1
+CREATE TABLE t1 (a int);
+CREATE TABLE t2 (b int);
+CREATE FUNCTION add(integer, integer) RETURNS integer
+    AS 'select $1 + $2;'
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+\c db2
+CREATE TABLE t1 (a int);
+CREATE TABLE t3 (c int);
+CREATE FUNCTION add(integer, integer) RETURNS integer
+    AS 'select $1 + $2;'
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+\c contrib_regression
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+\c db1
+SELECT * FROM t1;
+ a 
+---
+(0 rows)
+
+SELECT *, ADD(1, 2) FROM t1;
+ a | add 
+---+-----
+(0 rows)
+
+SELECT * FROM t2;
+ b 
+---
+(0 rows)
+
+\c db2
+SELECT * FROM t1;
+ a 
+---
+(0 rows)
+
+SELECT *, ADD(1, 2) FROM t1;
+ a | add 
+---+-----
+(0 rows)
+
+SELECT * FROM t3;
+ c 
+---
+(0 rows)
+
+\c contrib_regression
+SELECT datname, pgsm_query_id, query FROM pg_stat_monitor ORDER BY pgsm_query_id, query, datname;
+      datname       |    pgsm_query_id     |             query              
+--------------------+----------------------+--------------------------------
+ db2                | -5029137034974447432 | SELECT * FROM t3
+ contrib_regression |   689150021118383254 | SELECT pg_stat_monitor_reset()
+ db1                |  1897482803466821995 | SELECT * FROM t2
+ db1                |  1988437669671417938 | SELECT * FROM t1
+ db2                |  1988437669671417938 | SELECT * FROM t1
+ db1                |  2864453209316739369 | select $1 + $2
+ db2                |  2864453209316739369 | select $1 + $2
+ db1                |  8140395000078788481 | SELECT *, ADD(1, 2) FROM t1
+ db2                |  8140395000078788481 | SELECT *, ADD(1, 2) FROM t1
+(9 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+\c db1
+DROP TABLE t1;
+DROP TABLE t2;
+DROP FUNCTION ADD;
+\c db2
+DROP TABLE t1;
+DROP TABLE t3;
+DROP FUNCTION ADD;
+\c contrib_regression
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP EXTENSION pg_stat_monitor;

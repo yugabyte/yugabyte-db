@@ -22,6 +22,7 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT planid              text,
     OUT query               text,
     OUT query_plan          text,
+    OUT pgsm_query_id       int8,
     OUT top_queryid         text,
     OUT top_query           text,
 	OUT application_name	text,
