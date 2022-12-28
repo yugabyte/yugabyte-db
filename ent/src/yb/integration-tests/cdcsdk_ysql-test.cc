@@ -312,6 +312,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  Status UpdatePKOfRows(uint32_t old_key_value, uint32_t new_key_value, Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Updating row for key " << old_key_value << " with new key " << new_key_value;
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "UPDATE $0 SET $1 = $2 WHERE $3 = $4", kTableName, kKeyColumnName, new_key_value,
+        kKeyColumnName, old_key_value));
+    return Status::OK();
+  }
+
   Status DeleteRows(uint32_t key, Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Deleting row for key " << key;
@@ -507,6 +516,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       case RowMessage::TRUNCATE: {
         count[5]++;
       } break;
+      case RowMessage::BEGIN: {
+        break;
+      }
+      case RowMessage::COMMIT: {
+        break;
+      }
       default:
         ASSERT_FALSE(true);
         break;
@@ -1132,6 +1147,41 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardInsert4Rows)) {
     CheckRecord(record, expected_records[i], count);
   }
   LOG(INFO) << "Got " << count[1] << " insert records";
+  CheckCount(expected_count, count);
+}
+
+// Begin transaction, insert one row, commit transaction, update, enable snapshot
+// Expected records: (DDL, READ).
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpdatePKOfExistingRow)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 30, /* is_compaction = */ false));
+  ASSERT_OK(UpdatePKOfRows(1 /* old_key_value */, 1 /* new_key_value */, &test_cluster_));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {1, 2, 0, 1, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{0, 0}, {0, 0}, {1, 2}, {0, 0}, {0, 0}, {1, 0}, {1, 2}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count);
+  }
+  LOG(INFO) << "Got " << count[4] << " read record and " << count[0] << " ddl record";
   CheckCount(expected_count, count);
 }
 

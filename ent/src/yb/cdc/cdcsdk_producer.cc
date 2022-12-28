@@ -234,6 +234,7 @@ Status PopulateCDCSDKIntentRecord(
           decoded_key.num_subkeys() == 0) {
         SetOperation(row_message, OpType::DELETE, schema);
         *write_id = intent.write_id;
+        col_count = schema.num_columns();
       } else {
         if (column_id_opt &&
             column_id_opt->type() == docdb::KeyEntryType::kSystemColumnId &&
