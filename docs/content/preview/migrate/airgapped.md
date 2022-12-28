@@ -6,9 +6,7 @@ private=true
 
 You can perform an airgapped installation on RHEL 7/8, CentOS 7/8, and Ubuntu OS.
 
-For airgapped installations, you need to download all the rpm files that are necessary for installing and running `yb-voyager` on a machine with an internet connection.
-
-Ensure that the OS of your current machine and the airgapped machine is the _same_ so that you can download the correct versions of the rpm files.
+For airgapped installations, you need to download the tarball containing all the rpm files that are necessary for installing and running `yb-voyager` on a machine with an internet connection. Transfer the downloaded files to your airgapped machine and proceed with the installation using the following steps:
 
 1. Download the tarball containing all the rpm files on a machine with internet connection using the following command:
 
