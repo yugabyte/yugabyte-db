@@ -53,10 +53,10 @@ SELECT pg_stat_monitor_reset();
 (1 row)
 
 -- test the schema qualified table
-CREATE schema sch1;
-CREATE schema sch2;
-CREATE schema sch3;
-CREATE schema sch4;
+CREATE SCHEMA sch1;
+CREATE SCHEMA sch2;
+CREATE SCHEMA sch3;
+CREATE SCHEMA sch4;
 CREATE TABLE sch1.foo1(a int);
 CREATE TABLE sch2.foo2(b int);
 CREATE TABLE sch3.foo3(c int);

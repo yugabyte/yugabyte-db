@@ -5,10 +5,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_min';
-                name                | value | default_value |          description          | minimum |  maximum   | options | restart 
-------------------------------------+-------+---------------+-------------------------------+---------+------------+---------+---------
- pg_stat_monitor.pgsm_histogram_min | 1     | 0             | Sets the time in millisecond. |       0 | 2147483647 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_min';
+                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_min | 1       |      | postmaster | integer | configuration file | 0       | 2147483647 |          | 1        | 1         | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -17,10 +17,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_min';
-                name                | value | default_value |          description          | minimum |  maximum   | options | restart 
-------------------------------------+-------+---------------+-------------------------------+---------+------------+---------+---------
- pg_stat_monitor.pgsm_histogram_min | 1000  | 0             | Sets the time in millisecond. |       0 | 2147483647 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_min';
+                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_min | 1000    |      | postmaster | integer | configuration file | 0       | 2147483647 |          | 1        | 1000      | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -29,10 +29,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_min';
-                name                | value | default_value |          description          | minimum |  maximum   | options | restart 
-------------------------------------+-------+---------------+-------------------------------+---------+------------+---------+---------
- pg_stat_monitor.pgsm_histogram_min | 10000 | 0             | Sets the time in millisecond. |       0 | 2147483647 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_min';
+                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_min | 10000   |      | postmaster | integer | configuration file | 0       | 2147483647 |          | 1        | 10000     | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -41,10 +41,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_histogram_min';
-                name                | value | default_value |          description          | minimum |  maximum   | options | restart 
-------------------------------------+-------+---------------+-------------------------------+---------+------------+---------+---------
- pg_stat_monitor.pgsm_histogram_min | 99999 | 0             | Sets the time in millisecond. |       0 | 2147483647 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_min';
+                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_min | 99999   |      | postmaster | integer | configuration file | 0       | 2147483647 |          | 1        | 99999     | f
 (1 row)
 
-Drop extension pg_stat_monitor;
+DROP EXTENSION pg_stat_monitor;

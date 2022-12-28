@@ -5,10 +5,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_overflow_target';
-                 name                 | value | default_value |                 description                  | minimum | maximum | options | restart 
---------------------------------------+-------+---------------+----------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_overflow_target | 0     | 1             | Sets the overflow target for pg_stat_monitor |       0 |       1 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_overflow_target';
+                 name                 | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+--------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_overflow_target | 0       |      | postmaster | integer | configuration file | 0       | 1       |          | 1        | 0         | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
@@ -17,10 +17,10 @@ SELECT pg_stat_monitor_reset();
  
 (1 row)
 
-SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_overflow_target';
-                 name                 | value | default_value |                 description                  | minimum | maximum | options | restart 
---------------------------------------+-------+---------------+----------------------------------------------+---------+---------+---------+---------
- pg_stat_monitor.pgsm_overflow_target | 1     | 1             | Sets the overflow target for pg_stat_monitor |       0 |       1 |         | yes
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_overflow_target';
+                 name                 | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+--------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_overflow_target | 1       |      | postmaster | integer | configuration file | 0       | 1       |          | 1        | 1         | f
 (1 row)
 
-Drop extension pg_stat_monitor;
+DROP EXTENSION pg_stat_monitor;

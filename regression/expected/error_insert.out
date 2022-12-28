@@ -1,4 +1,4 @@
-Drop Table if exists Company;
+DROP TABLE IF EXISTS Company;
 NOTICE:  table "company" does not exist, skipping
 CREATE TABLE Company(
    ID INT PRIMARY KEY     NOT NULL,
@@ -15,13 +15,13 @@ INSERT  INTO Company(ID, Name) VALUES (1, 'Percona');
 INSERT  INTO Company(ID, Name) VALUES (1, 'Percona'); 
 ERROR:  duplicate key value violates unique constraint "company_pkey"
 DETAIL:  Key (id)=(1) already exists.
-Drop Table if exists Company;
+DROP TABLE IF EXISTS Company;
 SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLATE "C",elevel;
                          query                         | elevel | sqlcode |                            message                            
 -------------------------------------------------------+--------+---------+---------------------------------------------------------------
- Drop Table if exists Company                          |      0 |         | 
+ DROP TABLE IF EXISTS Company                          |      0 |         | 
  INSERT  INTO Company(ID, Name) VALUES (1, 'Percona')  |      0 |         | 
- INSERT  INTO Company(ID, Name) VALUES (1, 'Percona'); |     20 | 23505   | duplicate key value violates unique constraint "company_pkey"
+ INSERT  INTO Company(ID, Name) VALUES (1, 'Percona'); |     21 | 23505   | duplicate key value violates unique constraint "company_pkey"
  SELECT pg_stat_monitor_reset()                        |      0 |         | 
 (4 rows)
 

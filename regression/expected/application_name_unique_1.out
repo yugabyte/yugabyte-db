@@ -1,18 +1,18 @@
-Create EXTENSION pg_stat_monitor;
+CREATE EXTENSION pg_stat_monitor;
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 
 -----------------------
  
 (1 row)
 
-Set application_name = 'naeem' ; 
+SET application_name = 'naeem' ; 
 SELECT 1 AS num;
  num 
 -----
    1
 (1 row)
 
-Set application_name = 'psql' ; 
+SET application_name = 'psql' ; 
 SELECT 1 AS num;
  num 
 -----
