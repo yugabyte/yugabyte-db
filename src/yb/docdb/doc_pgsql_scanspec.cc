@@ -36,7 +36,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const boost::optional<int32_t> hash_code,
                                    const boost::optional<int32_t> max_hash_code,
                                    const DocKey& start_doc_key,
-                                   bool is_forward_scan)
+                                   bool is_forward_scan,
+                                   const size_t prefix_length)
     : PgsqlScanSpec(nullptr),
       schema_(schema),
       query_id_(query_id),
@@ -47,7 +48,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(doc_key.Encode()),
-      is_forward_scan_(is_forward_scan) {
+      is_forward_scan_(is_forward_scan),
+      prefix_length_(prefix_length) {
 
   // Compute lower and upper doc_key.
   // We add +inf as an extra component to make sure this is greater than all keys in range.
@@ -87,7 +89,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const DocKey& start_doc_key,
     bool is_forward_scan,
     const DocKey& lower_doc_key,
-    const DocKey& upper_doc_key)
+    const DocKey& upper_doc_key,
+    const size_t prefix_length)
     : PgsqlScanSpec(where_expr),
       range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
@@ -100,7 +103,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(lower_doc_key.Encode()),
       upper_doc_key_(upper_doc_key.Encode()),
-      is_forward_scan_(is_forward_scan) {
+      is_forward_scan_(is_forward_scan),
+      prefix_length_(prefix_length) {
 
   auto lower_bound_key = bound_key(schema, true);
   lower_doc_key_ = lower_bound_key > lower_doc_key_

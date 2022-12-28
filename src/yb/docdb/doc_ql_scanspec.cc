@@ -48,7 +48,8 @@ bool AreColumnsContinous(std::vector<int> col_idxs) {
 DocQLScanSpec::DocQLScanSpec(const Schema& schema,
                              const DocKey& doc_key,
                              const rocksdb::QueryId query_id,
-                             const bool is_forward_scan)
+                             const bool is_forward_scan,
+                             const size_t prefix_length)
     : QLScanSpec(nullptr, nullptr, is_forward_scan, std::make_shared<DocExprExecutor>()),
       range_bounds_(nullptr),
       schema_(schema),
@@ -56,7 +57,8 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
       range_options_groups_(0),
       include_static_columns_(false),
       doc_key_(doc_key.Encode()),
-      query_id_(query_id) {
+      query_id_(query_id),
+      prefix_length_(prefix_length) {
 }
 
 DocQLScanSpec::DocQLScanSpec(
@@ -69,7 +71,8 @@ DocQLScanSpec::DocQLScanSpec(
     const rocksdb::QueryId query_id,
     const bool is_forward_scan,
     const bool include_static_columns,
-    const DocKey& start_doc_key)
+    const DocKey& start_doc_key,
+    const size_t prefix_length)
     : QLScanSpec(condition, if_condition, is_forward_scan, std::make_shared<DocExprExecutor>()),
       range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
@@ -81,7 +84,8 @@ DocQLScanSpec::DocQLScanSpec(
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(bound_key(true)),
       upper_doc_key_(bound_key(false)),
-      query_id_(query_id) {
+      query_id_(query_id),
+      prefix_length_(prefix_length) {
 
     if (range_bounds_) {
         range_bounds_indexes_ = range_bounds_->GetColIds();
