@@ -4008,14 +4008,14 @@ AS 'MODULE_PATHNAME';
 CREATE FUNCTION ag_catalog.agtype_typecast_vertex(variadic "any")
 RETURNS agtype
 LANGUAGE c
-STABLE
+IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION ag_catalog.agtype_typecast_edge(variadic "any")
 RETURNS agtype
 LANGUAGE c
-STABLE
+IMMUTABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
