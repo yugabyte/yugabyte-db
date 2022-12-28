@@ -33,6 +33,7 @@
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
+#include "libpq/hba.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -56,6 +57,37 @@ CheckProfileCatalogsExist()
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("Login profile system catalogs do not exist.")));
+}
+
+/*
+ * Given an authentication method used during login, determine if profile
+ * handling should be done for it.
+ */
+bool
+IsProfileHandlingRequired(UserAuth auth_method)
+{
+	switch (auth_method)
+	{
+		case uaReject:
+		case uaImplicitReject:
+		case uaTrust:
+		case uaYbTserverKey:
+		case uaPeer:
+			return false;
+		case uaIdent:
+		case uaPassword:
+		case uaMD5:
+		case uaSCRAM:
+		case uaGSS:
+		case uaSSPI:
+		case uaPAM:
+		case uaBSD:
+		case uaLDAP:
+		case uaCert:
+		case uaRADIUS:
+			return true;
+	}
+	elog(ERROR, "unexpected auth method %u", auth_method);
 }
 
 /*
