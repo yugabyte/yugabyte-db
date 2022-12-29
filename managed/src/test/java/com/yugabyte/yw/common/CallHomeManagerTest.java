@@ -26,7 +26,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.asynchttpclient.util.Base64;
+import java.util.Base64;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -112,7 +112,8 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertEquals(expectedPayload, params.getValue());
 
     System.out.println(params.getValue());
-    String expectedToken = Base64.encode(defaultCustomer.uuid.toString().getBytes());
+    String expectedToken =
+        Base64.getEncoder().encodeToString(defaultCustomer.uuid.toString().getBytes());
     assertEquals(expectedToken, headers.getValue().get("X-AUTH-TOKEN"));
     assertEquals("http://yw-diagnostics.yugabyte.com", url.getValue());
   }
