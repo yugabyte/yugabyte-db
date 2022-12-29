@@ -21,6 +21,12 @@ html {
     align-items: stretch;
   }
 
+  main {
+    &:only-child {
+      width: 100%;
+    }
+  }
+
   #dragbar {
     background-color: #b2ccdd00;
     height: 100%;
