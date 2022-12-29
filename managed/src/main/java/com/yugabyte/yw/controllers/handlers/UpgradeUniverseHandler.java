@@ -321,7 +321,6 @@ public class UpgradeUniverseHandler {
 
     // Verify request params
     requestParams.verifyParams(universe);
-    requestParams.rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
     requestParams.allowInsecure =
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
 
