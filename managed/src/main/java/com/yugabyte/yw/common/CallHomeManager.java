@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
-import org.asynchttpclient.util.Base64;
+import java.util.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -72,7 +72,7 @@ public class CallHomeManager {
       LOG.info("Sending collected diagnostics to " + YB_CALLHOME_URL);
       // Api Helper handles exceptions
       Map<String, String> headers = new HashMap<>();
-      headers.put("X-AUTH-TOKEN", Base64.encode(c.uuid.toString().getBytes()));
+      headers.put("X-AUTH-TOKEN", Base64.getEncoder().encodeToString(c.uuid.toString().getBytes()));
       JsonNode response = apiHelper.postRequest(YB_CALLHOME_URL, payload, headers);
       LOG.info("Response: " + response.toString());
     }
