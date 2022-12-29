@@ -5322,6 +5322,9 @@
           "description" : "True if this node is a YSQL server",
           "type" : "boolean"
         },
+        "kubernetesOverrides" : {
+          "type" : "string"
+        },
         "machineImage" : {
           "description" : "Machine image name",
           "type" : "string"
@@ -5427,6 +5430,7 @@
           "type" : "integer"
         }
       },
+      "required" : [ "kubernetesOverrides" ],
       "type" : "object"
     },
     "NodeInstance" : {
