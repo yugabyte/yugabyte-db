@@ -79,14 +79,12 @@ html {
       width: 1080px;
       max-width: 100%;
       display: flex;
-      min-height: 100vh;
       flex-flow: row wrap;
 
       > div {
         display: flex;
         max-width: 100%;
         width: 100%;
-        min-height: calc(100vh - 170px);
       }
     }
   }

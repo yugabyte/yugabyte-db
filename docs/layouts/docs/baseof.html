@@ -3,7 +3,7 @@
   <head>
     {{- partial "head.html" . -}}
   </head>
-  <body class="td-{{ .Kind }}{{ with .Page.Params.body_class }} {{ . }}{{ end }}">
+  <body class="td-{{ .Type }}{{ with .Page.Params.body_class }} {{ . }}{{ end }}">
     <header>
       {{- partial "navbar.html" . -}}
     </header>
@@ -19,15 +19,16 @@
             <div>
               <main class="content-area">
                 {{- partial "version-banner.html" . -}}
-                {{- if not .Site.Params.ui.breadcrumb_disable -}}
+                {{- if and (not .Site.Params.ui.breadcrumb_disable) (not .Params.breadcrumbDisable) -}}
                   {{- partial "breadcrumb.html" . -}}
                 {{- end -}}
                 {{- block "main" . -}}{{- end -}}
               </main>
-              <aside class="d-none d-xl-block td-sidebar-toc d-print-none">
-                {{- partial "toc.html" . -}}
-                {{- partial "taxonomy_terms_clouds.html" . -}}
-              </aside>
+             {{- if ne .Params.showRightNav false -}}
+                <aside class="d-none d-xl-block td-sidebar-toc d-print-none">
+                  {{- partial "toc.html" . -}}
+                </aside>
+              {{- end -}}
             </div>
             {{- partial "footer.html" . -}}
           </div>

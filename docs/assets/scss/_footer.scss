@@ -18,6 +18,7 @@ footer {
   width: 100%;
   display: flex;
   flex-flow: column;
+  align-self: flex-end;
 
   @media (max-width: 991px) {
     padding: 15px 0 14px;
