@@ -50,9 +50,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public UpgradeTaskType type = UpgradeTaskParams.UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
 
-    public boolean enableybc;
-    public String ybcSoftwareVersion = null;
-
     // Optional params.
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
