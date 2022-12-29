@@ -52,6 +52,7 @@
 #include "utils/ag_cache.h"
 #include "utils/agtype.h"
 #include "utils/graphid.h"
+#include "utils/name_validation.h"
 
 /*
  * Relation name doesn't have to be label name but the same name is used so
@@ -226,7 +227,7 @@ Datum create_elabel(PG_FUNCTION_ARGS)
     {
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_SCHEMA),
-                        errmsg("graph \"%s\" does not exist.", graph_name_str)));
+                 errmsg("graph \"%s\" does not exist.", graph_name_str)));
     }
 
     graph_oid = get_graph_oid(graph_name_str);
@@ -272,6 +273,12 @@ Oid create_label(char *graph_name, char *label_name, char label_type,
     int32 label_id;
     Oid relation_id;
     Oid label_oid;
+
+    if (!is_valid_label(label_name, label_type))
+    {
+        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                        errmsg("label name is invalid")));
+    }
 
     cache_data = search_graph_name_cache(graph_name);
     if (!cache_data)

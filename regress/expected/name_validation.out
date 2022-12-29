@@ -1,0 +1,401 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path TO ag_catalog;
+--
+-- Test graph names
+--
+-- length
+-- invalid (length < 3)
+SELECT create_graph('db');
+ERROR:  graph name is invalid
+-- valid (though length > 63, it's truncated automatically before reaching validation function)
+SELECT create_graph('oiblpsacrufgxiilyevvoiblpsacrufgxiilyevvoiblpsacrufgxiilyevvsdss');
+NOTICE:  graph "oiblpsacrufgxiilyevvoiblpsacrufgxiilyevvoiblpsacrufgxiilyevvsds" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- valid
+SELECT create_graph('mydatabase');
+NOTICE:  graph "mydatabase" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- numeric characters
+-- invalid (first character numeric; only alphabetic allowed)
+SELECT create_graph('2mydatabase');
+ERROR:  graph name is invalid
+-- valid
+SELECT create_graph('mydatabase2');
+NOTICE:  graph "mydatabase2" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- special characters
+-- invalid (newline character)
+SELECT create_graph('my
+database');
+ERROR:  graph name is invalid
+-- invalid (space character)
+SELECT create_graph('my database');
+ERROR:  graph name is invalid
+-- invalid (symbol character)
+SELECT create_graph('my&database');
+ERROR:  graph name is invalid
+-- valid (non-ascii alphabet)
+SELECT create_graph('mydätabase');
+NOTICE:  graph "mydätabase" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT create_graph('mydঅtabase');
+NOTICE:  graph "mydঅtabase" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- dots, dashes, underscore
+-- valid
+SELECT create_graph('main.db');
+NOTICE:  graph "main.db" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- invalid (ends with dot)
+SELECT create_graph('main.db.');
+ERROR:  graph name is invalid
+-- valid
+SELECT create_graph('main-db');
+NOTICE:  graph "main-db" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- invalid (ends with dash)
+SELECT create_graph('main.db-');
+ERROR:  graph name is invalid
+-- valid
+SELECT create_graph('_mydatabase');
+NOTICE:  graph "_mydatabase" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT create_graph('my_database');
+NOTICE:  graph "my_database" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- test rename
+-- invalid
+SELECT alter_graph('mydatabase', 'RENAME', '1mydatabase');
+ERROR:  new graph name is invalid
+-- valid
+SELECT alter_graph('mydatabase', 'RENAME', 'mydatabase1');
+NOTICE:  graph "mydatabase" renamed to "mydatabase1"
+ alter_graph 
+-------------
+ 
+(1 row)
+
+-- clean up
+SELECT drop_graph('mydatabase1', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table mydatabase1._ag_label_vertex
+drop cascades to table mydatabase1._ag_label_edge
+NOTICE:  graph "mydatabase1" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('mydätabase', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table "mydätabase"._ag_label_vertex
+drop cascades to table "mydätabase"._ag_label_edge
+NOTICE:  graph "mydätabase" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('mydঅtabase', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table "mydঅtabase"._ag_label_vertex
+drop cascades to table "mydঅtabase"._ag_label_edge
+NOTICE:  graph "mydঅtabase" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('mydatabase2', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table mydatabase2._ag_label_vertex
+drop cascades to table mydatabase2._ag_label_edge
+NOTICE:  graph "mydatabase2" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('main.db', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table "main.db"._ag_label_vertex
+drop cascades to table "main.db"._ag_label_edge
+NOTICE:  graph "main.db" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('main-db', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table "main-db"._ag_label_vertex
+drop cascades to table "main-db"._ag_label_edge
+NOTICE:  graph "main-db" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('_mydatabase', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table _mydatabase._ag_label_vertex
+drop cascades to table _mydatabase._ag_label_edge
+NOTICE:  graph "_mydatabase" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('my_database', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table my_database._ag_label_vertex
+drop cascades to table my_database._ag_label_edge
+NOTICE:  graph "my_database" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('oiblpsacrufgxiilyevvoiblpsacrufgxiilyevvoiblpsacrufgxiilyevvsds', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table oiblpsacrufgxiilyevvoiblpsacrufgxiilyevvoiblpsacrufgxiilyevvsds._ag_label_vertex
+drop cascades to table oiblpsacrufgxiilyevvoiblpsacrufgxiilyevvoiblpsacrufgxiilyevvsds._ag_label_edge
+NOTICE:  graph "oiblpsacrufgxiilyevvoiblpsacrufgxiilyevvoiblpsacrufgxiilyevvsds" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- Test label names
+--
+SELECT create_graph('graph123');
+NOTICE:  graph "graph123" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- length
+-- invalid
+SELECT create_vlabel('graph123', '');
+ERROR:  label name is invalid
+SELECT create_elabel('graph123', '');
+ERROR:  label name is invalid
+-- valid
+SELECT create_vlabel('graph123', 'labelx');
+NOTICE:  VLabel "labelx" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('graph123', 'labely');
+NOTICE:  ELabel "labely" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+-- special characters
+-- invalid (newline character)
+SELECT create_vlabel('graph123', 'my
+label');
+ERROR:  label name is invalid
+SELECT create_elabel('graph123', 'my
+label');
+ERROR:  label name is invalid
+-- invalid (space character)
+SELECT create_vlabel('graph123', 'my label');
+ERROR:  label name is invalid
+SELECT create_elabel('graph123', 'my label');
+ERROR:  label name is invalid
+-- invalid (symbol character)
+SELECT create_vlabel('graph123', 'my&label');
+ERROR:  label name is invalid
+SELECT create_elabel('graph123', 'my&label');
+ERROR:  label name is invalid
+-- valid (non-ascii alphabet)
+SELECT create_vlabel('graph123', 'myläbelx');
+NOTICE:  VLabel "myläbelx" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('graph123', 'myläbely');
+NOTICE:  ELabel "myläbely" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT create_vlabel('graph123', 'mylঅbelx');
+NOTICE:  VLabel "mylঅbelx" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('graph123', 'mylঅbely');
+NOTICE:  ELabel "mylঅbely" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+-- valid (underscore)
+SELECT create_vlabel('graph123', '_labelx');
+NOTICE:  VLabel "_labelx" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('graph123', '_labely');
+NOTICE:  ELabel "_labely" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT create_vlabel('graph123', 'label_x');
+NOTICE:  VLabel "label_x" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('graph123', 'label_y');
+NOTICE:  ELabel "label_y" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+-- numeric
+-- invalid
+SELECT create_vlabel('graph123', '1label');
+ERROR:  label name is invalid
+SELECT create_elabel('graph123', '2label');
+ERROR:  label name is invalid
+-- valid
+SELECT create_vlabel('graph123', 'label1');
+NOTICE:  VLabel "label1" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('graph123', 'label2');
+NOTICE:  ELabel "label2" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+-- label creation with cypher
+-- invalid
+SELECT * from cypher('graph123', $$ CREATE (a:`my&label`) $$) as (a agtype);
+ERROR:  label name is invalid
+LINE 1: SELECT * from cypher('graph123', $$ CREATE (a:`my&label`) $$...
+                                          ^
+SELECT * from cypher('graph123', $$ CREATE (:A)-[:`my&label2`]->(:C) $$) as (a agtype);
+ERROR:  label name is invalid
+LINE 1: SELECT * from cypher('graph123', $$ CREATE (:A)-[:`my&label2...
+                                          ^
+-- valid
+SELECT * from cypher('graph123', $$ CREATE (a:`mylabel`) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * from cypher('graph123', $$ CREATE (:A)-[:`mylabel2`]->(:C) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+-- clean up
+SELECT drop_graph('graph123', true);
+NOTICE:  drop cascades to 18 other objects
+DETAIL:  drop cascades to table graph123._ag_label_vertex
+drop cascades to table graph123._ag_label_edge
+drop cascades to table graph123.labelx
+drop cascades to table graph123.labely
+drop cascades to table graph123."myläbelx"
+drop cascades to table graph123."myläbely"
+drop cascades to table graph123."mylঅbelx"
+drop cascades to table graph123."mylঅbely"
+drop cascades to table graph123._labelx
+drop cascades to table graph123._labely
+drop cascades to table graph123.label_x
+drop cascades to table graph123.label_y
+drop cascades to table graph123.label1
+drop cascades to table graph123.label2
+drop cascades to table graph123.mylabel
+drop cascades to table graph123."A"
+drop cascades to table graph123.mylabel2
+drop cascades to table graph123."C"
+NOTICE:  graph "graph123" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- End of test
+--

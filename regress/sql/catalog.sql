@@ -24,30 +24,30 @@ SET search_path TO ag_catalog;
 -- create_graph(), drop_label(), and drop_graph() tests
 --
 
-SELECT create_graph('g');
-SELECT * FROM ag_graph WHERE name = 'g';
+SELECT create_graph('graph');
+SELECT * FROM ag_graph WHERE name = 'graph';
 
 -- create a label to test drop_label()
-SELECT * FROM cypher('g', $$CREATE (:l)$$) AS r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:l)$$) AS r(a agtype);
 
 -- test drop_label()
-SELECT drop_label('g', 'l');
+SELECT drop_label('graph', 'l');
 
 -- create a label to test drop_graph()
-SELECT * FROM cypher('g', $$CREATE (:v)$$) AS r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v)$$) AS r(a agtype);
 
 -- DROP SCHEMA ... CASCADE should fail
-DROP SCHEMA g CASCADE;
+DROP SCHEMA graph CASCADE;
 
 -- DROP TABLE ... should fail
-DROP TABLE g.v;
+DROP TABLE graph.v;
 
 -- should fail (cascade = false)
-SELECT drop_graph('g');
+SELECT drop_graph('graph');
 
-SELECT drop_graph('g', true);
-SELECT count(*) FROM ag_graph WHERE name = 'g';
-SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
+SELECT drop_graph('graph', true);
+SELECT count(*) FROM ag_graph WHERE name = 'graph';
+SELECT count(*) FROM pg_namespace WHERE nspname = 'graph';
 
 -- invalid cases
 SELECT create_graph(NULL);
@@ -104,59 +104,59 @@ SELECT alter_graph('GraphB', 'DUMMY', 'GraphA');
 -- label id test
 --
 
-SELECT create_graph('g');
+SELECT create_graph('graph');
 
 -- label id starts from 1
-SELECT * FROM cypher('g', $$CREATE (:v1)$$) AS r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v1)$$) AS r(a agtype);
 SELECT name, id, kind, relation FROM ag_label;
 
 -- skip label id 2 to test the logic that gets an unused label id after cycle
-SELECT nextval('g._label_id_seq');
+SELECT nextval('graph._label_id_seq');
 
 -- label id is now 3
-SELECT * FROM cypher('g', $$CREATE (:v3)$$) as r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v3)$$) as r(a agtype);
 SELECT name, id, kind, relation FROM ag_label;
 
 -- to use 65535 as the next label id, set label id to 65534
-SELECT setval('g._label_id_seq', 65534);
+SELECT setval('graph._label_id_seq', 65534);
 
 -- label id is now 65535
-SELECT * FROM cypher('g', $$CREATE (:v65535)$$) as r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v65535)$$) as r(a agtype);
 SELECT name, id, kind, relation FROM ag_label;
 
 -- after cycle, label id is now 2
-SELECT * FROM cypher('g', $$CREATE (:v2)$$) as r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v2)$$) as r(a agtype);
 SELECT name, id, kind, relation FROM ag_label;
 
-SELECT drop_graph('g', true);
+SELECT drop_graph('graph', true);
 
 
 -- create labels
-SELECT create_graph('g');
-SELECT create_vlabel('g', 'n');
-SELECT create_elabel('g', 'r');
+SELECT create_graph('graph');
+SELECT create_vlabel('graph', 'n');
+SELECT create_elabel('graph', 'r');
 
 -- check if labels have been created or not
 SELECT name, id, kind, relation FROM ag_label;
 
 -- try to create duplicate labels
-SELECT create_vlabel('g', 'n');
-SELECT create_elabel('g', 'r');
+SELECT create_vlabel('graph', 'n');
+SELECT create_elabel('graph', 'r');
 
 -- remove the labels that have been created
-SELECT drop_label('g', 'n', false);
-SELECT drop_label('g', 'r', false);
+SELECT drop_label('graph', 'n', false);
+SELECT drop_label('graph', 'r', false);
 
 -- check if labels have been deleted or not
 SELECT name, id, kind, relation FROM ag_label;
 
 -- try to remove labels that is not there
-SELECT drop_label('g', 'n');
-SELECT drop_label('g', 'r');
+SELECT drop_label('graph', 'n');
+SELECT drop_label('graph', 'r');
 
 -- Trying to call the functions with label null
-SELECT create_vlabel('g', NULL);
-SELECT create_elabel('g', NULL);
+SELECT create_vlabel('graph', NULL);
+SELECT create_elabel('graph', NULL);
 
 -- Trying to call the functions with graph null
 SELECT create_vlabel(NULL, 'n');
@@ -167,6 +167,6 @@ SELECT create_vlabel(NULL, NULL);
 SELECT create_elabel(NULL, NULL);
 
 -- dropping the graph
-SELECT drop_graph('g', true);
+SELECT drop_graph('graph', true);
 
 

@@ -21,75 +21,75 @@ SET search_path TO ag_catalog;
 --
 -- create_graph(), drop_label(), and drop_graph() tests
 --
-SELECT create_graph('g');
-NOTICE:  graph "g" has been created
+SELECT create_graph('graph');
+NOTICE:  graph "graph" has been created
  create_graph 
 --------------
  
 (1 row)
 
-SELECT * FROM ag_graph WHERE name = 'g';
- name | namespace 
-------+-----------
- g    | g
+SELECT * FROM ag_graph WHERE name = 'graph';
+ name  | namespace 
+-------+-----------
+ graph | graph
 (1 row)
 
 -- create a label to test drop_label()
-SELECT * FROM cypher('g', $$CREATE (:l)$$) AS r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:l)$$) AS r(a agtype);
  a 
 ---
 (0 rows)
 
 -- test drop_label()
-SELECT drop_label('g', 'l');
-NOTICE:  label "g"."l" has been dropped
+SELECT drop_label('graph', 'l');
+NOTICE:  label "graph"."l" has been dropped
  drop_label 
 ------------
  
 (1 row)
 
 -- create a label to test drop_graph()
-SELECT * FROM cypher('g', $$CREATE (:v)$$) AS r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v)$$) AS r(a agtype);
  a 
 ---
 (0 rows)
 
 -- DROP SCHEMA ... CASCADE should fail
-DROP SCHEMA g CASCADE;
+DROP SCHEMA graph CASCADE;
 NOTICE:  drop cascades to 4 other objects
-DETAIL:  drop cascades to sequence g._label_id_seq
-drop cascades to table g._ag_label_vertex
-drop cascades to table g._ag_label_edge
-drop cascades to table g.v
+DETAIL:  drop cascades to sequence graph._label_id_seq
+drop cascades to table graph._ag_label_vertex
+drop cascades to table graph._ag_label_edge
+drop cascades to table graph.v
 ERROR:  table "v" is for label "v"
 -- DROP TABLE ... should fail
-DROP TABLE g.v;
+DROP TABLE graph.v;
 ERROR:  table "v" is for label "v"
 -- should fail (cascade = false)
-SELECT drop_graph('g');
-ERROR:  cannot drop schema g because other objects depend on it
-DETAIL:  table g._ag_label_vertex depends on schema g
-table g._ag_label_edge depends on schema g
-table g.v depends on schema g
+SELECT drop_graph('graph');
+ERROR:  cannot drop schema graph because other objects depend on it
+DETAIL:  table graph._ag_label_vertex depends on schema graph
+table graph._ag_label_edge depends on schema graph
+table graph.v depends on schema graph
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
-SELECT drop_graph('g', true);
+SELECT drop_graph('graph', true);
 NOTICE:  drop cascades to 3 other objects
-DETAIL:  drop cascades to table g._ag_label_vertex
-drop cascades to table g._ag_label_edge
-drop cascades to table g.v
-NOTICE:  graph "g" has been dropped
+DETAIL:  drop cascades to table graph._ag_label_vertex
+drop cascades to table graph._ag_label_edge
+drop cascades to table graph.v
+NOTICE:  graph "graph" has been dropped
  drop_graph 
 ------------
  
 (1 row)
 
-SELECT count(*) FROM ag_graph WHERE name = 'g';
+SELECT count(*) FROM ag_graph WHERE name = 'graph';
  count 
 -------
      0
 (1 row)
 
-SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
+SELECT count(*) FROM pg_namespace WHERE nspname = 'graph';
  count 
 -------
      0
@@ -101,7 +101,7 @@ ERROR:  graph name can not be NULL
 SELECT drop_graph(NULL);
 ERROR:  graph name can not be NULL
 SELECT create_graph('');
-ERROR:  graph name can not be empty
+ERROR:  graph name is invalid
 --
 -- alter_graph() RENAME function tests
 --
@@ -216,119 +216,119 @@ HINT:  valid operations: RENAME
 --
 -- label id test
 --
-SELECT create_graph('g');
-NOTICE:  graph "g" has been created
+SELECT create_graph('graph');
+NOTICE:  graph "graph" has been created
  create_graph 
 --------------
  
 (1 row)
 
 -- label id starts from 1
-SELECT * FROM cypher('g', $$CREATE (:v1)$$) AS r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v1)$$) AS r(a agtype);
  a 
 ---
 (0 rows)
 
 SELECT name, id, kind, relation FROM ag_label;
-       name       | id | kind |      relation      
-------------------+----+------+--------------------
- _ag_label_vertex |  1 | v    | g._ag_label_vertex
- _ag_label_edge   |  2 | e    | g._ag_label_edge
- v1               |  3 | v    | g.v1
+       name       | id | kind |        relation        
+------------------+----+------+------------------------
+ _ag_label_vertex |  1 | v    | graph._ag_label_vertex
+ _ag_label_edge   |  2 | e    | graph._ag_label_edge
+ v1               |  3 | v    | graph.v1
 (3 rows)
 
 -- skip label id 2 to test the logic that gets an unused label id after cycle
-SELECT nextval('g._label_id_seq');
+SELECT nextval('graph._label_id_seq');
  nextval 
 ---------
        4
 (1 row)
 
 -- label id is now 3
-SELECT * FROM cypher('g', $$CREATE (:v3)$$) as r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v3)$$) as r(a agtype);
  a 
 ---
 (0 rows)
 
 SELECT name, id, kind, relation FROM ag_label;
-       name       | id | kind |      relation      
-------------------+----+------+--------------------
- _ag_label_vertex |  1 | v    | g._ag_label_vertex
- _ag_label_edge   |  2 | e    | g._ag_label_edge
- v1               |  3 | v    | g.v1
- v3               |  5 | v    | g.v3
+       name       | id | kind |        relation        
+------------------+----+------+------------------------
+ _ag_label_vertex |  1 | v    | graph._ag_label_vertex
+ _ag_label_edge   |  2 | e    | graph._ag_label_edge
+ v1               |  3 | v    | graph.v1
+ v3               |  5 | v    | graph.v3
 (4 rows)
 
 -- to use 65535 as the next label id, set label id to 65534
-SELECT setval('g._label_id_seq', 65534);
+SELECT setval('graph._label_id_seq', 65534);
  setval 
 --------
   65534
 (1 row)
 
 -- label id is now 65535
-SELECT * FROM cypher('g', $$CREATE (:v65535)$$) as r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v65535)$$) as r(a agtype);
  a 
 ---
 (0 rows)
 
 SELECT name, id, kind, relation FROM ag_label;
-       name       |  id   | kind |      relation      
-------------------+-------+------+--------------------
- _ag_label_vertex |     1 | v    | g._ag_label_vertex
- _ag_label_edge   |     2 | e    | g._ag_label_edge
- v1               |     3 | v    | g.v1
- v3               |     5 | v    | g.v3
- v65535           | 65535 | v    | g.v65535
+       name       |  id   | kind |        relation        
+------------------+-------+------+------------------------
+ _ag_label_vertex |     1 | v    | graph._ag_label_vertex
+ _ag_label_edge   |     2 | e    | graph._ag_label_edge
+ v1               |     3 | v    | graph.v1
+ v3               |     5 | v    | graph.v3
+ v65535           | 65535 | v    | graph.v65535
 (5 rows)
 
 -- after cycle, label id is now 2
-SELECT * FROM cypher('g', $$CREATE (:v2)$$) as r(a agtype);
+SELECT * FROM cypher('graph', $$CREATE (:v2)$$) as r(a agtype);
  a 
 ---
 (0 rows)
 
 SELECT name, id, kind, relation FROM ag_label;
-       name       |  id   | kind |      relation      
-------------------+-------+------+--------------------
- _ag_label_vertex |     1 | v    | g._ag_label_vertex
- _ag_label_edge   |     2 | e    | g._ag_label_edge
- v1               |     3 | v    | g.v1
- v3               |     5 | v    | g.v3
- v65535           | 65535 | v    | g.v65535
- v2               |     4 | v    | g.v2
+       name       |  id   | kind |        relation        
+------------------+-------+------+------------------------
+ _ag_label_vertex |     1 | v    | graph._ag_label_vertex
+ _ag_label_edge   |     2 | e    | graph._ag_label_edge
+ v1               |     3 | v    | graph.v1
+ v3               |     5 | v    | graph.v3
+ v65535           | 65535 | v    | graph.v65535
+ v2               |     4 | v    | graph.v2
 (6 rows)
 
-SELECT drop_graph('g', true);
+SELECT drop_graph('graph', true);
 NOTICE:  drop cascades to 6 other objects
-DETAIL:  drop cascades to table g._ag_label_vertex
-drop cascades to table g._ag_label_edge
-drop cascades to table g.v1
-drop cascades to table g.v3
-drop cascades to table g.v65535
-drop cascades to table g.v2
-NOTICE:  graph "g" has been dropped
+DETAIL:  drop cascades to table graph._ag_label_vertex
+drop cascades to table graph._ag_label_edge
+drop cascades to table graph.v1
+drop cascades to table graph.v3
+drop cascades to table graph.v65535
+drop cascades to table graph.v2
+NOTICE:  graph "graph" has been dropped
  drop_graph 
 ------------
  
 (1 row)
 
 -- create labels
-SELECT create_graph('g');
-NOTICE:  graph "g" has been created
+SELECT create_graph('graph');
+NOTICE:  graph "graph" has been created
  create_graph 
 --------------
  
 (1 row)
 
-SELECT create_vlabel('g', 'n');
+SELECT create_vlabel('graph', 'n');
 NOTICE:  VLabel "n" has been created
  create_vlabel 
 ---------------
  
 (1 row)
 
-SELECT create_elabel('g', 'r');
+SELECT create_elabel('graph', 'r');
 NOTICE:  ELabel "r" has been created
  create_elabel 
 ---------------
@@ -337,29 +337,29 @@ NOTICE:  ELabel "r" has been created
 
 -- check if labels have been created or not
 SELECT name, id, kind, relation FROM ag_label;
-       name       | id | kind |      relation      
-------------------+----+------+--------------------
- _ag_label_vertex |  1 | v    | g._ag_label_vertex
- _ag_label_edge   |  2 | e    | g._ag_label_edge
- n                |  3 | v    | g.n
- r                |  4 | e    | g.r
+       name       | id | kind |        relation        
+------------------+----+------+------------------------
+ _ag_label_vertex |  1 | v    | graph._ag_label_vertex
+ _ag_label_edge   |  2 | e    | graph._ag_label_edge
+ n                |  3 | v    | graph.n
+ r                |  4 | e    | graph.r
 (4 rows)
 
 -- try to create duplicate labels
-SELECT create_vlabel('g', 'n');
+SELECT create_vlabel('graph', 'n');
 ERROR:  label "n" already exists
-SELECT create_elabel('g', 'r');
+SELECT create_elabel('graph', 'r');
 ERROR:  label "r" already exists
 -- remove the labels that have been created
-SELECT drop_label('g', 'n', false);
-NOTICE:  label "g"."n" has been dropped
+SELECT drop_label('graph', 'n', false);
+NOTICE:  label "graph"."n" has been dropped
  drop_label 
 ------------
  
 (1 row)
 
-SELECT drop_label('g', 'r', false);
-NOTICE:  label "g"."r" has been dropped
+SELECT drop_label('graph', 'r', false);
+NOTICE:  label "graph"."r" has been dropped
  drop_label 
 ------------
  
@@ -367,21 +367,21 @@ NOTICE:  label "g"."r" has been dropped
 
 -- check if labels have been deleted or not
 SELECT name, id, kind, relation FROM ag_label;
-       name       | id | kind |      relation      
-------------------+----+------+--------------------
- _ag_label_vertex |  1 | v    | g._ag_label_vertex
- _ag_label_edge   |  2 | e    | g._ag_label_edge
+       name       | id | kind |        relation        
+------------------+----+------+------------------------
+ _ag_label_vertex |  1 | v    | graph._ag_label_vertex
+ _ag_label_edge   |  2 | e    | graph._ag_label_edge
 (2 rows)
 
 -- try to remove labels that is not there
-SELECT drop_label('g', 'n');
+SELECT drop_label('graph', 'n');
 ERROR:  label "n" does not exist
-SELECT drop_label('g', 'r');
+SELECT drop_label('graph', 'r');
 ERROR:  label "r" does not exist
 -- Trying to call the functions with label null
-SELECT create_vlabel('g', NULL);
+SELECT create_vlabel('graph', NULL);
 ERROR:  label name must not be NULL
-SELECT create_elabel('g', NULL);
+SELECT create_elabel('graph', NULL);
 ERROR:  label name must not be NULL
 -- Trying to call the functions with graph null
 SELECT create_vlabel(NULL, 'n');
@@ -394,11 +394,11 @@ ERROR:  graph name must not be NULL
 SELECT create_elabel(NULL, NULL);
 ERROR:  graph name must not be NULL
 -- dropping the graph
-SELECT drop_graph('g', true);
+SELECT drop_graph('graph', true);
 NOTICE:  drop cascades to 2 other objects
-DETAIL:  drop cascades to table g._ag_label_vertex
-drop cascades to table g._ag_label_edge
-NOTICE:  graph "g" has been dropped
+DETAIL:  drop cascades to table graph._ag_label_vertex
+drop cascades to table graph._ag_label_edge
+NOTICE:  graph "graph" has been dropped
  drop_graph 
 ------------
  

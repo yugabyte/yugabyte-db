@@ -68,7 +68,8 @@ OBJS = src/backend/age.o \
        src/backend/utils/load/ag_load_labels.o \
        src/backend/utils/load/ag_load_edges.o \
        src/backend/utils/load/age_load.o \
-       src/backend/utils/load/libcsv.o
+       src/backend/utils/load/libcsv.o \
+       src/backend/utils/name_validation.o
 
 EXTENSION = age
 
@@ -90,13 +91,14 @@ REGRESS = scan \
           cypher_with \
           cypher_vle \
           cypher_union \
-	  cypher_call \
+          cypher_call \
           cypher_merge \
-	  age_global_graph \
+          age_global_graph \
           age_load \
           index \
           analyze \
           graph_generation \
+          name_validation \
           drop
           
 
