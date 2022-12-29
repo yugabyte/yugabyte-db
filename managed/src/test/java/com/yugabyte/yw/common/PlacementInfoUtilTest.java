@@ -1732,20 +1732,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
   @Test
   @Parameters({
-    "yb-master-0.yb-masters.demo-universe-az-1.svc.cluster.local:1234\\,yb-master-0.yb-masters."
-        + "demo-universe-az-2.svc.cluster.local:1234\\,yb-master-0.yb-masters.demo-universe-az-3"
-        + ".svc.cluster.local:1234, demo-universe, demo-universe, false",
-    "ybdemo-univer-az-1-vjoo-yb-master-0.ybdemo-univer-az-1-vjoo-yb-masters.demo-universe."
-        + "svc.cluster.local:1234\\,ybdemo-univer-az-2-wjoo-yb-master-0.ybdemo-univer-az-2-wjoo"
-        + "-yb-masters.demo-universe.svc.cluster.local:1234\\,ybdemo-univer-az-3-xjoo-yb-master-0."
-        + "ybdemo-univer-az-3-xjoo-yb-masters.demo-universe.svc.cluster.local:1234,"
+    "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234" + ", demo-universe, demo-universe, false",
+    "ybdemo-univer-%s-%s-yb-master-0.ybdemo-univer-%1$s-%2$s-yb-masters.demo-universe."
+        + "svc.cluster.local:1234,"
         + " demo-universe, test-uni verse, true",
   })
   public void testK8sComputeMasterAddressesMultiAZ(
-      String expectedMasterAddresses,
-      String nodePrefix,
-      String universeName,
-      boolean newNamingStyle) {
+      String masterAddressFormat, String nodePrefix, String universeName, boolean newNamingStyle) {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer =
         ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
@@ -1760,7 +1753,31 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi);
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1, az2.uuid, 1, az3.uuid, 1);
-    // New naming style
+    String expectedMasterAddresses = "";
+    if (newNamingStyle) {
+      expectedMasterAddresses =
+          String.format(
+                  masterAddressFormat,
+                  az1.code,
+                  Util.base36hash(String.format("%s-%s", nodePrefix, az1.code)))
+              + ","
+              + String.format(
+                  masterAddressFormat,
+                  az2.code,
+                  Util.base36hash(String.format("%s-%s", nodePrefix, az2.code)))
+              + ","
+              + String.format(
+                  masterAddressFormat,
+                  az3.code,
+                  Util.base36hash(String.format("%s-%s", nodePrefix, az3.code)));
+    } else {
+      expectedMasterAddresses =
+          String.format(masterAddressFormat, nodePrefix, az1.code)
+              + ","
+              + String.format(masterAddressFormat, nodePrefix, az2.code)
+              + ","
+              + String.format(masterAddressFormat, nodePrefix, az3.code);
+    }
     String masterAddresses =
         KubernetesUtil.computeMasterAddresses(
             pi,
