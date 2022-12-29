@@ -201,6 +201,26 @@ public abstract class KubernetesManager {
     return Sets.difference(userMap.keySet(), valuesMap.keySet());
   }
 
+  // Returns values we applied. Excludes values.yaml entries unless they were overriden.
+  public String getOverridenHelmReleaseValues(
+      String namespace, String helmReleaseName, Map<String, String> config) {
+    List<String> commandList =
+        ImmutableList.of("helm", "get", "values", helmReleaseName, "-n", namespace, "-o", "yaml");
+    LOG.info(String.join(" ", commandList));
+    ShellResponse response = execCommand(config, commandList);
+    if (response != null) {
+      if (response.getCode() != ShellResponse.ERROR_CODE_SUCCESS) {
+        throw new RuntimeException(response.getMessage());
+      }
+      return response.getMessage();
+    }
+    LOG.error(
+        String.format(
+            "Helm get values response is null for helm release: %s in namespace: %s",
+            helmReleaseName, namespace));
+    throw new RuntimeException("Helm get values response is null");
+  }
+
   private Set<String> getNullValueKeys(Map<String, String> userMap) {
     return userMap
         .entrySet()
