@@ -28,6 +28,7 @@
 
 #include "yb/util/bitmap.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/fast_varint.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/pb_util.h"
 
@@ -569,6 +570,17 @@ Result<bool> ApplyIntentsContext::Entry(
     handler->Put(key_parts, value_parts);
     ++write_id_;
     RegisterRecord();
+
+    if (frontiers_) {
+      Slice value_slice = decoded_value.body;
+      RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
+      if (value_slice.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+        auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(
+            util::FastDecodeUnsignedVarInt(&value_slice)));
+        min_schema_version_ = std::min(min_schema_version_, schema_version);
+        max_schema_version_ = std::max(max_schema_version_, schema_version);
+      }
+    }
   }
 
   return false;
@@ -579,6 +591,13 @@ void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
     char tombstone_value_type = ValueEntryTypeAsChar::kTombstone;
     std::array<Slice, 1> value_parts = {{Slice(&tombstone_value_type, 1)}};
     PutApplyState(transaction_id().AsSlice(), commit_ht_, write_id_, value_parts, handler);
+  }
+  if (min_schema_version_ <= max_schema_version_) {
+    auto table_id = Uuid::Nil();
+    frontiers_->Smallest().UpdateSchemaVersion(
+        table_id, min_schema_version_, rocksdb::UpdateUserValueType::kSmallest);
+    frontiers_->Largest().UpdateSchemaVersion(
+        table_id, max_schema_version_, rocksdb::UpdateUserValueType::kLargest);
   }
 }
 

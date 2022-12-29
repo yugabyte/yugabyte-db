@@ -203,6 +203,20 @@ bool ConsensusFrontier::IsUpdateValid(
          IsUpdateValidForField(hybrid_time_, rhs.hybrid_time_, update_type);
 }
 
+void ConsensusFrontier::UpdateSchemaVersion(
+    const Uuid& table_id, SchemaVersion version, rocksdb::UpdateUserValueType type) {
+  if (table_id.IsNil()) {
+    UpdateField(&primary_schema_version_, std::optional(version), type);
+  } else {
+    auto it = cotable_schema_versions_.find(table_id);
+    if (it == cotable_schema_versions_.end()) {
+      cotable_schema_versions_[table_id] = version;
+    } else {
+      UpdateField(&it->second, version, type);
+    }
+  }
+}
+
 void ConsensusFrontier::AddSchemaVersion(const Uuid& table_id, SchemaVersion version) {
   if (table_id.IsNil()) {
     primary_schema_version_ = version;

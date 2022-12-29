@@ -334,9 +334,6 @@ Status WriteBatch::Iterate(Handler* handler) const {
   size_t found = 0;
   Status s;
 
-  if (frontiers_) {
-    s = handler->Frontiers(*frontiers_);
-  }
   if (s.ok() && direct_writer_) {
     auto result = DirectInsert(handler, direct_writer_);
     if (result.ok()) {
@@ -344,6 +341,9 @@ Status WriteBatch::Iterate(Handler* handler) const {
     } else {
       s = result.status();
     }
+  }
+  if (frontiers_) {
+    s = handler->Frontiers(*frontiers_);
   }
   while (s.ok() && !input.empty() && handler->Continue()) {
     char tag = 0;
