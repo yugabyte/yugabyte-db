@@ -1874,6 +1874,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
   auto frontiers_ptr = data.op_id.empty() ? nullptr : InitFrontiers(data, &frontiers);
+  context.SetFrontiers(frontiers_ptr);
   WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
   return context.apply_state();
 }
