@@ -40,7 +40,6 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   if (!res.has_paging_state()) {
     return false;
   }
-  auto& paging_state = *res.mutable_paging_state();
 
   // A query request can be nested, and paging state belong to the innermost query which is
   // the read operator that is operated first and feeds data to other queries.
@@ -53,8 +52,9 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   }
 
   // Backward scan for range partitioned tables has a special case on DocDB side: paging_state is
-  // not reused, and upper_bound is configured instead to contiune reading from the correct tablet.
-  // This approach is not appicable for index read requests.
+  // not reused, and upper_bound is configured instead to continue reading from the correct tablet.
+  // This approach is not applicable for index read requests.
+  const auto& paging_state = res.paging_state();
   if (&top_level_req == req &&
       !top_level_req.is_forward_scan() &&
       table.num_hash_key_columns() == 0 &&
@@ -70,7 +70,7 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
       VERIFY_RESULT(current_key.DecodeFrom(
           current_next_partition_key, docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
       if (current_key.CompareTo(docdb::DocKey(std::move(lower_bound))) < 0) {
-        return false; // No need to contiue, lower bound was reached.
+        return false; // No need to continue, lower bound was reached.
       }
     }
 
@@ -80,7 +80,7 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
     top_level_req.mutable_upper_bound()->dup_key(current_next_partition_key);
     top_level_req.mutable_upper_bound()->set_is_inclusive(false);
   } else {
-    req->ref_paging_state(&paging_state);
+    *req->mutable_paging_state() = paging_state;
   }
 
   // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
@@ -96,7 +96,7 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
 
   // Setup backfill_spec for the next request.
   if (res.has_backfill_spec()) {
-    *req->mutable_backfill_spec() = std::move(*res.mutable_backfill_spec());
+    req->dup_backfill_spec(res.backfill_spec());
   }
 
   // Limit is set lower than default if upper plan is estimated to consume no more than this
