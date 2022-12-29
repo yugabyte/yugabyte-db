@@ -254,7 +254,7 @@ You can use the following to create an edge, for example, between two nodes.
 ```bash
 SELECT * 
 FROM cypher('graph_name', $$
-    MATCH (a:lable), (b:lable)
+    MATCH (a:label), (b:label)
     WHERE a.property = 'Node A' AND b.property = 'Node B'
     CREATE (a)-[e:RELTYPE]->(b)
     RETURN e
