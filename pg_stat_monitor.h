@@ -319,6 +319,7 @@ typedef struct Counters
 typedef struct pgssEntry
 {
 	pgssHashKey key;			/* hash key of entry - MUST BE FIRST */
+	uint64		pgsm_query_id;	/* pgsm generate normalized query hash */
 	Counters	counters;		/* the statistics for this query */
 	int			encoding;		/* query text encoding */
 	slock_t		mutex;			/* protects the counters only */

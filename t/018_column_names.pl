@@ -31,7 +31,7 @@ my %pg_versions_pgsm_columns = ( 15 => "application_name,blk_read_time," .
     "jit_optimization_count,jit_optimization_time," .
     "local_blks_dirtied,local_blks_hit,local_blks_read," .
     "local_blks_written,max_exec_time,max_plan_time,mean_exec_time," .
-    "mean_plan_time,message,min_exec_time,min_plan_time,planid," .
+    "mean_plan_time,message,min_exec_time,min_plan_time,pgsm_query_id,planid," .
     "plans_calls,query,query_plan,queryid,relations,resp_calls," .
     "rows_retrieved,shared_blks_dirtied,shared_blks_hit,shared_blks_read," .
     "shared_blks_written,sqlcode,stddev_exec_time,stddev_plan_time," .
@@ -43,7 +43,7 @@ my %pg_versions_pgsm_columns = ( 15 => "application_name,blk_read_time," .
     "client_ip,cmd_type,cmd_type_text,comments,cpu_sys_time,cpu_user_time," .
     "datname,elevel,local_blks_dirtied,local_blks_hit,local_blks_read," .
     "local_blks_written,max_exec_time,max_plan_time,mean_exec_time," .
-    "mean_plan_time,message,min_exec_time,min_plan_time,planid," .
+    "mean_plan_time,message,min_exec_time,min_plan_time,pgsm_query_id,planid," .
     "plans_calls,query,query_plan,queryid,relations,resp_calls," .
     "rows_retrieved,shared_blks_dirtied,shared_blks_hit,shared_blks_read," .
     "shared_blks_written,sqlcode,stddev_exec_time,stddev_plan_time," .
@@ -54,7 +54,7 @@ my %pg_versions_pgsm_columns = ( 15 => "application_name,blk_read_time," .
     "client_ip,cmd_type,cmd_type_text,comments,cpu_sys_time,cpu_user_time," .
     "datname,elevel,local_blks_dirtied,local_blks_hit,local_blks_read," .
     "local_blks_written,max_exec_time,max_plan_time,mean_exec_time," .
-    "mean_plan_time,message,min_exec_time,min_plan_time,planid," .
+    "mean_plan_time,message,min_exec_time,min_plan_time,pgsm_query_id,planid," .
     "plans_calls,query,query_plan,queryid,relations,resp_calls," .
     "rows_retrieved,shared_blks_dirtied,shared_blks_hit,shared_blks_read," .
     "shared_blks_written,sqlcode,stddev_exec_time,stddev_plan_time," .
@@ -64,7 +64,7 @@ my %pg_versions_pgsm_columns = ( 15 => "application_name,blk_read_time," .
     "bucket_start_time,calls,client_ip,cmd_type,cmd_type_text,comments," .
     "cpu_sys_time,cpu_user_time,datname,elevel,local_blks_dirtied," .
     "local_blks_hit,local_blks_read,local_blks_written,max_time,mean_time," .
-    "message,min_time,planid,query,query_plan,queryid,relations,resp_calls," .
+    "message,min_time,pgsm_query_id,planid,query,query_plan,queryid,relations,resp_calls," .
     "rows_retrieved,shared_blks_dirtied,shared_blks_hit,shared_blks_read," .
     "shared_blks_written,sqlcode,stddev_time,temp_blks_read,temp_blks_written," .
     "top_query,top_queryid,total_time,userid"
