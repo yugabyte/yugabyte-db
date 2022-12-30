@@ -303,6 +303,12 @@ public class Audit extends Model {
     @EnumValue("Create User in DB")
     CreateUserInDB,
 
+    @EnumValue("Create Restricted User in DB")
+    CreateRestrictedUserInDB,
+
+    @EnumValue("Drop User in DB")
+    DropUserInDB,
+
     @EnumValue("Set Universe Helm3 Compatible")
     SetHelm3Compatible,
 

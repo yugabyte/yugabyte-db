@@ -298,6 +298,8 @@ POST    /customers/:cUUID/universes/:uniUUID/run_query                         c
 POST    /customers/:cUUID/universes/:uniUUID/run_in_shell                      com.yugabyte.yw.controllers.UniverseYbDbAdminController.runInShell(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/update_db_credentials             com.yugabyte.yw.controllers.UniverseYbDbAdminController.setDatabaseCredentials(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/create_db_credentials             com.yugabyte.yw.controllers.UniverseYbDbAdminController.createUserInDB(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/create_restricted_db_credentials  com.yugabyte.yw.controllers.UniverseYbDbAdminController.createRestrictedUserInDB(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/drop_db_credentials               com.yugabyte.yw.controllers.UniverseYbDbAdminController.dropUserInDB(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe Actions
 POST    /customers/:cUUID/universes/:uniUUID/pause                             com.yugabyte.yw.controllers.UniverseActionsController.pause(cUUID: java.util.UUID, uniUUID: java.util.UUID)
