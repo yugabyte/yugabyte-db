@@ -188,7 +188,6 @@ extern void ReplicationSlotDrop(const char *name, bool nowait);
 extern void ReplicationSlotAcquire(const char *name, bool nowait);
 extern void ReplicationSlotRelease(void);
 extern void ReplicationSlotCleanup(void);
-extern void ReplicationSlotCleanupForProc(PGPROC *proc);
 extern void ReplicationSlotSave(void);
 extern void ReplicationSlotMarkDirty(void);
 

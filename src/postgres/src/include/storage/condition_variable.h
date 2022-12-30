@@ -22,7 +22,6 @@
 #ifndef CONDITION_VARIABLE_H
 #define CONDITION_VARIABLE_H
 
-#include "storage/proc.h"
 #include "storage/s_lock.h"
 #include "storage/proclist_types.h"
 
@@ -45,7 +44,6 @@ extern void ConditionVariableInit(ConditionVariable *cv);
  */
 extern void ConditionVariableSleep(ConditionVariable *cv, uint32 wait_event_info);
 extern void ConditionVariableCancelSleep(void);
-extern void ConditionVariableCancelSleepForProc(volatile PGPROC *proc);
 
 /*
  * Optionally, ConditionVariablePrepareToSleep can be called before entering

@@ -1350,29 +1350,6 @@ pgstat_report_wait_start(uint32 wait_event_info)
 }
 
 /* ----------
- * pgstat_report_wait_end_for_proc(PGPROC *proc) -
- *
- *	Called to report end of a wait for a specific process.
- *
- * NB: this *must* be able to survive being called before MyProc has been
- * initialized.
- * ----------
- */
-static inline void
-pgstat_report_wait_end_for_proc(volatile PGPROC *proc)
-{
-	if (!pgstat_track_activities || !proc)
-		return;
-
-	/*
-	 * Since this is a four-byte field which is always read and written as
-	 * four-bytes, updates are atomic.
-	 */
-	proc->wait_event_info = 0;
-}
-
-
-/* ----------
  * pgstat_report_wait_end() -
  *
  *	Called to report end of a wait.
@@ -1384,7 +1361,16 @@ pgstat_report_wait_end_for_proc(volatile PGPROC *proc)
 static inline void
 pgstat_report_wait_end(void)
 {
-	return pgstat_report_wait_end_for_proc(MyProc);
+	volatile PGPROC *proc = MyProc;
+
+	if (!pgstat_track_activities || !proc)
+		return;
+
+	/*
+	 * Since this is a four-byte field which is always read and written as
+	 * four-bytes, updates are atomic.
+	 */
+	proc->wait_event_info = 0;
 }
 
 /* nontransactional event counts are simple enough to inline */
