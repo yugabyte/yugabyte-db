@@ -58,8 +58,6 @@ var versionMetadataJSON = "version_metadata.json"
 
 var javaBinaryGlob = "OpenJDK8U-jdk_x64_linux_*.tar.gz"
 
-var pemToKeystoreConverter = "pemtokeystore-linux-amd64"
-
 // DetectOS detects the operating system yba-installer is running on.
 func DetectOS() string {
 
