@@ -133,7 +133,7 @@ func createUpgradeDirs() {
 func copyBits(vers string) {
 	yugabundleBinary := "yugabundle-" + GetVersion() + "-centos-x86_64.tar.gz"
 	neededFiles := []string{goBinaryName, versionMetadataJSON, "../" + yugabundleBinary,
-		GetJavaPackagePath(), GetPostgresPackagePath(), pemToKeystoreConverter}
+		GetJavaPackagePath(), GetPostgresPackagePath()}
 
 	for _, file := range neededFiles {
 		_, err := ExecuteBashCommand("bash",
