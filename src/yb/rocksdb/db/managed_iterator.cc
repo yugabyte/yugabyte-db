@@ -30,7 +30,6 @@
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/util/xfunc.h"
 
 using std::unique_ptr;
 
@@ -54,8 +53,6 @@ class MILock {
   }
   ~MILock() {
     this->mu_->unlock();
-    XFUNC_TEST("managed_xftest_release", "managed_unlock", managed_unlock1,
-               xf_manage_release, mi_);
   }
   ManagedIterator* GetManagedIterator() { return mi_; }
 
@@ -96,8 +93,6 @@ ManagedIterator::ManagedIterator(DBImpl* db, const ReadOptions& read_options,
   }
   cfh_.SetCFD(cfd);
   mutable_iter_ = unique_ptr<Iterator>(db->NewIterator(read_options_, &cfh_));
-  XFUNC_TEST("managed_xftest_dropold", "managed_create", xf_managed_create1,
-             xf_manage_create, this);
 }
 
 ManagedIterator::~ManagedIterator() {
@@ -262,8 +257,6 @@ bool ManagedIterator::TryLock() { return in_use_.try_lock(); }
 
 void ManagedIterator::UnLock() {
   in_use_.unlock();
-  XFUNC_TEST("managed_xftest_release", "managed_unlock", managed_unlock1,
-             xf_manage_release, this);
 }
 
 }  // namespace rocksdb
