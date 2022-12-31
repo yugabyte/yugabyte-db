@@ -91,8 +91,8 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 		// The name "yamlPath" is what the function will be called
 		// in the template text.
 		"yamlPath":          GetYamlPathData,
-		"installRoot":       common.GetInstallRoot,
-		"installVersionDir": common.GetInstallVersionDir,
+		"installRoot":       common.GetSoftwareRoot,
+		"installVersionDir": common.GetInstallerSoftwareDir,
 		"baseInstall":       common.GetBaseInstall,
 	}
 
@@ -203,7 +203,7 @@ func GenerateTemplate(component common.Component) {
 			defer file.Close()
 
 			// Add the additional raw text to yb-platform.conf if it exists.
-			additionalEntryString := strings.TrimSuffix(GetYamlPathData(".additional"), "\n")
+			additionalEntryString := strings.TrimSuffix(GetYamlPathData(".platform.additional"), "\n")
 
 			if _, err := file.WriteString(additionalEntryString); err != nil {
 				log.Fatal("Error: " + err.Error() + ".")

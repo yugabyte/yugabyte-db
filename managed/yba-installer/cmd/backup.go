@@ -49,7 +49,7 @@ func CreateBackupScript(outputPath string, dataDir string,
 	}
 
 	log.Info("Creating a backup of your Yugabyte Anywhere Installation.")
-	common.ExecuteBashCommand(fileName, args)
+	common.RunBash(fileName, args)
 }
 
 // RestoreBackupScript calls the yb_platform_backup.sh script with the correct args.
@@ -80,6 +80,6 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 		args = append(args, "-u", common.GetCurrentUser(), "-e", common.GetCurrentUser())
 	}
 	log.Info("Restoring a backup of your Yugabyte Anywhere Installation.")
-	common.ExecuteBashCommand(fileName, args)
+	common.RunBash(fileName, args)
 
 }

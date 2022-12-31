@@ -15,33 +15,29 @@ import (
 
 var defaultMinSSDStorage float64 = 50
 
-// Ssd is the check for ssd/disk size
-var Ssd = &ssdCheck{"ssd", true}
+var DiskSize = &diskSizeCheck{"disk size", true}
 
-type ssdCheck struct {
+type diskSizeCheck struct {
 	name        string
 	skipAllowed bool
 }
 
-// Name gets the name of the check
-func (s ssdCheck) Name() string {
+func (s diskSizeCheck) Name() string {
 	return s.name
 }
 
-// SkipAllowed returns if the skip can be skipped
-func (s ssdCheck) SkipAllowed() bool {
+func (s diskSizeCheck) SkipAllowed() bool {
 	return s.skipAllowed
 }
 
-// Execute runs the check. Will validate there is enough disk space
-func (s ssdCheck) Execute() Result {
+func (s diskSizeCheck) Execute() Result {
 	res := Result{
 		Check:  s.name,
 		Status: StatusPassed,
 	}
 	command := "df"
 	args := []string{"-H", "--total"}
-	output, err := common.ExecuteBashCommand(command, args)
+	output, err := common.RunBash(command, args)
 	if err != nil {
 		res.Error = err
 		res.Status = StatusCritical
