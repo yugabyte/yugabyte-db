@@ -51,16 +51,16 @@ func newPostgresDirectories() postgresDirectories {
 	return postgresDirectories{
 		SystemdFileLocation: common.SystemdDir + "/postgres.service",
 
-		ConfFileLocation: common.GetInstallRoot() + "/pgsql/conf",
+		ConfFileLocation: common.GetSoftwareRoot() + "/pgsql/conf",
 		// TODO: fix this (conf shd be in data dir or in its own dir)
 
 		templateFileName: "yba-installer-postgres.yml",
 		MountPath:        common.GetBaseInstall() + "/data/pgsql/run/postgresql",
 		dataDir:          common.GetBaseInstall() + "/data/postgres",
-		PgBin:            common.GetInstallRoot() + "/pgsql/bin",
+		PgBin:            common.GetSoftwareRoot() + "/pgsql/bin",
 		LogFile:          common.GetBaseInstall() + "/data/logs/postgres.log",
 		cronScript: filepath.Join(
-			common.GetInstallVersionDir(), common.CronDir, "managePostgres.sh")}
+			common.GetInstallerSoftwareDir(), common.CronDir, "managePostgres.sh")}
 }
 
 // Component 1: Postgres
@@ -97,9 +97,14 @@ func (pg Postgres) getPgUserName() string {
 func (pg Postgres) Install() {
 	config.GenerateTemplate(pg)
 	pg.extractPostgresPackage()
+
+	// First let initdb create its config and data files in the software/pg../conf location
 	pg.runInitDB()
+	// Then copy over data files to the intended data dir location
 	pg.setUpDataDir()
+	// Finally update the conf file location to match this new data dir location
 	pg.modifyPostgresConf()
+
 	pg.Start()
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createYugawareDatabase()
@@ -117,16 +122,16 @@ func (pg Postgres) Start() {
 	if common.HasSudoAccess() {
 
 		arg0 := []string{"daemon-reload"}
-		common.ExecuteBashCommand(common.Systemctl, arg0)
+		common.RunBash(common.Systemctl, arg0)
 
 		arg1 := []string{"enable", filepath.Base(pg.SystemdFileLocation)}
-		common.ExecuteBashCommand(common.Systemctl, arg1)
+		common.RunBash(common.Systemctl, arg1)
 
 		arg2 := []string{"restart", filepath.Base(pg.SystemdFileLocation)}
-		common.ExecuteBashCommand(common.Systemctl, arg2)
+		common.RunBash(common.Systemctl, arg2)
 
 		arg3 := []string{"status", filepath.Base(pg.SystemdFileLocation)}
-		common.ExecuteBashCommand(common.Systemctl, arg3)
+		common.RunBash(common.Systemctl, arg3)
 
 	} else {
 		restartSeconds := config.GetYamlPathData("postgres.restartSeconds")
@@ -134,7 +139,7 @@ func (pg Postgres) Start() {
 		command1 := "bash"
 		arg1 := []string{"-c", pg.cronScript + " " + restartSeconds + " > /dev/null 2>&1 &"}
 
-		common.ExecuteBashCommand(command1, arg1)
+		common.RunBash(command1, arg1)
 
 	}
 }
@@ -145,19 +150,19 @@ func (pg Postgres) Stop() {
 	if common.HasSudoAccess() {
 
 		arg1 := []string{"stop", filepath.Base(pg.SystemdFileLocation)}
-		common.ExecuteBashCommand(common.Systemctl, arg1)
+		common.RunBash(common.Systemctl, arg1)
 
 	} else {
 
 		// Delete the file used by the crontab bash script for monitoring.
-		os.RemoveAll(common.GetInstallRoot() + "/postgres/testfile")
+		common.RemoveAll(common.GetSoftwareRoot() + "/postgres/testfile")
 
 		command1 := "bash"
 		arg1 := []string{"-c",
 			pg.PgBin + "/pg_ctl -D " + pg.ConfFileLocation +
 				" -o \"-k " + pg.MountPath + "\" " +
 				"-l " + pg.LogFile + " stop"}
-		common.ExecuteBashCommand(command1, arg1)
+		common.RunBash(command1, arg1)
 	}
 
 }
@@ -167,7 +172,7 @@ func (pg Postgres) Restart() {
 	if common.HasSudoAccess() {
 
 		arg1 := []string{"restart", filepath.Base(pg.SystemdFileLocation)}
-		common.ExecuteBashCommand(common.Systemctl, arg1)
+		common.RunBash(common.Systemctl, arg1)
 
 	} else {
 
@@ -184,7 +189,7 @@ func (pg Postgres) Uninstall(removeData bool) {
 	if removeData {
 		// Remove data directory
 		// TODO: we should also remove the pgsql run directory
-		err := os.RemoveAll(pg.dataDir)
+		err := common.RemoveAll(pg.dataDir)
 		if err != nil {
 			log.Debug(fmt.Sprintf("Error %s removing postgres data dir %s.", err.Error(), pg.dataDir))
 		}
@@ -199,7 +204,7 @@ func (pg Postgres) Uninstall(removeData bool) {
 	}
 
 	// Remove conf/binary
-	err := os.RemoveAll(filepath.Dir(pg.PgBin))
+	err := common.RemoveAll(filepath.Dir(pg.PgBin))
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Error %s cleaning postgres binaries and conf %s",
 			err.Error(), filepath.Dir(pg.PgBin)))
@@ -249,7 +254,7 @@ func (pg Postgres) RestoreBackup() {
 		"-p", viper.GetString("postgres.port"),
 		"-U", viper.GetString("service_username"),
 	}
-	_, err := common.ExecuteBashCommand(psql, args)
+	_, err := common.RunBash(psql, args)
 	if err != nil {
 		log.Fatal("postgres restore from backup failed: " + err.Error())
 	}
@@ -300,17 +305,17 @@ func (pg Postgres) extractPostgresPackage() {
 
 	// TODO: Replace with tar package
 	command1 := "bash"
-	arg1 := []string{"-c", "tar -zvxf " + postgresPackagePath + " -C " +
-		common.GetInstallRoot()}
+	arg1 := []string{"-c", "tar -zxf " + postgresPackagePath + " -C " +
+		common.GetSoftwareRoot()}
 
-	common.ExecuteBashCommand(command1, arg1)
+	common.RunBash(command1, arg1)
 }
 
 func (pg Postgres) runInitDB() {
 
 	common.Create(common.GetBaseInstall() + "/data/logs/postgres.log")
 	// Needed for socket acceptance in the non-root case.
-	common.CreateDir(pg.MountPath, os.ModePerm)
+	common.MkdirAllOrFail(pg.MountPath, os.ModePerm)
 
 	if common.HasSudoAccess() {
 
@@ -325,7 +330,7 @@ func (pg Postgres) runInitDB() {
 		command3 := "sudo"
 		arg3 := []string{"-u", userName, "bash", "-c",
 			pg.PgBin + "/initdb -U " + pg.getPgUserName() + " -D " + pg.ConfFileLocation}
-		if _, err := common.ExecuteBashCommand(command3, arg3); err != nil {
+		if _, err := common.RunBash(command3, arg3); err != nil {
 			log.Fatal("Failed to run initdb for postgres: " + err.Error())
 		}
 
@@ -334,7 +339,7 @@ func (pg Postgres) runInitDB() {
 		command1 := "bash"
 		arg1 := []string{"-c",
 			pg.PgBin + "/initdb -U " + pg.getPgUserName() + " " + " -D " + pg.ConfFileLocation}
-		if _, err := common.ExecuteBashCommand(command1, arg1); err != nil {
+		if _, err := common.RunBash(command1, arg1); err != nil {
 			log.Fatal("Failed to run initdb for postgres: " + err.Error())
 		}
 	}
@@ -361,7 +366,7 @@ func (pg Postgres) setUpDataDir() {
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		// move init conf to data dir
-		_, err := common.ExecuteBashCommand("sudo",
+		_, err := common.RunBash("sudo",
 			[]string{"-u", userName, "mv", pg.ConfFileLocation, pg.dataDir})
 		if err != nil {
 			log.Fatal("failed to move config: " + err.Error())
@@ -375,9 +380,9 @@ func (pg Postgres) moveConfFiles() {
 	// move conf files back to conf location
 	userName := viper.GetString("service_username")
 
-	common.CreateDir(pg.ConfFileLocation, 0700)
+	common.MkdirAllOrFail(pg.ConfFileLocation, 0700)
 	common.Chown(pg.ConfFileLocation, userName, userName, false)
-	common.ExecuteBashCommand(
+	common.RunBash(
 		"sudo",
 		[]string{"-u", userName, "find", pg.dataDir, "-iname", "*.conf", "-exec", "cp", "{}",
 			pg.ConfFileLocation, ";"})
@@ -396,7 +401,7 @@ func (pg Postgres) createYugawareDatabase() {
 
 	}
 
-	_, err := common.ExecuteBashCommand(command2, arg2)
+	_, err := common.RunBash(command2, arg2)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			// db already existing is fine because this may be a resumed failed install
@@ -441,7 +446,7 @@ func (pg Postgres) Status() common.Status {
 	} else {
 		command := "bash"
 		args := []string{"-c", "pgrep postgres"}
-		out0, _ := common.ExecuteBashCommand(command, args)
+		out0, _ := common.RunBash(command, args)
 
 		if strings.TrimSuffix(string(out0), "\n") != "" {
 			status.Status = common.StatusRunning
@@ -455,7 +460,7 @@ func (pg Postgres) Status() common.Status {
 // CreateCronJob creates the cron job for managing postgres with cron script in non-root.
 func (pg Postgres) CreateCronJob() {
 	restartSeconds := viper.GetString("postgres.install.restartSeconds")
-	common.ExecuteBashCommand("bash", []string{"-c",
+	common.RunBash("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + pg.cronScript + " " +
 			restartSeconds + "\") | sort - | uniq - | crontab - "})
 }

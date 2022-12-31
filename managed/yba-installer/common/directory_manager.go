@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/fs"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"sort"
 
@@ -62,7 +61,7 @@ func GetDataRoot() string {
 }
 
 // GetInstallRoot returns the InstallRoot where YBA is installed.
-func GetInstallRoot() string {
+func GetSoftwareRoot() string {
 	return dm.WorkingDirectory()
 }
 
@@ -71,8 +70,8 @@ func GetActiveSymlink() string {
 	return dm.ActiveSymlink()
 }
 
-// GetInstallVersionDir returns the yba_installer directory inside InstallRoot
-func GetInstallVersionDir() string {
+// GetInstallerSoftwareDir returns the yba_installer directory inside InstallRoot
+func GetInstallerSoftwareDir() string {
 	return dm.WorkingDirectory() + "/yba_installer-" + GetVersion()
 }
 
@@ -115,7 +114,7 @@ func PrunePastInstalls() {
 	for i := 0; i < len(versionEntries)-1; i++ {
 		toDel := filepath.Join(softwareRoot, versionEntries[i].Name())
 		log.Warn(fmt.Sprintf("Removing old release directory %s", toDel))
-		os.RemoveAll(toDel)
+		RemoveAll(toDel)
 	}
 
 }

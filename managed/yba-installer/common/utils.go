@@ -14,7 +14,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -63,7 +62,7 @@ func DetectOS() string {
 
 	command1 := "bash"
 	args1 := []string{"-c", "awk -F= '/^NAME/{print $2}' /etc/os-release"}
-	output, _ := ExecuteBashCommand(command1, args1)
+	output, _ := RunBash(command1, args1)
 
 	return string(output)
 }
@@ -100,12 +99,22 @@ func GetVersion() string {
 	return version
 }
 
-// ExecuteBashCommand exeuctes a command in the shell, returning the output and error.
-func ExecuteBashCommand(command string, args []string) (o string, e error) {
+func RunBashNoLog(command string, args []string) (o string, e error) {
+	return runBash(command, args, false)
+}
+
+func RunBash(command string, args []string) (o string, e error) {
+	return runBash(command, args, true)
+}
+
+// RunBash executes a command in the shell, returning the output and error.
+func runBash(command string, args []string, shouldLog bool) (o string, e error) {
 
 	fullCmd := command + " " + strings.Join(args, " ")
 	startTime := time.Now()
-	log.Debug("About to run command " + fullCmd)
+	if shouldLog {
+		log.Debug("About to run command " + fullCmd)
+	}
 	cmd := exec.Command(command, args...)
 
 	var execOut bytes.Buffer
@@ -116,13 +125,17 @@ func ExecuteBashCommand(command string, args []string) (o string, e error) {
 	err := cmd.Run()
 
 	if err == nil {
-		log.Debug(fmt.Sprintf("Completed running command: %s [took %f secs]", fullCmd, time.Since(startTime).Seconds()))
-		log.Trace(fmt.Sprintf("Stdout for command %s was \n%s\n", fullCmd, execOut.String()))
-		log.Trace(fmt.Sprintf("Stderr for command %s was \n%s\n", fullCmd, execErr.String()))
+		if shouldLog {
+			log.Debug(fmt.Sprintf("Completed running command: '%s' [took %f secs]", fullCmd, time.Since(startTime).Seconds()))
+			log.Trace(fmt.Sprintf("Stdout for command '%s' was \n%s\n", fullCmd, execOut.String()))
+			log.Trace(fmt.Sprintf("Stderr for command '%s' was \n%s\n", fullCmd, execErr.String()))
+		}
 	} else {
 		err = fmt.Errorf("command failed with error %w and stderr %s", err, execErr.String())
-		log.Info("ERROR: '" + fullCmd + "' failed with error " +
-			err.Error() + "\nPrinting stdOut/stdErr " + execOut.String() + execErr.String())
+		if shouldLog {
+			log.Info("ERROR: '" + fullCmd + "' failed with error " +
+				err.Error() + "\nPrinting stdOut/stdErr " + execOut.String() + execErr.String())
+		}
 	}
 
 	return execOut.String(), err
@@ -153,11 +166,18 @@ func Contains[T comparable](values []T, target T) bool {
 
 // Chown changes ownership of dir to user:group, recursively (optional).
 func Chown(dir, user, group string, recursive bool) error {
+	log.Debug(fmt.Sprintf("Chown of dir %s to user %s, recursive=%t",
+		dir, user, recursive))
 	args := []string{fmt.Sprintf("%s:%s", user, group), dir}
 	if recursive {
 		args = append([]string{"-R"}, args...)
 	}
-	_, err := ExecuteBashCommand("chown", args)
+	_, err := RunBashNoLog("chown", args)
+	if err != nil {
+		log.Debug(fmt.Sprintf(
+			"Chown of dir %s to user %s, recursive=%t failed with error %s",
+			dir, user, recursive, err))
+	}
 	return err
 }
 
@@ -181,56 +201,10 @@ func HasSudoAccess() bool {
 	return false
 }
 
-// GetCurrentUser returns the user yba-ctl was run as.
-func GetCurrentUser() string {
-	user, err := user.Current()
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Error %s getting current user", err.Error()))
-	}
-	return user.Username
-}
-
-// CopyFileGolang copies src file to dst.
-// Assumes both src/dst are valid absolute paths and dst file parent directory is already created.
-func CopyFileGolang(src string, dst string) {
-
-	bytesRead, errSrc := os.ReadFile(src)
-
-	if errSrc != nil {
-		log.Fatal("Error: " + errSrc.Error() + ".")
-	}
-	errDst := os.WriteFile(dst, bytesRead, 0644)
-	if errDst != nil {
-		log.Fatal("Error: " + errDst.Error() + ".")
-	}
-
-	log.Debug("Copy from " + src + " to " + dst + " executed successfully.")
-}
-
-// CreateDir creates a directory according to the given permissions, logging an error if necessary.
-func CreateDir(dir string, perm os.FileMode) {
-	err := os.MkdirAll(dir, perm)
-	if err != nil && !os.IsExist(err) {
-		log.Fatal(fmt.Sprintf("Error creating %s. Failed with %s", dir, err.Error()))
-	}
-}
-
-// MoveFileGolang moves (renames) a src file to dst.
-func MoveFileGolang(src string, dst string) {
-
-	err := os.Rename(src, dst)
-	if err != nil {
-		log.Fatal("Error: " + err.Error() + ".")
-	}
-
-	log.Debug("Move from " + src + " to " + dst + " executed successfully.")
-
-}
-
 // Create a file at a relative path for the non-root case. Have to make the directory before
 // inserting the file in that directory.
 func Create(p string) (*os.File, error) {
-	if err := os.MkdirAll(filepath.Dir(p), 0777); err != nil {
+	if err := MkdirAll(filepath.Dir(p), 0777); err != nil {
 		log.Fatal(fmt.Sprintf("Error creating %s. Failed with %s", p, err.Error()))
 		return nil, err
 	}
@@ -248,7 +222,15 @@ func CreateSymlink(pkgDir string, linkDir string, binary string) {
 	linkPath := fmt.Sprintf("%s/%s", linkDir, binary)
 
 	args := []string{"-sf", binaryPath, linkPath}
-	ExecuteBashCommand("ln", args)
+	log.Debug(fmt.Sprintf("Creating symlink at %s -> orig %s",
+		linkPath, binaryPath))
+	_, err := RunBashNoLog("ln", args)
+	if err != nil {
+		log.Debug(fmt.Sprintf(
+			"Creating symlink at %s -> orig %s failed with error %s",
+			linkPath, binaryPath, err))
+		// TODO: handle error
+	}
 }
 
 type defaultAnswer int
@@ -465,8 +447,8 @@ func init() {
 
 	/*
 		Version = GetVersion()
-		InstallRoot = GetInstallRoot()
-		InstallVersionDir = GetInstallVersionDir()
+		InstallRoot = GetSoftwareRoot()
+		InstallVersionDir = GetInstallerSoftwareDir()
 		yugabundleBinary = "yugabundle-" + Version + "-centos-x86_64.tar.gz"
 		currentUser = GetCurrentUser()
 	*/

@@ -39,7 +39,7 @@ func (p pythonCheck) Execute() Result {
 	}
 	command := "bash"
 	args := []string{"-c", "python3 --version"}
-	output, _ := common.ExecuteBashCommand(command, args)
+	output, _ := common.RunBash(command, args)
 
 	outputTrimmed := strings.TrimSuffix(output, "\n")
 

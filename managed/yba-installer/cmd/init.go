@@ -60,8 +60,8 @@ func ensureInstallerConfFile() {
 		}
 
 		// Copy over reference yaml
-		common.CreateDir(filepath.Dir(common.InputFile), 0744)
-		common.CopyFileGolang(common.GetReferenceYaml(), common.InputFile)
+		common.MkdirAllOrFail(filepath.Dir(common.InputFile), 0744)
+		common.CopyFile(common.GetReferenceYaml(), common.InputFile)
 		os.Chmod(common.InputFile, 0600)
 
 	}

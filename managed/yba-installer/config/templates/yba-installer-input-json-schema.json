@@ -100,20 +100,8 @@
               "type": "string"
             }
           },
-          "required": ["platformDbUser", "platformDbPassword", "useOauth", "ybSecurityType",
-          "ybOidcClientId", "ybOidcSecret", "ybOidcDiscoveryUri", "ywUrl", "ybOidcScope",
-          "ybOidcEmailAttr", "port", "keyStorePassword"]
-        },
-      "preflight": {
-          "description": "Preflight Config parameters",
-          "type": "object",
-          "properties": {
-            "overrideWarning": {
-              "type": "boolean"
-            }
-          },
-          "required": [ "overrideWarning"]
-      }
+          "required": ["port", "keyStorePassword"]
+        }
     },
-    "required": ["prometheus", "platform", "preflight"]
+    "required": ["prometheus", "platform"]
   }
