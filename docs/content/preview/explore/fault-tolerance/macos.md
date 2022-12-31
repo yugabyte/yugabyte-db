@@ -31,15 +31,11 @@ The benefits of high availability extend to performing database upgrades. You ca
 
 This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. You create YSQL tables with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the cluster remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes become unavailable on the cluster to preserve data consistency.
 
-The tutorial uses the YB Workload Simulator application, which is built with the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a cluster, and re-balances connections when a node fails.
+The tutorial uses the YB Workload Simulator application, which is built with the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a cluster, and re-balances connections when a node fails.
 
-{{< note title="Setup" >}}
+{{% explore-setup-multi %}}
 
-Local multi-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
-
-{{< /note >}}
-
-Follow the setup instructions to start a local three-node cluster with availability zone fault tolerance, connect the YB Workload Simulator application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
+Follow the setup instructions to start a three-node cluster, connect the YB Workload Simulator application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
 ### Observe even load across all nodes
 
