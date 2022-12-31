@@ -135,7 +135,7 @@ func createUpgradeDirs() {
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
 func copyBits(vers string) {
 	yugabundleBinary := "yugabundle-" + GetVersion() + "-centos-x86_64.tar.gz"
-	neededFiles := []string{goBinaryName, versionMetadataJSON, "../" + yugabundleBinary,
+	neededFiles := []string{goBinaryName, versionMetadataJSON, yugabundleBinary,
 		GetJavaPackagePath(), GetPostgresPackagePath()}
 
 	for _, file := range neededFiles {
@@ -146,10 +146,13 @@ func copyBits(vers string) {
 		}
 	}
 
+	configDirPath := GetTemplatesDir()
 	templateCpCmd := fmt.Sprintf("cp %s/* %s/%s",
-		ConfigDir, GetInstallerSoftwareDir(), ConfigDir)
+		configDirPath, GetInstallerSoftwareDir(), ConfigDir)
+
+	cronDirPath := GetFileMatchingGlob(cronDirGlob)
 	cronCpCmd := fmt.Sprintf("cp %s/* %s/%s",
-		CronDir, GetInstallerSoftwareDir(), CronDir)
+		cronDirPath, GetInstallerSoftwareDir(), CronDir)
 
 	if _, err := RunBash("bash", []string{"-c", templateCpCmd}); err != nil {
 		log.Fatal("failed to copy config files: " + err.Error())
