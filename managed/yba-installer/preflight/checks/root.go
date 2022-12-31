@@ -57,6 +57,7 @@ func (r rootCheck) Execute() Result {
 		args := []string{"-c", "df --output=avail -h \"" + common.GetSoftwareRoot() + "\" | tail -n 1"}
 		output, err := common.RunBash(command, args)
 		if err != nil {
+			// TODO: the pipe in the command above swallows any error with df
 			res.Error = err
 			res.Status = StatusCritical
 			return res
