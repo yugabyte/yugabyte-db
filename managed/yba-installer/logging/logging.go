@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/writer"
@@ -12,6 +13,9 @@ import (
 // Fatal prints the error message to stdout at the error level, and
 // then kills the currently running process.
 func Fatal(errorMsg string) {
+	stackTrace := make([]byte, 4096)
+	count := runtime.Stack(stackTrace, false)
+	log.Debug("Hit fatal error with stack trace: \n" + string(stackTrace[:count]) + "\n")
 	log.Fatalln(errorMsg)
 }
 
