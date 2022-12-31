@@ -70,7 +70,7 @@ func (p postgresCheck) Execute() Result {
 		return res
 	}
 
-	_, err := common.ExecuteBashCommand("pg_dump", []string{"--help"})
+	_, err := common.RunBash("pg_dump", []string{"--help"})
 	if err != nil {
 		res.Error = fmt.Errorf("pg_dump has to be installed on the host (error %w)", err)
 		res.Status = StatusCritical
