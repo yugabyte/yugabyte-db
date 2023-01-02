@@ -9,14 +9,12 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -30,7 +28,6 @@ class YbcLogsComponent implements SupportBundleComponent {
   private final NodeUniverseManager nodeUniverseManager;
   protected final Config config;
   private final SupportBundleUtil supportBundleUtil;
-  public final UniverseLogsComponent universeLogsComponent;
   public final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
 
   @Inject
@@ -38,13 +35,11 @@ class YbcLogsComponent implements SupportBundleComponent {
       UniverseInfoHandler universeInfoHandler,
       NodeUniverseManager nodeUniverseManager,
       Config config,
-      SupportBundleUtil supportBundleUtil,
-      UniverseLogsComponent universeLogsComponent) {
+      SupportBundleUtil supportBundleUtil) {
     this.universeInfoHandler = universeInfoHandler;
     this.nodeUniverseManager = nodeUniverseManager;
     this.config = config;
     this.supportBundleUtil = supportBundleUtil;
-    this.universeLogsComponent = universeLogsComponent;
   }
 
   @Override
@@ -92,14 +87,14 @@ class YbcLogsComponent implements SupportBundleComponent {
 
     // Get and filter YB-Controller log files that fall within given dates
     String ybcLogsPath = nodeHomeDir + "/controller/logs";
-    List<String> ybcLogFilePaths = new ArrayList<>();
-    if (universeLogsComponent.checkNodeIfFileExists(node, universe, ybcLogsPath)) {
+    List<Path> ybcLogFilePaths = new ArrayList<>();
+    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, ybcLogsPath)) {
       ybcLogFilePaths =
-          universeLogsComponent.getNodeFilePaths(
+          nodeUniverseManager.getNodeFilePaths(
               node, universe, ybcLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
       ybcLogFilePaths =
           supportBundleUtil.filterFilePathsBetweenDates(
-              ybcLogFilePaths, ybcLogsRegexPattern, startDate, endDate, true);
+              ybcLogFilePaths, Arrays.asList(ybcLogsRegexPattern), startDate, endDate);
     }
 
     if (ybcLogFilePaths.size() > 0) {
@@ -109,7 +104,13 @@ class YbcLogsComponent implements SupportBundleComponent {
               universe,
               node,
               nodeHomeDir,
-              String.join(";", ybcLogFilePaths),
+              String.join(
+                  ";",
+                  ybcLogFilePaths
+                      .stream()
+                      .map(filePath -> Paths.get(nodeHomeDir).relativize(filePath))
+                      .map(Path::toString)
+                      .collect(Collectors.toList())),
               nodeTargetFile);
       try {
         if (Files.exists(targetFile)) {
