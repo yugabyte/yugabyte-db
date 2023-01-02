@@ -95,6 +95,7 @@
 #define PRETTYFLAG_PAREN		0x0001
 #define PRETTYFLAG_INDENT		0x0002
 #define PRETTYFLAG_SCHEMA		0x0004
+#define YB_PRETTYFLAG_ARRAY	0x0008
 
 /* Default line length for pretty-print wrapping: 0 means wrap always */
 #define WRAP_COLUMN_DEFAULT		0
@@ -103,7 +104,10 @@
 #define PRETTY_PAREN(context)	((context)->prettyFlags & PRETTYFLAG_PAREN)
 #define PRETTY_INDENT(context)	((context)->prettyFlags & PRETTYFLAG_INDENT)
 #define PRETTY_SCHEMA(context)	((context)->prettyFlags & PRETTYFLAG_SCHEMA)
+#define YB_PRETTY_ARRAY(context) ((context)->prettyFlags & \
+									YB_PRETTYFLAG_ARRAY)
 
+#define YB_TRUNC_ARRAY_LIMIT 3
 
 /* ----------
  * Local data types
@@ -3270,6 +3274,15 @@ deparse_expression(Node *expr, List *dpcontext,
 {
 	return deparse_expression_pretty(expr, dpcontext, forceprefix,
 									 showimplicit, 0, 0);
+}
+
+char *yb_deparse_expression(Node *expr, List *dpcontext,
+				   			bool forceprefix, bool showimplicit,
+							bool verbose)
+{
+	return deparse_expression_pretty(expr, dpcontext, forceprefix,
+									 showimplicit,
+									 verbose ? 0 : YB_PRETTYFLAG_ARRAY, 0);
 }
 
 /* ----------
@@ -8448,7 +8461,10 @@ get_rule_expr(Node *node, deparse_context *context,
 				ArrayExpr  *arrayexpr = (ArrayExpr *) node;
 
 				appendStringInfoString(buf, "ARRAY[");
+				int before_prettyflags = context->prettyFlags;
+
 				get_rule_expr((Node *) arrayexpr->elements, context, true);
+				context->prettyFlags = before_prettyflags;
 				appendStringInfoChar(buf, ']');
 
 				/*
@@ -9069,11 +9085,31 @@ get_rule_expr(Node *node, deparse_context *context,
 				ListCell   *l;
 
 				sep = "";
+				int limit = -1;
+				int cur_index = 0;
+				if (IsYugaByteEnabled() &&
+					YB_PRETTY_ARRAY(context) &&
+					YB_TRUNC_ARRAY_LIMIT < ((List *) node)->length)
+				{
+					limit = YB_TRUNC_ARRAY_LIMIT;
+				}
 				foreach(l, (List *) node)
 				{
 					appendStringInfoString(buf, sep);
 					get_rule_expr((Node *) lfirst(l), context, showimplicit);
 					sep = ", ";
+					if (limit > 0 && ++cur_index == limit)
+					{
+						appendStringInfoString(buf, ", ..., ");
+						break;
+					}
+				}
+
+				if (IsYugaByteEnabled() &&
+					limit > 0)
+				{
+					Node *last_elem = (Node *) lfirst(list_tail((List *) node));
+					get_rule_expr(last_elem, context, showimplicit);
 				}
 			}
 			break;
