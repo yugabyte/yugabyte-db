@@ -123,6 +123,15 @@ class QLWriteOperation :
       IntentAwareIterator* iter, const SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);
 
+  // Deletes an element (key/index) from a subscripted column.
+  //
+  // data - apply data that is updated per the operations performed.
+  // column_schema - schema of the column from which the element will be deleted.
+  // column_value - request proto identifying the element in the column and it's new value (empty).
+  // column_id - the id of the subscripted column.
+  Status DeleteSubscriptedColumnElement(
+      const DocOperationApplyData& data, const ColumnSchema& column_schema,
+      const QLColumnValuePB& column_value, ColumnId column_id);
   Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
