@@ -7,9 +7,9 @@ import com.yugabyte.yw.common.TestHelper;
 import java.util.Date;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.Files;
@@ -25,6 +25,9 @@ import org.mockito.MockitoAnnotations;
 public class SupportBundleUtilTest extends FakeDBApplication {
 
   @InjectMocks SupportBundleUtil supportBundleUtil;
+  public static final String universe_logs_regex_pattern =
+      "((?:.*)(?:yb-)(?:master|tserver)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
+  public static final String postgres_logs_regex_pattern = "((?:.*)(?:postgresql)-)(.{10})(?:.*)";
 
   @Before
   public void setup() {
@@ -96,8 +99,11 @@ public class SupportBundleUtilTest extends FakeDBApplication {
             "application-log-2022-02-03.gz",
             "application-log-2022-02-04.gz",
             "application-log-2022-02-05.gz");
-    List<String> outputList = supportBundleUtil.filterList(unfilteredList, testRegexPattern);
-    assertEquals(outputList, filteredList);
+    List<Path> outputList =
+        supportBundleUtil.filterList(
+            unfilteredList.stream().map(Paths::get).collect(Collectors.toList()),
+            Arrays.asList(testRegexPattern));
+    assertEquals(outputList, filteredList.stream().map(Paths::get).collect(Collectors.toList()));
   }
 
   @Test
@@ -106,5 +112,164 @@ public class SupportBundleUtilTest extends FakeDBApplication {
     supportBundleUtil.deleteFile(tmpFilePath);
     boolean isDeleted = Files.notExists(tmpFilePath);
     assertTrue(isDeleted);
+  }
+
+  @Test
+  public void testExtractFileTypeFromFileNameAndRegex() throws ParseException {
+    List<String> fileNameList =
+        Arrays.asList(
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-16_093918.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/"
+                + "yb-tserver.yb-dev-sahith-new-yb-tserver-1.root.log.INFO.20221116-093807.24.gz",
+            "/mnt/disk0/yb-data/master/logs/"
+                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.WARNING.20221116-093807.24.gz");
+    List<String> expectedFileTypeList =
+        Arrays.asList(
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-",
+            "/mnt/disk0/yb-data/tserver/logs/"
+                + "yb-tserver.yb-dev-sahith-new-yb-tserver-1.root.log.INFO.",
+            "/mnt/disk0/yb-data/master/logs/"
+                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.WARNING.");
+
+    for (int i = 0; i < fileNameList.size(); ++i) {
+      List<String> fileRegexList =
+          Arrays.asList(universe_logs_regex_pattern, postgres_logs_regex_pattern);
+      assertEquals(
+          expectedFileTypeList.get(i),
+          supportBundleUtil.extractFileTypeFromFileNameAndRegex(
+              fileNameList.get(i), fileRegexList));
+    }
+  }
+
+  @Test
+  public void testExtractDateFromFileNameAndRegex() throws ParseException {
+    List<String> fileNameList =
+        Arrays.asList(
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-16_093918.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2021-12-31_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2020-01-01_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/"
+                + "yb-tserver.yb-dev-sahith-new-yb-tserver-1.root.log.INFO.20221116-093807.24.gz",
+            "/mnt/disk0/yb-data/master/logs/"
+                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.INFO.20221116-093807.24.gz",
+            "/mnt/disk0/yb-data/tserver/logs/"
+                + "yb-tserver.yb-dev-sahith-new-yb-tserver-1.root.log.WARNING.20221116-093807.24",
+            "/mnt/disk0/yb-data/master/logs/"
+                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.WARNING.20221116-093807.24",
+            "/mnt/disk0/20221116/yb-data/master/logs/"
+                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.WARNING.20221117-093807.24",
+            "/mnt/disk0/2022-11-16/yb-data/master/logs/"
+                + "yb-master.yb-dev-sahith-new-yb-master-1.root.log.WARNING.20221117-093807.24");
+
+    List<String> expectedDateList =
+        Arrays.asList(
+            "2022-11-16",
+            "2021-12-31",
+            "2020-01-01",
+            "2022-11-16",
+            "2022-11-16",
+            "2022-11-16",
+            "2022-11-16",
+            "2022-11-17",
+            "2022-11-17");
+
+    for (int i = 0; i < fileNameList.size(); ++i) {
+      List<String> fileRegexList =
+          Arrays.asList(universe_logs_regex_pattern, postgres_logs_regex_pattern);
+      Date date = new SimpleDateFormat("yyyy-MM-dd").parse(expectedDateList.get(i));
+      assertEquals(
+          date,
+          supportBundleUtil.extractDateFromFileNameAndRegex(fileNameList.get(i), fileRegexList));
+    }
+  }
+
+  @Test
+  public void testFilterFilePathsBetweenDates() throws ParseException {
+    Date startDate = new SimpleDateFormat("yyyy-MM-dd").parse("2022-11-18");
+    Date endDate = new SimpleDateFormat("yyyy-MM-dd").parse("2022-11-22");
+    List<String> unfilteredLogFilePaths =
+        Arrays.asList(
+            "/mnt/disk1/yb-data/yb-data/tserver/logs/postgresql-2022-11-23_000000.log.gz",
+            "/mnt/disk0/yb-data/yb-data/tserver/logs/postgresql-2022-11-15_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-16_093918.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-18_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-17_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-18_145526.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-19_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-20_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-21_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-22_000000.log",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.INFO.20221114-000000.00.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.INFO.20221116-000000.00.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.INFO.20221116-093807.24.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.INFO.20221121-000000.00.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.INFO.20221118-145526.23",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221116-093913.24.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221117-000000.01.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221117-000000.00.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221118-000000.00.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221118-145526.23",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221120-000000.00",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221122-000000.00",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221123-000000.00");
+
+    List<String> expectedLogFilePaths =
+        Arrays.asList(
+            "/mnt/disk0/yb-data/yb-data/tserver/logs/postgresql-2022-11-15_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-17_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-18_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-18_145526.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-19_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-20_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-21_000000.log.gz",
+            "/mnt/disk0/yb-data/tserver/logs/postgresql-2022-11-22_000000.log",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.INFO.20221116-000000.00.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.INFO.20221116-093807.24.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.INFO.20221118-145526.23",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.INFO.20221121-000000.00.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221117-000000.00.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221117-000000.01.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221118-000000.00.gz",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221118-145526.23",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221120-000000.00",
+            "/mnt/disk0/yb-data/tserver/logs/yb-tserver.yb-dev-sahith-new-yb-tserver-1.root."
+                + "log.WARNING.20221122-000000.00");
+
+    List<Path> unFilteredLogFilePathList =
+        unfilteredLogFilePaths.stream().map(Paths::get).collect(Collectors.toList());
+    List<Path> expectedLogFilePathList =
+        expectedLogFilePaths.stream().map(Paths::get).collect(Collectors.toList());
+    List<Path> filteredLogFilePaths =
+        supportBundleUtil.filterFilePathsBetweenDates(
+            unFilteredLogFilePathList,
+            Arrays.asList(universe_logs_regex_pattern, postgres_logs_regex_pattern),
+            startDate,
+            endDate);
+
+    assertTrue(
+        expectedLogFilePathList.containsAll(filteredLogFilePaths)
+            && filteredLogFilePaths.containsAll(expectedLogFilePathList));
   }
 }
