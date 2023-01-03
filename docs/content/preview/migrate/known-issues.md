@@ -1,21 +1,32 @@
 ---
-title: Troubleshoot
-linkTitle: Troubleshoot
-description: Troubleshoot issues when migrating data using YugabyteDB Voyager.
+title: Known issues and workarounds
+linkTitle: Known issues
+description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
-    identifier: troubleshoot-voyager
+    identifier: known-issues-voyager
     parent: voyager
     weight: 106
 type: docs
 ---
 
-This page documents known issues and workarounds, as well as unsupported features when migrating data with YugabyteDB Voyager.
+This page documents unsupported features as well as known issues and workarounds when migrating data with YugabyteDB Voyager.
+
+## Unsupported features
+
+Currently, yb-voyager doesn't support the following features:
+
+| Feature | Description/Alternatives  | GitHub Issue |
+| :------ | :------------------------ | :----------- |
+| ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
+| BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>Use another mechanism to load the attributes.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
 
 ## Known issues
 
-### Issue #573: [MySQL] Unsigned decimal types are not exported properly
+### MySQL issues
+
+#### Unsigned decimal types are not exported properly
 
 **GitHub link**: [Issue #573](https://github.com/yugabyte/yb-voyager/issues/573)
 
@@ -60,7 +71,7 @@ CREATE TABLE fixed_point_types (
 
 ---
 
-### Issue #188: [MySQL] Approaching MAX/MIN double precision values are not exported
+#### Approaching MAX/MIN double precision values are not exported
 
 **GitHub link**: [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188)
 
@@ -131,7 +142,7 @@ Suggested changes to the schema can be done using one of the following options:
 
 ---
 
-### Issue #579: [MySQL] Functional/Expression indexes fail to migrate
+#### Functional/Expression indexes fail to migrate
 
 **GitHub link**: [Issue #579](https://github.com/yugabyte/yb-voyager/issues/579)
 
@@ -161,7 +172,7 @@ CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(to_date))));
 
 ---
 
-### Issue #320: [MySQL] Exporting data from MySQL when table names include quotes
+#### Exporting data from MySQL when table names include quotes
 
 **GitHub link**: [Issue #320](https://github.com/yugabyte/yb-voyager/issues/320)
 
@@ -223,7 +234,7 @@ Suggested workaround is as follows:
 
 ---
 
-### Issue #137: [MYSQL] Spatial datatype migration is not yet supported
+#### Spatial datatype migration is not yet supported
 
 **GitHub link**: [Issue #137](https://github.com/yugabyte/yb-voyager/issues/137)
 
@@ -243,7 +254,9 @@ CREATE TABLE address (
 
 ---
 
-### Issue #207: [Oracle] Some numeric types are not exported
+### Oracle issues
+
+#### Some numeric types are not exported
 
 **GitHub link**: [Issue #207](https://github.com/yugabyte/yb-voyager/issues/207)
 
@@ -303,7 +316,7 @@ CREATE TABLE numeric_size (
 
 ---
 
-### Issue #584: [Oracle] RAW data is not imported in some cases
+#### RAW data is not imported in some cases
 
 **GitHub link**: [Issue #584](https://github.com/yugabyte/yb-voyager/issues/584)
 
@@ -313,7 +326,7 @@ CREATE TABLE numeric_size (
 
 ---
 
-### Issue #602: [Oracle] Using a variation of `trunc` with datetime columns in Oracle and YugabyteDB
+#### Using a variation of `trunc` with datetime columns in Oracle and YugabyteDB
 
 **GitHub link**: [Issue #602](https://github.com/yugabyte/yb-voyager/issues/602)
 
@@ -337,7 +350,7 @@ ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = date_trunc('day
 
 ---
 
-### Issue #571: [Oracle] A unique index which is also a primary key is not migrated
+#### A unique index which is also a primary key is not migrated
 
 **GitHub link**: [Issue #571](https://github.com/yugabyte/yb-voyager/issues/571)
 
@@ -363,7 +376,54 @@ CREATE UNIQUE INDEX email_unique ON public.employees USING btree (email);
 
 ---
 
-### Issue #334: [MySQL, Oracle] Importing case-sensitive schema names
+### PostgreSQL issues
+
+#### Adding primary key to a partitioned table results in an error
+
+**GitHub link**: [Issue #612](https://github.com/yugabyte/yb-voyager/issues/612)
+
+**Description**: If you have a partitioned table in which primary key is added later using `ALTER TABLE`, then the table creation fails with the following error:
+
+```output
+ERROR: adding primary key to a partitioned table is not yet implemented (SQLSTATE XX000)
+```
+
+**Workaround**: Manual intervention needed. Add primary key in the `CREATE TABLE` statement.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.sales_region (
+    id integer NOT NULL,
+    amount integer,
+    branch text,
+    region text NOT NULL
+)
+PARTITION BY LIST (region);
+
+ALTER TABLE ONLY public.sales_region ADD CONSTRAINT sales_region_pkey PRIMARY KEY (id, region);
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+CREATE TABLE public.sales_region (
+    id integer NOT NULL,
+    amount integer,
+    branch text,
+    region text NOT NULL,
+    PRIMARY KEY(id, region)
+)
+PARTITION BY LIST (region);
+```
+
+---
+
+### MySQL and Oracle issues
+
+#### Importing case-sensitive schema names
 
 **GitHub link**: [Issue #334](https://github.com/yugabyte/yb-voyager/issues/334)
 
@@ -411,7 +471,7 @@ ALTER SCHEMA "test" RENAME TO "Test";
 
 ---
 
-### Issue #578: [MySQL, Oracle] Partition key column not part of primary key columns
+#### Partition key column not part of primary key columns
 
 **GitHub link**: [Issue #578](https://github.com/yugabyte/yb-voyager/issues/578)
 
@@ -462,50 +522,9 @@ PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
 
 ---
 
-### Issue #612: [PostgreSQL] Adding primary key to a partitioned table results in an error
+### MySQL, Oracle, and PostgreSQL issues
 
-**GitHub link**: [Issue #612](https://github.com/yugabyte/yb-voyager/issues/612)
-
-**Description**: If you have a partitioned table in which primary key is added later using `ALTER TABLE`, then the table creation fails with the following error:
-
-```output
-ERROR: adding primary key to a partitioned table is not yet implemented (SQLSTATE XX000)
-```
-
-**Workaround**: Manual intervention needed. Add primary key in the `CREATE TABLE` statement.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE public.sales_region (
-    id integer NOT NULL,
-    amount integer,
-    branch text,
-    region text NOT NULL
-)
-PARTITION BY LIST (region);
-
-ALTER TABLE ONLY public.sales_region ADD CONSTRAINT sales_region_pkey PRIMARY KEY (id, region);
-```
-
-Suggested change to the schema is as follows:
-
-```sql
-CREATE TABLE public.sales_region (
-    id integer NOT NULL,
-    amount integer,
-    branch text,
-    region text NOT NULL,
-    PRIMARY KEY(id, region)
-)
-PARTITION BY LIST (region);
-```
-
----
-
-### Issue #49: Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
+#### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
 
 **GitHub link**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
 
@@ -528,12 +547,3 @@ create index ON timestamp_demo (ts asc);
 ```
 
 ---
-
-## Unsupported features
-
-Currently, yb-voyager doesn't support the following features:
-
-| Feature | Description/Alternatives  | GitHub Issue |
-| :------ | :------------------------ | :----------- |
-| ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
-| BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>Use another mechanism to load the attributes.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
