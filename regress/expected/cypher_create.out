@@ -324,7 +324,7 @@ $$) as (a agtype, b agtype);
 SELECT * FROM cypher('cypher_create', $$
 	MATCH (a:n_var)
 	WHERE a.name = 'Node Z'
-	CREATE (a)-[:e_var {name: a.name + ' -> doesnt exist'}]->(:n_other_node)
+	CREATE (a)-[:e_var {name: a.name + ' -> does not exist'}]->(:n_other_node)
 	RETURN a
 $$) as (a agtype);
  a 

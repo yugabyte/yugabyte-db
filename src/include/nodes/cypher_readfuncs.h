@@ -27,7 +27,7 @@
 
 /*
  * Deserialization functions for AGE's ExtensibleNodes. We assign
- * each node to its deserialization functionin the DEFINE_NODE_METHODS
+ * each node to its deserialization function in the DEFINE_NODE_METHODS
  * and DEFINE_NODE_METHODS_EXTENDED macros in ag_nodes.c.
 
  *

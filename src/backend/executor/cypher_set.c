@@ -211,7 +211,7 @@ static bool check_path(agtype_value *path, graphid updated_id)
 
 /*
  * Construct a new agtype path with the entity with updated_id
- * replacing all of its intances in path with updated_entity
+ * replacing all of its instances in path with updated_entity
  */
 static agtype_value *replace_entity_in_path(agtype_value *path,
                                             graphid updated_id,
@@ -441,7 +441,7 @@ static void process_update_list(CustomScanState *node)
 
         /*
          * If we need to remove the property, set the value to NULL. Otherwise
-         * fetch the evaluated expression from the tuble slot.
+         * fetch the evaluated expression from the tuple slot.
          */
         if (remove_property)
         {

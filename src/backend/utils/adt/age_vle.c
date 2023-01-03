@@ -522,7 +522,7 @@ static VLE_local_context *build_local_vle_context(FunctionCallInfo fcinfo,
         /*
          * No context change is needed here as the cache entry is in the proper
          * context. Additionally, all of the modifications are either pointers
-         * to objects already in the proper context or primative types that will
+         * to objects already in the proper context or primitive types that will
          * be stored in that context since the memory is allocated there.
          */
 
@@ -1324,7 +1324,7 @@ static VLE_path_container *create_VLE_path_container(int64 path_size)
     /* allocate the container */
     vpc = palloc0(container_size_bytes);
 
-    /* initialze the PG headers */
+    /* initialize the PG headers */
     SET_VARSIZE(vpc, container_size_bytes);
 
     /* initialize the container */
@@ -1921,8 +1921,8 @@ Datum age_match_two_vle_edges(PG_FUNCTION_ARGS)
 
 /*
  * This function is used when we need to know if the passed in id is at the end
- * of a path. The first arg is the path the second is the vertex id to check and
- * the last is a boolean that syas whether to check the start or the end of the
+ * of a path. The first arg is the path, the second is the vertex id to check and
+ * the last is a boolean that says whether to check the start or the end of the
  * vle path.
  */
 PG_FUNCTION_INFO_V1(age_match_vle_edge_to_id_qual);
@@ -2007,7 +2007,7 @@ Datum age_match_vle_edge_to_id_qual(PG_FUNCTION_ARGS)
     {
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("match_vle_terminal_edge() arguement 1 must be an agtype integer or a graphid")));
+                 errmsg("match_vle_terminal_edge() argument 1 must be an agtype integer or a graphid")));
     }
 
     pos_agt = AG_GET_ARG_AGTYPE_P(2);
@@ -2247,7 +2247,7 @@ Datum age_match_vle_terminal_edge(PG_FUNCTION_ARGS)
     {
         ereport(ERROR,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("match_vle_terminal_edge() arguement 1 must be an agtype integer or a graphid")));
+             errmsg("match_vle_terminal_edge() argument 1 must be an agtype integer or a graphid")));
     }
 
     /* get the veid */
@@ -2277,7 +2277,7 @@ Datum age_match_vle_terminal_edge(PG_FUNCTION_ARGS)
     {
         ereport(ERROR,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("match_vle_terminal_edge() arguement 2 must be an agtype integer or a graphid")));
+             errmsg("match_vle_terminal_edge() argument 2 must be an agtype integer or a graphid")));
     }
 
     /* compare the path beginning or end points */
@@ -2374,7 +2374,7 @@ Datum age_build_vle_match_edge(PG_FUNCTION_ARGS)
 /*
  * This function checks the edges in a MATCH clause to see if they are unique or
  * not. Filters out all the paths where the edge uniques rules are not met.
- * Arguements can be a combination of agtype ints and VLE_path_containers.
+ * Arguments can be a combination of agtype ints and VLE_path_containers.
  */
 PG_FUNCTION_INFO_V1(_ag_enforce_edge_uniqueness);
 

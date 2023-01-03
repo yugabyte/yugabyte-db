@@ -25,7 +25,7 @@ import (
 	"github.com/apache/age/drivers/golang/age"
 )
 
-// Do cypher query to AGE with database/sql Tx API transaction conrol
+// Do cypher query to AGE with database/sql Tx API transaction control
 func doWithSqlAPI(dsn string, graphName string) {
 
 	// Connect to PostgreSQL
@@ -75,7 +75,7 @@ func doWithSqlAPI(dsn string, graphName string) {
 	if err != nil {
 		panic(err)
 	}
-	// Unmarsal result data to Vertex row by row
+	// Unmarshal result data to Vertex row by row
 	for cypherCursor.Next() {
 		row, err := cypherCursor.GetRow()
 		if err != nil {

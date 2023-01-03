@@ -145,7 +145,7 @@ sudo apt install postgresql
 &nbsp;Install From Source Code
 </h4>
 
-You can <a href="https://www.postgresql.org/ftp/source/"> download the Postgres </a> source code and install your own instance of Postgres. You can read instructions on how to install from source code for different versions on the <a href="https://www.postgresql.org/docs/11/installation.html">offical Postgres Website.</a>
+You can <a href="https://www.postgresql.org/ftp/source/"> download the Postgres </a> source code and install your own instance of Postgres. You can read instructions on how to install from source code for different versions on the <a href="https://www.postgresql.org/docs/11/installation.html">official Postgres Website.</a>
 
 
 

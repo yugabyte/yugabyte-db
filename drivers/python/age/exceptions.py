@@ -59,7 +59,7 @@ class SqlExecutionError(Exception):
         super().__init__(msg, cause)
     
     def __repr__(self) :
-        return 'SqlExcution [' + self.msg + ']'  
+        return 'SqlExecution [' + self.msg + ']'  
 
 class AGTypeError(Exception):
     def __init__(self, msg, cause):

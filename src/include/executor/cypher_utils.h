@@ -34,7 +34,7 @@
 
 /*
  * When executing the children of the CREATE, SET, REMOVE, and
- * DELETE clasues, we need to alter the command id in the estate
+ * DELETE clauses, we need to alter the command id in the estate
  * and the snapshot. That way we can hide the modified tuples from
  * the sub clauses that should not know what their parent clauses are
  * doing.

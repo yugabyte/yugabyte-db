@@ -1,5 +1,5 @@
 # ANTLR4 Go Query Result data parser generation rules for apache-age-go
-Go driver for Apache AGE, graph extention for PostgreSQL.
+Go driver for Apache AGE, graph extension for PostgreSQL.
 
 
 ### Build

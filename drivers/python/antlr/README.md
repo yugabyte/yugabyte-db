@@ -1,5 +1,5 @@
 # ANTLR4 Python3 Agtype parser generation rules for apache-age 
-Python driver for Apache AGE, graph extention for PostgreSQL.
+Python driver for Apache AGE, graph extension for PostgreSQL.
 
 
 ### Build

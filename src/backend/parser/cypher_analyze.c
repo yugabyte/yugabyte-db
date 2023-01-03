@@ -777,7 +777,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
 
             /*
              * The coercion context of this coercion is COERCION_EXPLICIT
-             * because the target type is explicitly metioned in the column
+             * because the target type is explicitly mentioned in the column
              * definition list and we need to do this by looking up all
              * possible coercion.
              */

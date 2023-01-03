@@ -1,6 +1,6 @@
 # **AGE AGType parser and driver support for Java**
 
-AGType parser and driver support for [Apache AGE](https://age.apache.org/), graph extention for PostgreSQL.
+AGType parser and driver support for [Apache AGE](https://age.apache.org/), graph extension for PostgreSQL.
 
 ## Prerequisites
 

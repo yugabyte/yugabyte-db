@@ -1671,7 +1671,7 @@ cypher_update_information *transform_cypher_set_item_list(
         {
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("SET clause doesnt not support updating maps or lists in a property"),
+                     errmsg("SET clause does not support updating maps or lists in a property"),
                      parser_errposition(pstate, set_item->location)));
         }
 
@@ -3236,7 +3236,7 @@ static Node *make_type_cast_to_agtype(Node *arg)
 
 /*
  * Makes an agtype bool node that Postgres' transform expression logic
- * can handle. Used when contructed the join quals for building the paths
+ * can handle. Used when constructed the join quals for building the paths
  */
 static Node *make_bool_a_const(bool state)
 {
@@ -3343,7 +3343,7 @@ static List *join_to_entity(cypher_parsestate *cpstate,
     return quals;
 }
 
-// makes the quals neccessary when an edge is joining to another edge.
+// makes the quals necessary when an edge is joining to another edge.
 static List *make_edge_quals(cypher_parsestate *cpstate,
                              transform_entity *edge,
                              enum transform_entity_join_side side)
@@ -3434,7 +3434,7 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
 
 /*
  * Creates the Contains operator to process property contraints for a vertex/
- * edge in a MATCH clause. creates the agtype @> with the enitity's properties
+ * edge in a MATCH clause. creates the agtype @> with the entity's properties
  * on the right and the contraints in the MATCH clause on the left.
  */
 static Node *create_property_constraints(cypher_parsestate *cpstate,
@@ -3869,7 +3869,7 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
 /*
  * Iterate through the list of entities setup the join conditions. Joins
  * are driven through edges. To correctly setup the joins, we must
- * aquire information about the previous edge and vertex, and the next
+ * acquire information about the previous edge and vertex, and the next
  * edge and vertex.
  */
 static List *make_path_join_quals(cypher_parsestate *cpstate, List *entities)
@@ -4611,7 +4611,7 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
         else
         {
             ereport(ERROR,
-                    (errmsg_internal("unreconized node in create pattern")));
+                    (errmsg_internal("unrecognized node in create pattern")));
         }
     }
 
@@ -4896,7 +4896,7 @@ static cypher_target_node *transform_create_cypher_existing_node(
      */
     if (declared_in_current_clause)
     {
-        rel->flags |= EXISTING_VARAIBLE_DECLARED_SAME_CLAUSE;
+        rel->flags |= EXISTING_VARIABLE_DECLARED_SAME_CLAUSE;
     }
 
     /*
@@ -5066,7 +5066,7 @@ static Expr *cypher_create_properties(cypher_parsestate *cpstate,
     }
     else
     {
-        ereport(ERROR, (errmsg_internal("unreconized entity type")));
+        ereport(ERROR, (errmsg_internal("unrecognized entity type")));
     }
 
     // add a volatile wrapper call to prevent the optimizer from removing it
@@ -5237,7 +5237,7 @@ static TargetEntry *findTarget(List *targetList, char *resname)
 }
 
 /*
- * Wrap the expression with a volatile function, to prevent the optimer from
+ * Wrap the expression with a volatile function, to prevent the optimizer from
  * elimating the expression.
  */
 static Expr *add_volatile_wrapper(Expr *node)
@@ -5308,7 +5308,7 @@ Query *cypher_parse_sub_analyze(Node *parseTree,
  * take:
  *
  * 1. If there is no previous clause, the query will have a subquery that
- * represents the path as a select staement, similar to match with a targetList
+ * represents the path as a select statement, similar to match with a targetList
  * that is all declared variables and the FuncExpr that represents the MERGE
  * clause with its needed metadata information, that will be caught in the
  * planner phase and converted into a path.
@@ -5445,7 +5445,7 @@ static Query *transform_cypher_merge(cypher_parsestate *cpstate,
  * This function does the heavy lifting of transforming a MERGE clause that has
  * a clause before it in the query of turning that into a lateral left join.
  * The previous clause will still be able to emit tuples if the path defined in
- * MERGE clause is not found. In that case variable assinged in the MERGE
+ * MERGE clause is not found. In that case variable assigned in the MERGE
  * clause will be emitted as NULL (same as OPTIONAL MATCH).
  */
 static cypher_create_path *
@@ -5658,7 +5658,7 @@ transform_cypher_merge_path(cypher_parsestate *cpstate, List **target_list,
         else
         {
             ereport(ERROR,
-                    (errmsg_internal("unreconized node in create pattern")));
+                    (errmsg_internal("unrecognized node in create pattern")));
         }
     }
 
@@ -5902,7 +5902,7 @@ static cypher_clause *convert_merge_to_match(cypher_merge *merge)
 }
 
 /*
- * Creates a namespace item for the given rte. boolean arguements will
+ * Creates a namespace item for the given rte. boolean arguments will
  * let the rest of the ParseState know if the relation and/or columns are
  * visible, whether the rte is only usable in lateral joins, and if the rte
  * is accessible in lateral joins.

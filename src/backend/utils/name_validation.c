@@ -48,7 +48,7 @@ int is_valid_graph_name(const char *graph_name)
  * Returns whether the label name is valid.
  *
  * Note: label_type parameter is not used in this implementation.
- * It should be used if validation algorithm for edge and vetex
+ * It should be used if validation algorithm for edge and vertex
  * differs in future.
  *
  * @param label_name name of the label

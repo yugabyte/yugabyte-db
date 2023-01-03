@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* Apache AGE output data grammer */
+/* Apache AGE output data grammar */
 grammar Age;
 
 ageout

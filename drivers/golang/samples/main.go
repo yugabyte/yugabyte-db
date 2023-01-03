@@ -32,7 +32,7 @@ var graphName string = "testGraph"
 
 func main() {
 
-	// Do cypher query to AGE with database/sql Tx API transaction conrol
+	// Do cypher query to AGE with database/sql Tx API transaction control
 	fmt.Println("# Do cypher query with SQL API")
 	doWithSqlAPI(dsn, graphName)
 

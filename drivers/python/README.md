@@ -1,5 +1,5 @@
 # AGE AGType parser and driver support for Python
-AGType parser and driver support for [Apache AGE](https://age.apache.org/), graph extention for PostgreSQL.
+AGType parser and driver support for [Apache AGE](https://age.apache.org/), graph extension for PostgreSQL.
 
 ### Features
 * Unmarshal AGE result data(AGType) to Vertex, Edge, Path

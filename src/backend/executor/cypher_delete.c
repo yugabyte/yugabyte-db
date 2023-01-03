@@ -77,7 +77,7 @@ const CustomExecMethods cypher_delete_exec_methods = {DELETE_SCAN_STATE_NAME,
 
 /*
  * Initialization at the beginning of execution. Setup the child node,
- * setup its scan tuple slot and projection infp, expression context,
+ * setup its scan tuple slot and projection info, expression context,
  * collect metadata about visible edges, and alter the commandid for
  * the transaction.
  */
