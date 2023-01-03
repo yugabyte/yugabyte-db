@@ -12,7 +12,7 @@ SELECT a,b,c,d FROM t1, t2, t3, t4 WHERE t1.a = t2.b AND t3.c = t4.d ORDER BY a;
 SELECT a,b,c,d FROM t1, t2, t3, t4 WHERE t1.a = t2.b AND t3.c = t4.d ORDER BY a;
 SELECT a,b,c,d FROM t1, t2, t3, t4 WHERE t1.a = t2.b AND t3.c = t4.d ORDER BY a;
 SELECT a,b,c,d FROM t1, t2, t3, t4 WHERE t1.a = t2.b AND t3.c = t4.d ORDER BY a;
-SELECT query,calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
+SELECT query, sum(calls) as calls FROM pg_stat_monitor GROUP BY query ORDER BY query COLLATE "C";
 
 SELECT pg_stat_monitor_reset();
 
@@ -26,7 +26,7 @@ begin
 		n := n + 1;
 	end loop;
 end $$;
-SELECT query,calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
+SELECT query, sum(calls) as calls FROM pg_stat_monitor GROUP BY query ORDER BY query COLLATE "C";
 
 DROP TABLE t1;
 DROP TABLE t2;
