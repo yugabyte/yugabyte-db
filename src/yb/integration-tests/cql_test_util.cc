@@ -498,6 +498,11 @@ void CppCassandraDriver::EnableTLS(const std::vector<std::string>& ca_certs) {
   cass_ssl_free(ssl);
 }
 
+void CppCassandraDriver::SetCredentials(const std::string& username, const std::string& password) {
+  LOG(INFO) << "Setting YCQL credentials: " << username << " / " << password;
+  cass_cluster_set_credentials(cass_cluster_, username.c_str(), password.c_str());
+}
+
 Result<CassandraSession> CppCassandraDriver::CreateSession() {
   return CassandraSession::Create(cass_cluster_);
 }

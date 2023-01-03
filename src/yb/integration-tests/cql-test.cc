@@ -53,6 +53,8 @@ DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(disable_truncate_table);
 DECLARE_bool(cql_always_return_metadata_in_execute_response);
 DECLARE_bool(cql_check_table_schema_in_paging_state);
+DECLARE_bool(use_cassandra_authentication);
+DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 
 namespace yb {
 
@@ -836,6 +838,42 @@ TEST_F(CqlTest, SelectAggregateFunctions) {
   }
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, PasswordReset) {
+  const string change_pwd = "ALTER ROLE cassandra WITH PASSWORD = 'updated_password'";
+
+  // Password reset disallowed when ycql_allow_non_authenticated_password_reset = false.
+  FLAGS_use_cassandra_authentication = false;
+  {
+    ASSERT_FALSE(FLAGS_ycql_allow_non_authenticated_password_reset);
+    auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+    Status s = session.ExecuteQuery(change_pwd);
+    ASSERT_NOK(s);
+    ASSERT_NE(s.message().ToBuffer().find("Unauthorized."), std::string::npos) << s;
+  }
+
+  // Password reset allowed when ycql_allow_non_authenticated_password_reset = true.
+  FLAGS_ycql_allow_non_authenticated_password_reset = true;
+  {
+    auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+    ASSERT_OK(session.ExecuteQuery(change_pwd));
+  }
+
+  // Login works with the updated password and the user is able to create a superuser.
+  FLAGS_ycql_allow_non_authenticated_password_reset = false;
+  FLAGS_use_cassandra_authentication = true;
+  driver_->SetCredentials("cassandra", "updated_password");
+  {
+    auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+    ASSERT_OK(
+        session.ExecuteQuery("CREATE ROLE superuser_role WITH SUPERUSER = true AND LOGIN = "
+                             "true AND PASSWORD = 'superuser_password'"));
+  }
+
+  // The created superuser account login works.
+  driver_->SetCredentials("superuser_role", "superuser_password");
+  ASSERT_RESULT(EstablishSession(driver_.get()));
 }
 
 }  // namespace yb
