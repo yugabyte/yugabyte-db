@@ -18,20 +18,24 @@ menu:
 type: docs
 ---
 
-YugabyteDB provides [high availability](../../../architecture/core-functions/high-availability/) (HA) by replicating data across [fault domains](../../../architecture/docdb-replication/replication/#fault-domains). If a fault domain experiences a failure, an active replica is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
+YugabyteDB is able to continuously serve requests in the event of planned or unplanned outages, such as system upgrades or node, availability zone, and regional outages.
+
+YugabyteDB provides this [high availability](../../../architecture/core-functions/high-availability/) (HA) by replicating data across [fault domains](../../../architecture/docdb-replication/replication/#fault-domains). If a fault domain experiences a failure, an active replica is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
 
 This is reflected in both the recovery point objective (RPO) and recovery time objective (RTO) for YugabyteDB clusters:
 
 - The RPO for the tablets in a YugabyteDB cluster is 0, meaning no data is lost in the failover to another fault domain.
-- The RTO is 3 seconds, which is the time window for completing the failover and becoming operational out of the remaining fault domains.
+- The RTO for a zone outage is ~3 seconds, which is the time window for completing the failover and becoming operational out of the remaining fault domains.
 
-The benefits of high availability extend to performing database upgrades. You can [upgrade your cluster](../../../manage/upgrade-deployment/) to a newer version of YugabyteDB by bringing each node down in turn, upgrading the software, and starting it up again, with zero downtime for the cluster as a whole.
+<img src="/images/architecture/replication/rpo-vs-rto-zone-outage.png"/>
+
+The benefits of continuous availability extend to performing maintenance and database upgrades. You can maintain and [upgrade your cluster](../../../manage/upgrade-deployment/) to a newer version of YugabyteDB by performing a rolling upgrade; that is, bringing each node down in turn, upgrading the software, and starting it up again, with zero downtime for the cluster as a whole.
 
 ## Example
 
-This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. You create YSQL tables with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the cluster remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes become unavailable on the cluster to preserve data consistency.
+This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. In this scenario, you create a cluster with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the cluster remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable on the cluster to preserve data consistency.
 
-The tutorial uses the YB Workload Simulator application, which is built with the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a cluster, and re-balances connections when a node fails.
+The tutorial uses the YB Workload Simulator application, which uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a cluster, and re-balances connections when a node fails.
 
 {{% explore-setup-multi %}}
 
@@ -83,4 +87,5 @@ You can shut down the local cluster you created as follows:
 
 ## Learn more
 
-For information on fault tolerance in a synchronously replicated YugabyteDB cluster, refer to [Synchronous replication](../../../architecture/docdb-replication/replication/).
+- YugabyteDB Friday Tech Talk: [Continuous Availability with YugabyteDB](https://www.youtube.com/watch?v=4PpiOMcq-j8)
+- [Synchronous replication](../../../architecture/docdb-replication/replication/)
