@@ -345,9 +345,14 @@
 # Redirect for YugabyteDB Voyager
 
 [[redirects]]
-  from = "/:version/migrate/yb-voyager/*"
-  to = "/:version/migrate/:splat"
+  from = "/:version/migrate/"
+  to = "/preview/migrate/"
   force = true
+
+# [[redirects]]
+#   from = "/:version/migrate/yb-voyager/*"
+#   to = "/:version/migrate/:splat"
+#   force = true
 
 # Redirect older versions of specific sections
 
