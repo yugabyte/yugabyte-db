@@ -1307,23 +1307,10 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	ppi->ppi_req_outer = required_outer;
 	ppi->ppi_rows = rows;
 	ppi->ppi_clauses = pclauses;
-	ppi->yb_ppi_req_outer_batched = NULL;
-	ppi->yb_ppi_req_outer_unbatched = NULL;
-
-	baserel->ppilist = lappend(baserel->ppilist, ppi);
-
-	if (!IsYugaByteEnabled() ||
-		(bms_is_empty(root->yb_cur_batched_relids) &&
-		 bms_is_empty(root->yb_cur_unbatched_relids)))
-		return ppi;
-
-	unbatchedrelids = bms_del_member(unbatchedrelids,
-									 baserel->relid);
-
-	batchedrelids = bms_difference(batchedrelids, unbatchedrelids);
-
 	ppi->yb_ppi_req_outer_batched = batchedrelids;
 	ppi->yb_ppi_req_outer_unbatched = unbatchedrelids;
+
+	baserel->ppilist = lappend(baserel->ppilist, ppi);
 
 	return ppi;
 }
