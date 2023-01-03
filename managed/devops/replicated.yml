@@ -554,6 +554,7 @@ components:
                   ssl_protocols {{repl ConfigOption "tls_version" }};
                   ssl_certificate /opt/certs/server.cert;
                   ssl_certificate_key /opt/certs/server.key;
+                  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
                 {{repl else}}
                   listen       80;
                   server_name  {{repl ConfigOption "hostname" }};
