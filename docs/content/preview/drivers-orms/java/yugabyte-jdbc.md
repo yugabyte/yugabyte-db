@@ -113,7 +113,7 @@ The following table describes the connection parameters required to connect, inc
 
 | JDBC Parameter | Description | Default |
 | :------------- | :---------- | :------ |
-| hostname  | Hostname of the YugabyteDB instance | localhost
+| hostname  | Host name of the YugabyteDB instance. You can also enter [fallback addresses](#fallback-addresses). | localhost
 | port |  Listen port for YSQL | 5433
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
@@ -127,6 +127,17 @@ The following is an example JDBC URL for connecting to YugabyteDB.
 jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
+
+#### Fallback addresses
+
+You can specify multiple hosts in the connection string to provide fallback options during the initial connection. Delimit the addresses using commas, as follows:
+
+```sh
+jdbc://yugabytedb://hostname1:port,hostname2:port,hostame3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+    topology-keys=cloud.region.zone1,cloud.region.zone2
+```
+
+The fallback hosts are only used during initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on. However, after the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 #### Use SSL
 
