@@ -152,3 +152,34 @@ char *get_entity_name(transform_entity *entity)
 
     return NULL;
 }
+
+/*
+ * Returns entity->expr relative to the current cpstate.
+ *
+ * For example,
+ * If entity is from current cpstate, its levelsup = 0.
+ * If entity is from immediate parent cpstate, its levelsup = 1.
+ * If entity is from parent's parent's cpstate, its levelsup = 2.
+ *
+ * Relative Expr is necessary when entity->expr is a Var and the entity
+ * is not from the current cpstate. In this case, Var->varlevelsup must
+ * reflect the distance between source cpstate of the entity and the
+ * cpstate where the Var is being used.
+ */
+Expr *get_relative_expr(transform_entity *entity, Index levelsup)
+{
+    Var *var;
+    Var *updated_var;
+
+    if (!IsA(entity->expr, Var))
+    {
+        return entity->expr;
+    }
+
+    var = (Var *)entity->expr;
+    updated_var = makeVar(var->varno, var->varattno, var->vartype,
+                          var->vartypmod, var->varcollid,
+                          var->varlevelsup + levelsup);
+
+    return (Expr *)updated_var;
+}

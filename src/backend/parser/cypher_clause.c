@@ -4146,7 +4146,7 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
 
             if (entity != NULL)
             {
-                return entity->expr;
+                return get_relative_expr(entity, 2);
             }
             else
             {
@@ -4294,10 +4294,9 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
              */
             transform_entity *entity = find_variable(parent_cpstate, node->name);
 
-
             if (entity != NULL)
             {
-                return entity->expr;
+                return get_relative_expr(entity, 2);
             }
             else
             {

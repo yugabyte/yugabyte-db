@@ -1001,6 +1001,73 @@ SELECT * FROM cypher('cypher_match', $$
 (12 rows)
 
 --
+-- Tests retrieving Var from some parent's cpstate during transformation
+--
+SELECT create_graph('test_retrieve_var');
+NOTICE:  graph "test_retrieve_var" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('test_retrieve_var', $$ CREATE (:A)-[:incs]->(:C) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+-- Tests with node Var
+-- both queries should return the same result
+-- first query does not retrieve any variable from any parent's cpstate
+-- second query retrieves variable 'a', inside WHERE, from parent's parent's cpstate
+SELECT * FROM cypher('test_retrieve_var', $$
+    MATCH (a:A) WITH a
+    OPTIONAL MATCH (a)-[:incs]->(c)
+    WHERE EXISTS((c)<-[:incs]-())
+    RETURN a, c
+$$) AS (a agtype, c agtype);
+                                a                                |                                c                                 
+-----------------------------------------------------------------+------------------------------------------------------------------
+ {"id": 844424930131969, "label": "A", "properties": {}}::vertex | {"id": 1407374883553281, "label": "C", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('test_retrieve_var', $$
+    MATCH (a:A) WITH a
+    OPTIONAL MATCH (a)-[:incs]->(c)
+    WHERE EXISTS((c)<-[:incs]-(a))
+    RETURN a, c
+$$) AS (a agtype, c agtype);
+                                a                                |                                c                                 
+-----------------------------------------------------------------+------------------------------------------------------------------
+ {"id": 844424930131969, "label": "A", "properties": {}}::vertex | {"id": 1407374883553281, "label": "C", "properties": {}}::vertex
+(1 row)
+
+-- Tests with edge Var
+-- both queries should return the same result
+-- first query does not retrieve any variable from any parent's cpstate
+-- second query retrieves variable 'r', inside WHERE, from parent's parent's cpstate
+SELECT * FROM cypher('test_retrieve_var', $$
+    MATCH (a:A)-[r:incs]->() WITH a, r
+    OPTIONAL MATCH (a)-[r]->(c)
+    WHERE EXISTS(()<-[]-(c))
+    RETURN a, r
+$$) AS (a agtype, r agtype);
+                                a                                |                                                             r                                                              
+-----------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "A", "properties": {}}::vertex | {"id": 1125899906842625, "label": "incs", "end_id": 1407374883553281, "start_id": 844424930131969, "properties": {}}::edge
+(1 row)
+
+SELECT * FROM cypher('test_retrieve_var', $$
+    MATCH (a:A)-[r:incs]->() WITH a, r
+    OPTIONAL MATCH (a)-[r]->(c)
+    WHERE EXISTS(()<-[r]-(c))
+    RETURN a, r
+$$) AS (a agtype, r agtype);
+                                a                                |                                                             r                                                              
+-----------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "A", "properties": {}}::vertex | {"id": 1125899906842625, "label": "incs", "end_id": 1407374883553281, "start_id": 844424930131969, "properties": {}}::edge
+(1 row)
+
+--
 -- JIRA: AGE2-544
 --
 -- Clean up
@@ -1130,6 +1197,19 @@ drop cascades to table cypher_match.other_v
 drop cascades to table cypher_match.opt_match_v
 drop cascades to table cypher_match.opt_match_e
 NOTICE:  graph "cypher_match" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('test_retrieve_var', true);
+NOTICE:  drop cascades to 5 other objects
+DETAIL:  drop cascades to table test_retrieve_var._ag_label_vertex
+drop cascades to table test_retrieve_var._ag_label_edge
+drop cascades to table test_retrieve_var."A"
+drop cascades to table test_retrieve_var.incs
+drop cascades to table test_retrieve_var."C"
+NOTICE:  graph "test_retrieve_var" has been dropped
  drop_graph 
 ------------
  

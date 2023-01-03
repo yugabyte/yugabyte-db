@@ -24,6 +24,7 @@
 #include "parser/parse_node.h"
 
 #include "nodes/cypher_nodes.h"
+#include "nodes/makefuncs.h"
 #include "parser/cypher_parse_node.h"
 
 enum transform_entity_type
@@ -93,5 +94,6 @@ transform_entity *make_transform_entity(cypher_parsestate *cpstate,
                                         enum transform_entity_type type,
                                         Node *node, Expr *expr);
 char *get_entity_name(transform_entity *entity);
+Expr *get_relative_expr(transform_entity *entity, Index levelsup);
 
 #endif

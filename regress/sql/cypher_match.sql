@@ -501,6 +501,49 @@ SELECT * FROM cypher('cypher_match', $$
     ORDER BY n, p, m, q
  $$) AS (n agtype, r agtype, p agtype, m agtype, s agtype, q agtype);
 
+
+--
+-- Tests retrieving Var from some parent's cpstate during transformation
+--
+SELECT create_graph('test_retrieve_var');
+SELECT * FROM cypher('test_retrieve_var', $$ CREATE (:A)-[:incs]->(:C) $$) as (a agtype);
+
+-- Tests with node Var
+-- both queries should return the same result
+-- first query does not retrieve any variable from any parent's cpstate
+-- second query retrieves variable 'a', inside WHERE, from parent's parent's cpstate
+SELECT * FROM cypher('test_retrieve_var', $$
+    MATCH (a:A) WITH a
+    OPTIONAL MATCH (a)-[:incs]->(c)
+    WHERE EXISTS((c)<-[:incs]-())
+    RETURN a, c
+$$) AS (a agtype, c agtype);
+
+SELECT * FROM cypher('test_retrieve_var', $$
+    MATCH (a:A) WITH a
+    OPTIONAL MATCH (a)-[:incs]->(c)
+    WHERE EXISTS((c)<-[:incs]-(a))
+    RETURN a, c
+$$) AS (a agtype, c agtype);
+
+-- Tests with edge Var
+-- both queries should return the same result
+-- first query does not retrieve any variable from any parent's cpstate
+-- second query retrieves variable 'r', inside WHERE, from parent's parent's cpstate
+SELECT * FROM cypher('test_retrieve_var', $$
+    MATCH (a:A)-[r:incs]->() WITH a, r
+    OPTIONAL MATCH (a)-[r]->(c)
+    WHERE EXISTS(()<-[]-(c))
+    RETURN a, r
+$$) AS (a agtype, r agtype);
+
+SELECT * FROM cypher('test_retrieve_var', $$
+    MATCH (a:A)-[r:incs]->() WITH a, r
+    OPTIONAL MATCH (a)-[r]->(c)
+    WHERE EXISTS(()<-[r]-(c))
+    RETURN a, r
+$$) AS (a agtype, r agtype);
+
 --
 -- JIRA: AGE2-544
 --
@@ -561,6 +604,7 @@ $$) as (n agtype);
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
+SELECT drop_graph('test_retrieve_var', true);
 
 --
 -- End
