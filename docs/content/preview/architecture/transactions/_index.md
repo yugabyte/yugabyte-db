@@ -53,7 +53,7 @@ YugabyteDB's distributed ACID transaction architecture is inspired by <a href="h
         <div class="title">Concurrency control</div>
       </div>
       <div class="body">
-        Learn about how YugabyteDB handle conflicts between concurrent transactions.
+        Learn about how YugabyteDB handles conflicts between concurrent transactions.
       </div>
     </a>
   </div>
