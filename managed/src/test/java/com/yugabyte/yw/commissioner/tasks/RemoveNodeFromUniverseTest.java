@@ -391,6 +391,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     Set<NodeState> allowedStates = NodeState.allowedStatesForAction(NodeActionType.REMOVE);
     Set<NodeState> expectedStates =
         ImmutableSet.of(
+            NodeState.Adding,
             NodeState.Live,
             NodeState.ToBeRemoved,
             NodeState.ToJoinCluster,

@@ -104,6 +104,24 @@ void SetKey(const Slice& value, PgsqlPartitionBound* bound) {
   bound->set_key(value.cdata(), value.size());
 }
 
+template <typename Req>
+Result<const PartitionKey&> FindPartitionKeyByUpperBound(
+    std::reference_wrapper<const TablePartitionList> partition_list, const Req& request) {
+  const auto& partitions = partition_list.get();
+  if (!request.has_upper_bound()) {
+    return partitions.back();
+  }
+
+  auto idx = FindPartitionStartIndex(
+      partitions, static_cast<std::string_view>(request.upper_bound().key()));
+  if (!request.upper_bound().is_inclusive()) {
+    RSTATUS_DCHECK_NE(idx, 0U, InvalidArgument,
+                      "Upped bound must not be exclusive when points to the first partition.");
+    --idx;
+  }
+  return partitions[idx];
+}
+
 template<class Req>
 Status InitHashPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema, Req* request) {
@@ -254,7 +272,7 @@ Status SetRangePartitionBounds(const Schema& schema,
 
 template<class Req>
 Status InitRangePartitionKey(
-    const Schema& schema, const std::string& last_partition, Req* request) {
+    const Schema& schema, const TablePartitionList& partitions, Req* request) {
   // Seek a specific partition_key from read_request.
   // 1. Not specified range condition - Full scan.
   // 2. paging_state -- Set by server to continue the same request.
@@ -266,6 +284,10 @@ Status InitRangePartitionKey(
       request->paging_state().has_next_partition_key()) {
     // If this is a subsequent query, use the partition key from the paging state.
     SetPartitionKey(request->paging_state().next_partition_key(), request);
+  } else if (!request->is_forward_scan()) {
+    // A special case for backward scan: partition is selected on base of upper bound.
+    const auto& key = VERIFY_RESULT_REF(FindPartitionKeyByUpperBound(partitions, *request));
+    SetPartitionKey(key, request);
   } else if (request->has_lower_bound()) {
       // There are two cases here.
       // Case 1: batching ybctids
@@ -289,7 +311,7 @@ Status InitRangePartitionKey(
   } else {
     // Evaluate condition to return partition_key and set the upper bound.
     string max_key;
-    RETURN_NOT_OK(SetRangePartitionBounds(schema, last_partition, request, &max_key));
+    RETURN_NOT_OK(SetRangePartitionBounds(schema, partitions.back(), request, &max_key));
     if (!max_key.empty()) {
       SetKey(max_key, request->mutable_upper_bound());
       request->mutable_upper_bound()->set_is_inclusive(true);
@@ -357,12 +379,12 @@ Result<std::string> GetRangePartitionKey(
 template<class Req>
 Status InitReadPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema,
-    const std::string& last_partition, Req* request) {
+    const TablePartitionList& partitions, Req* request) {
   if (schema.num_hash_key_columns() > 0) {
     return InitHashPartitionKey(schema, partition_schema, request);
   }
 
-  return InitRangePartitionKey(schema, last_partition, request);
+  return InitRangePartitionKey(schema, partitions, request);
 }
 
 template<class Req>
@@ -1004,10 +1026,18 @@ void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
 
 Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
   if (!request_holder_) {
+    // This instance's partition_key may have stale value in case of backward scan and dynamically
+    // changed partitions. New key is calculated on-the-fly.
+    if (table_->partition_schema().IsRangePartitioning() && !request_->is_forward_scan()) {
+      *partition_key = VERIFY_RESULT_REF(
+          FindPartitionKeyByUpperBound(*table_->GetPartitionsShared(), *request_));
+      return Status::OK();
+    }
     return YBPgsqlOp::GetPartitionKey(partition_key);
   }
+
   RETURN_NOT_OK(InitReadPartitionKey(
-      table_->InternalSchema(), table_->partition_schema(), table_->GetPartitionsShared()->back(),
+      table_->InternalSchema(), table_->partition_schema(), *(table_->GetPartitionsShared()),
       request_));
   *partition_key = std::move(*request_->mutable_partition_key());
   return Status::OK();
@@ -1108,8 +1138,8 @@ bool YBPgsqlReadOp::should_add_intents(IsolationLevel isolation_level) {
 
 Status InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema,
-    const std::string& last_partition, LWPgsqlReadRequestPB* request) {
-  return InitReadPartitionKey(schema, partition_schema, last_partition, request);
+    const TablePartitionList& partitions, LWPgsqlReadRequestPB* request) {
+  return InitReadPartitionKey(schema, partition_schema, partitions, request);
 }
 
 Status InitPartitionKey(
@@ -1129,6 +1159,11 @@ Status GetRangePartitionBounds(const Schema& schema,
                                vector<docdb::KeyEntryValue>* lower_bound,
                                vector<docdb::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
+}
+
+Result<const PartitionKey&> TEST_FindPartitionKeyByUpperBound(
+    const TablePartitionList& partitions, const PgsqlReadRequestPB& request) {
+  return FindPartitionKeyByUpperBound(partitions, request);
 }
 
 }  // namespace client

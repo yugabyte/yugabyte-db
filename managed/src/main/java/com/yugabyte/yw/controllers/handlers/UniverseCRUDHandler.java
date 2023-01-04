@@ -53,6 +53,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -436,12 +437,14 @@ public class UniverseCRUDHandler {
     }
     boolean cloudEnabled =
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
+    boolean isAuthEnforced =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.universe.auth.is_enforced");
 
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-      c.validate(!cloudEnabled);
+      c.validate(!cloudEnabled, isAuthEnforced);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
       if (c.userIntent.enableExposingService
           == UniverseDefinitionTaskParams.ExposingServiceState.NONE) {
@@ -467,13 +470,13 @@ public class UniverseCRUDHandler {
       // Set the node exporter config based on the provider
       if (!c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
         AccessKey accessKey = AccessKey.get(provider.uuid, c.userIntent.accessKeyCode);
-        AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-        boolean installNodeExporter = keyInfo.installNodeExporter;
-        String nodeExporterUser = keyInfo.nodeExporterUser;
+        ProviderDetails providerDetails = provider.details;
+        boolean installNodeExporter = providerDetails.installNodeExporter;
+        String nodeExporterUser = providerDetails.nodeExporterUser;
         taskParams.extraDependencies.installNodeExporter = installNodeExporter;
 
         if (c.userIntent.providerType.equals(Common.CloudType.onprem)) {
-          int nodeExporterPort = keyInfo.nodeExporterPort;
+          int nodeExporterPort = providerDetails.nodeExporterPort;
           taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
 
           for (NodeDetails node : taskParams.nodeDetailsSet) {
@@ -543,14 +546,13 @@ public class UniverseCRUDHandler {
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
     // for this customer id.
-    Universe universe = null;
+    Universe universe;
     TaskType taskType = TaskType.CreateUniverse;
 
     Ebean.beginTransaction();
     try {
       universe = Universe.create(taskParams, customer.getCustomerId());
       LOG.info("Created universe {} : {}.", universe.universeUUID, universe.name);
-
       if (taskParams.runtimeFlags != null) {
         // iterate through the flags and set via runtime config
         for (Map.Entry<String, String> entry : taskParams.runtimeFlags.entrySet()) {
@@ -574,15 +576,16 @@ public class UniverseCRUDHandler {
           universe.updateConfig(
               ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
           universe.save();
-          // TODO(bhavin192): remove the flag once the new naming style
-          // is stable enough.
+          // This flag will be used for testing purposes as well. Don't remove.
           if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.use_new_helm_naming")) {
-            if (Util.compareYbVersions(primaryIntent.ybSoftwareVersion, "2.8.0.0") >= 0) {
+            if (Util.compareYbVersions(primaryIntent.ybSoftwareVersion, "2.15.4.0") >= 0) {
               taskParams.useNewHelmNamingStyle = true;
+            } else {
+              if (taskParams.useNewHelmNamingStyle) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST, "New naming style is not supported for versions < 2.15.4.0");
+              }
             }
-            // TODO(bhavin192): check if
-            // taskParams.useNewHelmNamingStyle is set to true for
-            // ybSoftwareVersion < 2.8.0.0? If so, respond with error.
           }
         } else {
           if (primaryCluster.userIntent.enableIPV6) {
@@ -657,7 +660,15 @@ public class UniverseCRUDHandler {
     }
 
     // Submit the task to create the universe.
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
+
+    UUID taskUUID;
+    try {
+      taskUUID = commissioner.submit(taskType, taskParams);
+    } catch (RuntimeException e) {
+      // No need to keep this Universe
+      Universe.delete(universe.getUniverseUUID());
+      throw e;
+    }
     LOG.info(
         "Submitted create universe for {}:{}, task uuid = {}.",
         universe.universeUUID,
@@ -983,9 +994,12 @@ public class UniverseCRUDHandler {
 
     // Set the provider code.
     Provider provider = Provider.getOrBadRequest(UUID.fromString(addOnCluster.userIntent.provider));
+    boolean cloudEnabled =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
+    boolean isAuthEnforced =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.universe.auth.is_enforced");
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-    addOnCluster.validate(
-        !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled"));
+    addOnCluster.validate(!cloudEnabled, isAuthEnforced);
 
     TaskType taskType = TaskType.AddOnClusterCreate;
     if (addOnCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -1057,9 +1071,12 @@ public class UniverseCRUDHandler {
     // Set the provider code.
     Provider provider =
         Provider.getOrBadRequest(UUID.fromString(readOnlyCluster.userIntent.provider));
+    boolean cloudEnabled =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
+    boolean isAuthEnforced =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.universe.auth.is_enforced");
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-    readOnlyCluster.validate(
-        !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled"));
+    readOnlyCluster.validate(!cloudEnabled, isAuthEnforced);
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;
     if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {

@@ -49,18 +49,22 @@ public class AuditControllerTest extends FakeDBApplication {
     String targetID = "Test TargetID";
     Audit.ActionType action = Audit.ActionType.Create;
     params.put("foo", "bar");
-    audit1 = Audit.create(user1, "/test/call", "GET", null, null, null, params, null, null);
+    audit1 = Audit.create(user1, "/test/call", "GET", null, null, null, params, null, null, null);
     taskUUID1 = UUID.randomUUID();
     taskUUID2 = UUID.randomUUID();
     taskUUID3 = UUID.randomUUID();
     audit2 =
-        Audit.create(user1, "/test/call1", "DELETE", null, null, null, params, taskUUID1, null);
-    audit3 = Audit.create(user2, "/test/call2", "PUT", null, null, null, params, taskUUID2, null);
-    audit4 = Audit.create(user2, "/test/call4", "GET", null, null, null, params, null, null);
+        Audit.create(
+            user1, "/test/call1", "DELETE", null, null, null, params, taskUUID1, null, null);
+    audit3 =
+        Audit.create(user2, "/test/call2", "PUT", null, null, null, params, taskUUID2, null, null);
+    audit4 = Audit.create(user2, "/test/call4", "GET", null, null, null, params, null, null, null);
     audit5 =
-        Audit.create(user1, "/test/call5", "PUT", target, null, action, params, taskUUID3, null);
+        Audit.create(
+            user1, "/test/call5", "PUT", target, null, action, params, taskUUID3, null, null);
     audit6 =
-        Audit.create(user2, "/test/call6", "POST", target, targetID, action, params, null, null);
+        Audit.create(
+            user2, "/test/call6", "POST", target, targetID, action, params, null, null, null);
   }
 
   @Test

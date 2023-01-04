@@ -157,9 +157,6 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Result<TabletId> CreateSingleTabletAndSplit(uint32_t num_rows, bool wait_for_intents = true);
 
-  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
-  Result<master::SplitTabletResponsePB> SendMasterSplitTabletRpcSync(const std::string& tablet_id);
-
   Result<master::CatalogManagerIf*> catalog_manager() {
     return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
   }
@@ -174,9 +171,11 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
       size_t num_replicas_online = 0, const client::YBTableName& table = client::kTableName,
       bool core_dump_on_failure = true);
 
-  Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
+  Result<tserver::GetSplitKeyResponsePB> SendTServerRpcSyncGetSplitKey(const TabletId& tablet_id);
 
-  Result<master::SplitTabletResponsePB> SplitSingleTablet(const TabletId& tablet_id);
+  Result<master::SplitTabletResponsePB> SendMasterRpcSyncSplitTablet(const TabletId& tablet_id);
+
+  Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
 
   Result<TabletId> SplitTabletAndValidate(
       docdb::DocKeyHash split_hash_code,
@@ -237,7 +236,8 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Result<std::set<TabletId>> GetTestTableTabletIds();
 
-  Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(size_t tserver_idx);
+  Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(
+      size_t tserver_idx);
 
   Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets();
 

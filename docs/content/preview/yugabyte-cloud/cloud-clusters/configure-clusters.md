@@ -24,7 +24,7 @@ Cluster edit operations are performed using the **Edit Infrastructure** option o
 
 {{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
-For multi-region clusters, or single region clusters with Node or Availability zone level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
+For clusters with Region, Availability Zone, or Node Level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
 The **Regions** section on the cluster **Settings** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region.
 
@@ -37,7 +37,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 
 ## Limitations
 
-- You can horizontally scale nodes in clusters with Node level fault tolerance in increments of 1. Nodes in clusters with Availability zone level fault tolerance are scaled in increments of 3.
+- You can horizontally scale nodes in clusters with Node Level fault tolerance in increments of 1. Nodes in clusters with Region and Availability Zone Level fault tolerance are scaled in increments of 3.
 - You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{% support-cloud %}}.
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
 - You can't change the fault tolerance of a cluster after it is created.
@@ -52,6 +52,8 @@ You can scale multi-node single-region clusters horizontally and vertically, as 
 
 To add or remove read replicas, refer to [Read replicas](../managed-read-replica/).
 
+For Availability Zone Level fault tolerant clusters, you must scale nodes in increments of 3.
+
 To scale a single-region cluster:
 
 1. On the **Clusters** page, select your cluster.
@@ -61,7 +63,7 @@ To scale a single-region cluster:
 
 1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster.
 
-    **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+    Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 1. Click **Confirm and Save Changes** when you are done.
 
@@ -84,9 +86,13 @@ To scale nodes in a replicate-across-regions cluster:
 
     <!--1. To migrate nodes to a different region, select the region. When migrating a node, you can also deploy it in a different VPN.-->
 
-1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster. The same number of nodes and node sizes apply across all regions. Optionally, set or change the [Preferred region](../../cloud-basics/create-clusters/create-clusters-multisync/#preferred-region).
+1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster.
 
-    **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+    The same number of nodes and node sizes apply across all regions.
+
+    Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+
+1. Optionally, set or change the [Preferred region](../../cloud-basics/create-clusters/create-clusters-multisync/#preferred-region).
 
 1. Click **Confirm and Save Changes** when you are done.
 
@@ -102,7 +108,7 @@ New regions must be deployed in a VPC. New regions have the same fault tolerance
 
 Before you can delete a region, you must drop all the tablespaces located in the region. You can't delete the primary region.
 
-For availability zone-level fault tolerant clusters, you must scale nodes in increments of 3.
+For Availability Zone Level fault tolerant clusters, you must scale nodes in each region in increments of 3.
 
 To scale a partition-by-region cluster:
 
@@ -113,9 +119,13 @@ To scale a partition-by-region cluster:
 
 1. To add a region, click **Add Region**, choose the region, select the VPC where you want to deploy the cluster, and enter the number of nodes. The new region has the same fault tolerance as the primary cluster.
 
-1. To scale the cluster, enter the number of nodes, vCPUs per node, and disk size in GB per node. The same number of nodes and node sizes apply across all regions.
+1. To scale the cluster horizontally, enter the number of nodes for each region.
 
-    **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+1. To scale the cluster vertically, enter the number of vCPUs per node, and disk size in GB per node.
+
+    You can scale the number of nodes in each region independently, however the same node sizes apply across all regions.
+
+    Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 1. Click **Confirm and Save Changes** when you are done.
 

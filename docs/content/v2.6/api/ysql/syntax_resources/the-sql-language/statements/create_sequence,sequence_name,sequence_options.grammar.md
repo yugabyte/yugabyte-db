@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_sequence ::= CREATE SEQUENCE [ IF NOT EXISTS ] sequence_name 
                     sequence_options
 

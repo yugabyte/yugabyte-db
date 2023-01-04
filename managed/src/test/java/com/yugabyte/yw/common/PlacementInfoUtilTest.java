@@ -80,6 +80,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -116,7 +117,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       provider = ModelFactory.newProvider(customer, cloud);
 
       // Set up base Universe
-      univName = "Test Universe " + provider.code;
+      univName = "Test Universe" + provider.code;
       universe = createUniverse(univName, customer.getCustomerId());
       univUuid = universe.universeUUID;
 
@@ -1666,13 +1667,15 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   @Parameters({
     ", false, demo, az-1, false, false",
     ", false, demo, az-1, false, true",
-    "demo-, false, demo, az-1, true, false",
-    "demo-rr-, false, demo, az-1, true, true",
-    "demo-az-1-, true, demo, az-1, true, false",
-    "demo-node-prefix-which-is-longer-1234567-az-, "
+    "ybdemo-jjk0-, false, demo, az-1, true, false",
+    "ybdemo-rr-skje-, false, demo, az-1, true, true",
+    "ybdemo-az-1-jdfi-, true, demo, az-1, true, false",
+    "ybdemo-node-p-az-1-1zcx-, "
         + "true, demo-node-prefix-which-is-longer-1234567, az-1, true, false",
-    "demo-node-prefix-which-is-longer-1234567-rr-, "
-        + "true, demo-node-prefix-which-is-longer-1234567, az-1, true, true"
+    "ybdemo-node-p-az-1rr-cvqf-, "
+        + "true, demo-node-prefix-which-is-longer-1234567, az-1, true, true",
+    "ybdemo-baddns-az-1rr-enly-, true, demo-badDNS-check--abc----------------------z,"
+        + " az-1, true, true",
   })
   public void testGetHelmFullNameWithSuffix(
       String helmName,
@@ -1684,29 +1687,58 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(
         helmName,
         KubernetesUtil.getHelmFullNameWithSuffix(
-            isMultiAZ, nodePrefix, azName, newNamingStyle, isReadOnlyCluster));
+            isMultiAZ,
+            nodePrefix,
+            /* universename */ nodePrefix,
+            azName,
+            newNamingStyle,
+            isReadOnlyCluster));
   }
 
   @Test
   @Parameters({
-    "demo, false, demo, null, false",
-    "demo-az-1, true, demo, az-1, false",
-    "demo-rr, false, demo, az-1, true",
-    "demo-rr-az-1, true, demo, az-1, true"
+    "demo, false, demo, demo, null, false, false",
+    "demo-az-1, true, demo, demouniverse, az-1, false, false",
+    "demo-rr, false, demo, demo, az-1, true, false",
+    "demo-rr-5ab8da4a, false, deMo, demouniverse, az-1, true, false",
+    "demo-rr-az-1, true, demo, demo, az-1, true, false",
+    "ybdemomorethan11chars-lwg0, false, yb-admin-demo, demomorethan11chars, null, false, true",
+    "ybdemomoretha-az-1-tvks, true, yb-admin-demo, demomorethan11chars, az-1, false, true",
+    "ybdemomoretha-az-1rr-yovk, true, yb-admin-demo, demomorethan11chars, az-1, true, true",
+    "ybdemo-az-1-ybgi, true, yb-15-demo, demo, az-1, false, true",
+    "ybdemo-az-1rr-njvc, true, yb-15-demo, demo, az-1, true, true",
+    "ybdemo-rr-awuk, false, yb-user-deMo, deMo, az-1, true, true",
+    "ybdemo-az-1rr-yovk, true, yb-admin-demo, demo, az-1, true, true",
+    "ybdemo--------n-long-azname-jvrv, true, "
+        + "yb-admin-demo--------longstring-abcdefghijklmnopqrstuvwxyz,"
+        + "demo------------longstring-abcdefghijklmnopqrstuvwxyz, again-long-azname, false, true",
+    "ybdemo--------long-aznamerr-otni, true, "
+        + "yb-admin-demo--------longstring-abcdefghijklmnopqrstuvwxyz,"
+        + "demo------------longstring-abcdefghijklmnopqrstuvwxyz, again-long-azname, true, true",
   })
   public void testGetHelmReleaseName(
       String releaseName,
       boolean isMultiAZ,
       String nodePrefix,
+      String universeName,
       String azName,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle) {
     assertEquals(
         releaseName,
-        KubernetesUtil.getHelmReleaseName(isMultiAZ, nodePrefix, azName, isReadOnlyCluster));
+        KubernetesUtil.getHelmReleaseName(
+            isMultiAZ, nodePrefix, universeName, azName, isReadOnlyCluster, newNamingStyle));
   }
 
   @Test
-  public void testK8sComputeMasterAddressesMultiAZ() {
+  @Parameters({
+    "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234" + ", demo-universe, demo-universe, false",
+    "ybdemo-univer-%s-%s-yb-master-0.ybdemo-univer-%1$s-%2$s-yb-masters.demo-universe."
+        + "svc.cluster.local:1234,"
+        + " demo-universe, test-uni verse, true",
+  })
+  public void testK8sComputeMasterAddressesMultiAZ(
+      String masterAddressFormat, String nodePrefix, String universeName, boolean newNamingStyle) {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer =
         ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
@@ -1721,38 +1753,57 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi);
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1, az2.uuid, 1, az3.uuid, 1);
-    String nodePrefix = "demo-universe";
-
-    // New naming style
+    String expectedMasterAddresses = "";
+    if (newNamingStyle) {
+      expectedMasterAddresses =
+          String.format(
+                  masterAddressFormat,
+                  az1.code,
+                  Util.base36hash(String.format("%s-%s", nodePrefix, az1.code)))
+              + ","
+              + String.format(
+                  masterAddressFormat,
+                  az2.code,
+                  Util.base36hash(String.format("%s-%s", nodePrefix, az2.code)))
+              + ","
+              + String.format(
+                  masterAddressFormat,
+                  az3.code,
+                  Util.base36hash(String.format("%s-%s", nodePrefix, az3.code)));
+    } else {
+      expectedMasterAddresses =
+          String.format(masterAddressFormat, nodePrefix, az1.code)
+              + ","
+              + String.format(masterAddressFormat, nodePrefix, az2.code)
+              + ","
+              + String.format(masterAddressFormat, nodePrefix, az3.code);
+    }
     String masterAddresses =
         KubernetesUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true);
-    String masterAddressFormat =
-        "%s-%s-yb-master-0.%1$s-%2$s-yb-masters.%1$s.svc.cluster.local:1234";
-    String expectedMasterAddresses =
-        String.format(masterAddressFormat, nodePrefix, az1.code)
-            + ","
-            + String.format(masterAddressFormat, nodePrefix, az2.code)
-            + ","
-            + String.format(masterAddressFormat, nodePrefix, az3.code);
-    assertEquals(expectedMasterAddresses, masterAddresses);
-
-    // Old naming style
-    masterAddresses =
-        KubernetesUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false);
-    masterAddressFormat = "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234";
-    expectedMasterAddresses =
-        String.format(masterAddressFormat, nodePrefix, az1.code)
-            + ","
-            + String.format(masterAddressFormat, nodePrefix, az2.code)
-            + ","
-            + String.format(masterAddressFormat, nodePrefix, az3.code);
+            pi,
+            azToNumMasters,
+            nodePrefix, /*universeName*/
+            nodePrefix,
+            k8sProvider,
+            1234,
+            newNamingStyle);
     assertEquals(expectedMasterAddresses, masterAddresses);
   }
 
   @Test
-  public void testK8sComputeMasterAddressesSingleAZ() {
+  @Parameters({
+    "yb-master-0.yb-masters.demo-universe.svc.cluster.local:1234, demo-universe, demo-universe, "
+        + "false",
+    "ybdemo-universe-vyss-yb-master-0.ybdemo-universe-vyss-yb-masters.demo-universe.svc."
+        + "cluster.local:1234, demo-universe, demo-universe, true",
+    "ybdemo-universe-vyss-yb-master-0.ybdemo-universe-vyss-yb-masters.demo-universe.svc."
+        + "cluster.local:1234, demo-universe, de mo-universe, true", // space in the universe name.
+  })
+  public void testK8sComputeMasterAddressesSingleAZ(
+      String expectedMasterAddress,
+      String nodePrefix,
+      String universeName,
+      boolean newNamingStyle) {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer =
         ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
@@ -1765,10 +1816,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     String masterAddresses =
         KubernetesUtil.computeMasterAddresses(
-            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
-    assertEquals(
-        "demo-universe-yb-master-0.demo-universe-yb-masters.demo-universe.svc.cluster.local:1234",
-        masterAddresses);
+            pi,
+            azToNumMasters,
+            nodePrefix,
+            universeName, // Universe name
+            k8sProvider,
+            1234,
+            newNamingStyle);
+    assertEquals(expectedMasterAddress, masterAddresses);
   }
 
   @Test
@@ -2332,7 +2387,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     // Update userIntent for the universe/cluster.
     UserIntent userIntent = new UserIntent();
-    userIntent.universeName = "Test universe";
+    userIntent.universeName = "Testuniverse";
     userIntent.replicationFactor = 3;
     userIntent.numNodes = 5;
     userIntent.provider = provider.code;
@@ -3283,5 +3338,106 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         PlacementInfoUtil.getAzUuidToNumNodes(params.getPrimaryCluster().placementInfo);
     assertEquals(4, (int) azUuidToNumNodes.get(z2.uuid));
     assertEquals(1, (int) azUuidToNumNodes.get(z1.uuid));
+  }
+
+  @Test
+  public void testPassingDefaultRegionForRREdit() {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone z1 = AvailabilityZone.createOrThrow(region, "z1", "z1", "subnet-1");
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "aaa";
+    userIntent.replicationFactor = 3;
+    userIntent.numNodes = 3;
+    userIntent.provider = provider.uuid.toString();
+    userIntent.regionList = Collections.singletonList(region.uuid);
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.ybSoftwareVersion = "0.0.1";
+    userIntent.accessKeyCode = "akc";
+    userIntent.providerType = provider.getCloudCode();
+    userIntent.preferredRegion = null;
+
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            ClusterType.PRIMARY, userIntent, 3, region.uuid, Collections.emptyList());
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, placementInfo);
+
+    // RR replica has different region
+    Region region2 = getOrCreate(provider, "r2");
+    AvailabilityZone z2 = AvailabilityZone.createOrThrow(region2, "z2", "z2", "subnet-2");
+    UserIntent rrIntent = userIntent.clone();
+    rrIntent.regionList = Collections.singletonList(region2.uuid);
+    params.upsertCluster(rrIntent, null, UUID.randomUUID());
+    params.currentClusterType = ClusterType.ASYNC;
+
+    assertNull(params.getReadOnlyClusters().get(0).placementInfo);
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getReadOnlyClusters().get(0).uuid, CREATE);
+
+    assertNotNull(params.getReadOnlyClusters().get(0).placementInfo);
+  }
+
+  @Test
+  public void testChangeMasterInstanceTypeDedicated() {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone z1 = AvailabilityZone.createOrThrow(region, "z1", "z1", "subnet-1");
+    AvailabilityZone z2 = AvailabilityZone.createOrThrow(region, "z2", "z2", "subnet-2");
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "aaa";
+    userIntent.replicationFactor = 3;
+    userIntent.numNodes = 3;
+    userIntent.provider = provider.uuid.toString();
+    userIntent.regionList = Collections.singletonList(region.uuid);
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.ybSoftwareVersion = "0.0.1";
+    userIntent.accessKeyCode = "akc";
+    userIntent.dedicatedNodes = true;
+    userIntent.providerType = provider.getCloudCode();
+    userIntent.preferredRegion = null;
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, null);
+    params.currentClusterType = ClusterType.PRIMARY;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, CREATE);
+    assertEquals(6, params.nodeDetailsSet.size()); // 3 master-only and 3 tserver-only
+
+    Universe.create(params, customer.getCustomerId());
+
+    params.nodeDetailsSet.forEach(node -> node.state = Live);
+    params.getPrimaryCluster().userIntent.masterInstanceType = "new_type";
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, EDIT);
+    List<NodeDetails> toBeAdded =
+        params
+            .nodeDetailsSet
+            .stream()
+            .filter(n -> n.state == ToBeAdded)
+            .collect(Collectors.toList());
+    List<NodeDetails> toBeRemoved =
+        params
+            .nodeDetailsSet
+            .stream()
+            .filter(n -> n.state == ToBeRemoved)
+            .collect(Collectors.toList());
+    assertEquals(3, toBeAdded.size());
+    assertEquals(3, toBeRemoved.size());
+    Stream.concat(toBeAdded.stream(), toBeRemoved.stream())
+        .forEach(
+            node -> {
+              assertEquals(UniverseTaskBase.ServerType.MASTER, node.dedicatedTo);
+            });
   }
 }

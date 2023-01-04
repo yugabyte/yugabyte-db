@@ -132,7 +132,7 @@ Misuse or overuse of manual tablet splitting (for example, splitting tablets whi
 1. Create a three-node local cluster, as follows:
 
     ```sh
-    .bin/yb-ctl --rf=3 create --ysql_num_shards_per_tserver=1
+    ./bin/yb-ctl --rf=3 create --ysql_num_shards_per_tserver=1
     ```
 
 1. Create a sample table and insert some data, as follows:

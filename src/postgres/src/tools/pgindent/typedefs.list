@@ -730,6 +730,8 @@ FormData_pg_ts_template
 FormData_pg_type
 FormData_pg_user_mapping
 FormData_pg_yb_tablegroup
+FormData_pg_yb_profile
+FormData_pg_yb_role_profile
 Form_pg_aggregate
 Form_pg_am
 Form_pg_amop
@@ -789,6 +791,8 @@ Form_pg_ts_template
 Form_pg_type
 Form_pg_user_mapping
 Form_pg_yb_tablegroup
+Form_pg_yb_profile
+Form_pg_yb_role_profile
 FormatNode
 FreeBlockNumberArray
 FreeListData
@@ -2640,6 +2644,7 @@ XmlTableBuilderData
 YYLTYPE
 YYSTYPE
 YY_BUFFER_STATE
+YbCreateProfileStmt
 ZipfCache
 ZipfCell
 _SPI_connection

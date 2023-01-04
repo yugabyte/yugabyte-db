@@ -126,7 +126,9 @@ Status QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
       break;
 
     case QLExpressionPB::ExprCase::kBfcall:
-      return EvalBFCall<bfql::BFOpcode>(ql_expr.bfcall(), table_row, &result_writer.NewValue());
+      result_writer.NewValue() = VERIFY_RESULT(
+          EvalBFCall<bfql::BFOpcode>(ql_expr.bfcall(), table_row));
+      return Status::OK();
 
     case QLExpressionPB::ExprCase::kTscall:
       return EvalTSCall(ql_expr.tscall(), table_row, &result_writer.NewValue(), schema);
@@ -169,37 +171,8 @@ Status QLExprExecutor::ReadExprValue(const QLExpressionPB& ql_expr,
 
 //--------------------------------------------------------------------------------------------------
 
-// Mini framework to store operands result into vector.
-namespace {
-
-template <class Value> struct ValueVector;
-
-template <>
-struct ValueVector<QLValuePB> {
-  using type = std::vector<QLValuePB>;
-};
-
-void AddValue(QLValuePB* result, std::vector<QLValuePB>* args, ExprResult<QLValuePB>* value) {
-  args->emplace_back();
-  value->MoveTo(&args->back());
-}
-
-template <>
-struct ValueVector<LWQLValuePB> {
-  using type = std::vector<LWQLValuePB*>;
-};
-
-void AddValue(
-    LWQLValuePB* result, std::vector<LWQLValuePB*>* args, ExprResult<LWQLValuePB>* value) {
-  args->push_back(result->arena().NewObject<LWQLValuePB>(&result->arena()));
-  value->MoveTo(args->back());
-}
-
-} // namespace
-
-template <class OpCode, class Expr, class Value>
-Status QLExprExecutor::EvalBFCall(
-    const Expr& bfcall, const QLTableRow& table_row, Value* result) {
+template <class OpCode, class Expr>
+Result<QLValuePB> QLExprExecutor::EvalBFCall(const Expr& bfcall, const QLTableRow& table_row) {
   // TODO(neil)
   // - Use TSOpode for collection expression if only TabletServer can execute.
   // OR
@@ -216,16 +189,17 @@ Status QLExprExecutor::EvalBFCall(
   //   "SubListList"
 
   // First evaluate the arguments.
-  typename ValueVector<Value>::type args;
+  std::vector<QLValuePB> args;
   args.reserve(bfcall.operands().size());
-  ExprResult<Value> temp(result);
+  ExprResult<QLValuePB> temp;
   for (const auto& operand : bfcall.operands()) {
     RETURN_NOT_OK(EvalExpr(operand, table_row, temp.Writer()));
-    AddValue(result, &args, &temp);
+    args.emplace_back();
+    temp.MoveTo(&args.back());
   }
 
   // Execute the builtin call associated with the given opcode.
-  return ExecBfunc(static_cast<OpCode>(bfcall.opcode()), &args, result);
+  return ExecBfunc(static_cast<OpCode>(bfcall.opcode()), args);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -473,13 +447,6 @@ Status QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
   return DoEvalExpr(ql_expr, table_row, result_writer, schema);
 }
 
-Status QLExprExecutor::EvalExpr(const LWPgsqlExpressionPB& ql_expr,
-                                const QLTableRow* table_row,
-                                LWExprResultWriter result_writer,
-                                const Schema *schema) {
-  return DoEvalExpr(ql_expr, table_row, result_writer, schema);
-}
-
 template <class PB, class Writer>
 Status QLExprExecutor::DoEvalExpr(const PB& ql_expr,
                                   const QLTableRow* table_row,
@@ -494,7 +461,9 @@ Status QLExprExecutor::DoEvalExpr(const PB& ql_expr,
       return EvalColumnRef(ql_expr.column_id(), table_row, result_writer);
 
     case PgsqlExpressionPB::ExprCase::kBfcall:
-      return EvalBFCall<bfpg::BFOpcode>(ql_expr.bfcall(), *table_row, &result_writer.NewValue());
+      result_writer.NewValue() = VERIFY_RESULT(
+          EvalBFCall<bfpg::BFOpcode>(ql_expr.bfcall(), *table_row));
+      return Status::OK();
 
     case PgsqlExpressionPB::ExprCase::kTscall:
       return EvalTSCall(ql_expr.tscall(), *table_row, &result_writer.NewValue(), schema);
@@ -554,14 +523,6 @@ Status QLExprExecutor::DoEvalColumnRef(
 Status QLExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
                                   const QLTableRow& table_row,
                                   QLValuePB *result,
-                                  const Schema *schema) {
-  SetNull(result);
-  return STATUS(RuntimeError, "Only tablet server can execute this operator");
-}
-
-Status QLExprExecutor::EvalTSCall(const LWPgsqlBCallPB& ql_expr,
-                                  const QLTableRow& table_row,
-                                  LWQLValuePB *result,
                                   const Schema *schema) {
   SetNull(result);
   return STATUS(RuntimeError, "Only tablet server can execute this operator");

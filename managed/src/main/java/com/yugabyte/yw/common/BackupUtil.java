@@ -521,7 +521,7 @@ public class BackupUtil {
   }
 
   public void validateRestoreOverwrites(
-      List<BackupStorageInfo> backupStorageInfos, Universe universe)
+      List<BackupStorageInfo> backupStorageInfos, Universe universe, Backup.BackupCategory category)
       throws PlatformServiceException {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     for (BackupStorageInfo backupInfo : backupStorageInfos) {
@@ -542,7 +542,8 @@ public class BackupUtil {
                     "Keyspace %s contains tables with same names, overwriting data is not allowed",
                     backupInfo.keyspace));
           }
-        } else {
+        } else if (category.equals(Backup.BackupCategory.YB_BACKUP_SCRIPT)
+            && backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
           List<TableInfo> tableInfos =
               tableInfoList
                   .parallelStream()

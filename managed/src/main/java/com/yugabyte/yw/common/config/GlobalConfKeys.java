@@ -20,9 +20,10 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
   public static final ConfKeyInfo<Integer> taskDbQueryLimit =
       new ConfKeyInfo<>(
           "yb.customer_task_db_query_limit",
-          ScopeType.GLOBAL,
-          "Task DB Query Limit",
-          "TODO - Leave this for feature owners to fill in",
+          ScopeType.GLOBAL, // TODO Customer
+          "Max Number of Customer Tasks to fetch",
+          "Knob that can be used when there are too many customer tasks"
+              + " overwhelming the server",
           ConfDataType.IntegerType);
   // TODO(Aleksandr): Add correct metadata
   public static final ConfKeyInfo<Integer> maxParallelNodeChecks =
@@ -37,9 +38,10 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.ha.logScriptOutput",
           ScopeType.GLOBAL,
-          "Log Script Output",
-          "TODO - Leave this for feature owners to fill in",
+          "Log Script Output For YBA HA Feature",
+          "To log backup restore script output for debugging issues",
           ConfDataType.BooleanType);
+  // Looks like most of these ansible keys are already universe scope:
   public static final ConfKeyInfo<String> ansibleStrategy =
       new ConfKeyInfo<>(
           "yb.ansible.strategy",
@@ -83,6 +85,8 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Ansible Local Temp Directory",
           "Temporary directory for Ansible to use on the controller.",
           ConfDataType.StringType);
+  // TODO: Use Enum type SkipCertValidationType
+  // I traced this to be Using Universe scope
   public static final ConfKeyInfo<String> tlsSkipCertValidation =
       new ConfKeyInfo<>(
           "yb.tls.skip_cert_validation",

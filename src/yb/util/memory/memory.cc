@@ -382,10 +382,14 @@ void MemoryTrackingBufferAllocator::FreeInternal(Buffer* buffer) {
 }
 
 std::string TcMallocStats() {
-#if defined(TCMALLOC_ENABLED)
+#ifdef YB_TCMALLOC_ENABLED
+#if defined(YB_GOOGLE_TCMALLOC)
+  return ::tcmalloc::MallocExtension::GetStats();
+#else
   char buf[20_KB];
   MallocExtension::instance()->GetStats(buf, sizeof(buf));
   return buf;
+#endif
 #else
   return "";
 #endif

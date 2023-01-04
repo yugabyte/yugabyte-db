@@ -25,7 +25,8 @@
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
-# Redirects
+################ REDIRECTS ################
+#
 # - Default status is a 301 unless otherwise specified.
 # - First match wins: put wildcards AFTER specific paths!
 # - Wildcards include empty matches: /v1.0/* WILL match /v1.0
@@ -41,18 +42,52 @@
   to = "/images/:splat"
   status = 200
 
-# Bypass the landing page
-
-# [[redirects]]
-#   from = "/"
-#   to = "/preview/"
-#   force = true
-
-# Catch-all for old links to /latest (now called /preview)
+# Ancient links to CDC should go to explore
 
 [[redirects]]
-  from = "/latest/*"
-  to = "/preview/:splat"
+  from = "/:version/deploy/cdc/*"
+  to = "/preview/explore/change-data-capture/"
+  force = true
+
+# CDC java console client is documented on its repo only now
+
+[[redirects]]
+  from = "/:version/explore/change-data-capture/cdc-java-console-client/*"
+  to = "/preview/explore/change-data-capture/"
+
+# CDC page structure is no longer OS-oriented
+
+[[redirects]]
+  from = "/:version/explore/change-data-capture/macos/*"
+  to = "/:version/explore/change-data-capture/"
+
+# 2.8 is the last version with Docker-swarm
+
+[[redirects]]
+  from = "/:version/deploy/docker-swarm/*"
+  to = "/v2.8/deploy/docker/docker-swarm/"
+  force = true
+
+# Old links to deploy and develop and releases
+
+[[redirects]]
+  from = "/latest/deploy/*"
+  to = "/preview/deploy/"
+  force = true
+
+[[redirects]]
+  from = "/latest/develop/*"
+  to = "/preview/develop/"
+  force = true
+
+[[redirects]]
+  from = "/latest/migrate/*"
+  to = "/preview/migrate/"
+  force = true
+
+[[redirects]]
+  from = "/:version/releases/*"
+  to = "/preview/releases/"
   force = true
 
 # Redirect old cloud docs to root of current
@@ -119,6 +154,11 @@
   from = "/v2.4/*"
   to = "https://docs-archive.yugabyte.com/v2.4/"
   force = true
+
+# [[redirects]]
+#   from = "/v2.6/*"
+#   to = "https://docs-archive.yugabyte.com/v2.6/"
+#   force = true
 
 # Build an app was in quick-start, now in develop
 
@@ -353,11 +393,6 @@
   force = true
 
 [[redirects]]
-  from = "/:version/releases/*"
-  to = "/preview/releases/:splat"
-  force = true
-
-[[redirects]]
   from = "/:version/troubleshoot/*"
   to = "/preview/troubleshoot/:splat"
   force = true
@@ -503,6 +538,19 @@
 [[redirects]]
    from = "/preview/explore/observability/prometheus-integration/*"
    to = "/preview/explore/observability/prometheus-integration/macos/"
+
+##########################################################
+# Catch-all for old links to /latest (now called /preview)
+#
+# This one is last on purpose...
+##########################################################
+
+[[redirects]]
+  from = "/latest/*"
+  to = "/preview/:splat"
+  force = true
+
+##########################################################
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme

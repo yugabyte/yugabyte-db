@@ -73,13 +73,35 @@ public class RuntimeConfigFormData {
 
     public enum ScopeType {
       @EnumValue("GLOBAL")
-      GLOBAL,
+      GLOBAL {
+        @Override
+        public boolean isValid(UUID scopeUUID) {
+          return scopeUUID.equals(GLOBAL_SCOPE_UUID);
+        }
+      },
       @EnumValue("CUSTOMER")
-      CUSTOMER,
+      CUSTOMER {
+        @Override
+        public boolean isValid(UUID scopeUUID) {
+          return (scopeUUID.equals(GLOBAL_SCOPE_UUID) || Customer.get(scopeUUID) != null);
+        }
+      },
       @EnumValue("UNIVERSE")
-      UNIVERSE,
+      UNIVERSE {
+        @Override
+        public boolean isValid(UUID scopeUUID) {
+          return !Provider.maybeGet(scopeUUID).isPresent();
+        }
+      },
       @EnumValue("PROVIDER")
-      PROVIDER;
+      PROVIDER {
+        @Override
+        public boolean isValid(UUID scopeUUID) {
+          return !Universe.maybeGet(scopeUUID).isPresent();
+        }
+      };
+
+      public abstract boolean isValid(UUID scopeUUID);
     }
 
     public RuntimeConfig<? extends Model> runtimeConfig(SettableRuntimeConfigFactory factory) {

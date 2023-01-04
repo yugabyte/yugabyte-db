@@ -1604,6 +1604,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .nodeDetailsSet
             .stream()
             .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
+
     // Locate the given node in the Universe by using the node name.
     return nodes
         .stream()
@@ -1665,6 +1666,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   return currentNodeStatus.equalsIgnoreNull(nodeStatus);
                 })
             .collect(Collectors.toSet());
+
     if (CollectionUtils.isNotEmpty(filteredNodes)) {
       consumer.accept(filteredNodes);
       wasCallbackRun = true;
@@ -1783,6 +1785,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                       filteredNodes, NodeStatus.builder().nodeState(NodeState.Adding).build())
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
+
+    // Create the node or wait for SSH connection on existing instance from cloud provider.
     isNextFallThrough =
         applyOnNodesWithStatus(
             universe,
@@ -1794,6 +1798,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
 
+    //  Get and update node instance details of node into our DB, mark node as 'provisioned'.
+    // Includes public IP address and private IP address if applicable and others.
     isNextFallThrough =
         applyOnNodesWithStatus(
             universe,
@@ -1805,6 +1811,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
 
+    // Install tools like Node-Exporter, Chrony and config changes like SSH ports, home dir.
     isNextFallThrough =
         applyOnNodesWithStatus(
             universe,
@@ -1825,7 +1832,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * ignored if ignoreNodeStatus is true.
    *
    * @param universe universe to which the nodes belong.
-   * @param nodesToBeConfigured nodes to be configured.
+   * @param mastersToBeConfigured, nodes to be configured.
+   * @param tServersToBeConfigured, nodes to be configured.
    * @param isShellMode configure nodes in shell mode if true.
    * @param ignoreNodeStatus ignore node status if it is set.
    * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
@@ -1833,17 +1841,30 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public boolean createConfigureNodeTasks(
       Universe universe,
-      Set<NodeDetails> nodesToBeConfigured,
+      Set<NodeDetails> mastersToBeConfigured,
+      Set<NodeDetails> tServersToBeConfigured,
       boolean isShellMode,
       boolean ignoreNodeStatus,
       boolean ignoreUseCustomImageConfig) {
 
+    Set<NodeDetails> mergedNodes = new HashSet<>();
+    if (mastersToBeConfigured == tServersToBeConfigured) {
+      mergedNodes = mastersToBeConfigured;
+    } else if (mastersToBeConfigured == null) {
+      mergedNodes = tServersToBeConfigured;
+    } else if (tServersToBeConfigured == null) {
+      mergedNodes = mastersToBeConfigured;
+    } else {
+      Stream.of(mastersToBeConfigured, tServersToBeConfigured).forEach(mergedNodes::addAll);
+    }
+
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
+    // Install software on all nodes.
     boolean isNextFallThrough =
         applyOnNodesWithStatus(
             universe,
-            nodesToBeConfigured,
+            mergedNodes,
             ignoreNodeStatus,
             NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
@@ -1856,40 +1877,69 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
 
+    // GFlags Task for masters.
+    // State remains as SoftwareInstalled, so it is fine to call this one by one for master,
+    // TServer.
+    if (CollectionUtils.isNotEmpty(mastersToBeConfigured)) {
+      isNextFallThrough =
+          applyOnNodesWithStatus(
+              universe,
+              mastersToBeConfigured,
+              isNextFallThrough,
+              NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build(),
+              filteredNodes -> {
+                Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+                if (primaryCluster != null) {
+                  Set<NodeDetails> primaryClusterNodes =
+                      getNodesInCluster(primaryCluster.uuid, filteredNodes);
+                  if (!primaryClusterNodes.isEmpty()) {
+                    // Override master (on primary cluster only) and tserver flags as necessary.
+                    // These are idempotent operations.
+                    createGFlagsOverrideTasks(
+                        primaryClusterNodes,
+                        ServerType.MASTER,
+                        isShellMode,
+                        VmUpgradeTaskType.None,
+                        ignoreUseCustomImageConfig);
+                  }
+                }
+              });
+    }
+
+    // GFlags Task for TServers.
+    // State remains as SoftwareInstalled, so it is fine to call this one by one for master,
+    // TServer.
+    if (CollectionUtils.isNotEmpty(tServersToBeConfigured)) {
+      isNextFallThrough =
+          applyOnNodesWithStatus(
+              universe,
+              tServersToBeConfigured,
+              isNextFallThrough,
+              NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build(),
+              filteredNodes -> {
+                createGFlagsOverrideTasks(
+                    filteredNodes,
+                    ServerType.TSERVER,
+                    false /* isShell */,
+                    VmUpgradeTaskType.None,
+                    ignoreUseCustomImageConfig);
+              });
+    }
+
+    // All necessary nodes are created. Data move will be done soon.
     isNextFallThrough =
         applyOnNodesWithStatus(
             universe,
-            nodesToBeConfigured,
+            mergedNodes,
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build(),
             filteredNodes -> {
-              Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-              if (primaryCluster != null) {
-                Set<NodeDetails> primaryClusterNodes =
-                    getNodesInCluster(primaryCluster.uuid, filteredNodes);
-                if (!primaryClusterNodes.isEmpty()) {
-                  // Override master (on primary cluster only) and tserver flags as necessary.
-                  // These are idempotent operations.
-                  createGFlagsOverrideTasks(
-                      primaryClusterNodes,
-                      ServerType.MASTER,
-                      isShellMode,
-                      VmUpgradeTaskType.None,
-                      ignoreUseCustomImageConfig);
-                }
-              }
-              createGFlagsOverrideTasks(
-                  nodesToBeConfigured,
-                  ServerType.TSERVER,
-                  false /* isShell */,
-                  VmUpgradeTaskType.None,
-                  ignoreUseCustomImageConfig);
-              // All necessary nodes are created. Data moving will coming soon.
               createSetNodeStatusTasks(
                       filteredNodes,
                       NodeStatus.builder().nodeState(NodeState.ToJoinCluster).build())
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
+
     return isNextFallThrough;
   }
 
@@ -1899,7 +1949,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * ignored if ignoreNodeStatus is true.
    *
    * @param universe universe to which the nodes belong.
-   * @param nodesToBeProvisioned nodes to be provisioned.
+   * @param nodesToBeCreated nodes to be provisioned.
+   * @param isShellMode configure nodes in shell mode if true.
    * @param ignoreNodeStatus ignore node status if it is set.
    * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
@@ -1915,7 +1966,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             universe, nodesToBeCreated, ignoreNodeStatus, ignoreUseCustomImageConfig);
 
     return createConfigureNodeTasks(
-        universe, nodesToBeCreated, isShellMode, isFallThrough, ignoreUseCustomImageConfig);
+        universe,
+        nodesToBeCreated,
+        nodesToBeCreated,
+        isShellMode,
+        isFallThrough,
+        ignoreUseCustomImageConfig);
   }
 
   /**

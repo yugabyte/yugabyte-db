@@ -52,6 +52,7 @@
 #include "utils/selfuncs.h"
 #include "utils/snapmgr.h"
 #include "utils/spccache.h"
+#include "utils/typcache.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
@@ -211,6 +212,9 @@ static void ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumb
 	Oid	attcollation = YBEncodingCollation(ybScan->handle, attnum,
 										   ybc_get_attcollation(bind_desc, attnum));
 
+	YBCPgExpr colref =
+		YBCNewColumnRef(ybScan->handle, attnum, atttypid, attcollation, NULL);
+
 	YBCPgExpr ybc_exprs[nvalues]; /* VLA - scratch space */
 	for (int i = 0; i < nvalues; i++) {
 		/*
@@ -222,7 +226,83 @@ static void ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumb
 									  values[i], false /* is_null */);
 	}
 
-	HandleYBStatus(YBCPgDmlBindColumnCondIn(ybScan->handle, attnum, nvalues, ybc_exprs));
+	HandleYBStatus(
+		YBCPgDmlBindColumnCondIn(ybScan->handle, colref, nvalues, ybc_exprs));
+}
+
+/*
+ * Bind an array of scan keys for a tuple of columns.
+ */
+static void
+ybcBindTupleExprCondIn(YbScanDesc ybScan,
+					   TupleDesc bind_desc,
+					   int n_attnum_values,
+					   AttrNumber *attnum,
+					   int nvalues,
+					   Datum *values)
+{
+	Assert(nvalues > 0);
+	YBCPgExpr ybc_rhs_exprs[nvalues];
+
+	YBCPgExpr ybc_elems_exprs[n_attnum_values];	/* VLA - scratch space */
+	Datum datum_values[n_attnum_values];
+	bool is_null[n_attnum_values];
+
+	Oid tupType =
+		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
+	Oid tupTypmod =
+		HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(values[0]));
+	YBCPgTypeAttrs type_attrs = { tupTypmod };
+
+	/* Form the lhs tuple. */
+	for (int i = 0; i < n_attnum_values; i++)
+	{
+		Oid	atttypid = ybc_get_atttypid(bind_desc, attnum[i]);
+		Oid	attcollation = YBEncodingCollation(ybScan->handle, attnum[i],
+										   	   ybc_get_attcollation(bind_desc, attnum[i]));
+		ybc_elems_exprs[i] =
+			YBCNewColumnRef(ybScan->handle, attnum[i], atttypid,
+							attcollation, NULL);
+	}
+
+	YBCPgExpr lhs =
+		YBCNewTupleExpr(ybScan->handle, &type_attrs, n_attnum_values, 
+						ybc_elems_exprs);
+
+	TupleDesc tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+
+	HeapTupleData tuple;
+	ItemPointerSetInvalid(&(tuple.t_self));
+	tuple.t_tableOid = InvalidOid;
+
+	/* Form the list of tuples for the RHS. */
+	for (int i = 0; i < nvalues; i++)
+	{
+		tuple.t_len = HeapTupleHeaderGetDatumLength(values[i]);
+		tuple.t_data = DatumGetHeapTupleHeader(values[i]);
+		heap_deform_tuple(&tuple, tupdesc,
+						  datum_values, is_null);
+		for (int j = 0; j < n_attnum_values; j++)
+		{
+			Oid atttypid = ybc_get_atttypid(bind_desc, attnum[j]);
+			Oid	attcollation =
+				YBEncodingCollation(ybScan->handle, attnum[j],
+									ybc_get_attcollation(bind_desc, attnum[j]));
+			ybc_elems_exprs[j] =
+				YBCNewConstant(ybScan->handle, atttypid, attcollation, 
+							   datum_values[j], is_null[j]);
+		}
+
+		ybc_rhs_exprs[i] =
+			YBCNewTupleExpr(ybScan->handle, &type_attrs, n_attnum_values,
+							ybc_elems_exprs);
+	}
+
+	HandleYBStatus(
+		YBCPgDmlBindColumnCondIn(ybScan->handle, lhs, nvalues,
+								 ybc_rhs_exprs));
+
+	ReleaseTupleDesc(tupdesc);
 }
 
 /*
@@ -603,7 +683,13 @@ YbIsSearchNull(ScanKey key)
 static bool
 YbIsSearchArray(ScanKey key)
 {
-	return key->sk_flags == SK_SEARCHARRAY;
+	return key->sk_flags & SK_SEARCHARRAY;
+}
+
+static bool
+YbIsRowHeader(ScanKey key)
+{
+	return key->sk_flags & SK_ROW_HEADER;
 }
 
 /*
@@ -614,6 +700,23 @@ YbIsNeverTrueNullCond(ScanKey key)
 {
 	return (key->sk_flags & SK_ISNULL) != 0 &&
 	       (key->sk_flags & (SK_SEARCHNULL | SK_SEARCHNOTNULL)) == 0;
+}
+
+static int
+YbGetLengthOfKey(ScanKey *key_ptr)
+{
+	if (!YbIsRowHeader(key_ptr[0]))
+		return 1;
+
+	int length_of_key = 0;
+	while(!(key_ptr[length_of_key]->sk_flags & SK_ROW_END))
+	{
+		length_of_key++;
+	}
+
+	/* We also want to include the last element. */
+	length_of_key++;
+	return length_of_key;
 }
 
 /*
@@ -627,36 +730,12 @@ YbIsEmptyResultCondition(int nkeys, ScanKey keys[])
 	for (int i = 0; i < nkeys; i++)
 	{
 		ScanKey key = keys[i];
-		if (YbIsNeverTrueNullCond(key))
-			return true;
-
-		if (key->sk_flags & SK_ROW_HEADER)
+		
+		if (!((key->sk_flags & SK_ROW_MEMBER) && YbIsRowHeader(keys[i - 1])) ||
+			key->sk_strategy == BTEqualStrategyNumber)
 		{
-			ScanKey subkey = (ScanKey) DatumGetPointer(key->sk_argument);
-
-			/*
-			 * ROW value comparison: ROW(x, y, z) {<|<=|>|>=} ROW(a, b, c)
-			 * is equivalent to:
-			 *   (x {<|>} a) OR (x = a AND y {<|>} b)
-			 *     OR (x = a AND y = b AND z {<|<=|>|>=} c)
-			 * when a is NULL then each OR'ed term is either UNKNOWN or FALSE,
-			 * hence the entire comparison results in UNKNOWN if the first item
-			 * in the ROW value is NULL.
-			 */
-			if (key->sk_strategy != BTEqualStrategyNumber &&
-			    YbIsNeverTrueNullCond(subkey))
+			if (YbIsNeverTrueNullCond(key))
 				return true;
-
-			/*
-			 * In case of equality, ROW(x, y, z, ...) = ROW(a, b, c, ...)
-			 * is equivalent to:
-			 *   (x = a) AND (y = b) AND (z = c) ...
-			 * NULL at any position makes the entire comparision either UNKNOWN
-			 * or FALSE.
-			 */
-			for (; !(subkey->sk_flags & SK_ROW_END); ++subkey)
-				if (YbIsNeverTrueNullCond(subkey))
-					return true;
 		}
 	}
 	return false;
@@ -666,6 +745,11 @@ static bool
 YbShouldPushdownScanPrimaryKey(Relation relation, YbScanPlan scan_plan,
                                AttrNumber attnum, ScanKey key)
 {
+	if (YbIsHashCodeSearch(key))
+	{
+		return true;
+	}
+
 	if (YbIsBasicOpSearch(key))
 	{
 		/* Eq strategy for hash key, eq + ineq for range key. */
@@ -848,11 +932,11 @@ static bool YbIsScanCompatible(Oid column_typid,
 static bool
 YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 {
-	Oid atttypid =
-		ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
-	Assert(OidIsValid(atttypid));
 	ScanKey key = ybScan->keys[i];
 	Oid valtypid = key->sk_subtype;
+	Oid atttypid = valtypid == RECORDOID ? RECORDOID :
+		ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
+	Assert(OidIsValid(atttypid));
 	/*
 	 * Example: CREATE TABLE t1(c0 REAL, c1 TEXT, PRIMARY KEY(c0 asc));
 	 *          INSERT INTO t1(c0, c1) VALUES(0.4, 'SHOULD BE IN RESULT');
@@ -874,12 +958,365 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 	       IsPolymorphicType(valtypid);
 }
 
+static void
+YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
+						int skey_index)
+{
+	int last_att_no = YBFirstLowInvalidAttributeNumber;
+	Relation index = ybScan->index;
+	int length_of_key = YbGetLengthOfKey(&ybScan->keys[skey_index]);
+
+	ScanKey header_key = ybScan->keys[skey_index];
+
+	ScanKey *subkeys = &ybScan->keys[skey_index + 1];
+
+	/*
+	 * We can only push down right now if the primary key columns
+	 * are specified in the correct order and the primary key
+	 * has no hashed columns. We also need to ensure that
+	 * the same comparison operation is done to all subkeys.
+	 */
+	bool can_pushdown = true;
+
+	int strategy = header_key->sk_strategy;
+	int subkey_count = length_of_key - 1;
+	for (int j = 0; j < subkey_count; j++)
+	{
+		ScanKey key = subkeys[j];
+
+		/* Make sure that the specified keys are in the right order. */
+		if (key->sk_attno <= last_att_no)
+		{
+			can_pushdown = false;
+			break;
+		}
+
+		/*
+			* Make sure that the same comparator is applied to
+			* all subkeys.
+			*/
+		if (strategy != key->sk_strategy)
+		{
+			can_pushdown = false;
+			break;
+		}
+		last_att_no = key->sk_attno;
+
+		/* Make sure that there are no hash key columns. */
+		if (index->rd_indoption[key->sk_attno - 1]
+			& INDOPTION_HASH)
+		{
+			can_pushdown = false;
+			break;
+		}
+	}
+
+	/*
+	 * Make sure that the primary key has no hash columns in order
+	 * to push down.
+	 */
+
+	for (int i = 0; i < index->rd_index->indnkeyatts; i++)
+	{
+		if (index->rd_indoption[i] & INDOPTION_HASH)
+		{
+			can_pushdown = false;
+			break;
+		}
+	}
+
+	if (can_pushdown)
+	{
+
+		YBCPgExpr *col_values =
+			palloc(sizeof(YBCPgExpr) * index->rd_index->indnkeyatts);
+		/*
+		 * Prepare upper/lower bound tuples determined from this
+		 * clause for bind. Care must be taken in the case
+		 * that primary key columns in the index are ordered
+		 * differently from each other. For example, consider
+		 * if the underlying index has primary key
+		 * (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
+		 * a clause like (r1, r2, r3) <= (40, 35, 12).
+		 * We cannot simply bind (40, 35, 12) as an upper bound
+		 * as that will miss tuples such as (40, 32, 0).
+		 * Instead we must push down (40, Inf, 12) in this case
+		 * for correctness. (Note that +Inf in this context
+		 * is higher in STORAGE order than all other values not
+		 * necessarily logical order, similar to the role of
+		 * docdb::ValueType::kHighest.
+		 */
+
+		/*
+		 * Is the first column in ascending order in the index?
+		 * This is important because whether or not the RHS of a
+		 * (row key) >= (row key values) expression is
+		 * considered an upper bound is dependent on the answer
+		 * to this question. The RHS of such an expression will
+		 * be the scan upper bound if the first column is in
+		 * descending order and lower if else. Similar logic
+		 * applies to the RHS of (row key) <= (row key values)
+		 * expressions.
+		 */
+		bool is_direction_asc =
+			!(index->rd_indoption[subkeys[0]->sk_attno - 1] & INDOPTION_DESC);
+
+		bool gt =
+			strategy == BTGreaterEqualStrategyNumber ||
+			strategy == BTGreaterStrategyNumber;
+
+		bool is_inclusive =
+			strategy != BTGreaterStrategyNumber &&
+			strategy != BTLessStrategyNumber;
+
+		bool is_point_scan =
+			(subkey_count == index->rd_index->indnatts) &&
+			(strategy == BTEqualStrategyNumber);
+
+		/* Whether or not the RHS values make up a DocDB upper bound */
+		bool is_upper_bound = gt ^ is_direction_asc;
+		size_t subkey_index = 0;
+
+		for (int j = 0; j < index->rd_index->indnkeyatts; j++)
+		{
+			bool is_column_specified =
+				subkey_index < subkey_count &&
+				(subkeys[subkey_index]->sk_attno - 1) == j;
+			/*
+				* Is the current column stored in ascending order in the
+				* underlying index?
+				*/
+			bool asc = (index->rd_indoption[j] & INDOPTION_DESC) == 0;
+
+			/*
+				* If this column has different directionality than the
+				* first column then we have to adjust the bounds on this
+				* column.
+				*/
+			if(!is_column_specified || 
+				(asc != is_direction_asc && !is_point_scan))
+			{
+				col_values[j] = NULL;
+			}
+			else
+			{
+				ScanKey current = subkeys[subkey_index];
+				col_values[j] =
+					YBCNewConstant(
+						ybScan->handle,
+						ybc_get_atttypid(scan_plan->bind_desc,
+										 current->sk_attno),
+						current->sk_collation,
+						current->sk_argument,
+						false);
+			}
+
+			if (is_column_specified)
+			{
+				subkey_index++;
+			}
+		}
+
+		if (is_upper_bound || strategy == BTEqualStrategyNumber)
+		{
+			HandleYBStatus(
+				YBCPgDmlAddRowUpperBound(ybScan->handle,
+										 index->rd_index->indnkeyatts,
+										 col_values,
+										 is_inclusive));
+		}
+
+		if (!is_upper_bound || strategy == BTEqualStrategyNumber)
+		{
+			HandleYBStatus(
+				YBCPgDmlAddRowLowerBound(ybScan->handle,
+										 index->rd_index->indnkeyatts,
+										 col_values,
+										 is_inclusive));
+		}
+	}
+}
+
+static bool
+YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
+				  int skey_index, bool is_column_bound[],
+				  bool *bail_out)
+{
+	/* based on _bt_preprocess_array_keys() */
+	ArrayType  *arrayval;
+	int16		elmlen;
+	bool		elmbyval;
+	char		elmalign;
+	int			num_elems;
+	Datum	   *elem_values;
+	bool	   *elem_nulls;
+	int			num_valid;
+	int			j;
+	AttrNumber *attnos;
+	Oid 	   *colids;
+	bool is_row = false;
+	int length_of_key = YbGetLengthOfKey(&ybScan->keys[skey_index]);
+	Relation relation = ybScan->relation;
+	Relation index = ybScan->index;
+
+	ScanKey key = ybScan->keys[skey_index];
+	int i = skey_index;
+	*bail_out = false;
+
+	/*
+	 * First, deconstruct the array into elements.
+	 * Anything allocated here (including a possibly detoasted
+	 * array value) is in the workspace context.
+	 */
+	if (YbIsRowHeader(key))
+	{
+		is_row = true;
+		int subkey_count = length_of_key - 1;
+
+		for(int row_ind = 0; row_ind < length_of_key; row_ind++)
+		{
+			int bound_idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i + row_ind]);
+			if (is_column_bound[bound_idx])
+			{
+				return false;
+			}
+		}
+
+		attnos = palloc(sizeof(AttrNumber) * subkey_count);
+		colids = palloc(sizeof(Oid) * subkey_count);
+		arrayval =
+			DatumGetArrayTypeP((ybScan->keys[i+1])->sk_argument);
+		
+		for(size_t j = 0; j < subkey_count; j++)
+		{
+			attnos[j] = ybScan->keys[i + j + 1]->sk_attno;
+			colids[j] = ybScan->keys[i + j + 1]->sk_attno;
+		}
+	}
+	else
+	{
+		arrayval = DatumGetArrayTypeP(key->sk_argument);
+		attnos = palloc(sizeof(AttrNumber));
+		*attnos = key->sk_attno;
+	}
+	Assert(key->sk_subtype == ARR_ELEMTYPE(arrayval));
+	/* We could cache this data, but not clear it's worth it */
+	get_typlenbyvalalign(ARR_ELEMTYPE(arrayval), &elmlen,
+							&elmbyval, &elmalign);
+	
+	deconstruct_array(arrayval,
+					  ARR_ELEMTYPE(arrayval),
+					  elmlen, elmbyval, elmalign,
+					  &elem_values, &elem_nulls, &num_elems);
+	Assert(ARR_NDIM(arrayval) <= 2);
+
+	/*
+	 * Compress out any null elements.  We can ignore them since we assume
+	 * all btree operators are strict.
+	 * Also remove elements that are too large or too small. 
+	 * eg. WHERE element = INT_MAX + k, where k is positive and element
+	 * is of integer type.
+	 */
+	Oid atttype = ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
+
+	num_valid = 0;
+	for (j = 0; j < num_elems; j++)
+	{
+		if (elem_nulls[j])
+			continue;
+
+		/* Skip integer element where the value overflows the column type */
+		if (!is_row && (atttype == INT2OID || atttype == INT4OID) &&
+			!YbIsIntegerInRange(elem_values[j], ybScan->keys[i]->sk_subtype,
+								atttype == INT2OID ? SHRT_MIN : INT_MIN,
+								atttype == INT2OID ? SHRT_MAX : INT_MAX))
+			continue;
+
+		/* Skip any rows that have NULLs in them. */
+		/* 
+		 * TODO: record_eq considers NULL record elements to 
+		 * be equal. However, the only way we receive IN filters
+		 * with tuples is through
+		 * compound batched nested loop joins where NULL
+		 * elements of batched record are not considered equal.
+		 * This needs to be rechecked when row IN filters can
+		 * arise through other means.
+		 */
+		if ((!is_row && !elem_nulls[j])
+			|| (is_row &&
+				!HeapTupleHeaderHasNulls(
+					DatumGetHeapTupleHeader(elem_values[j]))))
+			elem_values[num_valid++] = elem_values[j];
+	}
+
+	pfree(elem_nulls);
+
+	/*
+	 * If there's no non-nulls, the scan qual is unsatisfiable
+	 * Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL);
+	 */
+	if (num_valid == 0)
+	{
+		*bail_out = true;
+		pfree(elem_values);
+		return false;
+	}
+
+	/* Build temporary vars */
+	IndexScanDescData tmp_scan_desc;
+	memset(&tmp_scan_desc, 0, sizeof(IndexScanDescData));
+	tmp_scan_desc.indexRelation = index;
+
+	/*
+	 * Sort the non-null elements and eliminate any duplicates.  We must
+	 * sort in the same ordering used by the index column, so that the
+	 * successive primitive indexscans produce data in index order.
+	 */
+	num_elems = _bt_sort_array_elements(&tmp_scan_desc, key,
+										false /* reverse */,
+										elem_values, num_valid);
+
+	/*
+	 * And set up the BTArrayKeyInfo data.
+	 */
+
+	if (is_row)
+	{
+		AttrNumber attnums[length_of_key];
+		/* Subkeys for this rowkey start at i+1. */
+		for (int j = 1; j <= length_of_key; j++)
+		{
+			attnums[j - 1] = scan_plan->bind_key_attnums[i + j];
+		}
+
+		ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
+								length_of_key - 1, attnums,
+								num_elems, elem_values);
+
+		for (int j = i + 1; j < i + length_of_key; j++)
+		{
+			int bound_idx =
+				YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[j]);
+			is_column_bound[bound_idx] = true;
+		}
+	}
+	else
+	{
+		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
+							scan_plan->bind_key_attnums[i],
+							num_elems, elem_values);
+	}
+
+	pfree(elem_values);
+
+	return true;
+}
+
 /* Use the scan-descriptor and scan-plan to setup binds for the queryplan */
 static bool
 YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 {
 	Relation relation = ybScan->relation;
-	Relation index = ybScan->index;
 
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
 								  YbGetStorageRelid(relation),
@@ -930,176 +1367,17 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	 */
 	int noffsets = 0;
 	int offsets[ybScan->nkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
+	int length_of_key = 0;
 
-	for (int i = 0; i < ybScan->nkeys; i++)
+	for (int i = 0; i < ybScan->nkeys; i += length_of_key)
 	{
+		length_of_key = YbGetLengthOfKey(&ybScan->keys[i]);
 		ScanKey key = ybScan->keys[i];
 		/* Check if this is full key row comparison expression */
-		if (key->sk_flags & SK_ROW_HEADER)
+		if (YbIsRowHeader(key) &&
+			!YbIsSearchArray(key))
 		{
-			int j = 0;
-			ScanKey subkeys = (ScanKey) DatumGetPointer(key->sk_argument);
-			int last_att_no = YBFirstLowInvalidAttributeNumber;
-
-			/*
-			 * We can only push down right now if the primary key columns
-			 * are specified in the correct order and the primary key
-			 * has no hashed columns. We also need to ensure that
-			 * the same comparison operation is done to all subkeys.
-			 */
-			bool can_pushdown = true;
-
-			int strategy = subkeys[0].sk_strategy;
-			int count = 0;
-			do {
-				ScanKey current = &subkeys[j];
-				/* Make sure that the specified keys are in the right order. */
-				if (!(current->sk_attno > last_att_no))
-				{
-					can_pushdown = false;
-					break;
-				}
-
-				/*
-				 * Make sure that the same comparator is applied to
-				 * all subkeys.
-				 */
-				if (strategy != current->sk_strategy)
-				{
-					can_pushdown = false;
-					break;
-				}
-				last_att_no = current->sk_attno;
-
-				/* Make sure that there are no hash key columns. */
-				if (index->rd_indoption[current->sk_attno - 1]
-					& INDOPTION_HASH)
-				{
-					can_pushdown = false;
-					break;
-				}
-				count++;
-			}
-			while((subkeys[j++].sk_flags & SK_ROW_END) == 0);
-
-			/*
-			 * Make sure that the primary key has no hash columns in order
-			 * to push down.
-			 */
-
-			for (int i = 0; i < index->rd_index->indnkeyatts; i++)
-			{
-				if (index->rd_indoption[i] & INDOPTION_HASH)
-				{
-					can_pushdown = false;
-					break;
-				}
-			}
-
-			if (can_pushdown)
-			{
-
-				YBCPgExpr *col_values = palloc(sizeof(YBCPgExpr)
-											* index->rd_index->indnkeyatts);
-				/*
-				 * Prepare upper/lower bound tuples determined from this
-				 * clause for bind. Care must be taken in the case
-				 * that primary key columns in the index are ordered
-				 * differently from each other. For example, consider
-				 * if the underlying index has primary key
-				 * (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
-				 * a clause like (r1, r2, r3) <= (40, 35, 12).
-				 * We cannot simply bind (40, 35, 12) as an upper bound
-				 * as that will miss tuples such as (40, 32, 0).
-				 * Instead we must push down (40, Inf, 12) in this case
-				 * for correctness. (Note that +Inf in this context
-				 * is higher in STORAGE order than all other values not
-				 * necessarily logical order, similar to the role of
-				 * docdb::ValueType::kHighest.
-				 */
-
-				/*
-				 * Is the first column in ascending order in the index?
-				 * This is important because whether or not the RHS of a
-				 * (row key) >= (row key values) expression is
-				 * considered an upper bound is dependent on the answer
-				 * to this question. The RHS of such an expression will
-				 * be the scan upper bound if the first column is in
-				 * descending order and lower if else. Similar logic
-				 * applies to the RHS of (row key) <= (row key values)
-				 * expressions.
-				 */
-				bool is_direction_asc =
-									(index->rd_indoption[
-										subkeys[0].sk_attno - 1]
-										& INDOPTION_DESC) == 0;
-				bool gt = strategy == BTGreaterEqualStrategyNumber
-								|| strategy == BTGreaterStrategyNumber;
-				bool is_inclusive = strategy != BTGreaterStrategyNumber
-										&& strategy != BTLessStrategyNumber;
-
-				bool is_point_scan = (count == index->rd_index->indnatts)
-										&& (strategy == BTEqualStrategyNumber);
-
-				/* Whether or not the RHS values make up a DocDB upper bound */
-				bool is_upper_bound = gt ^ is_direction_asc;
-				size_t subkey_index = 0;
-
-				for (j = 0; j < index->rd_index->indnkeyatts; j++)
-				{
-					bool is_column_specified = subkey_index < count
-											&& (subkeys[subkey_index]
-												.sk_attno - 1) == j;
-					/*
-					 * Is the current column stored in ascending order in the
-					 * underlying index?
-					 */
-					bool asc = (index->rd_indoption[j] & INDOPTION_DESC) == 0;
-
-					/*
-					 * If this column has different directionality than the
-					 * first column then we have to adjust the bounds on this
-					 * column.
-					 */
-					if(!is_column_specified
-						|| (asc != is_direction_asc &&
-							!is_point_scan))
-					{
-						col_values[j] = NULL;
-					}
-					else
-					{
-						ScanKey current = &subkeys[subkey_index];
-						col_values[j] = YBCNewConstant(ybScan->handle,
-											ybc_get_atttypid
-												(scan_plan->bind_desc,
-											current->sk_attno),
-											current->sk_collation,
-											current->sk_argument,
-											false);
-					}
-
-					if (is_column_specified)
-					{
-						subkey_index++;
-					}
-				}
-
-				if (is_upper_bound || strategy == BTEqualStrategyNumber)
-				{
-					HandleYBStatus(YBCPgDmlAddRowUpperBound(ybScan->handle,
-												index->rd_index->indnkeyatts,
-												col_values, is_inclusive));
-				}
-
-				if (!is_upper_bound || strategy == BTEqualStrategyNumber)
-				{
-					HandleYBStatus(YBCPgDmlAddRowLowerBound(ybScan->handle,
-												index->rd_index->indnkeyatts,
-												col_values, is_inclusive));
-				}
-			}
-			continue;
+			YbBindRowComparisonKeys(ybScan, scan_plan, i);
 		}
 
 		/* Check if this is primary columns */
@@ -1124,7 +1402,9 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 				}
 				else if (YbIsSearchArray(key))
 				{
-					offsets[noffsets++] = i;
+					/* Row IN expressions take priority over all. */
+					offsets[noffsets++] =
+						length_of_key > 1 ? - (i + ybScan->nkeys) : i;
 				}
 				break;
 			case BTGreaterEqualStrategyNumber:
@@ -1142,10 +1422,10 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	qsort(offsets, noffsets, sizeof(int), int_compar_cb);
 	/* restore -ve offsets to +ve */
 	for (int i = 0; i < noffsets; i++)
-	if (offsets[i] < 0)
-		offsets[i] = -offsets[i];
-	else
-		break;
+		if (offsets[i] < 0)
+			offsets[i] = (-offsets[i]) % (ybScan->nkeys);
+		else
+			break;
 
 	/* Bind keys for EQUALS and IN */
 	for (int k = 0; k < noffsets; k++)
@@ -1185,85 +1465,15 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 				}
 				else if (YbIsSearchArray(key))
 				{
-					/* based on _bt_preprocess_array_keys() */
-					ArrayType  *arrayval;
-					int16		elmlen;
-					bool		elmbyval;
-					char		elmalign;
-					int			num_elems;
-					Datum	   *elem_values;
-					bool	   *elem_nulls;
-					int			num_valid;
-					int			j;
-
-					/*
-					 * First, deconstruct the array into elements.  Anything allocated
-					 * here (including a possibly detoasted array value) is in the
-					 * workspace context.
-					 */
-					arrayval = DatumGetArrayTypeP(key->sk_argument);
-					Assert(key->sk_subtype == ARR_ELEMTYPE(arrayval));
-					/* We could cache this data, but not clear it's worth it */
-					get_typlenbyvalalign(ARR_ELEMTYPE(arrayval), &elmlen,
-											&elmbyval, &elmalign);
-					deconstruct_array(arrayval,
-										ARR_ELEMTYPE(arrayval),
-										elmlen, elmbyval, elmalign,
-										&elem_values, &elem_nulls, &num_elems);
-
-					/*
-					 * Compress out any null elements.  We can ignore them since we assume
-					 * all btree operators are strict. Also remove elements that are too large or
-					 * too small. eg. WHERE element = INT_MAX + k, where k is positive and element
-					 * is of integer type.
-					 */
-					Oid atttype = ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
-
-					num_valid = 0;
-					for (j = 0; j < num_elems; j++)
-					{
-						if (elem_nulls[j])
-							continue;
-
-						/* Skip integer element where the value overflows the column type */
-						if ((atttype == INT2OID || atttype == INT4OID) &&
-							!YbIsIntegerInRange(elem_values[j], ybScan->keys[i]->sk_subtype,
-                                  			   atttype == INT2OID ? SHRT_MIN : INT_MIN,
-								               atttype == INT2OID ? SHRT_MAX : INT_MAX))
-							continue;
-
-						elem_values[num_valid++] = elem_values[j];
-					}
-
-					/* We could pfree(elem_nulls) now, but not worth the cycles */
-
-					/*
-						* If there's no non-nulls, the scan qual is unsatisfiable
-						* Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL);
-						*/
-					if (num_valid == 0)
+					bool bail_out = false;
+					bool is_bound = 
+						YbBindSearchArray(ybScan, scan_plan,
+										  i, is_column_bound,
+									  	  &bail_out);
+					if (bail_out)
 						return false;
 
-					/* Build temporary vars */
-					IndexScanDescData tmp_scan_desc;
-					memset(&tmp_scan_desc, 0, sizeof(IndexScanDescData));
-					tmp_scan_desc.indexRelation = index;
-
-					/*
-						* Sort the non-null elements and eliminate any duplicates.  We must
-						* sort in the same ordering used by the index column, so that the
-						* successive primitive indexscans produce data in index order.
-						*/
-					num_elems = _bt_sort_array_elements(&tmp_scan_desc, key,
-														false /* reverse */,
-														elem_values, num_valid);
-
-					/*
-						* And set up the BTArrayKeyInfo data.
-						*/
-					ybcBindColumnCondIn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
-										num_elems, elem_values);
-					is_column_bound[idx] = true;
+					is_column_bound[idx] |= is_bound;
 				}
 				break;
 
@@ -1708,11 +1918,23 @@ ybcBeginScan(Relation relation,
 		ScanKey key = &keys[i];
 		/*
 		 * Keys for hash code search should be placed after regular keys.
-		 * For this purpose they are written into keys array from right to left.
+		 * For this purpose they are written into keys array from
+		 * right to left.
+		 * We also flatten out row keys
 		 */
 		ybScan->keys[YbIsHashCodeSearch(key)
 			? (nkeys - (++ybScan->nhash_keys))
 			: ybScan->nkeys++] = key;
+
+		if (YbIsRowHeader(&keys[i]))
+		{
+			ScanKey current = (ScanKey) keys[i].sk_argument;
+			do
+			{
+				ybScan->keys[ybScan->nkeys++] = current;
+			}
+			while (((current++)->sk_flags & SK_ROW_END) == 0);
+		}
 	}
 	ybScan->exec_params = NULL;
 	ybScan->relation = relation;
@@ -1789,7 +2011,7 @@ heaptuple_matches_key(HeapTuple tup,
 {
 	*recheck = false;
 
-	for (int i = 0; i < nkeys; i++)
+	for (int i = 0; i < nkeys; i += YbGetLengthOfKey(&keys[i]))
 	{
 		if (sk_attno[i] == InvalidAttrNumber)
 			continue;
@@ -1845,7 +2067,7 @@ indextuple_matches_key(IndexTuple tup,
 {
 	*recheck = false;
 
-	for (int i = 0; i < nkeys; i++)
+	for (int i = 0; i < nkeys; i += YbGetLengthOfKey(&keys[i]))
 	{
 		if (sk_attno[i] == InvalidAttrNumber)
 			break;

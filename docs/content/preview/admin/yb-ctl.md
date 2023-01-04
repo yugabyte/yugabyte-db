@@ -164,7 +164,7 @@ and [Wipe and restart with placement info flags](#wipe-and-restart-with-placemen
 
 ##### --replication_factor, -rf
 
-Specifies the number of replicas for each tablet. This parameter is also known as Replication Factor (RF). Should be an odd number so that a majority consensus can be established. A miniumum value of `3` is needed to create a fault-tolerant cluster since `1` signifies that there is no only 1 replica with no fault tolerance.
+Specifies the number of replicas for each tablet. This parameter is also known as Replication Factor (RF). Should be an odd number so that a majority consensus can be established. A minimum value of `3` is needed to create a fault-tolerant cluster as `1` signifies that there is no only 1 replica with no fault tolerance.
 
 This value also sets the default number of YB-Master servers.
 
@@ -204,9 +204,22 @@ Flag to log internal debug messages to `stderr`.
 
 To create a local YugabyteDB cluster for development and learning, use the `yb-ctl create` command.
 
-In order to ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands.
+To ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands.
 
 Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
+
+{{< note title="Loopback addresses" >}}
+
+On MacOS and Linux, for local clusters, every additional node after the first needs a loopback address configured to simulate the use of multiple hosts or nodes. For example, for a three-node cluster, you add two additional addresses as follows:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+The loopback addresses do not persist upon rebooting your computer.
+
+{{< /note >}}
 
 ### Create a local 1-node cluster with replication factor of 1
 

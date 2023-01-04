@@ -80,6 +80,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
           TaskType.ReadOnlyClusterCreate,
+          TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
           TaskType.ReleaseInstanceFromUniverse,

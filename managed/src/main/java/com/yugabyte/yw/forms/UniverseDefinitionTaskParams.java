@@ -166,6 +166,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public Map<ClusterAZ, String> existingLBs = null;
 
+  // Override the default DB present in pre-built Ami
+  @ApiModelProperty(hidden = true)
+  public boolean overridePrebuiltAmiDBVersion = false;
+
   /** Allowed states for an imported universe. */
   public enum ImportedState {
     NONE, // Default, and for non-imported universes.
@@ -293,11 +297,32 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
-    public void validate(boolean validateGFlagsConsistency) {
+    public void validate(boolean validateGFlagsConsistency, boolean isAuthEnforced) {
       checkDeviceInfo();
       checkStorageType();
+      validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+      }
+    }
+
+    /**
+     * Validate to ensure that the user is not able to create a universe via API when they disable
+     * YSQL Auth or YCQL Auth but yb.universe.auth.is_enforced runtime config value is true
+     *
+     * @param isAuthEnforced Runtime config value denoting if user is manadated to have auth.
+     */
+    private void validateAuth(boolean isAuthEnforced) {
+      if (isAuthEnforced) {
+        boolean enableYSQLAuth = userIntent.enableYSQLAuth;
+        boolean enableYCQLAuth = userIntent.enableYCQLAuth;
+        if ((userIntent.enableYSQL && !enableYSQLAuth)
+            || (userIntent.enableYCQL && !enableYCQLAuth)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Global Policy mandates auth-enforced universes."
+                  + "Make sure to enableAuth in request.");
+        }
       }
     }
 

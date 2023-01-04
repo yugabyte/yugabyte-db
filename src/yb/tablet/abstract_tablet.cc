@@ -63,6 +63,7 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
 
   const QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
   QLResultSet resultset(&rsrow_desc, rows_data);
+
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
       QLStorage(), deadline, read_time, *doc_read_context, projection, &resultset,

@@ -75,9 +75,7 @@ public class NativeKubernetesManager extends KubernetesManager {
 
   @Override
   public List<Pod> getPodInfos(
-      Map<String, String> config, String universePrefix, String namespace) {
-    // Implementation specific helm release name.
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+      Map<String, String> config, String helmReleaseName, String namespace) {
     try (KubernetesClient client = getClient(config)) {
       return client
           .pods()
@@ -90,9 +88,7 @@ public class NativeKubernetesManager extends KubernetesManager {
 
   @Override
   public List<Service> getServices(
-      Map<String, String> config, String universePrefix, String namespace) {
-    // Implementation specific helm release name.
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+      Map<String, String> config, String helmReleaseName, String namespace) {
     try (KubernetesClient client = getClient(config)) {
       return client
           .services()
@@ -197,9 +193,7 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void deleteStorage(Map<String, String> config, String universePrefix, String namespace) {
-    // Implementation specific helm release name.
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+  public void deleteStorage(Map<String, String> config, String helmReleaseName, String namespace) {
     try (KubernetesClient client = getClient(config)) {
       client
           .persistentVolumeClaims()
@@ -247,11 +241,12 @@ public class NativeKubernetesManager extends KubernetesManager {
   public boolean expandPVC(
       Map<String, String> config,
       String namespace,
-      String universePrefix,
-      String appLabel,
-      String newDiskSize) {
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-    Map<String, String> labels = ImmutableMap.of("app", appLabel, "release", helmReleaseName);
+      String helmReleaseName,
+      String appName,
+      String newDiskSize,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    Map<String, String> labels = ImmutableMap.of(appLabel, appName, "release", helmReleaseName);
     try (KubernetesClient client = getClient(config)) {
       List<PersistentVolumeClaim> pvcs =
           client
@@ -271,7 +266,11 @@ public class NativeKubernetesManager extends KubernetesManager {
 
   @Override
   public String getStorageClassName(
-      Map<String, String> config, String namespace, String universePrefix, boolean forMaster) {
+      Map<String, String> config,
+      String namespace,
+      String universePrefix,
+      boolean forMaster,
+      boolean newNamingStyle) {
     // TODO: Implement when switching to native client implementation
     return null;
   }

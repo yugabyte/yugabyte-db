@@ -425,11 +425,13 @@ public class SupportBundleUtil {
    * @return a set of all storage class names
    */
   public Set<String> getAllStorageClassNames(
+      String universeName,
       KubernetesManager kubernetesManager,
       KubernetesCluster kubernetesCluster,
       boolean isMultiAz,
       String nodePrefix,
-      boolean isReadOnlyUniverseCluster) {
+      boolean isReadOnlyUniverseCluster,
+      boolean newNamingStyle) {
     Set<String> allStorageClassNames = new HashSet<String>();
 
     for (Map.Entry<String, String> namespaceToAzName :
@@ -437,16 +439,21 @@ public class SupportBundleUtil {
       String namespace = namespaceToAzName.getKey();
       String helmReleaseName =
           KubernetesUtil.getHelmReleaseName(
-              isMultiAz, nodePrefix, namespaceToAzName.getValue(), isReadOnlyUniverseCluster);
+              isMultiAz,
+              nodePrefix,
+              universeName,
+              namespaceToAzName.getValue(),
+              isReadOnlyUniverseCluster,
+              newNamingStyle);
 
       String masterStorageClassName =
           kubernetesManager.getStorageClassName(
-              kubernetesCluster.config, namespace, helmReleaseName, true);
+              kubernetesCluster.config, namespace, helmReleaseName, true, newNamingStyle);
       allStorageClassNames.add(masterStorageClassName);
 
       String tserverStorageClassName =
           kubernetesManager.getStorageClassName(
-              kubernetesCluster.config, namespace, helmReleaseName, false);
+              kubernetesCluster.config, namespace, helmReleaseName, false, newNamingStyle);
       allStorageClassNames.add(tserverStorageClassName);
     }
 

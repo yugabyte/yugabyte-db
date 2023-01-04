@@ -200,6 +200,11 @@ class PgMiniTest : public PgMiniTestBase {
   void VerifyFileSizeAfterCompaction(PGConn* conn, const int num_tables);
 
   void RunManyConcurrentReadersTest();
+
+  void SetupColocatedTableAndRunBenchmark(
+      const std::string& create_table_cmd, const std::string& insert_cmd,
+      const std::string& select_cmd, int rows, int block_size, int reads, bool compact,
+      bool aggregate);
 };
 
 class PgMiniSingleTServerTest : public PgMiniTest {
@@ -1822,6 +1827,62 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
   }, 15s, "Create table"));
 }
 
+void PgMiniTest::SetupColocatedTableAndRunBenchmark(
+    const std::string& create_table_cmd, const std::string& insert_cmd,
+    const std::string& select_cmd, int rows, int block_size, int reads, bool compact,
+    bool aggregate) {
+  const std::string kDatabaseName = "testdb";
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with COLOCATION = true", kDatabaseName));
+
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  ASSERT_OK(conn.Execute(create_table_cmd));
+  auto last_row = 0;
+  while (last_row < rows) {
+    auto first_row = last_row + 1;
+    last_row = std::min(rows, last_row + block_size);
+    ASSERT_OK(conn.ExecuteFormat(insert_cmd, first_row, last_row));
+  }
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    auto tp = peer->tablet()->transaction_participant();
+    if (tp) {
+      const auto count_intents_result = tp->TEST_CountIntents();
+      const auto count_intents = count_intents_result.ok() ? count_intents_result->first : 0;
+      LOG(INFO) << peer->LogPrefix() << "Intents: " << count_intents;
+    }
+  }
+
+  if (compact) {
+    FlushAndCompactTablets();
+  }
+
+  LOG(INFO) << "Perform read. Row count: " << rows;
+
+  if (VLOG_IS_ON(4)) {
+    google::SetVLOGLevel("intent_aware_iterator", 4);
+    google::SetVLOGLevel("docdb_rocksdb_util", 4);
+    google::SetVLOGLevel("docdb", 4);
+  }
+
+  for (int i = 0; i != reads; ++i) {
+    int64_t fetched_rows;
+    auto start = MonoTime::Now();
+    if (aggregate) {
+      fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>(select_cmd));
+    } else {
+      auto res = ASSERT_RESULT(conn.Fetch(select_cmd));
+      fetched_rows = PQntuples(res.get());
+    }
+    auto finish = MonoTime::Now();
+    ASSERT_EQ(rows, fetched_rows);
+    LOG(INFO) << i << ") Full Time: " << finish - start;
+  }
+}
+
 class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
  protected:
   void SetUp() override {
@@ -1830,52 +1891,12 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
   }
 
   void Run(int rows, int block_size, int reads, bool compact = false, bool select = false) {
-    auto conn = ASSERT_RESULT(Connect());
-
-    ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
-    auto last_row = 0;
-    while (last_row < rows) {
-      auto first_row = last_row + 1;
-      last_row = std::min(rows, last_row + block_size);
-      ASSERT_OK(conn.ExecuteFormat(
-          "INSERT INTO t SELECT generate_series($0, $1)", first_row, last_row));
-    }
-
-    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-    for (const auto& peer : peers) {
-      auto tp = peer->tablet()->transaction_participant();
-      if (tp) {
-        const auto count_intents_result = tp->TEST_CountIntents();
-        const auto count_intents = count_intents_result.ok() ? count_intents_result->first : 0;
-        LOG(INFO) << peer->LogPrefix() << "Intents: " << count_intents;
-      }
-    }
-
-    if (compact) {
-      FlushAndCompactTablets();
-    }
-
-    LOG(INFO) << "Perform read. Row count: " << rows;
-
-    if (VLOG_IS_ON(4)) {
-      google::SetVLOGLevel("intent_aware_iterator", 4);
-      google::SetVLOGLevel("docdb_rocksdb_util", 4);
-      google::SetVLOGLevel("docdb", 4);
-    }
-
-    for (int i = 0; i != reads; ++i) {
-      int64_t fetched_rows;
-      auto start = MonoTime::Now();
-      if(!select) {
-        fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT count(*) FROM t"));
-      } else {
-        auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
-        fetched_rows = PQntuples(res.get());
-      }
-      auto finish = MonoTime::Now();
-      ASSERT_EQ(rows, fetched_rows);
-      LOG(INFO) << i << ") Full Time: " << finish - start;
-    }
+    const std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY)";
+    const std::string insert_cmd = "INSERT INTO t SELECT generate_series($0, $1)";
+    const std::string select_cmd = select ? "SELECT * FROM t" : "SELECT count(*) FROM t";
+    SetupColocatedTableAndRunBenchmark(
+        create_cmd, insert_cmd, select_cmd, rows, block_size, reads, compact,
+        /* aggregate = */ !select);
   }
 };
 
@@ -1933,6 +1954,31 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigValue), PgMiniSingleTServerTest
       Format("SELECT md5(b) FROM t WHERE a = $0", kKey)));
   auto finish = MonoTime::Now();
   LOG(INFO) << "Passed: " << finish - start << ", result: " << result;
+}
+
+class PgMiniRPCTest : public PgMiniSingleTServerTest {
+ protected:
+  void SetUp() override {
+    FLAGS_ysql_prefetch_limit = 1;
+    PgMiniTest::SetUp();
+  }
+
+  void Run(int rows, int block_size, int reads) {
+    const std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY)";
+    const std::string insert_cmd = "INSERT INTO t SELECT generate_series($0, $1)";
+    const std::string select_cmd = "SELECT * from t where a in (SELECT generate_series(1, 10000))";
+    SetupColocatedTableAndRunBenchmark(
+        create_cmd, insert_cmd, select_cmd, rows, block_size, reads, /* compact = */ true,
+        /* aggregate = */ false);
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SingleRowScan), PgMiniRPCTest) {
+  constexpr int kRows = RegularBuildVsDebugVsSanitizers(10000, 1000, 100);
+  constexpr int kBlockSize = 100;
+  constexpr int kReads = 3;
+
+  Run(kRows, kBlockSize, kReads);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {

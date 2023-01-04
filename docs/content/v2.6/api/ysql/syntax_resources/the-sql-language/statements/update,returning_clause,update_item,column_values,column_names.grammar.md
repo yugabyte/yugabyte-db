@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 update ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ] 
             UPDATE [ ONLY ] table_name [ * ] [ [ AS ] alias ]  SET 
            update_item [ , ... ] [ WHERE boolean_expression

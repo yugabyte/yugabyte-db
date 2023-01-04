@@ -7,7 +7,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
@@ -15,22 +14,30 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
+
+import java.util.Set;
 import java.util.UUID;
+
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.core.AllOf;
 import org.hamcrest.core.Is;
@@ -54,24 +61,34 @@ public class RegionControllerTest extends FakeDBApplication {
   }
 
   private Result listRegions(UUID providerUUID) {
-    String uri = "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/regions";
+    String uri =
+        String.format("/api/customers/%s/providers/%s/regions", customer.uuid, providerUUID);
     return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result listAllRegions() {
-    String uri = "/api/customers/" + customer.uuid + "/regions";
+    String uri = String.format("/api/customers/%s/regions", customer.uuid);
     return FakeApiHelper.doRequest("GET", uri);
   }
 
   private Result createRegion(UUID providerUUID, JsonNode body) {
-    String uri = "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/regions";
+    String uri =
+        String.format("/api/customers/%s/providers/%s/regions", customer.uuid, providerUUID);
     return FakeApiHelper.doRequestWithBody("POST", uri, body);
   }
 
   private Result deleteRegion(UUID providerUUID, UUID regionUUID) {
     String uri =
-        "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/regions/" + regionUUID;
+        String.format(
+            "/api/customers/%s/providers/%s/regions/%s", customer.uuid, providerUUID, regionUUID);
     return FakeApiHelper.doRequest("DELETE", uri);
+  }
+
+  private Result editRegion(UUID providerUUID, UUID regionUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/regions/%s", customer.uuid, providerUUID, regionUUID);
+    return FakeApiHelper.doRequestWithBody("PUT", uri, body);
   }
 
   @Test
@@ -293,6 +310,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteRegionWithValidParams() {
     Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
+
     AvailabilityZone.createOrThrow(r, "az-1", "AZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "AZ 2", "subnet-2");
 
@@ -308,19 +326,70 @@ public class RegionControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.get("success").asBoolean());
 
-    actualRegion = getFirstRegion();
-    assertFalse(actualRegion.isActive());
-    for (AvailabilityZone az : actualRegion.zones) {
-      assertFalse(az.active);
+    assertNull(Region.get(r.uuid));
+  }
+
+  @Test
+  public void testDeleteRegionInUseByUniverses() {
+    Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
+
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "AZ 2", "subnet-2");
+
+    Universe universe = ModelFactory.createUniverse();
+    UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+    Set<NodeDetails> nodeDetailsSet = ApiUtils.getDummyNodeDetailSet(UUID.randomUUID(), 3, 3);
+    udtp.nodeDetailsSet = nodeDetailsSet;
+
+    int i = 0;
+    for (NodeDetails nd : nodeDetailsSet) {
+      nd.azUuid = i++ % 2 == 0 ? az1.uuid : az2.uuid;
     }
-    assertAuditEntry(1, customer.uuid);
+
+    universe.setUniverseDetails(udtp);
+    universe.update();
+
+    Result result = assertPlatformException(() -> deleteRegion(provider.uuid, r.uuid));
+    assertEquals(FORBIDDEN, result.status());
+
+    assertNotNull(Region.get(r.uuid));
+  }
+
+  @Test
+  public void testEditRegion() {
+    Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
+    ObjectNode regionJson = Json.newObject();
+    String updatedYbImage = "another-image";
+    String updatedSG = "sg-123456";
+    regionJson.put("ybImage", updatedYbImage);
+    regionJson.put("securityGroupId", updatedSG);
+
+    Result result = editRegion(provider.uuid, r.uuid, regionJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    assertValue(json, "ybImage", updatedYbImage);
+    assertValue(json, "securityGroupId", updatedSG);
+
+    r.refresh();
+    assertEquals(updatedSG, r.getSecurityGroupId());
+    assertEquals(updatedYbImage, r.ybImage);
+
+    regionJson.put("securityGroupId", (String) null);
+    result = editRegion(provider.uuid, r.uuid, regionJson);
+    json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    assertValue(json, "ybImage", updatedYbImage);
+    assertNull(json.get("securityGroupId"));
+
+    r.refresh();
+    assertNull(r.getSecurityGroupId());
+    assertEquals(updatedYbImage, r.ybImage);
   }
 
   public Region getFirstRegion() {
     Result result;
     result = listAllRegions();
     assertEquals(OK, result.status());
-    Region actualRegion = Json.fromJson(Json.parse(contentAsString(result)).get(0), Region.class);
-    return actualRegion;
+    return Json.fromJson(Json.parse(contentAsString(result)).get(0), Region.class);
   }
 }

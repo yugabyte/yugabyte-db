@@ -318,8 +318,8 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
                            ReplicateIntents replicate_intents,
                            GetChangesResponsePB* resp) {
   const auto& batch = msg->write().write_batch();
-  auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-  const auto& schema = *shared_tablet->schema();
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  const auto& schema = *tablet->schema();
   // Write batch may contain records from different rows.
   // For CDC, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
@@ -437,8 +437,8 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
     case TransactionStatus::APPLYING: {
       record->set_operation(CDCRecordPB::APPLY);
       txn_state->set_commit_hybrid_time(transaction_state.commit_hybrid_time());
-      auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-      shared_tablet->metadata()->partition()->ToPB(record->mutable_partition());
+      auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+      tablet->metadata()->partition()->ToPB(record->mutable_partition());
       break;
     }
     case TransactionStatus::COMMITTED: {
@@ -520,8 +520,8 @@ Status GetChangesForXCluster(const std::string& stream_id,
   OpId checkpoint;
   TxnStatusMap txn_map;
   if (!replicate_intents) {
-    auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-    auto txn_participant = shared_tablet->transaction_participant();
+    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    auto txn_participant = tablet->transaction_participant();
     if (txn_participant) {
       request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
     }

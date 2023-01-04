@@ -19,7 +19,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -141,6 +140,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   public static class Params extends UniverseTaskParams {
     public UUID providerUUID;
+    public String universeName;
     public CommandType commandType;
     public String helmReleaseName;
     public String namespace;
@@ -269,11 +269,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         processNodeInfo();
         break;
       case STS_DELETE:
+        Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+        boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
+        // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
+        String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + "yb-tserver";
         kubernetesManagerFactory
             .getManager()
-            .deleteStatefulSet(config, taskParams().namespace, "yb-tserver");
+            .deleteStatefulSet(config, taskParams().namespace, appName);
         break;
       case PVC_EXPAND_SIZE:
+        u = Universe.getOrBadRequest(taskParams().universeUUID);
         kubernetesManagerFactory
             .getManager()
             .expandPVC(
@@ -281,7 +286,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().namespace,
                 taskParams().helmReleaseName,
                 "yb-tserver",
-                taskParams().newDiskSize);
+                taskParams().newDiskSize,
+                u.getUniverseDetails().useNewHelmNamingStyle);
         break;
     }
   }
@@ -328,13 +334,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
             : u.getUniverseDetails().getPrimaryCluster().uuid;
     PlacementInfo pi = taskParams().placementInfo;
-
+    String universename = taskParams().universeName;
     Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
     Map<UUID, String> azToDomain = KubernetesUtil.getDomainPerAZ(pi);
     Provider provider = Provider.get(taskParams().providerUUID);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     String nodePrefix = u.getUniverseDetails().nodePrefix;
-
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
       String azName = AvailabilityZone.get(azUUID).code;
@@ -343,7 +348,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
       String helmReleaseName =
           KubernetesUtil.getHelmReleaseName(
-              isMultiAz, nodePrefix, azName, taskParams().isReadOnlyCluster);
+              isMultiAz,
+              nodePrefix,
+              universename,
+              azName,
+              taskParams().isReadOnlyCluster,
+              u.getUniverseDetails().useNewHelmNamingStyle);
       String namespace =
           KubernetesUtil.getKubernetesNamespace(
               isMultiAz,
@@ -357,6 +367,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
       List<Pod> podInfos =
           kubernetesManagerFactory.getManager().getPodInfos(config, helmReleaseName, namespace);
+
       for (Pod podInfo : podInfos) {
         ObjectNode pod = Json.newObject();
         pod.put("startTime", podInfo.getStatus().getStartTime());

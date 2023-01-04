@@ -72,7 +72,7 @@ Using the YugabyteDB SQL shell, [ysqlsh](../../../admin/ysqlsh/), you can connec
   </li>
   <li >
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

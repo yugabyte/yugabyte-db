@@ -1987,11 +1987,27 @@ bool MetaCache::DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
 void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                   const PartitionKey& partition_key,
                                   CoarseTimePoint deadline,
-                                  LookupTabletCallback callback) {
+                                  LookupTabletCallback callback,
+                                  FailOnPartitionListRefreshed fail_on_partition_list_refreshed) {
   if (table->ArePartitionsStale()) {
     RefreshTablePartitions(
-        std::bind(&MetaCache::LookupTabletByKey, this, table, partition_key, deadline, _1),
-        table, std::move(callback));
+        table,
+        [this, table, partition_key, deadline, callback = std::move(callback),
+         fail_on_partition_list_refreshed](const auto& status) {
+          if (!status.ok()) {
+            callback(status);
+            return;
+          }
+          if (fail_on_partition_list_refreshed) {
+            callback(STATUS_EC_FORMAT(
+                TryAgain, ClientError(ClientErrorCode::kTablePartitionListRefreshed),
+                "Partition list for table $0 has been refreshed.", table->id()));
+            return;
+          }
+          LookupTabletByKey(
+              table, partition_key, deadline, std::move(callback),
+              fail_on_partition_list_refreshed);
+        });
     return;
   }
 
@@ -2021,8 +2037,14 @@ void MetaCache::LookupAllTablets(const std::shared_ptr<YBTable>& table,
                                  LookupTabletRangeCallback callback) {
   if (table->ArePartitionsStale()) {
     RefreshTablePartitions(
-        std::bind(&MetaCache::LookupAllTablets, this, table, deadline, _1),
-        table, std::move(callback));
+        table,
+        [this, table, deadline, callback = std::move(callback)](const auto& status) {
+          if (!status.ok()) {
+            callback(status);
+            return;
+          }
+          LookupAllTablets(table, deadline, std::move(callback));
+        });
     return;
   }
 
@@ -2146,19 +2168,17 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
   LOG_IF(DFATAL, !result) << "Lookup was not started for tablet " << tablet_id;
 }
 
-template <class Func, class Callback>
 void MetaCache::RefreshTablePartitions(
-    Func&& func, const std::shared_ptr<YBTable>& table, Callback&& callback) {
-  table->RefreshPartitions(client_,
-      [this, func = std::move(func), table, callback = std::move(callback)](const Status& status) {
-    if (!status.ok()) {
-      callback(status);
-      return;
-    }
-    InvalidateTableCache(*table);
-    func(callback);
+    const std::shared_ptr<YBTable>& table, StdStatusCallback callback) {
+  table->RefreshPartitions(
+      client_,
+      [this, table, callback = std::move(callback)](
+          const Status& status) {
+        if (status.ok()) {
+          InvalidateTableCache(*table);
+        }
+        callback(status);
   });
-  return;
 }
 
 void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
