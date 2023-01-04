@@ -2,9 +2,18 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -19,16 +28,12 @@ import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
+
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.List;
-import java.util.UUID;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.mvc.Result;
 
 @Api(
@@ -129,9 +134,26 @@ public class ScheduleController extends AuthenticatedController {
         BackupUtil.validateBackupFrequency(params.frequency);
         schedule.updateFrequency(params.frequency);
         schedule.updateFrequencyTimeUnit(params.frequencyTimeUnit);
+
+        ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
+        Date nextScheduleTaskTime;
+
+        if (lastTask == null
+            || Util.isTimeExpired(
+                Schedule.nextExpectedTaskTime(lastTask.getScheduledTime(), schedule))) {
+          nextScheduleTaskTime = Schedule.nextExpectedTaskTime(null, schedule);
+        } else {
+          nextScheduleTaskTime =
+              Schedule.nextExpectedTaskTime(lastTask.getScheduledTime(), schedule);
+        }
+
+        schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
+
       } else if (params.cronExpression != null) {
         BackupUtil.validateBackupCronExpression(params.cronExpression);
         schedule.updateCronExpression(params.cronExpression);
+        Date nextScheduleTaskTime = Schedule.nextExpectedTaskTime(null, schedule);
+        schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
       }
 
       // Update incremental backup schedule frequency, if provided after validation.
