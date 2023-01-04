@@ -60,6 +60,7 @@ yb-voyager export schema [ <arguments> ... ]
 yb-voyager export schema --export-dir /path/to/yb/export/dir \
         --source-db-type sourceDB \
         --source-db-host localhost \
+        --source-db-port port \
         --source-db-user username \
         --source-db-password password \
         --source-db-name dbname \
@@ -105,6 +106,7 @@ yb-voyager export data [ <arguments> ... ]
 yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-type sourceDB \
         --source-db-host hostname \
+        --source-db-port port \
         --source-db-user username \
         --source-db-password password \
         --source-db-name dbname \
@@ -248,6 +250,10 @@ Specifies the source database type (postrgresql, mysql or oracle).
 
 Specifies the domain name or IP address of the machine on which the source database server is running.
 
+### --source-db-port
+
+Specifies the port number on which the source database server is running.
+
 ### --source-db-user
 
 Specifies the username of the source database.
@@ -271,6 +277,10 @@ Specifies the format in which the report file is generated. It can be in `html`,
 ### --target-db-host
 
 Specifies the domain name or IP address of the machine on which target database server is running.
+
+### --target-db-port
+
+Specifies the port number on which the target database server is running.
 
 ### --target-db-user
 
