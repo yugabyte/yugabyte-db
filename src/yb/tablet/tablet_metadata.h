@@ -78,9 +78,6 @@ const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 YB_STRONGLY_TYPED_BOOL(Primary);
 
 struct TableInfo {
- private:
-  class PrivateTag {};
- public:
   // Table id, name and type.
   std::string table_id;
   std::string namespace_name;
@@ -110,8 +107,7 @@ struct TableInfo {
   // We use the retention time from the primary table.
   uint32_t wal_retention_secs = 0;
 
-  // Public ctor with private argument to allow std::make_shared, but prevent public usage.
-  TableInfo(const std::string& log_prefix, PrivateTag);
+  TableInfo();
   TableInfo(const std::string& tablet_log_prefix,
             Primary primary,
             std::string table_id,
@@ -131,7 +127,7 @@ struct TableInfo {
   TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
   ~TableInfo();
 
-  static Result<TableInfoPtr> LoadFromPB(
+  Status LoadFromPB(
       const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
 
@@ -153,14 +149,8 @@ struct TableInfo {
     return log_prefix;
   }
 
-  bool primary() const {
-    return cotable_id.IsNil();
-  }
-
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
- private:
-  Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
