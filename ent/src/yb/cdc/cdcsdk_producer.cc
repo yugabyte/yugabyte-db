@@ -699,15 +699,7 @@ void FillDDLInfo(
 }
 
 bool VerifyTabletSplitOnParentTablet(
-    const TableId& table_id, const TabletId& tablet_id,
-    const std::shared_ptr<yb::consensus::ReplicateMsg>& msg, client::YBClient* client) {
-  if (!(msg->has_split_request() && msg->split_request().has_tablet_id() &&
-        msg->split_request().tablet_id() == tablet_id)) {
-    LOG(WARNING) << "The replicate message for split-op does not have the parent tablet_id set to: "
-                 << tablet_id << ". Could not verify tablet-split for tablet: " << tablet_id;
-    return false;
-  }
-
+    const TableId& table_id, const TabletId& tablet_id, client::YBClient* client) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   client::YBTableName table_name;
   table_name.set_table_id(table_id);
@@ -1048,7 +1040,7 @@ Status GetChangesForCDCSDK(
             // If either of the conditions are false, we will know the splitOp is not succesfull.
             const TableId& table_id = tablet_peer->tablet()->metadata()->table_id();
 
-            if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, msg, client))) {
+            if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, client))) {
               // We could verify the tablet split succeeded. This is possible when the child tablets
               // of a split are not running yet.
               LOG(INFO) << "Found SPLIT_OP record with index: " << msg->id()

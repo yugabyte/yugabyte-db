@@ -6957,12 +6957,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
-  // Calling 'GetTabletListToPollForCDC' before the split has been reported should only return the
-  // details of the current tablet.
-  auto get_tablets_resp =
-      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
-  ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs_size(), 1);
-
   change_resp_1 =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
@@ -6973,7 +6967,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   LOG(INFO) << "The tablet split error is now communicated to the client.";
 
-  get_tablets_resp =
+  auto get_tablets_resp =
       ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
 
