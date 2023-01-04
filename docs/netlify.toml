@@ -86,6 +86,16 @@
   force = true
 
 [[redirects]]
+  from = "/stable/migrate/*"
+  to = "/preview/migrate/:splat"
+  force = true
+
+[[redirects]]
+  from = "/v2.14/migrate/*"
+  to = "/preview/migrate/:splat"
+  force = true
+
+[[redirects]]
   from = "/:version/releases/*"
   to = "/preview/releases/"
   force = true
@@ -348,6 +358,7 @@
   from = "/:version/migrate/yb-voyager/*"
   to = "/:version/migrate/:splat"
   force = true
+
 
 # Redirect older versions of specific sections
 
