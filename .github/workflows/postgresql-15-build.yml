@@ -1,16 +1,16 @@
-name: postgresql-14-build
+name: postgresql-15-build
 on: ["push", "pull_request"]
 
 jobs:
   build:
-    name: pg-14-build-test
+    name: pg-15-build-test
     runs-on: ubuntu-22.04
     steps:
       - name: Clone postgres repository
         uses: actions/checkout@v2
         with:
           repository: 'postgres/postgres'
-          ref: 'REL_14_STABLE'
+          ref: 'REL_15_STABLE'
 
       - name: Install dependencies
         run: |
@@ -45,11 +45,11 @@ jobs:
             '--libexecdir=${prefix}/lib/x86_64-linux-gnu' '--with-icu' \
             '--with-tcl' '--with-perl' '--with-python' '--with-pam' \
             '--with-openssl' '--with-libxml' '--with-libxslt' '--with-ldap' \
-            'PYTHON=/usr/bin/python3' '--mandir=/usr/share/postgresql/14/man' \
-            '--docdir=/usr/share/doc/postgresql-doc-14' '--with-pgport=5432' \
+            'PYTHON=/usr/bin/python3' '--mandir=/usr/share/postgresql/15/man' \
+            '--docdir=/usr/share/doc/postgresql-doc-15' '--with-pgport=5432' \
             '--sysconfdir=/etc/postgresql-common' '--datarootdir=/usr/share' \
-            '--datadir=/usr/share/postgresql/14' '--with-uuid=e2fs' \
-            '--bindir=/usr/lib/postgresql/14/bin' '--enable-tap-tests' \
+            '--datadir=/usr/share/postgresql/15' '--with-uuid=e2fs' \
+            '--bindir=/usr/lib/postgresql/15/bin' '--enable-tap-tests' \
             '--libdir=/usr/lib/x86_64-linux-gnu' '--enable-debug' \
             '--libexecdir=/usr/lib/postgresql' '--with-gnu-ld' \
             '--includedir=/usr/include/postgresql' '--enable-dtrace' \
@@ -68,8 +68,8 @@ jobs:
 
       - name: Start postgresql cluster
         run: |
-          export PATH="/usr/lib/postgresql/14/bin:$PATH"
-          sudo cp /usr/lib/postgresql/14/bin/pg_config /usr/bin
+          export PATH="/usr/lib/postgresql/15/bin:$PATH"
+          sudo cp /usr/lib/postgresql/15/bin/pg_config /usr/bin
           initdb -D /opt/pgsql/data
           pg_ctl -D /opt/pgsql/data -l logfile start
 
@@ -86,7 +86,7 @@ jobs:
 
       - name: Load pg_stat_monitor library and Restart Server
         run: |
-          export PATH="/usr/lib/postgresql/14/bin:$PATH"
+          export PATH="/usr/lib/postgresql/15/bin:$PATH"
           pg_ctl -D /opt/pgsql/data -l logfile stop
           echo "shared_preload_libraries = 'pg_stat_monitor'" >> \
             /opt/pgsql/data/postgresql.conf
@@ -128,7 +128,7 @@ jobs:
 
       - name: Start Server installcheck-world tests
         run: |
-          export PATH="/usr/lib/postgresql/14/bin:$PATH"
+          export PATH="/usr/lib/postgresql/15/bin:$PATH"
           pg_ctl -D /opt/pgsql/data -l logfile stop
           echo "compute_query_id = off" >> /opt/pgsql/data/postgresql.conf
           pg_ctl -D /opt/pgsql/data -l logfile start
