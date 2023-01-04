@@ -723,16 +723,6 @@ It is recommend to add a transformer in the source connector while using with be
 "transforms":"unwrap,extract",
 "transforms.unwrap.type":"io.debezium.connector.yugabytedb.transforms.PGCompatible",
 "transforms.unwrap.drop.tombstones":"false",
-...
-```
-
-You also need a transformer in the sink connectors:
-
-```properties
-...
-"transforms":"unwrap",
-"transforms.unwrap.type":"io.debezium.transforms.ExtractNewRecordState",
-"transforms.unwrap.drop.tombstones":"false",
 "transforms.extract.type":"io.debezium.transforms.ExtractNewRecordState",
 "transforms.extract.drop.tombstones":"false",
 ...
