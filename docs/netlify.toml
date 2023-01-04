@@ -87,7 +87,7 @@
 
 [[redirects]]
   from = "/stable/migrate/*"
-  to = "/preview/migrate/"
+  to = "/preview/migrate/:splat"
   force = true
 
 [[redirects]]
