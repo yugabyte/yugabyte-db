@@ -163,7 +163,7 @@ sudo ifconfig lo0 alias 127.0.0.2
 sudo ifconfig lo0 alias 127.0.0.3
 ```
 
-Next, join two more nodes with the previous node. By default, [yugabyted](../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
+Next, join two more nodes with the previous node. [yugabyted](../reference/configuration/yugabyted/) automatically applies a replication factor of `3` when a third node is added.
 
 ```sh
 ./bin/yugabyted start \
