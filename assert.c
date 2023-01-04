@@ -260,7 +260,17 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
 	nspname = text_to_cstring(sname);
+
+#if PG_VERSION_NUM >= 160000
+
+	names = stringToQualifiedNameList(nspname, NULL);
+
+#else
+
 	names = stringToQualifiedNameList(nspname);
+
+#endif
+
 	if (list_length(names) != 1)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
@@ -399,7 +409,15 @@ dbms_assert_object_name(PG_FUNCTION_ARGS)
 
 	object_name = text_to_cstring(str);
 
+#if PG_VERSION_NUM >= 160000
+
+	names = stringToQualifiedNameList(object_name, NULL);
+
+#else
+
 	names = stringToQualifiedNameList(object_name);
+
+#endif
 
 	classId = RangeVarGetRelid(makeRangeVarFromNameList(names), NoLock, true);
 	if (!OidIsValid(classId))
