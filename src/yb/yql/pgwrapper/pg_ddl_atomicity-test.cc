@@ -261,9 +261,6 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(AlterDropTableRollback)
   }
 
   // Verify that DDL succeeds after rollback is complete.
-  // TODO: Need to start a different connection here for rename to work as expected until #14395
-  // is fixed.
-  conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(RenameTableStmt(rename_table_test)));
   ASSERT_OK(conn.Execute(RenameColumnStmt(rename_col_test)));
   ASSERT_OK(conn.Execute(AddColumnStmt(add_col_test)));
@@ -411,9 +408,6 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   // Verify that it is still possible to run DDL on an affected table.
   // Tables having unverified transaction state on them can still be altered if the DDL rollback
   // is not enabled.
-  // TODO: Need to start a different connection here for rename to work as expected until #14395
-  // is fixed.
-  conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(RenameTableStmt(rename_table_test, "foobar2")));
   ASSERT_OK(conn.Execute(AddColumnStmt(add_col_test, "value2")));
 
