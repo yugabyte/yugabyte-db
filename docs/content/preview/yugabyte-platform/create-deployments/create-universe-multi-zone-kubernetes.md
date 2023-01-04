@@ -20,7 +20,7 @@ Generic</a>
 
   <li>
     <a href="../create-universe-multi-zone-kubernetes/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -119,9 +119,9 @@ Optionally, use the **Helm Overrides** section as follows:
 
 - Select **Force Apply** if you want to override any previous overrides.
 
-- Click **Validate & Save**. 
+- Click **Validate & Save**.
 
-  If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again. To save your Kubernetes overrides regardless of any validation errors, select **Force Apply**. 
+  If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again. To save your Kubernetes overrides regardless of any validation errors, select **Force Apply**.
 
 The final step is to click **Create** and wait for the YugabyteDB cluster to appear.
 

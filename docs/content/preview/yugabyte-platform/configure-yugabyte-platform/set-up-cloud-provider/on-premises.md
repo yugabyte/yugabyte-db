@@ -38,7 +38,7 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -52,7 +52,7 @@ type: docs
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
@@ -384,7 +384,7 @@ On each node, perform the following as a user with sudo access:
     ```
 
     Add the following to the `/etc/systemd/system/node_exporter.service` file:
-    
+
     ```conf
     [Unit]
     Description=node_exporter - Exporter for machine metrics.
@@ -399,7 +399,7 @@ On each node, perform the following as a user with sudo access:
 
     User=prometheus
     Group=prometheus
-    
+
     ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
     ```
 
@@ -743,7 +743,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 To automate some of the steps outlined in [Provision nodes manually](#provision-nodes-manually), YugabyteDB Anywhere provides a node agent that you can run on each node meeting the following requirements:
 
 - The node has already been set up with the `yugabyte` user group and home.
-- The bi-directional communication between the node and YugabyteDB Anywhere has been established (that is, the IP address can reach the host and vice versa). 
+- The bi-directional communication between the node and YugabyteDB Anywhere has been established (that is, the IP address can reach the host and vice versa).
 
 #### Installation
 
@@ -793,10 +793,10 @@ You can install a node agent as follows:
    You can install a systemd service on linux machines by running node-agent-installer.sh -t install-service (Requires sudo access).
    ```
 
-4. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions: 
+4. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
 
    ```sh
-   sudo node-agent-installer.sh -t install-service  
+   sudo node-agent-installer.sh -t install-service
    ```
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
@@ -820,13 +820,13 @@ For secured communication, YugabyteDB Anywhere generates a key pair (private, pu
 
 <!--
 
-You can obtain a list of existing node agents using the following API: 
+You can obtain a list of existing node agents using the following API:
 
 ```http
 GET /api/v1/customers/<customer_id>/node_agents
 ```
 
-To unregister a node agent, use the following API: 
+To unregister a node agent, use the following API:
 
 ```http
 DELETE /api/v1/customers/<customer_id>/node_agents/<node_agent_id>
@@ -834,7 +834,7 @@ DELETE /api/v1/customers/<customer_id>/node_agents/<node_agent_id>
 
 -->
 
-To unregister a node agent, use the following command: 
+To unregister a node agent, use the following command:
 
 ```sh
 node-agent node unregister
