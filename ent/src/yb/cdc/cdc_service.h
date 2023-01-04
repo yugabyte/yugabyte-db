@@ -383,8 +383,7 @@ class CDCServiceImpl : public CDCServiceIf {
       std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
       const client::YBSessionPtr& session);
 
-  Status UpdateChildrenTabletsOnSplitOpForCDCSDK(
-      const ProducerTabletInfo& info, const OpId& split_op_id);
+  Status UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info);
 
   // Get enum map from the cache.
   Result<EnumOidLabelMap> GetEnumMapFromCache(const NamespaceName& ns_name);
