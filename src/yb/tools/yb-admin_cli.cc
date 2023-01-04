@@ -975,6 +975,47 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
     RETURN_NOT_OK(client->GetWalRetentionSecs(table_name));
     return Status::OK();
   });
+
+  Register(
+      "promote_auto_flags",
+      "[<max_flags_class> (default kExternal) [<promote_non_runtime_flags> (default true) "
+      "[force]]]",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() > 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
+        AutoFlagClass max_flag_class = AutoFlagClass::kExternal;
+        bool promote_non_runtime_flags = true;
+        bool force = false;
+
+        if (args.size() > 0) {
+          max_flag_class = VERIFY_RESULT_PREPEND(
+              ParseEnumInsensitive<AutoFlagClass>(args[0]),
+              "Invalid value provided for max_flags_class");
+        }
+
+        if (args.size() > 1) {
+          if (IsEqCaseInsensitive(args[1], "false")) {
+            promote_non_runtime_flags = false;
+          } else if (!IsEqCaseInsensitive(args[1], "true")) {
+            return STATUS(InvalidArgument, "Invalid value provided for promote_non_runtime_flags");
+          }
+        }
+
+        if (args.size() > 2) {
+          if (IsEqCaseInsensitive(args[2], "force")) {
+            force = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+
+        RETURN_NOT_OK_PREPEND(
+            client->PromoteAutoFlags(ToString(max_flag_class), promote_non_runtime_flags, force),
+            "Unable to promote AutoFlags");
+        return Status::OK();
+      });
 } // NOLINT, prevents long function message
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

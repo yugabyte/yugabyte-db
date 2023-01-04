@@ -1151,5 +1151,48 @@ TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
   ASSERT_EQ(count, 20);
 }
 
+// A simple smoke test to ensure it working and
+// nothing is broken by future changes.
+TEST_F(AdminCliTest, PromoteAutoFlags) {
+  BuildAndStart();
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+
+  {
+    const auto status = CallAdmin("promote_auto_flags", "invalid");
+    ASSERT_NOK(status);
+    ASSERT_NE(
+        status.ToString().find("Invalid value provided for max_flags_class"), std::string::npos);
+  }
+
+  {
+    const auto status = CallAdmin("promote_auto_flags", "kExternal", "invalid");
+    ASSERT_NOK(status);
+    ASSERT_NE(
+        status.ToString().find("Invalid value provided for promote_non_runtime_flags"),
+        std::string::npos);
+  }
+
+  {
+    const auto status = CallAdmin("promote_auto_flags", "kExternal", "true", "invalid");
+    ASSERT_NOK(status);
+    ASSERT_NE(status.ToString().find("Invalid arguments for operation"), std::string::npos);
+  }
+
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kLocalVolatile", "false"));
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kLocalVolatile", "true"));
+
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kLocalPersisted", "false"));
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kLocalPersisted", "true"));
+
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kExternal", "false"));
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kExternal", "true"));
+
+  auto result = ASSERT_RESULT(CallAdmin("promote_auto_flags", "kLocalVolatile", "false"));
+  ASSERT_NE(result.find("No new AutoFlags to promote"), std::string::npos);
+
+  result = ASSERT_RESULT(CallAdmin("promote_auto_flags", "kLocalVolatile", "false", "force"));
+  ASSERT_NE(result.find("New AutoFlags were promoted. Config version"), std::string::npos);
+}
+
 }  // namespace tools
 }  // namespace yb
