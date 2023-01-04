@@ -100,19 +100,19 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
 
 <div class="tab-content">
   <div id="linux" class="tab-pane fade show active" role="tabpanel" aria-labelledby="linux-tab">
-  {{% includeMarkdown "./linux.md" %}}
+{{% readFile "./linux.md" %}}
   </div>
   <div id="ubuntu" class="tab-pane fade" role="tabpanel" aria-labelledby="ubuntu-tab">
-  {{% includeMarkdown "./ubuntu.md" %}}
+{{% readFile "./ubuntu.md" %}}
   </div>
   <div id="macos" class="tab-pane fade" role="tabpanel" aria-labelledby="macos-tab">
-  {{% includeMarkdown "./macos.md" %}}
+{{% readFile "./macos.md" %}}
   </div>
   <div id="airgapped" class="tab-pane fade" role="tabpanel" aria-labelledby="airgapped-tab">
-  {{% includeMarkdown "./airgapped.md" %}}
+{{% readFile "./airgapped.md" %}}
   </div>
   <div id="github" class="tab-pane fade" role="tabpanel" aria-labelledby="github-tab">
-  {{% includeMarkdown "./github.md" %}}
+{{% readFile "./github.md" %}}
   </div>
 </div>
 

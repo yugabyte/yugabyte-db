@@ -40,6 +40,7 @@ Perform the following steps to install yb-voyager using yum for RHEL 7/8 and Cen
 
     These repositories contain the rest of the dependencies required to run `yb-voyager`.
 
+    {{< note >}}
 Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two steps before proceeding to step 5.
 
 - Disable the default `PostgreSQL` yum module on your machine using the following command:
@@ -54,19 +55,21 @@ Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two 
     sudo yum install perl-open.noarch
     ```
 
-5. Update the yum package manager and all the packages and repositories installed on your machine using the following command:
+    {{< /note >}}
+
+1. Update the yum package manager and all the packages and repositories installed on your machine using the following command:
 
     ```sh
     sudo yum update
     ```
 
-6. Install `yb-voyager` and its dependencies using the following command:
+1. Install `yb-voyager` and its dependencies using the following command:
 
     ```sh
     sudo yum install yb-voyager
     ```
 
-7. Check that yb-voyager is installed using the following command:
+1. Check that yb-voyager is installed using the following command:
 
     ```sh
     yb-voyager version
