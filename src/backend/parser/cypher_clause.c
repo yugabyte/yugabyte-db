@@ -1610,17 +1610,52 @@ cypher_update_information *transform_cypher_set_item_list(
         A_Indirection *ind;
         char *variable_name, *property_name;
         Value *property_node, *variable_node;
+        int is_entire_prop_update = 0; // true if a map is assigned to variable
 
-        // ColumnRef may come according to the Parser rule.
-        if (!IsA(set_item->prop, A_Indirection))
+        // LHS of set_item must be a variable or an indirection.
+        if (IsA(set_item->prop, ColumnRef))
         {
-            ereport(ERROR,
-                    (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+            /*
+             * A variable can only be assigned a map, a function call that
+             * evaluates to a map, or a variable.
+             *
+             * In case of a function call, whether it actually evaluates to
+             * map is checked in the execution stage.
+             */
+            if (!is_ag_node(set_item->expr, cypher_map) &&
+                !IsA(set_item->expr, FuncCall) &&
+                !IsA(set_item->expr, ColumnRef))
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                         errmsg("SET clause expects a map"),
+                         parser_errposition(pstate, set_item->location)));
+            }
+
+            is_entire_prop_update = 1;
+
+            /*
+             * In case of a variable, it is wrapped as an argument to
+             * the 'properties' function.
+             */
+            if (IsA(set_item->expr, ColumnRef))
+            {
+                List *qualified_name, *args;
+
+                qualified_name = list_make2(makeString("ag_catalog"),
+                                            makeString("age_properties"));
+                args = list_make1(set_item->expr);
+                set_item->expr = (Node *)makeFuncCall(qualified_name, args,
+                                                      -1);
+            }
+        }
+        else if (!IsA(set_item->prop, A_Indirection))
+        {
+            ereport(ERROR, (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
                             errmsg("SET clause expects a variable name"),
                             parser_errposition(pstate, set_item->location)));
         }
 
-        ind = (A_Indirection *)set_item->prop;
         item = make_ag_node(cypher_update_item);
 
         if (!is_ag_node(lfirst(li), cypher_set_item))
@@ -1640,9 +1675,42 @@ cypher_update_information *transform_cypher_set_item_list(
 
         item->remove_item = false;
 
-        // extract variable name
-        ref = (ColumnRef *)ind->arg;
+        // set variable and extract property name
+        if (is_entire_prop_update)
+        {
+            ref = (ColumnRef *)set_item->prop;
+            item->prop_name = NULL;
+        }
+        else
+        {
+            ind = (A_Indirection *)set_item->prop;
+            ref = (ColumnRef *)ind->arg;
 
+            // extract property name
+            if (list_length(ind->indirection) != 1)
+            {
+                ereport(
+                    ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg(
+                         "SET clause doesnt not support updating maps or lists in a property"),
+                     parser_errposition(pstate, set_item->location)));
+            }
+
+            property_node = linitial(ind->indirection);
+            if (!IsA(property_node, String))
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                         errmsg("SET clause expects a property name"),
+                         parser_errposition(pstate, set_item->location)));
+            }
+
+            property_name = property_node->val.str;
+            item->prop_name = property_name;
+        }
+
+        // extract variable name
         variable_node = linitial(ref->fields);
         if (!IsA(variable_node, String))
         {
@@ -1665,27 +1733,6 @@ cypher_update_information *transform_cypher_set_item_list(
                             variable_name),
                             parser_errposition(pstate, set_item->location)));
         }
-
-        // extract property name
-        if (list_length(ind->indirection) != 1)
-        {
-            ereport(ERROR,
-                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("SET clause does not support updating maps or lists in a property"),
-                     parser_errposition(pstate, set_item->location)));
-        }
-
-        property_node = linitial(ind->indirection);
-        if (!IsA(property_node, String))
-        {
-            ereport(ERROR,
-                    (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-                     errmsg("SET clause expects a property name"),
-                     parser_errposition(pstate, set_item->location)));
-        }
-
-        property_name = property_node->val.str;
-        item->prop_name = property_name;
 
         // create target entry for the new property value
         item->prop_position = (AttrNumber)pstate->p_next_resno;

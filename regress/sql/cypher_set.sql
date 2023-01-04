@@ -205,11 +205,63 @@ SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = {} RETURN n$$) AS (a ag
 SELECT * FROM cypher('cypher_set', $$MATCH (n) RETURN n$$) AS (a agtype);
 
 --
+-- Test entire property update
+--
+SELECT * FROM create_graph('cypher_set_1');
+
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Andy {name:'Andy', age:36, hungry:true}) $$) AS (a agtype);
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Peter {name:'Peter', age:34}) $$) AS (a agtype);
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Kevin {name:'Kevin', age:32, hungry:false}) $$) AS (a agtype);
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Matt {name:'Matt', city:'Toronto'}) $$) AS (a agtype);
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Juan {name:'Juan', role:'admin'}) $$) AS (a agtype);
+
+-- test copying properties between entities
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (at {name: 'Andy'}), (pn {name: 'Peter'})
+    SET at = properties(pn)
+    RETURN at, pn
+$$) AS (at agtype, pn agtype);
+
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (at {name: 'Kevin'}), (pn {name: 'Matt'})
+    SET at = pn
+    RETURN at, pn
+$$) AS (at agtype, pn agtype);
+
+-- test replacing all properties using a map and =
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (m {name: 'Matt'})
+    SET m = {name: 'Peter Smith', position: 'Entrepreneur', city:NULL}
+    RETURN m
+$$) AS (m agtype);
+
+-- test removing all properties using an empty map and =
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Juan'})
+    SET p = {}
+    RETURN p
+$$) AS (p agtype);
+
+-- test assigning non-map to an enitity
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Peter'})
+    SET p = "Peter"
+    RETURN p
+$$) AS (p agtype);
+
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Peter'})
+    SET p = sqrt(4)
+    RETURN p
+$$) AS (p agtype);
+
+--
 -- Clean up
 --
 DROP TABLE tbl;
 DROP FUNCTION set_test;
 SELECT drop_graph('cypher_set', true);
+SELECT drop_graph('cypher_set_1', true);
 
 --
 

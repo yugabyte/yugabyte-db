@@ -452,14 +452,18 @@ static void process_update_list(CustomScanState *node)
             new_property_value = DATUM_GET_AGTYPE_P(scanTupleSlot->tts_values[update_item->prop_position - 1]);
         }
 
-        /*
-         * Alter the properties Agtype value to contain or remove the updated
-         * property.
-         */
-        altered_properties = alter_property_value(original_properties,
-                                                  update_item->prop_name,
-                                                  new_property_value,
-                                                  remove_property);
+        // Alter the properties Agtype value.
+        if (strcmp(update_item->prop_name, ""))
+        {
+            altered_properties = alter_property_value(original_properties,
+                                                      update_item->prop_name,
+                                                      new_property_value,
+                                                      remove_property);
+        }
+        else
+        {
+            altered_properties = get_map_from_agtype(new_property_value);
+        }
 
         resultRelInfo = create_entity_result_rel_info(estate,
                                                       css->set_list->graph_name,

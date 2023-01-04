@@ -8395,6 +8395,57 @@ agtype_value *alter_property_value(agtype_value *properties, char *var_name,
     return parsed_agtype_value;
 }
 
+/**
+ * Returns the map contained within the provided agtype.
+ */
+agtype_value *get_map_from_agtype(agtype *a)
+{
+    agtype_iterator *it;
+    agtype_iterator_token tok = WAGT_DONE;
+    agtype_parse_state *parse_state = NULL;
+    agtype_value *key;
+    agtype_value *value;
+    agtype_value *parsed_agtype_value = NULL;
+
+    key = palloc0(sizeof(agtype_value));
+    value = palloc0(sizeof(agtype_value));
+    it = agtype_iterator_init(&a->root);
+    tok = agtype_iterator_next(&it, key, true);
+
+    if (tok != WAGT_BEGIN_OBJECT)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("a map is expected")));
+    }
+
+    parsed_agtype_value = push_agtype_value(&parse_state, WAGT_BEGIN_OBJECT,
+                                            NULL);
+
+    while (true)
+    {
+        tok = agtype_iterator_next(&it, key, true);
+
+        if (tok == WAGT_DONE || tok == WAGT_END_OBJECT)
+        {
+            break;
+        }
+
+        agtype_iterator_next(&it, value, true);
+
+        if (value->type != AGTV_NULL)
+        {
+            parsed_agtype_value = push_agtype_value(&parse_state, WAGT_KEY,
+                                                    key);
+            parsed_agtype_value = push_agtype_value(&parse_state, WAGT_VALUE,
+                                                    value);
+        }
+    }
+
+    parsed_agtype_value = push_agtype_value(&parse_state, WAGT_END_OBJECT,
+                                            NULL);
+    return parsed_agtype_value;
+}
+
 /*
  * Helper function to extract 1 datum from a variadic "any" and convert, if
  * possible, to an agtype, if it isn't already.

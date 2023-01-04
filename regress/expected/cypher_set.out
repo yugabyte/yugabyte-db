@@ -374,7 +374,7 @@ ERROR:  undefined reference to variable wrong_var in SET clause
 LINE 1: ...ELECT * FROM cypher('cypher_set', $$MATCH (n) SET wrong_var....
                                                              ^
 SELECT * FROM cypher('cypher_set', $$MATCH (n) SET i = 3$$) AS (a agtype);
-ERROR:  SET clause expects a variable name
+ERROR:  SET clause expects a map
 LINE 1: ...ELECT * FROM cypher('cypher_set', $$MATCH (n) SET i = 3$$) A...
                                                              ^
 --
@@ -668,6 +668,100 @@ SELECT * FROM cypher('cypher_set', $$MATCH (n) RETURN n$$) AS (a agtype);
 (13 rows)
 
 --
+-- Test entire property update
+--
+SELECT * FROM create_graph('cypher_set_1');
+NOTICE:  graph "cypher_set_1" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Andy {name:'Andy', age:36, hungry:true}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Peter {name:'Peter', age:34}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Kevin {name:'Kevin', age:32, hungry:false}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Matt {name:'Matt', city:'Toronto'}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Juan {name:'Juan', role:'admin'}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- test copying properties between entities
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (at {name: 'Andy'}), (pn {name: 'Peter'})
+    SET at = properties(pn)
+    RETURN at, pn
+$$) AS (at agtype, pn agtype);
+                                              at                                              |                                               pn                                               
+----------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Andy", "properties": {"age": 34, "name": "Peter"}}::vertex | {"id": 1125899906842625, "label": "Peter", "properties": {"age": 34, "name": "Peter"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (at {name: 'Kevin'}), (pn {name: 'Matt'})
+    SET at = pn
+    RETURN at, pn
+$$) AS (at agtype, pn agtype);
+                                                  at                                                   |                                                  pn                                                  
+-------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "Kevin", "properties": {"city": "Toronto", "name": "Matt"}}::vertex | {"id": 1688849860263937, "label": "Matt", "properties": {"city": "Toronto", "name": "Matt"}}::vertex
+(1 row)
+
+-- test replacing all properties using a map and =
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (m {name: 'Matt'})
+    SET m = {name: 'Peter Smith', position: 'Entrepreneur', city:NULL}
+    RETURN m
+$$) AS (m agtype);
+                                                           m                                                           
+-----------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "Kevin", "properties": {"name": "Peter Smith", "position": "Entrepreneur"}}::vertex
+ {"id": 1688849860263937, "label": "Matt", "properties": {"name": "Peter Smith", "position": "Entrepreneur"}}::vertex
+(2 rows)
+
+-- test removing all properties using an empty map and =
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Juan'})
+    SET p = {}
+    RETURN p
+$$) AS (p agtype);
+                                  p                                  
+---------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "Juan", "properties": {}}::vertex
+(1 row)
+
+-- test assigning non-map to an enitity
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Peter'})
+    SET p = "Peter"
+    RETURN p
+$$) AS (p agtype);
+ERROR:  SET clause expects a map
+LINE 3:     SET p = "Peter"
+                ^
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Peter'})
+    SET p = sqrt(4)
+    RETURN p
+$$) AS (p agtype);
+ERROR:  a map is expected
+--
 -- Clean up
 --
 DROP TABLE tbl;
@@ -684,6 +778,21 @@ drop cascades to table cypher_set.begin
 drop cascades to table cypher_set.edge
 drop cascades to table cypher_set."end"
 NOTICE:  graph "cypher_set" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('cypher_set_1', true);
+NOTICE:  drop cascades to 7 other objects
+DETAIL:  drop cascades to table cypher_set_1._ag_label_vertex
+drop cascades to table cypher_set_1._ag_label_edge
+drop cascades to table cypher_set_1."Andy"
+drop cascades to table cypher_set_1."Peter"
+drop cascades to table cypher_set_1."Kevin"
+drop cascades to table cypher_set_1."Matt"
+drop cascades to table cypher_set_1."Juan"
+NOTICE:  graph "cypher_set_1" has been dropped
  drop_graph 
 ------------
  
