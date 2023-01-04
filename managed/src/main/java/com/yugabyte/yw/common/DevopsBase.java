@@ -37,8 +37,6 @@ public abstract class DevopsBase {
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject play.Configuration appConfig;
-
   @Inject NodeAgentClient nodeAgentClient;
 
   protected NodeAgentClient getNodeAgentClient() {

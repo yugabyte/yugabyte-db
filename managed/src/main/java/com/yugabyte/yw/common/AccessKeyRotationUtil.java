@@ -26,7 +26,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import play.libs.Json;
@@ -110,13 +110,13 @@ public class AccessKeyRotationUtil {
               region.uuid,
               newKeyCode,
               null,
-              keyInfo.sshUser,
-              keyInfo.sshPort,
-              keyInfo.airGapInstall,
-              keyInfo.skipProvisioning,
-              keyInfo.setUpChrony,
-              keyInfo.ntpServers,
-              keyInfo.showSetUpChrony);
+              provider.details.sshUser,
+              provider.details.sshPort,
+              provider.details.airGapInstall,
+              provider.details.skipProvisioning,
+              provider.details.setUpChrony,
+              provider.details.ntpServers,
+              provider.details.showSetUpChrony);
     }
 
     if (newAccessKey == null) {

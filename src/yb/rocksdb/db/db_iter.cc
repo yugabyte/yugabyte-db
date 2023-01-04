@@ -861,10 +861,18 @@ void DBIter::SeekToLast() {
 }
 
 bool DBIter::ScanForward(
-    const Slice& upperbound, KeyFilterCallback* key_filter_callback,
-    ScanCallback* scan_callback) {
-  status_ = STATUS(NotSupported, "ScanForward is not yet supported in DBIter");
-  return false;
+    const Slice& upperbound, KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+  LOG_IF(DFATAL, !iter_->Valid()) << "Iterator should be valid.";
+  LOG_IF(DFATAL, direction_ != kForward) << "Only forward direction scan is supported.";
+
+  if (upperbound.empty() || (iterate_upper_bound_ != nullptr && !upperbound.empty() &&
+                             user_comparator_->Compare(upperbound, *iterate_upper_bound_) >= 0)) {
+    return iter_->ScanForward(
+        user_comparator_, iterate_upper_bound_ ? *iterate_upper_bound_ : upperbound,
+        key_filter_callback, scan_callback);
+  }
+
+  return iter_->ScanForward(user_comparator_, upperbound, key_filter_callback, scan_callback);
 }
 
 Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,

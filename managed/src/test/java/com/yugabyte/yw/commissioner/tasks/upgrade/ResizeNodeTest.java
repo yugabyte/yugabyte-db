@@ -100,9 +100,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   private static final List<TaskType> RESIZE_VOLUME_SEQ =
       ImmutableList.of(TaskType.InstanceActions);
 
-  private static final List<TaskType> UPDATE_INSTANCE_TYPE_SEQ =
-      ImmutableList.of(TaskType.ChangeInstanceType, TaskType.UpdateNodeDetails);
-
   @InjectMocks private ResizeNode resizeNode;
 
   @Override
@@ -579,9 +576,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                     .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE));
 
     ResizeNodeParams taskParams = createResizeParams();
-    taskParams.clusters =
-        Collections.singletonList(
-            defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getReadOnlyClusters().get(0).userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
     taskParams.getReadOnlyClusters().get(0).userIntent.instanceType = NEW_INSTANCE_TYPE;
     taskParams.getReadOnlyClusters().get(0).userIntent.providerType = Common.CloudType.aws;
@@ -965,11 +960,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean waitForMasterLeader,
       boolean isRf1) {
     List<TaskType> nodeUpgradeTasks = new ArrayList<>();
-    if (increaseVolume) {
-      nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
-    }
     if (changeInstance) {
       nodeUpgradeTasks.add(TaskType.ChangeInstanceType);
+    }
+    if (increaseVolume) {
+      nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
     }
     List<UniverseTaskBase.ServerType> processTypes =
         onlyTserver ? ImmutableList.of(TSERVER) : ImmutableList.of(MASTER, TSERVER);

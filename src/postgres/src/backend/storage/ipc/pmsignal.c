@@ -255,7 +255,7 @@ MarkPostmasterChildWalSender(void)
 void
 MarkPostmasterChildInactive(void)
 {
-	int			slot = MyPMChildSlot;
+	int      slot = MyPMChildSlot;
 
 	Assert(slot > 0 && slot <= PMSignalState->num_child_flags);
 	slot--;

@@ -3,4 +3,4 @@
 # This is turned off in development as it is relatively slow.
 # This is needed to get accurate lastMod and Git commit info
 # on the docs pages.
-enableGitInfo = false
+enableGitInfo = true

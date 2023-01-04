@@ -164,7 +164,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       return STATUS(
           InternalError, "For transactional write only increment_write_id=true is supported");
     }
-    Arena arena;
+    ThreadSafeArena arena;
     LWKeyValueWriteBatchPB kv_write_batch(&arena);
     dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
     TransactionalWriter writer(
@@ -341,7 +341,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     }
 
     void Apply(rocksdb::WriteBatch* batch) {
-      Arena arena;
+      ThreadSafeArena arena;
       LWKeyValuePairPB kv_pair(&arena);
       kv_pair.dup_key(key_.AsSlice());
       kv_pair.dup_value(value_.AsSlice());

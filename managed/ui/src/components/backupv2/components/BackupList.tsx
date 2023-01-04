@@ -20,6 +20,7 @@ import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { BackupDetails } from './BackupDetails';
 import {
+  BACKUP_REFETCH_INTERVAL,
   BACKUP_STATUS_OPTIONS,
   CALDENDAR_ICON,
   convertArrayToMap,
@@ -130,6 +131,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
   const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
+  const [isRestoreEntireBackup, setRestoreEntireBackup] = useState(false);
 
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
   const [status, setStatus] = useState<any[]>([BACKUP_STATUS_OPTIONS[0]]);
@@ -182,7 +184,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         storage_config_uuid
       ),
     {
-      refetchInterval: 1000 * 20,
+      refetchInterval: BACKUP_REFETCH_INTERVAL,
       onSuccess(resp) {
         if (showDetails) {
           setShowDetails(
@@ -265,6 +267,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             ) {
               return;
             }
+            setRestoreEntireBackup(true);
             setRestoreDetails(row);
             setShowRestoreModal(true);
           }}
@@ -586,6 +589,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowDeleteModal(true);
         }}
         onRestore={(customDetails?: IBackup) => {
+          setRestoreEntireBackup(customDetails ? false : true);
           setRestoreDetails(customDetails ?? showDetails);
           setShowRestoreModal(true);
         }}
@@ -604,6 +608,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         <BackupRestoreModal
           backup_details={restoreDetails}
           visible={showRestoreModal}
+          isRestoreEntireBackup={isRestoreEntireBackup}
           onHide={() => {
             setShowRestoreModal(false);
           }}

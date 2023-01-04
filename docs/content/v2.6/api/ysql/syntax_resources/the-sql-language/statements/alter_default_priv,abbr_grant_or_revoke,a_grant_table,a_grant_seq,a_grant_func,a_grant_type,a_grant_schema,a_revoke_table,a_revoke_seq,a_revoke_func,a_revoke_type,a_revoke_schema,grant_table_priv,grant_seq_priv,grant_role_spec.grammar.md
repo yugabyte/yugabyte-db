@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 alter_default_priv ::= ALTER DEFAULT PRIVILEGES 
                        [ FOR { ROLE | USER } role_name [ , ... ] ] 
                        [ IN SCHEMA schema_name [ , ... ] ] 

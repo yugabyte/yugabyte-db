@@ -12,8 +12,9 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
@@ -51,11 +52,18 @@ public class ConfigHelperTest extends FakeDBApplication {
 
   @Mock Application application;
 
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock Config mockAppConfig;
+
   Customer customer;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    when(mockAppConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
+    when(mockAppConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
+    when(mockAppConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockAppConfig);
   }
 
   @Before
@@ -223,5 +231,39 @@ public class ConfigHelperTest extends FakeDBApplication {
     Collection<File> diskFiles = FileUtils.listFiles(new File(TMP_STORAGE_PATH), null, true);
     assertEquals(diskFiles.size(), 12);
     FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
+  }
+
+  @Test
+  public void testSyncFileDataWithSuppressException() throws IOException {
+    when(mockAppConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 0);
+    Provider p = ModelFactory.awsProvider(customer);
+    String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
+    for (String diskFileName : diskFileNames) {
+      String filePath = "/keys/" + p.uuid + "/";
+      createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
+    }
+    configHelper.syncFileData(TMP_STORAGE_PATH, false);
+
+    // No Exception should be thrown.
+    List<FileData> fd = FileData.getAll();
+    assertEquals(fd.size(), 0);
+
+    when(mockAppConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    configHelper.syncFileData(TMP_STORAGE_PATH, false);
+    fd = FileData.getAll();
+    assertEquals(fd.size(), 3);
+  }
+
+  @Test(expected = Exception.class)
+  public void testSyncFileDataThrowException() throws IOException {
+    when(mockAppConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(false);
+    when(mockAppConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 0);
+    Provider p = ModelFactory.awsProvider(customer);
+    String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
+    for (String diskFileName : diskFileNames) {
+      String filePath = "/keys/" + p.uuid + "/";
+      createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
+    }
+    configHelper.syncFileData(TMP_STORAGE_PATH, false);
   }
 }

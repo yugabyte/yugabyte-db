@@ -24,10 +24,10 @@ The following projects can be used to implement Python applications using the Yu
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
-| SQLAlchemy | [Documentation](sqlalchemy/) | [Hello World](../../develop/build-apps/python/ysql-sqlalchemy) |
-| Django | [Documentation](django/) | [Hello World](../../develop/build-apps/python/ysql-django) |
+| SQLAlchemy | [Documentation](sqlalchemy/) <br/> [Hello World](../orms/python/ysql-sqlalchemy/) | [SQLAlchemy ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/python/sqlalchemy)
+| Django | [Documentation](django/) <br/> [Hello World](../orms/python/ysql-django/) | [Django ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/python/django) |
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yugabyte-psycopg2/) or [Use an ORM](django/).
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yugabyte-psycopg2/) or [Use an ORM](sqlalchemy/).
 
 For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/python/yugabyte-psycopg2-reference/) pages.
 

@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -81,6 +82,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
   @Mock protected play.Configuration mockAppConfig;
 
   private HealthChecker healthChecker;
@@ -103,6 +105,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected Config mockRuntimeConfig;
   protected QueryHelper mockQueryHelper;
   protected ReleaseManager mockReleaseManager;
+  protected RuntimeConfigFactory runtimeConfigFactory;
 
   @Override
   protected Application provideApplication() {
@@ -126,6 +129,10 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
+    when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
+    when(mockRuntimeConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
+    when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
 
     return new GuiceApplicationBuilder()
         .disable(GuiceModule.class)
@@ -221,6 +228,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
             .put("api_key", "some_api_token");
     kmsConfig = ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", kmsConfigReq);
     authToken = user.createAuthToken();
+    runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
 
     when(mockAppConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());

@@ -298,11 +298,11 @@ Status TabletSplitITest::WaitForTableIntentsApplied(const TableId& table_id) {
         // This tablet might has been shut down or in the process of shutting down.
         // Thus, we need to check whether shared_tablet is nullptr or not
         // TEST_CountIntent return non ok status also means shutdown has started.
-        const auto shared_tablet = peer->shared_tablet();
-        if (!shared_tablet) {
+        const auto tablet = peer->shared_tablet();
+        if (!tablet) {
           return true;
         }
-        auto result = shared_tablet->transaction_participant()->TEST_CountIntents();
+        auto result = tablet->transaction_participant()->TEST_CountIntents();
         return !result.ok() || result->first == 0;
       }, 30s, "Did not apply write transactions from intents db in time."));
   }
@@ -453,7 +453,8 @@ Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(
   return SplitTabletAndValidate(split_hash_code, num_rows);
 }
 
-Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::GetSplitKey(const std::string& tablet_id) {
+Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::SendTServerRpcSyncGetSplitKey(
+    const TabletId& tablet_id) {
   auto tserver = cluster_->mini_tablet_server(0);
   auto ts_service_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
       proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
@@ -466,8 +467,8 @@ Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::GetSplitKey(const std::
   return resp;
 }
 
-Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterSplitTabletRpcSync(
-    const std::string& tablet_id) {
+Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterRpcSyncSplitTablet(
+    const TabletId& tablet_id) {
   auto master_admin_proxy = master::MasterAdminProxy(
       proxy_cache_.get(), VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
@@ -576,21 +577,6 @@ Result<TabletId> TabletSplitITest::SplitSingleTablet(docdb::DocKeyHash split_has
 
   RETURN_NOT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
   return source_tablet_id;
-}
-
-Result<master::SplitTabletResponsePB> TabletSplitITest::SplitSingleTablet(
-    const TabletId& tablet_id) {
-  auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
-      proxy_cache_.get(), client_->GetMasterLeaderAddress());
-  rpc::RpcController controller;
-  controller.set_timeout(kRpcTimeout);
-
-  master::SplitTabletRequestPB req;
-  master::SplitTabletResponsePB resp;
-  req.set_tablet_id(tablet_id);
-
-  RETURN_NOT_OK(master_admin_proxy->SplitTablet(req, &resp, &controller));
-  return resp;
 }
 
 Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
@@ -803,10 +789,10 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
     LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
               << AsString(peer->shared_consensus()->GetLastAppliedOpId());
 
-    const auto shared_tablet = VERIFY_RESULT(peer->shared_tablet_safe());
-    const SchemaPtr schema = shared_tablet->metadata()->schema();
+    const auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+    const SchemaPtr schema = tablet->metadata()->schema();
     auto client_schema = schema->CopyWithoutColumnIds();
-    auto iter = VERIFY_RESULT(shared_tablet->NewRowIterator(client_schema));
+    auto iter = VERIFY_RESULT(tablet->NewRowIterator(client_schema));
     QLTableRow row;
     std::unordered_set<size_t> tablet_keys;
     while (VERIFY_RESULT(iter->HasNext())) {
@@ -818,12 +804,12 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
       SCHECK(
           tablet_keys.insert(key).second,
           InternalError,
-          Format("Duplicate key $0 in tablet $1", key, shared_tablet->tablet_id()));
+          Format("Duplicate key $0 in tablet $1", key, tablet->tablet_id()));
       SCHECK_GT(
           keys[key - 1]--,
           0U,
           InternalError,
-          Format("Extra key $0 in tablet $1", key, shared_tablet->tablet_id()));
+          Format("Extra key $0 in tablet $1", key, tablet->tablet_id()));
       key_replicas[key - 1].push_back(peer->LogPrefix());
     }
   }

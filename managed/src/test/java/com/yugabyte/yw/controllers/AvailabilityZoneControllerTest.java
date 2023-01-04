@@ -4,30 +4,41 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertNoKey;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.spy;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.AvailabilityZoneFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import java.util.Set;
 import java.util.UUID;
+
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.hamcrest.CoreMatchers;
 import org.junit.Assert;
 import org.junit.Before;
@@ -154,10 +165,85 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
     JsonNode json =
         doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid, az.uuid, OK, false);
-    az = AvailabilityZone.find.byId(az.uuid);
+
     assertTrue(json.get("success").asBoolean());
     assertAuditEntry(1, defaultCustomer.uuid);
-    assertFalse(az.active);
+    assertNull(AvailabilityZone.find.byId(az.uuid));
+  }
+
+  private void createUniverseInAZ(UUID azUUID) {
+    Universe universe =
+        ModelFactory.createUniverse(Customer.get(defaultProvider.customerUUID).getCustomerId());
+    UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+    Set<NodeDetails> nodeDetailsSet = ApiUtils.getDummyNodeDetailSet(UUID.randomUUID(), 3, 3);
+    nodeDetailsSet.forEach(nd -> nd.azUuid = azUUID);
+    udtp.nodeDetailsSet = nodeDetailsSet;
+    universe.setUniverseDetails(udtp);
+    universe.update();
+  }
+
+  @Test
+  public void testDeleteAvailabilityZoneInUse() {
+    AvailabilityZone az = AvailabilityZone.createOrThrow(defaultRegion, "az-1", "AZ 1", "subnet-1");
+    UUID uuid = az.uuid;
+
+    createUniverseInAZ(uuid);
+
+    doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid, uuid, FORBIDDEN, true);
+
+    assertNotNull(AvailabilityZone.find.byId(uuid));
+  }
+
+  @Test
+  public void testEditAvailabilityZoneInUse() {
+    AvailabilityZone az = AvailabilityZone.createOrThrow(defaultRegion, "az-1", "AZ 1", "subnet-1");
+    UUID uuid = az.uuid;
+
+    createUniverseInAZ(uuid);
+
+    AvailabilityZoneFormData.AvailabilityZoneEditData editData =
+        new AvailabilityZoneFormData.AvailabilityZoneEditData();
+    editData.subnet = "subnet-2";
+    editData.secondarySubnet = "secondarySubnet";
+    ObjectNode requestBody = (ObjectNode) Json.toJson(editData);
+
+    doEditAZAndVerifyResult(
+        defaultProvider.uuid, defaultRegion.uuid, uuid, requestBody, FORBIDDEN, true);
+  }
+
+  @Test
+  public void testEditAvailabilityZone() {
+    AvailabilityZone az = AvailabilityZone.createOrThrow(defaultRegion, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZoneFormData.AvailabilityZoneEditData editData =
+        new AvailabilityZoneFormData.AvailabilityZoneEditData();
+
+    editData.subnet = "subnet-2";
+    editData.secondarySubnet = "secondarySubnet";
+    ObjectNode requestBody = (ObjectNode) Json.toJson(editData);
+
+    JsonNode response =
+        doEditAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, az.uuid, requestBody);
+    assertValue(response, "secondarySubnet", "secondarySubnet");
+    assertValue(response, "subnet", "subnet-2");
+    az.refresh();
+    assertEquals("subnet-2", az.subnet);
+    assertEquals("secondarySubnet", az.secondarySubnet);
+
+    requestBody.put("subnet", "subnet-3");
+    response =
+        doEditAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, az.uuid, requestBody);
+    assertValue(response, "secondarySubnet", "secondarySubnet");
+    assertValue(response, "subnet", "subnet-3");
+    az.refresh();
+    assertEquals("subnet-3", az.subnet);
+    assertEquals("secondarySubnet", az.secondarySubnet);
+
+    requestBody.put("secondarySubnet", (String) null);
+    response =
+        doEditAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, az.uuid, requestBody);
+    assertNoKey(response, "secondarySubnet");
+    az.refresh();
+    assertNull(az.secondarySubnet);
   }
 
   private JsonNode doDeleteAZAndVerify(
@@ -205,6 +291,35 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     return Json.parse(contentAsString(result));
   }
 
+  private JsonNode doEditAZAndVerifyResult(
+      UUID cloudProvider, UUID region, UUID az, JsonNode azRequestJson) {
+    return doEditAZAndVerifyResult(cloudProvider, region, az, azRequestJson, OK, false);
+  }
+
+  private JsonNode doEditAZAndVerifyResult(
+      UUID cloudProvider,
+      UUID region,
+      UUID az,
+      JsonNode azRequestJson,
+      int expectedStatus,
+      boolean isYWServiceException) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/regions/%s/zones/%s",
+            defaultCustomer.uuid, cloudProvider, region, az);
+    Result result;
+
+    if (isYWServiceException) {
+      result =
+          assertPlatformException(() -> FakeApiHelper.doRequestWithBody("PUT", uri, azRequestJson));
+    } else {
+      result = FakeApiHelper.doRequestWithBody("PUT", uri, azRequestJson);
+    }
+
+    assertEquals(expectedStatus, result.status());
+    return Json.parse(contentAsString(result));
+  }
+
   private JsonNode doCreateAZAndVerifyResult(
       UUID cloudProvider,
       UUID region,
@@ -213,13 +328,9 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
       boolean isYWServiceException) {
 
     String uri =
-        "/api/customers/"
-            + defaultCustomer.uuid
-            + "/providers/"
-            + cloudProvider
-            + "/regions/"
-            + region
-            + "/zones";
+        String.format(
+            "/api/customers/%s/providers/%s/regions/%s/zones",
+            defaultCustomer.uuid, cloudProvider, region);
 
     Result result;
     if (azRequestJson != null) {

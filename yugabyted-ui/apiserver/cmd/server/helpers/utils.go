@@ -1,7 +1,11 @@
 package helpers
 import (
     "crypto/rand"
+    "errors"
+    "fmt"
     "math/big"
+    "os/exec"
+    "path/filepath"
     "strconv"
     "strings"
 )
@@ -71,4 +75,58 @@ func GetSmallestVersion(versionInfoFutures []chan VersionInfoFuture) string {
             }
     }
     return smallestVersion
+}
+
+func GetBytesFromString(sizeString string) (int64, error) {
+    // Possible units are BKMGTPE, for byte, kilobyte, megabyte, etc.
+    if len(sizeString) < 1 {
+        return 0, nil
+    }
+    unit := string([]rune(sizeString)[len(sizeString) - 1])
+    valString := string([]rune(sizeString)[0:len(sizeString)-1])
+    conversionFactor := int64(0)
+    switch unit {
+    case "B":
+        conversionFactor = 1
+    case "K":
+        conversionFactor = 1024
+    case "M":
+        conversionFactor = 1024 * 1024
+    case "G":
+        conversionFactor = 1024 * 1024 * 1024
+    case "T":
+        conversionFactor = 1024 * 1024 * 1024 * 1024
+    case "P":
+        conversionFactor = 1024 * 1024 * 1024 * 1024 * 1024
+    case "E":
+        conversionFactor = 1024 * 1024 * 1024 * 1024 * 1024 * 1024
+    default:
+        return 0, errors.New("could not find unit for table size")
+    }
+    val, err := strconv.ParseFloat(valString, 64)
+    if err != nil {
+        return 0, err
+    }
+    byteVal := int64(val * float64(conversionFactor))
+    return byteVal, nil
+}
+
+func FindBinaryLocation(binaryName string) (string, error) {
+    YUGABYTE_DIR := filepath.Join("..", "..")
+
+    dirCandidates := []string{
+        // Default if tar is downloaded
+        filepath.Join(YUGABYTE_DIR, "bin"),
+        // Development environment
+        filepath.Join(YUGABYTE_DIR, "build", "latest", "bin"),
+        // Development environment for UI
+        filepath.Join(YUGABYTE_DIR, "build", "latest", "gobin"),
+    }
+    for _, path := range dirCandidates {
+        binaryPath, err := exec.LookPath(filepath.Join(path, binaryName))
+        if err == nil {
+            return binaryPath, err
+        }
+    }
+    return "", fmt.Errorf("failed to find binary %s", binaryName)
 }

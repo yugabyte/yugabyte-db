@@ -11,8 +11,6 @@ menu:
 type: docs
 ---
 
-
-
 [Spring Data JPA](https://spring.io/projects/spring-data-jpa) is a popular Spring Framework projects, and simplifies creating JPA-based repositories by reducing the boilerplate code required to implement data access layers. It provides enhanced support for JPA-based data access using Spring annotation driven programming.
 
 Spring Data JPA provides out-of-the-box support for PostgreSQL-compliant databases. This includes auto-reconfiguration support for creating the data source objects based on the database driver in the classpath. YugabyteDB provides complete support for Spring Data JPA using the PostgreSQL dialect. Spring Data JPA repositories can be used to read and write data to YugabyteDB clusters.
@@ -21,7 +19,7 @@ This document describes the fundamentals of using Spring Data JPA with YugabyteD
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../develop/build-apps/java/ysql-spring-data/) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Java ORM example application](../../../drivers-orms/orms/java/ysql-spring-data/).
 
 ## Project dependencies
 

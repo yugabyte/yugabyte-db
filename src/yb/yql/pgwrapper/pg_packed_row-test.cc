@@ -33,9 +33,12 @@ using namespace std::literals;
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
 
 namespace yb {
 namespace pgwrapper {
@@ -657,6 +660,55 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CoveringIndex)) {
   ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t_idx ON t(v2) INCLUDE (v1)"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'odin')"));
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Transaction)) {
+  // Set retention interval to 0, to repack all recently flushed entries.
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  FLAGS_TEST_skip_aborting_active_transactions_during_schema_change = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key) VALUES (1)"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key) VALUES (2)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v TEXT"));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AppliedSchemaVersion)) {
+  // Set retention interval to 0, to repack all recently flushed entries.
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_rocksdb_level0_file_num_compaction_trigger = 2;
+  FLAGS_rocksdb_universal_compaction_always_include_size_threshold = 1_KB;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key TEXT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t (key) VALUES ('$0')", RandomHumanReadableString(512_KB)));
+  ASSERT_OK(conn.CommitTransaction());
+
+  std::this_thread::sleep_for(5s);
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v TEXT"));
+
+  for (int i = 0; i != FLAGS_rocksdb_level0_file_num_compaction_trigger * 2; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key) VALUES ('$0')", i));
+    ASSERT_OK(cluster_->FlushTablets());
+  }
+
+  ASSERT_OK(cluster_->CompactTablets());
 }
 
 } // namespace pgwrapper

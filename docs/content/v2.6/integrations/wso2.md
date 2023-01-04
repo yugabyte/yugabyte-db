@@ -69,7 +69,7 @@ You update the database configuration as follows:
 
 ### Set Up the Database Driver
 
-You need to download the [Postgres JDBC driver](https://jdbc.postgresql.org/download.html) into the `lib/` directory.
+You need to download the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/download/) into the `lib/` directory.
 
 ### Apply the Yugabyte Patch for WSO2
 

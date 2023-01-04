@@ -381,8 +381,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Retrieve row.
     ASSERT_TRUE(controller.finished());
-    std::string rows_data;
-    ASSERT_OK(controller.AssignSidecarTo(ql_resp.rows_data_sidecar(), &rows_data));
+    auto rows_data = ASSERT_RESULT(controller.ExtractSidecar(ql_resp.rows_data_sidecar()));
     auto columns = std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
     ql::RowsResult rowsResult(*table_name_, columns, rows_data);
     *rowblock = rowsResult.GetRowBlock();

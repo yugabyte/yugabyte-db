@@ -1617,7 +1617,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     metadata.set_version(0);
 
     auto table_map_checkout = tables_.CheckOut();
-    table_map_checkout->AddTable(table);
+    table_map_checkout->AddOrReplace(table);
     sys_catalog_table = table;
     table_names_map_[{kSystemSchemaNamespaceId, kSysCatalogTableName}] = table;
     table->set_is_system();
@@ -2508,12 +2508,12 @@ Status CatalogManager::DoRefreshTablespaceInfo() {
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
+                                           CowWriteLock<PersistentTableInfo>* l_ptr,
                                            const IndexInfoPB& index_info,
                                            CreateTableResponsePB* resp) {
   LOG(INFO) << "AddIndexInfoToTable to " << indexed_table->ToString() << "  IndexInfo "
             << yb::ToString(index_info);
-  TRACE("Locking indexed table");
-  auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
+  auto& l = *l_ptr;
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // Make sure that the index appears to not have been added to the table until the tservers apply
@@ -2645,15 +2645,15 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
 template <class Req, class Resp, class Action>
 Status CatalogManager::PerformOnSysCatalogTablet(const Req& req, Resp* resp, const Action& action) {
   auto tablet_peer = sys_catalog_->tablet_peer();
-  auto shared_tablet = tablet_peer ? tablet_peer->shared_tablet() : nullptr;
-  if (!shared_tablet) {
+  auto tablet = tablet_peer ? tablet_peer->shared_tablet() : nullptr;
+  if (!tablet) {
     return SetupError(
         resp->mutable_error(),
         MasterErrorPB::TABLET_NOT_RUNNING,
         STATUS(NotFound, "The sys catalog tablet was not found."));
   }
 
-  auto s = action(shared_tablet);
+  auto s = action(tablet);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
   }
@@ -3601,6 +3601,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
+  CowWriteLock<PersistentTableInfo> indexed_table_write_lock;
   if (IsIndex(req)) {
     TRACE("Looking up indexed table");
     indexed_table = GetTableInfo(req.indexed_table_id());
@@ -3981,6 +3982,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                    tablet->id()));
         tablets.push_back(tablet.get());
 
+        // If the request is to create a colocated index, need to aquired the write lock on the
+        // indexed table before acquiring the write lock on the colocated tablet below to prevent
+        // deadlock because a colocated index and its colocated indexed table share the same
+        // colocated tablet.
+        if (IsIndex(req)) {
+          TRACE("Locking indexed table");
+          indexed_table_write_lock = indexed_table->LockForWrite();
+        }
+
         tablet->mutable_metadata()->StartMutation();
         tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(table->id());
 
@@ -4074,7 +4084,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
       }
     }
-    s = AddIndexInfoToTable(indexed_table, index_info, resp);
+    if (!indexed_table->colocated()) {
+      TRACE("Locking indexed table");
+      indexed_table_write_lock = indexed_table->LockForWrite();
+    }
+    s = AddIndexInfoToTable(indexed_table, &indexed_table_write_lock, index_info, resp);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(
           table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting index info"),
@@ -4360,7 +4374,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
       << "Table: " << (**table).ToString() << ", create_tablets: " << (tablets ? "YES" : "NO");
 
   auto table_map_checkout = tables_.CheckOut();
-  table_map_checkout->AddTable(*table);
+  table_map_checkout->AddOrReplace(*table);
   // Do not add Postgres tables to the name map as the table name is not unique in a namespace.
   if (req.table_type() != PGSQL_TABLE_TYPE) {
     table_names_map_[{namespace_id, req.name()}] = *table;
@@ -10957,6 +10971,11 @@ void CatalogManager::StartElectionIfReady(
 
   std::vector<std::string> possible_leaders;
   for (const auto& replica : *replicas) {
+    // Start hinted election only on running replicas if it's not initial election (create table).
+    if (!initial_election && (replica.second.member_type != PeerMemberType::VOTER ||
+        replica.second.state != RaftGroupStatePB::RUNNING)) {
+      continue;
+    }
     for (const auto& ts_desc : ts_descs) {
       if (ts_desc->permanent_uuid() == replica.first) {
         if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {

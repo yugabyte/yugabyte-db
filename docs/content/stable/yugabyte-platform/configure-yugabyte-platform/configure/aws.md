@@ -1,10 +1,10 @@
 ---
-title: Configure YugabyteDB Anywhere
+title: Configure YugabyteDB Overview
 headerTitle: Overview
 linkTitle: Overview
-description: Configuring YugabyteDB Anywhere on AWS
+description: Configure YugabyteDB Anywhere on AWS
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Configuring YugabyteDB Anywhere on AWS
+headcontent: Configure YugabyteDB Anywhere on AWS
 menu:
   stable_yugabyte-platform:
     identifier: configure-1-aws
@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-For overview of how to configure database nodes, select one of the following cloud providers:
+For an overview of how to configure database nodes, select one of the following cloud providers:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -40,7 +40,7 @@ For overview of how to configure database nodes, select one of the following clo
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

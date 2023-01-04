@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
@@ -20,7 +19,6 @@ import com.yugabyte.yw.forms.NodeDetailsResp;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
@@ -43,7 +41,6 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

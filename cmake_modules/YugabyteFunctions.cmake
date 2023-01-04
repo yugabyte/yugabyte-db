@@ -404,12 +404,18 @@ function(add_executable name)
   endif()
 
   if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
-    # Link every executable with gperftools's tcmalloc static library.
-    # The other relevant library, libprofiler, will be linked by the libraries that need it.
+    # Link every executable with the tcmalloc static library.
+    # If using Google TCMalloc, Abseil is also required, and will be linked by the libraries that
+    # need it.
+    # If using gperftools TCMalloc, libprofiler is also required, and will be linked by the
+    # libraries that need it.
     #
     # We need to ensure that all symbols from the tcmalloc library are retained. This is done
     # differently depending on the OS.
     target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
+    if("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
+      target_link_libraries(${name} absl)
+    endif()
   endif()
 
   yb_process_pch(${name})
@@ -854,12 +860,7 @@ function(enable_lto_if_needed)
 
   detect_lto_type_from_linking_type()
   if(YB_LTO_ENABLED)
-    # Inlined functions are counted multiple times if dso's are built with -flto
-    # https://github.com/yugabyte/yugabyte-db/issues/15093
-    if(NOT YB_BUILD_TYPE STREQUAL "prof_gen")
-      ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE}")
-    endif()
-    ADD_CXX_FLAGS("-fuse-ld=lld")
+    ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
     # In LTO mode, yb-master / yb-tserver executables are generated with LTO, but we first generate
     # yb-master-dynamic and yb-tserver-dynamic binaries that are dynamically linked.
     set_in_current_and_parent_scope(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic" PARENT_SCOPE)
@@ -920,6 +921,11 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
   )
 
   add_custom_target("${output_exe_name}" ALL DEPENDS "${output_executable_path}")
+  foreach(symlink_name IN LISTS symlink_as_names)
+    # For each symlinked executable name (yb-master, yb-tserver) create an alias target that will
+    # cause the LTO executable to be built.
+    add_custom_target("${symlink_name}" DEPENDS "${output_executable_path}")
+  endforeach()
 
   # We need to build the corresponding non-LTO executable first, such as yb-master or yb-tserver.
   add_dependencies("${output_exe_name}" "${dynamic_exe_name}")

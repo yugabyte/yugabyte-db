@@ -60,7 +60,7 @@ LWWritePB* RequestTraits<LWWritePB>::MutableRequest(consensus::LWReplicateMsg* r
   return replicate->mutable_write();
 }
 
-Status WriteOperation::Prepare() {
+Status WriteOperation::Prepare(IsLeaderSide is_leader_side) {
   TRACE_EVENT0("txn", "WriteOperation::Prepare");
   return Status::OK();
 }
@@ -85,7 +85,7 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
     TEST_PAUSE_IF_FLAG(TEST_tablet_pause_apply_write_ops);
   }
 
-  *complete_status = tablet()->ApplyRowOperations(this);
+  *complete_status = VERIFY_RESULT(tablet_safe())->ApplyRowOperations(this);
   // Failure is regular case, since could happen because transaction was aborted, while
   // replicating its intents.
   LOG_IF(INFO, !complete_status->ok()) << "Apply operation failed: " << *complete_status;

@@ -25,6 +25,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/typcache.h"
 
 
 typedef struct BTSortArrayContext
@@ -471,6 +472,24 @@ _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
 								 elemtype,
 								 elemtype,
 								 BTORDER_PROC);
+	if (IsYugaByteEnabled() && !RegProcedureIsValid(cmp_proc))
+	{
+		/*
+		 * YB: It can be possible that the opfamily for the requested attno
+		 * rightfully does not have the requested elemtype yet we should be
+		 * able to find a valid comparison function for it. For example, if
+		 * elemtype is a Record type in the case that skey is a SAOP on Row
+		 * expressions, we might run into this case.
+		 * We fall back to finding the column data-type specific comparator
+		 * in this case. The original PG code above looks for BTORDER_PROC
+		 * in what might potentially be a user-defined opclass but we don't
+		 * support that in YB yet. Until then, it's ok to fallback to the
+		 * column data-type specific comparator.
+		 */
+		TypeCacheEntry *typentry =
+			lookup_type_cache(elemtype, TYPECACHE_CMP_PROC);
+		cmp_proc = typentry->cmp_proc;
+	}
 	if (!RegProcedureIsValid(cmp_proc))
 		elog(ERROR, "missing support function %d(%u,%u) in opfamily %u",
 			 BTORDER_PROC, elemtype, elemtype,

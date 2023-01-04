@@ -280,10 +280,11 @@ class NonTrackedRoundCallback : public ConsensusRoundCallback {
       : round_(DCHECK_NOTNULL(round)), callback_(callback) {
   }
 
-  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
+  Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
     auto& replicate_msg = *round_->replicate_msg();
     op_id.ToPB(replicate_msg.mutable_id());
     committed_op_id.ToPB(replicate_msg.mutable_committed_op_id());
+    return Status::OK();
   }
 
   void ReplicationFinished(
@@ -1295,7 +1296,7 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
-    round->NotifyAddedToLeader(op_id, committed_op_id);
+    RETURN_NOT_OK(round->NotifyAddedToLeader(op_id, committed_op_id));
 
     auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
@@ -2301,10 +2302,11 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // See also https://ramcloud.stanford.edu/~ongaro/thesis.pdf
   // section 4.2.3.
   MonoTime now = MonoTime::Now();
-  if (request->candidate_uuid() != state_->GetLeaderUuidUnlocked() &&
+  auto leader_uuid = state_->GetLeaderUuidUnlocked();
+  if (request->candidate_uuid() != leader_uuid &&
       !request->ignore_live_leader() &&
       now < withhold_votes_until_.load(std::memory_order_acquire)) {
-    return RequestVoteRespondLeaderIsAlive(request, response);
+    return RequestVoteRespondLeaderIsAlive(request, response, leader_uuid);
   }
 
   // Candidate is running behind.
@@ -2963,13 +2965,14 @@ Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpIdPB& local_last_
 }
 
 Status RaftConsensus::RequestVoteRespondLeaderIsAlive(const VoteRequestPB* request,
-                                                      VoteResponsePB* response) {
+                                                      VoteResponsePB* response,
+                                                      const std::string& leader_uuid) {
   FillVoteResponseVoteDenied(ConsensusErrorPB::LEADER_IS_ALIVE, response);
   std::string msg = Format(
-      "$0: Denying vote to candidate $1 for term $2 because replica is either leader or believes a "
-      "valid leader to be alive. Time left: $3",
+      "$0: Denying vote to candidate $1 for term $2 because replica believes a valid leader to be "
+      "alive (leader uuid: $3). Time left: $4",
       GetRequestVoteLogPrefix(*request), request->candidate_uuid(), request->candidate_term(),
-      withhold_votes_until_.load(std::memory_order_acquire) - MonoTime::Now());
+      leader_uuid, withhold_votes_until_.load(std::memory_order_acquire) - MonoTime::Now());
   LOG(INFO) << msg;
   StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
   return Status::OK();

@@ -106,6 +106,7 @@ class AnsibleProcess(object):
         sudo_pass_file = vars.pop("sudo_pass_file", None)
         ssh_key_file = vars.pop("private_key_file", None)
         ssh2_enabled = vars.pop("ssh2_enabled", False) and check_ssh2_bin_present()
+        connection_type = vars.pop("ansible_connection_type", None)
         node_agent_ip = vars.pop("node_agent_ip", None)
         node_agent_port = vars.pop("node_agent_port", None)
         node_agent_cert_path = vars.pop("node_agent_cert_path", None)
@@ -165,13 +166,19 @@ class AnsibleProcess(object):
             "--user", ssh_user
         ])
 
-        if node_agent_ip is not None and node_agent_port is not None:
-            connection_type = "node_agent_rpc"
+        if connection_type is not None and connection_type == 'node_agent_rpc':
             playbook_args.update({
+                "rpc_user": ssh_user,
                 "rpc_ip": node_agent_ip,
                 "rpc_port": node_agent_port,
                 "rpc_cert_path": node_agent_cert_path,
-                "rpc_auth_token": node_agent_auth_token
+                "rpc_auth_token": node_agent_auth_token,
+                # Below args are used in the playbooks.
+                # E.g ssh_user as home_dir.
+                "ansible_port": node_agent_port,
+                "yb_ansible_host": node_agent_ip,
+                "ssh_user": ssh_user,
+                "yb_server_ssh_user": ssh_user
             })
             inventory_target = self.build_connection_target(node_agent_ip)
         elif ssh_port is None or ssh_host is None:

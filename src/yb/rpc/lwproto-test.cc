@@ -64,7 +64,7 @@ TEST(LWProtoTest, SkipsUnknownFields) {
   }
 
   {
-    Arena arena;
+    ThreadSafeArena arena;
     rpc_test::LWTestObjectPBv2 lwpb2(&arena);
     AnyMessagePtr ptr(&lwpb2);
 

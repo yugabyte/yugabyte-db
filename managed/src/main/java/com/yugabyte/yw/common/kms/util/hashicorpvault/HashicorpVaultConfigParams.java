@@ -30,13 +30,16 @@ import io.swagger.annotations.ApiModelProperty;
 public class HashicorpVaultConfigParams {
   public static final Logger LOG = LoggerFactory.getLogger(HashicorpVaultConfigParams.class);
 
+  // Params sent from UI - added to the auth config (both EAR and EAT)
   public static final String HC_VAULT_TOKEN = "HC_VAULT_TOKEN";
   public static final String HC_VAULT_ADDRESS = "HC_VAULT_ADDRESS";
   public static final String HC_VAULT_ENGINE = "HC_VAULT_ENGINE";
   public static final String HC_VAULT_MOUNT_PATH = "HC_VAULT_MOUNT_PATH";
 
+  // Params sent from UI - added to the auth config (Only EAT)
   public static final String HC_VAULT_PKI_ROLE = "HC_VAULT_PKI_ROLE";
 
+  // Extra params added to the auth config (both EAR and EAT)
   public static final String HC_VAULT_TTL = "HC_VAULT_TTL";
   public static final String HC_VAULT_TTL_EXPIRY = "HC_VAULT_TTL_EXPIRY";
 

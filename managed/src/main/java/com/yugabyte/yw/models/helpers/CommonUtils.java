@@ -734,7 +734,7 @@ public class CommonUtils {
   public static String generateStateLogMsg(Universe universe, boolean alreadyRunning) {
     String stateLogMsg =
         String.format(
-            "alreadyRunning={} updateInProgress={} universePaused={}",
+            "alreadyRunning=%s updateInProgress=%s universePaused=%s",
             alreadyRunning,
             universe.getUniverseDetails().updateInProgress,
             universe.getUniverseDetails().universePaused);

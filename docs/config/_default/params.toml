@@ -53,10 +53,13 @@ version_menu_pagelinks = false
 
 [[versions]]
   url = "/preview/"
-  version = "v2.15 (Preview)"
+  version = "v2.17 (Preview)"
 [[versions]]
   url = "/stable/"
-  version = "v2.14 (Stable)"
+  version = "v2.16 (STS)"
+[[versions]]
+  url = "/v2.14/"
+  version = "v2.14 (LTS)"
 [[versions]]
   url = "/v2.12/"
   version = "v2.12"
@@ -73,7 +76,7 @@ version_menu_pagelinks = false
 # Custom params, regardless of theme
 [yb]
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
-  preview_version = "v2.15"
+  preview_version = "v2.17"
   preview_version_slug = "preview"
 
 # Header logo link

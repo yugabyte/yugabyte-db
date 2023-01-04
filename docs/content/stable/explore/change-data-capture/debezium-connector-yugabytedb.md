@@ -49,21 +49,17 @@ To use the YugabyteDB Debezium connector, do the following. For complete steps, 
 
 1. Create a DB stream ID.
 
-    \
-    Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
+   Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
 
 1. Make sure the master ports are open.
 
-    \
-    The YugabyteDB connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
+   The YugabyteDB connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
 
 1. Monitor available disk space.
 
-    \
-    The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
+   The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
-    \
-    In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+   In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
 Read on to learn how the connector works. Or, skip to [how to deploy the connector](#deployment).
 
@@ -73,7 +69,7 @@ To optimally configure and run a Debezium YugabyteDB connector, it is helpful to
 
 ### Security
 
-Currently, any user that has the access to the cluster, the authentication is done via that user. We also support the SSL based verification provided all the required keys and certificates are passed to the connector.
+Currently, for any user that has the access to the cluster, authentication is done via that user. SSL support based verification is provided for all the required keys and certificates are passed to the connector.
 
 {{< note title="Note" >}}
 
@@ -536,7 +532,7 @@ The fields in the create event are:
 
 ### Update events
 
-The value of a change event for an update in the sample `customers` table has the same schema as a create event for that table. Likewise, the event value's payload has the same structure. However, the event value payload contains different values in an update event. Here is an example of a change event value in an event that the connector generates for an update in the `customers` table:
+The value of a change event for an update in the sample `customers` table has the same schema as a create event for that table. Likewise, the event value's payload has the same structure. However, the event value payload contains different values in an update event.
 
 Note that updating the columns for a row's **primary/unique key** changes the value of the row's key. When a key changes, Debezium outputs three events: a DELETE event and a [tombstone event](#tombstone-events) with the old key for the row, followed by an event with the new key for the row. See [Primary key updates](#primary-key-updates) on this page for details.
 
@@ -600,7 +596,7 @@ Currently, YugabyteDB doesn't support the `before` image of the row (in other wo
 
 {{< /note >}}
 
-### Primary key updates
+#### Primary key updates
 
 An UPDATE operation that changes a row's primary key field(s) is known as a primary key change. For a primary key change, in place of sending an UPDATE event record, the connector sends a DELETE event record for the old key and a CREATE event record for the new (updated) key. These events have the usual structure and content, and in addition, each one has a message header related to the primary key change:
 
@@ -763,7 +759,7 @@ Mappings when `time.precision.mode` is `adaptive_time_microseconds`:
 
 When the `time.precision.mode` configuration property is set to `connect`, the connector uses Kafka Connect logical types. This may be beneficial when consumers can handle only the built-in Kafka Connect logical types and are unable to handle variable-precision time values. However, because YugabyteDB supports microsecond precision, the events generated by a connector with the `connect` time precision mode **results in a loss of precision** when the database column has a fractional second precision value that is greater than 3.
 
-Mappings when time.precision.mode is connect:
+Mappings when `time.precision.mode` is `connect`:
 
 | YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
 | :------------------ | :------------------------- | :-------------------------- |
@@ -773,11 +769,11 @@ Mappings when time.precision.mode is connect:
 
 ### TIMESTAMP type
 
-The TIMESTAMP type represents a timestamp without time zone information. Such columns are converted into an equivalent Kafka Connect value based on UTC. For example, the TIMESTAMP value "2022-03-03 16:51:30" is represented by an `io.debezium.time.Timestamp` with the value "1646326290000" when time.precision.mode is set to any value other than `connect`.
+The TIMESTAMP type represents a timestamp without time zone information. Such columns are converted into an equivalent Kafka Connect value based on UTC. For example, the TIMESTAMP value `2022-03-03 16:51:30` is represented by an `io.debezium.time.Timestamp` with the value `1646326290000` when `time.precision.mode` is set to any value other than `connect`.
 
 The timezone of the JVM running Kafka Connect and Debezium does not affect this conversion.
 
-YugabyteDB supports using `+/-infinity` values in `TIMESTAMP` columns. These special values are converted to timestamps with value 9223372036825200000 in case of positive infinity or -9223372036832400000 in case of negative infinity.
+YugabyteDB supports using `+/-infinity` values in `TIMESTAMP` columns. These special values are converted to timestamps with value `9223372036825200000` in case of positive infinity or `-9223372036832400000` in case of negative infinity.
 
 ### Decimal types
 
@@ -801,10 +797,10 @@ Mappings when `decimal.handling.mode` is `double`:
 
 The other possible value for `decimal.handling.mode` is `string`. In this case, the connector represents `DECIMAL`, `NUMERIC`, and `MONEY` values as their formatted string representation, and encodes them as shown in the following table.
 
-Mappings when decimal.handling.mode is string:
+Mappings when `decimal.handling.mode` is `string`:
 
-| YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
-| :------------------ | :------------------------- | :-------------------------- |
+| YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) |
+| :------------------- | :------------------------- | :-------------------------- |
 | NUMERIC [(M[,D])] | STRING | |
 | DECIMAL [(M[,D])] | STRING | |
 | MONEY [(M[,D])] | STRING | |
@@ -863,7 +859,7 @@ Mappings for network address types:
 | TIMESTAMP [ (p) ] WITH TIME ZONE | '2021-11-25 12:00:00+05:30' | "2021-11-25T06:30:00Z" | This output value is the timestamp value in UTC wherein the Z stands for Zero Timezone and T acts as a separator between the date and time. This format is defined by the sensible practical standard ISO 8601. |
 | UUID | 'ffffffff-ffff-ffff-ffff-ffffffffffff' | "ffffffff-ffff-ffff-ffff-ffffffffffff" | |
 
-### Unsupported data types in Debezium
+### Unsupported data types
 
 Support for the following YugabyteDB data types will be enabled in future releases:
 
@@ -973,10 +969,10 @@ The following properties are _required_ unless a default value is available:
 | schema.exclude.list | N/A | An optional, comma-separated list of regular expressions that match names of schemas for which you **do not** want to capture changes. Any schema whose name is not included in `schema.exclude.list` has its changes captured, with the exception of system schemas. Do not also set the `schema.include.list` property. |
 | table.include.list | N/A | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you want to capture. Any table not included in `table.include.list` does not have its changes captured. Each identifier is of the form _schemaName.tableName_. By default, the connector captures changes in every non-system table in each schema whose changes are being captured. Do not also set the `table.exclude.list` property. |
 | table.exclude.list | N/A | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you **do not** want to capture. Any table not included in `table.exclude.list` has it changes captured. Each identifier is of the form _schemaName.tableName_. Do not also set the `table.include.list` property. |
-| column.include.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be included in change event record values. Fully-qualified names for columns are of the form `schemaName.tableName.columnName`. Do not also set the `column.exclude.list` property. |
+| column.include.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be included in change event record values. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. Do not also set the `column.exclude.list` property. |
 | column.exclude.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be excluded from change event record values. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. Do not also set the `column.include.list` property. |
-| column.truncate.to._length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. In change event records, values in these columns are truncated if they are longer than the number of characters specified by *length* in the property name. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer, for example, `column.truncate.to.20.chars`. |
-| column.mask.with._length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. In change event values, the values in the specified table columns are replaced with _length_ number of asterisk (`*`) characters. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer or zero. When you specify zero, the connector replaces a value with an empty string. |
+| column.truncate.to._length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. In change event records, values in these columns are truncated if they are longer than the number of characters specified by _length_ in the property name. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer, for example, `column.truncate.to.20.chars`. |
+| column.mask.with._length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form _schemaName.tableName.columnName_. In change event records, the values in the specified table columns are replaced with _length_ number of asterisk (`*`) characters. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer or zero. When you specify zero, the connector replaces a value with an empty string. |
 | message.key.columns | _empty string_ | A list of expressions that specify the columns that the connector uses to form custom message keys for change event records that it publishes to the Kafka topics for specified tables. <br/> By default, Debezium uses the primary key column of a table as the message key for records that it emits. In place of the default, or to specify a key for tables that lack a primary key, you can configure custom message keys based on one or more columns. <br/><br/> To establish a custom message key for a table, list the table, followed by the columns to use as the message key. Each list entry takes the following format: <br/><br/> `<fully-qualified_tableName>:<keyColumn>,<keyColumn>`<br/><br/> To base a table key on multiple column names, insert commas between the column names. Each fully-qualified table name is a regular expression in the following format: <br/><br/> `<schemaName>.<tableName>` <br/><br/> The property can include entries for multiple tables. Use a semicolon to separate table entries in the list. The following example sets the message key for the tables `inventory.customers` and `purchase.orders`: <br/><br/> `inventory.customers:pk1,pk2;purchase.orders:pk3,pk4` <br/><br/> For the table `inventory.customers`, the columns `pk1` and `pk2` are specified as the message key. For the `purchase.orders` tables in any schema, the columns `pk3` and `pk4` server as the message key. <br/><br/> There is no limit to the number of columns that you use to create custom message keys. However, it's best to use the minimum number that are required to specify a unique key. |
 
 {{< note title="TLSv1.2 only" >}}
@@ -1010,13 +1006,14 @@ Advanced connector configuration properties:
 | interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/> `numeric` represents intervals using approximate number of microseconds. <br/><br/> `string` represents intervals exactly by using the string pattern representation<br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`.<br/> For example: P1Y2M3DT4H5M6.78S. See [YugabyteDB data types](../../../api/ysql/datatypes/). |
 | transaction.topic | `${database.server.name}`<br/>`.transaction` | Controls the name of the topic to which the connector sends transaction metadata messages. The placeholder `${database.server.name}` can be used for referring to the connector's logical name; defaults to `${database.server.name}.transaction`, for example `dbserver1.transaction` |
 | provide.transaction.metadata | `false` | Determines whether the connector generates events with transaction boundaries and enriches change event envelopes with transaction metadata. Specify `true` if you want the connector to do this. See [Transaction metadata](#transaction-metadata) for details. |
+| skipped.operations | N/A | A comma-separated list of operation types to be skipped during streaming. The types are `c` for insert/create operations, `u` for update operations, and `d` for delete operations. By default, no operations are skipped. |
 | max.queue.size | 20240 | Positive integer value for the maximum size of the blocking queue. The connector places change events received from streaming replication in the blocking queue before writing them to Kafka. This queue can provide back pressure when, for example, writing records to Kafka is slower that it should be, or when Kafka is not available. |
 | max.batch.size | 10240 | Positive integer value that specifies the maximum size of each batch of events that the connector processes. |
 | max.queue.size.in.bytes | 0 | Long value for the maximum size in bytes of the blocking queue. The feature is disabled by default, it will be active if it's set with a positive long value. |
 | max.connector.retries | 5 | Positive integer value for the maximum number of times a retry can happen at the connector level itself. |
 | connector.retry.delay.ms | 60000 | Delay between subsequent retries at the connector level. |
 | ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. By default, if there is an exception, the connector throws the exception and stops further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
-| tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br><br> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br><br> `false` - only a delete event is emitted.<br><br> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
+| tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 
 ## Troubleshooting
 

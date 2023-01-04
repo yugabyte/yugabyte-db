@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -296,6 +297,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           true /* isShell */,
           false /* ignore node status check */,
           ignoreUseCustomImageConfig);
+
+      // Copy the source root certificate to the provisioned nodes.
+      createTransferXClusterCertsCopyTasks(
+          nodesToProvision, universe, SubTaskGroupType.Provisioning);
     }
 
     Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
@@ -370,12 +375,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
-
-    if (!removeMasters.isEmpty() || !newMasters.isEmpty()) {
-      // Update placement info on master leader.
-      createPlacementInfoTask(null /* additional blacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-    }
+    // Update placement info on master leader.
+    createPlacementInfoTask(null /* additional blacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     if (!newTservers.isEmpty()
         || !newMasters.isEmpty()
@@ -402,10 +404,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
     }
 
-    if (cluster.clusterType == ClusterType.PRIMARY
-        && PlacementInfoUtil.didAffinitizedLeadersChange(
-            universe.getUniverseDetails().getPrimaryCluster().placementInfo,
-            cluster.placementInfo)) {
+    // Add new nodes to load balancer.
+    createManageLoadBalancerTasks(
+        createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null, null));
+
+    if (cluster.clusterType == ClusterType.PRIMARY) {
       createWaitForLeadersOnPreferredOnlyTask();
     }
 
@@ -482,6 +485,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
+      // Remove nodes from load balancer.
+      createManageLoadBalancerTasks(
+          createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), nodesToBeRemoved, null));
+
       // Set the node states to Removing.
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);

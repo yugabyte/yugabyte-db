@@ -6,6 +6,8 @@ import static play.mvc.Http.Status.PRECONDITION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.amazonaws.ClientConfiguration;
+import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
@@ -13,18 +15,8 @@ import com.amazonaws.auth.AWSCredentialsProviderChain;
 import com.amazonaws.auth.AWSSessionCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
-import com.amazonaws.auth.InstanceProfileCredentialsProvider;
-import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 import com.amazonaws.regions.DefaultAwsRegionProviderChain;
-import com.amazonaws.regions.Region;
-import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
-import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClient;
-import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
-import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
-import com.amazonaws.services.identitymanagement.model.Role;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
@@ -36,35 +28,17 @@ import com.amazonaws.services.s3.model.GetBucketLocationRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClient;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
-import com.amazonaws.services.securitytoken.model.AssumeRoleRequest;
-import com.amazonaws.services.securitytoken.model.AssumeRoleResult;
-import com.amazonaws.services.securitytoken.model.AssumeRoleWithWebIdentityRequest;
-import com.amazonaws.services.securitytoken.model.AssumeRoleWithWebIdentityResult;
-import com.amazonaws.services.securitytoken.model.Credentials;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
-import com.amazonaws.util.EC2MetadataUtils;
-import com.amazonaws.util.EC2MetadataUtils.IAMSecurityCredential;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.IAMConfiguration;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 
 import io.ebean.annotation.EnumValue;
 
 import java.io.File;
 import java.io.InputStream;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,10 +48,10 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
+import org.yb.ybc.CloudType;
+import org.yb.ybc.S3ProxySetting;
 
 @Singleton
 @Slf4j
@@ -113,6 +87,7 @@ public class AWSUtil implements CloudUtil {
     }
     for (String location : locations) {
       try {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
         AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
         String[] bucketSplit = getSplitLocationValue(location);
         String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
@@ -135,6 +110,8 @@ public class AWSUtil implements CloudUtil {
                 "Credential cannot list objects in the specified backup location %s: {}", location),
             e.getMessage());
         return false;
+      } finally {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
       }
     }
     return true;
@@ -163,6 +140,7 @@ public class AWSUtil implements CloudUtil {
     String keyLocation =
         objectPrefix.substring(0, objectPrefix.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     try {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
       AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
       ListObjectsV2Result listObjectsResult = s3Client.listObjectsV2(bucketName, keyLocation);
       if (listObjectsResult.getKeyCount() == 0) {
@@ -175,6 +153,8 @@ public class AWSUtil implements CloudUtil {
     } catch (AmazonS3Exception e) {
       log.error("Error while deleting key object from bucket " + bucketName, e.getErrorMessage());
       throw e;
+    } finally {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
     }
   }
 
@@ -227,12 +207,30 @@ public class AWSUtil implements CloudUtil {
     } else {
       s3ClientBuilder.withRegion(region);
     }
+    if (s3Data.proxySetting != null) {
+      ClientConfiguration cc = getClientConfiguration(s3Data.proxySetting);
+      s3ClientBuilder.withClientConfiguration(cc);
+    }
     try {
       return s3ClientBuilder.build();
     } catch (SdkClientException e) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
     }
+  }
+
+  private static ClientConfiguration getClientConfiguration(ProxySetting proxySetting) {
+    ClientConfiguration cc = new ClientConfiguration();
+    cc.withProxyHost(proxySetting.proxy);
+    if (proxySetting.port > 0) {
+      cc.withProxyPort(proxySetting.port);
+    }
+    if (StringUtils.isNotBlank(proxySetting.username)
+        && StringUtils.isNotBlank(proxySetting.password)) {
+      cc.withProxyUsername(proxySetting.username);
+      cc.withProxyPassword(proxySetting.password);
+    }
+    return cc;
   }
 
   public String getBucketRegion(String bucketName, CustomerConfigStorageS3Data s3Data)
@@ -244,6 +242,7 @@ public class AWSUtil implements CloudUtil {
   // For reusing already created client, as in listBuckets function
   private String getBucketRegion(String bucketName, AmazonS3 s3Client) throws SdkClientException {
     try {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
       GetBucketLocationRequest locationRequest = new GetBucketLocationRequest(bucketName);
       String bucketRegion = s3Client.getBucketLocation(locationRequest);
       if (bucketRegion.equals("US")) {
@@ -253,6 +252,8 @@ public class AWSUtil implements CloudUtil {
     } catch (SdkClientException e) {
       log.error(String.format("Fetching bucket region for %s failed", bucketName), e.getMessage());
       throw e;
+    } finally {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
     }
   }
 
@@ -263,7 +264,7 @@ public class AWSUtil implements CloudUtil {
   }
 
   public boolean isHostBaseS3Standard(String hostBase) {
-    return standardHostBaseCompiled.matcher(hostBase).matches();
+    return standardHostBaseCompiled.matcher(hostBase).find();
   }
 
   public String getOrCreateHostBase(
@@ -280,6 +281,7 @@ public class AWSUtil implements CloudUtil {
       throws Exception {
     for (String backupLocation : backupLocations) {
       try {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
         AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
         String[] splitLocation = getSplitLocationValue(backupLocation);
         String bucketName = splitLocation[0];
@@ -301,6 +303,8 @@ public class AWSUtil implements CloudUtil {
       } catch (AmazonS3Exception e) {
         log.error(" Error in deleting objects at location " + backupLocation, e.getErrorMessage());
         throw e;
+      } finally {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
       }
     }
   }
@@ -308,16 +312,21 @@ public class AWSUtil implements CloudUtil {
   @Override
   public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
       throws Exception {
-    AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
-    String[] splitLocation = getSplitLocationValue(cloudPath);
-    String bucketName = splitLocation[0];
-    String objectPrefix = splitLocation[1];
-    S3Object object = s3Client.getObject(bucketName, objectPrefix);
-    if (object == null) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "No object was found at the specified location: " + cloudPath);
+    try {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
+      String[] splitLocation = getSplitLocationValue(cloudPath);
+      String bucketName = splitLocation[0];
+      String objectPrefix = splitLocation[1];
+      S3Object object = s3Client.getObject(bucketName, objectPrefix);
+      if (object == null) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "No object was found at the specified location: " + cloudPath);
+      }
+      return object.getObjectContent();
+    } finally {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
     }
-    return object.getObjectContent();
   }
 
   public void retrieveAndDeleteObjects(
@@ -340,6 +349,8 @@ public class AWSUtil implements CloudUtil {
       String commonDir,
       String previousBackupLocation,
       CustomerConfigData configData) {
+    CloudStoreSpec.Builder cloudStoreSpecBuilder =
+        CloudStoreSpec.newBuilder().setType(CloudType.S3);
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
@@ -355,22 +366,37 @@ public class AWSUtil implements CloudUtil {
           splitValues.length > 1 ? BackupUtil.appendSlash(splitValues[1]) : previousCloudDir;
     }
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
-    return YbcBackupUtil.buildCloudStoreSpec(
-        bucket, cloudDir, previousCloudDir, s3CredsMap, Util.S3);
+    cloudStoreSpecBuilder
+        .setBucket(bucket)
+        .setPrevCloudDir(previousCloudDir)
+        .setCloudDir(cloudDir)
+        .putAllCreds(s3CredsMap);
+    if (s3Data.proxySetting != null) {
+      cloudStoreSpecBuilder.setProxySetting(addYbcProxySettings(s3Data.proxySetting));
+    }
+    return cloudStoreSpecBuilder.build();
   }
 
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
       String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    CloudStoreSpec.Builder cloudStoreSpecBuilder =
+        CloudStoreSpec.newBuilder().setType(CloudType.S3);
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
+    cloudStoreSpecBuilder.setBucket(bucket).setPrevCloudDir("").putAllCreds(s3CredsMap);
     if (isDsm) {
       String location = BackupUtil.appendSlash(splitValues[1]);
-      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", s3CredsMap, Util.S3);
+      cloudStoreSpecBuilder.setCloudDir(location);
+    } else {
+      cloudStoreSpecBuilder.setCloudDir(cloudDir);
     }
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", s3CredsMap, Util.S3);
+    if (s3Data.proxySetting != null) {
+      cloudStoreSpecBuilder.setProxySetting(addYbcProxySettings(s3Data.proxySetting));
+    }
+    return cloudStoreSpecBuilder.build();
   }
 
   private Map<String, String> createCredsMapYbc(CustomerConfigData configData, String bucket) {
@@ -414,10 +440,26 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
+  private S3ProxySetting addYbcProxySettings(
+      CustomerConfigStorageS3Data.ProxySetting proxySettings) {
+    S3ProxySetting.Builder proxyBuilder = S3ProxySetting.newBuilder();
+    proxyBuilder.setProxyHost(proxySettings.proxy);
+    if (proxySettings.port > 0) {
+      proxyBuilder.setProxyPort(proxySettings.port);
+    }
+    if (StringUtils.isNotBlank(proxySettings.username)
+        && StringUtils.isNotBlank(proxySettings.password)) {
+      proxyBuilder.setProxyPassword(proxySettings.password);
+      proxyBuilder.setProxyUsername(proxySettings.username);
+    }
+    return proxyBuilder.build();
+  }
+
   @Override
   public Map<String, String> listBuckets(CustomerConfigData configData) {
     Map<String, String> bucketHostBaseMap = new HashMap<>();
     try {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
       if ((StringUtils.isBlank(s3Data.awsAccessKeyId)
               || StringUtils.isBlank(s3Data.awsSecretAccessKey))
@@ -445,6 +487,8 @@ public class AWSUtil implements CloudUtil {
                               b.getName(), getBucketRegion(b.getName(), client))));
     } catch (SdkClientException e) {
       log.error("Error while listing S3 buckets {}", e.getMessage());
+    } finally {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
     }
     return bucketHostBaseMap;
   }

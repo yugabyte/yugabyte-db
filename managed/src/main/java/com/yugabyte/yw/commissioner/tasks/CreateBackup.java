@@ -40,6 +40,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -140,7 +141,12 @@ public class CreateBackup extends UniverseTaskBase {
       } catch (CancellationException ce) {
         log.error("Aborting backups for task: {}", userTaskUUID);
         Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
-            .forEach(backup -> backup.transitionState(BackupState.Stopped));
+            .forEach(
+                backup -> {
+                  backup.transitionState(BackupState.Stopped);
+                  backup.setCompletionTime(new Date());
+                  backup.save();
+                });
         unlockUniverseForUpdate(false);
         isUniverseLocked = false;
         throw ce;
@@ -165,6 +171,8 @@ public class CreateBackup extends UniverseTaskBase {
                 backup -> {
                   if (backup.state.equals(BackupState.InProgress)) {
                     backup.transitionState(BackupState.Failed);
+                    backup.setCompletionTime(new Date());
+                    backup.save();
                   }
                 });
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();

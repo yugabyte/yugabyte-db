@@ -2,6 +2,8 @@ package com.yugabyte.yw.models.helpers;
 
 import com.yugabyte.yw.models.AvailabilityZone;
 import lombok.Data;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,12 +20,23 @@ public class LoadBalancerConfig {
     this.azNodes = new HashMap<>();
   }
 
-  public LoadBalancerConfig(String lbName, Map<AvailabilityZone, Set<NodeDetails>> azNodes) {
-    this.lbName = lbName;
-    this.azNodes = azNodes;
+  public void addNodes(AvailabilityZone az, Set<NodeDetails> nodes) {
+    if (CollectionUtils.isNotEmpty(nodes)) {
+      azNodes.computeIfAbsent(az, k -> new HashSet<>()).addAll(nodes);
+    }
   }
 
-  public void addNodes(AvailabilityZone az, Set<NodeDetails> nodes) {
-    azNodes.computeIfAbsent(az, k -> new HashSet<>()).addAll(nodes);
+  public void addAll(Map<AvailabilityZone, Set<NodeDetails>> otherAzNodes) {
+    if (MapUtils.isNotEmpty(otherAzNodes)) {
+      otherAzNodes.forEach(
+          (key, value) ->
+              azNodes.merge(
+                  key,
+                  value,
+                  (v1, v2) -> {
+                    v1.addAll(v2);
+                    return v1;
+                  }));
+    }
   }
 }

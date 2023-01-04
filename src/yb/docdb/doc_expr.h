@@ -38,11 +38,6 @@ class DocExprExecutor : public QLExprExecutor {
                     QLValuePB *result,
                     const Schema *schema) override;
 
-  Status EvalTSCall(const LWPgsqlBCallPB& ql_expr,
-                    const QLTableRow& table_row,
-                    LWQLValuePB *result,
-                    const Schema *schema) override;
-
  protected:
   // Evaluate aggregate functions for each row.
   template <class Val>
@@ -69,16 +64,9 @@ class DocExprExecutor : public QLExprExecutor {
   template <class Val>
   Status EvalAvg(const Val& val, Val *aggr_avg);
 
-  Status EvalParametricToJson(const QLExpressionPB& operand,
-                              const QLTableRow& table_row,
-                              QLValuePB *result,
-                              const Schema *schema);
-
-  template <class Expr, class Val>
-  Status DoEvalTSCall(const Expr& ql_expr,
-                      const QLTableRow& table_row,
-                      Val *result,
-                      const Schema *schema);
+  Result<QLValuePB> EvalParametricToJson(const QLExpressionPB& operand,
+                                         const QLTableRow& table_row,
+                                         const Schema *schema);
 
   virtual Status GetTupleId(QLValuePB *result) const;
   std::vector<QLExprResult> aggr_result_;

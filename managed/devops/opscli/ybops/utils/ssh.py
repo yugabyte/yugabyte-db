@@ -375,7 +375,7 @@ class SSHClient(object):
         self.ssh_type = SSH2 if ssh2_enabled and check_ssh2_bin_present() else SSH
 
     @retry_ssh_errors(retry_delay=CONNECTION_RETRY_DELAY_SEC)
-    def connect(self, hostname, username, key, port, retry=1, timeout=SSH_TIMEOUT):
+    def connect(self, hostname, username, key, port, retry=3, timeout=SSH_TIMEOUT):
         '''
             Initializes the connection or stores the relevant information
             needed for performing native ssh.

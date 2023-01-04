@@ -57,7 +57,7 @@
 #include <boost/algorithm/string.hpp>
 #include "yb/util/string_case.h"
 
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
 #endif
 
@@ -351,7 +351,7 @@ static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResp
   Tags tags(as_text);
 
   (*output) << tags.pre_tag;
-#ifndef TCMALLOC_ENABLED
+#ifndef YB_TCMALLOC_ENABLED
   (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
 #else
   auto tmp = TcMallocStats();

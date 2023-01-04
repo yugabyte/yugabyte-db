@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -73,20 +74,24 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
       String masterAddresses =
-          PlacementInfoUtil.computeMasterAddresses(
+          KubernetesUtil.computeMasterAddresses(
               pi,
               placement.masters,
               taskParams().nodePrefix,
+              universe.name,
               provider,
               taskParams().communicationPorts.masterRpcPort,
               newNamingStyle);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
-      createPodsTask(placement, masterAddresses, /*isReadOnlyCluster*/ false);
+      createPodsTask(universe.name, placement, masterAddresses, /*isReadOnlyCluster*/ false);
 
       createSingleKubernetesExecutorTask(
-          KubernetesCommandExecutor.CommandType.POD_INFO, pi, /*isReadOnlyCluster*/ false);
+          universe.name,
+          KubernetesCommandExecutor.CommandType.POD_INFO,
+          pi, /*isReadOnlyCluster*/
+          false);
 
       Set<NodeDetails> tserversAdded =
           getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, false);
@@ -116,9 +121,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
             new KubernetesPlacement(readClusterPI, /*isReadOnlyCluster*/ true);
         // Skip choosing masters from read cluster.
         boolean isReadClusterMultiAz = PlacementInfoUtil.isMultiAZ(readClusterProvider);
-        createPodsTask(readClusterPlacement, masterAddresses, true);
+        createPodsTask(universe.name, readClusterPlacement, masterAddresses, true);
         createSingleKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.POD_INFO, readClusterPI, true);
+            universe.name, KubernetesCommandExecutor.CommandType.POD_INFO, readClusterPI, true);
         tserversAdded.addAll(
             getPodsToAdd(
                 readClusterPlacement.tservers,

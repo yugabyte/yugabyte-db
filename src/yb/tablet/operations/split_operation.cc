@@ -44,12 +44,12 @@ LWSplitTabletRequestPB* RequestTraits<LWSplitTabletRequestPB>::MutableRequest(
   return replicate->mutable_split_request();
 }
 
-void SplitOperation::AddedAsPending() {
-  tablet()->RegisterOperationFilter(this);
+void SplitOperation::AddedAsPending(const TabletPtr& tablet) {
+  tablet->RegisterOperationFilter(this);
 }
 
-void SplitOperation::RemovedFromPending() {
-  tablet()->UnregisterOperationFilter(this);
+void SplitOperation::RemovedFromPending(const TabletPtr& tablet) {
+  tablet->UnregisterOperationFilter(this);
 }
 
 Status SplitOperation::RejectionStatus(
@@ -108,7 +108,7 @@ Status SplitOperation::CheckOperationAllowed(
       request()->new_tablet2_id().ToBuffer());
 }
 
-Status SplitOperation::Prepare() {
+Status SplitOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX(2) << "Prepare";
   return Status::OK();
 }

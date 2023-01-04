@@ -71,6 +71,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/semaphore.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/net/net_util.h"
@@ -484,6 +485,8 @@ class LookupCallbackVisitor : public boost::static_visitor<> {
   const boost::optional<Status> error_status_;
 };
 
+YB_STRONGLY_TYPED_BOOL(FailOnPartitionListRefreshed);
+
 // Manager of RemoteTablets and RemoteTabletServers. The client consults
 // this class to look up a given tablet or server.
 //
@@ -502,7 +505,11 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   // Look up which tablet hosts the given partition key for a table. When it is
   // available, the tablet is stored in 'remote_tablet' (if not NULL) and the
-  // callback is fired. Only tablets with non-failed LEADERs are considered.
+  // lookup callback is fired. Only tablets with non-failed LEADERs are considered.
+  // Partition list can be refreshed if repartitioning is being detected in durint the method
+  // executing (by checking ArePartitionsStale()). If `fail_on_partition_list_refreshed` is true
+  // the callback is fired with ClientErrorCode::kTablePartitionListRefreshed status after
+  // the partitions are being refreshed, or lookup is transparently retried in the other case.
   //
   // NOTE: the callback may be called from an IO thread or inline with this
   // call if the cached data is already available.
@@ -512,7 +519,9 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const PartitionKey& partition_key,
                          CoarseTimePoint deadline,
-                         LookupTabletCallback callback);
+                         LookupTabletCallback callback,
+                         FailOnPartitionListRefreshed fail_on_partition_list_refreshed =
+                             FailOnPartitionListRefreshed::kFalse);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const std::shared_ptr<YBTable>& table,
@@ -658,9 +667,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
                           CoarseTimePoint deadline,
                           LookupTabletRangeCallback* callback);
 
-  template <class Func, class Callback>
-  void RefreshTablePartitions(
-      Func&& func, const std::shared_ptr<YBTable>& table, Callback&& callback);
+  void RefreshTablePartitions(const std::shared_ptr<YBTable>& table, StdStatusCallback callback);
 
   Result<RemoteTabletPtr> ProcessTabletLocation(
       const master::TabletLocationsPB& locations, ProcessedTablesMap* processed_tables,

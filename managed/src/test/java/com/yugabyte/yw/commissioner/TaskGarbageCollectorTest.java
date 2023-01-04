@@ -16,7 +16,7 @@ import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import java.time.Duration;
@@ -60,19 +60,18 @@ public class TaskGarbageCollectorTest extends TestCase {
 
   @Mock Config mockAppConfig;
 
-  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
-
   @Mock Customer mockCustomer;
 
   @Mock CustomerTask mockCustomerTask;
+
+  @Mock RuntimeConfGetter mockConfGetter;
 
   private TaskGarbageCollector taskGarbageCollector;
 
   @Before
   public void setUp() {
-    when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(mockAppConfig);
-    taskGarbageCollector =
-        new TaskGarbageCollector(mockPlatformScheduler, mockRuntimeConfigFactory);
+    when(mockConfGetter.getStaticConf()).thenReturn(mockAppConfig);
+    taskGarbageCollector = new TaskGarbageCollector(mockPlatformScheduler, mockConfGetter);
     defaultRegistry.clear();
     TaskGarbageCollector.registerMetrics();
   }

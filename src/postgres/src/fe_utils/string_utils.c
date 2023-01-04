@@ -779,6 +779,15 @@ appendReloptionsArray(PQExpBuffer buffer, const char *reloptions,
 		else
 			value = "";
 
+		/*
+		 * Update reloption 'colocated' to 'colocation' in case we fully
+		 * deprecate 'colocated' syntax in the future.
+		 */
+		if (strcmp(name, "colocated") == 0)
+		{
+			name = "colocation";
+		}
+
 		if (appended)
 			appendPQExpBufferStr(buffer, ", ");
 		appendPQExpBuffer(buffer, "%s%s=", prefix, fmtId(name));

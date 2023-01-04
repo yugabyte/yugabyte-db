@@ -1984,7 +1984,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${build_type:-} ]]; then
     build_type=$_build_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Setting build type to '$build_type' based on predefined build root ('$basename')"
     fi
     validate_build_type "$build_type"
@@ -1995,7 +1995,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     export YB_COMPILER_TYPE=$_compiler_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Automatically setting compiler type to '$YB_COMPILER_TYPE' based on predefined build" \
           "root ('$basename')"
     fi
@@ -2006,7 +2006,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${YB_LINKING_TYPE:-} ]]; then
     export YB_LINKING_TYPE=$_linking_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Automatically setting linking type to '$YB_LINKING_TYPE' based on predefined build" \
           "root ('$basename')"
     fi

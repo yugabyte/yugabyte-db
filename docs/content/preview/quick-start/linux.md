@@ -49,7 +49,7 @@ The local cluster setup on a single host is intended for development and learnin
   </li>
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
