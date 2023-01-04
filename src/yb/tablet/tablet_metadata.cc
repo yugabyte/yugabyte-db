@@ -716,11 +716,12 @@ RaftGroupMetadata::RaftGroupMetadata(
 RaftGroupMetadata::~RaftGroupMetadata() {
 }
 
-RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id)
+RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager, const RaftGroupId& raft_group_id)
     : state_(kNotLoadedYet),
       raft_group_id_(std::move(raft_group_id)),
       kv_store_(KvStoreId(raft_group_id_)),
-      fs_manager_(fs_manager) {
+      fs_manager_(fs_manager),
+      log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())) {
 }
 
 Status RaftGroupMetadata::LoadFromDisk() {

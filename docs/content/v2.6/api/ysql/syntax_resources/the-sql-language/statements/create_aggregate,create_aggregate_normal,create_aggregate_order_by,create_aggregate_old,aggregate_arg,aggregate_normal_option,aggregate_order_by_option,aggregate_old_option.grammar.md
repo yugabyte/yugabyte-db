@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_aggregate ::= create_aggregate_normal
                      | create_aggregate_order_by
                      | create_aggregate_old

@@ -172,9 +172,9 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
     --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
   ```
 
-## Control placement of YugabyteDB Anywhere Pod
+## Control placement of YugabyteDB Anywhere pod
 
-The Helm chart allows you to control the placement of the pod when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity` and `toleration`. When you use these mechanisms to restrict placement of the YugabyteDB Anywhere pod, you should delay the creation of storage volumes (known as PersistentVolumeClaim (PVC)) until the pod has been placed. To do this, you would use a `StorageClass` with its `VolumeBindingMode` set to `WaitForFirstConsumer`, as described in [Configure storage class volume binding](../../../troubleshoot/universe-issues/#configure-storage-class-volume-binding). The following is a storage class YAML file for Google Kubernetes Engine (GKE):
+The Helm chart allows you to control the placement of the pod when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity` and `toleration`. When you use these mechanisms to restrict placement of the YugabyteDB Anywhere pod, you should delay the creation of storage volumes (known as PersistentVolumeClaim (PVC)) until the pod has been placed. To do this, you would use a `StorageClass` with its `VolumeBindingMode` set to `WaitForFirstConsumer`, as described in [Configure storage class volume binding](../../prepare-on-prem-nodes/#configure-storage-class-volume-binding). The following is a storage class YAML file for Google Kubernetes Engine (GKE):
 
 ```yaml
 kind: StorageClass

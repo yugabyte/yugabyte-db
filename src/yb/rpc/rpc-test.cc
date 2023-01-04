@@ -43,11 +43,6 @@
 
 #include <gtest/gtest.h>
 
-#if defined(TCMALLOC_ENABLED)
-#include <gperftools/heap-profiler.h>
-#endif
-
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 
@@ -920,7 +915,7 @@ TEST_F(TestRpc, DumpTimedOutCall) {
   thread.join();
 }
 
-#if defined(TCMALLOC_ENABLED)
+#if defined(YB_TCMALLOC_ENABLED) && defined(YB_GPERFTOOLS_TCMALLOC)
 
 namespace {
 
@@ -978,7 +973,7 @@ TEST_F(TestRpc, SendingQueueMemoryUsage) {
       latest_before_realloc.heap_requested_bytes * kMemoryAllocationAccuracyHighLimit);
 }
 
-#endif
+#endif // defined(YB_TCMALLOC_ENABLED)
 
 namespace {
 
@@ -1057,7 +1052,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
     constexpr auto target_memory_consumption = kMemoryLimitHardBytes * 0.6;
     wait_status = LoggedWaitFor(
         [] {
-#if defined(TCMALLOC_ENABLED)
+#ifdef YB_TCMALLOC_ENABLED
           // Don't rely on root mem tracker consumption, since it includes memory released by
           // the application, but not yet released by TCMalloc.
           const auto consumption = MemTracker::GetTCMallocCurrentAllocatedBytes();

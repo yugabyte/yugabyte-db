@@ -37,8 +37,8 @@ class DocQLScanSpec : public QLScanSpec {
   // Scan for the specified doc_key. If the doc_key specify a full primary key, the scan spec will
   // not include any static column for the primary key. If the static columns are needed, a separate
   // scan spec can be used to read just those static columns.
-  DocQLScanSpec(const Schema& schema, const DocKey& doc_key,
-      const rocksdb::QueryId query_id, const bool is_forward_scan = true);
+  DocQLScanSpec(const Schema& schema, const DocKey& doc_key, const rocksdb::QueryId query_id,
+      const bool is_forward_scan = true, const size_t prefix_length = 0);
 
   // Scan for the given hash key and a condition. If a start_doc_key is specified, the scan spec
   // will not include any static column for the start key. If the static columns are needed, a
@@ -55,7 +55,8 @@ class DocQLScanSpec : public QLScanSpec {
                 const QLConditionPB* req, const QLConditionPB* if_req,
                 rocksdb::QueryId query_id, bool is_forward_scan = true,
                 bool include_static_columns = false,
-                const DocKey& start_doc_key = DefaultStartDocKey());
+                const DocKey& start_doc_key = DefaultStartDocKey(),
+                const size_t prefix_length = 0);
 
   // Return the inclusive lower and upper bounds of the scan.
   Result<KeyBytes> LowerBound() const;
@@ -91,6 +92,10 @@ class DocQLScanSpec : public QLScanSpec {
 
   const ColGroupHolder range_options_groups() const {
     return range_options_groups_;
+  }
+
+  const size_t prefix_length() const {
+    return prefix_length_;
   }
 
  private:
@@ -160,6 +165,8 @@ class DocQLScanSpec : public QLScanSpec {
 
   // Query ID of this scan.
   const rocksdb::QueryId query_id_;
+
+  size_t prefix_length_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(DocQLScanSpec);
 };

@@ -73,7 +73,6 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
     const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str,
     bool shutdown);
 
-  std::unique_ptr<YBClient> client_;
   TransactionManager* transaction_manager_;
   TransactionPool* transaction_pool_;
   size_t tables_per_region_ = 0;

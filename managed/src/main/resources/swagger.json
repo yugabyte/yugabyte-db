@@ -6,12 +6,14 @@
       "properties" : {
         "creationDate" : {
           "description" : "Creation date of key",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "expirationDate" : {
           "description" : "Expiration date of key",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
@@ -1050,7 +1052,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -1068,6 +1070,11 @@
         },
         "timestamp" : {
           "format" : "date-time",
+          "type" : "string"
+        },
+        "userAddress" : {
+          "description" : "User IP Address",
+          "readOnly" : true,
           "type" : "string"
         },
         "userEmail" : {
@@ -1171,6 +1178,10 @@
         },
         "name" : {
           "description" : "AZ name",
+          "type" : "string"
+        },
+        "secondarySubnet" : {
+          "description" : "AZ subnet",
           "type" : "string"
         },
         "subnet" : {
@@ -5607,6 +5618,164 @@
       "required" : [ "buildNumber" ],
       "type" : "object"
     },
+    "PerformanceRecommendation" : {
+      "properties" : {
+        "customerId" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "entityNames" : {
+          "type" : "string"
+        },
+        "entityType" : {
+          "enum" : [ "UNIVERSE", "NODE", "TABLE", "DATABASE", "INDEX" ],
+          "type" : "string"
+        },
+        "id" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "new" : {
+          "type" : "boolean"
+        },
+        "observation" : {
+          "type" : "string"
+        },
+        "recommendation" : {
+          "type" : "string"
+        },
+        "recommendationInfo" : {
+          "additionalProperties" : {
+            "type" : "object"
+          },
+          "type" : "object"
+        },
+        "recommendationPriority" : {
+          "enum" : [ "HIGH", "MEDIUM", "LOW" ],
+          "type" : "string"
+        },
+        "recommendationState" : {
+          "enum" : [ "OPEN", "HIDDEN", "RESOLVED" ],
+          "type" : "string"
+        },
+        "recommendationTimestamp" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "recommendationType" : {
+          "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE" ],
+          "type" : "string"
+        },
+        "stateChangeAuditInfoList" : {
+          "items" : {
+            "$ref" : "#/definitions/StateChangeAuditInfo"
+          },
+          "type" : "array"
+        },
+        "universeId" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerId", "entityNames", "entityType", "id", "new", "observation", "recommendation", "recommendationInfo", "recommendationPriority", "recommendationState", "recommendationTimestamp", "recommendationType", "stateChangeAuditInfoList", "universeId" ],
+      "type" : "object"
+    },
+    "PerformanceRecommendationFilter" : {
+      "properties" : {
+        "customerId" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "ids" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "priorities" : {
+          "items" : {
+            "enum" : [ "HIGH", "MEDIUM", "LOW" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "states" : {
+          "items" : {
+            "enum" : [ "OPEN", "HIDDEN", "RESOLVED" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "types" : {
+          "items" : {
+            "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "universeId" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerId", "ids", "priorities", "states", "types", "universeId" ],
+      "type" : "object"
+    },
+    "PerformanceRecommendationPagedQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/PerformanceRecommendationFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "id", "recommendationType", "recommendationState", "recommendationPriority", "recommendationTimestamp" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "PerformanceRecommendationPagedResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/PerformanceRecommendation"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
+      "type" : "object"
+    },
     "PitrConfig" : {
       "description" : "PITR config created on the universe",
       "properties" : {
@@ -5895,16 +6064,13 @@
           "type" : "boolean"
         },
         "installNodeExporter" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "nodeExporterPort" : {
           "format" : "int32",
-          "readOnly" : true,
           "type" : "integer"
         },
         "nodeExporterUser" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "ntpServers" : {
@@ -5914,11 +6080,9 @@
           "type" : "array"
         },
         "passwordlessSudoAccess" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "provisionInstanceScript" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "setUpChrony" : {
@@ -5928,7 +6092,6 @@
           "type" : "boolean"
         },
         "skipProvisioning" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "sshPort" : {
@@ -6037,6 +6200,21 @@
       "required" : [ "zones" ],
       "type" : "object"
     },
+    "RegionEditFormData" : {
+      "properties" : {
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnetName" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "securityGroupId", "vnetName", "ybImage" ],
+      "type" : "object"
+    },
     "RegionFormData" : {
       "properties" : {
         "code" : {
@@ -6062,11 +6240,17 @@
         "name" : {
           "type" : "string"
         },
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnetName" : {
+          "type" : "string"
+        },
         "ybImage" : {
           "type" : "string"
         }
       },
-      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
+      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "securityGroupId", "vnetName", "ybImage" ],
       "type" : "object"
     },
     "RegionLocations" : {
@@ -7600,6 +7784,116 @@
         }
       },
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
+      "type" : "object"
+    },
+    "StateChangeAuditInfo" : {
+      "properties" : {
+        "customerId" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "fieldName" : {
+          "type" : "string"
+        },
+        "id" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "new" : {
+          "type" : "boolean"
+        },
+        "previousValue" : {
+          "type" : "string"
+        },
+        "timestamp" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "updatedValue" : {
+          "type" : "string"
+        },
+        "userId" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerId", "fieldName", "id", "new", "previousValue", "timestamp", "updatedValue", "userId" ],
+      "type" : "object"
+    },
+    "StateChangeAuditInfoFilter" : {
+      "properties" : {
+        "customerId" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "ids" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "recommendationId" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "userId" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerId", "ids", "recommendationId", "userId" ],
+      "type" : "object"
+    },
+    "StateChangeAuditInfoPagedQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/StateChangeAuditInfoFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "id", "timestamp" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "StateChangeAuditInfoPagedResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/StateChangeAuditInfo"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
     "SupportBundle" : {
@@ -10767,7 +11061,7 @@
     "/api/v1/customers/{cUUID}/access_keys" : {
       "get" : {
         "description" : "",
-        "operationId" : "listAllForProviders",
+        "operationId" : "listAllForCustomer",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -13101,6 +13395,203 @@
         "tags" : [ "Node instances" ]
       }
     },
+    "/api/v1/customers/{cUUID}/performance_recommendation_state_change/page" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "pageAuditInfo",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "PageStateChangeAuditInfoRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/StateChangeAuditInfoPagedQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/StateChangeAuditInfoPagedResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List performance recommendations state change audit events (paginated)",
+        "tags" : [ "Performance Advisor" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/performance_recommendations" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "DeletePerformanceRecommendationsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/PerformanceRecommendationFilter"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete performance recommendations",
+        "tags" : [ "Performance Advisor" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/performance_recommendations/hide" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "hide",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "HidePerformanceRecommendationsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/PerformanceRecommendationFilter"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Hide performance recommendations",
+        "tags" : [ "Performance Advisor" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/performance_recommendations/page" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "page",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "PagePerformanceRecommendationRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/PerformanceRecommendationPagedQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PerformanceRecommendationPagedResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List performance recommendations (paginated)",
+        "tags" : [ "Performance Advisor" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/performance_recommendations/resolve" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "resolve",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "ResolvePerformanceRecommendationsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/PerformanceRecommendationFilter"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Resolve performance recommendations",
+        "tags" : [ "Performance Advisor" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/performance_recommendations/{rUUID}" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "get",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PerformanceRecommendation"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get performance recommendation details",
+        "tags" : [ "Performance Advisor" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/providers" : {
       "get" : {
         "description" : "",
@@ -13977,6 +14468,50 @@
         } ],
         "summary" : "Delete a region",
         "tags" : [ "Region management" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editRegion",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "region edit form data",
+          "in" : "body",
+          "name" : "region",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RegionEditFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Modify a region",
+        "tags" : [ "Region management" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
@@ -14108,6 +14643,56 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Delete an availability zone",
+        "tags" : [ "Availability Zones" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editAZ",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "azUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "Availability zone edit form data",
+          "in" : "body",
+          "name" : "azFormData",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AvailabilityZone"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Modify an availability zone",
         "tags" : [ "Availability Zones" ]
       }
     },
@@ -19331,6 +19916,8 @@
     "name" : "PITR management"
   }, {
     "name" : "PackagesController"
+  }, {
+    "name" : "Performance Advisor"
   }, {
     "name" : "Region management"
   }, {

@@ -89,6 +89,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.Application;
@@ -111,6 +112,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   private final String TMP_CHART_PATH =
       "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
   private final String TMP_CERTS_PATH = "/tmp/" + getClass().getSimpleName() + "/certs";
+
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
   String cert1Contents =
       "-----BEGIN CERTIFICATE-----\n"
@@ -171,6 +174,11 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockConfig.getString("yb.security.secret")).thenReturn("");
     when(mockConfig.getString("yb.security.oidcScope")).thenReturn("");
     when(mockConfig.getString("yb.security.discoveryURI")).thenReturn("");
+
+    when(mockConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
+    when(mockConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
+    when(mockConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
 
     return new GuiceApplicationBuilder()
         .configure(testDatabase())

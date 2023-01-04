@@ -280,10 +280,11 @@ class NonTrackedRoundCallback : public ConsensusRoundCallback {
       : round_(DCHECK_NOTNULL(round)), callback_(callback) {
   }
 
-  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
+  Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
     auto& replicate_msg = *round_->replicate_msg();
     op_id.ToPB(replicate_msg.mutable_id());
     committed_op_id.ToPB(replicate_msg.mutable_committed_op_id());
+    return Status::OK();
   }
 
   void ReplicationFinished(
@@ -1295,7 +1296,7 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
-    round->NotifyAddedToLeader(op_id, committed_op_id);
+    RETURN_NOT_OK(round->NotifyAddedToLeader(op_id, committed_op_id));
 
     auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {

@@ -71,7 +71,6 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/xxhash.h"
-#include "yb/rocksdb/hdfs/env_hdfs.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
 #include "yb/util/flags.h"
@@ -1684,12 +1683,6 @@ class Benchmark {
         merge_keys_(FLAGS_merge_keys < 0 ? FLAGS_num : FLAGS_merge_keys),
         report_file_operations_(FLAGS_report_file_operations) {
     if (report_file_operations_) {
-      if (!FLAGS_hdfs.empty()) {
-        fprintf(stderr,
-                "--hdfs and --report_file_operations cannot be enabled "
-                "at the same time");
-        exit(1);
-      }
       FLAGS_env = new ReportFileOpEnv(rocksdb::Env::Default());
     }
 
@@ -3659,10 +3652,6 @@ int db_bench_tool(int argc, char** argv) {
 
   FLAGS_compression_type_e =
     StringToCompressionType(FLAGS_compression_type.c_str());
-
-  if (!FLAGS_hdfs.empty()) {
-    FLAGS_env  = new rocksdb::HdfsEnv(FLAGS_hdfs);
-  }
 
   if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "NONE")) {
     FLAGS_compaction_fadvice_e = rocksdb::Options::NONE;

@@ -197,7 +197,8 @@ void ScanChoicesTest::InitializeScanChoicesInstance(const Schema &schema, PgsqlC
   const auto &upper_bound = spec.UpperBound();
   EXPECT_OK(upper_bound);
   auto base_choices =
-      ScanChoices::Create(schema, spec, lower_bound.get(), upper_bound.get()).release();
+      ScanChoices::Create(schema, spec, lower_bound.get(), upper_bound.get(),
+                          0 /* prefix_length */).release();
 
   choices_ = std::unique_ptr<HybridScanChoices>(down_cast<HybridScanChoices *>(base_choices));
 }

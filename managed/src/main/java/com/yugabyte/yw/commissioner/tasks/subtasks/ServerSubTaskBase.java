@@ -102,7 +102,9 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
               + taskParams().universeUUID);
     }
 
-    boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
+    boolean isTserverTask =
+        taskParams().serverType == ServerType.TSERVER
+            || taskParams().serverType == ServerType.YSQLSERVER;
     if (isTserverTask && !node.isTserver) {
       throw new IllegalArgumentException(
           "Task server type "

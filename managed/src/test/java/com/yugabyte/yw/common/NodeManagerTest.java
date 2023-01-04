@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.CONTROLLER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.CONTROLLER;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
@@ -232,7 +232,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private Universe createUniverse() {
     UUID universeUUID = UUID.randomUUID();
-    return ModelFactory.createUniverse("Test Universe - " + universeUUID, universeUUID);
+    return ModelFactory.createUniverse("Test Universe-" + universeUUID, universeUUID);
   }
 
   private NodeTaskParams buildValidParams(
@@ -1433,9 +1433,11 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      keyInfo.sshPort = 3333;
-      keyInfo.airGapInstall = true;
       getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+
+      t.provider.details.sshPort = 3333;
+      t.provider.details.airGapInstall = true;
+      t.provider.save();
 
       // Set up task params
       UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -1645,9 +1647,11 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      keyInfo.sshPort = 3333;
-      keyInfo.airGapInstall = true;
       getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+
+      t.provider.details.sshPort = 3333;
+      t.provider.details.airGapInstall = true;
+      t.provider.save();
 
       // Set up task params
       UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -1883,8 +1887,10 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      keyInfo.sshPort = 3333;
       getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+
+      t.provider.details.sshPort = 3333;
+      t.provider.save();
 
       // Set up task params
       UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -3480,9 +3486,11 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      keyInfo.sshPort = 3333;
-      keyInfo.installNodeExporter = false;
       getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+
+      t.provider.details.sshPort = 3333;
+      t.provider.details.installNodeExporter = false;
+      t.provider.save();
 
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
@@ -3745,9 +3753,11 @@ public class NodeManagerTest extends FakeDBApplication {
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.vaultFile = "/path/to/vault_file";
     keyInfo.vaultPasswordFile = "/path/to/vault_password";
-    keyInfo.sshPort = 3333;
-    keyInfo.airGapInstall = true;
     getOrCreate(onpremTD.provider.uuid, "mock-access-code-key", keyInfo);
+
+    onpremTD.provider.details.sshPort = 3333;
+    onpremTD.provider.details.airGapInstall = true;
+    onpremTD.provider.save();
 
     NodeTaskParams nodeTaskParams =
         buildValidParams(

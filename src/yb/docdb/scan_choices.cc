@@ -48,9 +48,11 @@ HybridScanChoices::HybridScanChoices(
   const std::shared_ptr<std::vector<OptionList>>& range_options,
   const std::vector<ColumnId>& range_bounds_col_ids,
   const QLScanRange* range_bounds,
-  const ColGroupHolder& col_groups)
+  const ColGroupHolder& col_groups,
+  const size_t prefix_length)
     : ScanChoices(is_forward_scan), lower_doc_key_(lower_doc_key),
-      upper_doc_key_(upper_doc_key), col_groups_(col_groups) {
+      upper_doc_key_(upper_doc_key), col_groups_(col_groups),
+      prefix_length_(prefix_length) {
   size_t num_hash_cols = schema.num_hash_key_columns();
 
   for (size_t idx = num_hash_cols; idx < schema.num_key_columns(); idx++) {
@@ -82,7 +84,7 @@ HybridScanChoices::HybridScanChoices(
         col_groups_.AddToLatestGroup(idx - num_hash_cols);
     } else if (col_has_range_option) {
       auto& options = (*range_options)[idx - num_hash_cols];
-
+      current_options.reserve(options.size());
       if (options.empty()) {
         // If there is nothing specified in the IN list like in
         // SELECT * FROM ... WHERE c1 IN ();
@@ -166,23 +168,25 @@ HybridScanChoices::HybridScanChoices(
 const Schema& schema,
 const DocPgsqlScanSpec& doc_spec,
 const KeyBytes& lower_doc_key,
-const KeyBytes& upper_doc_key)
+const KeyBytes& upper_doc_key,
+const size_t prefix_length)
 : HybridScanChoices(
   schema, lower_doc_key, upper_doc_key, doc_spec.is_forward_scan(),
   doc_spec.range_options_indexes(), doc_spec.range_options(),
   doc_spec.range_bounds_indexes(), doc_spec.range_bounds(),
-  doc_spec.range_options_groups()) {}
+  doc_spec.range_options_groups(), prefix_length) {}
 
 HybridScanChoices::HybridScanChoices(
   const Schema& schema,
   const DocQLScanSpec& doc_spec,
   const KeyBytes& lower_doc_key,
-  const KeyBytes& upper_doc_key)
+  const KeyBytes& upper_doc_key,
+  const size_t prefix_length)
   : HybridScanChoices(
     schema, lower_doc_key, upper_doc_key, doc_spec.is_forward_scan(),
     doc_spec.range_options_indexes(), doc_spec.range_options(),
     doc_spec.range_bounds_indexes(), doc_spec.range_bounds(),
-    doc_spec.range_options_groups()) {}
+    doc_spec.range_options_groups(), prefix_length) {}
 
 std::vector<OptionRange>::const_iterator
 HybridScanChoices::GetOptAtIndex(size_t opt_list_idx, size_t opt_index) {
@@ -669,8 +673,9 @@ std::vector<OptionRange> HybridScanChoices::TEST_GetCurrentOptions() {
 Status HybridScanChoices::DoneWithCurrentTarget() {
   // prev_scan_target_ is necessary for backwards scans
   prev_scan_target_ = current_scan_target_;
-  RETURN_NOT_OK(
-      IncrementScanTargetAtOptionList(static_cast<int>(current_scan_target_ranges_.size()) - 1));
+  int incr_idx =
+      static_cast<int>(prefix_length_ ? prefix_length_ : current_scan_target_ranges_.size()) - 1;
+  RETURN_NOT_OK(IncrementScanTargetAtOptionList(incr_idx));
   current_scan_target_.AppendKeyEntryType(KeyEntryType::kGroupEnd);
 
   // if we we incremented the last index then
@@ -756,9 +761,11 @@ Status HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
 
 ScanChoicesPtr ScanChoices::Create(
     const Schema& schema, const DocQLScanSpec& doc_spec,
-    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
+    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key,
+    const size_t prefix_length) {
   if (doc_spec.range_options() || doc_spec.range_bounds()) {
-    return std::make_unique<HybridScanChoices>(schema, doc_spec, lower_doc_key, upper_doc_key);
+    return std::make_unique<HybridScanChoices>(
+        schema, doc_spec, lower_doc_key, upper_doc_key, prefix_length);
   }
 
   return nullptr;
@@ -766,9 +773,11 @@ ScanChoicesPtr ScanChoices::Create(
 
 ScanChoicesPtr ScanChoices::Create(
     const Schema& schema, const DocPgsqlScanSpec& doc_spec,
-    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
+    const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key,
+    const size_t prefix_length) {
   if (doc_spec.range_options() || doc_spec.range_bounds()) {
-    return std::make_unique<HybridScanChoices>(schema, doc_spec, lower_doc_key, upper_doc_key);
+    return std::make_unique<HybridScanChoices>(
+        schema, doc_spec, lower_doc_key, upper_doc_key, prefix_length);
   }
 
   return nullptr;

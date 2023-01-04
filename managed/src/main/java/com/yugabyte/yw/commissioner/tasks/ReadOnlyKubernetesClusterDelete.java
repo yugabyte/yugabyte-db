@@ -129,6 +129,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
           // Delete the helm deployments.
           helmDeletes.addSubTask(
               createDestroyKubernetesTask(
+                  universe.name,
                   universe.getUniverseDetails().nodePrefix,
                   azName,
                   config,
@@ -141,6 +142,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
         // Delete the PVCs created for this AZ.
         volumeDeletes.addSubTask(
             createDestroyKubernetesTask(
+                universe.name,
                 universe.getUniverseDetails().nodePrefix,
                 azName,
                 config,
@@ -157,6 +159,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
         if (namespace == null && !newNamingStyle) {
           namespaceDeletes.addSubTask(
               createDestroyKubernetesTask(
+                  universe.name,
                   universe.getUniverseDetails().nodePrefix,
                   azName,
                   config,
@@ -202,6 +205,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
   // TODO this method is present in DestroyKubernetesUniverse.java also
   // RFC: Should we consider creating a base class and move it there?
   protected KubernetesCommandExecutor createDestroyKubernetesTask(
+      String universeName,
       String nodePrefix,
       String az,
       Map<String, String> config,
@@ -213,7 +217,9 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
     params.commandType = commandType;
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
-    params.helmReleaseName = KubernetesUtil.getHelmReleaseName(nodePrefix, az, isReadOnlyCluster);
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            nodePrefix, universeName, az, isReadOnlyCluster, newNamingStyle);
 
     if (config != null) {
       params.config = config;

@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.utils.NaturalOrderComparator;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
+import com.yugabyte.yw.models.AccessKey.MigratedKeyInfoFields;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.NodeConfig.Operation;
@@ -55,8 +56,8 @@ public class NodeConfigValidator {
   @Getter
   // Placeholder key for retrieving a config value.
   private static class ConfigKey {
-    private String path;
-    private Provider provider;
+    private final String path;
+    private final Provider provider;
 
     @Override
     public String toString() {
@@ -69,12 +70,12 @@ public class NodeConfigValidator {
   @Getter
   // Placeholder key for passing validation data.
   private static class ValidationData {
-    private AccessKey accessKey;
-    private InstanceType instanceType;
-    private Provider provider;
-    private NodeConfig nodeConfig;
-    private NodeInstanceData nodeInstanceData;
-    private Operation operation;
+    private final AccessKey accessKey;
+    private final InstanceType instanceType;
+    private final Provider provider;
+    private final NodeConfig nodeConfig;
+    private final NodeInstanceData nodeInstanceData;
+    private final Operation operation;
   }
 
   private final Function<Provider, Config> PROVIDER_CONFIG =
@@ -103,7 +104,6 @@ public class NodeConfigValidator {
       Provider provider, NodeInstanceData nodeData) {
     InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, nodeData.instanceType);
     AccessKey accessKey = AccessKey.getLatestKey(provider.uuid);
-    KeyInfo keyInfo = accessKey.getKeyInfo();
     Operation operation =
         accessKey.getKeyInfo().skipProvisioning ? Operation.CONFIGURE : Operation.PROVISION;
 
@@ -147,8 +147,7 @@ public class NodeConfigValidator {
     InstanceType instanceType = input.getInstanceType();
     Provider provider = input.getProvider();
     NodeConfig.Type type = input.nodeConfig.getType();
-    AccessKey accessKey = input.getAccessKey();
-    KeyInfo keyInfo = accessKey.getKeyInfo();
+    MigratedKeyInfoFields keyInfo = provider.details;
     switch (type) {
       case PROMETHEUS_SPACE:
         {
@@ -188,7 +187,7 @@ public class NodeConfigValidator {
         }
       case PAM_LIMITS_WRITABLE:
         {
-          return Boolean.valueOf(nodeConfig.getValue()) == false;
+          return !Boolean.parseBoolean(nodeConfig.getValue());
         }
       case PYTHON_VERSION:
         {
@@ -197,7 +196,7 @@ public class NodeConfigValidator {
         }
       case CHRONYD_RUNNING:
         {
-          return Boolean.valueOf(nodeConfig.getValue()) == !keyInfo.setUpChrony;
+          return Boolean.parseBoolean(nodeConfig.getValue()) == !keyInfo.setUpChrony;
         }
       case MOUNT_POINTS_VOLUME:
         {
@@ -265,7 +264,7 @@ public class NodeConfigValidator {
       case GSUTIL:
       case S3CMD:
         {
-          return Boolean.valueOf(nodeConfig.getValue()) == true;
+          return Boolean.parseBoolean(nodeConfig.getValue());
         }
       default:
         return true;
@@ -273,8 +272,7 @@ public class NodeConfigValidator {
   }
 
   private boolean isNodeConfigRequired(ValidationData input) {
-    AccessKey accessKey = input.getAccessKey();
-    KeyInfo keyInfo = accessKey.getKeyInfo();
+    MigratedKeyInfoFields keyInfo = input.getProvider().details;
     NodeConfig.Type type = input.nodeConfig.getType();
     switch (type) {
       case PROMETHEUS_NO_NODE_EXPORTER:
@@ -284,8 +282,7 @@ public class NodeConfigValidator {
       case NTP_SERVICE_STATUS:
         {
           return input.getOperation() == Operation.CONFIGURE
-              ? true
-              : CollectionUtils.isNotEmpty(keyInfo.ntpServers);
+              || CollectionUtils.isNotEmpty(keyInfo.ntpServers);
         }
       case CHRONYD_RUNNING:
       case RSYNC:
@@ -366,14 +363,14 @@ public class NodeConfigValidator {
   public boolean sshIntoNode(Provider provider, NodeInstanceData nodeData, Operation operation) {
     AccessKey accessKey = AccessKey.getLatestKey(provider.uuid);
     KeyInfo keyInfo = accessKey.getKeyInfo();
-    String sshUser = operation == Operation.CONFIGURE ? "yugabyte" : keyInfo.sshUser;
+    String sshUser = operation == Operation.CONFIGURE ? "yugabyte" : provider.details.sshUser;
     List<String> commandList =
         ImmutableList.of(
             "ssh",
             "-i",
             keyInfo.privateKey,
             "-p",
-            Integer.toString(keyInfo.sshPort),
+            Integer.toString(provider.details.sshPort),
             String.format("%s@%s", sshUser, nodeData.ip),
             "exit");
 

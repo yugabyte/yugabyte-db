@@ -17,15 +17,15 @@ type SlowQueryResponseYsqlQueryItem struct {
 
     LocalBlksWritten int32 `json:"local_blks_written"`
 
-    MaxTime float32 `json:"max_time"`
+    MaxTime float64 `json:"max_time"`
 
-    MeanTime float32 `json:"mean_time"`
+    MeanTime float64 `json:"mean_time"`
 
-    MinTime float32 `json:"min_time"`
+    MinTime float64 `json:"min_time"`
 
     Rows int32 `json:"rows"`
 
-    StddevTime float32 `json:"stddev_time"`
+    StddevTime float64 `json:"stddev_time"`
 
-    TotalTime float32 `json:"total_time"`
+    TotalTime float64 `json:"total_time"`
 }

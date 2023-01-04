@@ -4,7 +4,6 @@ import "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight/checks"
 
 // InstallChecks is a base list of checks for install time
 var InstallChecks = []Check{
-	checks.InputFile,
 	checks.InstallNotExists,
 	checks.User,
 	checks.Cpu,
@@ -12,7 +11,7 @@ var InstallChecks = []Check{
 	checks.Port,
 	checks.Python,
 	checks.Root,
-	checks.Ssd,
+	checks.DiskSize,
 }
 
 // InstallChecksWithPostgres adds onto the base list with postgres checks

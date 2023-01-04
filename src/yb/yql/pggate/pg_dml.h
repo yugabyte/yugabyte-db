@@ -55,6 +55,7 @@ class PgDml : public PgStatement {
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
   Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWPgsqlExpressionPB *target_pb);
+  Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWQLExpressionPB *target_pb);
   Status PrepareColumnForWrite(PgColumn *pg_col, LWPgsqlExpressionPB *assign_pb);
 
   // Bind a column with an expression.

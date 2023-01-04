@@ -122,10 +122,9 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
     case QLValuePB::ValueCase::kBinaryValue: FALLTHROUGH_INTENDED;
     case QLValuePB::ValueCase::kInetaddressValue: {
         // Any simple type -> String.
-        QLValue::SharedPtr source(new QLValue(ql_value_pb));
-        QLValue::SharedPtr target(new QLValue);
-        RETURN_NOT_OK(bfql::ConvertToString(source, target));
-        rapidjson_value->SetString(target->string_value().c_str(), *alloc);
+        auto target = VERIFY_RESULT(bfql::ConvertToString(
+            ql_value_pb, bfql::BFFactory()));
+        rapidjson_value->SetString(target.string_value().c_str(), *alloc);
       }
       break;
 

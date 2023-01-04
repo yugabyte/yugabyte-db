@@ -227,6 +227,7 @@ public class AuditService {
     String method = request.method();
     String path = request.path();
     JsonNode redactedParams = filterSecretFields(params);
+    String userAddress = request.remoteAddress();
     Audit entry =
         Audit.create(
             user.getUser(),
@@ -237,7 +238,8 @@ public class AuditService {
             action,
             redactedParams,
             taskUUID,
-            additionalDetails);
+            additionalDetails,
+            userAddress);
     MDC.put("logType", "audit");
     LOG.info(Json.toJson(entry).toString());
     MDC.remove("logType");

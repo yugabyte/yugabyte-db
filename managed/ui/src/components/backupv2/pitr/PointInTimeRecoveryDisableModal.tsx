@@ -81,7 +81,9 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
                 <Col sm={6} className="config-row-label">
                   Database/keyspace Name
                 </Col>
-                <Col sm={6}>{config.dbName}</Col>
+                <Col className="config-row-val" sm={6}>
+                  {config.dbName}
+                </Col>
               </Row>
 
               <Row className="config-row">

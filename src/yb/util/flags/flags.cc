@@ -37,7 +37,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/split.h"
 
-#ifdef TCMALLOC_ENABLED
+#if defined(YB_TCMALLOC_ENABLED) && defined(YB_GPERFTOOLS_TCMALLOC)
 #include <gperftools/heap-profiler.h>
 #endif
 
@@ -468,7 +468,7 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }
 
-#ifdef TCMALLOC_ENABLED
+#if defined(YB_TCMALLOC_ENABLED) && defined(YB_GPERFTOOLS_TCMALLOC)
   if (FLAGS_enable_process_lifetime_heap_profiling) {
     HeapProfilerStart(FLAGS_heap_profile_path.c_str());
   }

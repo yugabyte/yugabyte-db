@@ -89,6 +89,10 @@ public class AssertHelper {
     }
   }
 
+  public static void assertNoKey(JsonNode json, String key) {
+    assertFalse(json.has(key));
+  }
+
   // Allows specifying a JsonPath to the expected node.
   // For example "/foo/bar" locates node bar within node foo in json.
   public static void assertValueAtPath(JsonNode json, String key, String value) {

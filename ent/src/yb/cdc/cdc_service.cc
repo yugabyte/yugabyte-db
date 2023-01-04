@@ -1156,6 +1156,9 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
       CDCError(CDCErrorPB::LEADER_NOT_READY));
 
   ProducerTabletInfo producer_tablet{"" /* UUID */, req.stream_id(), req.tablet_id()};
+  RETURN_NOT_OK_SET_CODE(
+      CheckTabletValidForStream(producer_tablet), CDCError(CDCErrorPB::INVALID_REQUEST));
+
   OpId checkpoint;
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
   bool set_latest_entry = req.bootstrap();
@@ -2164,14 +2167,19 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     }
 
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
-    uint64_t safe_time = 0;
     int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
     if (!row.column(4).IsNull()) {
       auto& map_value = row.column(4).map_value();
-      safe_time = VERIFY_RESULT(GetIntValueFromMap<uint64_t>(map_value, kCDCSDKSafeTime));
-      cdc_sdk_safe_time = HybridTime::FromPB(safe_time);
-      last_active_time_cdc_state_table =
-          VERIFY_RESULT(GetIntValueFromMap<int64_t>(map_value, kCDCSDKActiveTime));
+
+      auto safe_time_result = GetIntValueFromMap<uint64_t>(map_value, kCDCSDKSafeTime);
+      if (safe_time_result.ok()) {
+        cdc_sdk_safe_time = HybridTime::FromPB(safe_time_result.get());
+      }
+
+      auto last_active_time_result = GetIntValueFromMap<int64_t>(map_value, kCDCSDKActiveTime);
+      if (last_active_time_result.ok()) {
+        last_active_time_cdc_state_table = last_active_time_result.get();
+      }
     }
 
     VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id

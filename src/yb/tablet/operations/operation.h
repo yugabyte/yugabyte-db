@@ -143,10 +143,6 @@ class Operation {
     return consensus_round_atomic_.load(std::memory_order_acquire);
   }
 
-  // Returns the shared pointer to the tablet which is guaranteed to be non-null.
-  // Fatals in case tablet is null.
-  TabletPtr tablet() const;
-
   // Returns a non-null shared pointer to the tablet or an error.
   Result<TabletPtr> tablet_safe() const;
 
@@ -156,8 +152,10 @@ class Operation {
 
   virtual void Release();
 
-  void SetTablet(TabletWeakPtr tablet) {
-    tablet_ = std::move(tablet);
+  void SetTablet(const TabletPtr& tablet) {
+    CHECK_NOTNULL(tablet);
+    tablet_ = tablet;
+    tablet_is_set_.store(true, std::memory_order_release);
   }
 
   // Completion callback must be set while the operation is only known to the thread creating it.
@@ -176,19 +174,17 @@ class Operation {
   void set_hybrid_time(const HybridTime& hybrid_time) EXCLUDES(mutex_);
 
   HybridTime hybrid_time() const EXCLUDES(mutex_) {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    DCHECK(hybrid_time_.is_valid());
-    return hybrid_time_;
+    auto hybrid_time = hybrid_time_.load(std::memory_order_acquire);
+    DCHECK(hybrid_time.is_valid());
+    return hybrid_time;
   }
 
   HybridTime hybrid_time_even_if_unset() const EXCLUDES(mutex_) {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    return hybrid_time_;
+    return hybrid_time_.load(std::memory_order_acquire);
   }
 
   bool has_hybrid_time() const {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    return hybrid_time_.is_valid();
+    return hybrid_time_even_if_unset().is_valid();
   }
 
   // Returns hybrid time that should be used for storing this operation result in RocksDB.
@@ -216,13 +212,15 @@ class Operation {
   // Initialize operation at leader side.
   // op_id - operation id.
   // committed_op_id - current committed operation id.
-  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
-  void AddedToFollower();
+  Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+  Status AddedToFollower();
 
   void Aborted(bool was_pending);
   void Replicated(WasPending was_pending);
 
   virtual ~Operation();
+
+  bool tablet_is_set() { return tablet_is_set_.load(std::memory_order_acquire); }
 
  private:
 
@@ -238,11 +236,22 @@ class Operation {
   // Operation methods on destructors.
   const OperationType operation_type_;
 
-  virtual void AddedAsPending() {}
-  virtual void RemovedFromPending() {}
+  // These functions take a tablet shared pointer to avoid handling errors in case the tablet has
+  // already been destroyed.
+  virtual void AddedAsPending(const TabletPtr& tablet) {}
+  virtual void RemovedFromPending(const TabletPtr& tablet) {}
 
-  // The tablet peer that is coordinating this transaction.
+  // This function is OK to call only if log prefix is already initialized.
+  std::string GetLogPrefixUnsafe() const NO_THREAD_SAFETY_ANALYSIS { return log_prefix_; }
+
+  // Sets the *tablet shared pointer if it is not already set. Returns true in case of success. Logs
+  // the error as DFATAL and returns false in release mode in case the tablet is unavailable.
+  __attribute__ ((warn_unused_result)) bool GetTabletOrLogError(
+      TabletPtr* tablet, const char* state_str);
+
+  // The tablet that is coordinating this transaction.
   TabletWeakPtr tablet_;
+  std::atomic<bool> tablet_is_set_{false};
 
   // Optional callback to be called once the transaction completes.
   OperationCompletionCallback completion_clbk_;
@@ -252,7 +261,7 @@ class Operation {
   mutable simple_spinlock mutex_;
 
   // This transaction's hybrid_time.
-  HybridTime hybrid_time_ GUARDED_BY(mutex_);
+  std::atomic<HybridTime> hybrid_time_{HybridTime::kInvalid};
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
   std::atomic<OpId> op_id_;
@@ -262,6 +271,10 @@ class Operation {
   std::atomic<consensus::ConsensusRound*> consensus_round_atomic_{nullptr};
 
   ScopedOperation preparing_token_;
+
+  mutable std::atomic<bool> log_prefix_initialized_{false};
+  mutable simple_spinlock log_prefix_mutex_;
+  mutable std::string log_prefix_ GUARDED_BY(log_prefix_mutex_);
 };
 
 template <class Request>

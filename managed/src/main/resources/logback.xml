@@ -133,6 +133,7 @@
 
   <logger name="play" level="INFO" />
   <logger name="org.yb" level="INFO" />
+  <logger name="db.migration" level="DEBUG" />
   <if condition='property("cloud").equals("true")'>
     <then>
       <logger name="application" level="INFO" />

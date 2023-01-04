@@ -268,8 +268,20 @@ public class CertsRotate extends UpgradeTaskBase {
         new CertReloadTaskCreator(
             universeUuid, userTaskUuid, getRunnableTask(), getTaskExecutor(), nodesPair.getKey());
 
-    createNonRestartUpgradeTaskFlow(
-        taskCreator, nodesPair, DEFAULT_CONTEXT, taskParams().ybcInstalled);
+    createNonRestartUpgradeTaskFlow(taskCreator, nodesPair, DEFAULT_CONTEXT);
+
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    if (universe.isYbcEnabled()) {
+
+      createStopYbControllerTasks(nodesPair.getRight())
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+      createStartYbcTasks(nodesPair.getRight())
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Wait for yb-controller to be responsive on each node.
+      createWaitForYbcServerTask(null).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
   }
 
   protected void createCertReloadConfigTask(Universe universe) {

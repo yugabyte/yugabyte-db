@@ -31,10 +31,25 @@ using std::vector;
 namespace yb {
 namespace docdb {
 
+namespace {
+
+bool AreColumnsContinous(std::vector<int> col_idxs) {
+  std::sort(col_idxs.begin(), col_idxs.end());
+  for (size_t i = 0; i < col_idxs.size() - 1; ++i) {
+    if (col_idxs[i] + 1 != col_idxs[i + 1]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
 DocQLScanSpec::DocQLScanSpec(const Schema& schema,
                              const DocKey& doc_key,
                              const rocksdb::QueryId query_id,
-                             const bool is_forward_scan)
+                             const bool is_forward_scan,
+                             const size_t prefix_length)
     : QLScanSpec(nullptr, nullptr, is_forward_scan, std::make_shared<DocExprExecutor>()),
       range_bounds_(nullptr),
       schema_(schema),
@@ -42,7 +57,8 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
       range_options_groups_(0),
       include_static_columns_(false),
       doc_key_(doc_key.Encode()),
-      query_id_(query_id) {
+      query_id_(query_id),
+      prefix_length_(prefix_length) {
 }
 
 DocQLScanSpec::DocQLScanSpec(
@@ -55,7 +71,8 @@ DocQLScanSpec::DocQLScanSpec(
     const rocksdb::QueryId query_id,
     const bool is_forward_scan,
     const bool include_static_columns,
-    const DocKey& start_doc_key)
+    const DocKey& start_doc_key,
+    const size_t prefix_length)
     : QLScanSpec(condition, if_condition, is_forward_scan, std::make_shared<DocExprExecutor>()),
       range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
@@ -67,7 +84,8 @@ DocQLScanSpec::DocQLScanSpec(
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(bound_key(true)),
       upper_doc_key_(bound_key(false)),
-      query_id_(query_id) {
+      query_id_(query_id),
+      prefix_length_(prefix_length) {
 
     if (range_bounds_) {
         range_bounds_indexes_ = range_bounds_->GetColIds();
@@ -81,19 +99,6 @@ DocQLScanSpec::DocQLScanSpec(
       range_options_ = std::make_shared<std::vector<OptionList>>(schema_.num_range_key_columns());
       InitRangeOptions(*condition);
     }
-}
-
-bool AreColumnsContinous(const std::vector<int>& col_idxs) {
-  std::vector<int> copy = col_idxs;
-  std::sort(copy.begin(), copy.end());
-  int prev_idx = -1;
-  for (auto const idx : copy) {
-    if (prev_idx != -1 && idx != prev_idx + 1) {
-      return false;
-    }
-    prev_idx = idx;
-  }
-  return true;
 }
 
 void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
@@ -139,7 +144,7 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
 
         if (condition.op() == QL_OP_EQUAL) {
           auto pv = KeyEntryValue::FromQLValuePBForKey(rhs.value(), sorting_type);
-          (*range_options_)[col_idx - num_hash_cols].push_back(pv);
+          (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
         } else {  // QL_OP_IN
           DCHECK_EQ(condition.op(), QL_OP_IN);
           DCHECK(rhs.value().has_list_value());
@@ -153,19 +158,21 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
             int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
             const auto& elem = options.elems(elem_idx);
             auto pv = KeyEntryValue::FromQLValuePBForKey(elem, sorting_type);
-            (*range_options_)[col_idx - num_hash_cols].push_back(pv);
+            (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
           }
         }
       } else if (lhs.has_tuple()) {
-        std::vector<ColumnId> col_ids;
-        std::vector<int> col_idxs;
         size_t num_cols = lhs.tuple().elems_size();
         DCHECK_GT(num_cols, 0);
+        std::vector<ColumnId> col_ids;
+        std::vector<int> col_idxs;
+        col_ids.reserve(num_cols);
+        col_idxs.reserve(num_cols);
         range_options_groups_.BeginNewGroup();
 
         for (const auto& elem : lhs.tuple().elems()) {
           DCHECK(elem.has_column_id());
-          ColumnId col_id = ColumnId(elem.column_id());
+          ColumnId col_id(elem.column_id());
           int col_idx = schema_.find_column_by_id(col_id);
           DCHECK(schema_.is_range_column(col_idx));
           col_ids.push_back(col_id);
@@ -193,24 +200,17 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
           // IN arguments should have been de-duplicated and ordered ascendingly by the
           // executor.
 
-          std::vector<bool> reverse;
-          for (size_t i = 0; i < num_cols; i++) {
-            SortingType sorting_type = schema_.column(col_idxs[i]).sorting_type();
-            bool is_reverse_order = is_forward_scan_ ^ (sorting_type == SortingType::kAscending);
-            reverse.push_back(is_reverse_order);
-          }
-
-          std::vector<QLValuePB> sorted_options = SortTuplesbyOrdering(options, reverse);
+          const auto sorted_options =
+              GetTuplesSortedByOrdering(options, schema_, is_forward_scan_, col_idxs);
 
           for (int i = 0; i < num_options; i++) {
             const auto& elem = sorted_options[i];
-            DCHECK(elem.has_tuple_value());
-            const auto& value = elem.tuple_value();
+            const auto& value = elem->tuple_value();
             DCHECK_EQ(num_cols, value.elems_size());
 
             for (size_t j = 0; j < num_cols; j++) {
-              SortingType sorting_type = schema_.column(col_idxs[j]).sorting_type();
-              Option option = KeyEntryValue::FromQLValuePBForKey(
+              const auto sorting_type = schema_.column(col_idxs[j]).sorting_type();
+              auto option = KeyEntryValue::FromQLValuePBForKey(
                   value.elems(static_cast<int>(j)), sorting_type);
               (*range_options_)[col_idxs[j] - num_hash_cols].push_back(std::move(option));
             }

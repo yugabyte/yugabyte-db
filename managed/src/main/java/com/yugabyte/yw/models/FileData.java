@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -119,24 +120,52 @@ public class FileData extends Model {
   }
 
   public static void writeFileToDB(String file) {
-    writeFileToDB(file, null);
+    RuntimeConfigFactory runtimeConfigFactory =
+        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+    writeFileToDB(file, getStoragePath(), runtimeConfigFactory);
   }
 
-  public static void writeFileToDB(String file, String storagePath) {
+  public static void writeFileToDB(
+      String file, String storagePath, RuntimeConfigFactory runtimeConfigFactory) {
     try {
+      long maxAllowedFileSize =
+          runtimeConfigFactory.globalRuntimeConf().getLong("yb.fs_stateless.max_file_size_bytes");
+      int fileCountThreshold =
+          runtimeConfigFactory
+              .globalRuntimeConf()
+              .getInt("yb.fs_stateless.max_files_count_persist");
+
       File f = new File(file);
+      if (f.exists()) {
+        if (maxAllowedFileSize < f.length()) {
+          throw new RuntimeException(
+              "The File size is too big. Check the file or "
+                  + "try updating the flag `yb.fs_stateless.max_file_size_bytes`"
+                  + "for updating the limit");
+        }
+      }
+
+      List<FileData> dbFiles = getAll();
+      int currentFileCountDB = dbFiles.size();
+      if (currentFileCountDB == fileCountThreshold) {
+        throw new RuntimeException(
+            "The Maximum files count to be persisted in the DB exceeded the "
+                + "configuration. Update the flag `yb.fs_stateless.max_files_count_persist` "
+                + "to update the limit or try deleting some files");
+      }
+
       Matcher parentUUIDMatcher = Pattern.compile(UUID_PATTERN).matcher(file);
-      if (!parentUUIDMatcher.find()) {
-        throw new RuntimeException("File " + file + " is missing parent identifier.");
+      UUID parentUUID = null;
+      if (parentUUIDMatcher.find()) {
+        parentUUID = UUID.fromString((parentUUIDMatcher.group()));
+        // Retrieve the last occurence.
+        while (parentUUIDMatcher.find()) {
+          parentUUID = UUID.fromString(parentUUIDMatcher.group());
+        }
+      } else {
+        LOG.warn(String.format("File %s is missing parent identifier.", file));
       }
-      UUID parentUUID = UUID.fromString((parentUUIDMatcher.group()));
-      // Retrieve the last occurence.
-      while (parentUUIDMatcher.find()) {
-        parentUUID = UUID.fromString(parentUUIDMatcher.group());
-      }
-      if (storagePath == null) {
-        storagePath = getStoragePath();
-      }
+
       String filePath = f.getAbsolutePath();
       String fileExtension = FilenameUtils.getExtension(filePath);
       // We just need the path relative to the storage since that can be changed
