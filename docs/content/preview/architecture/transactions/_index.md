@@ -47,13 +47,13 @@ YugabyteDB's distributed ACID transaction architecture is inspired by <a href="h
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="explicit-locking/">
+    <a class="section-link icon-offset" href="concurrency-control/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Explicit row locks</div>
+        <div class="title">Concurrency control</div>
       </div>
       <div class="body">
-        Learn about how YugabyteDB uses a combination of optimistic and pessimistic concurrency control to support explicit row locking.
+        Learn about how YugabyteDB handle conflicts between concurrent transactions.
       </div>
     </a>
   </div>
