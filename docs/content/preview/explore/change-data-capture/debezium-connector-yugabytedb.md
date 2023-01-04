@@ -47,7 +47,7 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 {{< /tip >}}
 
-## YugabyteDB Source Connector Release series 1.9.5.y
+## Release series 1.9.5.y
 
 ### Tested versions
 
@@ -59,7 +59,7 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ### Release resources
 
-* [GitHub release](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
+* [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
 * [Maven artifacts](https://s3.console.aws.amazon.com/s3/buckets/repository.yugabyte.com?region=us-east-1&prefix=maven/release/io/debezium/debezium-connector-yugabytedb/&showversions=false)
 
 ### Reporting issues
