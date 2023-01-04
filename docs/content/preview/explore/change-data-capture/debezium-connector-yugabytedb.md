@@ -51,10 +51,11 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ### Tested versions
 
-|:--- | :--- |
-| Java | 11+ |
-| Kafka Connect | 2.x, 3.x |
-| YugabyteDB | *Database:* 2.16, 2.17 |
+| | |
+| :--- | :--- |
+| **Java** | 11+ |
+| **Kafka Connect** | 2.x, 3.x |
+| **YugabyteDB** | 2.16, 2.17 |
 
 ### Release resources
 
