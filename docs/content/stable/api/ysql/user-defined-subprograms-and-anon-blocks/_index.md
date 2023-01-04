@@ -69,7 +69,7 @@ Yugabyte recommends that you ignore the possibility to use a function for the pu
   </li>
   <li>
     <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>

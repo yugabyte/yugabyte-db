@@ -21,7 +21,7 @@ Use the `DROP TYPE` statement to remove a user-defined type from the database.
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>

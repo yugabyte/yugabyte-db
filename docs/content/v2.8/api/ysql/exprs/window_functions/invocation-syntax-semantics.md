@@ -37,7 +37,7 @@ The following three diagrams, [`select_start`](../../../syntax_resources/grammar
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
@@ -67,7 +67,7 @@ A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-defin
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
@@ -93,7 +93,7 @@ A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-defin
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>

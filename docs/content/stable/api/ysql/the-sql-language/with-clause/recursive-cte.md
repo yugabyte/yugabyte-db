@@ -83,7 +83,7 @@ The `WITH` clause syntax (see the section [WITH clause—SQL syntax and semantic
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>

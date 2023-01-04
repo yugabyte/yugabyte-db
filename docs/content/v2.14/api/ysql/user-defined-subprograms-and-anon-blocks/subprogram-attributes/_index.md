@@ -28,7 +28,7 @@ You can see the names of all of these rules in the grammars for `create [or repl
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
@@ -58,7 +58,7 @@ The _unalterable subprogram attributes_ can be set _only_ with the `create [or r
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar-2" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
@@ -92,7 +92,7 @@ The special subprogram attributes are set using a general syntax style with the 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar-3" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
@@ -128,7 +128,7 @@ These attributes are common for both functions and procedures:
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar-4" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
@@ -158,7 +158,7 @@ Notice that there are no procedure-specific alterable attributes. These attribut
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar-5" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammer Icon">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
