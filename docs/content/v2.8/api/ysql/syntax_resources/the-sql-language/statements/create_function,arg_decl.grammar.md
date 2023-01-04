@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_function ::= CREATE [ OR REPLACE ] FUNCTION name ( 
                     [ arg_decl [ , ... ] ] )  
                     [ RETURNS type_name

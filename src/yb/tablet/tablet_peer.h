@@ -215,7 +215,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
       std::shared_ptr<LWTransactionStatePB> request) override;
 
-  void SubmitUpdateTransaction(
+  Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) override;
 
   HybridTime SafeTimeForTransactionParticipant() override;
@@ -404,6 +404,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id);
 
   Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+
+  HybridTime get_cdc_sdk_safe_time();
 
   OpId cdc_sdk_min_checkpoint_op_id();
 

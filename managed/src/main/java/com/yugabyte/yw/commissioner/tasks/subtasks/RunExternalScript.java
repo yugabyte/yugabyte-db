@@ -2,16 +2,12 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CONTENT_CONF_PATH;
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PARAMS_CONF_PATH;
-import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
-import com.typesafe.config.ConfigFactory;
-import com.typesafe.config.ConfigValue;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellProcessHandler;

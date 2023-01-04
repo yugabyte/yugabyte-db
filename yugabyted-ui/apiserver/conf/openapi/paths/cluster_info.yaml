@@ -175,3 +175,28 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+/is_load_balancer_idle:
+  get:
+    summary: Check if cluster load balancer is idle
+    description: Check if cluster load balancer is idle
+    tags:
+      - cluster-info
+    operationId: getIsLoadBalancerIdle
+    responses:
+      '200':
+        description: Is load balancer idle
+        content:
+          application/json:
+            schema:
+              title: Is load balancer idle
+              description: Is load balancer idle
+              type: object
+              properties:
+                is_idle:
+                  type: boolean
+              required:
+                - is_idle
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'

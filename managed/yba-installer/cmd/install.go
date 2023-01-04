@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
@@ -20,25 +21,32 @@ var installCmd = &cobra.Command{
         `,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+
+		// Preflight checks
 		results := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
 		// Only print results if we should fail.
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
 			log.Fatal("preflight failed")
 		}
+
+		// Run install
 		common.Install(common.GetVersion())
 
 		for _, name := range serviceOrder {
+			log.Info("About to install component " + name)
 			services[name].Install()
+			log.Info("Completed installing component " + name)
 		}
 
 		for _, name := range serviceOrder {
 			status := services[name].Status()
 			if status.Status != common.StatusRunning {
-				log.Fatal(status.Service + " is not running! Install failed")
+				log.Fatal(status.Service + " is not running! Install might have failed, please check " + common.YbaCtlLogFile)
 			}
 		}
 
+		common.PostInstall()
 		log.Info("Successfully installed Yugabyte Anywhere!")
 	},
 }

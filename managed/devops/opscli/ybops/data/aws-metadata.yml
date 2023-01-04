@@ -55,7 +55,7 @@ regions:
     arm_image: ami-0c402347868961364
   eu-west-1:
     cidr_prefix: "172.159"
-    image: ami-06a678bf61dc41a72
+    image: ami-0f8014f7936715ef8
     arm_image: ami-06a678bf61dc41a72
   # CIDR prefixes cannot be 172.16x because this is reserved address space.
   # See https://en.wikipedia.org/wiki/Private_network#Private_use_of_other_reserved_addresses

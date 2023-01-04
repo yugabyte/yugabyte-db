@@ -14,35 +14,20 @@
 #include "yb/common/ql_bfunc.h"
 
 #include "yb/bfpg/bfpg.h"
-
 #include "yb/bfql/bfql.h"
-
-#include "yb/common/ql_value.h"
 
 namespace yb {
 
-using std::shared_ptr;
-using std::vector;
-
 //--------------------------------------------------------------------------------------------------
 // CQL support
-
-Status ExecBfunc(
-    bfql::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB* result) {
-  return bfql::BFExecApi<QLValuePB, QLValuePB>::ExecQLOpcode(opcode, params, result);
+Result<bfql::BFRetValue> ExecBfunc(bfql::BFOpcode opcode, const bfql::BFParams& params) {
+  return bfql::BFExecApi::ExecQLOpcode(opcode, params);
 }
 
 //--------------------------------------------------------------------------------------------------
 // PGSQL support
-
-Status ExecBfunc(
-    bfpg::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB *result) {
-  return bfpg::BFExecApi<QLValuePB, QLValuePB>::ExecPgsqlOpcode(opcode, params, result);
-}
-
-Status ExecBfunc(
-    bfpg::BFOpcode opcode, std::vector<LWQLValuePB*>* params, LWQLValuePB *result) {
-  return bfpg::BFExecApi<LWQLValuePB, LWQLValuePB>::ExecPgsqlOpcode(opcode, *params, result);
+Result<bfpg::BFRetValue> ExecBfunc(bfpg::BFOpcode opcode, const bfpg::BFParams& params) {
+  return bfpg::BFExecApi::ExecPgsqlOpcode(opcode, params);
 }
 
 } // namespace yb

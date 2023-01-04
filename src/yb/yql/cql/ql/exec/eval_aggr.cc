@@ -81,7 +81,7 @@ Status Executor::AggregateResultSets(const PTSelectStmt* pt_select, TnodeContext
   }
 
   // Change the result set to the aggregate result.
-  buffer.AssignTo(&rows_result->rows_data());
+  rows_result->set_rows_data(buffer.ToContinuousBlock());
   return Status::OK();
 }
 

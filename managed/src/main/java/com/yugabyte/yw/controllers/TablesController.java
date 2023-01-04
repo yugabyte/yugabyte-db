@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -59,10 +60,13 @@ import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -74,11 +78,14 @@ import lombok.ToString;
 import lombok.extern.jackson.Jacksonized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
+import org.yb.CommonTypes.TableType;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 import org.yb.master.MasterTypes.RelationType;
 import play.Environment;
 import play.data.Form;
@@ -91,6 +98,11 @@ import play.mvc.Result;
 public class TablesController extends AuthenticatedController {
 
   private static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
+
+  private static final Set<String> PGSQL_SYSTEM_NAMESPACE_LIST =
+      new HashSet<>(Arrays.asList("system_platform", "template0", "template1"));
+  private static final Set<String> YCQL_SYSTEM_NAMESPACES_LIST =
+      new HashSet<>(Arrays.asList("system_schema", "system_auth", "system"));
 
   private static final String MASTERS_UNAVAILABLE_ERR_MSG =
       "Expected error. Masters are not currently queryable.";
@@ -414,6 +426,74 @@ public class TablesController extends AuthenticatedController {
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not find the master leader");
     }
+  }
+
+  @ApiModel(description = "Namespace information response")
+  @Builder
+  @Jacksonized
+  static class NamespaceInfoResp {
+
+    @ApiModelProperty(value = "Namespace UUID", accessMode = READ_ONLY)
+    public final UUID namespaceUUID;
+
+    @ApiModelProperty(value = "Namespace name")
+    public final String name;
+
+    @ApiModelProperty(value = "Table type")
+    public final TableType tableType;
+  }
+
+  @ApiOperation(
+      value = "List all namespaces",
+      nickname = "getAllNamespaces",
+      notes = "Get a list of all namespaces in the specified universe",
+      response = NamespaceInfoResp.class,
+      responseContainer = "List")
+  public Result listNamespaces(
+      UUID customerUUID, UUID universeUUID, boolean includeSystemNamespaces) {
+    // Validate customer UUID
+    Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    final String masterAddresses = universe.getMasterAddresses(true);
+    if (masterAddresses.isEmpty()) {
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
+    }
+
+    String certificate = universe.getCertificateNodetoNode();
+    ListNamespacesResponse response = listNamespacesOrBadRequest(masterAddresses, certificate);
+    List<NamespaceInfoResp> namespaceInfoRespList = new ArrayList<>();
+    for (NamespaceIdentifierPB namespace : response.getNamespacesList()) {
+      if (includeSystemNamespaces) {
+        namespaceInfoRespList.add(buildResponseFromNamespaceIdentifier(namespace).build());
+      } else if (!((namespace.getDatabaseType().equals(YQLDatabase.YQL_DATABASE_PGSQL)
+              && PGSQL_SYSTEM_NAMESPACE_LIST.contains(namespace.getName().toLowerCase()))
+          || (namespace.getDatabaseType().equals(YQLDatabase.YQL_DATABASE_CQL)
+              && YCQL_SYSTEM_NAMESPACES_LIST.contains(namespace.getName().toLowerCase())))) {
+        namespaceInfoRespList.add(buildResponseFromNamespaceIdentifier(namespace).build());
+      }
+    }
+    return PlatformResults.withData(namespaceInfoRespList);
+  }
+
+  private ListNamespacesResponse listNamespacesOrBadRequest(
+      String masterAddresses, String certificate) {
+    YBClient client = null;
+    ListNamespacesResponse response;
+    try {
+      client = ybService.getClient(masterAddresses, certificate);
+      checkLeaderMasterAvailability(client);
+      response = client.getNamespacesList();
+    } catch (Exception e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    } finally {
+      ybService.closeClient(client, masterAddresses);
+    }
+    if (response == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Table list can not be empty");
+    }
+    return response;
   }
 
   /**
@@ -1066,6 +1146,20 @@ public class TablesController extends AuthenticatedController {
     if (table.hasPgschemaName()) {
       builder.pgSchemaName(table.getPgschemaName());
     }
+    return builder;
+  }
+
+  private NamespaceInfoResp.NamespaceInfoRespBuilder buildResponseFromNamespaceIdentifier(
+      NamespaceIdentifierPB namespace) {
+    String id = namespace.getId().toStringUtf8();
+    NamespaceInfoResp.NamespaceInfoRespBuilder builder =
+        NamespaceInfoResp.builder()
+            .namespaceUUID(getUUIDRepresentation(id))
+            .tableType(
+                BackupUtil.TABLE_TYPE_TO_YQL_DATABASE_MAP
+                    .inverse()
+                    .get(namespace.getDatabaseType()))
+            .name(namespace.getName());
     return builder;
   }
 

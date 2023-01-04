@@ -1,12 +1,10 @@
 package helpers
 
 import (
-    "errors"
     "fmt"
     "io/ioutil"
     "net/http"
     "regexp"
-    "strconv"
     "time"
 )
 
@@ -20,40 +18,6 @@ type Table struct {
 type TablesFuture struct {
     Tables []Table
     Error error
-}
-
-func getBytesFromString(sizeString string) (int64, error) {
-    // Possible units are BKMGTPE, for byte, kilobyte, megabyte, etc.
-    if len(sizeString) < 1 {
-        return 0, nil
-    }
-    unit := string([]rune(sizeString)[len(sizeString) - 1])
-    valString := string([]rune(sizeString)[0:len(sizeString)-1])
-    conversionFactor := int64(0)
-    switch unit {
-    case "B":
-        conversionFactor = 1
-    case "K":
-        conversionFactor = 1024
-    case "M":
-        conversionFactor = 1024 * 1024
-    case "G":
-        conversionFactor = 1024 * 1024 * 1024
-    case "T":
-        conversionFactor = 1024 * 1024 * 1024 * 1024
-    case "P":
-        conversionFactor = 1024 * 1024 * 1024 * 1024 * 1024
-    case "E":
-        conversionFactor = 1024 * 1024 * 1024 * 1024 * 1024 * 1024
-    default:
-        return 0, errors.New("could not find unit for table size")
-    }
-    val, err := strconv.ParseFloat(valString, 64)
-    if err != nil {
-        return 0, err
-    }
-    byteVal := int64(int64(val) * conversionFactor)
-    return byteVal, nil
 }
 
 // TODO: replace this with a call to a json endpoint so we don't have to parse html
@@ -86,7 +50,7 @@ func parseTablesFromHtml(body string) ([]Table, error) {
     // group 5 is total size as a string
     for _, row := range append(userTableRowMatches, indexTableRowMatches...) {
         data := dataRegex.FindStringSubmatch(row)
-        sizeBytes, err := getBytesFromString(data[5])
+        sizeBytes, err := GetBytesFromString(data[5])
         if err != nil {
             return tables, err
         }

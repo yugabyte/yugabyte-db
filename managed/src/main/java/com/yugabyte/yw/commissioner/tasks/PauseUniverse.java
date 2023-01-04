@@ -18,7 +18,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
 import java.util.HashSet;
@@ -87,6 +86,12 @@ public class PauseUniverse extends UniverseTaskBase {
               cluster.userIntent.getInstanceTypeForNode(node),
               cluster.userIntent.getDeviceInfoForNode(node));
         }
+      }
+
+      // Stop yb-controller processes on nodes
+      if (universe.isYbcEnabled()) {
+        createStopYbControllerTasks(tserverNodes)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
 
       for (NodeDetails node : tserverNodes) {

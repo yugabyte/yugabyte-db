@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_table ::= CREATE [ TEMPORARY | TEMP ] TABLE [ IF NOT EXISTS ] 
                  table_name ( [ table_elem [ , ... ] ] ) 
                  [ WITH ( { COLOCATED = { 'true' | 'false' }

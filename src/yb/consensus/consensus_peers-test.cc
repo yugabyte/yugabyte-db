@@ -197,7 +197,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 20);
 
   // The above append ends up appending messages in term 2, so we update the peer's term to match.
-  Arena arena;
+  ThreadSafeArena arena;
   remote_peer->TEST_SetTerm(2, &arena);
 
   // signal the peer there are requests pending.

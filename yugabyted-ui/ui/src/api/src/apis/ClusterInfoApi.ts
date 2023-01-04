@@ -24,6 +24,7 @@ import type {
   ClusterTableListResponse,
   ClusterTabletListResponse,
   HealthCheckResponse,
+  IsLoadBalancerIdle,
   LiveQueryResponseSchema,
   MetricResponse,
   SlowQueryResponseSchema,
@@ -424,6 +425,81 @@ export const useGetClusterTabletsQuery = <T = ClusterTabletListResponse, Error =
   const query = useQuery<ClusterTabletListResponse, Error, T>(
     queryKey,
     () => getClusterTabletsAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Check if cluster load balancer is idle
+ * Check if cluster load balancer is idle
+ */
+
+export const getIsLoadBalancerIdleAxiosRequest = (
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<IsLoadBalancerIdle>(
+    {
+      url: '/is_load_balancer_idle',
+      method: 'GET',
+      params: {
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getIsLoadBalancerIdleQueryKey = (
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/is_load_balancer_idle`,
+  pageParam,
+];
+
+
+export const useGetIsLoadBalancerIdleInfiniteQuery = <T = IsLoadBalancerIdle, Error = ApiError>(
+  options?: {
+    query?: UseInfiniteQueryOptions<IsLoadBalancerIdle, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getIsLoadBalancerIdleQueryKey(pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<IsLoadBalancerIdle, Error, T>(
+    queryKey,
+    () => getIsLoadBalancerIdleAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetIsLoadBalancerIdleQuery = <T = IsLoadBalancerIdle, Error = ApiError>(
+  options?: {
+    query?: UseQueryOptions<IsLoadBalancerIdle, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getIsLoadBalancerIdleQueryKey(version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<IsLoadBalancerIdle, Error, T>(
+    queryKey,
+    () => getIsLoadBalancerIdleAxiosRequest(customAxiosInstance),
     queryOptions
   );
 

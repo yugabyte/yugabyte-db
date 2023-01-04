@@ -13,16 +13,14 @@ package com.yugabyte.yw.common.config;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import java.time.Duration;
 
-// TODO: Similar config key lists for other scopes
 public class CustomerConfKeys extends RuntimeConfigKeysModule {
 
-  static ConfKeyInfo<Duration> taskGcRetentionDuration =
+  // TODO(Shashank): Add correct metadata
+  public static final ConfKeyInfo<Duration> taskGcRetentionDuration =
       new ConfKeyInfo<>(
           "yb.taskGC.task_retention_duration",
           ScopeType.CUSTOMER,
           "Task Garbage Collection Retention Duration",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.DurationType);
-
-  // TODO: Add other keys
 }

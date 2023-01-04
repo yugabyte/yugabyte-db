@@ -3,16 +3,19 @@
 package com.yugabyte.yw.scheduler;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
@@ -97,6 +100,24 @@ public class SchedulerTest extends FakeDBApplication {
     ScheduleTask.create(UUID.randomUUID(), s.getScheduleUUID());
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testRetryTaskOnServiceUnavailable() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Schedule s =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    Date dt = new Date();
+    s.updateNextScheduleTaskTime(dt);
+    s.setCronExpression("0 0 * * *");
+    s.save();
+    when(mockCommissioner.submit(any(), any()))
+        .thenThrow(new PlatformServiceException(SERVICE_UNAVAILABLE, "you shall not pass"));
+    scheduler.scheduleRunner();
+    s = Schedule.getOrBadRequest(s.scheduleUUID);
+    Date next = s.getNextScheduleTaskTime();
+    assertTrue(next.before(DateUtils.addHours(new Date(), 1)));
   }
 
   public static void setUniverseBackupInProgress(boolean value, Universe universe) {

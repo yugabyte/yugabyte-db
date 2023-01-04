@@ -25,7 +25,8 @@ DocReadContext::DocReadContext(const std::string& log_prefix, const Schema& sche
                                SchemaVersion schema_version)
     : schema(schema_), log_prefix_(log_prefix) {
   schema_packing_storage.AddSchema(schema_version, schema_);
-  LOG_WITH_PREFIX(INFO) << "DocReadContext, from schema, version: " << schema_version;
+  LOG_IF_WITH_PREFIX(INFO, schema_version != 0)
+      << "DocReadContext, from schema, version: " << schema_version;
 }
 
 DocReadContext::DocReadContext(

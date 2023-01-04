@@ -50,9 +50,9 @@ Two session variables control the behavior of follower reads:
 
 - `yb_read_from_followers` controls whether or not reading from followers is enabled. The default value is false.
 
-- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. The default value is 30000 (30 seconds). 
+- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. The default value is 30000 (30 seconds).
 
-  Note that even if the tablet leader is on the closest node, you would still read from `Now()-yb_follower_read_staleness_ms`. Therefore, when follower reads are used, the read is always stale, even if you are reading from a tablet leader. 
+  Note that even if the tablet leader is on the closest node, you would still read from `Now()-yb_follower_read_staleness_ms`. Therefore, when follower reads are used, the read is always stale, even if you are reading from a tablet leader.
 
 ### Expected behavior
 
@@ -76,7 +76,7 @@ You can mark a transaction as read-only by applying the following guidelines:
 - `SET TRANSACTION READ ONLY` applies only to the current transaction block.
 - `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
 - `SET default_transaction_read_only = TRUE` applies the read-only setting to all statements and transaction blocks that follow.
-- Tthe `pg_hint_plan` mechanism embeds the hint along with the `SELECT` statement. For example, `/*+ Set(transaction_read_only true) */ SELECT ...` applies only to the current `SELECT` statement.
+- The `pg_hint_plan` mechanism embeds the hint along with the `SELECT` statement. For example, `/*+ Set(transaction_read_only true) */ SELECT ...` applies only to the current `SELECT` statement.
 
 ## Examples
 

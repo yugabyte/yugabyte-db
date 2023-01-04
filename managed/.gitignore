@@ -53,3 +53,5 @@ src/public/*
 
 client/*/generated
 lib
+
+devops/pex/

@@ -149,9 +149,22 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
   };
 
   const validateForm = (values: any): any => {
+    const {
+      recovery_time_mode,
+      recovery_duration,
+      recovery_interval,
+      customDate,
+      customTime
+    } = values;
     const errors = {
       recovery_time_mode: 'Please select a time within your retention period'
     };
+
+    if (recovery_time_mode === RECOVERY_MODE.RELATIVE && !(recovery_duration && recovery_interval))
+      return errors;
+
+    if (recovery_time_mode === RECOVERY_MODE.EXACT && !(customDate && customTime)) return errors;
+
     const finalTimeStamp = getFinalTimeStamp(values);
     const delay = 60000; // delay of 1 min in case if min and max time are the same
     if (!(finalTimeStamp >= minTime - delay && finalTimeStamp <= maxTime + delay)) return errors;

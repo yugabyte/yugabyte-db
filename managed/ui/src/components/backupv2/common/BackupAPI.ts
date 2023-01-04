@@ -74,7 +74,7 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
   const cUUID = localStorage.getItem('customerId');
   const backupStorageInfoList = values['keyspaces'].map(
     (keyspace: Keyspace_Table, index: number) => {
-      return {
+      const infoList = {
         backupType: backup.backupType,
         keyspace: keyspace || backup.commonBackupInfo.responseList[index].keyspace,
         sse: backup.commonBackupInfo.sse,
@@ -82,6 +82,10 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
           backup.commonBackupInfo.responseList[index].storageLocation ??
           backup.commonBackupInfo.responseList[index].defaultLocation
       };
+      if (values.allow_YCQL_conflict_keyspace) {
+        infoList['tableNameList'] = backup.commonBackupInfo.responseList[index].tablesList;
+      }
+      return infoList;
     }
   );
   const payload = {
@@ -220,7 +224,7 @@ export const setThrottleParameters = (universeUUID: string, values: ThrottlePara
     perUploadNumObjects: values.per_upload_num_objects,
     maxConcurrentDownloads: values.max_concurrent_downloads,
     perDownloadNumObjects: values.per_download_num_objects
-  }
+  };
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
   return axios.post<ThrottleParameters>(requestUrl, payload);
 };

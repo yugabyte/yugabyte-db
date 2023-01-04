@@ -39,6 +39,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.pb.h"
@@ -46,6 +47,11 @@
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
+
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/kv_debug.h"
+#include "yb/docdb/schema_packing.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
@@ -60,6 +66,7 @@
 #include "yb/util/opid.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/slice.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 
@@ -131,12 +138,14 @@ void PrintIdOnly(const LogEntryPB& entry) {
   switch (entry.type()) {
     case log::REPLICATE:
     {
-      cout << entry.replicate().id().term() << "." << entry.replicate().id().index()
-           << "@" << entry.replicate().hybrid_time() << "\t";
-      cout << "REPLICATE "
-           << OperationType_Name(entry.replicate().op_type());
-      cout << ", SIZE: "
-           << entry.replicate().ByteSizeLong();
+      HybridTime ht(entry.replicate().hybrid_time());
+      cout << "  id {" << endl;
+      cout << "    term: " << entry.replicate().id().term() << endl;
+      cout << "    index: " << entry.replicate().id().index() << endl;
+      cout << "  }" << endl;
+      cout << "  hybrid_time: " << ht.ToDebugString() << endl;
+      cout << "  op_type: " << OperationType_Name(entry.replicate().op_type()) << endl;
+      cout << "  size: " << entry.replicate().ByteSizeLong();
       break;
     }
     default:
@@ -149,23 +158,114 @@ void PrintIdOnly(const LogEntryPB& entry) {
 Status PrintDecodedWriteRequestPB(const string& indent,
                                   const Schema& tablet_schema,
                                   const tablet::WritePB& write) {
+  cout << indent << "write {" << endl;
+  if (write.has_write_batch()) {
+    if (write.has_unused_tablet_id()) {
+      cout << indent << indent << "unused_tablet_id: " << write.unused_tablet_id() << endl;
+    }
+    const ::yb::docdb::KeyValueWriteBatchPB& write_batch = write.write_batch();
+    cout << indent << indent << "write_batch {" << endl;
+    cout << indent << indent << indent << "write_pairs_size: "
+         << write_batch.write_pairs_size() << endl;
+    // write tablet id
+    for (int i = 0; i < write_batch.write_pairs_size(); i++) {
+      cout << indent << indent << indent << "write_pairs {" << endl;
+      const ::yb::docdb::KeyValuePairPB& kv = write_batch.write_pairs(i);
+      if (kv.has_key()) {
+        Result<std::string> formatted_key =
+          DocDBKeyToDebugStr(kv.key(), ::yb::docdb::StorageDbType::kRegular,
+                             ::yb::docdb::HybridTimeRequired::kFalse);
+        cout << indent << indent << indent << indent << "Key: " << formatted_key << endl;
+      }
+      if (kv.has_value()) {
+        static ::yb::docdb::SchemaPackingStorage schema_packing_storage;
+        Result<std::string> formatted_value =
+          DocDBValueToDebugStr(kv.key(), ::yb::docdb::StorageDbType::kRegular,
+                               kv.value(), schema_packing_storage);
+        cout << indent << indent << indent << indent << "Value: " << formatted_value << endl;
+      }
+      cout << indent << indent << indent << "}" << endl;  // write_pairs {
+    }
+    cout << indent << indent << "}" << endl;  // write_batch {
+  }
+  cout << indent << "}" << endl;  // write {
+
+  return Status::OK();
+}
+
+Status PrintDecodedTransactionStatePB(const string& indent,
+                                      const Schema& tablet_schema,
+                                      const tablet::TransactionStatePB& update) {
+  cout << indent << "update_transaction {" << endl;
+  if (update.has_transaction_id()) {
+    Slice txn_id_slice(update.transaction_id().c_str(), 16);
+    Result<TransactionId> txn_id = FullyDecodeTransactionId(txn_id_slice);
+    cout << indent << indent << "transaction_id: " << txn_id << endl;
+  }
+  if (update.has_status()) {
+    cout << indent << indent << "status: " << TransactionStatus_Name(update.status()) << endl;
+  }
+  if (update.tablets_size() > 0) {
+    cout << indent << indent << "tablets: ";
+    for (int i = 0; i < update.tablets_size(); i++) {
+      cout << update.tablets(i) << " ";
+    }
+    cout << endl;
+  }
+  if (update.tablet_batches_size() > 0) {
+    cout << indent << indent << "tablet_batches: ";
+    for (int i = 0; i < update.tablet_batches_size(); i++) {
+      cout << update.tablet_batches(i) << " ";
+    }
+    cout << endl;
+  }
+  if (update.has_commit_hybrid_time()) {
+    HybridTime ht(update.commit_hybrid_time());
+    cout << indent << indent << "commit_hybrid_time: " << ht.ToDebugString() << endl;
+  }
+  if (update.has_sealed()) {
+    cout << indent << indent << "sealed: " << update.sealed() << endl;
+  }
+  if (update.has_aborted() && update.aborted().set_size() > 0) {
+    cout << indent << indent << "aborted: ";
+    for (int i = 0; i < update.aborted().set_size(); i++) {
+      cout << update.aborted().set(i) << " ";
+    }
+    cout << endl;
+  }
+  if (update.has_external_hybrid_time()) {
+    HybridTime ht(update.commit_hybrid_time());
+    cout << indent << indent << "external_hybrid_time: " << ht.ToDebugString() << endl;
+  }
+  if (update.has_external_status_tablet_id()) {
+    cout << indent << indent << "external_status_tablet_id: "
+         << update.external_status_tablet_id() << endl;
+  }
+  cout << indent << "}" << endl;  // update_transaction {
+
   return Status::OK();
 }
 
 Status PrintDecoded(const LogEntryPB& entry, const Schema& tablet_schema) {
+  cout << "replicate {" << endl;
   PrintIdOnly(entry);
 
-  const string indent = "\t";
+  const string indent = "  ";
   if (entry.has_replicate()) {
     // We can actually decode REPLICATE messages.
 
     const ReplicateMsg& replicate = entry.replicate();
     if (replicate.op_type() == consensus::WRITE_OP) {
       RETURN_NOT_OK(PrintDecodedWriteRequestPB(indent, tablet_schema, replicate.write()));
+    } else if (replicate.op_type() == consensus::UPDATE_TRANSACTION_OP) {
+      RETURN_NOT_OK(PrintDecodedTransactionStatePB(indent, tablet_schema,
+                                                   replicate.transaction_state()));
     } else {
       cout << indent << replicate.ShortDebugString() << endl;
     }
   }
+
+  cout << "}" << endl;  // replicate {
 
   return Status::OK();
 }
@@ -361,8 +461,8 @@ Status FilterLogSegment(const string& segment_path) {
   return Status::OK();
 }
 
-} // namespace log
-} // namespace yb
+}  // namespace log
+}  // namespace yb
 
 int main(int argc, char **argv) {
   yb::ParseCommandLineFlags(&argc, &argv, true);
@@ -379,6 +479,7 @@ int main(int argc, char **argv) {
 
   yb::Status status;
   yb::InitGoogleLoggingSafeBasic(argv[0]);
+  yb::HybridTime::TEST_SetPrettyToString(true);
   if (argc == 2) {
     if (FLAGS_filter_log_segment) {
       status = yb::log::FilterLogSegment(argv[1]);

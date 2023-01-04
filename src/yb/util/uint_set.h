@@ -18,6 +18,7 @@
 
 #include "yb/gutil/strings/join.h"
 
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
@@ -79,6 +80,15 @@ class UnsignedIntSet {
     }
 
     return set;
+  }
+
+  void ToPB(ArenaVector<T>* out) const {
+    uint32_t last_unset = 0;
+    for (const auto& elem : interval_set_) {
+      out->push_back(elem.lower() - last_unset);
+      out->push_back(elem.upper() - elem.lower() + 1);
+      last_unset = elem.upper() + 1;
+    }
   }
 
   void ToPB(google::protobuf::RepeatedField<T>* mutable_container) const {

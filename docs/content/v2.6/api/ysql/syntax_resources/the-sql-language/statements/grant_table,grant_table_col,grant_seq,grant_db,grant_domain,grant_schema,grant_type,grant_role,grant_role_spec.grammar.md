@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 grant_table ::= GRANT 
                 { { SELECT
                     | INSERT

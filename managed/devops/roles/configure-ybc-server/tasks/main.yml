@@ -123,7 +123,12 @@
       name: "Check liveness of controller"
       user: "yugabyte"
       state: absent
+    tags:
+      - override_ybc_gflags
+      - systemd_upgrade
+      - ybc-install
 
+- block:
   - name: Determine system or user scope
     stat:
       path: /etc/systemd/system/yb-controller.service
@@ -188,7 +193,6 @@
     when: systemd_system.stat.exists
 
   tags:
-    - override_ybc_gflags
     - systemd_upgrade
     - ybc-install
   when: systemd_option

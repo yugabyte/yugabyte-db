@@ -52,7 +52,7 @@ The local cluster setup on a single host is intended for development and learnin
   </li>
   <li>
     <a href="../quick-start/kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -344,7 +344,7 @@ Add two more nodes to the cluster using the join option:
 After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone
+./bin/yugabyted configure --fault_tolerance=zone --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
 ```
 
 ### Create and configure the Java project

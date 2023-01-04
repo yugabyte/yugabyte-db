@@ -5,13 +5,13 @@
 package config
 
 import (
-	"encoding/base64"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
+
 	// "path/filepath"
-	"crypto/rand"
+
 	"strings"
 	"text/template"
 
@@ -19,26 +19,17 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 	"sigs.k8s.io/yaml"
 
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
-
-// PlatformAppSecret is special cased because it is not configurable by the user.
-var platformAppSecret string = generateRandomStringURLSafe(64)
-
-// RandomDbPassword is applied to the templated configuration file if not set.
-var randomDbPassword string = generateRandomStringURLSafe(32)
-
-// Password to protect the keystore
-var randomKeystorePassword string = generateRandomStringURLSafe(32)
 
 // ValidateJSONSchema checks that the parameters in each component's config file are indeed
 // valid by turning the input YAML file into a JSON file, and then validating that
 // the parameters have been specified appropriately using the available
 // JSON schema.
-func validateJSONSchema(filename string) {
+func validateJSONSchema() {
 
-	createdBytes, err := os.ReadFile(filename)
+	createdBytes, err := os.ReadFile(common.InputFile)
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Error: %v.", err))
 	}
@@ -86,29 +77,7 @@ func validateJSONSchema(filename string) {
 func GetYamlPathData(text string) string {
 	// TODO: we should validate if we ever send a key that has spaces.
 	pathString := strings.ReplaceAll(text, " ", "")
-
-	// Handle default values that are not set in the input config.
-	if strings.Contains(pathString, "appSecret") {
-		return platformAppSecret
-	}
-
-	val := viper.GetString(pathString)
-	if strings.Contains(pathString, "platformDbPassword") && val == "" {
-		return randomDbPassword
-	}
-
-	if strings.Contains(pathString, "keyStorePassword") && val == "" {
-		return randomKeystorePassword
-	}
-
-	// TODO: This is for non root. Root should always be yugabyte user (defaulted in input.yml)
-	if !common.HasSudoAccess() {
-		if strings.Contains(pathString, "platformDbUser") {
-			return strings.ReplaceAll(strings.TrimSuffix(common.GetCurrentUser(), "\n"), " ", "")
-		}
-	}
-	return val
-
+	return viper.GetString(pathString)
 }
 
 // ReadConfigAndTemplate Reads info from input config file and sets
@@ -121,9 +90,10 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 
 		// The name "yamlPath" is what the function will be called
 		// in the template text.
-		"yamlPath":          		GetYamlPathData,
-		"installRoot":       		common.GetInstallRoot,
-		"installVersionDir": 		common.GetInstallVersionDir,
+		"yamlPath":          GetYamlPathData,
+		"installRoot":       common.GetSoftwareRoot,
+		"installVersionDir": common.GetInstallerSoftwareDir,
+		"baseInstall":       common.GetBaseInstall,
 	}
 
 	tmpl, err := template.New(configYmlFileName).
@@ -166,7 +136,7 @@ func readYAMLtoJSON(createdBytes []byte) (map[string]interface{}, error) {
 func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
 	fileNameString := string(fileName)
-
+	log.Info("Creating file (and directory path): " + fileNameString)
 	file, createErr := common.Create(fileNameString)
 
 	if createErr != nil {
@@ -188,7 +158,7 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 // GenerateTemplate of a particular component.
 func GenerateTemplate(component common.Component) {
 
-	validateJSONSchema(common.InputFile)
+	validateJSONSchema()
 
 	createdBytes, _ := readConfigAndTemplate(component.TemplateFile(), component)
 
@@ -233,7 +203,7 @@ func GenerateTemplate(component common.Component) {
 			defer file.Close()
 
 			// Add the additional raw text to yb-platform.conf if it exists.
-			additionalEntryString := strings.TrimSuffix(GetYamlPathData(".additional"), "\n")
+			additionalEntryString := strings.TrimSuffix(GetYamlPathData(".platform.additional"), "\n")
 
 			if _, err := file.WriteString(additionalEntryString); err != nil {
 				log.Fatal("Error: " + err.Error() + ".")
@@ -245,21 +215,4 @@ func GenerateTemplate(component common.Component) {
 			" succesfully applied.")
 
 	}
-}
-
-func generateRandomBytes(n int) ([]byte, error) {
-
-	b := make([]byte, n)
-	_, err := rand.Read(b)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
-// generateRandomStringURLSafe is used to generate random passwords.
-func generateRandomStringURLSafe(n int) string {
-
-	b, _ := generateRandomBytes(n)
-	return base64.URLEncoding.EncodeToString(b)
 }

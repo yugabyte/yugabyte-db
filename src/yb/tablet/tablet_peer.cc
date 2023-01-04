@@ -710,14 +710,14 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   }
 }
 
-void TabletPeer::SubmitUpdateTransaction(
+Status TabletPeer::SubmitUpdateTransaction(
     std::unique_ptr<UpdateTxnOperation> operation, int64_t term) {
-  // TODO: safely handle the case when tablet is not set.
-  // https://github.com/yugabyte/yugabyte-db/issues/14597
-  if (!operation->tablet()) {
-    operation->SetTablet(CHECK_RESULT(shared_tablet_safe()));
+  if (!operation->tablet_is_set()) {
+    auto tablet = VERIFY_RESULT(shared_tablet_safe());
+    operation->SetTablet(tablet);
   }
   Submit(std::move(operation), term);
+  return Status::OK();
 }
 
 HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
@@ -821,7 +821,7 @@ Result<TabletPtr> TabletPeer::shared_tablet_safe() const {
     return tablet_ptr;
   return STATUS_FORMAT(
       IllegalState,
-      "Tablet object $0 has already been destroyed",
+      "Tablet object $0 has already been deallocated",
       tablet_id_);
 }
 
@@ -1094,6 +1094,10 @@ Status TabletPeer::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
   LOG_WITH_PREFIX(INFO) << "Setting CDCSDK safe time to " << cdc_sdk_safe_time;
   RETURN_NOT_OK(meta_->set_cdc_sdk_safe_time(cdc_sdk_safe_time));
   return Status::OK();
+}
+
+HybridTime TabletPeer::get_cdc_sdk_safe_time() {
+  return meta_->cdc_sdk_safe_time();
 }
 
 OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {

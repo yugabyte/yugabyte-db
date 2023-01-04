@@ -165,7 +165,7 @@ TEST_F(WebserverTest, TestDefaultPaths) {
   // Test memz
   ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/memz?raw=1", ToString(addr_)),
                            &buf_));
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
   ASSERT_STR_CONTAINS(buf_.ToString(), "Bytes in use by application");
 #else
   ASSERT_STR_CONTAINS(buf_.ToString(), "not available unless tcmalloc is enabled");

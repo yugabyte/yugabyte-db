@@ -61,6 +61,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -227,12 +228,7 @@ public class NodeManager extends DevopsBase {
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
       subCommand.addAll(
           getAccessKeySpecificCommand(
-              params,
-              type,
-              keyInfo,
-              userIntent.providerType,
-              userIntent.accessKeyCode,
-              node.nodeExporterPort));
+              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode));
     }
 
     return subCommand;
@@ -243,8 +239,7 @@ public class NodeManager extends DevopsBase {
       NodeCommandType type,
       AccessKey.KeyInfo keyInfo,
       Common.CloudType providerType,
-      String accessKeyCode,
-      int nodeExporterPort) {
+      String accessKeyCode) {
     List<String> subCommand = new ArrayList<>();
 
     if (keyInfo.vaultFile != null) {
@@ -292,8 +287,9 @@ public class NodeManager extends DevopsBase {
       subCommand.add("--install_node_exporter");
     }
 
+    ProviderDetails providerDetails = params.getProvider().details;
     subCommand.add("--custom_ssh_port");
-    subCommand.add(keyInfo.sshPort.toString());
+    subCommand.add(providerDetails.sshPort.toString());
 
     // TODO make this global and remove this conditional check
     // to avoid bugs.
@@ -305,53 +301,53 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Reboot
             || type == NodeCommandType.Change_Instance_Type
             || type == NodeCommandType.Wait_For_SSH)
-        && keyInfo.sshUser != null) {
+        && providerDetails.sshUser != null) {
       subCommand.add("--ssh_user");
-      subCommand.add(keyInfo.sshUser);
+      subCommand.add(providerDetails.sshUser);
     }
 
     if (type == NodeCommandType.Precheck) {
       subCommand.add("--precheck_type");
-      if (keyInfo.skipProvisioning) {
+      if (providerDetails.skipProvisioning) {
         subCommand.add("configure");
         subCommand.add("--ssh_user");
         subCommand.add("yugabyte");
       } else {
         subCommand.add("provision");
-        if (keyInfo.sshUser != null) {
+        if (providerDetails.sshUser != null) {
           subCommand.add("--ssh_user");
-          subCommand.add(keyInfo.sshUser);
+          subCommand.add(providerDetails.sshUser);
         }
       }
 
-      if (keyInfo.setUpChrony) {
+      if (providerDetails.setUpChrony) {
         subCommand.add("--skip_ntp_check");
       }
-      if (keyInfo.airGapInstall) {
+      if (providerDetails.airGapInstall) {
         subCommand.add("--air_gap");
       }
-      if (keyInfo.installNodeExporter) {
+      if (providerDetails.installNodeExporter) {
         subCommand.add("--install_node_exporter");
       }
     }
 
     if (params instanceof AnsibleSetupServer.Params) {
-      if (keyInfo.airGapInstall) {
+      if (providerDetails.airGapInstall) {
         subCommand.add("--air_gap");
       }
 
-      if (keyInfo.installNodeExporter) {
+      if (providerDetails.installNodeExporter) {
         subCommand.add("--install_node_exporter");
         subCommand.add("--node_exporter_port");
-        subCommand.add(Integer.toString(nodeExporterPort));
+        subCommand.add(Integer.toString(providerDetails.nodeExporterPort));
         subCommand.add("--node_exporter_user");
-        subCommand.add(keyInfo.nodeExporterUser);
+        subCommand.add(providerDetails.nodeExporterUser);
       }
 
-      if (keyInfo.setUpChrony) {
+      if (providerDetails.setUpChrony) {
         subCommand.add("--use_chrony");
-        if (keyInfo.ntpServers != null && !keyInfo.ntpServers.isEmpty()) {
-          for (String server : keyInfo.ntpServers) {
+        if (providerDetails.ntpServers != null && !providerDetails.ntpServers.isEmpty()) {
+          for (String server : providerDetails.ntpServers) {
             subCommand.add("--ntp_server");
             subCommand.add(server);
           }
@@ -359,8 +355,8 @@ public class NodeManager extends DevopsBase {
       }
 
       // Legacy providers should not be allowed to have no NTP set up. See PLAT 4015
-      if (!keyInfo.showSetUpChrony
-          && !keyInfo.airGapInstall
+      if (!providerDetails.showSetUpChrony
+          && !providerDetails.airGapInstall
           && !((AnsibleSetupServer.Params) params).useTimeSync
           && (providerType.equals(Common.CloudType.aws)
               || providerType.equals(Common.CloudType.gcp)
@@ -374,7 +370,7 @@ public class NodeManager extends DevopsBase {
         }
       }
     } else if (params instanceof ChangeInstanceType.Params) {
-      if (keyInfo.airGapInstall) {
+      if (providerDetails.airGapInstall) {
         subCommand.add("--air_gap");
       }
     }
@@ -555,7 +551,7 @@ public class NodeManager extends DevopsBase {
       subcommandStrings.add("--certs_client_dir");
       subcommandStrings.add(CertificateHelper.getCertsForClientDir(ybHomeDir));
 
-      CertificateInfo clientRootCert = CertificateInfo.get(taskParam.clientRootCA);
+      CertificateInfo clientRootCert = CertificateInfo.get(taskParam.getClientRootCA());
       if (clientRootCert == null) {
         throw new RuntimeException("No valid clientRootCA found for " + taskParam.universeUUID);
       }
@@ -580,7 +576,7 @@ public class NodeManager extends DevopsBase {
               }
               CertificateHelper.createServerCertificate(
                   config,
-                  taskParam.clientRootCA,
+                  taskParam.getClientRootCA(),
                   tempStorageDirectory.toString(),
                   commonName,
                   null,
@@ -748,7 +744,8 @@ public class NodeManager extends DevopsBase {
           universe,
           userIntent.providerType,
           taskParam.vmUpgradeTaskType,
-          !taskParam.ignoreUseCustomImageConfig,
+          !(taskParam.ignoreUseCustomImageConfig
+              || universe.getUniverseDetails().overridePrebuiltAmiDBVersion),
           subcommand);
     }
 
@@ -1227,12 +1224,7 @@ public class NodeManager extends DevopsBase {
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     commandArgs.addAll(
         getAccessKeySpecificCommand(
-            nodeTaskParam,
-            type,
-            keyInfo,
-            Common.CloudType.onprem,
-            accessKey.getKeyCode(),
-            keyInfo.nodeExporterPort));
+            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode()));
     commandArgs.addAll(
         getCommunicationPortsParams(
             new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
@@ -1747,6 +1739,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
+          if (taskParam.force) {
+            commandArgs.add("--force");
+          }
           break;
         }
       case Update_Mounted_Disks:
@@ -1778,7 +1773,9 @@ public class NodeManager extends DevopsBase {
           commandArgs.add(
               Integer.toString(
                   runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
-
+          if (taskParam.force) {
+            commandArgs.add("--force");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
@@ -1823,8 +1820,8 @@ public class NodeManager extends DevopsBase {
               getCommunicationPortsParams(userIntent, accessKey, nodeTaskParam.communicationPorts));
 
           boolean rootAndClientAreTheSame =
-              nodeTaskParam.clientRootCA == null
-                  || Objects.equals(nodeTaskParam.rootCA, nodeTaskParam.clientRootCA);
+              nodeTaskParam.getClientRootCA() == null
+                  || Objects.equals(nodeTaskParam.rootCA, nodeTaskParam.getClientRootCA());
           appendCertPathsToCheck(
               commandArgs,
               nodeTaskParam.rootCA,
@@ -1832,7 +1829,7 @@ public class NodeManager extends DevopsBase {
               rootAndClientAreTheSame && userIntent.enableNodeToNodeEncrypt);
 
           if (!rootAndClientAreTheSame) {
-            appendCertPathsToCheck(commandArgs, nodeTaskParam.clientRootCA, true, false);
+            appendCertPathsToCheck(commandArgs, nodeTaskParam.getClientRootCA(), true, false);
           }
 
           Config config = runtimeConfigFactory.forUniverse(universe);
@@ -2163,7 +2160,7 @@ public class NodeManager extends DevopsBase {
   public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
     KeyInfo keyInfo = params.accessKey.getKeyInfo();
     Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
-    Integer sshPort = keyInfo.sshPort == null ? provider.details.sshPort : keyInfo.sshPort;
+    Integer sshPort = provider.details.sshPort;
     String sshUser = params.sshUser;
     String vaultPasswordFile = keyInfo.vaultPasswordFile;
     String vaultFile = keyInfo.vaultFile;

@@ -153,9 +153,10 @@ bool RedisPatternMatchWithLen(
 
 } // namespace
 
-bool RedisPatternMatch(const string& pattern, const string& string, bool ignore_case) {
+bool RedisPatternMatch(
+    const std::string_view& pattern, const std::string_view& string, bool ignore_case) {
   return RedisPatternMatchWithLen(
-      pattern.c_str(), pattern.length(), string.c_str(), string.length(), ignore_case);
+      pattern.data(), pattern.length(), string.data(), string.length(), ignore_case);
 }
 
 } // namespace yb

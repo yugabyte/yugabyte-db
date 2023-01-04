@@ -388,7 +388,7 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id, const Status& sta
   // TODO: we should probably refactor the ResponseFromPeer function so that we don't need to
   // construct this fake response, but this seems to work for now.
   // TODO(lw_uc) arena that encapsulates first block.
-  Arena arena;
+  ThreadSafeArena arena;
   LWConsensusResponsePB fake_response(&arena);
   id.ToPB(fake_response.mutable_status()->mutable_last_received());
   id.ToPB(fake_response.mutable_status()->mutable_last_received_current_leader());
@@ -767,7 +767,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
     *repl_index = to_index;
   }
 
-  if (last_op_id.index >= to_index) {
+  if (last_op_id.index >= to_index && !fetch_single_entry) {
     // Nothing to read.
     return ReadOpsResult();
   }

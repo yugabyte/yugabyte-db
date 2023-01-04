@@ -65,7 +65,7 @@ public class RestoreManagerYb extends DevopsBase {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         PlacementInfo pi = cluster.placementInfo;
         podAddrToConfig.putAll(
-            PlacementInfoUtil.getKubernetesConfigPerPod(
+            KubernetesUtil.getKubernetesConfigPerPod(
                 pi, universe.getUniverseDetails().getNodesInCluster(cluster.uuid)));
       }
     } else {

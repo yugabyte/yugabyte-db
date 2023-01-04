@@ -901,9 +901,15 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	/*
 	 * copy remainder of node
 	 */
-	COPY_NODE_FIELD(innerHashAttNos);
-	COPY_NODE_FIELD(outerParamExprs);
-	COPY_NODE_FIELD(hashOps);
+	COPY_SCALAR_FIELD(num_hashClauseInfos);
+	COPY_POINTER_FIELD(hashClauseInfos,
+					  from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
+	
+	for (int i = 0; i < from->num_hashClauseInfos; i++)
+	{
+		newnode->hashClauseInfos[i].outerParamExpr =
+			copyObject(from->hashClauseInfos[i].outerParamExpr);
+	}
 
 	return newnode;
 }
@@ -4072,6 +4078,26 @@ _copyDiscardStmt(const DiscardStmt *from)
 	return newnode;
 }
 
+static YbCreateProfileStmt *
+_copyCreateProfileStmt(const YbCreateProfileStmt *from)
+{
+	YbCreateProfileStmt *newnode = makeNode(YbCreateProfileStmt);
+
+	COPY_STRING_FIELD(prfname);
+	COPY_SCALAR_FIELD(prffailedloginattempts);
+	return newnode;
+}
+
+static YbDropProfileStmt *
+_copyDropProfileStmt(const YbDropProfileStmt *from)
+{
+	YbDropProfileStmt *newnode = makeNode(YbDropProfileStmt);
+
+	COPY_STRING_FIELD(prfname);
+	COPY_SCALAR_FIELD(missing_ok);
+	return newnode;
+}
+
 static CreateTableGroupStmt *
 _copyCreateTableGroupStmt(const CreateTableGroupStmt *from)
 {
@@ -5510,6 +5536,12 @@ copyObjectImpl(const void *from)
 			break;
 		case T_DiscardStmt:
 			retval = _copyDiscardStmt(from);
+			break;
+		case T_YbCreateProfileStmt:
+			retval = _copyCreateProfileStmt(from);
+			break;
+		case T_YbDropProfileStmt:
+			retval = _copyDropProfileStmt(from);
 			break;
 		case T_CreateTableGroupStmt:
 			retval = _copyCreateTableGroupStmt(from);

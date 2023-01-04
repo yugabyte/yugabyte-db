@@ -823,43 +823,40 @@ void DocWriteBatch::TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const
 // Converting a RocksDB write batch to a string.
 // ------------------------------------------------------------------------------------------------
 
-class DocWriteBatchFormatter : public WriteBatchFormatter {
- public:
-  DocWriteBatchFormatter(
-      StorageDbType storage_db_type,
-      BinaryOutputFormat binary_output_format,
-      WriteBatchOutputFormat batch_output_format,
-      std::string line_prefix)
-      : WriteBatchFormatter(binary_output_format, batch_output_format, std::move(line_prefix)),
-        storage_db_type_(storage_db_type) {}
- protected:
-  std::string FormatKey(const Slice& key) override {
-    const auto key_result = DocDBKeyToDebugStr(key, storage_db_type_);
-    if (key_result.ok()) {
-      return *key_result;
-    }
-    return Format(
-        "$0 (error: $1)",
-        WriteBatchFormatter::FormatKey(key),
-        key_result.status());
-  }
+DocWriteBatchFormatter::DocWriteBatchFormatter(
+    StorageDbType storage_db_type,
+    BinaryOutputFormat binary_output_format,
+    WriteBatchOutputFormat batch_output_format,
+    std::string line_prefix)
+    : WriteBatchFormatter(binary_output_format,
+                          batch_output_format,
+                          std::move(line_prefix)),
+      storage_db_type_(storage_db_type) {
+}
 
-  std::string FormatValue(const Slice& key, const Slice& value) override {
-    auto key_type = GetKeyType(key, storage_db_type_);
-    const auto value_result = DocDBValueToDebugStr(
-        key_type, key, value, SchemaPackingStorage());
-    if (value_result.ok()) {
-      return *value_result;
-    }
-    return Format(
-        "$0 (error: $1)",
-        WriteBatchFormatter::FormatValue(key, value),
-        value_result.status());
+std::string DocWriteBatchFormatter::FormatKey(const Slice& key) {
+  const auto key_result = DocDBKeyToDebugStr(key, storage_db_type_);
+  if (key_result.ok()) {
+    return *key_result;
   }
+  return Format(
+      "$0 (error: $1)",
+      WriteBatchFormatter::FormatKey(key),
+      key_result.status());
+}
 
- private:
-  StorageDbType storage_db_type_;
-};
+std::string DocWriteBatchFormatter::FormatValue(const Slice& key, const Slice& value) {
+  auto key_type = GetKeyType(key, storage_db_type_);
+  const auto value_result = DocDBValueToDebugStr(
+      key_type, key, value, SchemaPackingStorage());
+  if (value_result.ok()) {
+    return *value_result;
+  }
+  return Format(
+      "$0 (error: $1)",
+      WriteBatchFormatter::FormatValue(key, value),
+      value_result.status());
+}
 
 Result<std::string> WriteBatchToString(
     const rocksdb::WriteBatch& write_batch,
