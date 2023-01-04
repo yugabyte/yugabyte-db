@@ -25,10 +25,10 @@ type: docs
 
 </ul>
 
-When using YugabyteDB with the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy, higher priority transactions can abort lower priority transactions when conflicts occur. External applications may control the priority of individual transactions using the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is picked and used to compute a transaction priority for the transactions in that session as explained in detail in [Transaction Priorities](../../architecture/transactions/transaction-priorities.md). To view the transaction priority of the active transaction in current session, use the `yb_get_current_transaction_priority` function.
+When using YugabyteDB with the [Fail-on-Conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy, higher priority transactions can abort lower priority transactions when conflicts occur. External applications may control the priority of individual transactions using the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is picked and used to compute a transaction priority for the transactions in that session as explained in detail in [Transaction Priorities](../../../architecture/transactions/transaction-priorities). To view the transaction priority of the active transaction in current session, use the `yb_get_current_transaction_priority` function.
 
 | Flag | Valid Range | Description |
-| --- | --- | --- |
+| :--- | :---------- | :---------- |
 | `yb_transaction_priority_lower_bound` | Any value between 0 and 1, lower than the upper bound | Minimum transaction priority for transactions run in this session |
 | `yb_transaction_priority_upper_bound` | Any value between 0 and 1, higher than the lower bound | Maximum transaction priority for transactions run in this session |
 

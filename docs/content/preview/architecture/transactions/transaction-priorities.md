@@ -24,16 +24,17 @@ type: docs
 
 When using the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy, transactions are assigned priorities that help decide which transactions should be aborted on conflicts.
 
-There are two priority buckets, each having a priority range of [reals](https://www.postgresql.org/docs/current/datatype.html) in [0, 1]:
+There are two priority buckets, each having a priority range of [reals](https://www.postgresql.org/docs/current/datatype.html) in [0, 1] as follows:
 
-1. `High-priority` bucket: in case the first statement in a transaction takes a `FOR UPDATE/ FOR SHARE/ FOR NO KEY UPDATE` explicit row lock using SELECT, it will be assigned a priority from this bucket.
+1. `High-priority` bucket: if the first statement in a transaction takes a `FOR UPDATE/ FOR SHARE/ FOR NO KEY UPDATE` explicit row lock using SELECT, it will be assigned a priority from this bucket.
+
 2. `Normal-priority` bucket: all other transactions are assigned a priority from this bucket.
 
-Note that a transaction with any priority P1 from the high-priority bucket can abort a transaction with any priority P2 from the low-priority bucket. As an example, a transaction with priority 0.1 from the high-priority bucket can abort a transaction with priority 0.9 from the low-priority bucket.
+Note that a transaction with any priority P1 from the high-priority bucket can abort a transaction with any priority P2 from the low-priority bucket. For example, a transaction with priority 0.1 from the high-priority bucket can abort a transaction with priority 0.9 from the low-priority bucket.
 
-Priorities are randomly chosen from the applicable bucket. However, there are two user configurable session variables that can help control the priority assigned to transaction is a specific session: `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. These help set lower and upper bounds on the randomly assigned priority a transaction should receive from the applicable bucket. These variables accept a value of `real` datatype in the range [0, 1]. Also note that the same bounds apply to both buckets.
+Priorities are randomly chosen from the applicable bucket. However, there are two user configurable session variables that can help control the priority assigned to transaction is a specific session: `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. These variables help set lower and upper bounds on the randomly assigned priority that a transaction should receive from the applicable bucket. These variables accept a value of `real` datatype in the range [0, 1]. Also note that the same bounds apply to both buckets.
 
-{{< note title="All single shard transactions have a priority of 1 in the normal-priority bucket" >}}
+{{< note title="All single shard transactions have a priority of 1 in the normal-priority bucket." >}}
 {{</note >}}
 
 The `yb_get_current_transaction_priority` function can be used to fetch the transaction priority of the current active transaction. It returns of the pair `<priority> (bucket)`, where -
@@ -41,143 +42,147 @@ The `yb_get_current_transaction_priority` function can be used to fetch the tran
 1. `<priority>` is a real in [0, 1] with 9 decimal units of precision.
 2. `<bucket>` is either `Normal` or `High`.
 
-NOTE: As an exception, if a transaction is assigned the highest priority possible, that is, a priority of 1 in the high-priority bucket, then a single value `Highest priority transaction` is returned without any real.
+{{< note title="Note">}}
+As an exception, if a transaction is assigned the highest priority possible, that is, a priority of 1 in the high-priority bucket, then a single value _highest priority transaction_ is returned without any real value.
+{{</note >}}
 
 A transaction's priority is `0.000000000 (Normal priority transaction)` until a transaction is really started.
 
 ## Examples
 
 1. Create a table and insert some data.
-```sql
-CREATE TABLE test (k INT PRIMARY KEY, v INT);
-INSERT INTO test VALUES (1, 1);
-```
 
-2. Set the lower and upper bound values for your transactions.
+    ```sql
+    CREATE TABLE test (k INT PRIMARY KEY, v INT);
+    INSERT INTO test VALUES (1, 1);
+    ```
 
-```sql
-SET yb_transaction_priority_lower_bound = 0.4;
-SET yb_transaction_priority_upper_bound = 0.6;
-```
+1. Set the lower and upper bound values for your transactions as follows:
 
-3. Create a transaction in the normal-priority bucket
+    ```sql
+    SET yb_transaction_priority_lower_bound = 0.4;
+    SET yb_transaction_priority_upper_bound = 0.6;
+    ```
 
-```sql
-BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SELECT yb_get_current_transaction_priority(); -- 0 due to an optimization which doesn't really start a real transaction internally unless a write occurs
-```
+1. Create a transaction in the normal-priority bucket
 
-```output
-    yb_get_current_transaction_priority
--------------------------------------------
- 0.000000000 (Normal priority transaction)
-(1 row)
-```
+    ```sql
+    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    SELECT yb_get_current_transaction_priority(); -- 0 due to an optimization which doesn't really start a real transaction internally unless a write occurs
+    ```
 
-```sql
-SELECT * FROM test;
-```
+    ```output
+        yb_get_current_transaction_priority
+    -------------------------------------------
+     0.000000000 (Normal priority transaction)
+    (1 row)
+    ```
 
-```output
- k | v
----+---
- 1 | 1
-(1 row)
-```
+    ```sql
+    SELECT * FROM test;
+    ```
 
-```sql
-SELECT yb_get_current_transaction_priority(); -- still 0 due to the optimization which doesn't really start a real transaction internally unless a write occurs
-```
+    ```output
+     k | v
+    ---+---
+     1 | 1
+    (1 row)
+    ```
 
-```output
-    yb_get_current_transaction_priority
--------------------------------------------
- 0.000000000 (Normal priority transaction)
-(1 row)
-```
+    ```sql
+    SELECT yb_get_current_transaction_priority(); -- still 0 due to the optimization which doesn't really start a real transaction internally unless a write occurs
+    ```
 
-```sql
-INSERT INTO test VALUES (2, '2'); -- perform a write which starts a real transaction
-SELECT yb_get_current_transaction_priority(); -- non-zero now
-```
+    ```output
+        yb_get_current_transaction_priority
+    -------------------------------------------
+     0.000000000 (Normal priority transaction)
+    (1 row)
+    ```
 
-```output
-    yb_get_current_transaction_priority
--------------------------------------------
- 0.537144608 (Normal priority transaction)
-(1 row)
-```
+    ```sql
+    INSERT INTO test VALUES (2, '2'); -- perform a write which starts a real     transaction
+    SELECT yb_get_current_transaction_priority(); -- non-zero now
+    ```
 
-```sql
-COMMIT;
-```
+    ```output
+        yb_get_current_transaction_priority
+    -------------------------------------------
+     0.537144608 (Normal priority transaction)
+    (1 row)
+    ```
 
-4. Create a transaction in the high-priority bucket
+    ```sql
+    COMMIT;
+    ```
 
-```sql
-BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SELECT * FROM test WHERE k = 1 FOR UPDATE; -- starts a transaction in high-priority bucket
-```
+1. Create a transaction in the high-priority bucket
 
-```output
- k | v
----+---
- 1 | 1
-(1 row)
-```
+    ```sql
+    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    SELECT * FROM test WHERE k = 1 FOR UPDATE; -- starts a transaction in     high-priority bucket
+    ```
 
-```sql
-SELECT yb_get_current_transaction_priority();
-```
+    ```output
+     k | v
+    ---+---
+     1 | 1
+    (1 row)
+    ```
 
-```output
-   yb_get_current_transaction_priority
------------------------------------------
- 0.412004009 (High priority transaction)
-(1 row)
-```
+    ```sql
+    SELECT yb_get_current_transaction_priority();
+    ```
 
-```sql
-COMMIT;
-```
+    ```output
+       yb_get_current_transaction_priority
+    -----------------------------------------
+     0.412004009 (High priority transaction)
+    (1 row)
+    ```
 
-5. Create a transaction with the highest priority
+    ```sql
+    COMMIT;
+    ```
 
-```sql
-SET yb_transaction_priority_upper_bound = 1;
-SET yb_transaction_priority_lower_bound = 1;
-BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SELECT * FROM test WHERE k = 1 FOR UPDATE;
-```
+1. Create a transaction with the highest priority
 
-```output
- k | v
----+---
- 1 | 1
-(1 row)
-```
+    ```sql
+    SET yb_transaction_priority_upper_bound = 1;
+    SET yb_transaction_priority_lower_bound = 1;
+    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    SELECT * FROM test WHERE k = 1 FOR UPDATE;
+    ```
 
-```sql
-SELECT yb_get_current_transaction_priority();
-```
+    ```output
+     k | v
+    ---+---
+     1 | 1
+    (1 row)
+    ```
 
-```output
- yb_get_current_transaction_priority
--------------------------------------
- Highest priority transaction
-(1 row)
-```
+    ```sql
+    SELECT yb_get_current_transaction_priority();
+    ```
 
-```sql
-COMMIT;
-```
+    ```output
+     yb_get_current_transaction_priority
+    -------------------------------------
+     Highest priority transaction
+    (1 row)
+    ```
+
+    ```sql
+    COMMIT;
+    ```
 
 {{< note title="Internal representation of priorities" >}}
 
-Internally, both the normal and high-priority buckets are mapped to a `unit64_t` space. The 64 bit range is used by the two priority buckets as follows -
+Internally, both the normal and high-priority buckets are mapped to a `unit64_t` space. The 64 bit range is used by the two priority buckets as follows:
 
-1. Normal priority bucket: `[yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound]` i.e., 0 to  `uint32_t_max`-1
-2. High priority bucket: `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]` i.e., `uint32_t_max` to `uint64_t_max`
+1. Normal priority bucket: `[yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound]`, that is, 0 to  `uint32_t_max`-1
 
-For ease of use, the bounds are expressed as a [0, 1] real range for each bucket in the lower/upper bound session variables and the `yb_get_current_transaction_priority` function. The [0, 1] real range map proportionally to the integer ranges for both buckets. In other words, the [0, 1] range in the normal-priority bucket maps to `[0, uint32_t_max-1]` and the [0, 1] range in the high-priority bucket maps to `[uint32_t_max, uint64_t_max]`.
+1. High priority bucket: `[yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound]`, that is, `uint32_t_max` to `uint64_t_max`
+
+For ease of use, the bounds are expressed as a [0, 1] real range for each bucket in the lower or upper bound session variables and the `yb_get_current_transaction_priority` function. The [0, 1] real range map proportionally to the integer ranges for both buckets. In other words, the [0, 1] range in the normal-priority bucket maps to `[0, uint32_t_max-1]` and the [0, 1] range in the high-priority bucket maps to `[uint32_t_max, uint64_t_max]`.
 {{</note >}}
