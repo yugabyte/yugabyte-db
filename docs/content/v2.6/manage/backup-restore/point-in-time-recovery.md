@@ -68,7 +68,7 @@ To create a schedule and enable PITR, use the [`create_snapshot_schedule`](../..
 Assuming the retention target is three days, you can execute the following command to create a schedule that produces a snapshot once a day (every 1,440 minutes) and retains it for three days (4,320 minutes):
 
 ```sh
-./bin/yb-admin create_snapshot_schedule 1440 4320 <keyspace_name>
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 <keyspace_name>
 ```
 
 The following output is a unique ID of the newly-created snapshot schedule:
@@ -86,7 +86,7 @@ You can use this ID to [delete the schedule](#delete-a-schedule) or [restore to 
 To delete a schedule and disable PITR, use the following [`delete_snapshot_schedule`](../../../admin/yb-admin/#delete-snapshot-schedule) command that takes the ID of the schedule to be deleted as a parameter:
 
 ```sh
-./bin/yb-admin delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ### List schedules
@@ -94,7 +94,7 @@ To delete a schedule and disable PITR, use the following [`delete_snapshot_sched
 To see a list of schedules that currently exist in the cluster, use the following [`list_snapshot_schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
 
 ```sh
-./bin/yb-admin list_snapshot_schedules
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules
 ```
 
 ```output.json
@@ -125,7 +125,7 @@ To see a list of schedules that currently exist in the cluster, use the followin
 You can also use the same command to view the information about a particular schedule by providing its ID as a parameter, as follows:
 
 ```sh
-./bin/yb-admin list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ## Restore to a point in time
@@ -152,15 +152,17 @@ If a keyspace has an associated snapshot schedule, you can use that schedule to 
     For example, the following command restores to 1:00 PM PDT on May 1st 2022 using a Unix timestamp:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                             1651435200
+    ./bin/yb-admin \
+        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1651435200
     ```
 
     The following is an equivalent command that uses a YCQL timestamp:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                             2022-05-01 13:00-0700
+    ./bin/yb-admin \
+        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 2022-05-01 13:00-0700
     ```
 
   * Restore to a time that is relative to the current (for example, to 10 minutes ago from now) by specifying how much time back you would like to roll a database or keyspace.
@@ -168,15 +170,17 @@ If a keyspace has an associated snapshot schedule, you can use that schedule to 
     For example, to restore to 5 minutes ago, run the following command:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                             minus 5m
+    ./bin/yb-admin \
+        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 5m
     ```
 
     Or, to restore to 1 hour ago, use the following:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                             minus 1h
+    ./bin/yb-admin \
+        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 1h
     ```
 
     For detailed information on the relative time formatting, refer to the [`restore_snapshot_schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
