@@ -301,6 +301,8 @@ export const AddTableModal = ({
           setFormWarnings
         )
       }
+      validateOnChange={currentStep !== FormStep.SELECT_TABLES}
+      validateOnBlur={currentStep !== FormStep.SELECT_TABLES}
       onFormSubmit={handleFormSubmit}
       initialValues={INITIAL_VALUES}
       submitLabel={submitLabel}
@@ -391,34 +393,45 @@ const validateForm = async (
           body: 'Select at least 1 table to proceed'
         };
       }
-      const bootstrapTableUUIDs = await getBootstrapTableUUIDs(
-        configTableType,
-        values.tableUUIDs,
-        sourceUniverse.universeUUID,
-        ysqlKeyspaceToTableUUIDs,
-        ysqlTableUUIDToKeyspace
-      );
-
-      setBootstrapRequiredTableUUIDs(bootstrapTableUUIDs);
-
-      // If some tables require bootstrapping, we need to validate the source universe has enough
-      // disk space.
-      if (bootstrapTableUUIDs.length > 0) {
-        // Disk space validation
-        const currentUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
-        const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
-        const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
-          (trace) => trace.name === 'free'
+      let bootstrapTableUUIDs: string[] | null = null;
+      try {
+        bootstrapTableUUIDs = await getBootstrapTableUUIDs(
+          configTableType,
+          values.tableUUIDs,
+          sourceUniverse.universeUUID,
+          ysqlKeyspaceToTableUUIDs,
+          ysqlTableUUIDToKeyspace
         );
-        const freeDiskSpace = parseFloatIfDefined(freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]);
+      } catch (error) {
+        errors.tableUUIDs = {
+          title: 'Table bootstrap verification error',
+          body:
+            'An error occured while verifying whether the selected tables require bootstrapping.'
+        };
+      }
+      if (bootstrapTableUUIDs !== null) {
+        setBootstrapRequiredTableUUIDs(bootstrapTableUUIDs);
 
-        if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
-          warning.tableUUIDs = {
-            title: 'Insufficient disk space.',
-            body: `Some selected tables require bootstrapping. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
-          };
+        // If some tables require bootstrapping, we need to validate the source universe has enough
+        // disk space.
+        if (bootstrapTableUUIDs.length > 0) {
+          // Disk space validation
+          const currentUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
+          const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
+          const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
+            (trace) => trace.name === 'free'
+          );
+          const freeDiskSpace = parseFloatIfDefined(freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]);
+
+          if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
+            warning.tableUUIDs = {
+              title: 'Insufficient disk space.',
+              body: `Some selected tables require bootstrapping. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
+            };
+          }
         }
       }
+
       setFormWarning(warning);
       throw errors;
     }
@@ -456,10 +469,28 @@ const getBootstrapTableUUIDs = async (
   ysqlTableUUIDToKeyspace: Map<string, string>
 ) => {
   // Check if bootstrap is required, for each selected table
-  const bootstrapTests = await isBootstrapRequired(
-    sourceUniverseUUID,
-    selectedTableUUIDs.map(adaptTableUUID)
-  );
+  let bootstrapTests: { [tableUUID: string]: boolean }[] = [];
+  try {
+    bootstrapTests = await isBootstrapRequired(
+      sourceUniverseUUID,
+      selectedTableUUIDs.map(adaptTableUUID)
+    );
+  } catch (error) {
+    toast.error(
+      <span className={styles.alertMsg}>
+        <div>
+          <i className="fa fa-exclamation-circle" />
+          <span>Table bootstrap verification failed.</span>
+        </div>
+        <div>
+          An error occured while verifying whether the selected tables require bootstrapping:
+        </div>
+        <div>{error.message}</div>
+      </span>
+    );
+    throw new Error(error.message);
+  }
+
   const bootstrapTableUUIDs = new Set<string>();
 
   bootstrapTests.forEach((bootstrapTest) => {
