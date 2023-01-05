@@ -29,12 +29,10 @@ setup(
     author_email     = 'rhizome.ai@gmail.com',
     url              = 'https://github.com/apache/age',
     license          = 'Apache2.0',
-    install_requires = [ 'psycopg2', 'antlr4-python3-runtime' ],
+    install_requires = [ 'psycopg2', 'antlr4-python3-runtime==4.9.3'],
     packages         = ['age', 'age.gen'],
     keywords         = ['Graph Database', 'Apache AGE', 'PostgreSQL'],
     python_requires  = '>=3.9',
-    # package_data     =  {},
-    # zip_safe=False,
     classifiers      = [
         'Programming Language :: Python :: 3.9'
     ]

@@ -11,9 +11,15 @@ AGType parser and driver support for [Apache AGE](https://age.apache.org/), grap
 ```
 sudo apt-get update
 sudo apt-get install python3-dev libpq-dev
-pip install --no-binary :all: psycopg2
-pip install antlr4-python3-runtime==4.9.2
+git clone https://github.com/apache/age.git
+cd age/drivers/python
 ```
+
+### Install required packages
+```
+pip install -r requirements.txt
+```
+
 ### Test
 ```
 python -m unittest -v test_age_py.py
@@ -22,18 +28,13 @@ python -m unittest -v test_agtypes.py
 
 ### Build from source
 ```
-git clone https://github.com/apache/age.git
-cd age/drivers/python
-
 python setup.py install
-
 ```
 
 ### Install from PyPi
 
 ```
 pip install apache-age-python
-
 ```
 
 ### For more information about [Apache AGE](https://age.apache.org/)
