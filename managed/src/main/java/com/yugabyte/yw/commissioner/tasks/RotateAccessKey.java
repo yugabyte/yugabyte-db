@@ -59,7 +59,7 @@ public class RotateAccessKey extends UniverseTaskBase {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         AccessKey clusterAccessKey =
             AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
-        String sudoSSHUser = clusterAccessKey.getKeyInfo().sshUser;
+        String sudoSSHUser = provider.details.sshUser;
         if (sudoSSHUser == null) {
           sudoSSHUser =
               provider.details.sshUser != null
