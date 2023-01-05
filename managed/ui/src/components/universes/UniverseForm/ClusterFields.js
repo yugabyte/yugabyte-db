@@ -2087,7 +2087,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableYSQL}
           onToggle={this.toggleEnableYSQL}
           label="Enable YSQL"
-          subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
+          subLabel="Enable the YSQL API endpoint to run postgres compatible workloads. WARNING: If disabled, YSQL cannot be enabled later after universe creation."
         />
       );
       enableYSQLAuth = !isAuthEnforced && (
