@@ -122,7 +122,7 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
               detail.channelType === 'WebHook' ? webHookDetails :
                 null;
       showList.push(
-        <ul key={i} className="cert-details-modal__list alertDestinationDetail">
+        <ul key={`${detail.channelName}-${detail.channelType}`} className="cert-details-modal__list alertDestinationDetail">
           {details}
         </ul>
       );

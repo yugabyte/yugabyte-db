@@ -24,7 +24,7 @@ export default class TableInfoPanel extends Component {
     if (tableInfo.tableType && tableInfo.tableType !== 'REDIS_TABLE_TYPE') {
       tableInfoItems.push({
         name: 'Key Space',
-        data: tableInfo.tableDetails && tableInfo.tableDetails.keyspace
+        data: tableInfo.tableDetails?.keyspace
       });
     }
 

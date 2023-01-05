@@ -30,7 +30,7 @@ export default class CpuUsagePanel extends Component {
         }
       }
     } catch (err) {
-      console.log('CPU metric processing failed with: ' + err);
+      console.error('CPU metric processing failed with: ' + err);
     }
     const value = usage.system
       ? Math.round((usage.system + (usage.user !== undefined ? usage.user : 0)) * 10) / 1000

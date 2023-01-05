@@ -17,7 +17,7 @@ export const CollapsibleNote = ({ noteContent, expandContent }: CollapsibleNoteP
         {noteContent}
         <button
           className={styles.toggleNoteDetailsBtn}
-          onClick={(e) => {
+          onClick={() => {
             setIsNoteDetailsExpanded(!isNoteDetailsExpanded);
           }}
           type="button"

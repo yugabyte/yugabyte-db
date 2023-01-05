@@ -47,6 +47,7 @@ export default class TaskListTable extends Component {
     const abortTaskClicked = (taskUUID) => {
       this.props.abortCurrentTask(taskUUID).then((response) => {
         const taskResponse = response?.payload?.response;
+        // eslint-disable-next-line no-empty
         if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
         } else {
           const toastMessage = taskResponse?.data?.error
@@ -60,6 +61,7 @@ export default class TaskListTable extends Component {
     const taskDetailLinkFormatter = function (cell, row) {
       if (row.status === 'Failure' || row.status === 'Aborted') {
         return <Link to={`/tasks/${row.id}`}>See Details</Link>;
+        // eslint-disable-next-line eqeqeq
       } else if (row.type === 'UpgradeSoftware' && row.details != null) {
         return (
           <span>

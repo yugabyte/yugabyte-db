@@ -6,7 +6,7 @@ import {
   fetchUniverseList,
   fetchUniverseListResponse,
   resetUniverseList
-} from '../../actions/universe';
+, setUniverseMetrics } from '../../actions/universe';
 import {
   getProviderList,
   getProviderListResponse,
@@ -48,7 +48,7 @@ import {
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure
 } from '../../actions/tasks';
-import { setUniverseMetrics } from '../../actions/universe';
+
 import { queryMetrics } from '../../actions/graph';
 import Cookies from 'js-cookie';
 
@@ -171,7 +171,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     fetchUser: () => {
-      const userId = Cookies.get('userId') || localStorage.getItem('userId');
+      const userId = Cookies.get('userId') ?? localStorage.getItem('userId');
       dispatch(fetchUser(userId)).then((userResponse) => {
         if (userResponse.payload.status === 200) {
           dispatch(fetchUserSuccess(userResponse));

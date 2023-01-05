@@ -88,6 +88,7 @@ export const ConfigureBootstrapStep = ({
           label="Select the storage config you want to use for your backup"
           options={groupedStorageConfigOptions}
           components={{
+            // eslint-disable-next-line react/display-name
             SingleValue: ({ data }: { data: any }) => (
               <>
                 <span className={styles.backupConfigLabelName}>{data.label}</span>
@@ -97,6 +98,7 @@ export const ConfigureBootstrapStep = ({
                 />
               </>
             ),
+            // eslint-disable-next-line react/display-name
             Option: (props: any) => {
               return (
                 <components.Option {...props}>

@@ -8,7 +8,7 @@ import { toast } from 'react-toastify';
 const createErrorMessage = (payload) => {
   const structuredError = payload?.response?.data?.error;
   if (structuredError) {
-    if (typeof structuredError == 'string') {
+    if (typeof structuredError === 'string') {
       return structuredError;
     }
     const message = Object.keys(structuredError)

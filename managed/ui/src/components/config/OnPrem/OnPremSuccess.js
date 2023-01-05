@@ -226,7 +226,7 @@ class NewOnPremSuccess extends Component {
     onPremRegions.forEach((region) => {
       region.zones.forEach((zone) => {
         zone.nodes =
-          (nodesByRegionAndZone[region.name] && nodesByRegionAndZone[region.name][zone.name]) || [];
+          (nodesByRegionAndZone?.[region.name]?.[zone.name]) || [];
       });
     });
 

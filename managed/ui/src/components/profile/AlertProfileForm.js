@@ -116,8 +116,8 @@ export default class AlertProfileForm extends Component {
             ? customer.data.alertingData.activeAlertNotificationIntervalMs
             : DEFAULT_ACTIVE_ALERT_NOTIFICATION_INTERVAL_MS
           : '',
-        sendAlertsToYb: customer.data.alertingData && customer.data.alertingData.sendAlertsToYb,
-        reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors
+        sendAlertsToYb: customer.data.alertingData?.sendAlertsToYb,
+        reportOnlyErrors: customer.data.alertingData?.reportOnlyErrors
       },
       customSmtp: isNonEmptyObject(_.get(customer, 'data.smtpData', {})),
       smtpData: {

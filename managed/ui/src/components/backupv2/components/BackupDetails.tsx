@@ -115,6 +115,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
   if (backupDetails.hasIncrementalBackups) {
     TableListComponent = IncrementalTableBackupList;
   } else {
+    // eslint-disable-next-line no-lonely-if
     if (
       backupDetails.backupType === TableType.YQL_TABLE_TYPE ||
       backupDetails.backupType === TableType.REDIS_TABLE_TYPE

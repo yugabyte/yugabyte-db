@@ -51,7 +51,7 @@ const getIcon = (statusType: Badge_Types) => {
 };
 
 export const StatusBadge: FC<StatusBadgeProps> = ({ statusType, customLabel, ...others }) => {
-  const label = customLabel || BACKUP_LABEL_MAP[statusType];
+  const label = customLabel ?? BACKUP_LABEL_MAP[statusType];
   return (
     <span {...others} className={`status-badge ${statusType}`}>
       {label} 

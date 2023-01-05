@@ -58,6 +58,7 @@ export default class AlertDetails extends Component {
     return (
       visible !== nextProps.visible ||
       nextProps.alertDetails !== alertDetails ||
+      // eslint-disable-next-line eqeqeq
       (alertDetails != null && nextProps.alertDetails.uuid !== alertDetails.uuid)
     );
   }
