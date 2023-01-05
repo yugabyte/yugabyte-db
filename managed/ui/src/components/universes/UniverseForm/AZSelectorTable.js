@@ -367,7 +367,7 @@ export default class AZSelectorTable extends Component {
                 count: configArrayItem.count,
                 isAffinitized: azItem.isAffinitized === undefined ? true : azItem.isAffinitized
               });
-              if (uniqueRegions.indexOf(regionItem.uuid) === -1) {
+              if (!uniqueRegions.includes(regionItem.uuid)) {
                 uniqueRegions.push(regionItem.uuid);
               }
             }

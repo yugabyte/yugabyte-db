@@ -125,7 +125,7 @@ class NodeConnectModal extends Component {
   }
 }
 
-function mapStateToProps(state, ownProps) {
+function mapStateToProps(state) {
   return {
     accessKeys: state.cloud.accessKeys,
     runtimeConfigs: state.customer.runtimeConfigs,

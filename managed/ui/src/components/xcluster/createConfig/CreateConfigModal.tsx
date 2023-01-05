@@ -392,7 +392,7 @@ export const CreateConfigModal = ({
                 }}
               />
             );
-          case FormStep.SELECT_TABLES:
+          case FormStep.SELECT_TABLES: {
             // Casting because FormikValues and FormikError have different types.
             const errors = formik.current.errors as FormikErrors<CreateXClusterConfigFormErrors>;
             const { values } = formik.current;
@@ -422,6 +422,7 @@ export const CreateConfigModal = ({
                 />
               </>
             );
+          }
           case FormStep.CONFIGURE_BOOTSTRAP:
             return (
               <ConfigureBootstrapStep

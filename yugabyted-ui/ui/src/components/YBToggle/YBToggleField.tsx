@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { ReactElement } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { YBToggle, YBToggleProps } from './YBToggle';

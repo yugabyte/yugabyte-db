@@ -116,7 +116,7 @@ const tableDataValueToKey = {
 
 const toggleTooltip = (view) => <Tooltip id="tooltip">Switch to {view} view.</Tooltip>;
 
-const { UNKNOWN, WARNING, ...filterStatuses } = universeState;
+const { ...filterStatuses } = universeState;
 const filterStatusesArr = Object.values(filterStatuses).map((status) => ({
   value: status.text,
   label: status.text
@@ -156,7 +156,7 @@ export const UniverseView = (props) => {
   } = props;
 
   const universeUUIDs =
-    universeList && universeList.data
+    universeList?.data
       ? universeList.data.map((universe) => universe.universeUUID)
       : [];
   const prevUniverseUUIDs = usePrevious(universeUUIDs);
@@ -343,7 +343,7 @@ export const UniverseView = (props) => {
   const renderView = (universes) => {
     const curSortObj = dropdownFieldKeys[sortField];
     const tableOptions = {
-      sortName: curSortObj.hasOwnProperty('tableData') ? curSortObj.tableData : curSortObj.value,
+      sortName: Object.prototype.hasOwnProperty.call(curSortObj, 'tableData') ? curSortObj.tableData : curSortObj.value,
       sortOrder: sortOrder,
       onSortChange: (sortName, sortOrder) => {
         handleSortFieldChange(tableDataValueToKey[sortName]);
