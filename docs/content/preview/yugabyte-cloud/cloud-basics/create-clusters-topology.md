@@ -67,7 +67,7 @@ In a cluster that is replicated across regions, the nodes of the cluster are dep
 
 ![Single cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-2.png)
 
-**Resilience**: Putting cluster nodes in different regions provides a  higher degree of failure independence. In the event of a failure, the database cluster continues to serve data requests from the remaining regions while automatically replicating the data in the background to maintain the desired level of resilience.
+**Resilience**: Putting cluster nodes in different regions provides a  higher degree of failure independence. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to instances in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
 
 **Consistency**: All writes are synchronously replicated. Transactions are globally consistent.
 
