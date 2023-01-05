@@ -421,10 +421,20 @@
   to = "/preview/quick-start/:splat"
   status = 200
 
+[[redirects]]
+  from = "/preview/quick-start-yugabytedb-managed/*"
+  to = "/preview/quick-start-yugabytedb-managed/:splat"
+  force = true
+
 # Redirect all non-preview quick start links to preview
 
 [[redirects]]
   from = ":version/quick-start/*"
+  to = "/preview/quick-start/"
+  force = true
+
+[[redirects]]
+  from = ":version/quick-start-yugabytedb-managed/*"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
