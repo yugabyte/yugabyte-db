@@ -254,6 +254,151 @@ CREATE TABLE address (
 
 ---
 
+#### Key defined for a table in functions/procedures cause issues
+
+**GitHub link**: [Issue #707](https://github.com/yugabyte/yb-voyager/issues/707)
+
+**Description**: If you have a basic _key_ defined for a table in a function/procedure, it is exported as is, which causes issues because using a key in YugabyteDB in an incorrect syntax.
+
+**Workaround**: Manually remove the key from the exported schema, or create an index.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+/* function definition */
+
+delimiter //
+create function foo (p_id int)
+returns varchar(20)
+reads sql data
+begin
+create temporary table temp(id int, name text,key(id));
+insert into temp(id,name) select id,p_name from bar where p_id=id;
+return (select name from temp);
+end//
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
+BEGIN
+create temporary table temp(id int, name text,key(id));
+insert into temp(id,name) select id,p_name from bar where p_id=id;
+return(select name from temp);
+end;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+```
+
+Suggested changes to the schema are as follows:
+
+1. Remove the key from the schema as follows:
+
+    ```sql
+    CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
+      BEGIN
+        create temporary table temp(id int, name text);
+        insert into temp(id,name) select id,p_name from bar where p_id=id;
+        return(select name from temp);
+      END;
+      $body$
+      LANGUAGE PLPGSQL
+      SECURITY DEFINER;
+    ```
+
+1. Create an index manually as follows:
+
+    ```sql
+    CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
+      BEGIN
+        create temporary table temp(id int, name text);
+        create index index_as_key on temp(id);
+        insert into temp(id,name) select id,p_name from bar where p_id=id;
+        return(select name from temp);
+      END;
+      $body$
+      LANGUAGE PLPGSQL
+      SECURITY DEFINER;
+    ```
+
+---
+
+#### Multiple declarations of variables in functions
+
+**GitHub link**: [Issue #708](https://github.com/yugabyte/yb-voyager/issues/708)
+
+**Description**: If you re-initializate a variable in a function in MySQL using the set statement, the variable is declared twice with different datatypes in the exported schema.
+
+**Workaround**: Manually remove the extra declaration of the variable from the exported schema file.
+
+**Example**
+
+An example declaration of the variable in the schema is as follows:
+
+```sql
+/* function definition */
+
+delimiter //
+create function xyz()
+returns varchar(10)
+reads sql data
+begin
+    declare max_date date;
+    set max_date=(SELECT CURRENT_DATE()
+    );
+    set @max_date=max_date;
+    return max_date;
+    end //
+delimiter ;
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE OR REPLACE FUNCTION xyz () RETURNS varchar AS $body$
+DECLARE
+
+max_date timestamp;max_date date;
+
+BEGIN
+
+    max_date = (SELECT CURRENT_DATE
+    );
+    max_date:=max_date;
+    return max_date;
+    end;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+```
+
+Suggested change to the schema is to remove the extra declaration of the variable as follows:
+
+```sql
+CREATE OR REPLACE FUNCTION xyz () RETURNS varchar AS $body$
+DECLARE
+
+max_date timestamp;
+
+BEGIN
+
+    max_date = (SELECT CURRENT_DATE
+    );
+    max_date:=max_date;
+    return max_date;
+    end;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+```
+
 ### Oracle issues
 
 #### Some numeric types are not exported
@@ -518,6 +663,55 @@ job_id varchar(10),
 salary double precision,
 part_name varchar(25),
 PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
+```
+
+---
+
+#### Multi-column partition by list is not supported
+
+**GitHub Link**: [Issue#699](https://github.com/yugabyte/yb-voyager/issues/699)
+
+**Description**: In YugabyteDB, you cannot perform a partition by list on multiple columns and exporting the schema results in an error.
+
+**Workaround**: Make the partition a single column partition by list by making suitable changes or choose other supported partitioning methods.
+
+**Example**
+
+An example schema on the Oracle source database is as follows:
+
+```sql
+CREATE TABLE test (
+  id               NUMBER,
+  country_code     VARCHAR2(3),
+  record_type      VARCHAR2(5),
+  descriptions     VARCHAR2(50),
+  CONSTRAINT t1_pk PRIMARY KEY (id)
+)
+PARTITION BY LIST (country_code, record_type)
+(
+  PARTITION part_gbr_abc VALUES (('GBR','A'), ('GBR','B'), ('GBR','C')),
+  PARTITION part_ire_ab  VALUES (('IRE','A'), ('IRE','B')),
+  PARTITION part_usa_a   VALUES (('USA','A')),
+  PARTITION part_others  VALUES (DEFAULT)
+);
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE TABLE test (
+    id numeric NOT NULL,
+    country_code varchar(3),
+    record_type varchar(5),
+    descriptions varchar(50),
+    PRIMARY KEY (id)
+) PARTITION BY LIST (country_code, record_type) ;
+```
+
+Error when exporting the schema is as follows:
+
+```output
+ERROR: cannot use "list" partition strategy with more than one column (SQLSTATE 42P17)
 ```
 
 ---
