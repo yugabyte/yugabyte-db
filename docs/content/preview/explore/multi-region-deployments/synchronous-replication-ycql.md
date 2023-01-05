@@ -42,13 +42,13 @@ This page uses the [yb-ctl](../../../admin/yb-ctl/) local cluster management uti
 
 ## Create a multi-zone cluster in US West
 
-If you have a previously running local cluster, destroy it using the following.
+If you have a previously running local cluster, destroy it using the following command:
 
 ```sh
 ./bin/yb-ctl destroy
 ```
 
-Start a new local cluster with a replication factor (RF) of `3`, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following:
+Start a new local cluster with a replication factor (RF) of `3`, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following command:
 
 ```sh
 ./bin/yb-ctl --rf 3 create --placement_info "aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c"
