@@ -24,9 +24,9 @@ This page simulates AWS regions on a local machine. First, you deploy YugabyteDB
 
 The steps can also be used for deploying clusters in any public cloud, private data center, or in separate VMs. The only differences are as follows:
 
-- You don't need to specify the `--advertise_address` flag
-- You don't need to configure loopback addresses
-- Replace the IP addresses in the commands with the corresponding IP addresses of your nodes
+- You don't need to specify the `--advertise_address` flag.
+- You don't need to configure loopback addresses.
+- Replace the IP addresses in the commands with the corresponding IP addresses of your nodes.
 
 {{< /note >}}
 
