@@ -44,6 +44,11 @@ DECLARE_int64(cdc_intent_retention_ms);
 DEFINE_RUNTIME_bool(enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");
 
+DEFINE_RUNTIME_bool(
+    cdc_before_image_mandatory, true,
+    "Need before image for change record, if 'false' and we don't find the before image for the "
+    "record we will fill up with empty values");
+
 DEFINE_test_flag(
     bool, cdc_snapshot_failure, false,
     "For testing only, When it is set to true, the CDC snapshot operation will fail.");
@@ -221,8 +226,15 @@ Status PopulateBeforeImage(
   QLTableRow row;
   QLValue ql_value;
   // If CDC is failed to get the before image row, skip adding before image columns.
-  if (iter.HasNext().ok()) {
+  auto result = iter.HasNext();
+  if (result.ok() && *result) {
     RETURN_NOT_OK(iter.NextRow(&row));
+  } else if (FLAGS_cdc_before_image_mandatory) {
+    return result.ok()
+               ? STATUS_FORMAT(
+                     InternalError,
+                     "Failed to get the beforeimage for tablet_id: $0", tablet_peer->tablet_id())
+               : result.status();
   }
 
   std::vector<ColumnSchema> columns(schema.columns());
@@ -389,12 +401,28 @@ Status PopulateCDCSDKIntentRecord(
         if (proto_record.IsInitialized() && row_message->IsInitialized() &&
             row_message->op() == RowMessage_Op_UPDATE) {
           if (metadata.record_type == cdc::CDCRecordType::ALL) {
+            VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                    << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                    << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                    << " for change record type: " << row_message->op();
             if (commit_time > 0) {
               auto hybrid_time = commit_time - 1;
-              RETURN_NOT_OK(PopulateBeforeImage(
+              auto result = PopulateBeforeImage(
                   tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message,
-                  enum_oid_label_map, composite_atts_map, prev_decoded_key, schema,
-                  schema_version));
+                  enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version);
+              if (!result.ok()) {
+                LOG(ERROR) << "Failed to get the Beforeimage for tablet: "
+                           << tablet_peer->tablet_id()
+                           << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                           << " for change record type: " << row_message->op()
+                           << " row_message: " << row_message->DebugString()
+                           << " with error status: " << result;
+                return result;
+              }
+              VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                      << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                      << " for change record type: " << row_message->op()
+                      << " row_message: " << row_message->DebugString();
             } else {
               for (size_t index = 0; index < schema.num_columns(); ++index) {
                 row_message->add_old_tuple();
@@ -453,11 +481,27 @@ Status PopulateCDCSDKIntentRecord(
 
       if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
           (row_message->op() == RowMessage_Op_DELETE)) {
+        VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                << "  cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                << "  for change record type: " << row_message->op();
         if (commit_time > 0) {
           auto hybrid_time = commit_time - 1;
-          RETURN_NOT_OK(PopulateBeforeImage(
+          auto result = PopulateBeforeImage(
               tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message, enum_oid_label_map,
-              composite_atts_map, decoded_key, schema, schema_version));
+              composite_atts_map, decoded_key, schema, schema_version);
+          if (!result.ok()) {
+            LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                       << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                       << " for change record type: " << row_message->op()
+                       << " row_message: " << row_message->DebugString()
+                       << " with error status: " << result;
+            return result;
+          }
+          VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                  << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                  << " for change record type: " << row_message->op()
+                  << " row_message: " << row_message->DebugString();
         }
 
         if (row_message->old_tuple_size() == 0) {
@@ -531,11 +575,27 @@ Status PopulateCDCSDKIntentRecord(
            row_message->op() == RowMessage_Op_DELETE)) {
         if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
             (row_message->op() == RowMessage_Op_UPDATE)) {
+          VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                    << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                    << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                    << " for change record type: " << row_message->op();
           if (commit_time > 0) {
             auto hybrid_time = commit_time - 1;
-            RETURN_NOT_OK(PopulateBeforeImage(
+            auto result = PopulateBeforeImage(
                 tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message,
-                enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version));
+                enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version);
+            if (!result.ok()) {
+              LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                         << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                         << " for change record type: " << row_message->op()
+                         << " row_message: " << row_message->DebugString()
+                         << " with error status: " << result;
+              return result;
+            }
+            VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                    << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                    << " for change record type: " << row_message->op()
+                    << " row_message: " << row_message->DebugString();
           } else {
             for (size_t index = 0; index < schema.num_columns(); ++index) {
               row_message->add_old_tuple();
@@ -555,11 +615,27 @@ Status PopulateCDCSDKIntentRecord(
       row_message->IsInitialized() && row_message->op() == RowMessage_Op_UPDATE) {
     row_message->set_table(table_name);
     if (metadata.record_type == cdc::CDCRecordType::ALL) {
+      VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+              << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+              << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+              << " for change record type: " << row_message->op();
       if (commit_time > 0) {
         auto hybrid_time = commit_time - 1;
-        RETURN_NOT_OK(PopulateBeforeImage(
+        auto result = PopulateBeforeImage(
             tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message, enum_oid_label_map,
-            composite_atts_map, prev_decoded_key, schema, schema_version));
+            composite_atts_map, prev_decoded_key, schema, schema_version);
+        if (!result.ok()) {
+          LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                     << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                     << " for change record type: " << row_message->op()
+                     << " row_message: " << row_message->DebugString()
+                     << " with error status: " << result;
+          return result;
+        }
+        VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                << " with read time: " << ReadHybridTime::FromUint64(commit_time)
+                << " for change record type: " << row_message->op()
+                << " row_message: " << row_message->DebugString();
       } else {
         for (size_t index = 0; index < schema.num_columns(); ++index) {
           row_message->add_old_tuple();
@@ -638,9 +714,25 @@ Status PopulateCDCSDKWriteRecord(
 
       if (row_message != nullptr && row_message->op() == RowMessage_Op_UPDATE) {
         if (metadata.record_type == cdc::CDCRecordType::ALL) {
-          RETURN_NOT_OK(PopulateBeforeImage(
+          VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                  << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                  << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                  << " for change record type: " << row_message->op();
+          auto result = PopulateBeforeImage(
               tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
-              enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version));
+              enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version);
+          if (!result.ok()) {
+            LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                       << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                       << " for change record type: " << row_message->op()
+                       << " row_message: " << row_message->DebugString()
+                       << " with error status: " << result;
+            return result;
+          }
+          VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                  << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                  << " for change record type: " << row_message->op()
+                  << " row_message: " << row_message->DebugString();
         } else {
           for (int new_tuple_index = 0; new_tuple_index < row_message->new_tuple_size();
                ++new_tuple_index) {
@@ -677,9 +769,25 @@ Status PopulateCDCSDKWriteRecord(
 
       if ((metadata.record_type == cdc::CDCRecordType::ALL) &&
           (row_message->op() == RowMessage_Op_DELETE)) {
-        RETURN_NOT_OK(PopulateBeforeImage(
+        VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+                << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+                << " for change record type: " << row_message->op();
+        auto result = PopulateBeforeImage(
             tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
-            enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version));
+            enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version);
+        if (!result.ok()) {
+          LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                     << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                     << " for change record type: " << row_message->op()
+                     << " row_message: " << row_message->DebugString()
+                     << " with error status: " << result;
+          return result;
+        }
+        VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                << " for change record type: " << row_message->op()
+                << " row_message: " << row_message->DebugString();
 
         if (row_message->old_tuple_size() == 0) {
           RETURN_NOT_OK(AddPrimaryKey(
@@ -731,9 +839,25 @@ Status PopulateCDCSDKWriteRecord(
 
   if (row_message && row_message->op() == RowMessage_Op_UPDATE) {
     if (metadata.record_type == cdc::CDCRecordType::ALL) {
-      RETURN_NOT_OK(PopulateBeforeImage(
+      VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
+              << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+              << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
+              << " for change record type: " << row_message->op();
+      auto result = PopulateBeforeImage(
           tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
-          enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version));
+          enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version);
+      if (!result.ok()) {
+        LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
+                   << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+                   << " for change record type: " << row_message->op()
+                   << " row_message: " << row_message->DebugString()
+                   << " with error status: " << result;
+        return result;
+      }
+      VLOG(2) << "Successfully got the Beforeimage for tablet: " << tablet_peer->tablet_id()
+              << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
+              << " for change record type: " << row_message->op()
+              << " row_message: " << row_message->DebugString();
     } else {
       for (int index = 0; index < row_message->new_tuple_size(); ++index) {
         row_message->add_old_tuple();
@@ -1041,7 +1165,7 @@ void FillDDLInfo(
     }
     SchemaPB schema_pb;
     if (tablet->metadata()->colocated()) {
-       schema_version = tablet_peer->tablet()->metadata()->schema_version(table_id);
+       schema_version = tablet->metadata()->schema_version(table_id);
        SchemaToPB(*tablet->metadata()->schema(table_id).get(), &schema_pb);
     } else {
       schema_version = current_schema_version;
@@ -1067,15 +1191,7 @@ void FillDDLInfo(
 }
 
 bool VerifyTabletSplitOnParentTablet(
-    const TableId& table_id, const TabletId& tablet_id,
-    const consensus::LWReplicateMsg& msg, client::YBClient* client) {
-  if (!(msg.has_split_request() && msg.split_request().has_tablet_id() &&
-        msg.split_request().tablet_id() == tablet_id)) {
-    LOG(WARNING) << "The replicate message for split-op does not have the parent tablet_id set to: "
-                 << tablet_id << ". Could not verify tablet-split for tablet: " << tablet_id;
-    return false;
-  }
-
+    const TableId& table_id, const TabletId& tablet_id, client::YBClient* client) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   client::YBTableName table_name;
   table_name.set_table_id(table_id);
@@ -1263,8 +1379,13 @@ Status GetChangesForCDCSDK(
 
     if (read_ops.messages.size() > 0 &&
         read_ops.messages[0]->op_type() == consensus::OperationType::UPDATE_TRANSACTION_OP &&
-        read_ops.messages[0]->has_hybrid_time()) {
-      commit_timestamp = read_ops.messages[0]->hybrid_time();
+        read_ops.messages[0]->transaction_state().has_commit_hybrid_time()) {
+      commit_timestamp = read_ops.messages[0]->transaction_state().commit_hybrid_time();
+    } else {
+      LOG(WARNING) << "Unable to read the transaction commit time for tablet_id: " << tablet_id
+                   << " with stream_id: " << stream_id
+                   << " because there is no RAFT log message read from WAL with from_op_id: "
+                   << OpId::FromPB(from_op_id) << ", which can impact the safe time.";
     }
 
     RETURN_NOT_OK(reverse_index_key_slice.consume_byte(docdb::KeyEntryTypeAsChar::kTransactionId));
@@ -1449,7 +1570,7 @@ Status GetChangesForCDCSDK(
             const TableId& table_id = tablet_ptr->metadata()->table_id();
             auto op_id = OpId::FromPB(msg->id());
 
-            if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, *msg, client))) {
+            if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, client))) {
               // We could verify the tablet split succeeded. This is possible when the child tablets
               // of a split are not running yet.
               LOG(INFO) << "Found SPLIT_OP record with index: " << op_id
@@ -1486,9 +1607,17 @@ Status GetChangesForCDCSDK(
             break;
         }
 
-        if (pending_intents) break;
-
-        ht_of_last_returned_message = HybridTime(msg->hybrid_time());
+        if (pending_intents) {
+          // Incase of pending intents use the last replicated intents commit time.
+          have_more_messages = HaveMoreMessages(true);
+          ht_of_last_returned_message =
+              HybridTime::FromPB(resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
+                                     .row_message()
+                                     .commit_time());
+          break;
+        } else {
+          ht_of_last_returned_message = HybridTime(msg->hybrid_time());
+        }
       }
       if (read_ops.messages.size() > 0) {
         *msgs_holder = consensus::ReplicateMsgsHolder(

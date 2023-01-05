@@ -332,10 +332,6 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
 // YBColumnSchema
 ////////////////////////////////////////////////////////////
 
-std::string YBColumnSchema::DataTypeToString(DataType type) {
-  return DataType_Name(type);
-}
-
 YBColumnSchema::YBColumnSchema(const std::string &name,
                                const shared_ptr<QLType>& type,
                                bool is_nullable,
@@ -411,8 +407,8 @@ int32_t YBColumnSchema::pg_type_oid() const {
   return DCHECK_NOTNULL(col_)->pg_type_oid();
 }
 
-InternalType YBColumnSchema::ToInternalDataType(const std::shared_ptr<QLType>& ql_type) {
-  switch (ql_type->main()) {
+InternalType YBColumnSchema::ToInternalDataType(DataType type) {
+  switch (type) {
     case INT8:
       return InternalType::kInt8Value;
     case INT16:
@@ -476,8 +472,12 @@ InternalType YBColumnSchema::ToInternalDataType(const std::shared_ptr<QLType>& q
     case UINT16:
       break;
   }
-  LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();
+  LOG(FATAL) << "Internal error: unsupported type " << type;
   return InternalType::VALUE_NOT_SET;
+}
+
+InternalType YBColumnSchema::ToInternalDataType(const std::shared_ptr<QLType>& ql_type) {
+  return ToInternalDataType(ql_type->main());
 }
 
 ////////////////////////////////////////////////////////////

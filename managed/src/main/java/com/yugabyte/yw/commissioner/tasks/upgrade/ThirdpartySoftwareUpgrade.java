@@ -49,7 +49,9 @@ public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
                 createSetupServerTasks(nodes, params -> {});
                 createConfigureServerTasks(nodes, params -> {});
                 for (ServerType processType : processTypes) {
-                  createGFlagsOverrideTasks(nodes, processType);
+                  if (!processType.equals(ServerType.CONTROLLER)) {
+                    createGFlagsOverrideTasks(nodes, processType);
+                  }
                 }
               },
               nodesToUpdate,

@@ -51,6 +51,10 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 - Applications accessing data from remote regions may experience higher read/write latencies
 - Not resilient to region-level outages, such as those caused by natural disasters like floods or ice storms
 
+**Fault tolerance**
+
+Availability Zone Level, with a minimum of 3 nodes across 3 availability zones in a single region.
+
 **Deployment**
 
 To deploy a multi-zone cluster, create a single-region cluster with Availability Zone Level fault tolerance. Refer to [Create a single-region cluster](../create-clusters/create-single-region/).
@@ -79,7 +83,11 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 **Tradeoffs**
 
 - Write latency can be high (depends on the distance/network packet transfer times)
-- Follower reads trade off consistency for latency
+- [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql) trade off consistency for latency
+
+**Fault tolerance**
+
+Region Level, with a minimum of 3 nodes across 3 regions.
 
 **Deployment**
 
@@ -123,6 +131,10 @@ In YugabyteDB Managed, a partition-by-region cluster consists initially of a pri
 
 - Row-level geo-partitioning is helpful for specific use cases where the dataset and access to the data is logically partitioned. Examples include users in different countries accessing their accounts, and localized products (or product inventory) in a product catalog.
 - When users travel, access to their data will incur cross-region latency because their data is pinned to a different region.
+
+**Fault tolerance**
+
+The regions in the cluster can have fault tolerance of None (single node, no HA), Node Level (minimum 3 nodes in a single availability zone), or Availability Zone Level (minimum 3 nodes in 3 availability zones; recommended). Any regions you add to the cluster have the same fault tolerance as the primary region.
 
 **Deployment**
 
@@ -224,6 +236,10 @@ For applications that have writes happening from a single zone or region but wan
 
 - The primary cluster and the read replicas are correlated clusters, not two independent clusters. In other words, adding read replicas doesn't improve resilience.
 - Read replicas can't take writes, so write latency from remote regions can be high even if there is a read replica near the client.
+
+**Fault tolerance**
+
+Read replicas have a minimum of 1 node. Adding nodes to the read replica increases the replication factor (that is, adds copies of the data) to protect the read replica from node failure.
 
 **Deployment**
 

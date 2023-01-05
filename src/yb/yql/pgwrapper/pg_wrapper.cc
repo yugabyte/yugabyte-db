@@ -668,6 +668,12 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
   proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
+#ifdef OS_MACOSX
+  // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
+  if (getenv("LC_ALL") == nullptr) {
+    proc->SetEnv("LC_ALL", "en_US.UTF-8");
+  }
+#endif
   if (yb_enabled) {
     proc->SetEnv("YB_ENABLED_IN_POSTGRES", "1");
     proc->SetEnv("FLAGS_pggate_master_addresses", conf_.master_addresses);

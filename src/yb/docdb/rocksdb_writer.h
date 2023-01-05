@@ -17,6 +17,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.fwd.h"
 #include "yb/docdb/docdb_fwd.h"
@@ -197,6 +198,10 @@ class ApplyIntentsContext : public IntentsWriterContext {
 
   void Complete(rocksdb::DirectWriteHandler* handler) override;
 
+  void SetFrontiers(ConsensusFrontiers* frontiers) {
+    frontiers_ = frontiers;
+  }
+
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
 
@@ -207,6 +212,9 @@ class ApplyIntentsContext : public IntentsWriterContext {
   IntraTxnWriteId write_id_;
   const KeyBounds* key_bounds_;
   BoundedRocksDbIterator intent_iter_;
+  SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
+  SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
+  ConsensusFrontiers* frontiers_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {

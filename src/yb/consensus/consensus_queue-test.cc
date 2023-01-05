@@ -242,7 +242,7 @@ TEST_F(ConsensusQueueTest, TestStartTrackingAfterStart) {
       OpId::Min(), OpId::Min().term, OpId::Min(), BuildRaftConfigPBForTests(2));
   AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 100);
 
-  Arena arena;
+  ThreadSafeArena arena;
   LWConsensusRequestPB request(&arena);
   LWConsensusResponsePB response(&arena);
   response.ref_responder_uuid(kPeerUuid);
@@ -315,7 +315,7 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
   google::FlagSaver saver;
   FLAGS_consensus_max_batch_size_bytes = page_size_estimate;
 
-  Arena arena;
+  ThreadSafeArena arena;
   {
     auto& request = *arena.NewObject<LWConsensusRequestPB>(&arena);
     auto& response = *arena.NewObject<LWConsensusResponsePB>(&arena);
@@ -381,7 +381,7 @@ TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {
   // at a point that is halfway through the current messages in the queue.
   OpId first_msg = MakeOpIdForIndex(kNumMessages / 2);
 
-  Arena arena;
+  ThreadSafeArena arena;
   LWConsensusRequestPB request(&arena);
   LWConsensusResponsePB response(&arena);
   response.ref_responder_uuid(kPeerUuid);
@@ -461,7 +461,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
 
   // NOTE: We don't need to get operations from the queue. The queue
   // only cares about what the peer reported as received, not what was sent.
-  Arena arena;
+  ThreadSafeArena arena;
   LWConsensusResponsePB response(&arena);
   response.set_responder_term(1);
 
@@ -552,7 +552,7 @@ TEST_F(ConsensusQueueTest, TestQueueLoadsOperationsForPeer) {
   queue_->SetLeaderMode(
       committed_index, committed_index.term, last_applied_op, BuildRaftConfigPBForTests(3));
 
-  Arena arena;
+  ThreadSafeArena arena;
   LWConsensusRequestPB request(&arena);
   LWConsensusResponsePB response(&arena);
   response.ref_responder_uuid(kPeerUuid);
@@ -617,7 +617,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   // in term 1 than the new leader has.
   // The queue should realize that the old leader's last received doesn't exist
   // and send it operations starting at the old leader's committed index.
-  Arena arena;
+  ThreadSafeArena arena;
   LWConsensusRequestPB request(&arena);
   LWConsensusResponsePB response(&arena);
   response.ref_responder_uuid(kPeerUuid);
@@ -753,7 +753,7 @@ TEST_F(ConsensusQueueTest, TestOnlyAdvancesWatermarkWhenPeerHasAPrefixOfOurLog) 
   queue_->Init(OpId(72, 30));
   queue_->SetLeaderMode(OpId(72, 31), 76, OpId(72, 31), BuildRaftConfigPBForTests(3));
 
-  Arena arena;
+  ThreadSafeArena arena;
   LWConsensusRequestPB request(&arena);
   LWConsensusResponsePB response(&arena);
 
@@ -862,7 +862,7 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
       OpId::Min(), OpId::Min().term, OpId::Min(), BuildRaftConfigPBForTests(3));
   AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 100);
 
-  Arena arena;
+  ThreadSafeArena arena;
   LWConsensusRequestPB request(&arena);
   LWConsensusResponsePB response(&arena);
   response.ref_responder_uuid(kPeerUuid);
@@ -917,7 +917,7 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   ASSERT_EQ(queue_->TEST_GetCommittedIndex(), start_op_id);
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), start_op_id);
 
-  Arena arena;
+  ThreadSafeArena arena;
   LWConsensusResponsePB response(&arena);
   response.ref_responder_uuid(kPeerUuid);
 

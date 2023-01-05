@@ -32,6 +32,12 @@ export interface NodeData  {
   name: string;
   /**
    *
+   * @type {string}
+   * @memberof NodeData
+   */
+  host: string;
+  /**
+   *
    * @type {boolean}
    * @memberof NodeData
    */
@@ -48,6 +54,18 @@ export interface NodeData  {
    * @memberof NodeData
    */
   is_tserver: boolean;
+  /**
+   *
+   * @type {boolean}
+   * @memberof NodeData
+   */
+  is_master_up: boolean;
+  /**
+   *
+   * @type {boolean}
+   * @memberof NodeData
+   */
+  is_bootstrapping: boolean;
   /**
    *
    * @type {NodeDataMetrics}

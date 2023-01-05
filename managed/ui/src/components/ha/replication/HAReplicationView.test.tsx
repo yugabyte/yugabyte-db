@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { render } from '../../../test-utils';
 import { HAReplicationView } from './HAReplicationView';
 import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
-import { mockRuntimeConfigs } from './mockUtils';
+import { MOCK_HA_WS_RUNTIME_CONFIG } from './mockUtils';
 
 const mockConfig: HAConfig = {
   uuid: 'config-id-1',
@@ -50,7 +50,7 @@ const setup = (config?: HAConfig) => {
       config={config || mockConfig}
       schedule={mockSchedule}
       editConfig={() => {}}
-      runtimeConfigs={mockRuntimeConfigs}
+      runtimeConfigs={MOCK_HA_WS_RUNTIME_CONFIG}
       fetchRuntimeConfigs={fetchRunTimeConfigs}
       setRuntimeConfig={setRunTimeConfig}
     />

@@ -1384,6 +1384,17 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get a list of namespaces of a given table type
+   * @param databaseType to fetch namespaces of the given databaseType
+   * @return a deferred that yields the list of table names
+   */
+  public Deferred<ListNamespacesResponse> getNamespacesList(YQLDatabase databaseType) {
+    ListNamespacesRequest rpc = new ListNamespacesRequest(this.masterTable, databaseType);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Test if a table exists.
    * @param keyspace the keyspace name to which this table belongs.
    * @param name a non-null table name

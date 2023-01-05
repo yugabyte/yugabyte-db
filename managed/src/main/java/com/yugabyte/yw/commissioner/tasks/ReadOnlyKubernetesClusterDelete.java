@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -86,7 +87,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
 
       Provider provider = Provider.get(providerUUID);
 
-      Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+      Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
@@ -128,6 +129,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
           // Delete the helm deployments.
           helmDeletes.addSubTask(
               createDestroyKubernetesTask(
+                  universe.name,
                   universe.getUniverseDetails().nodePrefix,
                   azName,
                   config,
@@ -140,6 +142,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
         // Delete the PVCs created for this AZ.
         volumeDeletes.addSubTask(
             createDestroyKubernetesTask(
+                universe.name,
                 universe.getUniverseDetails().nodePrefix,
                 azName,
                 config,
@@ -156,6 +159,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
         if (namespace == null && !newNamingStyle) {
           namespaceDeletes.addSubTask(
               createDestroyKubernetesTask(
+                  universe.name,
                   universe.getUniverseDetails().nodePrefix,
                   azName,
                   config,
@@ -201,6 +205,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
   // TODO this method is present in DestroyKubernetesUniverse.java also
   // RFC: Should we consider creating a base class and move it there?
   protected KubernetesCommandExecutor createDestroyKubernetesTask(
+      String universeName,
       String nodePrefix,
       String az,
       Map<String, String> config,
@@ -213,7 +218,8 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(nodePrefix, az, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(
+            nodePrefix, universeName, az, isReadOnlyCluster, newNamingStyle);
 
     if (config != null) {
       params.config = config;
@@ -221,7 +227,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       // particular case, all callers just pass az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               nodePrefix, az, config, newNamingStyle, isReadOnlyCluster);
     }
     params.universeUUID = taskParams().universeUUID;

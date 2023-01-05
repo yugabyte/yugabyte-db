@@ -44,8 +44,9 @@ Status HistoryCutoffOperation::Apply(int64_t leader_term) {
 
   VLOG_WITH_PREFIX(2) << "History cutoff replicated " << op_id() << ": " << history_cutoff;
 
-  history_cutoff = tablet()->RetentionPolicy()->UpdateCommittedHistoryCutoff(history_cutoff);
-  auto regular_db = tablet()->doc_db().regular;
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  history_cutoff = tablet->RetentionPolicy()->UpdateCommittedHistoryCutoff(history_cutoff);
+  auto regular_db = tablet->doc_db().regular;
   if (regular_db) {
     rocksdb::WriteBatch batch;
     docdb::ConsensusFrontiers frontiers;

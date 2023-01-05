@@ -217,9 +217,8 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
     Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
     QLRowBlock result(schema);
-    std::string data_str;
-    ASSERT_OK(rpc.AssignSidecarTo(0, &data_str));
-    Slice data(data_str);
+    auto data_buffer = ASSERT_RESULT(rpc.ExtractSidecar(0));
+    auto data = data_buffer.AsSlice();
     if (!data.empty()) {
       ASSERT_OK(result.Deserialize(QLClient::YQL_CLIENT_CQL, &data));
     }
@@ -1873,7 +1872,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   ConsensusServiceProxy* c_proxy = CHECK_NOTNULL(replica_ts->consensus_proxy.get());
 
-  Arena arena;
+  ThreadSafeArena arena;
   consensus::LWConsensusRequestPB req(&arena);
   consensus::LWConsensusResponsePB resp(&arena);
   RpcController rpc;
@@ -3200,7 +3199,7 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
                 "TEST_follower_fail_all_prepare", "true"));
 
   // Pretend to be the leader and send a request that should return an error.
-  Arena arena;
+  ThreadSafeArena arena;
   consensus::LWConsensusRequestPB req(&arena);
   consensus::LWConsensusResponsePB resp(&arena);
   RpcController rpc;

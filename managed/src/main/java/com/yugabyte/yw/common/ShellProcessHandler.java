@@ -36,6 +36,7 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
@@ -133,11 +134,11 @@ public class ShellProcessHandler {
 
     ShellResponse response = new ShellResponse();
     response.code = ERROR_CODE_GENERIC_ERROR;
-    if (context.getDescription() == null) {
-      response.setDescription(redactedCommand);
-    } else {
-      response.description = context.getDescription();
-    }
+    String description =
+        context.getDescription() == null
+            ? StringUtils.abbreviateMiddle(String.join(" ", command), " ... ", 140)
+            : context.getDescription();
+    response.description = description;
 
     File tempOutputFile = null;
     File tempErrorFile = null;
@@ -179,8 +180,7 @@ public class ShellProcessHandler {
       if (context.getUuid() != null) {
         Util.setPID(context.getUuid(), process);
       }
-      waitForProcessExit(
-          process, context.getDescription(), tempOutputFile, tempErrorFile, endTimeSecs);
+      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeSecs);
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
       boolean logCmdOutput = context.isLogCmdOutput();

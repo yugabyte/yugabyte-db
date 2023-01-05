@@ -2,10 +2,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
-import java.util.Collection;
-import java.util.UUID;
-import org.apache.commons.lang.StringUtils;
-
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -63,7 +59,7 @@ public class RotateAccessKey extends UniverseTaskBase {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         AccessKey clusterAccessKey =
             AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
-        String sudoSSHUser = clusterAccessKey.getKeyInfo().sshUser;
+        String sudoSSHUser = provider.details.sshUser;
         if (sudoSSHUser == null) {
           sudoSSHUser =
               provider.details.sshUser != null

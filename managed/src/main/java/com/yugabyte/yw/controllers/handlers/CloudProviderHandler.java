@@ -16,6 +16,7 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,13 +36,18 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
+import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -52,7 +58,9 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -77,6 +85,7 @@ import play.libs.Json;
 
 public class CloudProviderHandler {
   public static final String YB_FIREWALL_TAGS = "YB_FIREWALL_TAGS";
+  public static final String SKIP_KEYPAIR_VALIDATION_KEY = "yb.provider.skip_keypair_validation";
 
   private static final Logger LOG = LoggerFactory.getLogger(CloudProviderHandler.class);
   private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE =
@@ -106,12 +115,20 @@ public class CloudProviderHandler {
   @Inject private Configuration appConfig;
   @Inject private Config config;
   @Inject private CloudQueryHelper queryHelper;
+  @Inject private AccessKeyRotationUtil accessKeyRotationUtil;
+  @Inject private ProviderEditRestrictionManager providerEditRestrictionManager;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
   @Inject private AZUInitializer azuInitializer;
 
   public void delete(Customer customer, Provider provider) {
+    providerEditRestrictionManager.tryEditProvider(
+        provider.uuid, () -> doDelete(customer, provider));
+  }
+
+  private void doDelete(Customer customer, Provider provider) {
     if (customer.getUniversesForProvider(provider.uuid).size() > 0) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
     }
@@ -124,8 +141,9 @@ public class CloudProviderHandler {
 
     // TODO: move this to task framework
     for (AccessKey accessKey : AccessKey.getAll(provider.uuid)) {
-      if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
-        new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
+      final String provisionInstanceScript = provider.details.provisionInstanceScript;
+      if (!provisionInstanceScript.isEmpty()) {
+        new File(provisionInstanceScript).delete();
       }
       accessManager.deleteKeyByProvider(
           provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
@@ -323,6 +341,16 @@ public class CloudProviderHandler {
   }
 
   public boolean updateKubeConfigForZone(
+      Provider provider,
+      Region region,
+      AvailabilityZone zone,
+      Map<String, String> config,
+      boolean edit) {
+    return providerEditRestrictionManager.tryEditProvider(
+        provider.uuid, () -> doUpdateKubeConfigForZone(provider, region, zone, config, edit));
+  }
+
+  private boolean doUpdateKubeConfigForZone(
       Provider provider,
       Region region,
       AvailabilityZone zone,
@@ -579,6 +607,9 @@ public class CloudProviderHandler {
   public UUID bootstrap(Customer customer, Provider provider, CloudBootstrap.Params taskParams) {
     // Set the top-level provider info.
     taskParams.providerUUID = provider.uuid;
+    taskParams.skipKeyPairValidate =
+        runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
+
     // If the regionList is still empty by here, then we need to list the regions available.
     if (taskParams.perRegionMetadata == null) {
       taskParams.perRegionMetadata = new HashMap<>();
@@ -661,6 +692,13 @@ public class CloudProviderHandler {
 
   public UUID editProvider(
       Customer customer, Provider provider, Provider editProviderReq, String anyProviderRegion) {
+    return providerEditRestrictionManager.tryEditProvider(
+        provider.uuid,
+        () -> doEditProvider(customer, provider, editProviderReq, anyProviderRegion));
+  }
+
+  private UUID doEditProvider(
+      Customer customer, Provider provider, Provider editProviderReq, String anyProviderRegion) {
     provider.setVersion(editProviderReq.getVersion());
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
@@ -675,7 +713,7 @@ public class CloudProviderHandler {
   }
 
   @Transactional
-  public boolean updateProviderData(
+  private boolean updateProviderData(
       Customer customer,
       Provider provider,
       Provider editProviderReq,
@@ -701,7 +739,8 @@ public class CloudProviderHandler {
           Strings.isNullOrEmpty(editProviderReq.keyPairName)
               ? AccessKey.getDefaultKeyCode(provider)
               : editProviderReq.keyPairName;
-      taskParams.overrideKeyValidate = editProviderReq.overrideKeyValidate;
+      taskParams.skipKeyPairValidate =
+          runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
       taskParams.providerUUID = provider.uuid;
       taskParams.destVpcId = editProviderReq.destVpcId;
       taskParams.perRegionMetadata =
@@ -756,7 +795,7 @@ public class CloudProviderHandler {
     if (MapUtils.isEmpty(providerConfig)) {
       return;
     }
-    Map<String, String> existingConfig = null;
+    Map<String, String> existingConfig;
     if ("gcp".equalsIgnoreCase(fromProvider.code)) {
       // For GCP, the config in the DB is derived from the credentials file.
       existingConfig = accessManager.readCredentialsFromFile(fromProvider.uuid);
@@ -855,5 +894,77 @@ public class CloudProviderHandler {
     } else {
       awsInitializer.initialize(customerUUID, provider.uuid);
     }
+  }
+
+  public Map<UUID, UUID> rotateAccessKeys(
+      UUID customerUUID, UUID providerUUID, List<UUID> universeUUIDs, String newKeyCode) {
+    // fail if provider is a manually provisioned one
+    accessKeyRotationUtil.failManuallyProvisioned(providerUUID, newKeyCode);
+    // create access key rotation task for each of the universes
+    return accessManager.rotateAccessKey(customerUUID, providerUUID, universeUUIDs, newKeyCode);
+  }
+
+  public Schedule scheduleAccessKeysRotation(
+      UUID customerUUID,
+      UUID providerUUID,
+      List<UUID> universeUUIDs,
+      int schedulingFrequencyDays,
+      boolean rotateAllUniverses) {
+    // fail if provider is a manually provisioned one
+    accessKeyRotationUtil.failManuallyProvisioned(providerUUID, null /* newKeyCode*/);
+    // fail if a universe is already in scheduled rotation, ask to edit schedule instead
+    accessKeyRotationUtil.failUniverseAlreadyInRotation(customerUUID, providerUUID, universeUUIDs);
+    long schedulingFrequency = accessKeyRotationUtil.convertDaysToMillis(schedulingFrequencyDays);
+    TimeUnit frequencyTimeUnit = TimeUnit.DAYS;
+    ScheduledAccessKeyRotateParams taskParams =
+        new ScheduledAccessKeyRotateParams(
+            customerUUID, providerUUID, universeUUIDs, rotateAllUniverses);
+    return Schedule.create(
+        customerUUID,
+        providerUUID,
+        taskParams,
+        TaskType.CreateAndRotateAccessKey,
+        schedulingFrequency,
+        null,
+        frequencyTimeUnit,
+        null);
+  }
+
+  public Schedule editAccessKeyRotationSchedule(
+      UUID customerUUID,
+      UUID providerUUID,
+      UUID scheduleUUID,
+      EditAccessKeyRotationScheduleParams params) {
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
+    if (!schedule.getOwnerUUID().equals(providerUUID)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Schedule is not owned by this provider");
+    } else if (!schedule.getTaskType().equals(TaskType.CreateAndRotateAccessKey)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "This schedule is not for access key rotation");
+    }
+    if (params.status.equals(Schedule.State.Paused)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "State paused is an internal state and cannot be specified by the user");
+    } else if (params.status.equals(Schedule.State.Stopped)) {
+      schedule.stopSchedule();
+    } else if (params.status.equals(Schedule.State.Active)) {
+      if (params.schedulingFrequencyDays == 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Frequency cannot be null, specify frequency in days!");
+      } else if (schedule.getStatus().equals(Schedule.State.Active) && schedule.getRunningState()) {
+        throw new PlatformServiceException(CONFLICT, "Cannot edit schedule as it is running.");
+      } else {
+        ScheduledAccessKeyRotateParams taskParams =
+            Json.fromJson(schedule.getTaskParams(), ScheduledAccessKeyRotateParams.class);
+        // fail if a universe is already in active scheduled rotation,
+        // and activating this schedule causes conflict
+        accessKeyRotationUtil.failUniverseAlreadyInRotation(
+            customerUUID, providerUUID, taskParams.getUniverseUUIDs());
+        long schedulingFrequency =
+            accessKeyRotationUtil.convertDaysToMillis(params.schedulingFrequencyDays);
+        schedule.updateFrequency(schedulingFrequency);
+      }
+    }
+    return schedule;
   }
 }

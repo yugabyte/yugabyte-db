@@ -41,7 +41,7 @@ func (m memoryCheck) Execute() Result {
 	}
 	command := "grep"
 	args := []string{"MemTotal", "/proc/meminfo"}
-	output, err := common.ExecuteBashCommand(command, args)
+	output, err := common.RunBash(command, args)
 	if err != nil {
 		res.Error = err
 		res.Status = StatusCritical

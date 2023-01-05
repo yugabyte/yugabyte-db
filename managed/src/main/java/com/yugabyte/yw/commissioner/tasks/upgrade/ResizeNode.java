@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -24,6 +25,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Retryable
 public class ResizeNode extends UpgradeTaskBase {
 
   @Inject
@@ -48,11 +50,11 @@ public class ResizeNode extends UpgradeTaskBase {
 
   @Override
   public void run() {
+    // Verify the request params and fail if invalid.
+    taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null);
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
-          // Verify the request params and fail if invalid.
-          taskParams().verifyParams(universe);
           LinkedHashSet<NodeDetails> allNodes = fetchNodesForCluster();
           // Create task sequence to resize allNodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
@@ -197,24 +199,6 @@ public class ResizeNode extends UpgradeTaskBase {
     Integer currDiskSize = currentDeviceInfo.volumeSize;
     // Todo: Add preflight checks here
 
-    // Change disk size.
-    if (newDeviceInfo != null) {
-      Integer newDiskSize = newDeviceInfo.volumeSize;
-      // Check if the storage needs to be resized.
-      if (taskParams().isForceResizeNode() || !currDiskSize.equals(newDiskSize)) {
-        log.info("Resizing disk from {} to {}", currDiskSize, newDiskSize);
-
-        // Resize the nodes' disks.
-        createUpdateDiskSizeTasks(nodes)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk);
-      } else {
-        log.info(
-            "Skipping resizing disk as both old and new sizes are {}, "
-                + "and forceResizeNode flag is false",
-            currDiskSize);
-      }
-    }
-
     // Change instance type
     if (!newInstanceType.equals(currentInstanceType) || taskParams().isForceResizeNode()) {
       for (NodeDetails node : nodes) {
@@ -230,6 +214,24 @@ public class ResizeNode extends UpgradeTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
       }
     }
+
+    // Change disk size.
+    if (newDeviceInfo != null) {
+      Integer newDiskSize = newDeviceInfo.volumeSize;
+      // Check if the storage needs to be resized.
+      if (taskParams().isForceResizeNode() || !currDiskSize.equals(newDiskSize)) {
+        log.info("Resizing disk from {} to {}", currDiskSize, newDiskSize);
+
+        // Resize the nodes' disks.
+        createUpdateDiskSizeTasks(nodes, taskParams().isForceResizeNode())
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk);
+      } else {
+        log.info(
+            "Skipping resizing disk as both old and new sizes are {}, "
+                + "and forceResizeNode flag is false",
+            currDiskSize);
+      }
+    }
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node, String instanceType) {
@@ -241,6 +243,7 @@ public class ResizeNode extends UpgradeTaskBase {
     params.universeUUID = taskParams().universeUUID;
     params.azUuid = node.azUuid;
     params.instanceType = instanceType;
+    params.force = taskParams().isForceResizeNode();
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);

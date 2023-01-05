@@ -54,7 +54,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
-import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
@@ -105,7 +105,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected GFlagsValidation mockGFlagsValidation;
   protected BackupUtil mockBackupUtil;
 
-  @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
+  protected BaseTaskDependencies mockBaseTaskDependencies =
+      Mockito.mock(BaseTaskDependencies.class);
 
   protected Customer defaultCustomer;
   protected Provider defaultProvider;

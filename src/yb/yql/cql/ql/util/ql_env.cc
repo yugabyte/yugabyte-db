@@ -162,17 +162,16 @@ Result<SchemaVersion> QLEnv::GetUpToDateTableSchemaVersion(const YBTableName& ta
 }
 
 shared_ptr<QLType> QLEnv::GetUDType(const std::string& keyspace_name,
-                                      const std::string& type_name,
-                                      bool* cache_used) {
-  shared_ptr<QLType> ql_type = std::make_shared<QLType>(keyspace_name, type_name);
-  Status s = metadata_cache_->GetUDType(keyspace_name, type_name, &ql_type, cache_used);
+                                    const std::string& type_name,
+                                    bool* cache_used) {
+  auto result = metadata_cache_->GetUDType(keyspace_name, type_name);
 
-  if (!s.ok()) {
-    VLOG(3) << "GetTypeDesc: Server returned an error: " << s.ToString();
+  if (!result) {
+    VLOG(3) << "GetTypeDesc: Server returned an error: " << result.status().ToString();
     return nullptr;
   }
-
-  return ql_type;
+  *cache_used = result->second;
+  return std::move(result->first);
 }
 
 void QLEnv::RemoveCachedTableDesc(const YBTableName& table_name) {

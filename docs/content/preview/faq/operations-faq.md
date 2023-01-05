@@ -13,9 +13,11 @@ type: docs
 
 ## Do YugabyteDB clusters need an external load balancer?
 
-For YSQL, an external load balancer is recommended, or you can use a YugabyteDB smart driver. To learn more about smart drivers, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/) and the [Smart driver FAQ](../smart-drivers-faq/).
+For YSQL, an external load balancer is recommended. You can also use a YugabyteDB smart driver to balance connection load. To learn more about smart drivers, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
 
 For YCQL, YugabyteDB provides automatic load balancing.
+
+[YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the connection load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer. For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding. For more information on connection load balancing in YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
 
 ## Can write ahead log (WAL) files be cleaned up or reduced in size?
 

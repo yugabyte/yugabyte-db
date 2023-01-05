@@ -46,6 +46,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.models.Provider;
@@ -400,7 +401,7 @@ public class AWSCloudImpl implements CloudAPI {
         Listener listener = getListenerByPort(lbClient, lbName, port);
         // If no listener exists for a port, create target group and listener
         // else check target group settings and add/remove nodes from target group
-        String targetGroupName = "tg-" + UUID.randomUUID();
+        String targetGroupName = "tg-" + UUID.randomUUID().toString().substring(0, 29);
         if (listener == null) {
           String targetGroupArn =
               createNodeGroup(lbClient, lbName, targetGroupName, protocol, port, instanceIDs);
@@ -586,10 +587,15 @@ public class AWSCloudImpl implements CloudAPI {
    */
   private List<String> getInstanceIDs(
       AmazonEC2 ec2Client, List<String> nodeNames, List<NodeID> nodeIDs) throws Exception {
+    if (CollectionUtils.isEmpty(nodeNames) || CollectionUtils.isEmpty(nodeIDs)) {
+      return new ArrayList<>();
+    }
     // Get instances by node name
     Filter filterName = new Filter("tag:Name").withValues(nodeNames);
+    List<String> states = ImmutableList.of("pending", "running", "stopping", "stopped");
+    Filter filterState = new Filter("instance-state-name").withValues(states);
     DescribeInstancesRequest instanceRequest =
-        new DescribeInstancesRequest().withFilters(filterName);
+        new DescribeInstancesRequest().withFilters(filterName, filterState);
     List<Reservation> reservations = ec2Client.describeInstances(instanceRequest).getReservations();
     // Filter by matching nodeUUIDs and older nodes missing UUID
     Map<NodeID, List<String>> nodeToInstances = new HashMap<>();

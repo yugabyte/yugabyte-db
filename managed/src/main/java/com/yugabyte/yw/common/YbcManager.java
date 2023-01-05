@@ -360,7 +360,7 @@ public class YbcManager {
                 YbcClient client = null;
                 try {
                   String nodeIp = n.cloudInfo.private_ip;
-                  if (nodeIp == null) {
+                  if (nodeIp == null || !n.isTserver) {
                     return;
                   }
                   client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);

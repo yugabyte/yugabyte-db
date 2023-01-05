@@ -45,8 +45,8 @@
 
 #define SCHECK_OP(var1, op, var2, status_type, msg) \
   do { \
-    auto v1_tmp = (var1); \
-    auto v2_tmp = (var2); \
+    const auto& v1_tmp = (var1); \
+    const auto& v2_tmp = (var2); \
     if (PREDICT_FALSE(!(v1_tmp op v2_tmp))) { \
       return STATUS_FORMAT(status_type, "$0: $1 vs $2", (msg), v1_tmp, v2_tmp); \
     } \
@@ -54,8 +54,8 @@
 
 #define SCHECK_OP_FUNC(var1, op_func, var2, status_type, msg) \
   do { \
-    auto v1_tmp = (var1); \
-    auto v2_tmp = (var2); \
+    const auto& v1_tmp = (var1); \
+    const auto& v2_tmp = (var2); \
     if (PREDICT_FALSE(!(op_func(v1_tmp, v2_tmp)))) { \
       return STATUS_FORMAT(status_type, "$0: $1 vs $2", (msg), v1_tmp, v2_tmp); \
     } \

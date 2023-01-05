@@ -91,7 +91,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
     params.allowInsecure = getUniverse().getUniverseDetails().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = getUniverse().getUniverseDetails().clientRootCA;
+    params.clientRootCA = getUniverse().getUniverseDetails().getClientRootCA();
     params.rootAndClientRootCASame = getUniverse().getUniverseDetails().rootAndClientRootCASame;
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);

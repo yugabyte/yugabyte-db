@@ -225,6 +225,18 @@ get_rightop(const Expr *clause)
 }
 
 /*****************************************************************************
+ *		ScalarArrayOperator clause functions
+ *****************************************************************************/
+
+Node *
+yb_get_saop_left_op(const Expr *clause)
+{
+	const ScalarArrayOpExpr *expr = (const ScalarArrayOpExpr *) clause;
+
+	return linitial(expr->args);
+}
+
+/*****************************************************************************
  *		NOT clause functions
  *****************************************************************************/
 

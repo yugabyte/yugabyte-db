@@ -26,7 +26,7 @@ SET(BFPG_GENERATED_FILES
     ${CMAKE_CURRENT_BINARY_DIR}/gen_opspec_table.cc
     ${CMAKE_CURRENT_BINARY_DIR}/gen_opcodes.h
     ${CMAKE_CURRENT_BINARY_DIR}/gen_operator.h
-    ${CMAKE_CURRENT_BINARY_DIR}/gen_bfunc_table.h)
+    ${CMAKE_CURRENT_BINARY_DIR}/gen_bfunc_table.cc)
 
 add_custom_command(OUTPUT ${BFPG_GENERATED_FILES}
                    DEPENDS bfpg_codegen
@@ -39,6 +39,7 @@ set(YB_BFPG_SRCS
     ${BFPG_GENERATED_FILES})
 
 set(YB_BFPG_LIBS
+    yb_bfcommon
     yb_util
     yb_common_base)
 
@@ -53,7 +54,3 @@ add_dependencies(
     gen_src_yb_common_pgsql_protocol_proto
     gen_src_yb_common_ql_protocol_proto
     )
-
-# Build the test cases.
-set(YB_TEST_LINK_LIBS yb_bfpg ${YB_MIN_TEST_LIBS} yb_common)
-ADD_YB_TEST(bfpg-test)

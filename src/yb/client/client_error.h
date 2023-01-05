@@ -30,7 +30,8 @@ YB_DEFINE_ENUM(
     (kTabletNotYetRunning)
     (kTablePartitionListVersionDoesNotMatch)
     (kMetaCacheInvalidated)
-    );
+    (kTablePartitionListRefreshed)
+);
 
 struct ClientErrorTag : IntegralErrorTag<ClientErrorCode> {
   // It is part of the wire protocol and should not be changed once released.
@@ -41,7 +42,7 @@ struct ClientErrorTag : IntegralErrorTag<ClientErrorCode> {
   }
 };
 
-typedef StatusErrorCodeImpl<ClientErrorTag> ClientError;
+using ClientError = StatusErrorCodeImpl<ClientErrorTag>;
 
 // Returns whether status is a client error that should be retried at YBSession level internally.
 // If status is OK, also returns false.

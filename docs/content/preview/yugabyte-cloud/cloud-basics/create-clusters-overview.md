@@ -87,19 +87,19 @@ In cases where the default is unavailable in a region, YugabyteDB Managed will f
 
 The _fault tolerance_ determines how resilient the cluster is to node and cloud zone failures. YugabyteDB Managed provides the following options for providing replication and redundancy:
 
-- **Region level**. Includes 3 nodes spread across multiple regions with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud region failure. This configuration provides the maximum protection for a regional failure.
+- **Region Level**. Includes 3 nodes spread across multiple regions with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud region failure. This configuration provides the maximum protection for a regional failure.
 
-- **Availability zone level**. Includes a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure.
+- **Availability Zone Level**. Includes a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure.
 
-- **Node level**. Includes a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages.
+- **Node Level**. Includes a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages.
 
 Although you can't change the cluster fault tolerance after the cluster is created, you can scale horizontally as follows:
 
-- For Region level, you can add or remove nodes in increments of 1 per region; all regions have the same number of nodes.
-- For Availability zone level, you can add or remove nodes in increments of 3.
-- For Node level, you can add or remove nodes in increments of 1.
+- For Region Level, you can add or remove nodes in increments of 1 per region; all regions have the same number of nodes.
+- For Availability Zone Level, you can add or remove nodes in increments of 3.
+- For Node Level, you can add or remove nodes in increments of 1.
 
-For production clusters, a minimum of Availability zone level is recommended. Whether you choose Region or Availability zone level depends on your application architecture, design, and latency requirements.
+For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
 For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. Single-node clusters can't be scaled.
 

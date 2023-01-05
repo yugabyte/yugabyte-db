@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
@@ -40,7 +39,7 @@ func (p pythonCheck) Execute() Result {
 	}
 	command := "bash"
 	args := []string{"-c", "python3 --version"}
-	output, _ := common.ExecuteBashCommand(command, args)
+	output, _ := common.RunBash(command, args)
 
 	outputTrimmed := strings.TrimSuffix(output, "\n")
 
@@ -55,14 +54,5 @@ func (p pythonCheck) Execute() Result {
 		log.Info("System meets Python installation requirements.")
 	}
 
-	// Check if the user defined python is the expected version.
-	if viper.GetBool("python.bringOwn") {
-		re = regexp.MustCompile(viper.GetString("python.version"))
-		if !re.MatchString(outputTrimmed) {
-			res.Error = fmt.Errorf("User defined python %s not found. Got %s",
-				viper.GetString("python.version"), outputTrimmed)
-			res.Status = StatusCritical
-		}
-	}
 	return res
 }

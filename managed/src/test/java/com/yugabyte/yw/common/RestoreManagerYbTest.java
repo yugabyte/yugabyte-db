@@ -331,7 +331,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
       podAddrToConfig =
-          PlacementInfoUtil.getKubernetesConfigPerPod(
+          KubernetesUtil.getKubernetesConfigPerPod(
               pi, testUniverse.getUniverseDetails().nodeDetailsSet);
     }
 

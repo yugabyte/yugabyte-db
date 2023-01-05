@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -119,7 +120,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     PlacementInfo placementInfo = primaryCluster.placementInfo;
     createSingleKubernetesExecutorTask(
-        CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
+        universe.name, CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
@@ -134,16 +135,18 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
 
     String masterAddresses =
-        PlacementInfoUtil.computeMasterAddresses(
+        KubernetesUtil.computeMasterAddresses(
             placementInfo,
             placement.masters,
             taskParams().nodePrefix,
+            universe.name,
             provider,
             universeDetails.communicationPorts.masterRpcPort,
             newNamingStyle);
 
     if (isMasterChanged) {
       upgradePodsTask(
+          universe.name,
           placement,
           masterAddresses,
           null,
@@ -165,6 +168,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       }
 
       upgradePodsTask(
+          universe.name,
           placement,
           masterAddresses,
           null,
@@ -184,12 +188,16 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         PlacementInfo readClusterPlacementInfo =
             universeDetails.getReadOnlyClusters().get(0).placementInfo;
         createSingleKubernetesExecutorTask(
-            CommandType.POD_INFO, readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
+            universe.name,
+            CommandType.POD_INFO,
+            readClusterPlacementInfo, /*isReadOnlyCluster*/
+            true);
 
         KubernetesPlacement readClusterPlacement =
             new KubernetesPlacement(readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
 
         upgradePodsTask(
+            universe.name,
             readClusterPlacement,
             masterAddresses,
             null,

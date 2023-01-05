@@ -74,7 +74,6 @@
 #endif  // !(defined NDEBUG) || !defined(OS_WIN)
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
 #include "yb/util/test_util.h" // For ASSERT_OK
@@ -183,9 +182,6 @@ class AtomicCounter {
 
 struct OptionsOverride {
   std::shared_ptr<const FilterPolicy> filter_policy = nullptr;
-
-  // Used as a bit mask of individual enums in which to skip an XF test point
-  int skip_policy = 0;
 };
 
 }  // namespace anon

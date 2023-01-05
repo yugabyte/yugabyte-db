@@ -1556,7 +1556,13 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
 
     for (auto& update : actions->updates) {
-      context_.SubmitUpdateTransaction(std::move(update), actions->leader_term);
+      auto submit_status =
+          context_.SubmitUpdateTransaction(std::move(update), actions->leader_term);
+      if (!submit_status.ok()) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Could not submit transaction status update operation: "
+            << update->ToString() << ", status: " << submit_status;
+      }
     }
   }
 
@@ -1582,7 +1588,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
           << state.ShortDebugString();
       return STATUS_EC_FORMAT(
           Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
-          "Transaction $0 expired or aborted by a conflict", *id);
+          "Transaction $0 expired or aborted by a conflict", id);
     }
 
     if (deleting_.load(std::memory_order_acquire)) {

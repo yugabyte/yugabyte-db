@@ -69,6 +69,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
         title={
           <DropdownButton
             pullRight
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             title={
               <span>
                 <i className="fa fa-gear" />
@@ -91,8 +95,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
               <MenuItem
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (currentUniverse?.data?.universeDetails?.universePaused) return;
                   setShowThrottleParametersModal(true);
                 }}
+                disabled={currentUniverse?.data?.universeDetails?.universePaused}
               >
                 Configure Throttle Parameters
               </MenuItem>

@@ -265,7 +265,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     // bugs in the past.
     ASSERT_STR_CONTAINS(buf.ToString(), "hybrid_clock_hybrid_time");
     ASSERT_STR_CONTAINS(buf.ToString(), "threads_started");
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
     ASSERT_STR_CONTAINS(buf.ToString(), "tcmalloc_max_total_thread_cache_bytes");
 #endif
     ASSERT_STR_CONTAINS(buf.ToString(), "glog_info_messages");

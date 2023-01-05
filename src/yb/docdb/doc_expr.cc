@@ -190,32 +190,18 @@ Status DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
     }
 
     case bfql::TSOpcode::kToJson:
-      return EvalParametricToJson(tscall.operands(0), table_row, result, schema);
+      *result = VERIFY_RESULT(EvalParametricToJson(tscall.operands(0), table_row, schema));
+      return Status::OK();
   }
 
   SetNull(result);
   return Status::OK();
 }
 
-Status DocExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
+Status DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
                                    const QLTableRow& table_row,
                                    QLValuePB *result,
                                    const Schema *schema) {
-  return DoEvalTSCall(ql_expr, table_row, result, schema);
-}
-
-Status DocExprExecutor::EvalTSCall(const LWPgsqlBCallPB& ql_expr,
-                          const QLTableRow& table_row,
-                          LWQLValuePB *result,
-                          const Schema *schema) {
-  return DoEvalTSCall(ql_expr, table_row, result, schema);
-}
-
-template <class Expr, class Res>
-Status DocExprExecutor::DoEvalTSCall(const Expr& tscall,
-                                     const QLTableRow& table_row,
-                                     Res *result,
-                                     const Schema *schema) {
   bfpg::TSOpcode tsopcode = static_cast<bfpg::TSOpcode>(tscall.opcode());
   switch (tsopcode) {
     case bfpg::TSOpcode::kCount: {
@@ -223,7 +209,7 @@ Status DocExprExecutor::DoEvalTSCall(const Expr& tscall,
       if (operand.has_column_id()) {
         // Check if column value is NULL. Postgres does not count NULL value of a column, unless
         // it's COUNT(*).
-        ExprResult<Res> arg_result(result);
+        QLExprResult arg_result(result);
         RETURN_NOT_OK(EvalExpr(operand, table_row, arg_result.Writer()));
         if (IsNull(arg_result.Value())) {
           return Status::OK();
@@ -236,45 +222,45 @@ Status DocExprExecutor::DoEvalTSCall(const Expr& tscall,
     }
 
     case bfpg::TSOpcode::kSumInt8:
-      return EvalSumInt(*tscall.operands().begin(), table_row, result, [](const Res& value) {
+      return EvalSumInt(*tscall.operands().begin(), table_row, result, [](const auto& value) {
         return value.int8_value();
       });
 
     case bfpg::TSOpcode::kSumInt16:
-      return EvalSumInt(*tscall.operands().begin(), table_row, result, [](const Res& value) {
+      return EvalSumInt(*tscall.operands().begin(), table_row, result, [](const auto& value) {
         return value.int16_value();
       });
 
     case bfpg::TSOpcode::kSumInt32:
-      return EvalSumInt(*tscall.operands().begin(), table_row, result, [](const Res& value) {
+      return EvalSumInt(*tscall.operands().begin(), table_row, result, [](const auto& value) {
         return value.int32_value();
       });
 
     case bfpg::TSOpcode::kSumInt64:
-      return EvalSumInt(*tscall.operands().begin(), table_row, result, [](const Res& value) {
+      return EvalSumInt(*tscall.operands().begin(), table_row, result, [](const auto& value) {
         return value.int64_value();
       });
 
     case bfpg::TSOpcode::kSumFloat:
       return EvalSumReal(
           *tscall.operands().begin(), table_row, result,
-          [](const Res& value) { return value.float_value(); },
-          [](float value, Res* out) { return out->set_float_value(value); });
+          [](const auto& value) { return value.float_value(); },
+          [](float value, auto* out) { return out->set_float_value(value); });
 
     case bfpg::TSOpcode::kSumDouble:
       return EvalSumReal(
           *tscall.operands().begin(), table_row, result,
-          [](const Res& value) { return value.double_value(); },
-          [](double value, Res* out) { return out->set_double_value(value); });
+          [](const auto& value) { return value.double_value(); },
+          [](double value, auto* out) { return out->set_double_value(value); });
 
     case bfpg::TSOpcode::kMin: {
-      ExprResult<Res> arg_result(result);
+      QLExprResult arg_result(result);
       RETURN_NOT_OK(EvalExpr(*tscall.operands().begin(), table_row, arg_result.Writer()));
       return EvalMin(arg_result.Value(), result);
     }
 
     case bfpg::TSOpcode::kMax: {
-      ExprResult<Res> arg_result(result);
+      QLExprResult arg_result(result);
       RETURN_NOT_OK(EvalExpr(*tscall.operands().begin(), table_row, arg_result.Writer()));
       return EvalMax(arg_result.Value(), result);
     }
@@ -508,10 +494,9 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
 
 } // namespace
 
-Status DocExprExecutor::EvalParametricToJson(const QLExpressionPB& operand,
-                                             const QLTableRow& table_row,
-                                             QLValuePB *result,
-                                             const Schema *schema) {
+Result<QLValuePB> DocExprExecutor::EvalParametricToJson(const QLExpressionPB& operand,
+                                                        const QLTableRow& table_row,
+                                                        const Schema *schema) {
   QLExprResult val;
   RETURN_NOT_OK(EvalExpr(operand, table_row, val.Writer(), schema));
 
@@ -526,7 +511,7 @@ Status DocExprExecutor::EvalParametricToJson(const QLExpressionPB& operand,
   }
 
   // Direct call of ToJson() for elementary type.
-  return bfql::ToJson(&val.ForceNewValue(), result);
+  return bfql::ToJson(val.Value(), bfql::BFFactory());
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -42,6 +42,12 @@ type: docs
 
 The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../api/ysql/), built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../smart-drivers/) features.
 
+{{< note title="YugabyteDB Managed" >}}
+
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+
+{{< /note >}}
+
 ## CRUD operations
 
 The following sections demonstrate how to perform common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
@@ -75,7 +81,7 @@ The following table describes the connection parameters required to connect, inc
 Create a client to connect to the cluster using a connection string. The following is an example connection string for connecting to a YugabyteDB cluster with uniform and topology load balancing:
 
 ```sh
-postgresql://user:password@host:port/database?loadBalance=true?
+postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true?
     topology_keys=cloud.region.zone1,cloud.region.zone2
 ```
 
@@ -91,13 +97,37 @@ The following table describes the connection parameters required to connect usin
 The following is an example connection string for connecting to a YugabyteDB cluster with SSL enabled.
 
 ```sh
-postgresql://user:password@host:port/database?loadBalance=true&ssl=true& \
+postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true&ssl=true& \
     sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
-Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
+#### Use SSL with YugabyeDB Managed
+
+If you created a cluster on YugabyteDB Managed, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+
+With clusters in YugabyteDB Managed, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the `ssl` object with the following parameters:
+
+| Parameter | Description | Setting |
+| :-------- | :---------- | :------ |
+| rejectUnauthorized | If true, the server certificate is verified against the CA specified by the `servername` parameter | true |
+| ca | The cluster root certificate on your computer | fs.readFileSync('path/to/root.crt') |
+| servername | Host name of the YugabyteDB instance | |
+
+For example:
+
+```javascript
+async function createConnection(i){
+    const config = {
+        connectionString: "postgresql://admin:yugabyte@us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.ybdb.io:5433/yugabyte?loadBalance=true",
+    ssl: {
+        rejectUnauthorized: true,
+            ca: fs.readFileSync('./root.crt').toString(),
+            servername: 'us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.ybdb.io',
+        },
+    }
+```
 
 ### Step 3: Write your application
 
@@ -161,6 +191,8 @@ async function fetchData(client){
     }
 })();
 ```
+
+## Run the application
 
 Run the application `QuickStartApp.js` using the following command:
 

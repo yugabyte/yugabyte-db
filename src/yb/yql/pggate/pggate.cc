@@ -97,7 +97,7 @@ struct TableHolder {
 
 class PgsqlReadOpWithPgTable : private TableHolder, public PgsqlReadOp {
  public:
-  explicit PgsqlReadOpWithPgTable(Arena* arena, const PgTableDescPtr& descr, bool is_region_local)
+  PgsqlReadOpWithPgTable(ThreadSafeArena* arena, const PgTableDescPtr& descr, bool is_region_local)
       : TableHolder(descr), PgsqlReadOp(arena, *table_, is_region_local) {}
 
   PgTable& table() {
@@ -241,7 +241,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     return a.table_id < b.table_id;
   });
 
-  auto arena = std::make_shared<Arena>();
+  auto arena = std::make_shared<ThreadSafeArena>();
 
   PrecastRequestSender precast_sender;
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
@@ -1110,9 +1110,9 @@ Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
                                                               end_inclusive);
 }
 
-Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, int attr_num, int n_attr_values,
-    PgExpr **attr_values) {
-  return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
+Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, YBCPgExpr lhs, int n_attr_values,
+                                      PgExpr **attr_values) {
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(lhs, n_attr_values, attr_values);
 }
 
 Status PgApiImpl::DmlAddRowUpperBound(YBCPgStatement handle,
@@ -1194,7 +1194,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
             expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());
           } else {
             const YBCPgCollationInfo& collation_info = attr->collation_info;
-            Arena arena;
+            ThreadSafeArena arena;
             PgConstant value(
                 &arena, attr->type_entity, collation_info.collate_is_valid_non_c,
                 collation_info.sortkey, attr->datum, false);
@@ -1679,6 +1679,22 @@ void PgApiImpl::GetAndResetReadRpcStats(PgStatement *handle,
 void PgApiImpl::GetAndResetOperationFlushRpcStats(uint64_t* count,
                                                   uint64_t* wait_time) {
   pg_session_->GetAndResetOperationFlushRpcStats(count, wait_time);
+}
+
+// Tuple Expression -----------------------------------------------------------------------------
+Status PgApiImpl::NewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    const YBCPgExpr *elems, YBCPgExpr *expr_handle) {
+  if (!stmt) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  *expr_handle = stmt->arena().NewObject<PgTupleExpr>(
+      &stmt->arena(), tuple_type_entity, type_attrs, num_elems, elems);
+
+  return Status::OK();
 }
 
 // Transaction Control -----------------------------------------------------------------------------

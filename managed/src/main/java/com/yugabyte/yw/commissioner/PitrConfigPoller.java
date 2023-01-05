@@ -1,13 +1,7 @@
 package com.yugabyte.yw.commissioner;
 
-import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static com.yugabyte.yw.common.metrics.MetricService.STATUS_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.STATUS_NOT_OK;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
-import com.google.gson.Gson;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.BackupUtil;
@@ -15,21 +9,14 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Metric;
-import com.yugabyte.yw.models.MetricKey;
-import com.yugabyte.yw.models.MetricKey.MetricKeyBuilder;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import io.ebean.Ebean;
 import java.util.Collections;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,13 +24,9 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.yb.client.ListSnapshotSchedulesResponse;
-import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.YBClient;
-import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Singleton
 @Slf4j
