@@ -314,7 +314,11 @@ Result<bool> DocRowwiseIterator::HasNext() {
           // GH15304 (https://github.com/yugabyte/yugabyte-db/issues/15304) which will remove key
           // decoding from ScanChoices completely.
           RETURN_NOT_OK(ValidateSystemKey());
-          db_iter_->SeekOutOfSubDoc(&iter_key_);
+          if (is_forward_scan_) {
+            db_iter_->SeekOutOfSubDoc(&iter_key_);
+          } else {
+            db_iter_->PrevDocKey(row_key_);
+          }
           continue;
         }
 

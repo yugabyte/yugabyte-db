@@ -127,6 +127,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   // Test case implementation.
   void TestClusteredFilterRange();
   void TestClusteredFilterRangeWithTableTombstone();
+  void TestClusteredFilterRangeWithTableTombstoneReverseScan();
   void TestClusteredFilterHybridScan();
   void TestClusteredFilterSubsetCol();
   void TestClusteredFilterSubsetCol2();
@@ -412,6 +413,75 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
   DocPgsqlScanSpec spec(
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
       empty_hash_code, empty_hash_code, nullptr);
+
+  auto iter = ASSERT_RESULT(CreateIterator(
+      test_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000), spec));
+
+  QLTableRow row;
+  QLValue value;
+  ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
+  ASSERT_OK(iter->NextRow(&row));
+
+  ASSERT_OK(row.GetValue(test_schema.column_id(0), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(5, value.int32_value());
+
+  ASSERT_OK(row.GetValue(test_schema.column_id(1), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(6, value.int32_value());
+
+  ASSERT_OK(row.GetValue(test_schema.column_id(2), &value));
+  ASSERT_FALSE(value.IsNull());
+  ASSERT_EQ(10, value.int32_value());
+
+  ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+}
+
+void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseScan() {
+  constexpr ColocationId colocation_id(0x4001);
+
+  Schema test_schema(
+      {ColumnSchema(
+           "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+           SortingType::kAscending),
+       ColumnSchema(
+           "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+           SortingType::kAscending),
+       // Non-key columns
+       ColumnSchema("payload", DataType::INT32, true)},
+      {10_ColId, 11_ColId, 12_ColId}, 2);
+  test_schema.set_colocation_id(colocation_id);
+
+  const std::vector<KeyEntryValue> range_components{
+      KeyEntryValue::Int32(5), KeyEntryValue::Int32(6)};
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(
+          DocKey(test_schema, range_components).Encode(), KeyEntryValue::MakeColumnId(12_ColId)),
+      QLValue::Primitive(10), HybridTime::FromMicros(1000)));
+
+  // Add colocation table tombstone.
+  DocKey colocation_key(colocation_id);
+  ASSERT_OK(DeleteSubDoc(DocPath(colocation_key.Encode()), HybridTime::FromMicros(500)));
+
+  auto doc_read_context = DocReadContext::TEST_Create(test_schema);
+
+  PgsqlConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(12_ColId);
+  cond.set_op(QL_OP_LESS_THAN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_int32_value(5);
+
+  const std::vector<KeyEntryValue> empty_key_components;
+  boost::optional<int32_t> empty_hash_code;
+  static const DocKey default_doc_key;
+  DocPgsqlScanSpec spec(
+      test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
+      empty_hash_code, empty_hash_code, nullptr, default_doc_key, /* is_forward_scan */ false);
 
   auto iter = ASSERT_RESULT(CreateIterator(
       test_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -2426,6 +2496,10 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeWithTableTombstone) {
     TestClusteredFilterRangeWithTableTombstone();
+}
+
+TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeWithTableTombstoneReverseScan) {
+    TestClusteredFilterRangeWithTableTombstoneReverseScan();
 }
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterHybridScanTest) {
