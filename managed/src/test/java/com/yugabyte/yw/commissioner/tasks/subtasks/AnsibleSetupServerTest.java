@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Test;
@@ -24,6 +25,9 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   private AnsibleSetupServer.Params createUniverse(
       Common.CloudType cloudType, AccessKey.KeyInfo accessKeyInfo) {
     Provider p = ModelFactory.newProvider(defaultCustomer, cloudType);
+    p.details = new ProviderDetails();
+    p.details.mergeFrom(accessKeyInfo);
+    p.save();
     Region r = Region.create(p, "r-1", "r-1", "yb-image");
     AccessKey.create(p.uuid, "demo-key", accessKeyInfo);
     AvailabilityZone az = AvailabilityZone.createOrThrow(r, "az-1", "az-1", "subnet-1");
