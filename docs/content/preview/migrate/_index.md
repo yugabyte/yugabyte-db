@@ -8,6 +8,7 @@ image: /images/section_icons/develop/learn.png
 headcontent: Migrate your database with YugabyteDB Voyager.
 type: indexpage
 showRightNav: true
+unversioned: true
 menu:
   preview:
     identifier: voyager

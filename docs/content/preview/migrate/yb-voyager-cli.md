@@ -3,6 +3,7 @@ title: yb-voyager CLI
 linkTitle: yb-voyager CLI
 description: YugabyteDB Voyager CLI and SSL connectivity.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+unversioned: true
 menu:
   preview:
     identifier: yb-voyager-cli
