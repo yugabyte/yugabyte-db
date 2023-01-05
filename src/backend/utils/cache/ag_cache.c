@@ -688,7 +688,7 @@ static void flush_label_oid_cache(void)
 {
     HASH_SEQ_STATUS hash_seq;
 
-    hash_seq_init(&hash_seq, label_name_graph_cache_hash);
+    hash_seq_init(&hash_seq, label_oid_cache_hash);
     for (;;)
     {
         label_cache_data *entry;
