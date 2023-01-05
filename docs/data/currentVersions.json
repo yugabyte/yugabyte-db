@@ -33,7 +33,6 @@
       "appVersion": "2.14.5.0-b18",
       "isStable": true,
       "isLTS": true,
-      "isSTS": true,
       "initialRelease": "2022-07-14",
       "endOfMaintenance": "2024-01-14",
       "endOfLife": "2024-07-14"
