@@ -148,6 +148,16 @@ public class AccessKey extends Model {
   }
 
   public KeyInfo getKeyInfo() {
+    try {
+      Provider provider = Provider.getOrBadRequest(getProviderUUID());
+      if (provider.details != null) {
+        keyInfo.mergeFrom(provider.details);
+      } else {
+        keyInfo.mergeFrom(new ProviderDetails());
+      }
+    } catch (PlatformServiceException e) {
+      // Pass
+    }
     return this.keyInfo;
   }
 
