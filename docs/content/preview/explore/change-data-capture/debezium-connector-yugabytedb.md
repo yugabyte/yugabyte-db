@@ -716,7 +716,7 @@ If you set the property to `false` to prevent the connector from saving tombston
 
 {{< tip title="Use transformers" >}}
 
-It is recommend to add a transformer in the source connector while using with before image; the following property can be added to your configuration directly:
+Add a transformer in the source connector while using with before image; you can add the following property directly to your configuration:
 
 ```properties
 ...
@@ -1057,7 +1057,7 @@ To avoid this problem when you're using a schema registry, use the `YBExtractNew
 
 Transformer type: `io.aiven.kafka.connect.transforms.ExtractTopic`
 
-This transformer extracts a string value from the record and use it as the topic name.
+This transformer extracts a string value from the record and uses it as the topic name.
 
 The transformation can use either the whole key or value (in this case, it must have `INT8`, `INT16`, `INT32`, `INT64`, `FLOAT32`, `FLOAT32`, `BOOLEAN`, or `STRING` type) or a field in them (in this case, it must have `STRUCT` type and the field's value must be `INT8`, `INT16`, `INT32`, `INT64`, `FLOAT32`, `FLOAT32`, `BOOLEAN`, or `STRING`).
 
@@ -1073,7 +1073,7 @@ The transformation defines the following configurations:
 
 Here is an example of this transformation configuration:
 
-```
+```properties
 ...
 "transforms":"ExtractTopicFromValueField",
 "transforms.ExtractTopicFromValueField.type":"io.aiven.kafka.connect.transforms.ExtractTopic$Value",
@@ -1095,7 +1095,7 @@ PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all
 
 The YugabyteDB source connector also supports AVRO serialization with schema registry. To use AVRO serialization, simply add the following configuration to your connector:
 
-```output.json
+```json
 {
   ...
   "key.converter":"io.confluent.connect.avro.AvroConverter",
@@ -1260,7 +1260,7 @@ The following streaming metrics are available:
 | TotalNumberOfCreateEventsSeen | `long` | The total number of create events that this connector has seen since the last start or metrics reset. |
 | TotalNumberOfUpdateEventsSeen | `long` |The total number of update events that this connector has seen since the last start or metrics reset. |
 | TotalNumberOfDeleteEventsSeen | `long` | The total number of delete events that this connector has seen since the last start or metrics reset. |
-| NumberOfEventsFiltered | `long` | The number of events that have been filtered by include/exclude list filtering rules configured on the connector. |
+| NumberOfEventsFiltered | `long` | The total number of events (since the last start or metrics reset) that have been filtered by include/exclude list filtering rules configured on the connector. |
 | QueueTotalCapacity | `int` | The length the queue used to pass events between the streamer and the main Kafka Connect loop. |
 | QueueRemainingCapacity | `int` | The free capacity of the queue used to pass events between the streamer and the main Kafka Connect loop. |
 | Connected | `boolean` | Indicates whether the connector is currently connected to the database server. |

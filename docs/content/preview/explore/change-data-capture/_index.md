@@ -141,7 +141,7 @@ If you need to force the connector to take a snapshot again, you should clean up
 
 You can't take another snapshot of the table using an existing stream ID. In other words, for a given stream ID, if the snapshot process is _completed successfully_, you can't use that stream ID to take the snapshot again.
 
-{{< /note >}}
+{{< /tip >}}
 
 ## Before image
 
@@ -167,7 +167,7 @@ If a new table is added to a namespace on which there is an active stream ID, a 
 
 ## Packed rows
 
-The support for CDC with packed rows is also there. However, there is one case where if all the non-key columns of a row are modified, CDC will emit the change records as an INSERT record rather than an UPDATE record.
+CDC supports packed rows. However, if all the non-key columns of a packed row are modified, CDC emits the changes as an INSERT record rather than an UPDATE record.
 
 ## Limitations
 
