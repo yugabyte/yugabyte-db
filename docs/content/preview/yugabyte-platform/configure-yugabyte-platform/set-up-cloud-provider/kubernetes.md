@@ -191,8 +191,8 @@ Continue configuring your Kubernetes provider as follows:
 
 1. Specify a meaningful name for your configuration.
 2. Choose one of the following ways to specify **Kube Config** for an availability zone:
-  - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
-  - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments.
+   - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
+   - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments. If the zone is in a different Kubernetes cluster than YugabyteDB Anywhere, a zone-specific `kubeconfig` file needs to be passed.
 3. In the **Service Account** field, provide the name of the [service account](#service-account) which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
 4. In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prerequisites#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 5. Use **Pull Secret File** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
@@ -205,7 +205,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Use the **Region** field to select the region.
 
-1. Use the **Zone** field to select a zone label that should match your failure domain zone label `failure-domain.beta.kubernetes.io/zone`.
+1. Use the **Zone** field to select a zone label that should match the value of failure domain zone label on the nodes. `topology.kubernetes.io/zone` would place the pods in that zone.
 
 1. Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and the following guidelines are taken into consideration:
 
@@ -230,7 +230,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
-1. Use **Kube Config** to upload the configuration file. If this file is available at the provider level, you are not required to supply it.
+1. Use **Kube Config** to upload the configuration file. If this file is available at the provider level, you are not required to supply it. 
 
 1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YugabyteDB Anywhere uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../../deploy/kubernetes/single-zone/oss/helm-chart/).
 
@@ -278,6 +278,8 @@ The following overrides are available:
   domainName: my.cluster
   ```
 
+  YugabyteDB servers and other components communicate with each other using the Kubernetes Fully Qualified Domain Names (FQDN). The default domain is `cluster.local`.
+
 - Overrides to add annotations at StatefulSet-level:
 
   ```yml
@@ -306,15 +308,17 @@ The following overrides are available:
         memory: 4Gi
   ```
 
-- Overrides to enable Istio compatibility (required when Istio is used with Kubernetes):
+- Overrides to enable Istio compatibility:
 
   ```yml
   istioCompatibility: enabled: true
   ```
 
-- Overrides to publish Node-IP as the server broadcast address.
+  This is required when Istio is used with Kubernetes.
 
-  By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration:
+- Overrides to publish Node-IP as the server broadcast address:
+
+  By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration: 
 
   ```yml
   tserver:
@@ -337,7 +341,7 @@ The following overrides are available:
   
   # Required to esure that the Kubernetes FQDNs are used for
   # internal communication between the nodes and node-to-node
-  # TLS certificates are validated correctly.
+  # TLS certificates are validated correctly
   
   gflags:
     master:
