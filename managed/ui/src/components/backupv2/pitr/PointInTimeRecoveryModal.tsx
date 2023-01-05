@@ -15,6 +15,7 @@ import { toast } from 'react-toastify';
 import { useMutation, useQueryClient } from 'react-query';
 import { Field, FormikProps } from 'formik';
 import { Col, Row } from 'react-bootstrap';
+
 import { YBModalForm } from '../../common/forms';
 import { YBFormSelect, YBNumericInput } from '../../common/forms/fields';
 import { FormatUnixTimeStampTimeToTimezone } from './PointInTimeRecoveryList';
@@ -22,7 +23,9 @@ import { restoreSnapShot } from '../common/PitrAPI';
 import CautionIcon from '../common/CautionIcon';
 import './PointInTimeRecoveryModal.scss';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const momentLocalizer = require('react-widgets-moment');
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -100,7 +103,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
     }
   });
 
-  if (!config) return <></>;
+  if (!config) return <React.Fragment></React.Fragment>;
 
   const minTime = config.minRecoverTimeInMillis;
   const maxTime = config.maxRecoverTimeInMillis;

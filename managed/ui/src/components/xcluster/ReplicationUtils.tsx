@@ -397,7 +397,7 @@ export const augmentTablesWithXClusterDetails = (
   const ybTableMap = new Map<string, YBTable>();
   ybTable.forEach((table) => {
     const { tableUUID, ...tableDetails } = table;
-    const adaptedTableUUID = adaptTableUUID(table.tableUUID);
+    const adaptedTableUUID = adaptTableUUID(tableUUID);
     ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
   });
   return xClusterConfigTables.reduce((tables: XClusterTable[], table) => {

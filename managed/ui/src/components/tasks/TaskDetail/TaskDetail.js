@@ -183,7 +183,7 @@ class TaskDetail extends Component {
           <Link to="/tasks/">Tasks</Link>
           <span>
             <i className="fa fa-chevron-right"></i>
-            {(currentTaskData && currentTaskData.title) || 'Task Details'}
+            {(currentTaskData?.title) || 'Task Details'}
           </span>
         </h2>
       );
@@ -197,11 +197,11 @@ class TaskDetail extends Component {
             <YBResourceCount
               className="text-align-right pull-right"
               kind="Target universe"
-              size={currentTaskData.title && currentTaskData.title.split(' : ')[1]}
+              size={currentTaskData.title?.split(' : ')[1]}
             />
             <YBResourceCount
               kind="Task name"
-              size={currentTaskData.title && currentTaskData.title.split(' : ')[0]}
+              size={currentTaskData.title?.split(' : ')[0]}
             />
             {taskTopLevelData}
           </div>

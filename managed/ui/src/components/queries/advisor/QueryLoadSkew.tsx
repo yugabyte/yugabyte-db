@@ -8,6 +8,7 @@ import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
 import { QueryLoadRecommendation } from '../../../redesign/helpers/dtos';
 import './styles.scss';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const Plotly = require('plotly.js/lib/index-basic.js');
 
 export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) => {

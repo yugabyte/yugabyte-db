@@ -1,8 +1,7 @@
 import { Metrics } from './XClusterTypes';
 
 //------------------------------------------------------------------------------------
-// XCluster Status Constants
-
+// XCluster Status Constants 
 export const XClusterConfigStatus = {
   INITIALIZED: 'Initialized',
   RUNNING: 'Running',
@@ -11,6 +10,7 @@ export const XClusterConfigStatus = {
   DELETION_FAILED: 'DeletionFailed',
   FAILED: 'Failed'
 } as const;
+// eslint-disable-next-line no-redeclare
 export type XClusterConfigStatus = typeof XClusterConfigStatus[keyof typeof XClusterConfigStatus];
 
 export const BROKEN_XCLUSTER_CONFIG_STATUSES: readonly XClusterConfigStatus[] = [
@@ -27,6 +27,7 @@ export const XClusterConfigState = {
   RUNNING: XClusterConfigStatus.RUNNING,
   PAUSED: 'Paused'
 } as const;
+// eslint-disable-next-line no-redeclare
 export type XClusterConfigState = typeof XClusterConfigState[keyof typeof XClusterConfigState];
 
 export const XClusterTableStatus = {
@@ -38,6 +39,7 @@ export const XClusterTableStatus = {
   VALIDATED: 'Validated',
   BOOTSTRAPPING: 'Bootstrapping'
 } as const;
+// eslint-disable-next-line no-redeclare
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
 //------------------------------------------------------------------------------------
 
@@ -53,6 +55,7 @@ export const XClusterConfigAction = {
   ADD_TABLE: 'addTable',
   EDIT: 'edit'
 } as const;
+// eslint-disable-next-line no-redeclare
 export type XClusterConfigAction = typeof XClusterConfigAction[keyof typeof XClusterConfigAction];
 
 //------------------------------------------------------------------------------------
@@ -75,6 +78,7 @@ export const XClusterTableEligibility = {
   // Eligible - The table is already in the current xCluster config
   ELIGIBLE_IN_CURRENT_CONFIG: 'eligibleInCurrentConfig'
 } as const;
+// eslint-disable-next-line no-redeclare
 export type XClusterTableEligibility = typeof XClusterTableEligibility[keyof typeof XClusterTableEligibility];
 
 export const XCLUSTER_TABLE_INELIGIBLE_STATUSES: readonly XClusterTableEligibility[] = [
@@ -160,6 +164,7 @@ export const MetricName = {
   TSERVER_ASYNC_REPLICATION_LAG_METRIC: 'tserver_async_replication_lag_micros',
   DISK_USAGE: 'disk_usage'
 } as const;
+// eslint-disable-next-line no-redeclare
 export type MetricName = typeof MetricName[keyof typeof MetricName];
 
 // TODO: Add as type for layout alias keys in Metric type.
@@ -183,6 +188,7 @@ export const SortOrder = {
   ASCENDING: 'asc',
   DESCENDING: 'desc'
 } as const;
+// eslint-disable-next-line no-redeclare
 export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
 
 export const XClusterModalName = {

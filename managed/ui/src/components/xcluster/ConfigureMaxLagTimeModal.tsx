@@ -146,7 +146,7 @@ export function ConfigureMaxLagTimeModal({ onHide, visible, currentUniverseUUID 
                 />
                 <br />
                 <span className="alert-subtext">
-                  We'll email you if a replication lag exceeds the defined value above
+                  {"We'll email you if a replication lag exceeds the defined value above"}
                 </span>
               </Col>
             </Row>

@@ -47,7 +47,7 @@ const setup = (config?: HAConfig) => {
   const setRunTimeConfig = jest.fn();
   return render(
     <HAReplicationView
-      config={config || mockConfig}
+      config={config ?? mockConfig}
       schedule={mockSchedule}
       editConfig={() => {}}
       runtimeConfigs={MOCK_HA_WS_RUNTIME_CONFIG}

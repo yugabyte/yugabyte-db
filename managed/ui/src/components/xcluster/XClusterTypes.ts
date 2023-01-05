@@ -17,6 +17,21 @@ import { TableType, YBTable } from '../../redesign/helpers/dtos';
  */
 export type XClusterTableType = TableType.PGSQL_TABLE_TYPE | TableType.YQL_TABLE_TYPE;
 
+/**
+ * Source: XClusterTableConfig.java
+ */
+ export interface XClusterTableDetails {
+  needBootstrap: boolean;
+  replicationSetupDone: true;
+  bootstrapCreateTime: string;
+  status: XClusterTableStatus;
+  restoreTime: string;
+  streamId: string;
+  tableId: string;
+}
+
+export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
+
 export interface XClusterConfig {
   createTime: string;
   modifyTime: string;
@@ -30,20 +45,6 @@ export interface XClusterConfig {
   uuid: string;
 }
 
-/**
- * Source: XClusterTableConfig.java
- */
-export interface XClusterTableDetails {
-  needBootstrap: boolean;
-  replicationSetupDone: true;
-  bootstrapCreateTime: string;
-  status: XClusterTableStatus;
-  restoreTime: string;
-  streamId: string;
-  tableId: string;
-}
-
-export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
 //------------------------------------------------------------------------------------
 // Table Selection Types
 
@@ -109,7 +110,8 @@ export interface MetricTrace {
 }
 
 export type Metrics<MetricNameType extends MetricName> = {
-  [metricName in MetricNameType]: {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  [metricName in MetricNameType]: { // eslint-disable-line no-unused-vars
     data: MetricTrace[];
     directURLs: string[];
     layout: {

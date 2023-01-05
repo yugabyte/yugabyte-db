@@ -332,9 +332,9 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
         return (
           value *
-          MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
+            MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
           this.parent.policy_interval *
-          MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()]
+            MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()]
         );
       }
     })
@@ -362,15 +362,17 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
           if (isEditMode) {
             const editPayloadValues = {
               scheduleUUID: values.scheduleObj.scheduleUUID,
-              status: values.scheduleObj.status,
+              status: values.scheduleObj.status
             };
             if (values.use_cron_expression) {
-              editPayloadValues['cronExpression'] = values.cron_expression
-            }
-            else {
-              editPayloadValues['frequency'] = values['policy_interval'] *
+              editPayloadValues['cronExpression'] = values.cron_expression;
+            } else {
+              editPayloadValues['frequency'] =
+                values['policy_interval'] *
                 MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()];
-              editPayloadValues['frequencyTimeUnit'] = values['policy_interval_type'].value.toUpperCase()
+              editPayloadValues['frequencyTimeUnit'] = values[
+                'policy_interval_type'
+              ].value.toUpperCase();
             }
             if (values['is_incremental_backup_enabled']) {
               editPayloadValues['incrementalBackupFrequency'] =
@@ -530,19 +532,22 @@ function BackupConfigurationForm({
             label="Select the storage config you want to use for your backup"
             options={storageConfigs}
             components={{
+              // eslint-disable-next-line react/display-name
               SingleValue: ({ data }: { data: any }) => (
                 <>
                   <span className="storage-cfg-name">{data.label}</span>
                   <StatusBadge statusType={Badge_Types.DELETED} customLabel={data.name} />
                 </>
               ),
+              // eslint-disable-next-line react/display-name
               Option: (props: any) => {
                 return (
                   <components.Option {...props}>
                     <div className="storage-cfg-select-label">{props.data.label}</div>
                     <div className="storage-cfg-select-meta">
-                      <span>{`${props.data.name}${props.data.regions?.length > 0 ? ',' : ''
-                        }`}</span>
+                      <span>{`${props.data.name}${
+                        props.data.regions?.length > 0 ? ',' : ''
+                      }`}</span>
                       {props.data.regions?.length > 0 && <span>Multi-region support</span>}
                     </div>
                   </components.Option>
@@ -586,58 +591,58 @@ function BackupConfigurationForm({
       </Row>
       {(values['api_type'].value === BACKUP_API_TYPES.YCQL ||
         values['api_type'].value === BACKUP_API_TYPES.YEDIS) && (
-          <Row>
-            <Col lg={12} className="no-padding">
-              {TABLE_BACKUP_OPTIONS.map((target) => (
-                <>
-                  <label className="btn-group btn-group-radio" key={target.value}>
-                    <Field
-                      name="backup_tables"
-                      component="input"
-                      defaultChecked={values['backup_tables'] === target.value}
-                      disabled={
-                        values['db_to_backup'] === null ||
-                        values['db_to_backup']?.value === null ||
-                        isEditMode ||
-                        isIncrementalBackup
+        <Row>
+          <Col lg={12} className="no-padding">
+            {TABLE_BACKUP_OPTIONS.map((target) => (
+              <>
+                <label className="btn-group btn-group-radio" key={target.value}>
+                  <Field
+                    name="backup_tables"
+                    component="input"
+                    defaultChecked={values['backup_tables'] === target.value}
+                    disabled={
+                      values['db_to_backup'] === null ||
+                      values['db_to_backup']?.value === null ||
+                      isEditMode ||
+                      isIncrementalBackup
+                    }
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      setFieldValue('backup_tables', e.target.value, false);
+                      if (
+                        e.target.value === Backup_Options_Type.CUSTOM &&
+                        values['selected_ycql_tables'].length === 0
+                      ) {
+                        setFieldValue('show_select_ycql_table', true);
                       }
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        setFieldValue('backup_tables', e.target.value, false);
-                        if (
-                          e.target.value === Backup_Options_Type.CUSTOM &&
-                          values['selected_ycql_tables'].length === 0
-                        ) {
-                          setFieldValue('show_select_ycql_table', true);
-                        }
-                      }}
-                      checked={values['backup_tables'] === target.value}
-                      type="radio"
-                      value={target.value}
-                    />
-                    {target.label}
-                    {target.value === Backup_Options_Type.CUSTOM &&
-                      values['backup_tables'] === Backup_Options_Type.CUSTOM && (
-                        <span className="tables-count">
-                          <span>{values['selected_ycql_tables'].length} tables selected</span>
-                          <span
-                            className="edit-selection"
-                            onClick={() => {
-                              setFieldValue('show_select_ycql_table', true);
-                            }}
-                          >
-                            <i className="fa fa-pencil" />
-                            &nbsp;
-                            {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
-                          </span>
+                    }}
+                    checked={values['backup_tables'] === target.value}
+                    type="radio"
+                    value={target.value}
+                  />
+                  {target.label}
+                  {target.value === Backup_Options_Type.CUSTOM &&
+                    values['backup_tables'] === Backup_Options_Type.CUSTOM && (
+                      <span className="tables-count">
+                        <span>{values['selected_ycql_tables'].length} tables selected</span>
+                        <span
+                          className="edit-selection"
+                          onClick={() => {
+                            setFieldValue('show_select_ycql_table', true);
+                          }}
+                        >
+                          <i className="fa fa-pencil" />
+                          &nbsp;
+                          {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
                         </span>
-                      )}
-                  </label>
-                  <br />
-                </>
-              ))}
-            </Col>
-          </Row>
-        )}
+                      </span>
+                    )}
+                </label>
+                <br />
+              </>
+            ))}
+          </Col>
+        </Row>
+      )}
 
       <Row>
         <div>Select backup retention period</div>
@@ -901,9 +906,11 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
             <Col lg={12} className="no-padding table-list">
               {tablesInKeyspaces
                 ?.filter(
+                  // eslint-disable-next-line @typescript-eslint/prefer-includes
                   (t) => t.tableName.toLowerCase().indexOf(values['search_text'].toLowerCase()) > -1
                 )
                 .filter((t) => !find(values['selected_ycql_tables'], { tableName: t.tableName }))
+                // eslint-disable-next-line react/display-name
                 .map((t) => {
                   return (
                     <div className="table-item" key={t.tableUUID}>
@@ -931,26 +938,26 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
           {values['selected_ycql_tables'].length === 0
             ? infoText
             : values['selected_ycql_tables'].map((t: ITable) => {
-              return (
-                <div className="selected-table-item" key={t.tableUUID}>
-                  {t.tableName}
-                  <span
-                    className="remove-selected-table"
-                    onClick={() => {
-                      if (isEditMode) return;
-                      setFieldValue(
-                        'selected_ycql_tables',
-                        values['selected_ycql_tables'].filter(
-                          (f: ITable) => f.tableUUID !== t.tableUUID
-                        )
-                      );
-                    }}
-                  >
-                    <img alt="Remove" src={Close} width="22" />
-                  </span>
-                </div>
-              );
-            })}
+                return (
+                  <div className="selected-table-item" key={t.tableUUID}>
+                    {t.tableName}
+                    <span
+                      className="remove-selected-table"
+                      onClick={() => {
+                        if (isEditMode) return;
+                        setFieldValue(
+                          'selected_ycql_tables',
+                          values['selected_ycql_tables'].filter(
+                            (f: ITable) => f.tableUUID !== t.tableUUID
+                          )
+                        );
+                      }}
+                    >
+                      <img alt="Remove" src={Close} width="22" />
+                    </span>
+                  </div>
+                );
+              })}
         </Col>
       </Row>
     </YBModalForm>

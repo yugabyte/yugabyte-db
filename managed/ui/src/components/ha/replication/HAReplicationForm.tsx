@@ -157,6 +157,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
           await disableReplication(data);
         }
       } else {
+        // eslint-disable-next-line no-lonely-if
         if (data.instanceType === HAInstanceTypes.Active) {
           data.configId = (await createHAConfig(data)).uuid;
           await createHAInstance(data);
@@ -228,9 +229,11 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                     <Row className="ha-replication-form__alert">
                       <Col xs={12}>
                         <Alert bsStyle="warning">
-                          Note: on standby instances you can only access the high availability
-                          configuration and other features won't be available until the
-                          configuration is deleted.
+                          {
+                            "Note: on standby instances you can only access the high availability\
+                          configuration and other features won't be available until the\
+                          configuration is deleted."
+                          }
                         </Alert>
                       </Col>
                     </Row>

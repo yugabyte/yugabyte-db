@@ -1,7 +1,6 @@
 import React from 'react';
 import { toast } from 'react-toastify';
 import userEvent from '@testing-library/user-event';
-import { screen } from '@testing-library/react';
 
 import { render, fireEvent, waitFor } from '../../../test-utils';
 import { FREQUENCY_MULTIPLIER, HAInstanceTypes, HAReplicationForm } from './HAReplicationForm';
@@ -51,12 +50,17 @@ const setup = (hasPeerCerts: boolean, config?: HAConfig, schedule?: HAReplicatio
 
   const form = component.getByRole('form');
   const formFields = {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     instanceType: form.querySelector<HTMLInputElement>('input[name="instanceType"]:checked')!,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     instanceAddress: form.querySelector<HTMLInputElement>('input[name="instanceAddress"]')!,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     clusterKey: form.querySelector<HTMLInputElement>('input[name="clusterKey"]')!,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     replicationFrequency: form.querySelector<HTMLInputElement>(
       'input[name="replicationFrequency"]'
     )!,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     replicationEnabled: form.querySelector<HTMLInputElement>('input[name="replicationEnabled"]')!
   };
   const formValues = {
