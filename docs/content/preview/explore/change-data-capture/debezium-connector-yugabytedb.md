@@ -51,7 +51,7 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ### Tested versions
 
-| | |
+| Software | Versions |
 | :--- | :--- |
 | **Java** | 11+ |
 | **Kafka Connect** | 2.x, 3.x |
@@ -64,7 +64,7 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ### Reporting issues
 
-To report issues and file tickets, visit our [GitHub project](https://github.com/yugabyte/yugabyte-db/projects/49).
+To report issues and file tickets, visit our [GitHub](https://github.com/yugabyte/yugabyte-db/issues/new/choose) and add the label `area/cdcsdk`.
 
 ## Setup
 
