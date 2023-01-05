@@ -34,16 +34,16 @@ import (
 const Systemctl string = "systemctl"
 
 // InputFile where installer config settings are specified.
-var InputFile = "/opt/yba-ctl/yba-ctl.yml"
+const InputFile = "/opt/yba-ctl/yba-ctl.yml"
 
-var YbaCtlLogFile = "/opt/yba-ctl/yba-ctl.log"
+const YbaCtlLogFile = "/opt/yba-ctl/yba-ctl.log"
 
-var installingFile = "/opt/yba-ctl/.installing"
+const installingFile = "/opt/yba-ctl/.installing"
 
 // InstalledFile is location of install completed marker file.
-var InstalledFile = "/opt/yba-ctl/.installed"
+const InstalledFile = "/opt/yba-ctl/.installed"
 
-var PostgresPackageGlob = "postgresql-*-linux-x64-binaries.tar.gz"
+const PostgresPackageGlob = "yba_installer-*linux*/postgresql-*-linux-x64-binaries.tar.gz"
 
 var skipConfirmation = false
 
@@ -51,11 +51,15 @@ var yumList = []string{"RedHat", "CentOS", "Oracle", "Alma", "Amazon"}
 
 var aptList = []string{"Ubuntu", "Debian"}
 
-var goBinaryName = "yba-ctl"
+const goBinaryName = "yba-ctl"
 
-var versionMetadataJSON = "version_metadata.json"
+const versionMetadataJSON = "version_metadata.json"
 
-var javaBinaryGlob = "OpenJDK8U-jdk_x64_linux_*.tar.gz"
+const javaBinaryGlob = "yba_installer-*linux*/OpenJDK8U-jdk_x64_linux_*.tar.gz"
+
+const TemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
+
+const cronDirGlob = "yba_installer-*linux*/" + CronDir
 
 // DetectOS detects the operating system yba-installer is running on.
 func DetectOS() string {
@@ -513,4 +517,14 @@ func GuessPrimaryIP() string {
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String()
+}
+
+func GetFileMatchingGlob(glob string) string {
+	matches, err := filepath.Glob(glob)
+	if err != nil || len(matches) != 1 {
+		log.Fatal(fmt.Sprintf(
+			"Expect to find one match for glob %s (err %s, matches %v)",
+			glob, err, matches))
+	}
+	return matches[0]
 }

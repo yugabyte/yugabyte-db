@@ -120,7 +120,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ### Step 3: Write your application
 
-Create a file called `QuickStart.go` and add the following contents into it:
+Create a file called `QuickStartApp.go` and add the following contents into it:
 
 ```go
 package main
