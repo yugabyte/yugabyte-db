@@ -100,7 +100,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS
   // communication between server and client.
-  @ApiModelProperty public UUID clientRootCA = null;
+  // This is made 'protected' to make sure there is no direct setting/getting
+  @ApiModelProperty protected UUID clientRootCA = null;
 
   // This flag represents whether user has chosen to use same certificates for node to node and
   // client to server communication.
@@ -164,6 +165,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty public boolean mastersInDefaultRegion = true;
 
   @ApiModelProperty public Map<ClusterAZ, String> existingLBs = null;
+
+  // Override the default DB present in pre-built Ami
+  @ApiModelProperty(hidden = true)
+  public boolean overridePrebuiltAmiDBVersion = false;
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -292,11 +297,32 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
-    public void validate(boolean validateGFlagsConsistency) {
+    public void validate(boolean validateGFlagsConsistency, boolean isAuthEnforced) {
       checkDeviceInfo();
       checkStorageType();
+      validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+      }
+    }
+
+    /**
+     * Validate to ensure that the user is not able to create a universe via API when they disable
+     * YSQL Auth or YCQL Auth but yb.universe.auth.is_enforced runtime config value is true
+     *
+     * @param isAuthEnforced Runtime config value denoting if user is manadated to have auth.
+     */
+    private void validateAuth(boolean isAuthEnforced) {
+      if (isAuthEnforced) {
+        boolean enableYSQLAuth = userIntent.enableYSQLAuth;
+        boolean enableYCQLAuth = userIntent.enableYCQLAuth;
+        if ((userIntent.enableYSQL && !enableYSQLAuth)
+            || (userIntent.enableYCQL && !enableYCQLAuth)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Global Policy mandates auth-enforced universes."
+                  + "Make sure to enableAuth in request.");
+        }
       }
     }
 
@@ -871,6 +897,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     return Iterables.getOnlyElement(foundClusters, null);
+  }
+
+  // the getter has some logic built around, as there are no other layer to
+  // have such logic at a common place
+  public UUID getClientRootCA() {
+    return (rootCA != null && rootAndClientRootCASame) ? rootCA : clientRootCA;
+  }
+
+  public void setClientRootCA(UUID clientRootCA) {
+    this.clientRootCA = clientRootCA;
   }
 
   /**

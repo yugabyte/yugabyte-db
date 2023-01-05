@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import java.util.concurrent.CancellationException;
 
@@ -21,7 +22,6 @@ import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.UUID;
 import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -135,6 +135,11 @@ public class RestoreBackupYbc extends YbcTaskBase {
           YbcBackupResponse successMarker =
               ybcBackupUtil.parseYbcBackupResponse(successMarkerString);
           backupSize = Long.parseLong(successMarker.backupSize);
+          if (!ybcBackupUtil.validateYCQLTableListOverwrites(
+              successMarker, taskParams().universeUUID, backupStorageInfo.keyspace)) {
+            taskId = null;
+            throw new PlatformServiceException(BAD_REQUEST, "Overwriting tables is not allowed.");
+          }
           BackupServiceTaskCreateRequest restoreTaskCreateRequest =
               ybcBackupUtil.createYbcRestoreRequest(
                   taskParams().customerUUID,

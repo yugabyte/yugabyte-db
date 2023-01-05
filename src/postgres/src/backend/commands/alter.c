@@ -371,7 +371,7 @@ ExecRenameStmt(RenameStmt *stmt)
 		case OBJECT_DOMAIN:
 		case OBJECT_TYPE:
 			return RenameType(stmt);
-		
+
 		case OBJECT_FUNCTION:
 			return RenameFunction(stmt, stmt->newname);
 
@@ -638,6 +638,8 @@ AlterObjectNamespace_oid(Oid classId, Oid objid, Oid nspOid,
 		case OCLASS_PUBLICATION_REL:
 		case OCLASS_SUBSCRIPTION:
 		case OCLASS_TRANSFORM:
+		case OCLASS_YBPROFILE:
+		case OCLASS_YBROLE_PROFILE:
 			/* ignore object types that don't have schema-qualified names */
 			break;
 
@@ -846,7 +848,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 		case OBJECT_YBTABLEGROUP:
 			return AlterTablegroupOwner(strVal((Value *) stmt->object),
 										newowner);
-		
+
 		case OBJECT_FUNCTION:
 			return AlterFunctionOwner(stmt,  newowner);
 

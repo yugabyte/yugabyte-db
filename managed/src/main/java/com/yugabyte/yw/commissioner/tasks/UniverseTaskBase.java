@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.util.Objects;
@@ -122,8 +125,8 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -139,23 +142,6 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.slf4j.MDC;
-import org.yb.ColumnSchema.SortOrder;
-import org.yb.CommonTypes.TableType;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.ModifyClusterConfigIncrementVersion;
-import org.yb.client.YBClient;
-import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterTypes;
-import play.api.Play;
-import play.libs.Json;
-
-import javax.annotation.Nullable;
-import javax.inject.Inject;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -171,9 +157,22 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import javax.annotation.Nullable;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.slf4j.MDC;
+import org.yb.ColumnSchema.SortOrder;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.ModifyClusterConfigIncrementVersion;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
+import play.api.Play;
+import play.libs.Json;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -2253,7 +2252,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     backupYbcParams.nodeIp =
         backupYbcParams.nodeIp != null
             ? backupYbcParams.nodeIp
-            : getUniverse(false).getMasterLeaderNode().cloudInfo.private_ip;
+            : Util.getYbcNodeIp(getUniverse(false));
     backupYbcParams.index = index;
     task.initialize(backupYbcParams);
     task.setUserTaskUUID(userTaskUUID);
@@ -2279,9 +2278,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Giving node-ip as subtask param, so that leader changes does not
     // affect polling.
     restoreParams.nodeIp =
-        restoreParams.nodeIp != null
-            ? restoreParams.nodeIp
-            : getUniverse(false).getMasterLeaderNode().cloudInfo.private_ip;
+        restoreParams.nodeIp != null ? restoreParams.nodeIp : Util.getYbcNodeIp(getUniverse(false));
     task.initialize(restoreParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
@@ -2947,7 +2944,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     preflightTaskParams.azUuid = currentNode.azUuid;
     preflightTaskParams.universeUUID = taskParams().universeUUID;
     preflightTaskParams.rootCA = rootCA;
-    preflightTaskParams.clientRootCA = clientRootCA;
+    preflightTaskParams.setClientRootCA(clientRootCA);
     UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
         preflightTaskParams.communicationPorts, currentNode);
     preflightTaskParams.extraDependencies.installNodeExporter =

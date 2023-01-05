@@ -11,6 +11,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -197,6 +198,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       if (universe != null && universe.getUniverseDetails().updateSucceeded) {
         log.debug("Removing passwords for {}", universe.universeUUID);
         passwordStore.invalidate(universe.universeUUID);
+        if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")
+            && taskParams().overridePrebuiltAmiDBVersion) {
+          universe.updateConfig(
+              ImmutableMap.of(Universe.USE_CUSTOM_IMAGE, Boolean.toString(false)));
+          universe.save();
+        }
       }
     }
     log.info("Finished {} task.", getName());

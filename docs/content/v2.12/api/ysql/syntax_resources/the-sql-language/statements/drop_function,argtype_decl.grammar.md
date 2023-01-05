@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 drop_function ::= DROP { FUNCTION | PROCEDURE } [ IF EXISTS ]  
                   { name [ ( [ argtype_decl [ , ... ] ] ) ] } 
                   [ , ... ] [ CASCADE | RESTRICT ]

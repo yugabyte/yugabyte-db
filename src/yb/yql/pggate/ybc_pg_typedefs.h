@@ -296,6 +296,7 @@ typedef struct PgExecParameters {
   char *partition_key = NULL;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
+  bool is_select_distinct = false;
 #else
   uint64_t limit_count;
   uint64_t limit_offset;
@@ -308,6 +309,7 @@ typedef struct PgExecParameters {
   char *partition_key;
   PgExecOutParam *out_param;
   bool is_index_backfill;
+  bool is_select_distinct;
 #endif
 } YBCPgExecParameters;
 
@@ -346,6 +348,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_colocate_database_by_default;
   const bool*     ysql_ddl_rollback_enabled;
   const bool*     ysql_enable_read_request_caching;
+  const bool*     ysql_enable_profile;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

@@ -21,6 +21,7 @@ models/model_encryption_info.go
 models/model_entity_metadata.go
 models/model_health_check_info.go
 models/model_health_check_response.go
+models/model_is_load_balancer_idle.go
 models/model_live_query_response_data.go
 models/model_live_query_response_schema.go
 models/model_live_query_response_ycql_data.go
@@ -32,6 +33,7 @@ models/model_metric_response.go
 models/model_node_data.go
 models/model_node_data_cloud_info.go
 models/model_node_data_metrics.go
+models/model_node_data_metrics_active_connections.go
 models/model_placement_info.go
 models/model_slow_query_response_data.go
 models/model_slow_query_response_schema.go

@@ -375,18 +375,45 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       }
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
     }
-    std::unordered_map<Uuid, SchemaVersion, UuidHash> table_id_to_min_schema_version;
-    for (const auto& file : db->GetLiveFilesMetaData()) {
-      if (!file.smallest.user_frontier) {
-        continue;
+
+    MinSchemaVersionMap table_id_to_min_schema_version;
+    {
+      auto scoped_read_operation = tablet_.CreateNonAbortableScopedRWOperation();
+      if (!scoped_read_operation.ok()) {
+        VLOG_WITH_FUNC(4) << "Skip";
+        return;
       }
-      auto& smallest = down_cast<docdb::ConsensusFrontier&>(*file.smallest.user_frontier);
-      smallest.MakeExternalSchemaVersionsAtMost(&table_id_to_min_schema_version);
+
+      // Collect min schema version from all DB entries. I.e. stored in memory and flushed to disk.
+      FillMinSchemaVersion(db, &table_id_to_min_schema_version);
+      FillMinSchemaVersion(tablet_.intents_db_.get(), &table_id_to_min_schema_version);
     }
     ERROR_NOT_OK(metadata.OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
   }
 
  private:
+  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion, UuidHash>;
+
+  void FillMinSchemaVersion(rocksdb::DB* db, MinSchemaVersionMap* table_id_to_min_schema_version) {
+    if (!db) {
+      return;
+    }
+    {
+      auto smallest = db->CalcMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+      if (smallest) {
+        down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
+            table_id_to_min_schema_version);
+      }
+    }
+    for (const auto& file : db->GetLiveFilesMetaData()) {
+      if (!file.smallest.user_frontier) {
+        continue;
+      }
+      auto& smallest = down_cast<docdb::ConsensusFrontier&>(*file.smallest.user_frontier);
+      smallest.MakeExternalSchemaVersionsAtMost(table_id_to_min_schema_version);
+    }
+  }
+
   Tablet& tablet_;
   const std::string log_prefix_;
 };
@@ -1404,6 +1431,14 @@ void Tablet::WriteToRocksDB(
   rocksdb::WriteOptions write_options;
   InitRocksDBWriteOptions(&write_options);
 
+  std::optional<docdb::DocWriteBatchFormatter> formatter;
+  if (FLAGS_TEST_docdb_log_write_batches) {
+    formatter.emplace(
+        storage_db_type, BinaryOutputFormat::kEscapedAndHex, WriteBatchOutputFormat::kArrow,
+        "  " + LogPrefix(storage_db_type));
+    write_batch->SetHandlerForLogging(&*formatter);
+  }
+
   auto rocksdb_write_status = dest_db->Write(write_options, write_batch);
   if (!rocksdb_write_status.ok()) {
     LOG_WITH_PREFIX(FATAL) << "Failed to write a batch with " << write_batch->Count()
@@ -1412,13 +1447,9 @@ void Tablet::WriteToRocksDB(
 
   if (FLAGS_TEST_docdb_log_write_batches) {
     LOG_WITH_PREFIX(INFO)
-        << "Wrote " << write_batch->Count() << " key/value pairs to " << storage_db_type
-        << " RocksDB:\n" << docdb::WriteBatchToString(
-            *write_batch,
-            storage_db_type,
-            BinaryOutputFormat::kEscapedAndHex,
-            WriteBatchOutputFormat::kArrow,
-            "  " + LogPrefix(storage_db_type));
+        << "Wrote " << formatter->Count()
+        << " key/value pairs to " << storage_db_type
+        << " RocksDB:\n" << formatter->str();
   }
 }
 
@@ -1843,6 +1874,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
   auto frontiers_ptr = data.op_id.empty() ? nullptr : InitFrontiers(data, &frontiers);
+  context.SetFrontiers(frontiers_ptr);
   WriteToRocksDB(frontiers_ptr, &regular_write_batch, StorageDbType::kRegular);
   return context.apply_state();
 }

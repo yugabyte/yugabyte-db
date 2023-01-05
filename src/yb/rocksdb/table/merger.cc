@@ -36,6 +36,8 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/rocksdb/db/dbformat.h"
+
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_log.h"
 
@@ -317,6 +319,39 @@ class MergingIterator : public InternalIterator {
   bool IsKeyPinned() const override {
     assert(Valid());
     return current_->IsKeyPinned();
+  }
+
+  bool ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
+    LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
+
+    do {
+      const auto key = rocksdb::ExtractUserKey(current_->key());
+      if (!upperbound.empty() && user_key_comparator->Compare(key, upperbound) >= 0) {
+        break;
+      }
+
+      // Compute the next upperbound.
+      Slice next_upperbound = upperbound;
+      if (minHeap_.size() > 1) {
+        auto next_iterator = minHeap_.second_top();
+        LOG_IF(DFATAL, !next_iterator->Valid()) << "Second top iterator should be valid.";
+        const auto next_user_key = rocksdb::ExtractUserKey(next_iterator->key());
+        if (upperbound.empty() || user_key_comparator->Compare(next_user_key, upperbound) < 0) {
+          next_upperbound = next_user_key;
+        }
+      }
+
+      if (!current_->ScanForward(
+              user_key_comparator, next_upperbound, key_filter_callback, scan_callback)) {
+        return false;
+      }
+
+      UpdateHeapAfterCurrentAdvancement();
+    } while (Valid());
+
+    return true;
   }
 
  private:

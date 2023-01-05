@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_database ::= CREATE DATABASE name [ create_database_options ]
 
 create_database_options ::= [ WITH ] [ OWNER [ = ] user_name ]  

@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -126,6 +127,17 @@ public class Region extends Model {
   @ApiModelProperty(value = "UI ONLY: TODO @JsonIgnore after removing UI dependency", hidden = true)
   public RegionDetails details;
 
+  @JsonIgnore
+  public long getNodeCount() {
+    Set<UUID> azUUIDs = zones.stream().map(az -> az.uuid).collect(Collectors.toSet());
+    return Customer.get(provider.customerUUID)
+        .getUniversesForProvider(provider.uuid)
+        .stream()
+        .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
+        .filter(nd -> azUUIDs.contains(nd.azUuid))
+        .count();
+  }
+
   public void setSecurityGroupId(String securityGroupId) {
     if (details == null) {
       details = new RegionDetails();
@@ -133,7 +145,7 @@ public class Region extends Model {
     details.sg_id = securityGroupId;
   }
 
-  @ApiModelProperty(required = false)
+  @ApiModelProperty
   public String getSecurityGroupId() {
     if (details != null) {
       String sgNode = details.sg_id;
@@ -149,7 +161,7 @@ public class Region extends Model {
     details.vnet = vnetName;
   }
 
-  @ApiModelProperty(required = false)
+  @ApiModelProperty
   public String getVnetName() {
     if (details != null) {
       String vnetNode = details.vnet;
@@ -165,7 +177,7 @@ public class Region extends Model {
     details.arch = arch;
   }
 
-  @ApiModelProperty(required = false)
+  @ApiModelProperty
   public Architecture getArchitecture() {
     if (details != null) {
       return details.arch;

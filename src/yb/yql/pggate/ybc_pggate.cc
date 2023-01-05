@@ -82,6 +82,10 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
             "If true, disables read, write, and execute of local server files. "
             "File access can be re-enabled if set to false.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
+TAG_FLAG(ysql_enable_profile, advanced);
+TAG_FLAG(ysql_enable_profile, hidden);
+
 namespace yb {
 namespace pggate {
 
@@ -244,16 +248,16 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 }
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-#ifdef TCMALLOC_ENABLED
-    *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
+#if defined(YB_TCMALLOC_ENABLED)
+  *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
 #else
-    *consumption = 0;
+  *consumption = 0;
 #endif
   return YBCStatusOK();
 }
 
 YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
     *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
 #else
     *consumption = 0;
@@ -279,7 +283,7 @@ bool YBCTryMemRelease(int64_t bytes) {
 
 YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
   memset(desc, 0x0, sizeof(YbTcmallocStats));
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
   using mt = yb::MemTracker;
   desc->total_physical_bytes = mt::GetTCMallocProperty("generic.total_physical_bytes");
   desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
@@ -831,9 +835,9 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle,
                                                      end_inclusive));
 }
 
-YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
-    YBCPgExpr *attr_values) {
-  return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, YBCPgExpr lhs, int n_attr_values,
+                                   YBCPgExpr *attr_values) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, lhs, n_attr_values, attr_values));
 }
 
 YBCStatus YBCPgDmlBindHashCodes(
@@ -1093,6 +1097,14 @@ YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
   return ToYBCStatus(pgapi->OperatorAppendArg(op_handle, arg));
 }
 
+YBCStatus YBCPgNewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    YBCPgExpr *elems, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewTupleExpr(
+      stmt, tuple_type_entity, type_attrs, num_elems, elems, expr_handle));
+}
+
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
                             bool is_null, size_t *type_size) {
 
@@ -1321,7 +1333,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
       .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default,
       .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled,
-      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching
+      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching,
+      .ysql_enable_profile                     = &FLAGS_ysql_enable_profile
   };
   return &accessor;
 }

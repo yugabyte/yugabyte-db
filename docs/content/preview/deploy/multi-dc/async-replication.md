@@ -40,7 +40,7 @@ After you created the required tables, you can set up unidirectional replication
 
   - To find a table ID, execute the following command as an admin user:
 
-      ```shell
+      ```sh
       ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id
       ```
 
@@ -84,7 +84,7 @@ When completed, proceed to [Load data](#load-data-into-the-source-universe).
 
 ## Load data into the source universe
 
-Once you have set up replication, load data into the source universe, as follows:
+After you have set up replication, load data into the source universe, as follows:
 
 - Download the YugabyteDB workload generator JAR file `yb-sample-apps.jar` from [GitHub](https://github.com/yugabyte/yb-sample-apps/releases).
 
@@ -102,7 +102,6 @@ Once you have set up replication, load data into the source universe, as follows
     java -jar yb-sample-apps.jar --workload CassandraBatchKeyValue --nodes 127.0.0.1:9042
     ```
 
-  \
   Note that the IP address needs to correspond to the IP of any T-Servers in the universe.
 
 - For bidirectional replication, repeat the preceding step in the yugabyte-target universe.
@@ -182,11 +181,11 @@ When universes use different certificates, you need to store the certificates fo
 
 1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored within the [`--certs_dir`]`/preview/reference/configuration/yb-master/#certs-dir`.
 
-1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.<br>
+1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.
 
     For example, if you previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's ID is `00000000-1111-2222-3333-444444444444`, then you would need to copy the certificate file to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/ca.crt`.
 
-1. Set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the target universe's certificates (this should be different from the directory used in the previous steps).<br>
+1. Set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the target universe's certificates (this should be different from the directory used in the previous steps).
 
     For example, if you have the target universe's certificates in `/home/yugabyte/yugabyte-tls-config`, then you would run the following:
 
@@ -202,8 +201,8 @@ When universes use different certificates, you need to store the certificates fo
 
 You start by creating a source and a target universe with the same configurations (the same regions and zones), as follows:
 
-* Regions: EU(Paris), Asia Pacific(Mumbai), US West(Oregon)
-* Zones: eu-west-3a, ap-south-1a, us-west-2a
+- Regions: EU(Paris), Asia Pacific(Mumbai), US West(Oregon)
+- Zones: eu-west-3a, ap-south-1a, us-west-2a
 
   ```sh
   ./bin/yb-ctl --rf 3 create --placement_info "cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3"
@@ -217,9 +216,9 @@ You start by creating a source and a target universe with the same configuration
 
 Create tables, tablespaces, and partition tables at both the source and target universes, as per the following example:
 
-* Main table: transactions
-* Tablespaces: eu_ts, ap_ts, us_ts
-* Partition tables: transactions_eu, transactions_in, transactions_us
+- Main table: transactions
+- Tablespaces: eu_ts, ap_ts, us_ts
+- Partition tables: transactions_eu, transactions_in, transactions_us
 
   ```sql
   CREATE TABLE transactions (
@@ -261,13 +260,14 @@ Create tables, tablespaces, and partition tables at both the source and target u
                     DEFAULT TABLESPACE us_ts;
   ```
 
-To create unidirectional replication, peform the following:
+To create unidirectional replication, perform the following:
 
-1. Collect partition table UUIDs from the source universe (partition tables, transactions_eu, transactions_in, transactions_us) by navigating to **Tables** in the Admin UI available at 127.0.0.1:7000. These UUIDs are to be used while setting up replication. <br><br>
+1. Collect partition table UUIDs from the source universe (partition tables, transactions_eu, transactions_in, transactions_us) by navigating to **Tables** in the Admin UI available at 127.0.0.1:7000. These UUIDs are to be used while setting up replication.
 
-     ![xCluster_with_GP](/images/explore/yb_xcluster_table_uuids.png)
+    ![xCluster_with_GP](/images/explore/yb_xcluster_table_uuids.png)
 
-2. Run the replication setup command for the source universe, as follows:
+1. Run the replication setup command for the source universe, as follows:
+
     ```sh
     ./bin/yb-admin -master_addresses <consumer_master_addresses> \
     setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
@@ -275,13 +275,15 @@ To create unidirectional replication, peform the following:
     ```
 
     Consider the following example:
+
     ```sh
     ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     setup_universe_replication 00000000-1111-2222-3333-444444444444_xClusterSetup1 \
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     000033e1000030008000000000004007,000033e100003000800000000000400d,000033e1000030008000000000004013
     ```
-3. Optionally, if you have access to YugabyteDB Anywhere, you can observe the replication setup (`xClusterSetup1`) by navigating to **Replication** on the source and target universe.
+
+1. Optionally, if you have access to YugabyteDB Anywhere, you can observe the replication setup (`xClusterSetup1`) by navigating to **Replication** on the source and target universe.
 
 ## Set up xCluster replication in Kubernetes
 
@@ -323,10 +325,10 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
       create table employees(id int primary key, name text);
       ```
 
-- Collect table UUIDs by navigating to **Tables** in the Admin UI available at 127.0.0.1:7000. These UUIDs are to be used while setting up replication. <br>
+- Collect table UUIDs by navigating to **Tables** in the Admin UI available at 127.0.0.1:7000. These UUIDs are to be used while setting up replication.
 - Set up replication from the source universe by executing the following command on the source universe:
 
-    ```sh
+  ```sh
   kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c \
     <source_universe_container> -- bash -c "/home/yugabyte/bin/yb-admin -master_addresses \
     <target_universe_master_addresses> setup_universe_replication \
@@ -336,7 +338,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
   Consider the following example:
 
-    ```sh
+  ```sh
   kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash -c \
     "/home/yugabyte/bin/yb-admin -master_addresses yb-master-2.yb-masters.xcluster-target.svc.cluster.local, \
     yb-master-1.yb-masters.xcluster-target.svc.cluster.local,yb-master-0.yb-masters.xcluster-target.svc.cluster.local \
@@ -347,7 +349,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
 - Perform the following on the source universe and then observe replication on the target universe:
 
-    ```sh
+  ```sh
   kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c <source_universe_container> -- bash
     /home/yugabyte/bin/ysqlsh -h <source_universe_yqlserver>
     insert query
@@ -356,15 +358,16 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
   Consider the following example:
 
-    ```sh
+  ```sh
   kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash
     /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-source
     INSERT INTO employees VALUES(1, 'name');
     SELECT * FROM employees;
-    ```
+  ```
 
 - Perform the following on the target universe:
-    ```sh
+
+  ```sh
   kubectl exec -it -n <target_universe_namespace> -t <target_universe_master_leader> -c <target_universe_container> -- bash
     /home/yugabyte/bin/ysqlsh -h <target_universe_yqlserver>
     select query
@@ -372,46 +375,49 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
   Consider the following example:
 
-    ```sh
+  ```sh
   kubectl exec -it -n xcluster-target -t yb-master-2 -c yb-master -- bash
     /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-target
     SELECT * FROM employees;
-    ```
+  ```
 
 ## Bootstrap a target universe
 
 You can set up xCluster replication for the following purposes:
 
-* Enabling replication on a table that has existing data.
-* Catching up an existing stream where the target has fallen too far behind.
+- Enabling replication on a table that has existing data.
+- Catching up an existing stream where the target has fallen too far behind.
 
 To ensure that the WALs are still available, you need to perform the following steps within the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) gflag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
 
 Proceed as follows:
 
 1. Create a checkpoint on the source universe for all the tables you want to replicate by executing the following command:
+
     ```sh
     ./bin/yb-admin -master_addresses <source_universe_master_addresses> \
     bootstrap_cdc_producer <comma_separated_source_universe_table_ids>
     ```
 
     Consider the following example:
+
     ```sh
     ./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     bootstrap_cdc_producer 000033e1000030008000000000004000,000033e1000030008000000000004003,000033e1000030008000000000004006
     ```
 
     The following output is a list of bootstrap IDs, one per table ID:
+
     ```output
     table id: 000033e1000030008000000000004000, CDC bootstrap id: fb156717174941008e54fa958e613c10
     table id: 000033e1000030008000000000004003, CDC bootstrap id: a2a46f5cbf8446a3a5099b5ceeaac28b
     table id: 000033e1000030008000000000004006, CDC bootstrap id: c967967523eb4e03bcc201bb464e0679
     ```
 
-2. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../manage/backup-restore/).
-3. Execute the following command to set up the replication stream using the bootstrap IDs generated in step 1. Ensure that the bootstrap IDs are in the same order as their corresponding table IDs.
+1. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../manage/backup-restore/).
+1. Execute the following command to set up the replication stream using the bootstrap IDs generated in step 1. Ensure that the bootstrap IDs are in the same order as their corresponding table IDs.
 
-      ```sh
+    ```sh
     ./bin/yb-admin -master_addresses <target_universe_master_addresses> setup_universe_replication \
       <source_universe_uuid>_<replication_stream_name> <source_universe_master_addresses> \
       <comma_separated_source_universe_table_ids> <comma_separated_bootstrap_ids>
@@ -419,12 +425,12 @@ Proceed as follows:
 
     Consider the following example:
 
-      ```sh
+    ```sh
     ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication \
       00000000-1111-2222-3333-444444444444_xCluster1 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
       000033e1000030008000000000004000,000033e1000030008000000000004003,000033e1000030008000000000004006 \
       fb156717174941008e54fa958e613c10,a2a46f5cbf8446a3a5099b5ceeaac28b,c967967523eb4e03bcc201bb464e0679
-      ```
+    ```
 
 ### Modify the bootstrap
 
@@ -447,6 +453,7 @@ You can execute DDL operations after replication has been already configured for
 ### Stop user writes
 
 In certain cases, it is possible to temporarily stop incoming user writes. You would typically approach this as follows:
+
 - Stop any new incoming user writes.
 - Wait for all changes to get replicated to the target universe. This can be observed by replication lag dropping to 0.
 - Apply the DDL changes on both universes and [alter replication](../../../admin/yb-admin/#alter-universe-replication) for any newly-created tables. For example, after executing the `CREATE TABLE` or `CREATE INDEX` statements.
@@ -455,10 +462,11 @@ In certain cases, it is possible to temporarily stop incoming user writes. You w
 ### Use backup and restore
 
 If you cannot stop incoming user traffic, then the safest approach would be to apply DDLs on the source universe combined with bootstrapping. Specifically, you would need to do the following:
+
 - Stop replication before making any DDL changes.
 - Apply all your DDL changes to the source universe.
 - Backup the source universe and all the relevant tables for which you intend to replicate changes. Follow instructions provided in [Bootstrap a target universe](#bootstrap-a-target-universe).
 - Restore this backup on the target universe.
 - [Set up replication](../../../admin/yb-admin/#setup-universe-replication) again for all of the relevant tables. Ensure that you pass in all the `bootstrap_id` values.
 
-Note that it is possible to add and remove columns of primitive data types without a bootstrap. The schema changes must match on both sides, including changes introduced by any faulty apply and revert operations. Since this process is error-prone, it is recommended to contact Yugabyte Support for assistance.
+Note that it is possible to add and remove columns of primitive data types without a bootstrap. The schema changes must match on both sides, including changes introduced by any faulty apply and revert operations. Because this process is error-prone, it is recommended to contact Yugabyte Support for assistance.

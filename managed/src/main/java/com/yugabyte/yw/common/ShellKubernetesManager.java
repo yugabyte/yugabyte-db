@@ -109,9 +109,7 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public List<Pod> getPodInfos(
-      Map<String, String> config, String universePrefix, String namespace) {
-    // Implementation specific helm release name.
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+      Map<String, String> config, String helmReleaseName, String namespace) {
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
@@ -130,9 +128,7 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public List<Service> getServices(
-      Map<String, String> config, String universePrefix, String namespace) {
-    // Implementation specific helm release name.
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+      Map<String, String> config, String helmReleaseName, String namespace) {
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
@@ -240,9 +236,7 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void deleteStorage(Map<String, String> config, String universePrefix, String namespace) {
-    // Implementation specific helm release name.
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+  public void deleteStorage(Map<String, String> config, String helmReleaseName, String namespace) {
     // Delete Master and TServer Volumes
     List<String> commandList =
         ImmutableList.of(
@@ -325,11 +319,12 @@ public class ShellKubernetesManager extends KubernetesManager {
   public boolean expandPVC(
       Map<String, String> config,
       String namespace,
-      String universePrefix,
-      String appLabel,
-      String newDiskSize) {
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-    String labelSelector = String.format("app=%s,release=%s", appLabel, helmReleaseName);
+      String helmReleaseName,
+      String appName,
+      String newDiskSize,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
     List<String> commandList =
         ImmutableList.of(
             "kubectl", "--namespace", namespace, "get", "pvc", "-l", labelSelector, "-o", "name");
@@ -391,10 +386,14 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public String getStorageClassName(
-      Map<String, String> config, String namespace, String universePrefix, boolean forMaster) {
-    String appLabel = forMaster ? "yb-master" : "yb-tserver";
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-    String labelSelector = String.format("app=%s,release=%s", appLabel, helmReleaseName);
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      boolean forMaster,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String appName = forMaster ? "yb-master" : "yb-tserver";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
     List<String> commandList =
         ImmutableList.of(
             "kubectl",

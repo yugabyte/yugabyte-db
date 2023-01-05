@@ -971,11 +971,11 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
           // This tablet might has been shut down or in the process of shutting down.
           // Thus, we need to check whether shared_tablet is nullptr or not
           // TEST_CountIntent return non ok status also means shutdown has started.
-          const auto shared_tablet = peer->shared_tablet();
-          if (!shared_tablet) {
+          const auto tablet = peer->shared_tablet();
+          if (!tablet) {
             return true;
           }
-          auto result = shared_tablet->transaction_participant()->TEST_CountIntents();
+          auto result = tablet->transaction_participant()->TEST_CountIntents();
           return !result.ok() || result->first == 0;
         }, 30s, "Did not apply write transactions from intents db in time."));
 
@@ -1001,12 +1001,12 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       LOG(INFO) << "Active peers: " << peers.size();
       if (peers.size() == 2) {
         for (const auto& peer : peers) {
-          const auto shared_tablet = peer->shared_tablet();
-          SCHECK_NOTNULL(shared_tablet.get());
+          const auto tablet = peer->shared_tablet();
+          SCHECK_NOTNULL(tablet.get());
 
           // Since we've disabled compactions, each post-split subtablet should be larger than the
           // split size threshold.
-          auto peer_size = shared_tablet->GetCurrentVersionSstFilesSize();
+          auto peer_size = tablet->GetCurrentVersionSstFilesSize();
           EXPECT_GE(peer_size, threshold);
         }
         break;
@@ -1029,9 +1029,9 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       //    shared_tablet->GetCurrentVersionSstFilesSize() will return 0 as default.
       //    Then next loop of inserting and flush, the code will detect splitting
       //    happen and break the loop. Thus, we don't need to handle it here.
-      const auto shared_tablet = leader_peer->shared_tablet();
-      if (shared_tablet) {
-        current_size = shared_tablet->GetCurrentVersionSstFilesSize();
+      const auto tablet = leader_peer->shared_tablet();
+      if (tablet) {
+        current_size = tablet->GetCurrentVersionSstFilesSize();
       } else {
         break;
       }
@@ -2070,7 +2070,7 @@ TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
   auto expected_middle_key_hash = CHECK_RESULT(docdb::DocKey::DecodeHash(middle_key));
 
   // Send RPC.
-  auto resp = ASSERT_RESULT(GetSplitKey(source_tablet_id));
+  auto resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
 
   // Validate response.
   CHECK(!resp.has_error()) << resp.error().DebugString();
@@ -2098,7 +2098,7 @@ TEST_F(TabletSplitSingleServerITest, SplitKeyNotSupportedForTTLTablets) {
   ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
   tablet->TEST_ForceRocksDBCompact();
 
-  auto resp = ASSERT_RESULT(GetSplitKey(source_tablet_id));
+  auto resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
   EXPECT_FALSE(resp.has_error());
 
   // Alter the table with a table TTL, and call GetSplitKey RPC, expecting a
@@ -2106,7 +2106,7 @@ TEST_F(TabletSplitSingleServerITest, SplitKeyNotSupportedForTTLTablets) {
   // Amount of time for the TTL is irrelevant, so long as it's larger than 0.
   ASSERT_OK(AlterTableSetDefaultTTL(1));
 
-  resp = ASSERT_RESULT(GetSplitKey(source_tablet_id));
+  resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
 
   // Validate response
   EXPECT_TRUE(resp.has_error());
@@ -2267,7 +2267,7 @@ TEST_F(TabletSplitSingleServerITest, TabletServerOrphanedPostSplitData) {
 
   for (const auto& peer : peers) {
       // Send RPC to child tablet.
-      auto resp = ASSERT_RESULT(GetSplitKey(peer->tablet_id()));
+      auto resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(peer->tablet_id()));
 
       // Validate response
       EXPECT_TRUE(resp.has_error());
@@ -2345,7 +2345,7 @@ Status TabletSplitSingleServerITest::TestSplitBeforeParentDeletion(bool hide_onl
   const TabletId parent_id = VERIFY_RESULT(SplitTabletAndValidate(split_hash_code, kNumRows));
   auto child_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
 
-  auto resp = VERIFY_RESULT(SplitSingleTablet(*child_ids.begin()));
+  auto resp = VERIFY_RESULT(SendMasterRpcSyncSplitTablet(*child_ids.begin()));
   SCHECK(resp.has_error(), RuntimeError,
          "Splitting should fail while parent tablet is not hidden / deleted.");
 
@@ -2363,7 +2363,7 @@ Status TabletSplitSingleServerITest::TestSplitBeforeParentDeletion(bool hide_onl
     auto parent_lock = parent.get()->LockForRead();
     return hide_only ? parent_lock->is_hidden() : parent_lock->is_deleted();
   }, 10s * kTimeMultiplier, "Wait for parent to be hidden / deleted."));
-  resp = VERIFY_RESULT(SplitSingleTablet(*child_ids.begin()));
+  resp = VERIFY_RESULT(SendMasterRpcSyncSplitTablet(*child_ids.begin()));
   SCHECK(!resp.has_error(), RuntimeError,
          "Splitting should succeed once parent tablet is hidden / deleted.");
   return Status::OK();
@@ -3023,11 +3023,11 @@ TEST_F(TabletSplitITest, ParentRemoteBootstrapAfterWritesToChildren) {
           if ((*result)->state() != tablet::RaftGroupStatePB::RUNNING) {
             return false;
           }
-          const auto shared_tablet = (*result)->shared_tablet();
-          if (!shared_tablet) {
+          const auto tablet = (*result)->shared_tablet();
+          if (!tablet) {
             return false;
           }
-          return shared_tablet->metadata()->tablet_data_state() ==
+          return tablet->metadata()->tablet_data_state() ==
                  tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
         },
         30s * kTimeMultiplier,
@@ -3069,8 +3069,8 @@ TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakI
   // Keep keys to compare later, and split
   const auto source_tablet_id =
       ASSERT_RESULT(GetSingleTestTabletInfo(ASSERT_RESULT(catalog_manager())))->id();
-  const auto key_response = ASSERT_RESULT(GetSplitKey(source_tablet_id));
-  ASSERT_FALSE(ASSERT_RESULT(SendMasterSplitTabletRpcSync(source_tablet_id)).has_error());
+  const auto key_response = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
+  ASSERT_FALSE(ASSERT_RESULT(SendMasterRpcSyncSplitTablet(source_tablet_id)).has_error());
 
   // Split should return an OK status, so, let's try to wait for child tablets. The wait must fail
   // as master error has been simulated in the middle.
@@ -3087,7 +3087,7 @@ TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakI
   ASSERT_OK(cluster_->RestartSync());
 
   // Split should pass without any error.
-  const auto response = ASSERT_RESULT(SendMasterSplitTabletRpcSync(source_tablet_id));
+  const auto response = ASSERT_RESULT(SendMasterRpcSyncSplitTablet(source_tablet_id));
   ASSERT_FALSE(response.has_error()) << response.error().ShortDebugString();
   ASSERT_OK(WaitForTabletSplitCompletion(2 /* expected_non_split_tablets */));
 
@@ -3148,7 +3148,7 @@ class TabletSplitSystemRecordsITest :
     LOG(INFO) << "System record middle key result: " << middle_key.status().ToString();
 
     // Test that tablet GetSplitKey RPC returns the same message.
-    auto response = VERIFY_RESULT(GetSplitKey(tablet->tablet_id()));
+    auto response = VERIFY_RESULT(SendTServerRpcSyncGetSplitKey(tablet->tablet_id()));
     SCHECK_EQ(response.has_error(), true, IllegalState,
               "GetSplitKey RPC unexpectedly succeeded.");
     const Status op_status = StatusFromPB(response.error().status());
@@ -3369,7 +3369,7 @@ class TabletSplitSingleBlockITest :
 
     // Check empty case.
     LOG(INFO) << "Sending GetSplitKey Rpc";
-    auto key_resp = VERIFY_RESULT(GetSplitKey(source_tablet_id));
+    auto key_resp = VERIFY_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
     SCHECK(key_resp.has_error(), IllegalState, "Error is expected");
 
     // Write a few records.
@@ -3385,7 +3385,7 @@ class TabletSplitSingleBlockITest :
 
     // Send RPC for tablet splitting and validate resposnse.
     LOG(INFO) << "Sending sync SPLIT Rpc";
-    auto resp = VERIFY_RESULT(SendMasterSplitTabletRpcSync(source_tablet_id));
+    auto resp = VERIFY_RESULT(SendMasterRpcSyncSplitTablet(source_tablet_id));
     SCHECK(!resp.has_error(), IllegalState, resp.error().DebugString());
 
     RETURN_NOT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets = */ 2));

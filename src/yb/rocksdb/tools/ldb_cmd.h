@@ -39,10 +39,8 @@
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/ldb_tool.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/tools/ldb_cmd_execute_result.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
 #include "yb/util/slice.h"
 #include "yb/util/string_util.h"
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
@@ -59,10 +57,6 @@ class LDBCommand {
   static const std::string ARG_KEY_HEX;
   static const std::string ARG_VALUE_HEX;
   static const std::string ARG_CF_NAME;
-  static const std::string ARG_TTL;
-  static const std::string ARG_TTL_START;
-  static const std::string ARG_TTL_END;
-  static const std::string ARG_TIMESTAMP;
   static const std::string ARG_FROM;
   static const std::string ARG_TO;
   static const std::string ARG_MAX_KEYS;
@@ -204,7 +198,6 @@ class LDBCommand {
   std::string db_path_;
   std::string column_family_name_;
   DB* db_;
-  DBWithTTL* db_ttl_;
   std::map<std::string, ColumnFamilyHandle*> cf_handles_;
 
   /**
@@ -218,12 +211,6 @@ class LDBCommand {
 
   /** If true, the value is input/output as hex in get/put/scan/delete etc. */
   bool is_value_hex_;
-
-  /** If true, the value is treated as timestamp suffixed */
-  bool is_db_ttl_;
-
-  // If true, the kvs are output with their insert/modify timestamp in a ttl db
-  bool timestamp_;
 
   /**
    * Map of options passed on the command-line.
@@ -244,17 +231,18 @@ class LDBCommand {
   bool ParseKeyValue(const std::string& line, std::string* key, std::string* value,
                       bool is_key_hex, bool is_value_hex);
 
-  LDBCommand(const std::map<std::string, std::string>& options, const std::vector<std::string>& flags,
-             bool is_read_only, const std::vector<std::string>& valid_cmd_line_options) :
-      db_(nullptr),
-      is_read_only_(is_read_only),
-      is_key_hex_(false),
-      is_value_hex_(false),
-      is_db_ttl_(false),
-      timestamp_(false),
-      option_map_(options),
-      flags_(flags),
-      valid_cmd_line_options_(valid_cmd_line_options) {
+  LDBCommand(
+      const std::map<std::string, std::string>& options,
+      const std::vector<std::string>& flags,
+      bool is_read_only,
+      const std::vector<std::string>& valid_cmd_line_options)
+      : db_(nullptr),
+        is_read_only_(is_read_only),
+        is_key_hex_(false),
+        is_value_hex_(false),
+        option_map_(options),
+        flags_(flags),
+        valid_cmd_line_options_(valid_cmd_line_options) {
 
     std::map<std::string, std::string>::const_iterator itr = options.find(ARG_DB);
     if (itr != options.end()) {
@@ -293,8 +281,6 @@ class LDBCommand {
 
     is_key_hex_ = IsKeyHex(options, flags);
     is_value_hex_ = IsValueHex(options, flags);
-    is_db_ttl_ = IsFlagPresent(flags, ARG_TTL);
-    timestamp_ = IsFlagPresent(flags, ARG_TIMESTAMP);
   }
 
   void OpenDB() {
@@ -305,47 +291,33 @@ class LDBCommand {
     // Open the DB.
     Status st;
     std::vector<ColumnFamilyHandle*> handles_opened;
-    if (is_db_ttl_) {
-      // ldb doesn't yet support TTL DB with multiple column families
-      if (!column_family_name_.empty() || !column_families_.empty()) {
-        exec_state_ = LDBCommandExecuteResult::Failed(
-            "ldb doesn't support TTL DB with multiple column families");
+    if (column_families_.empty()) {
+      // Try to figure out column family lists
+      std::vector<std::string> cf_list;
+      st = DB::ListColumnFamilies(DBOptions(), db_path_, &cf_list);
+      // There is possible the DB doesn't exist yet, for "create if not
+      // "existing case". The failure is ignored here. We rely on DB::Open()
+      // to give us the correct error message for problem with opening
+      // existing DB.
+      if (st.ok() && cf_list.size() > 1) {
+        // Ignore single column family DB.
+        for (auto cf_name : cf_list) {
+          column_families_.emplace_back(cf_name, opt);
+        }
       }
-      if (is_read_only_) {
-        st = DBWithTTL::Open(opt, db_path_, &db_ttl_, 0, true);
+    }
+    if (is_read_only_) {
+      if (column_families_.empty()) {
+        st = DB::OpenForReadOnly(opt, db_path_, &db_);
       } else {
-        st = DBWithTTL::Open(opt, db_path_, &db_ttl_);
+        st = DB::OpenForReadOnly(opt, db_path_, column_families_,
+                                  &handles_opened, &db_);
       }
-      db_ = db_ttl_;
     } else {
       if (column_families_.empty()) {
-        // Try to figure out column family lists
-        std::vector<std::string> cf_list;
-        st = DB::ListColumnFamilies(DBOptions(), db_path_, &cf_list);
-        // There is possible the DB doesn't exist yet, for "create if not
-        // "existing case". The failure is ignored here. We rely on DB::Open()
-        // to give us the correct error message for problem with opening
-        // existing DB.
-        if (st.ok() && cf_list.size() > 1) {
-          // Ignore single column family DB.
-          for (auto cf_name : cf_list) {
-            column_families_.emplace_back(cf_name, opt);
-          }
-        }
-      }
-      if (is_read_only_) {
-        if (column_families_.empty()) {
-          st = DB::OpenForReadOnly(opt, db_path_, &db_);
-        } else {
-          st = DB::OpenForReadOnly(opt, db_path_, column_families_,
-                                   &handles_opened, &db_);
-        }
+        st = DB::Open(opt, db_path_, &db_);
       } else {
-        if (column_families_.empty()) {
-          st = DB::Open(opt, db_path_, &db_);
-        } else {
-          st = DB::Open(opt, db_path_, column_families_, &handles_opened, &db_);
-        }
+        st = DB::Open(opt, db_path_, column_families_, &handles_opened, &db_);
       }
     }
     if (!st.ok()) {
@@ -597,7 +569,6 @@ class DBDumperCommand: public LDBCommand {
   static const std::string ARG_COUNT_ONLY;
   static const std::string ARG_COUNT_DELIM;
   static const std::string ARG_STATS;
-  static const std::string ARG_TTL_BUCKET;
 };
 
 class InternalDumpCommand: public LDBCommand {
@@ -788,7 +759,9 @@ class GetCommand : public LDBCommand {
  public:
   static std::string Name() { return "get"; }
 
-  GetCommand(const std::vector<std::string>& params, const std::map<std::string, std::string>& options,
+  GetCommand(
+      const std::vector<std::string>& params,
+      const std::map<std::string, std::string>& options,
       const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;
@@ -839,7 +812,9 @@ class ScanCommand : public LDBCommand {
  public:
   static std::string Name() { return "scan"; }
 
-  ScanCommand(const std::vector<std::string>& params, const std::map<std::string, std::string>& options,
+  ScanCommand(
+      const std::vector<std::string>& params,
+      const std::map<std::string, std::string>& options,
       const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;
@@ -875,7 +850,9 @@ class PutCommand : public LDBCommand {
  public:
   static std::string Name() { return "put"; }
 
-  PutCommand(const std::vector<std::string>& params, const std::map<std::string, std::string>& options,
+  PutCommand(
+      const std::vector<std::string>& params,
+      const std::map<std::string, std::string>& options,
       const std::vector<std::string>& flags);
 
   virtual void DoCommand() override;

@@ -503,6 +503,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
+                '--enable-nls',
                 '--with-icu',
                 '--with-ldap',
                 '--with-openssl',

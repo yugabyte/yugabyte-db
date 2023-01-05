@@ -821,7 +821,6 @@ TEST_F(DBTest, GetFromVersions) {
 
 TEST_F(DBTest, GetSnapshot) {
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
   do {
     CreateAndReopenWithCF({"pikachu"}, CurrentOptions(options_override));
     // Try with both a short key and a long key
@@ -1337,7 +1336,6 @@ TEST_F(DBTest, IterMulti) {
 // by using reseek rather than sequential scan
 TEST_F(DBTest, IterReseek) {
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
   Options options = CurrentOptions(options_override);
   options.max_sequential_skip_in_iterations = 3;
   options.create_if_missing = true;
@@ -1519,7 +1517,6 @@ TEST_F(DBTest, IterPrevMaxSkip) {
 
 TEST_F(DBTest, IterWithSnapshot) {
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
   do {
     CreateAndReopenWithCF({"pikachu"}, CurrentOptions(options_override));
     ASSERT_OK(Put(1, "key1", "val1"));
@@ -2608,7 +2605,7 @@ TEST_F(DBTest, IteratorPinsRef) {
 
 TEST_F(DBTest, Snapshot) {
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
+
   do {
     CreateAndReopenWithCF({"pikachu"}, CurrentOptions(options_override));
     ASSERT_OK(Put(0, "foo", "0v1"));
@@ -2672,7 +2669,7 @@ TEST_F(DBTest, Snapshot) {
 
 TEST_F(DBTest, HiddenValuesAreRemoved) {
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
+
   do {
     Options options = CurrentOptions(options_override);
     CreateAndReopenWithCF({"pikachu"}, options);
@@ -2709,7 +2706,7 @@ TEST_F(DBTest, HiddenValuesAreRemoved) {
 
 TEST_F(DBTest, CompactBetweenSnapshots) {
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
+
   do {
     Options options = CurrentOptions(options_override);
     options.disable_auto_compactions = true;
@@ -2771,7 +2768,7 @@ TEST_F(DBTest, UnremovableSingleDelete) {
   // Because a subsequent SingleDelete(A) would delete the Put(A, v2)
   // but not Put(A, v1), so Get(A) would return v1.
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
+
   do {
     Options options = CurrentOptions(options_override);
     options.disable_auto_compactions = true;
@@ -3470,7 +3467,7 @@ TEST_F(DBTest, SnapshotFiles) {
 
 TEST_F(DBTest, CompactOnFlush) {
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
+
   do {
     Options options = CurrentOptions(options_override);
     options.disable_auto_compactions = true;
@@ -4330,7 +4327,7 @@ class MultiThreadedDBTest : public DBTest,
 
 TEST_P(MultiThreadedDBTest, MultiThreaded) {
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
+
   std::vector<std::string> cfs;
   for (int i = 1; i < kColumnFamilies; ++i) {
     cfs.push_back(ToString(i));
@@ -4863,7 +4860,7 @@ INSTANTIATE_TEST_CASE_P(
 
 TEST_P(DBTestRandomized, Randomized) {
   anon::OptionsOverride options_override;
-  options_override.skip_policy = kSkipNoSnapshot;
+
   Options options = CurrentOptions(options_override);
   DestroyAndReopen(options);
 

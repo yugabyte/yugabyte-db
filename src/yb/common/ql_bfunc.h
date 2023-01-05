@@ -31,8 +31,10 @@
 #include <vector>
 #include <unordered_set>
 
+#include "yb/bfpg/bfdecl.h"
 #include "yb/bfpg/gen_opcodes.h"
 
+#include "yb/bfql/bfdecl.h"
 #include "yb/bfql/gen_opcodes.h"
 
 #include "yb/common/common_fwd.h"
@@ -49,15 +51,10 @@ namespace yb {
 // - Do not add non-static members to this class as QLBfunc is not meant for creating different
 //   objects with different behaviors. For compability reason, all builtin calls must be processed
 //   the same way across all processes and all releases in YugaByte.
-Status ExecBfunc(
-    bfql::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB* result);
+Result<bfql::BFRetValue> ExecBfunc(bfql::BFOpcode opcode, const bfql::BFParams& params);
 
 //--------------------------------------------------------------------------------------------------
 // PGSQL support
-Status ExecBfunc(
-    bfpg::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB *result);
-
-Status ExecBfunc(
-    bfpg::BFOpcode opcode, std::vector<LWQLValuePB*>* params, LWQLValuePB *result);
+Result<bfpg::BFRetValue> ExecBfunc(bfpg::BFOpcode opcode, const bfpg::BFParams& params);
 
 } // namespace yb

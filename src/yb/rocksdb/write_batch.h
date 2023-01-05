@@ -44,11 +44,13 @@
 #include <atomic>
 #include <string>
 #include <vector>
+#include <optional>
 
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/write_batch_base.h"
 
 #include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 
 namespace rocksdb {
 
@@ -65,9 +67,10 @@ class DirectWriteHandler {
   virtual ~DirectWriteHandler() = default;
 };
 
-// DirectWriter could be attached to WriteBatch, in this case when write batch is applied to
-// rocksdb, it calls direct writer passing DirectWriteHandler, that could be used to add
-// entries directly to mem table.
+// DirectWriter could be attached to a WriteBatch. In this case, when the write batch is written to
+// RocksDB, the Apply method of the direct writer is called, and it is passed a DirectWriteHandler.
+// The direct writer uses the methods of DirectWriteHandler such as Put and SingleDelete to write
+// entries directly to the memtable.
 class DirectWriter {
  public:
   virtual Status Apply(DirectWriteHandler* handler) = 0;
@@ -280,6 +283,10 @@ class WriteBatch : public WriteBatchBase {
     return direct_entries_;
   }
 
+  void SetHandlerForLogging(Handler* handler_for_logging) {
+    handler_for_logging_ = handler_for_logging;
+  }
+
  private:
   friend class WriteBatchInternal;
   std::unique_ptr<SavePoints> save_points_;
@@ -296,7 +303,7 @@ class WriteBatch : public WriteBatchBase {
   DirectWriter* direct_writer_ = nullptr;
   mutable size_t direct_entries_ = 0;
 
-  // Intentionally copyable
+  Handler* handler_for_logging_ = nullptr;
 };
 
 }  // namespace rocksdb

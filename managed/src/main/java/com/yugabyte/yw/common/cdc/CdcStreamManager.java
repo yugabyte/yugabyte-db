@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.*;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
-
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.ArrayList;

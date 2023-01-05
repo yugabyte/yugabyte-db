@@ -285,7 +285,7 @@ public class NodeUniverseManager extends DevopsBase {
     commandArgs.add(node.nodeName);
     if (universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
       Map<String, String> k8sConfig =
-          PlacementInfoUtil.getKubernetesConfigPerPod(
+          KubernetesUtil.getKubernetesConfigPerPod(
                   cluster.placementInfo,
                   universe.getUniverseDetails().getNodesInCluster(cluster.uuid))
               .get(node.cloudInfo.private_ip);
@@ -297,8 +297,7 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(k8sConfig)));
     } else if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.unknown)) {
-      AccessKey accessKey =
-          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
+      Provider provider = Provider.getOrBadRequest(providerUUID);
       Optional<NodeAgent> optional =
           getNodeAgentClient().maybeGetNodeAgentClient(node.cloudInfo.private_ip);
       if (optional.isPresent()) {
@@ -307,7 +306,7 @@ public class NodeUniverseManager extends DevopsBase {
       } else {
         commandArgs.add("ssh");
         commandArgs.add("--port");
-        commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
+        commandArgs.add(provider.details.sshPort.toString());
         commandArgs.add("--ip");
         commandArgs.add(node.cloudInfo.private_ip);
         commandArgs.add("--key");

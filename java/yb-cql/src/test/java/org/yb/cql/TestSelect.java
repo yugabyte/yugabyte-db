@@ -2253,6 +2253,64 @@ public class TestSelect extends BaseCQLTest {
   }
 
   @Test
+  public void testDistinctPushdown() throws Exception {
+    session.execute("create table t(h int, c int, primary key(h, c))");
+    session.execute("insert into t(h, c) values (0, 0)");
+    session.execute("insert into t(h, c) values (0, 1)");
+    session.execute("insert into t(h, c) values (0, 2)");
+    session.execute("insert into t(h, c) values (1, 0)");
+    session.execute("insert into t(h, c) values (1, 1)");
+    session.execute("insert into t(h, c) values (1, 2)");
+
+    // For both queries, the scan should jump directly to the relevant primary key,
+    // so the number of seeks is equal to the items to be retrived.
+    {
+      String query = "select distinct h from t where h = 0";
+      String[] rows = {"Row[0]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("t", query, rows);
+      assertEquals(1, metrics.seekCount);
+    }
+
+    {
+      String query = "select distinct h from t where h in (0, 1)";
+      String[] rows = {"Row[0]", "Row[1]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("t", query, rows);
+      assertEquals(2, metrics.seekCount);
+    }
+  }
+
+  @Test
+  public void testDistinctPushdownSecondColumn() throws Exception {
+    session.execute("create table t(r1 int, r2 int, r3 int, primary key(r2, r3))");
+    session.execute("insert into t(r1, r2, r3) values (0, 0, 0)");
+    session.execute("insert into t(r1, r2, r3) values (0, 0, 1)");
+    session.execute("insert into t(r1, r2, r3) values (0, 0, 2)");
+    session.execute("insert into t(r1, r2, r3) values (1, 1, 0)");
+    session.execute("insert into t(r1, r2, r3) values (1, 1, 1)");
+    session.execute("insert into t(r1, r2, r3) values (1, 1, 2)");
+
+    // For both queries, the scan should jump directly to the relevant primary key,
+    // so the number of seeks is equal to the items to be retrived.
+    {
+      String query = "select distinct r2 from t where r2 = 0";
+      String[] rows = {"Row[0]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("t", query, rows);
+      assertEquals(1, metrics.seekCount);
+    }
+
+    {
+      String query = "select distinct r2 from t where r2 in (0, 1)";
+      String[] rows = {"Row[0]", "Row[1]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("t", query, rows);
+      assertEquals(2, metrics.seekCount);
+    }
+  }
+
+  @Test
   public void testToJson() throws Exception {
     // Create test table.
     session.execute("CREATE TABLE test_tojson (c1 int PRIMARY KEY, c2 float, c3 double, c4 " +

@@ -134,7 +134,11 @@ if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
   # The special variable PG_EXE_LD_FLAGS_AFTER_YB_LIBS eventually gets propagated to a
   # YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS environment variable used in Postgres makefiles that build
   # an executable. It gets included after all C++ YB libs that the relevant executable depends on.
-  set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -lprofiler")
+  if ("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
+    set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -labsl")
+  else()
+    set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -lprofiler")
+  endif()
 
   if(IS_CLANG)
     string(APPEND PG_EXE_LD_FLAGS_AFTER_YB_LIBS " -lc++")

@@ -1,6 +1,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.yugabyte.yw.commissioner.ITask;
+
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
@@ -71,6 +72,8 @@ public enum TaskType {
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse(com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.class),
 
+  UpdateLoadBalancerConfig(com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig.class),
+
   RestartUniverse(com.yugabyte.yw.commissioner.tasks.upgrade.RestartUniverse.class),
 
   RestartUniverseKubernetesUpgrade(
@@ -96,6 +99,8 @@ public enum TaskType {
   TlsToggle(com.yugabyte.yw.commissioner.tasks.upgrade.TlsToggle.class),
 
   NodeCertReloadTask(com.yugabyte.yw.commissioner.tasks.subtasks.NodeCertReloadTask.class),
+
+  UpdateUniverseConfig(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseConfig.class),
 
   VMImageUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.VMImageUpgrade.class),
 

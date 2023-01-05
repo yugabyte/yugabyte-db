@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Universe;
+
 import java.util.UUID;
 import play.mvc.Http;
 import play.mvc.Http.Status;
@@ -23,9 +24,10 @@ public class TlsToggleParams extends UpgradeTaskParams {
   public boolean enableNodeToNodeEncrypt = false;
   public boolean enableClientToNodeEncrypt = false;
   public boolean allowInsecure = true;
-  public UUID rootCA = null;
-  public UUID clientRootCA = null;
-  public Boolean rootAndClientRootCASame = null;
+  // below fields are already inherited from UniverseDefinitionTaskParams
+  //  public UUID rootCA = null;
+  //  public UUID clientRootCA = null;
+  //  public Boolean rootAndClientRootCASame = null;
 
   public TlsToggleParams() {}
 
@@ -48,8 +50,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
     boolean existingEnableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
     boolean existingEnableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     UUID existingRootCA = universeDetails.rootCA;
-    UUID existingClientRootCA = universeDetails.clientRootCA;
-
+    UUID existingClientRootCA = universeDetails.getClientRootCA();
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE
         && upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
       throw new PlatformServiceException(
@@ -124,8 +125,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
           "K8SCertManager certificates are only supported for k8s providers with cert-manager configured.");
     }
 
-    if (rootAndClientRootCASame != null
-        && rootAndClientRootCASame
+    if (rootAndClientRootCASame
         && enableNodeToNodeEncrypt
         && enableClientToNodeEncrypt
         && rootCA != null

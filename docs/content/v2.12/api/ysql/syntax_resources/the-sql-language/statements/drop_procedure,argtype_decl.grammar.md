@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 drop_procedure ::= DROP PROCEDURE [ IF EXISTS ]  
                    { name [ ( [ argtype_decl [ , ... ] ] ) ] } 
                    [ , ... ] [ CASCADE | RESTRICT ]
