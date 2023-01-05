@@ -4,7 +4,7 @@ headerTitle: CREATE SCHEMA
 linkTitle: CREATE SCHEMA
 description: Use the CREATE SCHEMA statement to create schema in the current database.
 menu:
-  v2.12_api:
+  v2.12:
     identifier: ddl_create_schema
     parent: statements
 type: docs

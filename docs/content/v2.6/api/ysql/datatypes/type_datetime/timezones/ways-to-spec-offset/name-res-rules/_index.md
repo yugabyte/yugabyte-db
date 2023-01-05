@@ -5,7 +5,7 @@ linkTitle: name-resolution rules
 description: Explains the rules for resolving a string that's intended to identify a UTC offset. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.6_api:
+  v2.6:
     identifier: name-res-rules
     parent: ways-to-spec-offset
     weight: 10

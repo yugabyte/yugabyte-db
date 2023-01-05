@@ -4,7 +4,7 @@ headerTitle: ALTER DEFAULT PRIVILEGES
 linkTitle: ALTER DEFAULT PRIVILEGES
 description: Use the ALTER DEFAULT PRIVILEGES statement to define the default access privileges.
 menu:
-  v2.8_api:
+  v2.8:
     identifier: dcl_alter_default_privileges
     parent: statements
 type: docs

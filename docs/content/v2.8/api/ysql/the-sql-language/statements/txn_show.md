@@ -5,7 +5,7 @@ linkTitle: SHOW TRANSACTION
 description: Use the SHOW TRANSACTION statement to show the current transaction isolation level.
 summary: SHOW TRANSACTION
 menu:
-  v2.8_api:
+  v2.8:
     identifier: txn_show
     parent: statements
 type: docs

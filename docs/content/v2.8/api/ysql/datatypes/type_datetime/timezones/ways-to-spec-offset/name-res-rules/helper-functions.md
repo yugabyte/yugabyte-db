@@ -4,7 +4,7 @@ headerTitle: Helper functions for rules 2, 3, and 4 for specifying the UTC offse
 linkTitle: Helper functions
 description: Code to create helper functions for substantiating rules 2, 3, and 4 for specifying the UTC offset. [YSQL]
 menu:
-  v2.8_api:
+  v2.8:
     identifier: helper-functions
     parent: name-res-rules
     weight: 50

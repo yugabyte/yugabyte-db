@@ -4,7 +4,7 @@ headerTitle: REVOKE
 linkTitle: REVOKE
 description: Use the REVOKE statement to remove access privileges from one or more roles.
 menu:
-  preview_api:
+  preview:
     identifier: dcl_revoke
     parent: statements
 aliases:

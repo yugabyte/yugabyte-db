@@ -5,7 +5,7 @@ linkTitle: Recursive CTE
 headerTitle: The recursive CTE
 description: This section specifies the syntax and semantics of the recursive CTE
 menu:
-  preview_api:
+  preview:
     identifier: recursive-cte
     parent: with-clause
     weight: 30

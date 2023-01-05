@@ -4,7 +4,7 @@ headerTitle: CREATE SEQUENCE
 linkTitle: CREATE SEQUENCE
 description: Use the CREATE SEQUENCE statement to create a sequence in the current schema.
 menu:
-  v2.6_api:
+  v2.6:
     identifier: ddl_create_sequence
     parent: statements
 type: docs

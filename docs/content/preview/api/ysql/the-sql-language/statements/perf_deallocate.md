@@ -4,7 +4,7 @@ headerTitle: DEALLOCATE
 linkTitle: DEALLOCATE
 description: Use the `DEALLOCATE` statement to deallocate a previously prepared SQL statement.
 menu:
-  preview_api:
+  preview:
     identifier: perf_deallocate
     parent: statements
 aliases:

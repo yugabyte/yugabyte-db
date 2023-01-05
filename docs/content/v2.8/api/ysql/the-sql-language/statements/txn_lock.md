@@ -4,7 +4,7 @@ headerTitle: LOCK
 linkTitle: LOCK
 description: Use the LOCK statement to lock a table.
 menu:
-  v2.8_api:
+  v2.8:
     identifier: txn_lock
     parent: statements
 type: docs

@@ -4,7 +4,7 @@ linkTitle: array[] constructor
 headerTitle: The array[] value constructor
 description: The array[] value constructor
 menu:
-  preview_api:
+  preview:
     identifier: array-constructor
     parent: api-ysql-datatypes-array
     weight: 10

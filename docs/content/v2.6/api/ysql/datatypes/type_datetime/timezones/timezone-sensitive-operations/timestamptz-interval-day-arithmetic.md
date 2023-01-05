@@ -4,7 +4,7 @@ headerTitle: The sensitivity of timestamptz-interval arithmetic to the current t
 linkTitle: pure 'day' interval arithmetic
 description: Explains the sensitivity of timestamptz-interval arithmetic to current timezone for pure days intervals. [YSQL]
 menu:
-  v2.6_api:
+  v2.6:
     identifier: timestamptz-interval-day-arithmetic
     parent: timezone-sensitive-operations
     weight: 20

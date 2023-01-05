@@ -4,7 +4,7 @@ headerTitle: RESET
 linkTitle: RESET
 description: Use the RESET statement to restore the value of a run-time parameter to the default value.
 menu:
-  v2.8_api:
+  v2.8:
     identifier: cmd_reset
     parent: statements
 type: docs

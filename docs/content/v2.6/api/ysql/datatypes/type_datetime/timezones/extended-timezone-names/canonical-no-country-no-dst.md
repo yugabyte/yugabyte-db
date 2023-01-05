@@ -4,7 +4,7 @@ headerTitle: Synthetic timezones (do not observe Daylight Savings Time)
 linkTitle: synthetic timezones no DST
 description: Table. [YSQL]
 menu:
-  v2.6_api:
+  v2.6:
     identifier: canonical-no-country-no-dst
     parent: extended-timezone-names
     weight: 40

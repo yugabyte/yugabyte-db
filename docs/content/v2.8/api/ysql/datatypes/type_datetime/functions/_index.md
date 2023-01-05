@@ -5,7 +5,7 @@ linkTitle: General-purpose functions
 description: Describes the general-purpose date and time functions. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.8_api:
+  v2.8:
     identifier: date-time-functions
     parent: api-ysql-datatypes-datetime
     weight: 90

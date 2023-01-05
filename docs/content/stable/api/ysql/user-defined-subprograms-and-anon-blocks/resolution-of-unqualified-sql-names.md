@@ -4,7 +4,7 @@ headerTitle: Resolution of unqualified names in SQL statements that user-defined
 linkTitle: Resolution of unqualified names
 description: Explains how unqualified names, used in SQL statements that user-defined subprograms issue, are resolved [YSQL].
 menu:
-  stable_api:
+  stable:
     identifier: resolution-of-unqualified-sql-names
     parent: user-defined-subprograms-and-anon-blocks
     weight: 20

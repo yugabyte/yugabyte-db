@@ -4,7 +4,7 @@ headerTitle: INSERT
 linkTitle: INSERT
 description: Use the INSERT statement to add a row to a specified table.
 menu:
-  stable_api:
+  stable:
     parent: api-cassandra
     weight: 1300
 type: docs

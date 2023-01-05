@@ -4,7 +4,7 @@ linkTitle: Text typecasting and literals
 headerTitle: The text typecast of a value, the literal for that value, and how they are related
 description: The text typecast of a value, the literal for that value, and how they are related
 menu:
-  stable_api:
+  stable:
     identifier: text-typecasting-and-literals
     parent: array-literals
     weight: 5

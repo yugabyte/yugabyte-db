@@ -4,7 +4,7 @@ linkTitle: Array properties
 headerTitle: Functions for reporting the geometric properties of an array
 description: Functions for reporting the geometric properties of an array
 menu:
-  preview_api:
+  preview:
     identifier: array-properties
     parent: array-functions-operators
 type: docs

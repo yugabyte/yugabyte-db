@@ -4,7 +4,7 @@ headerTitle: SET SESSION AUTHORIZATION
 linkTitle: SET SESSION AUTHORIZATION
 description: Use the SET SESSION AUTHORIZATION statement to set the current user and session user of the current session to be the specified user.
 menu:
-  v2.6_api:
+  v2.6:
     identifier: dcl_set_session_authorization
     parent: statements
 type: docs

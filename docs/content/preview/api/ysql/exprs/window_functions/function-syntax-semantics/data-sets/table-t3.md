@@ -4,7 +4,7 @@ linkTitle: table t3
 headerTitle: Create and populate table t3
 description: Creates and populate table t3 with data that allows the demonstration of the YSQL window functions.
 menu:
-  preview_api:
+  preview:
     identifier: table-t3
     parent: data-sets
     weight: 40

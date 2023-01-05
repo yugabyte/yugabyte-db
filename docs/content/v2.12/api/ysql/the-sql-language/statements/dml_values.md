@@ -4,7 +4,7 @@ headerTitle: VALUES
 linkTitle: VALUES
 description: Use the VALUES statement to generate a row set specified as an explicitly written set of explictly written tuples.
 menu:
-  v2.12_api:
+  v2.12:
     identifier: dml_values
     parent: statements
 type: docs

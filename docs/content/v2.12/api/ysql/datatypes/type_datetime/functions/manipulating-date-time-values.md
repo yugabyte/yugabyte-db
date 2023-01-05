@@ -4,7 +4,7 @@ headerTitle: Functions for manipulating date-time values
 linkTitle: Manipulating date-time values
 description: The semantics of the functions manipulating date-time values. [YSQL]
 menu:
-  v2.12_api:
+  v2.12:
     identifier: manipulating-date-time-values
     parent: date-time-functions
     weight: 20

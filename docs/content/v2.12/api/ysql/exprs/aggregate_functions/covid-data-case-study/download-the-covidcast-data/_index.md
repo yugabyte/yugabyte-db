@@ -5,7 +5,7 @@ headerTitle: Finding and downloading the COVIDcast data
 description: How to download data from Carnegie Mellon's COVIDcast project for linear regression analysis using YSQL
 image: /images/section_icons/api/ysql.png
 menu:
-  v2.12_api:
+  v2.12:
     identifier: download-the-covidcast-data
     parent: covid-data-case-study
     weight: 10

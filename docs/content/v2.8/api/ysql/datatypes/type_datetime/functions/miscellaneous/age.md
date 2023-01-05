@@ -4,7 +4,7 @@ headerTitle: Function age() returns integer
 linkTitle: Function age()
 description: The semantics of "function age() returns integer". [YSQL]
 menu:
-  v2.8_api:
+  v2.8:
     identifier: age
     parent: miscellaneous
     weight: 10

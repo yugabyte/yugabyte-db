@@ -4,7 +4,7 @@ headerTitle: DELETE
 linkTitle: DELETE
 description: Use the DELETE statement to remove rows from a specified table that meet a given condition.
 menu:
-  v2.12_api:
+  v2.12:
     parent: api-cassandra
     weight: 1330
 type: docs

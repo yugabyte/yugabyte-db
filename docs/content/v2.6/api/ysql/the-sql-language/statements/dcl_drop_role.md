@@ -4,7 +4,7 @@ headerTitle: DROP ROLE
 linkTitle: DROP ROLE
 description: Use the DROP ROLE statement to remove the specified roles.
 menu:
-  v2.6_api:
+  v2.6:
     identifier: dcl_drop_role
     parent: statements
 type: docs

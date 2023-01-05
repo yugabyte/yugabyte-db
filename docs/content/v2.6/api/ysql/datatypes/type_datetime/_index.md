@@ -5,7 +5,7 @@ linkTitle: Date and time
 description: YSQL supports the date, time, timestamp, and interval data types together with interval arithmetic.
 image: /images/section_icons/api/ysql.png
 menu:
-  v2.6_api:
+  v2.6:
     identifier: api-ysql-datatypes-datetime
     parent: api-ysql-datatypes
 type: indexpage

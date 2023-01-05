@@ -4,7 +4,7 @@ linkTitle: Array concatenation
 headerTitle: Array concatenation functions and operators
 description: Array concatenation functions and operators
 menu:
-  v2.12_api:
+  v2.12:
     identifier: array-concatenation
     parent: array-functions-operators
     weight: 40

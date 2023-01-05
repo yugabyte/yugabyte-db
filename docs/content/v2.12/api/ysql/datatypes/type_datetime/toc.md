@@ -4,7 +4,7 @@ headerTitle: Table of contents for the date-time data types section
 linkTitle: ToC
 description: date-time types ToC.
 menu:
-  v2.12_api:
+  v2.12:
     identifier: toc
     parent: api-ysql-datatypes-datetime
     weight: 150

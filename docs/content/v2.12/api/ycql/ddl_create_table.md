@@ -4,7 +4,7 @@ headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a new table in a keyspace.
 menu:
-  v2.12_api:
+  v2.12:
     parent: api-cassandra
     weight: 1240
 type: docs

@@ -4,7 +4,7 @@ headerTitle: Comparing two interval values for equality
 linkTitle: interval-interval equality
 description: Explains the semantics of comparing two interval values for equality. [YSQL]
 menu:
-  v2.6_api:
+  v2.6:
     identifier: interval-interval-equality
     parent: interval-arithmetic
     weight: 10

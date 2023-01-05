@@ -5,7 +5,7 @@ summary: Primitive and compound data types
 headerTitle: Primitive and compound JSON data types
 description: Learn how JSON can represent (sub)values of four primitive data types and of two compound data types.
 menu:
-  v2.12_api:
+  v2.12:
     identifier: primitive-and-compound-data-types
     parent: api-ysql-datatypes-json
     weight: 20

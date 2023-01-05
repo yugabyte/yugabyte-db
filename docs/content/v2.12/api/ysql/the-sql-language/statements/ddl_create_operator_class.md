@@ -4,7 +4,7 @@ headerTitle: CREATE OPERATOR CLASS
 linkTitle: CREATE OPERATOR CLASS
 description: Use the CREATE OPERATOR CLASS statement to create an operator class.
 menu:
-  v2.12_api:
+  v2.12:
     identifier: ddl_create_operator_class
     parent: statements
 type: docs

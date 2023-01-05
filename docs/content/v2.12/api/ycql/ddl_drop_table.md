@@ -4,7 +4,7 @@ headerTitle: DROP TABLE
 linkTitle: DROP TABLE
 description: Use the DROP TABLE statement to remove a table and all of its data from the database.
 menu:
-  v2.12_api:
+  v2.12:
     parent: api-cassandra
     weight: 1270
 type: docs

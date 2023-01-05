@@ -4,7 +4,7 @@ headerTitle: Ad hoc examples of defining interval values
 linkTitle: ad hoc examples
 description: Provides six ad-hoc-examples of defining interval values. [YSQL]
 menu:
-  v2.6_api:
+  v2.6:
     identifier: ad-hoc-examples
     parent: interval-representation
     weight: 10

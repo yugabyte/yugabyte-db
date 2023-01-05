@@ -4,7 +4,7 @@ headerTitle: Date and time functions
 linkTitle: Date and time
 description: Use date and time functions to work on date and time data types.
 menu:
-  v2.8_api:
+  v2.8:
     parent: api-cassandra
     weight: 1560
 type: docs

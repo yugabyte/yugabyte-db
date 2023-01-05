@@ -5,7 +5,7 @@ linkTitle: offset/timezone-sensitive operations
 description: Explains the scenarios that are sensitive to the UTC offset and possibly, additionally, to the timezone. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.6_api:
+  v2.6:
     identifier: timezone-sensitive-operations
     parent: timezones
     weight: 30

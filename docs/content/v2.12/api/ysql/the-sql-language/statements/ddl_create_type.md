@@ -4,7 +4,7 @@ headerTitle: CREATE TYPE
 linkTitle: CREATE TYPE
 description: Use the CREATE TYPE statement to create a user-defined type in a database.
 menu:
-  v2.12_api:
+  v2.12:
     identifier: ddl_create_type
     parent: statements
 type: docs

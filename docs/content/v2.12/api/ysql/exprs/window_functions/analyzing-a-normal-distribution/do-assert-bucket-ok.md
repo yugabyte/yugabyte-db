@@ -4,7 +4,7 @@ linkTitle: do_assert_bucket_ok
 headerTitle: do_assert_bucket_ok.sql
 description: do_assert_bucket_ok.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
 menu:
-  v2.12_api:
+  v2.12:
     identifier: do-assert-bucket-ok
     parent: analyzing-a-normal-distribution
     weight: 90

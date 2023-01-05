@@ -4,7 +4,7 @@ headerTitle: CREATE TRIGGER
 linkTitle: CREATE TRIGGER
 description: Use the CREATE TRIGGER statement to create a trigger.
 menu:
-  v2.6_api:
+  v2.6:
     identifier: ddl_create_trigger
     parent: statements
 type: docs

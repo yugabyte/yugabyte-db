@@ -5,7 +5,7 @@ linkTitle: User-defined subprograms and anonymous blocks
 description: Describes how YSQL supports user-defined subprograms and anonymous blocks implemented in SQL and PL/pgSQL.
 image: /images/section_icons/api/ysql.png
 menu:
-  stable_api:
+  stable:
     identifier: user-defined-subprograms-and-anon-blocks
     parent: api-ysql
     weight: 300

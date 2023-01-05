@@ -4,7 +4,7 @@ headerTitle: Defining and using custom domain types to specialize the native int
 linkTitle: custom interval domains
 description: Explains how to define and use custom interval domain types to specialize the native interval functionality. [YSQL]
 menu:
-  v2.6_api:
+  v2.6:
     identifier: custom-interval-domains
     parent: type-interval
     weight: 90

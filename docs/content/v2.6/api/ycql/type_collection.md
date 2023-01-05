@@ -4,7 +4,7 @@ headerTitle: Collection data types (MAP, LIST, and SET)
 linkTitle: Collection
 description: Use collection data types to specify columns for data objects that can contain more than one value.
 menu:
-  v2.6_api:
+  v2.6:
     parent: api-cassandra
     weight: 1390
 type: docs

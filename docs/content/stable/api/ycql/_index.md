@@ -7,9 +7,9 @@ summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
 headcontent:
 menu:
-  stable_api:
+  stable:
     identifier: api-cassandra
-    parent: yugabyte-api-ycql
+    parent: api
     weight: 3000
     params:
       classes: separator

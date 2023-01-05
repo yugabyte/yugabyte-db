@@ -5,7 +5,7 @@ linkTitle: Alterable function-only attributes
 description: Describes and categorizes the various attributes that characterize just user-defined functions [YSQL].
 image: /images/section_icons/api/subsection.png
 menu:
-  preview_api:
+  preview:
     identifier: alterable-function-only-attributes
     parent: subprogram-attributes
     weight: 30

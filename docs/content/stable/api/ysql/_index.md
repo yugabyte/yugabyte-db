@@ -6,9 +6,9 @@ description: Learn about Yugabyte Structured Query Language (YSQL), the distribu
 summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
 menu:
-  stable_api:
+  stable:
     identifier: api-ysql
-    parent: yugabyte-api-ysql
+    parent: api
     weight: 2900
 type: indexpage
 ---

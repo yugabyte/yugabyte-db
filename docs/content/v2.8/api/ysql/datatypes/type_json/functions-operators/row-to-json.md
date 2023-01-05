@@ -4,7 +4,7 @@ headerTitle: row_to_json()
 linkTitle: row_to_json()
 description: Create a JSON object from a SQL record.
 menu:
-  v2.8_api:
+  v2.8:
     identifier: row-to-json
     parent: json-functions-operators
     weight: 270

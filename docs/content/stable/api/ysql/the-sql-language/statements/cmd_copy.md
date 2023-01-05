@@ -4,7 +4,7 @@ headerTitle: COPY
 linkTitle: COPY
 description: Transfer data between tables and files with the COPY, COPY TO, and COPY FROM statements.
 menu:
-  stable_api:
+  stable:
     identifier: cmd_copy
     parent: statements
 type: docs

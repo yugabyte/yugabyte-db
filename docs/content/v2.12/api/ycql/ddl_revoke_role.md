@@ -4,7 +4,7 @@ headerTitle: REVOKE ROLE
 linkTitle: REVOKE ROLE
 description: Use the `REVOKE ROLE` statement to revoke a role (which represents a group of permissions and the SUPERUSER status) from another role.
 menu:
-  v2.12_api:
+  v2.12:
     parent: api-cassandra
     weight: 1284
 type: docs

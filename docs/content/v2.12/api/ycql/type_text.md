@@ -4,7 +4,7 @@ headerTitle: TEXT type
 linkTitle: TEXT
 description: Use the TEXT data type to specify data of a string of Unicode characters.
 menu:
-  v2.12_api:
+  v2.12:
     parent: api-cassandra
     weight: 1440
 type: docs

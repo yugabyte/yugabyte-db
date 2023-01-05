@@ -4,7 +4,7 @@ headerTitle: CREATE TABLE AS
 linkTitle: CREATE TABLE AS
 description: Use the CREATE TABLE AS statement to create a table using the output of a subquery.
 menu:
-  v2.8_api:
+  v2.8:
     identifier: ddl_create_table_as
     parent: statements
 type: docs

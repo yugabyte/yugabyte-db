@@ -6,9 +6,9 @@ description: Yugabyte Structured Query Language (YSQL) is the distributed SQL AP
 summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
 menu:
-  v2.8_api:
+  v2.8:
     identifier: api-ysql
-    parent: yugabyte-api-ysql
+    parent: api
     weight: 2900
 type: indexpage
 ---

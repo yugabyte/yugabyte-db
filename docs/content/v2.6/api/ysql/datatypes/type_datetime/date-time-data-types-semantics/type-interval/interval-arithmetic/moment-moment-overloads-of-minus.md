@@ -4,7 +4,7 @@ headerTitle: The moment-moment overloads of the "-" operator for timestamptz, ti
 linkTitle: moment-moment overloads of "-"
 description: Explains the semantics of the moment-moment overloads of the "-" operator for the timestamptz, timestamp, and time data types. [YSQL]
 menu:
-  v2.6_api:
+  v2.6:
     identifier: moment-moment-overloads-of-minus
     parent: interval-arithmetic
     weight: 40

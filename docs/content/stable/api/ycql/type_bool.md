@@ -4,7 +4,7 @@ headerTitle: BOOLEAN data type
 linkTitle: BOOLEAN
 description: Use the `BOOLEAN` data type to specify values of either "true" or "false".
 menu:
-  stable_api:
+  stable:
     parent: api-cassandra
     weight: 1380
 type: docs

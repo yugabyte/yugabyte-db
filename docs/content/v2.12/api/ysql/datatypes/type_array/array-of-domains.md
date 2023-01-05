@@ -4,7 +4,7 @@ linkTitle: array of DOMAINs
 headerTitle: Using an array of DOMAIN values
 description: Using an array of DOMAIN values
 menu:
-  v2.12_api:
+  v2.12:
     identifier: array-of-domains
     parent: api-ysql-datatypes-array
     weight: 40

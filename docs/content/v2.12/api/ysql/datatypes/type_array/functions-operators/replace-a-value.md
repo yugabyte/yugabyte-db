@@ -4,7 +4,7 @@ linkTitle: array_replace() / set value
 headerTitle: array_replace() and setting an array value explicitly
 description: array_replace() and setting an array value explicitly
 menu:
-  v2.12_api:
+  v2.12:
     identifier: array-replace-a-value
     parent: array-functions-operators
 type: docs

@@ -4,7 +4,7 @@ headerTitle: CREATE TABLE
 linkTitle: CREATE TABLE
 description: Use the CREATE TABLE statement to create a table in a database.
 menu:
-  v2.6_api:
+  v2.6:
     identifier: ddl_create_table
     parent: statements
 type: docs

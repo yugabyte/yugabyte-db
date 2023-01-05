@@ -5,7 +5,7 @@ linkTitle: CREATE EXTENSION
 summary: Load an extension into a database
 description: Use the CREATE EXTENSION statement to load an extension into a database.
 menu:
-  stable_api:
+  stable:
     identifier: ddl_create_extension
     parent: statements
 type: docs

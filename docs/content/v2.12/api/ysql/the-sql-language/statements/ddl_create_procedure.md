@@ -4,7 +4,7 @@ headerTitle: CREATE PROCEDURE
 linkTitle: CREATE PROCEDURE
 description: Use the CREATE PROCEDURE statement to create a procedure in a database.
 menu:
-  v2.12_api:
+  v2.12:
     identifier: ddl_create_procedure
     parent: statements
 type: docs
