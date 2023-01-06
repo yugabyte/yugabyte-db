@@ -100,6 +100,44 @@
   to = "/preview/releases/"
   force = true
 
+# A few redirects to head off issues with version_menu_pagelinks
+
+[[redirects]]
+  from = "/v2.12/explore/ysql-language-features/sql-feature-support/*"
+  to = "/v2.12/explore/ysql-language-features/"
+
+[[redirects]]
+  from = "/v2.8/explore/ysql-language-features/sql-feature-support/*"
+  to = "/v2.8/explore/ysql-language-features/"
+
+[[redirects]]
+  from = "/v2.12/develop/quality-of-service/*"
+  to = "/v2.12/develop/"
+
+[[redirects]]
+  from = "/v2.8/develop/quality-of-service/*"
+  to = "/v2.8/develop/"
+
+[[redirects]]
+  from = "/v2.14/develop/build-apps/"
+  to = "/v2.14/develop/learn/"
+
+[[redirects]]
+  from = "/v2.12/develop/build-apps/"
+  to = "/v2.12/develop/learn/"
+
+[[redirects]]
+  from = "/v2.8/develop/build-apps/"
+  to = "/v2.8/develop/learn/"
+
+[[redirects]]
+  from = "/v2.12/drivers-orms/"
+  to = "/v2.12/reference/drivers/"
+
+[[redirects]]
+  from = "/v2.8/drivers-orms/"
+  to = "/v2.8/reference/drivers/"
+
 # Redirect old cloud docs to root of current
 
 #[[redirects]]
