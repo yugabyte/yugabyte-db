@@ -67,7 +67,7 @@ In a cluster that is replicated across regions, the nodes of the cluster are dep
 
 ![Single cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-2.png)
 
-**Resilience**: Putting cluster nodes in different regions provides a  higher degree of failure independence. In the event of a failure, the database cluster continues to serve data requests from the remaining regions while automatically replicating the data in the background to maintain the desired level of resilience.
+**Resilience**: Putting cluster nodes in different regions provides a  higher degree of failure independence. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
 
 **Consistency**: All writes are synchronously replicated. Transactions are globally consistent.
 
@@ -220,7 +220,7 @@ For applications that have writes happening from a single zone or region but wan
 
 ![Read replicas](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-6.png)
 
-**Resilience**: If you deploy the nodes of the primary cluster across zones, you get zone-level resilience. Read replicas don't participate in the Raft consistency protocol and therefore don't affect resilience.
+**Resilience**: If you deploy the nodes of the primary cluster across zones or regions, you get zone- or region-level resilience. Read replicas don't participate in the Raft consistency protocol and therefore don't affect resilience.
 
 **Consistency**: The data in the replica clusters is timeline consistent, which is better than eventual consistency.
 
