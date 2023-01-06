@@ -2,8 +2,6 @@
 title: Performance
 linkTitle: Performance
 description: Performance
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-unversioned: true
 menu:
   preview:
     identifier: performance

@@ -2,8 +2,6 @@
 title: Migration steps
 linkTitle: Migration steps
 description: Run the steps to ensure a successful migration.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-unversioned: true
 menu:
   preview:
     identifier: migrate-steps
