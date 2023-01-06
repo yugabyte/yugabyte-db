@@ -946,7 +946,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     WaitForYbcServer task = createTask(WaitForYbcServer.class);
     WaitForYbcServer.Params params = new WaitForYbcServer.Params();
     params.universeUUID = taskParams().universeUUID;
-    params.nodeDetailsSet = nodeDetailsSet == null ? null : new HashSet<>(nodeDetailsSet);
+    params.nodeNameList =
+        nodeDetailsSet == null
+            ? null
+            : nodeDetailsSet.stream().map(node -> node.nodeName).collect(Collectors.toSet());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
