@@ -33,7 +33,8 @@
   </div>
   {{ partial "contribute_list" . }}
   {{ partial "earlier-version-warning" . }}
-  {{ .Content }}
+  <!-- Wrap table in div for responsive -->
+  {{ .Content | replaceRE "(<table(?:.|\n)+?</table>)" "<div class=table-responsive> ${1} </div>"  | safeHTML }}
   {{ if (and (not .Params.hide_feedback) (.Site.Params.ui.feedback.enable) (.Site.GoogleAnalytics)) }}
     {{ partial "feedback.html" .Site.Params.ui.feedback }}
     <br />

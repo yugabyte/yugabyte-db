@@ -5,7 +5,7 @@ description: Apache Kafka
 aliases:
   - /preview/integrations
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-kafka
     parent: integrations
     weight: 571

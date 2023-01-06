@@ -3,7 +3,7 @@ title: Build a Python application using Apache Spark and YugabyteDB
 linkTitle: YSQL
 description: Build a Python application using Apache Spark and YugabyteDB
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark-3-python-ysql
     parent: apache-spark
     weight: 575

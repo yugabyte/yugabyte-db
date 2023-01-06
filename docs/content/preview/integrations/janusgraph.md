@@ -4,7 +4,7 @@ linkTitle: JanusGraph
 description: JanusGraph
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: janusgraph
     parent: integrations
     weight: 571

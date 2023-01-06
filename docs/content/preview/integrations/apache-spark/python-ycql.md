@@ -5,7 +5,7 @@ description: Build a Python application using Apache Spark and YugabyteDB
 aliases:
   - /preview/integrations/apache-spark/python/
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark-3-python-ycql
     parent: apache-spark
     weight: 576
