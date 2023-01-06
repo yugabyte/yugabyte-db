@@ -94,7 +94,7 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| host | Host name of the YugabyteDB instance. You can also enter [fallback addresses](#fallback-addresses). | localhost
+| host | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
 | port |  Listen port for YSQL | 5433
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
@@ -133,9 +133,11 @@ url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1",
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-#### Fallback addresses
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
-You can specify multiple hosts in the connection string to provide fallback options during the initial connection. Delimit the addresses using commas, as follows:
+#### Use multiple addresses
+
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Delimit the addresses using commas, as follows:
 
 ```sh
 postgres://username:password@host1:5433,host2:5433,host3:5433/database_name?load_balance=true
@@ -166,9 +168,7 @@ url := fmt.Sprintf("postgres://%s:%s@%s:%d",
     }
 ```
 
-The fallback hosts are only used during initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
-
-After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+The hosts are only used during the initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
 
 #### Use SSL
 

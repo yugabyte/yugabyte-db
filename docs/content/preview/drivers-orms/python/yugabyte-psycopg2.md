@@ -80,7 +80,7 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| host | Host name of the YugabyteDB instance. You can also enter [fallback addresses](#fallback-addresses). | localhost |
+| host | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost |
 | port | Listen port for YSQL | 5433 |
 | database/dbname | Database name | yugabyte |
 | user | User connecting to the database | yugabyte |
@@ -108,17 +108,17 @@ The following is an example connection string for connecting to YugabyteDB:
 conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte',load_balance='true')
 ```
 
-#### Fallback addresses
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
-You can specify multiple hosts in the connection string to provide fallback options during the initial connection. Delimit the addresses using commas, as follows:
+#### Use multiple addresses
+
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Delimit the addresses using commas, as follows:
 
 ```python
 conn = psycopg2.connect(dbname='yugabyte',host='host1,host2,host3',port='5433',user='yugabyte',password='yugabyte',load_balance='true')
 ```
 
-The fallback hosts are only used during initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
-
-After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+The hosts are only used during the initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
 
 #### Use SSL
 
