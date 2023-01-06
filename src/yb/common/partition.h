@@ -274,15 +274,17 @@ class PartitionSchema {
 
   static bool IsValidHashPartitionKeyBound(const std::string& partition_key);
 
-  // Get the overlap between two key ranges.
-  static uint32_t GetOverlap(
+  // Returns the lexicographically ordered middle key between two key bounds.
+  static Result<std::string> GetLexicographicMiddleKey(
+      const std::string& key_start, const std::string& key_end);
+
+  // Get if there is overlap between two key ranges. This can be done without decoding, by just
+  // performing string comparisons on keys.
+  static bool HasOverlap(
       const std::string& key_start,
       const std::string& key_end,
       const std::string& other_key_start,
       const std::string& other_key_end);
-
-  // Get the Partition range size.
-  static uint32_t GetPartitionRangeSize(const std::string& key_start, const std::string& key_end);
 
   template <class T>
   static void ProcessHashKeyEntry(const T* value_pb, std::string* out) {

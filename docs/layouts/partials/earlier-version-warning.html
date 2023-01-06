@@ -5,9 +5,9 @@
   {{ $previewUrl = add (add "/" $previewUrl) "/" }}
   {{ $previewVersion := "" }}
 
-  {{ if .Site.Params.yb.preview_version }}
+  {{- if .Site.Params.yb.preview_version -}}
     {{ $previewVersion = printf "(%s)" .Site.Params.yb.preview_version }}
-  {{ end }}
+  {{- end -}}
 
   {{ range .Site.Data.currentVersions.dbVersions }}
     {{- if or (eq $docVersion .series) (eq $docVersion .alias)  -}}

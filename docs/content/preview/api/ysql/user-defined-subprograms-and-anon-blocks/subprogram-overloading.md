@@ -23,13 +23,13 @@ Subprograms with different _subprogram_call_signatures_ can share the same _[sub
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -49,13 +49,13 @@ and the _subprogram_call_signature_ rule:
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar-2" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram-2" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>

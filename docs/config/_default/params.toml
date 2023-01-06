@@ -19,14 +19,14 @@ version_menu_pagelinks = true
   to = "content/$1/"
 
 [[links.developer]]
-  name = "GitHub"
-  url = "https://github.com/yugabyte/yugabyte-db"
-  icon = "fab fa-github"
-
-[[links.developer]]
   name = "Slack"
   url = "https://communityinviter.com/apps/yugabyte-db/register"
   icon = "fab fa-slack"
+
+[[links.developer]]
+  name = "GitHub"
+  url = "https://github.com/yugabyte/yugabyte-db"
+  icon = "fab fa-github"
 
 [[links.developer]]
   name = "Twitter"
@@ -81,12 +81,10 @@ version_menu_pagelinks = true
 
 # Header logo link
 [yb.navbar_logo]
-  url = "https://www.yugabyte.com/"
+  url = "/"
   title = "Yugabyte"
-  newTab = true
 # Footer logo link
 [yb.footer_logo]
-  path = "/images/ybdocs-white.png"
-  url = "https://www.yugabyte.com/"
+  path = "/images/yugabytedb-logo.svg"
+  url = "/"
   title = "Yugabyte"
-  newTab = true

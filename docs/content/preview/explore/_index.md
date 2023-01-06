@@ -153,7 +153,7 @@ Start a local three-node cluster with a replication factor of `3` by first creat
 ./bin/yugabyted start \
                 --advertise_address=127.0.0.1 \
                 --base_dir=/tmp/ybd1 \
-                --cloud_location=aws.us-east.us-east-1a
+                --cloud_location=aws.us-east-2.us-east-2a
 ```
 
 On MacOS and Linux, the additional nodes need loopback addresses configured:
@@ -169,7 +169,7 @@ Next, join two more nodes with the previous node. By default, [yugabyted](../ref
 ./bin/yugabyted start \
                 --advertise_address=127.0.0.2 \
                 --base_dir=/tmp/ybd2 \
-                --cloud_location=aws.us-east.us-east-2a \
+                --cloud_location=aws.us-east-2.us-east-2b \
                 --join=127.0.0.1
 ```
 
@@ -177,13 +177,17 @@ Next, join two more nodes with the previous node. By default, [yugabyted](../ref
 ./bin/yugabyted start \
                 --advertise_address=127.0.0.3 \
                 --base_dir=/tmp/ybd3 \
-                --cloud_location=aws.us-east.us-east-3a \
+                --cloud_location=aws.us-east-2.us-east-2c \
                 --join=127.0.0.1
 ```
+
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster as follows:
 
 ```sh
 ./bin/yugabyted configure --fault_tolerance=zone --base_dir=/tmp/ybd1
 ```
+
+This command can be executed on any node where you already started YugabyteDB.
 
 To destroy the multi-node cluster, do the following:
 

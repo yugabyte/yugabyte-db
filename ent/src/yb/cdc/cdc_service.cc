@@ -2206,6 +2206,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
         VLOG(2) << "We will remove the entry for the stream: " << stream_id
                 << ", from cdc_state table.";
         tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+        RemoveStreamFromCache(stream_id);
       }
       continue;
     }
@@ -2218,6 +2219,12 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
     const auto& op_id = *op_id_result;
+
+    // If a tablet_id, stream_id pair is in "uninitialized state", we don't need to send the
+    // checkpoint to the tablet peers.
+    if (op_id == OpId::Invalid() && last_active_time_cdc_state_table == 0) {
+      continue;
+    }
 
     // Check that requested tablet_id is part of the CDC stream.
     ProducerTabletInfo producer_tablet = {"" /* UUID */, stream_id, tablet_id};
@@ -3891,6 +3898,11 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(
 
   AddStreamMetadataToCache(stream_id, stream_metadata);
   return stream_metadata;
+}
+
+void CDCServiceImpl::RemoveStreamFromCache(const CDCStreamId& stream_id) {
+  std::lock_guard<decltype(mutex_)> l(mutex_);
+  stream_metadata_.erase(stream_id);
 }
 
 void CDCServiceImpl::AddStreamMetadataToCache(

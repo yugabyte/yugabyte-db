@@ -14,7 +14,7 @@
 }
 
 .td-content {
-  div:not(.icon):not(.image):not(.heading-image) {
+  div:not(.icon):not(.image):not(.heading-image):not(.search-by-algolia) {
     > {
       p > img:not(.icon) {
         margin-bottom: 0;

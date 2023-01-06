@@ -202,7 +202,7 @@ export default class AlertProfileForm extends Component {
                     name="alertingData.checkIntervalMs"
                     type="text"
                     component={YBFormInput}
-                    label="Health check interval"
+                    label="Health check interval (in milliseconds)"
                     placeholder="Milliseconds to check universe status"
                     disabled={isReadOnly}
                   />
@@ -210,7 +210,7 @@ export default class AlertProfileForm extends Component {
                     name="alertingData.statusUpdateIntervalMs"
                     type="text"
                     component={YBFormInput}
-                    label="Health Check email report interval"
+                    label="Health Check email report interval (in milliseconds)"
                     placeholder="Milliseconds to send a status report email"
                     disabled={isReadOnly}
                   />
@@ -218,7 +218,7 @@ export default class AlertProfileForm extends Component {
                     name="alertingData.activeAlertNotificationIntervalMs"
                     type="text"
                     component={YBFormInput}
-                    label="Active alert notification interval"
+                    label="Active alert notification interval (in milliseconds)"
                     placeholder="Milliseconds to send an active alert notifications"
                     disabled={isReadOnly}
                   />
