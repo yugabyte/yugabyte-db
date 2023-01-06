@@ -454,8 +454,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
                                const string& start_key, const string& end_key) {
     auto start_idx = FindPartitionStartIndex(sorted_partitions, start_key);
     auto end_idx = FindPartitionStartIndexExclusiveBound(sorted_partitions, end_key);
-    auto filtered_tablets =
-        ASSERT_RESULT(FilterTabletsByHashPartitionKeyRange(tablets, start_key, end_key));
+    auto filtered_tablets = FilterTabletsByKeyRange(tablets, start_key, end_key);
     std::vector<string> filtered_partitions;
     std::transform(filtered_tablets.begin(), filtered_tablets.end(),
                    std::back_inserter(filtered_partitions),
@@ -641,8 +640,7 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
       table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs)).get());
   // First, verify, that using empty bounds on both sides returns all tablets.
-  auto filtered_tablets =
-      ASSERT_RESULT(FilterTabletsByHashPartitionKeyRange(tablets, std::string(), std::string()));
+  auto filtered_tablets = FilterTabletsByKeyRange(tablets, std::string(), std::string());
   ASSERT_EQ(kNumTabletsPerTable, filtered_tablets.size());
 
   std::vector<std::string> partition_starts;
@@ -660,7 +658,8 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   ASSERT_NO_FATALS(VerifyKeyRangeFiltering(partition_starts, tablets, start_key, end_key));
 
   auto fixed_key = PartitionSchema::EncodeMultiColumnHashValue(10);
-  ASSERT_NOK(FilterTabletsByHashPartitionKeyRange(tablets, fixed_key, fixed_key));
+  filtered_tablets = FilterTabletsByKeyRange(tablets, fixed_key, fixed_key);
+  ASSERT_EQ(1, filtered_tablets.size());
 
   for (int i = 0; i < kNumIterations; i++) {
     auto start_idx = RandomUniformInt(0, PartitionSchema::kMaxPartitionKey - 1);

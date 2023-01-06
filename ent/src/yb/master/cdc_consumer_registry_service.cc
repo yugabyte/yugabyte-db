@@ -13,6 +13,7 @@
 
 #include "yb/master/cdc_consumer_registry_service.h"
 
+#include "yb/docdb/key_bounds.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
@@ -117,27 +118,24 @@ Status ComputeTabletMapping(
     return Status::OK();
   }
 
-  // Map tablets based on max key range overlap.
+  // Map tablets based on max key range overlap. To do so, we calculate the middle key of the
+  // producer's key range, and find which consumer tablet contains that value.
   for (const auto& producer : producer_tablet_keys) {
     const auto& producer_tablet_id = producer.first;
     auto producer_key_range = producer.second;
-    auto producer_key_range_size = PartitionSchema::GetPartitionRangeSize(
-        producer_key_range.start_key, producer_key_range.end_key);
+    auto producer_middle_key = VERIFY_RESULT(PartitionSchema::GetLexicographicMiddleKey(
+        producer_key_range.start_key, producer_key_range.end_key));
     std::string consumer_tablet_id;
-    uint32_t max_overlap = 0;
 
     for (const auto& consumer_tablet : consumer_tablet_keys) {
       auto consumer_key_range = consumer_tablet.second;
-      auto overlap = PartitionSchema::GetOverlap(
-          producer_key_range.start_key, producer_key_range.end_key, consumer_key_range.start_key,
-          consumer_key_range.end_key);
-      if (overlap > max_overlap) {
+      docdb::KeyBounds key_bounds(consumer_key_range.start_key, consumer_key_range.end_key);
+      if (key_bounds.IsWithinBounds(producer_middle_key)) {
+        DCHECK(PartitionSchema::HasOverlap(
+            producer_key_range.start_key, producer_key_range.end_key,
+            consumer_key_range.start_key, consumer_key_range.end_key));
         consumer_tablet_id = consumer_tablet.first;
-        max_overlap = overlap;
-        if (overlap >= producer_key_range_size / 2) {
-          // We have majority overlap. Break as we cannot do better than this.
-          break;
-        }
+        break;
       }
     }
 
@@ -163,17 +161,21 @@ Status ComputeTabletMapping(
 
 Status ValidateKeyRanges(const std::map<std::string, KeyRange>& tablet_keys) {
   SCHECK(!tablet_keys.empty(), NotFound, "No key ranges provided");
-  uint32_t max_key_range = PartitionSchema::GetPartitionRangeSize("", "");
-
-  // Verify that the given key ranges cover the entire key space.
-  uint32_t key_coverage = 0;
-  for (const auto& tablet : tablet_keys) {
-    key_coverage += PartitionSchema::GetPartitionRangeSize(
-        tablet.second.start_key, tablet.second.end_key);
+  std::unordered_map<std::string, std::string> partitions(tablet_keys.size());
+  for (const auto& [_, partition] : tablet_keys) {
+    partitions[partition.start_key] = partition.end_key;
   }
-  return key_coverage == max_key_range
-      ? Status::OK()
-      : STATUS(InvalidArgument, "Key ranges do not cover the entire key space.");
+  std::string key = "";
+  for (size_t i = 0; i < tablet_keys.size(); ++i) {
+    const auto it = partitions.find(key);
+    SCHECK(
+        it != partitions.end(), InvalidArgument, "Key ranges do not cover the entire key space.");
+    key = it->second;
+  }
+  // Check that the last key is "", then way we know we have gone through the entire key range.
+  SCHECK(key.empty(), InvalidArgument, "Key ranges do not cover the entire key space.");
+
+  return Status::OK();
 }
 
 Status InitCDCStream(
@@ -278,13 +280,6 @@ Status UpdateTabletMappingOnProducerSplit(
         if (has_key_range) {
           auto old_start_key = producer_tablet_infos.start_key(i);
           auto old_end_key = producer_tablet_infos.end_key(i);
-
-          RETURN_NOT_OK_PREPEND(
-              PartitionSchema::IsValidHashPartitionRange(old_start_key, split_key),
-              Format("Producer tablet $0 does not contain split key", split_tablet_ids.source));
-          RETURN_NOT_OK_PREPEND(
-              PartitionSchema::IsValidHashPartitionRange(split_key, old_end_key),
-              Format("Producer tablet $0 does not contain split key", split_tablet_ids.source));
 
           // Remove old keys and add the new ones.
           producer_tablet_infos.mutable_start_key()->DeleteSubrange(i, 1);

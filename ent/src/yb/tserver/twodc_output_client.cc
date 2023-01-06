@@ -330,10 +330,9 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
                                       "1 to 1 tablet mapping for the transaction status table.");
            break;
         default: {
-          auto partition_hash_key = PartitionSchema::EncodeMultiColumnHashValue(
-              VERIFY_RESULT(CheckedStoInt<uint16_t>(record.key(0).key())));
+          std::string partition_key = record.key(0).key();
           auto tablet_result = local_client_->client->LookupTabletByKeyFuture(
-              table_, partition_hash_key, CoarseMonoClock::now() + timeout_ms_).get();
+              table_, partition_key, CoarseMonoClock::now() + timeout_ms_).get();
           RETURN_NOT_OK(ProcessRecordForTablet(record, tablet_result));
           break;
         }
@@ -493,11 +492,8 @@ Status TwoDCOutputClient::ProcessRecordForTabletRange(
     const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets) {
   RETURN_NOT_OK(tablets);
 
-  auto filtered_tablets_result = client::FilterTabletsByHashPartitionKeyRange(
+  auto filtered_tablets = client::FilterTabletsByKeyRange(
       *tablets, record.partition().partition_key_start(), record.partition().partition_key_end());
-  RETURN_NOT_OK(filtered_tablets_result);
-
-  auto filtered_tablets = *filtered_tablets_result;
   if (filtered_tablets.empty()) {
     table_->MarkPartitionsAsStale();
     return STATUS(TryAgain, "No tablets found for key range, refreshing partitions to try again.");
