@@ -2439,6 +2439,12 @@ Status Tablet::BackfillIndexes(
   std::vector<yb::ColumnSchema> columns = GetColumnSchemasForIndex(indexes);
 
   Schema projection(columns, {}, schema()->num_key_columns());
+  // We must hold this RequestScope for the lifetime of this iterator to ensure backfill has a
+  // consistent snapshot of the tablet w.r.t. transaction state.
+  RequestScope scope;
+  if (transaction_participant_) {
+    scope = VERIFY_RESULT(RequestScope::Create(transaction_participant_.get()));
+  }
   auto iter = VERIFY_RESULT(NewRowIterator(
       projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
   QLTableRow row;
@@ -2495,6 +2501,9 @@ Status Tablet::BackfillIndexes(
       VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
     }
   }
+  // Destruct RequestScope once iterator is no longer used to ensure transaction participant can
+  // clean-up old transactions.
+  scope = RequestScope();
 
   if (FLAGS_TEST_backfill_sabotage_frequency > 0) {
     LOG(INFO) << "In total, " << TEST_number_rows_corrupted
@@ -2716,6 +2725,12 @@ Status Tablet::VerifyTableConsistencyForCQL(
     std::unordered_map<TableId, uint64>* consistency_stats,
     std::string* verified_until) {
   Schema projection(columns, {}, schema()->num_key_columns());
+  // We must hold this RequestScope for the lifetime of this iterator to ensure verification has a
+  // consistent snapshot of the tablet w.r.t. transaction state.
+  RequestScope scope;
+  if (transaction_participant_) {
+    scope = VERIFY_RESULT(RequestScope::Create(transaction_participant_.get()));
+  }
   auto iter = VERIFY_RESULT(NewRowIterator(
       projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
 
@@ -2747,6 +2762,9 @@ Status Tablet::VerifyTableConsistencyForCQL(
     }
     *verified_until = resume_verified_from;
   }
+  // Destruct RequestScope once iterator is no longer used to ensure transaction participant can
+  // clean-up old transactions.
+  scope = RequestScope();
   return FlushVerifyBatch(
       read_time, deadline, &requests, &last_flushed_at, &failed_indexes, consistency_stats);
 }
