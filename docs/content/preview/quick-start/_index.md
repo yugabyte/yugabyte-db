@@ -10,7 +10,6 @@ aliases:
   - /preview/quick-start/install/
 layout: single
 type: docs
-body_class: yb-page-style
 rightNav:
   hideH4: true
 ---
@@ -18,13 +17,13 @@ rightNav:
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../quick-start-yugabytedb-managed/" class="nav-link">
-      <img src="/icons/cloud-icon.svg" alt="Icon">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
       Use a cloud cluster
     </a>
   </li>
   <li class="active">
     <a href="../quick-start/" class="nav-link">
-      <img src="/icons/server-iconsvg.svg" alt="Icon">
+      <img src="/icons/server.svg" alt="Server Icon">
       Use a local cluster
     </a>
   </li>

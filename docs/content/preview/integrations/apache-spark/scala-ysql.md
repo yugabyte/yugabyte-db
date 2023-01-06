@@ -4,7 +4,7 @@ linkTitle: YSQL
 description: Build a Scala application using Apache Spark and YugabyteDB
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark-1-scala-ysql
     parent: apache-spark
     weight: 577

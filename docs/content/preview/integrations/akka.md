@@ -3,7 +3,7 @@ title: Akka Persistence Cassandra
 linkTitle: Akka Persistence Cassandra
 description: Use Akka Persistence Cassandra with YCQL API
 menu:
-  preview:
+  preview_integrations:
     identifier: ycql-akka
     parent: integrations
     weight: 571
