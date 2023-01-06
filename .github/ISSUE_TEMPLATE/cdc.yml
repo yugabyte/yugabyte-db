@@ -22,8 +22,8 @@ body:
   validations:
     required: true
 - type: textarea
-  attributes:
   id: configuration
+  attributes:
     label: Connector configuration
     placeholder: |
       **Configuration properties used to deploy the YugabyteDB Source Connector**
