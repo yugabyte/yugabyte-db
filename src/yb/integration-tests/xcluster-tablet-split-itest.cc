@@ -446,13 +446,11 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
             [&](const auto& tablet) { return tablet->tablet_id() == mapped_producer_tablet; });
         ASSERT_NE(producer_tablet, producer_tablet_peers.end());
 
-        ASSERT_GT(
-            PartitionSchema::GetOverlap(
-                (*consumer_tablet)->tablet_metadata()->partition()->partition_key_start(),
-                (*consumer_tablet)->tablet_metadata()->partition()->partition_key_end(),
-                (*producer_tablet)->tablet_metadata()->partition()->partition_key_start(),
-                (*producer_tablet)->tablet_metadata()->partition()->partition_key_end()),
-            0);
+        ASSERT_TRUE(PartitionSchema::HasOverlap(
+            (*consumer_tablet)->tablet_metadata()->partition()->partition_key_start(),
+            (*consumer_tablet)->tablet_metadata()->partition()->partition_key_end(),
+            (*producer_tablet)->tablet_metadata()->partition()->partition_key_start(),
+            (*producer_tablet)->tablet_metadata()->partition()->partition_key_end()));
       }
     }
 
