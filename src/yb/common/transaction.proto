@@ -106,7 +106,7 @@ message LockInfoPB {
 
   optional uint32 column_id = 3;
 
-  optional bool is_full_pk = 4;
+  optional bool multiple_rows_locked = 4;
 
   optional fixed64 wait_start_ht = 5;
 

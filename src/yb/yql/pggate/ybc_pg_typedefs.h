@@ -45,6 +45,9 @@ YB_DEFINE_HANDLE_TYPE(PgStatement)
 // Handle to an expression.
 YB_DEFINE_HANDLE_TYPE(PgExpr);
 
+// Handle to a postgres function
+YB_DEFINE_HANDLE_TYPE(PgFunction);
+
 // Handle to a table description
 YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 
@@ -351,6 +354,10 @@ typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
+  /* yb_type.c */
+  int64_t (*PostgresEpochToUnixEpoch)(int64_t);
+  int64_t (*UnixEpochToPostgresEpoch)(int64_t);
+  void (*ConstructTextArrayDatum)(const char **, const int, char **, size_t *);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {

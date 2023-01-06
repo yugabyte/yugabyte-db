@@ -772,6 +772,16 @@ Status SchemaBuilder::MarkColumnForDeletion(const string& name) {
   return STATUS(NotFound, "The specified column does not exist", name);
 }
 
+Status SchemaBuilder::SetColumnPGTypmod(const std::string& name, const uint32_t pg_typmod) {
+  for (ColumnSchema& col_schema : cols_) {
+    if (name == col_schema.name()) {
+      col_schema.set_pg_typmod(pg_typmod);
+      return Status::OK();
+    }
+  }
+  return STATUS(NotFound, "The specified column does not exist", name);
+}
+
 Status SchemaBuilder::AddColumn(const ColumnSchema& column) {
   for (const ColumnSchema& col : cols_) {
     if (column.name() == col.name()) {
