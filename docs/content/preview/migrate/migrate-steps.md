@@ -148,7 +148,7 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
         --source-db-type <SOURCE_DB_TYPE> \
         --source-db-host <SOURCE_DB_HOST> \
         --source-db-user <SOURCE_DB_USER> \
-        --source-db-password <SOURCE_DB_PASSWORD> \
+        --source-db-password <SOURCE_DB_PASSWORD> \ # Specify the password in single quotes, if it contains special characters.
         --source-db-name <SOURCE_DB_NAME> \
         --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
 
@@ -197,7 +197,7 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
         --source-db-type <SOURCE_DB_TYPE> \
         --source-db-host <SOURCE_DB_HOST> \
         --source-db-user <SOURCE_DB_USER> \
-        --source-db-password <SOURCE_DB_PASSWORD> \
+        --source-db-password <SOURCE_DB_PASSWORD> \ # Specify the password in single quotes, if it contains special characters.
         --source-db-name <SOURCE_DB_NAME> \
         --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
 ```
@@ -225,7 +225,7 @@ An example invocation of the command is as follows:
 yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-host <TARGET_DB_HOST> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Specify the password in single quotes, if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
 ```
@@ -249,7 +249,7 @@ After you have successfully exported the source data and imported the schema in 
 yb-voyager import data --export-dir <EXPORT_DIR> \
         --target-db-host <TARGET_DB_HOST> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Specify the password in single quotes, if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only.
         --parallel-jobs <NUMBER_OF_JOBS>
@@ -282,7 +282,7 @@ If all your data files are in CSV format and you have already created a schema i
 yb-voyager import data file --export-dir <EXPORT_DIR> \
         --target-db-host <TARGET_DB_HOST> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Specify the password in single quotes, if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
         –-data-dir </path/to/files/dir/> \
@@ -302,7 +302,7 @@ Import indexes and triggers using the `import schema` command with an additional
 yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-host <TARGET_DB_HOST> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Specify the password in single quotes, if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only

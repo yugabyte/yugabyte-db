@@ -254,11 +254,173 @@ CREATE TABLE address (
 
 ---
 
+#### Incorrect parsing of views involving functions without alias
+
+**GitHub link**: [Issue #689](https://github.com/yugabyte/yb-voyager/issues/689)
+
+**Description**: If a view contains a function in its definition in a SELECT statement without any ALIAS, an alias corresponding to the function is appended to the schema. This results in an invalid schema.
+
+**Workaround**: Remove or change the alias to a valid value.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE OR REPLACE VIEW v1 as select foo(id) from bar;
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE OR REPLACE VIEW v1 AS select foo(bar.id) AS foo(id) FROM bar;
+```
+
+Choose one from the following suggested changes to the schema.
+
+- Remove the alias as follows:
+
+    ```sql
+    CREATE OR REPLACE VIEW v1 AS select foo(bar.id)FROM bar;
+    ```
+
+- Change the alias as follows:
+
+    ```sql
+    CREATE OR REPLACE VIEW v1 AS select foo(bar.id) AS foo FROM bar;
+    ```
+
+---
+
+#### Datatype mismatch in objects causing issues
+
+**GitHub link**: [Issue #690](https://github.com/yugabyte/yb-voyager/issues/690)
+
+**Description**: If you have an object which references a table column whose datatype has been mapped to something else, there may be datatype mismatch issues on the target YugabyteDB database.
+
+**Workaround**: Type cast the reference to match the table column.
+
+**Example**
+
+In the following example, the table column type `int` is mapped to `bigint` and causes issues when referenced in the view via the function, because the function parameter remains as `int` type.
+
+```sql
+/* Table definition */
+DROP TABLE IF EXISTS bar;
+CREATE TABLE bar(
+id int,
+p_name varchar(10)
+);
+
+/* Function definition */
+DROP FUNCTION IF EXISTS foo;
+delimiter //
+CREATE FUNCTION foo (p_id int)
+RETURNS varchar(20)
+READS SQL DATA
+  BEGIN
+    RETURN (select p_name from bar where p_id=id);
+  END//
+delimiter ;
+
+/* View definition */
+CREATE OR REPLACE VIEW v2 AS SELECT foo(id) AS p_name FROM bar;
+```
+
+The exported schema is as follows:
+
+```sql
+/* Table definition */
+CREATE TABLE bar(
+id bigint,
+p_name varchar(10)
+);
+
+/* Function definition */
+CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
+  BEGIN
+    RETURN(SELECT p_name FROM bar WHERE p_id=id);
+  END;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+
+/* View definition */
+CREATE OR REPLACE VIEW v1 AS select foo(bar.id) AS p_name FROM bar;
+```
+
+Suggested change is to type cast the reference to match the table column as follows:
+
+```sql
+CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
+```
+
+---
+
+#### `drop temporary table` statements are not supported
+
+**GitHub link**: [Issue #705](https://github.com/yugabyte/yb-voyager/issues/705)
+
+**Description**: If you have a temporary table defined in a function or stored procedure in MySQL, and you have a `drop temporary table` statement associated with it, the schema gets exported as is, which is an invalid syntax in YugabyteDB.
+
+**Workaround**: Manually remove the temporary clause from the drop statement.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+/* procedure definition */
+delimiter //
+CREATE PROCEDURE foo(p_id int)
+deterministic
+  BEGIN
+    DROP TEMPORARY TABLE IF EXISTS temp;
+    CREATE TEMPORARY TABLE temp(id int, name text);
+    INSERT INTO temp(id,name) select id,p_name from bar where p_id=id;
+    SELECT name FROM temp;
+  END//
+delimiter;
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
+  BEGIN
+    DROP TEMPORARY TABLE IF EXISTS temp;
+    CREATE TEMPORARY TABLE temp(id int, name text);
+    INSERT INTO temp(id,name) select id,p_name from bar where p_id=id;
+    SELECT name FROM temp;
+  END;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER;
+```
+
+Suggested change to the schema is to remove the temporary clause from the drop statement as follows:
+
+```sql
+CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
+  BEGIN
+    DROP TABLE IF EXISTS temp;
+    CREATE TEMPORARY TABLE temp(id int, name text);
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+    SELECT name FROM temp;
+  END;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER;
+```
+
+---
+
 #### Key defined for a table in functions/procedures cause issues
 
 **GitHub link**: [Issue #707](https://github.com/yugabyte/yb-voyager/issues/707)
 
-**Description**: If you have a basic _key_ defined for a table in a function/procedure, it is exported as is, which causes issues because using a key in YugabyteDB in an incorrect syntax.
+**Description**: If you have a basic _key_ defined for a table in a function/procedure, the schema is exported as is, and causes issues because using a key in YugabyteDB is an invalid syntax.
 
 **Workaround**: Manually remove the key from the exported schema, or create an index.
 
@@ -270,45 +432,44 @@ An example schema on the source database is as follows:
 /* function definition */
 
 delimiter //
-create function foo (p_id int)
-returns varchar(20)
+CREATE FUNCTION foo (p_id int)
+RETURNS varchar(20)
 reads sql data
-begin
-create temporary table temp(id int, name text,key(id));
-insert into temp(id,name) select id,p_name from bar where p_id=id;
-return (select name from temp);
-end//
+  BEGIN
+    CREATE TEMPORARY TABLE temp(id int, name text,key(id));
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+    RETURN (SELECT name FROM temp);
+  END//
 ```
 
 The exported schema is as follows:
 
 ```sql
 CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
-BEGIN
-create temporary table temp(id int, name text,key(id));
-insert into temp(id,name) select id,p_name from bar where p_id=id;
-return(select name from temp);
-end;
+  BEGIN
+    CREATE TEMPORARY TABLE temp(id int, name text,key(id));
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+    RETURN (SELECT name FROM temp);
+  END;
 $body$
 LANGUAGE PLPGSQL
-SECURITY DEFINER
-;
+SECURITY DEFINER;
 ```
 
-Suggested changes to the schema are as follows:
+Choose one from the following suggested changes to the schema.
 
-1. Remove the key from the schema as follows:
+- Remove the key from the schema as follows:
 
     ```sql
     CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
       BEGIN
-        create temporary table temp(id int, name text);
-        insert into temp(id,name) select id,p_name from bar where p_id=id;
-        return(select name from temp);
+        CREATE TEMPORARY TABLE temp(id int, name text,key(id));
+        INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+        RETURN (SELECT name FROM temp);
       END;
-      $body$
-      LANGUAGE PLPGSQL
-      SECURITY DEFINER;
+    $body$
+    LANGUAGE PLPGSQL
+    SECURITY DEFINER;
     ```
 
 1. Create an index manually as follows:
@@ -316,14 +477,14 @@ Suggested changes to the schema are as follows:
     ```sql
     CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
       BEGIN
-        create temporary table temp(id int, name text);
-        create index index_as_key on temp(id);
-        insert into temp(id,name) select id,p_name from bar where p_id=id;
-        return(select name from temp);
+        CREATE TEMPORARY TABLE temp(id int, name text);
+        CREATE INDEX index_as_key ON temp(id);
+        INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+        RETURN (SELECT name FROM temp);
       END;
-      $body$
-      LANGUAGE PLPGSQL
-      SECURITY DEFINER;
+    $body$
+    LANGUAGE PLPGSQL
+    SECURITY DEFINER;
     ```
 
 ---
@@ -342,19 +503,17 @@ An example declaration of the variable in the schema is as follows:
 
 ```sql
 /* function definition */
-
 delimiter //
-create function xyz()
-returns varchar(10)
-reads sql data
-begin
-    declare max_date date;
-    set max_date=(SELECT CURRENT_DATE()
-    );
-    set @max_date=max_date;
-    return max_date;
-    end //
-delimiter ;
+CREATE FUNCTION xyz()
+RETURNS VARCHAR(10)
+READS SQL DATA
+  BEGIN
+    DECLARE max_date date;
+    SET max_date=(SELECT CURRENT_DATE());
+    SET @max_date=max_date;
+    RETURN max_date;
+  END //
+delimiter;
 ```
 
 The exported schema is as follows:
@@ -362,20 +521,16 @@ The exported schema is as follows:
 ```sql
 CREATE OR REPLACE FUNCTION xyz () RETURNS varchar AS $body$
 DECLARE
-
 max_date timestamp;max_date date;
-
-BEGIN
-
+  BEGIN
     max_date = (SELECT CURRENT_DATE
     );
     max_date:=max_date;
-    return max_date;
-    end;
+    RETURN max_date;
+  END;
 $body$
 LANGUAGE PLPGSQL
-SECURITY DEFINER
-;
+SECURITY DEFINER;
 ```
 
 Suggested change to the schema is to remove the extra declaration of the variable as follows:
@@ -383,20 +538,16 @@ Suggested change to the schema is to remove the extra declaration of the variabl
 ```sql
 CREATE OR REPLACE FUNCTION xyz () RETURNS varchar AS $body$
 DECLARE
-
 max_date timestamp;
-
-BEGIN
-
+  BEGIN
     max_date = (SELECT CURRENT_DATE
     );
     max_date:=max_date;
-    return max_date;
-    end;
+    RETURN max_date;
+  END;
 $body$
 LANGUAGE PLPGSQL
-SECURITY DEFINER
-;
+SECURITY DEFINER;
 ```
 
 ### Oracle issues
@@ -667,6 +818,66 @@ PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
 
 ---
 
+#### Tables partitioned with expressions cannot contain primary/unique keys
+
+**GitHub Link**: [Issue#698](https://github.com/yugabyte/yb-voyager/issues/698)
+
+**Description**: If you have a table in the source database which is partitioned using any expression/function, that table cannot have a primary or unique key on any of its columns, as it is an invalid syntax in YugabyteDB.
+
+**Workaround**: Remove any primary/unique keys from exported schemas.
+
+An example schema on the MySQL source database with primary key is as follows:
+
+```sql
+/* Table definition */
+
+CREATE TABLE Sales (
+  cust_id INT NOT NULL,
+  name VARCHAR(40),
+  store_id VARCHAR(20) NOT NULL,
+  bill_no INT NOT NULL,
+  bill_date DATE NOT NULL,
+  amount DECIMAL(8,2) NOT NULL,
+  Primary key(bill_no,bill_date)
+)
+PARTITION BY RANGE (year(bill_date))(
+    PARTITION p0 VALUES LESS THAN (2016),
+    PARTITION p1 VALUES LESS THAN (2017),
+    PARTITION p2 VALUES LESS THAN (2018),
+    PARTITION p3 VALUES LESS THAN (2020)
+);
+```
+
+The exported schema is as follows:
+
+```sql
+/* Table definition */
+CREATE TABLE sales (
+        cust_id bigint NOT NULL,
+        name varchar(40),
+        store_id varchar(20) NOT NULL,
+        bill_no bigint NOT NULL,
+        bill_date timestamp NOT NULL,
+        amount decimal(8,2) NOT NULL,
+        PRIMARY KEY (bill_no,bill_date)
+) PARTITION BY RANGE ((extract(year from date(bill_date)))) ;
+```
+
+Suggested change to the schema is to remove the primary/unique key from the exported schema as follows:
+
+```sql
+CREATE TABLE sales (
+        cust_id bigint NOT NULL,
+        name varchar(40),
+        store_id varchar(20) NOT NULL,
+        bill_no bigint NOT NULL,
+        bill_date timestamp NOT NULL,
+        amount decimal(8,2) NOT NULL
+) PARTITION BY RANGE ((extract(year from date(bill_date)))) ;
+```
+
+---
+
 #### Multi-column partition by list is not supported
 
 **GitHub Link**: [Issue#699](https://github.com/yugabyte/yb-voyager/issues/699)
@@ -708,7 +919,7 @@ CREATE TABLE test (
 ) PARTITION BY LIST (country_code, record_type) ;
 ```
 
-Error when exporting the schema is as follows:
+The preceding schema example will result in an error as follows:
 
 ```output
 ERROR: cannot use "list" partition strategy with more than one column (SQLSTATE 42P17)
