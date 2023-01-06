@@ -70,7 +70,7 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| host  | Hostname of the YugabyteDB instance | localhost |
+| host  | Host name of the YugabyteDB instance. You can also enter [fallback addresses](#fallback-addresses). | localhost |
 | port |  Listen port for YSQL | 5433 |
 | database | Database name | yugabyte |
 | user | Database user | yugabyte |
@@ -84,6 +84,16 @@ Create a client to connect to the cluster using a connection string. The followi
 postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true?
     topology_keys=cloud.region.zone1,cloud.region.zone2
 ```
+
+#### Fallback addresses
+
+You can specify multiple hosts in the connection string to provide fallback options during the initial connection. Delimit the addresses using commas, as follows:
+
+```sh
+postgresql://username:password@host1:5433,host2:5433,host3:5433/database_name?load_balance=true
+```
+
+The fallback hosts are only used during initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on. However, after the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 #### Use SSL
 

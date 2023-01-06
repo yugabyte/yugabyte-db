@@ -94,21 +94,21 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
+| host | Host name of the YugabyteDB instance. You can also enter [fallback addresses](#fallback-addresses). | localhost
+| port |  Listen port for YSQL | 5433
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
-| host | Hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
 | dbname | Database name | yugabyte
 | `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
 | `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
-The following is an example connection string for connecting to YugabyteDB with uniform load balancing.
+The following is an example connection string for connecting to YugabyteDB with uniform load balancing:
 
 ```sh
 postgres://username:password@localhost:5433/database_name?load_balance=true
 ```
 
-The following is a code snippet for connecting to YugabyteDB using the connection parameters.
+The following is a code snippet for connecting to YugabyteDB using the connection parameters:
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
@@ -124,7 +124,7 @@ postgres://username:password@localhost:5433/database_name?load_balance=true&
     topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
 ```
 
-The following is a code snippet for connecting to YugabyteDB using topology-aware load balancing.
+The following is a code snippet for connecting to YugabyteDB using topology-aware load balancing:
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
@@ -132,6 +132,16 @@ baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1", baseUrl)
 conn, err := pgx.Connect(context.Background(), url)
 ```
+
+#### Fallback addresses
+
+You can specify multiple hosts in the connection string to provide fallback options during the initial connection. Delimit the addresses using commas, as follows:
+
+```sh
+postgres://username:password@host1:5433,host2:5433,host3:5433/database_name?load_balance=true
+```
+
+The fallback hosts are only used during initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on. However, after the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 #### Use SSL
 

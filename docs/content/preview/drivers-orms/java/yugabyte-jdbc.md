@@ -121,7 +121,7 @@ The following table describes the connection parameters required to connect, inc
 | `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
 | `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
-The following is an example JDBC URL for connecting to YugabyteDB.
+The following is an example JDBC URL for connecting to YugabyteDB:
 
 ```sh
 jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
@@ -133,7 +133,7 @@ jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-
 You can specify multiple hosts in the connection string to provide fallback options during the initial connection. Delimit the addresses using commas, as follows:
 
 ```sh
-jdbc://yugabytedb://hostname1:port,hostname2:port,hostame3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+jdbc://yugabytedb://hostname1:port,hostname2:port,hostname3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
 
