@@ -1402,9 +1402,9 @@ Status PopulateLockInfoFromParsedIntent(
   lock_info->set_subtransaction_id(decoded_value.subtransaction_id);
   lock_info->set_is_explicit(
       decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock));
-  lock_info->set_is_full_pk(
-      schema->num_hash_key_columns() == subdoc_key.doc_key().hashed_group().size() &&
-      schema->num_range_key_columns() == subdoc_key.doc_key().range_group().size());
+  lock_info->set_multiple_rows_locked(
+      schema->num_hash_key_columns() > subdoc_key.doc_key().hashed_group().size() ||
+      schema->num_range_key_columns() > subdoc_key.doc_key().range_group().size());
 
   for (const auto& intent_type : parsed_intent.types) {
     switch (intent_type) {

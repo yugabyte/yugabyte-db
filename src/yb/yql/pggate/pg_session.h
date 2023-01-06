@@ -268,6 +268,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<PerformFuture> RunAsync(const ReadOperationGenerator& generator, CacheOptions&& options);
 
+  // Lock functions.
+  // -------------
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string& table_id, const std::string& transaction_id);
+
   // Smart driver functions.
   // -------------
   Result<client::TabletServersInfo> ListTabletServers();

@@ -347,7 +347,8 @@ class PgClientServiceImpl::Impl {
       GetLockStatusRequestPB node_req;
       // GetLockStatusRequestPB supports providing multiple transaction ids, but postgres sends
       // only one transaction id in PgGetLockStatusRequestPB for now.
-      node_req.add_transaction_ids(req.transaction_id());
+      if (!req.transaction_id().empty())
+        node_req.add_transaction_ids(req.transaction_id());
       GetLockStatusResponsePB node_resp;
       controller.Reset();
       RETURN_NOT_OK(proxy->GetLockStatus(node_req, &node_resp, &controller));
