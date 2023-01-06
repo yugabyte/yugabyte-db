@@ -15,7 +15,7 @@ breadcrumbDisable: true
 resourcesIntro: Quick Links
 resources:
   - title: What's new
-    url: /preview/releases/release-notes/v2.15/
+    url: /preview/releases/release-notes/latest-release/
   - title: FAQ
     url: /preview/faq/yugabyte-platform/
   - title: Free trial
