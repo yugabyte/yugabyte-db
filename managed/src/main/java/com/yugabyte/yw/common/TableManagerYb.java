@@ -284,7 +284,7 @@ public class TableManagerYb extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
-      commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
+      commandArgs.add(provider.details.sshPort.toString());
       commandArgs.add("--ssh_key_path");
       commandArgs.add(accessKey.getKeyInfo().privateKey);
       if (!ipToSshKeyPath.isEmpty()) {

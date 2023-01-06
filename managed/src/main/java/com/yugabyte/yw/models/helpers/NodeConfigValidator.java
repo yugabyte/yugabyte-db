@@ -105,7 +105,7 @@ public class NodeConfigValidator {
     InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, nodeData.instanceType);
     AccessKey accessKey = AccessKey.getLatestKey(provider.uuid);
     Operation operation =
-        accessKey.getKeyInfo().skipProvisioning ? Operation.CONFIGURE : Operation.PROVISION;
+        provider.details.skipProvisioning ? Operation.CONFIGURE : Operation.PROVISION;
 
     Set<NodeConfig> nodeConfigs =
         nodeData.nodeConfigs == null ? new HashSet<>() : new HashSet<>(nodeData.nodeConfigs);

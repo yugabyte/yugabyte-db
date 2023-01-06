@@ -248,7 +248,7 @@ export default function (state = INITIAL_STATE, action) {
       return { ...state, error: null, rollingUpgrade: getInitialState({}) };
 
     // Universe I/O Metrics Operations
-    case SET_UNIVERSE_METRICS:
+    case SET_UNIVERSE_METRICS: {
       const currentUniverseList = _.clone(state.universeList.data, true);
       if (isNonEmptyObject(action.payload.data.tserver_rpcs_per_sec_by_universe)) {
         const universeReadWriteMetricList =
@@ -268,16 +268,17 @@ export default function (state = INITIAL_STATE, action) {
           });
       }
       return setSuccessState(state, 'universeList', currentUniverseList);
-
+    }
     case SET_PLACEMENT_STATUS:
       return { ...state, currentPlacementStatus: action.payload };
-    case RESET_UNIVERSE_CONFIGURATION:
+    case RESET_UNIVERSE_CONFIGURATION: {
       return {
         ...state,
         currentPlacementStatus: null,
         universeResourceTemplate: getInitialState({}),
         universeConfigTemplate: getInitialState({})
       };
+    }
     case FETCH_UNIVERSE_METADATA:
       return { ...state, fetchUniverseMetadata: true };
 

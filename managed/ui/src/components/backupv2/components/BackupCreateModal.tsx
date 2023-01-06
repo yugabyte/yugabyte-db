@@ -362,13 +362,18 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
           if (isEditMode) {
             const editPayloadValues = {
               scheduleUUID: values.scheduleObj.scheduleUUID,
-              frequency:
-                values['policy_interval'] *
-                MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()],
-              cronExpression: values.cronExpression,
-              status: values.scheduleObj.status,
-              frequencyTimeUnit: values['policy_interval_type'].value.toUpperCase()
+              status: values.scheduleObj.status
             };
+            if (values.use_cron_expression) {
+              editPayloadValues['cronExpression'] = values.cron_expression;
+            } else {
+              editPayloadValues['frequency'] =
+                values['policy_interval'] *
+                MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()];
+              editPayloadValues['frequencyTimeUnit'] = values[
+                'policy_interval_type'
+              ].value.toUpperCase();
+            }
             if (values['is_incremental_backup_enabled']) {
               editPayloadValues['incrementalBackupFrequency'] =
                 values['incremental_backup_frequency'] *
@@ -527,12 +532,14 @@ function BackupConfigurationForm({
             label="Select the storage config you want to use for your backup"
             options={storageConfigs}
             components={{
+              // eslint-disable-next-line react/display-name
               SingleValue: ({ data }: { data: any }) => (
                 <>
                   <span className="storage-cfg-name">{data.label}</span>
                   <StatusBadge statusType={Badge_Types.DELETED} customLabel={data.name} />
                 </>
               ),
+              // eslint-disable-next-line react/display-name
               Option: (props: any) => {
                 return (
                   <components.Option {...props}>
@@ -899,9 +906,11 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
             <Col lg={12} className="no-padding table-list">
               {tablesInKeyspaces
                 ?.filter(
+                  // eslint-disable-next-line @typescript-eslint/prefer-includes
                   (t) => t.tableName.toLowerCase().indexOf(values['search_text'].toLowerCase()) > -1
                 )
                 .filter((t) => !find(values['selected_ycql_tables'], { tableName: t.tableName }))
+                // eslint-disable-next-line react/display-name
                 .map((t) => {
                   return (
                     <div className="table-item" key={t.tableUUID}>
@@ -929,26 +938,26 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
           {values['selected_ycql_tables'].length === 0
             ? infoText
             : values['selected_ycql_tables'].map((t: ITable) => {
-              return (
-                <div className="selected-table-item" key={t.tableUUID}>
-                  {t.tableName}
-                  <span
-                    className="remove-selected-table"
-                    onClick={() => {
-                      if (isEditMode) return;
-                      setFieldValue(
-                        'selected_ycql_tables',
-                        values['selected_ycql_tables'].filter(
-                          (f: ITable) => f.tableUUID !== t.tableUUID
-                        )
-                      );
-                    }}
-                  >
-                    <img alt="Remove" src={Close} width="22" />
-                  </span>
-                </div>
-              );
-            })}
+                return (
+                  <div className="selected-table-item" key={t.tableUUID}>
+                    {t.tableName}
+                    <span
+                      className="remove-selected-table"
+                      onClick={() => {
+                        if (isEditMode) return;
+                        setFieldValue(
+                          'selected_ycql_tables',
+                          values['selected_ycql_tables'].filter(
+                            (f: ITable) => f.tableUUID !== t.tableUUID
+                          )
+                        );
+                      }}
+                    >
+                      <img alt="Remove" src={Close} width="22" />
+                    </span>
+                  </div>
+                );
+              })}
         </Col>
       </Row>
     </YBModalForm>

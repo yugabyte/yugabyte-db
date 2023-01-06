@@ -176,6 +176,33 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
  20 | 20 | 0020 |    |   | 
 (16 rows)
 
+-- Batching should still be disabled if there is a filter
+-- clause on a batched relation.
+/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_b_idx on p1
+         Index Cond: (b = p2.a)
+         Filter: (p2.b = a)
+(5 rows)
+
+/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p3)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1, p2, p3 where p1.a = p3.a AND p2.a = p3.a and p1.b = p2.b;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Nested Loop
+   Join Filter: (p3.a = p1.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (p2.a = p3.a)
+         ->  Seq Scan on p2
+         ->  Index Scan using p3_pkey on p3
+               Index Cond: (a = ANY (ARRAY[p2.a, $1, $2]))
+   ->  Index Scan using p1_b_idx on p1
+         Index Cond: (b = p2.b)
+         Filter: (p2.a = a)
+(10 rows)
+
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------

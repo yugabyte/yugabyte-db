@@ -493,9 +493,7 @@ DELETE  /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     c
 POST   /customers/:cUUID/node_agents                                           com.yugabyte.yw.controllers.NodeAgentController.register(cUUID: java.util.UUID)
 GET    /customers/:cUUID/node_agents                                           com.yugabyte.yw.controllers.NodeAgentController.list(cUUID: java.util.UUID, nodeIp: String ?= "")
 GET    /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.get(cUUID: java.util.UUID, nUUID: java.util.UUID)
-PUT    /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.update(cUUID: java.util.UUID, nUUID: java.util.UUID)
 PUT    /customers/:cUUID/node_agents/:nUUID/state                              com.yugabyte.yw.controllers.NodeAgentController.updateState(cUUID: java.util.UUID, nUUID: java.util.UUID)
-GET    /customers/:cUUID/node_agents/:nUUID/state                              com.yugabyte.yw.controllers.NodeAgentPingController.getState(cUUID: java.util.UUID, nUUID: java.util.UUID)
 DELETE /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.unregister(cUUID: java.util.UUID, nUUID: java.util.UUID)
 GET    /node_agents/download                                                   com.yugabyte.yw.controllers.NodeAgentController.download(downloadType: String ?= "INSTALLER", os: String ?= "", arch: String ?= "")
 
@@ -518,8 +516,8 @@ PUT /customers/:cUUID/universes/:uniUUID/ybc/upgrade                           c
 PUT /customers/:cUUID/universes/:uniUUID/ybc/install                           com.yugabyte.yw.controllers.YbcController.install(cUUID: java.util.UUID, uniUUID: java.util.UUID, ybcVersion: String ?= "")
 
 # YB-Controller throttle parameters
-GET  /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                     com.yugabyte.yw.controllers.BackupsController.getThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-POST /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                     com.yugabyte.yw.controllers.BackupsController.setThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET  /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                  com.yugabyte.yw.controllers.BackupsController.getThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                  com.yugabyte.yw.controllers.BackupsController.setThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Customer Licenses Upload API
 POST    /customers/:cUUID/licenses                                             com.yugabyte.yw.controllers.CustomerLicenseController.upload(cUUID: java.util.UUID)

@@ -170,7 +170,7 @@ const GetMaintenanceWindowActions = ({
           setVisibleModal(null);
         }}
       >
-        Are you sure you want to delete "{currentWindow?.name}" maintenance window?
+        {`Are you sure you want to delete "${currentWindow?.name}" maintenance window?`}
       </YBConfirmModal>
     </div>
   );

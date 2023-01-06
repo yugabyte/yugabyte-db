@@ -34,6 +34,7 @@ interface HelmOverridesUniversePage {
 }
 
 // Helm override component to be shown on universe page
+// eslint-disable-next-line no-redeclare
 export const HelmOverridesUniversePage: FC<HelmOverridesUniversePage> = ({
   getConfiguretaskParams,
   setHelmOverridesData

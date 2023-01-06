@@ -47,6 +47,7 @@ class OverviewMetrics extends Component {
   constructor(props) {
     super(props);
     const refreshMetrics =
+      // eslint-disable-next-line eqeqeq
       localStorage.getItem('__yb_refresh_metrics__') != null &&
       localStorage.getItem('__yb_refresh_metrics__') !== 'false';
     this.state = {

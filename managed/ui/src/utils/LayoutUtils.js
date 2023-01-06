@@ -36,7 +36,7 @@ export function isNotHidden(features, feature_name, default_value) {
   return featureState !== 'hidden';
 }
 
-export function redirectHelper(layout, location) {
+export function redirectHelper() {
   return null;
 }
 

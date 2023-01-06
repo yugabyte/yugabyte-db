@@ -43,7 +43,9 @@ import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const momentLocalizer = require('react-widgets-moment');
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -224,7 +226,9 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     return (
       searchText.length !== 0 ||
       status[0].value !== null ||
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       timeRange.startTime ||
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       timeRange.endTime ||
       moreFilters.length > 0
     );

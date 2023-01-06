@@ -59,7 +59,7 @@ interface NewStorageConfigurationProps {
 }
 
 export const NewStorageConfiguration: FC<NewStorageConfigurationProps> = ({ activeTab }) => {
-  const tabToDisplay = activeTab || IStorageProviders.AWS;
+  const tabToDisplay = activeTab ?? IStorageProviders.AWS;
   const dispatch: any = useDispatch();
 
 
