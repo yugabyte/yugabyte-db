@@ -11,12 +11,27 @@ body:
       **Provide a detailed description of the issue you want to report related to YSQL.**
      
       **Include steps to reproduce the issue.**
+  validations:
+    required: true
+- type: textarea
+  id: connectorversion
+  attributes:
     label: Source connector version
     placeholder: |
       **v1.9.5.y.15**
+  validations:
+    required: true
+- type: textarea
+  attributes:
+  id: configuration
     label: Connector configuration
     placeholder: |
       **Configuration properties used to deploy the YugabyteDB Source Connector**
+  validations:
+    required: true
+- type: textarea
+  id: ybversion
+  attributes:
     label: YugabyteDB version
     placeholder: |
       **The YugabyteDB version with build number (if available)**
