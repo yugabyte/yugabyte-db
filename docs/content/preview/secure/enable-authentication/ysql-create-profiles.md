@@ -1,0 +1,146 @@
+---
+title: Create login profiles
+headerTitle: Create and configure login profiles in YSQL
+linkTitle: Create login profiles
+description: Create and configure login profiles in YugabyteDB
+headcontent: Prevent brute force cracking with login profiles
+menu:
+  preview:
+    identifier: ysql-create-profiles
+    parent: enable-authentication
+    weight: 725
+type: docs
+---
+
+To enhance the security of your database, you can enable login profiles to lock accounts after a specified number of login attempts. This prevents brute force exploits.
+
+## Enable login profiles
+
+### Start local clusters
+
+To enable login profiles in your local YugabyteDB clusters, include the YB-TServer `--ysql_enable_profile` flag with the [yugabyted start](../../../reference/configuration/yugabyted/#start) command `--tserver_flags` flag, as follows:
+
+```sh
+./bin/yugabyted start --tserver_flags="ysql_enable_profile=true"
+```
+
+### Start YB-TServer services
+
+To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your YB-TServer services using the [--ysql_enable_profile](../../../reference/configuration/yb-tserver/#ysql-enable-profile) flag. Your command should look similar to the following:
+
+```sh
+./bin/yb-tserver \
+  --tserver_master_addrs <master addresses> \
+  --fs_data_dirs <data directories> \
+  --ysql_enable_auth=true \
+  --ysql_enable_profile=true \
+  >& /home/centos/disk1/yb-tserver.out &
+```
+
+You can also enable YSQL login profiles by adding the `--ysql_enable_profile=true` to the YB-TServer configuration file (`tserver.conf`). For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
+
+## Locked behaviour
+
+A profile can be locked indefinitely or for a specific interval. The `role_profile` has two states for the different LOCK behaviour:
+
+- L (LOCKED): Role is locked indefinitely.
+- T (LOCKED(TIMED)): Role is locked until a certain timestamp
+
+A role is moved to LOCKED(TIMED) state when the number of consecutive failed attempts exceeds the limit. The interval (in seconds) to lock the role is read from pg_yb_profile.prfpasswordlocktime. The interval is added to the current timestamp and stored in pg_yb_role_profile.pg_yb_rolprflockeduntil. Login attempts by the role before pg_yb_role_profile.pg_yb_rolprflockeduntil will fail. If the column is NULL, then it is moved to LOCKED state instead.
+
+When the role successfully logs in after pg_yb_role_profile.pg_yb_rolprflockeduntil the role is moved to OPEN state, and it is allowed to login. Failed attempts after the lock time out period, will NOT modify pg_yb_role_profile.pg_yb_rolprflockeduntil.
+
+### Complete lockout
+
+If you lock out all roles including admin roles, you must restart the cluster with the `--ysql_enable_profile` flag disabled.
+
+While disabling login profiles allows users back in, you won't be able to change any profile information, as profile commands can't be run when the profile flag is off.
+
+To re-enable accounts, do the following:
+
+1. Restart the cluster without profiles enabled.
+1. Create a new superuser.
+1. Restart the cluster with profiles enabled.
+1. Connect as the new superuser and issue the profile commands.
+
+## Manage login profiles
+
+To manage login profiles
+
+To revoke superuser from the DB admins so that they can no longer change privileges for other roles, do the following:
+
+```sql
+dev_database=# ALTER USER db_admin WITH NOSUPERUSER;
+```
+
+### Create a profile
+
+CREATE PROFILE myprofile LIMIT 
+FAILED_LOGIN_ATTEMPTS <number> 
+[PASSWORD_LOCK_TIME <# of days>];
+
+### Drop a profile
+
+DROP PROFILE myprofile;
+
+### Attach a role to a profile
+
+ALTER ROLE myuser PROFILE myprofile;
+
+### Detach a role from a profile
+
+ALTER ROLE myuser NOPROFILE;
+
+### Lock and unlock roles
+
+Lock ROLE from logging in
+
+ALTER ROLE myuser ACCOUNT LOCK;
+
+Unlock ROLE to allow login
+
+ALTER ROLE myuser ACCOUNT UNLOCK;
+
+The association between ROLE and PROFILE should be deleted before dropping a role using ALTER ROLE … NOPROFILE.
+
+DROP ROLE myuser;
+
+### View profiles
+
+Run the following meta-command to verify the profiles:
+
+```sql
+yugabyte=# \dgP
+```
+
+You should see output similar to the following:
+
+```output
+                                       List of roles
+  Role name   |                         Attributes                         |   Member of
+--------------+------------------------------------------------------------+---------------
+ db_admin     | Cannot login                                               | {engineering}
+ developer    | Cannot login                                               | {engineering}
+ engineering  | Cannot login                                               | {}
+ postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ qa           | Cannot login                                               | {engineering}
+ yb_extension | Cannot login                                               | {}
+ yb_fdw       | Cannot login                                               | {}
+ yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+```
+
+## Limitations and caveats
+
+- A profile can't be modified using `ALTER PROFILE`. If a profile needs to be modified, create a new profile. ALTER functionality will be implemented in the future.
+- Currently a role is locked indefinitely unless an admin unlocks the role. Locking a role for a specific period of time will be implemented in the future.
+- Login profiles are only applicable to challenge-response authentication methods. YugabyteDB also supports authentication methods that are not challenge-response, and login profiles are ignored for these methods as the authentication outcome has already been determined. The authentication methods are as follows:
+  - Reject
+  - ImplicitReject
+  - Trust
+  - YbTserverKey
+  - Peer
+
+  For more information on these authentication methods, refer to [Client Authentication](https://www.postgresql.org/docs/11/client-authentication.html) in the PostgreSQL documentation.
+
+- If the cluster SSL mode is allow or prefer, a single user login attempt can trigger two failed login attempts.
+- The \h and \dg meta commands do not currently provide information about PROFILE and ROLE PROFILE catalog objects.
