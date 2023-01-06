@@ -350,7 +350,7 @@ create table test (k int primary key, v int);
 
 ### Avoid deadlocks in Read Committed transactions
 
-When wait queues are not enabled, that is, `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks by setting the `statement_timeout` parameter in `ysql_pg_conf_csv` YB-TServer gflag on cluster startup.
+When wait queues are not enabled, that is, `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks. A different statement timeout can be set for each session using the `statement_timeout` session variable. Also, a single statement timeout can be applied globally to all sessions by setting the `statement_timeout` session variable in `ysql_pg_conf_csv` YB-TServer gflag on cluster startup.
 
 ```sql
 truncate table test;

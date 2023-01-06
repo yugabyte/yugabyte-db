@@ -22,7 +22,7 @@ type: docs
 
 </ul>
 
-When using the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy, transactions are assigned priorities that help decide which transactions should be aborted on conflicts.
+When using the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy, transactions are assigned priorities that help decide which transactions should be aborted in case of conflict.
 
 There are two priority buckets, each having a priority range of [reals](https://www.postgresql.org/docs/current/datatype.html) in [0, 1] as follows:
 

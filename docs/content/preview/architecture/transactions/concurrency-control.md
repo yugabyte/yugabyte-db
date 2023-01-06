@@ -19,12 +19,12 @@ For information on how row-level explicit locking clauses behave with these conc
 
 ## Fail-on-Conflict
 
-This is the default concurrency control strategy and is applicable for `REPEATABLE READ` and `SERIALIZABLE` isolation levels.
+This is the default concurrency control strategy and is applicable for `Repeatable Read` and `Serializable` isolation levels.
 It is not applicable for [Read Committed](../read-committed/) isolation.
 
 In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/).
-If a conflict occurs, a transaction with the lower priority is aborted. There are two possibilities when a transaction T1 tries to read or write or lock a row in a mode conflicting with a other concurrent transactions as follows:
-   - **Wound:** If T1 has a priority higher than all the other conflicting transactions, T1 will abort them and make progress.
+If a conflict occurs, a transaction with the lower priority is aborted. There are two possibilities when a transaction T1 tries to read, write, or lock a row in a mode conflicting with other concurrent transactions:
+   - **Wound:** If T1 has a higher priority than all the other conflicting transactions, T1 will abort them and make progress.
    - **Die:** If any other conflicting transaction has an equal or higher priority than T1, T1 will abort itself.
 
 Suppose you have a table with some data in it, the following examples describe the wound and die approaches when a conflict occurs.
@@ -155,6 +155,17 @@ rollback;
 
    </td>
   </tr>
+  <tr>
+   <td>
+
+```sql
+commit;
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
 </tbody>
 </table>
 
@@ -258,48 +269,62 @@ rollback;
    <td>
    </td>
   </tr>
+  <tr>
+   <td>
+   </td>
+   <td>
+
+```sql
+commit;
+```
+
+   </td>
+  </tr>
 </tbody>
 </table>
 
 ### Best-effort internal retries for first statement in a transaction
 
-Note that the error message `All transparent retries exhausted` in the preceding example is because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `ysql_max_write_restart_attempts` YB-TServer gflag and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
+Note that we see the error message `All transparent retries exhausted` in the preceding example because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `ysql_max_write_restart_attempts` YB-TServer gflag and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
 
-Each retry will work a newer snapshot of the database in anticipation that the conflicts might not occur (if an earlier conflicting transaction T2 has committed with a commit time before the read time of the new snapshot, the conflicts with T2 would essentially be voided since T1 and T2 would no longer be "concurrent").
+Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur (if an earlier conflicting transaction T2 has committed with a commit time before the read time of the new snapshot, the conflicts with T2 would essentially be voided since T1 and T2 would no longer be "concurrent").
 
-Also note that the retries will not be performed in case the amount of data to be sent from YSQL to the client proxy exceeds the TServer gflag `ysql_output_buffer_size`.
+Note that the retries will not be performed in case the amount of data to be sent from YSQL to the client proxy exceeds the TServer gflag `ysql_output_buffer_size`.
 
 ## Wait-on-Conflict [[Beta]](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag)
 
 This mode of concurrency control is applicable only for YSQL and provides the same semantics as PostgreSQL.
 
-In this mode, transactions are not assigned priorities. If a conflict occurs when a transaction T1 tries to read/ write/ lock a row in a conflicting mode with a few other concurrent transactions, T1 will **wait** until all conflicting transactions finish by either committing or rolling back. Once all conflicting transactions have finished, T1 will:
+In this mode, transactions are not assigned priorities. If a conflict occurs when a transaction T1 tries to read, write, or lock a row in a conflicting mode with a few other concurrent transactions, T1 will **wait** until all conflicting transactions finish by either committing or rolling back. Once all conflicting transactions have finished, T1 will:
 
 1. make progress if the conflicting transactions didn’t commit any permanent modifications that conflict with T1.
 2. abort otherwise.
 
-By default, transactions operate in the priority based `Fail-on-Conflict` mode. This mode can be enabled by setting the YB-TServer gflag `enable_wait_queues=true`, which start in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. A rolling restart is needed for the gflag to take effect.
+By default, transactions operate in the priority based `Fail-on-Conflict` mode. This mode can be enabled by setting the YB-TServer gflag `enable_wait_queues=true`, which will enable use of in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. A rolling restart is needed for the gflag to take effect.
 
 Since T1 can make progress only if the conflicting transactions didn’t commit any conflicting permanent modifications, there are some intricacies in the behaviour. The list of exhaustive cases possible are detailed below in the Examples section.
 
 {{< note >}}
 
-1. Semantics of [Read Committed](../read-committed/) isolation make sense only with the Wait-on-Conflict behaviour.
-1. Transactions in Read Committed isolation follow `Wait-on-Conflict` policy even without wait queues i.e., even when `enable_wait_queues=false`. This is done by relying on a indefinite retry-backoff mechanism with exponential delays when conflicts are detected. However, when `Read Committed` isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist -
-    1. there might be a need to manually tune the exponential backoff parameters for performance as explained [here](../read-committed/#performance-tuning).
-    1. the app will have to [rely on statement timeouts to avoid deadlocks](../read-committed/#avoid-deadlocks-in-read-committed-transactions).
-    1. there can be unfairness and high P99 latencies during contention due to the retry-backoff mechanism.
+Semantics of [Read Committed](../read-committed/) isolation make sense only with the Wait-on-Conflict behaviour. So, transactions in Read Committed isolation follow `Wait-on-Conflict` policy even without wait queues i.e., even when `enable_wait_queues=false`. This is done by relying on a indefinite retry-backoff mechanism with exponential delays when conflicts are detected. However, when `Read Committed` isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist -
+   1. there might be a need to manually tune the exponential backoff parameters for performance as explained [here](../read-committed/#performance-tuning).
+   1. the app will have to [rely on statement timeouts to avoid deadlocks](../read-committed/#avoid-deadlocks-in-read-committed-transactions).
+   1. there can be unfairness and high P99 latencies during contention due to the retry-backoff mechanism.
 {{</note >}}
 
-{{< note title="Best-effort internal retries for first statement in a transaction apply even in Wait-on-Conflict policy" >}}
+{{< note title="Best-effort internal retries also apply to Wait-on-Conflict policy" >}}
 
-The best-effort internal retries described in Fail-on-Conflict apply even here. This is an extra enhancement which Postgres doesn't provide. After a transaction T1, that was waiting on other transactions, unblocks, it could be the case that some conflicting modifications were committed to the database. In this case T1 has to abort. However, if it was still the first statement that was being executed in T1, best-effort internal retries using a later snapshot of the database will be performed to possibly make progress.
+The best-effort internal retries described in Fail-on-Conflict apply to Wait-on-Conflict policy as well. YugabyteDB provides this additional enhancement which is not supported by PostgreSQL.
+
+After a transaction T1 (that was waiting for other transactions) unblocks, it could be the case that some conflicting modifications were committed to the database. In this case, T1 has to abort. However, if its still the first statement that was being executed in T1, best-effort internal retries using a later snapshot of the database will be performed to possibly make progress.
 
 {{</note >}}
 
 ### Examples
 
-Set the TServer gflag `enable_wait_queues=true`. Also, set TServer gflag `ysql_max_write_restart_attempts=0` to avoid effects from best-effort internal retries for first statement in transaction block if it faces conflicts. A restart is necessary for these flags to take effect.
+The following examples describe different use cases detailing the Wait-on-Conflict behavior.
+
+Note that the examples require you to set the YB-TServer gflag `enable_wait_queues=true`. Also, set the YB-TServer gflag `ysql_max_write_restart_attempts=0` to disable internal query layer retries on-conflict. A restart is necessary for these flags to take effect.
 
 Start by setting up the table you'll use in all of the examples in this section.
 
@@ -1057,7 +1082,7 @@ commit;
 
 ### Distributed deadlock detection
 
-In the Wait-on-Conflict mode, transactions can wait for each other and result in a deadlock. Setting the YB-TServer gflag `enable_deadlock_detection=true` runs a distributed deadlock detection algorithm in the background to detect and break deadlocks. It is always recommended to keep deadlock detection on when `enable_wait_queues=true`, unless the application or workload is such that no deadlocks can occur. A rolling restart is required for the change to take effect.
+In the Wait-on-Conflict mode, transactions can wait for each other and result in a deadlock. Setting the YB-TServer gflag `enable_deadlock_detection=true` runs a distributed deadlock detection algorithm in the background to detect and break deadlocks. It is always recommended to keep deadlock detection on when `enable_wait_queues=true`, unless it is absolutely certain that the application or workload behavior makes deadlocks impossible. A rolling restart is required for the change to take effect.
 
 Add `enable_deadlock_detection=true` to the list of TServer gflags and restart the cluster.
 
@@ -1196,6 +1221,6 @@ Refer to [#5680](https://github.com/yugabyte/yugabyte-db/issues/5680) for limita
 
 ## Row-level explicit locking clauses
 
-The `NOWAIT` clause for row-level explicit locking doesn't apply to the `Fail-on-Conflict` mode as there is no waiting. However, it applies to the `Wait-on-Conflict` policy but is currently supported only for Read Committed isolation. [#12166](https://github.com/yugabyte/yugabyte-db/issues/12166) will extend support for this in the `Wait-on-Conflict` mode for the other isolation levels.
+The `NOWAIT` clause for row-level explicit locking doesn't apply to the `Fail-on-Conflict` mode as there is no waiting. It does apply to the `Wait-on-Conflict` policy but is currently supported only for Read Committed isolation. [#12166](https://github.com/yugabyte/yugabyte-db/issues/12166) will extend support for this in the `Wait-on-Conflict` mode for the other isolation levels.
 
 The `SKIP LOCKED` clause is supported in both concurrency control policies and provides a transaction with the capability to skip locking without any error when a conflict is detected. However, it isn't supported for Serializable isolation. [#11761](https://github.com/yugabyte/yugabyte-db/issues/5683) tracks support for `SKIP LOCKED` in Serializable isolation.
