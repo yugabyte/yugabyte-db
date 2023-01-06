@@ -132,7 +132,7 @@ class PgClient::Impl {
     auto future = create_session_promise_.get_future();
     Heartbeat(true);
     session_id_ = VERIFY_RESULT(future.get());
-    LOG_WITH_PREFIX(INFO) << "Session id acquired";
+    LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
     return Status::OK();
   }
@@ -576,7 +576,7 @@ class PgClient::Impl {
 
  private:
   std::string LogPrefix() const {
-    return Format("S $0: ", session_id_);
+    return Format("Session id $0: ", session_id_);
   }
 
   rpc::RpcController* SetupController(

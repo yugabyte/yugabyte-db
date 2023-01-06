@@ -8,12 +8,13 @@
  */
 
 import React, { FC, useState } from 'react';
-import { YBTabsPanel } from '../../panels';
-import { BackupList } from '..';
 import { DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { withRouter } from 'react-router';
-import { ScheduledBackup } from '../scheduled/ScheduledBackup';
 import { useSelector } from 'react-redux';
+
+import { YBTabsPanel } from '../../panels';
+import { BackupList } from '..';
+import { ScheduledBackup } from '../scheduled/ScheduledBackup';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';

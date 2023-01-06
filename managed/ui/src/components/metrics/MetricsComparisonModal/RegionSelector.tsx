@@ -38,6 +38,7 @@ export const RegionSelector: FC<RegionSelectorData> = ({
         const clusterDisplayName = cluster.clusterType === MetricConsts.PRIMARY ?
           'Primary Cluster' : `Read Replica Cluster`;
 
+        // eslint-disable-next-line react/display-name
         return cluster.regions?.map((region: any, regionIdx: number) => {
           const key = `${clusterIdx}-region-${regionIdx}`;
           const matches = region.name.match(/\((.*?)\)/);
@@ -47,6 +48,7 @@ export const RegionSelector: FC<RegionSelectorData> = ({
             : `${region.name} (${region.code})`;
 
           return (
+            // eslint-disable-next-line react/jsx-key
             <Fragment>
               {clusterIdx > 0 && regionIdx === 0 &&
                 <div id="region-divider" className="divider" />

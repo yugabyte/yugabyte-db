@@ -39,6 +39,7 @@ class NavLink extends Component {
   }
 }
 
+// eslint-disable-next-line no-class-assign
 NavLink = withRouter(NavLink);
 
 export default class SideNavBar extends Component {

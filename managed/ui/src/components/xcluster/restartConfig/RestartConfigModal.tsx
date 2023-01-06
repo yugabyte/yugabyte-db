@@ -54,6 +54,7 @@ export const FormStep = {
   SELECT_TABLES: 'selectTables',
   CONFIGURE_BOOTSTRAP: 'configureBootstrap'
 } as const;
+// eslint-disable-next-line no-redeclare
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
 const MODAL_TITLE = 'Restart Replication';
@@ -217,7 +218,7 @@ export const RestartConfigModal = ({
         // workaround for outdated version of Formik to access form methods outside of <Formik>
         formik.current = formikProps;
         switch (currentStep) {
-          case FormStep.SELECT_TABLES:
+          case FormStep.SELECT_TABLES: {
             // Casting because FormikValues and FormikError have different types.
             const errors = formik.current.errors as FormikErrors<RestartXClusterConfigFormErrors>;
             return (
@@ -240,13 +241,15 @@ export const RestartConfigModal = ({
                 />
               </>
             );
-          case FormStep.CONFIGURE_BOOTSTRAP:
+          }
+          case FormStep.CONFIGURE_BOOTSTRAP: {
             return (
               <>
                 <div className={styles.formInstruction}>2. Configure bootstrap</div>
                 <ConfigureBootstrapStep formik={formik} />
               </>
             );
+          }
           default:
             return assertUnreachableCase(currentStep);
         }

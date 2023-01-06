@@ -82,6 +82,7 @@ export default class StepProgressBar extends Component {
     const listLabels = taskDetailsNormalized.map(function (item, idx) {
       taskClassName = getTaskClass(item.state);
       return (
+        // eslint-disable-next-line react/no-array-index-key
         <li key={idx} className={taskClassName + ' ' + item.class}>
           <span>{item.title}</span>
         </li>

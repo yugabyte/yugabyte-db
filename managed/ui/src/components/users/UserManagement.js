@@ -28,7 +28,7 @@ export const UserManagement = (props) => {
         placement="right"
         overlay={
           <Tooltip className="high-index" id="user-auth-tooltip">
-            You don't have enough permission
+            {"You don't have enough permission"}
           </Tooltip>
         }
       >

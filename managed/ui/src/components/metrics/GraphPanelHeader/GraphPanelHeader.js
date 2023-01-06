@@ -1,10 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
-import { Link } from 'react-router';
+import { Link , withRouter, browserHistory } from 'react-router';
 import { Dropdown, MenuItem, FormControl } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
-import { withRouter, browserHistory } from 'react-router';
+
 import moment from 'moment';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
@@ -582,11 +582,11 @@ class GraphPanelHeader extends Component {
     let universePicker = <span />;
     if (origin === MetricOrigin.CUSTOMER) {
       if (isTopKMetricsEnabled) {
-        universePicker = <UniversePicker
+        universePicker = (<UniversePicker
           {...this.props}
           universeItemChanged={this.universeItemChanged}
           selectedUniverse={self.state.currentSelectedUniverse}
-        />
+        />);
       } else {
         // TODO: Needs to be removed once Top K metrics is tested and integrated fully
         universePicker = (
@@ -723,6 +723,7 @@ class GraphPanelHeader extends Component {
                                 return null;
                               })
                               .then((blob) => {
+                                // eslint-disable-next-line eqeqeq
                                 if (blob != null) {
                                   const url = window.URL.createObjectURL(blob);
                                   const a = document.createElement('a');

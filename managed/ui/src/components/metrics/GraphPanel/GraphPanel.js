@@ -410,7 +410,7 @@ class GraphPanel extends Component {
 
       if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
         //Hide master related panels for tserver pods.
-        if (nodeName.match('yb-tserver-') != null) {
+        if (nodeName.match('yb-tserver-') !== null) {
           if (
             panelTypes[type].title === 'Master Server' ||
             panelTypes[type].title === 'Master Server Advanced'
@@ -419,7 +419,7 @@ class GraphPanel extends Component {
           }
         }
         //Hide empty panels for master pods.
-        if (nodeName.match('yb-master-') != null) {
+        if (nodeName.match('yb-master-') !== null) {
           const skipList = [
             'Tablet Server',
             'YSQL Ops and Latency',

@@ -78,7 +78,7 @@ export default class ReleaseList extends Component {
       this.setState({ searchResults: null, searchTerm: '' });
     } else {
       this.setState({
-        searchResults: Object.keys(releases.data).filter((x) => x.indexOf(term) > -1),
+        searchResults: Object.keys(releases.data).filter((x) => x.includes(term)),
         searchTerm: term
       });
     }
@@ -108,13 +108,14 @@ export default class ReleaseList extends Component {
       return <YBLoadingCircleIcon size="medium" />;
     }
     let releaseStrList = [];
+    // eslint-disable-next-line eqeqeq
     if (searchResults != null) {
       releaseStrList = searchResults;
     } else if (releases.data) {
       releaseStrList = Object.keys(releases.data).sort(sortVersion);
     }
     const releaseInfos = releaseStrList
-      .filter((version) => releases.data && releases.data[version])
+      .filter((version) => releases.data?.[version])
       .map((version) => {
         const releaseInfo = releases.data[version];
         releaseInfo.version = version;

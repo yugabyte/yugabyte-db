@@ -9,13 +9,15 @@ INSTALL_USER_HOME=""
 NODE_AGENT_HOME=""
 NODE_AGENT_PKG_DIR=""
 NODE_AGENT_RELEASE_DIR=""
+NODE_AGENT_PKG_TGZ_PATH=""
 
 # Yugabyte Anywhere SSL cert verification option.
 SKIP_VERIFY_CERT=""
-#Skip the interactive installation or not.
-SKIP_CONFIGURE="false"
+#Disable node to Yugabyte Anywhere connection.
+DISABLE_EGRESS="false"
 #Unregister (if any) and register again.
 FORCE_INSTALL="false"
+CERT_DIR=""
 CUSTOMER_ID=""
 NODE_IP=""
 NODE_PORT="9070"
@@ -25,7 +27,10 @@ TYPE=""
 VERSION=""
 JWT=""
 NODE_AGENT_BASE_URL=""
+NODE_AGRNT_CERT_PATH=""
 NODE_AGENT_DOWNLOAD_URL=""
+NODE_AGENT_ID=""
+NODE_AGENT_PKG_TGZ="node-agent.tgz"
 API_TOKEN_HEADER="X-AUTH-YW-API-TOKEN"
 JWT_HEADER="X-AUTH-YW-API-JWT"
 INSTALLER_NAME="node-agent-installer.sh"
@@ -53,6 +58,7 @@ add_path() {
 }
 
 node_agent_dir_setup() {
+  pushd "$INSTALL_USER_HOME"
   echo "* Creating Node Agent Directory."
   #Create node-agent directory.
   mkdir -p "$NODE_AGENT_HOME"
@@ -68,6 +74,7 @@ node_agent_dir_setup() {
   chmod -R 754 .
   popd
   add_path "$NODE_AGENT_PKG_DIR/bin"
+  popd
 }
 
 unregister_node_agent() {
@@ -105,17 +112,9 @@ unregister_node_agent() {
   fi
 }
 
-download_extract_package() {
-    #Change to home directory.
-    pushd "$INSTALL_USER_HOME"
-    echo "* Starting YB Node Agent $TYPE."
-    if [ "$TYPE" = "install" ]; then
-      node_agent_dir_setup
-    fi
-    pushd "$NODE_AGENT_RELEASE_DIR"
+download_package() {
     echo "* Downloading YB Node Agent build package."
     #Get OS version and Hardware info.
-
     #Change x86_64 to amd64.
     local GO_ARCH_TYPE=$ARCH
     if [ "$GO_ARCH_TYPE" = "x86_64" ]; then
@@ -124,17 +123,20 @@ download_extract_package() {
       GO_ARCH_TYPE="arm64"
     fi
     echo "* Getting $OS/$GO_ARCH_TYPE package"
-    local BUILD_TAR="node-agent.tgz"
+    mkdir -p "$NODE_AGENT_RELEASE_DIR"
+    pushd "$NODE_AGENT_RELEASE_DIR"
     local RESPONSE_CODE=""
     RESPONSE_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" --location --request GET \
     "$NODE_AGENT_DOWNLOAD_URL?downloadType=package&os=$OS&arch=$GO_ARCH_TYPE" \
-    --header "$HEADER: $HEADER_VAL" --output $BUILD_TAR)
-
+    --header "$HEADER: $HEADER_VAL" --output "$NODE_AGENT_PKG_TGZ")
+    popd
     if [ "$RESPONSE_CODE" -ne 200 ]; then
       echo "x Error while downloading the node agent build package"
       exit 1
     fi
+}
 
+extract_package() {
     #Get the version from the tar.
     #Note: This method of fetching the version from the tar depends on the packaging.
     #This might break if the packaging changes in the future.
@@ -142,8 +144,9 @@ download_extract_package() {
     #./
     #./<version>/
     #./<version>/*
+    pushd "$NODE_AGENT_RELEASE_DIR"
     set +o pipefail
-    VERSION=$(tar -tzf $BUILD_TAR | awk -F '/' '$2{print $2; exit}')
+    VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | awk -F '/' '$2{print $2; exit}')
     set -o pipefail
 
     echo "* Downloaded Version - $VERSION"
@@ -151,9 +154,10 @@ download_extract_package() {
     echo "* Extracting the build package"
     #This will extract the build files to a directory named $VERSION.
     #Packaging should take care of this.
-    tar --no-same-owner -zxf $BUILD_TAR
+    tar --no-same-owner -zxf "$NODE_AGENT_PKG_TGZ"
     #Delete the installer tar file.
-    rm -rf $BUILD_TAR
+    rm -rf "$NODE_AGENT_PKG_TGZ"
+    popd
 }
 
 setup_symlink() {
@@ -262,6 +266,7 @@ err_msg() {
 
 #Main entry function.
 main() {
+  echo "* Starting YB Node Agent $TYPE."
   if [ "$TYPE" = "install_service" ]; then
     if [ "$SUDO_ACCESS" = "false" ]; then
       echo "SUDO access is required."
@@ -274,50 +279,66 @@ main() {
       show_usage >&2
       exit 1
     fi
-    download_extract_package >/dev/null
-    echo "$VERSION"
+    download_package >/dev/null
   elif [ "$TYPE" = "upgrade" ]; then
-    if [ -z "$VERSION" ]; then
-      echo "Version is required."
-      exit 1
-    fi
-    setup_symlink
+    extract_package > /dev/null
+    setup_symlink > /dev/null
   elif [ "$TYPE" = "install" ]; then
-    if [ -z "$PLATFORM_URL" ]; then
-      echo "Yugabyte Anywhere URL is required."
-      show_usage >&2
-      exit 1
-    fi
-    if [ -z "$API_TOKEN" ]; then
-      echo "API token is required."
-      show_usage >&2
-      exit 1
-    fi
-    if [ "$FORCE_INSTALL" = "true" ]; then
-      if [ -z "$CUSTOMER_ID" ]; then
-        echo "Customer ID is required."
-        exit 1
-      fi
-      if [ -z "$NODE_IP" ]; then
-        echo "Node IP is required."
-        exit 1
-      fi
-      unregister_node_agent
-    fi
-    download_extract_package
-    setup_symlink
-    if [ "$SKIP_CONFIGURE" = "true" ]; then
-      if [ -z "$NODE_IP" ]; then
-        echo "Node IP is required."
+    local NODE_AGENT_CONFIG_ARGS=()
+    if [ "$DISABLE_EGRESS" = "false" ]; then
+      #Node agent can initiate connection to Yugabyte Anywhere.
+      if [ -z "$PLATFORM_URL" ]; then
+        echo "Yugabyte Anywhere URL is required."
         show_usage >&2
         exit 1
       fi
-      node-agent node register --api_token "$API_TOKEN" --url "$PLATFORM_URL" --node_ip "$NODE_IP" \
-      --node_port "$NODE_PORT" ${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}
+      if [ -z "$API_TOKEN" ]; then
+        echo "API token is required."
+        show_usage >&2
+        exit 1
+      fi
+      if [ "$FORCE_INSTALL" = "true" ]; then
+        if [ -z "$CUSTOMER_ID" ]; then
+          echo "Customer ID is required."
+          exit 1
+        fi
+        unregister_node_agent
+      fi
+      download_package
+      NODE_AGENT_CONFIG_ARGS+=(--api_token "$API_TOKEN" --url "$PLATFORM_URL" \
+      --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
     else
-      node-agent node configure --api_token "$API_TOKEN" --url "$PLATFORM_URL" \
-      ${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}
+      if [ -z "$NODE_IP" ]; then
+        echo "Node IP is required."
+        exit 1
+      fi
+      if [ -z "$CERT_DIR" ]; then
+        echo "Cert directory is required."
+        show_usage >&2
+        exit 1
+      fi
+      if [ -z "$NODE_AGENT_ID" ]; then
+        echo "Cert directory is required."
+        show_usage >&2
+        exit 1
+      fi
+      if [ ! -f "$NODE_AGENT_PKG_TGZ_PATH" ]; then
+        echo "$NODE_AGENT_PKG_TGZ_PATH is not found."
+        show_usage >&2
+        exit 1
+      fi
+      if [ ! -d "$NODE_AGRNT_CERT_PATH" ]; then
+        echo "$NODE_AGRNT_CERT_PATH is not found."
+        show_usage >&2
+        exit 1
+      fi
+      NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --cert_dir "$CERT_DIR" \
+      --node_ip "$NODE_IP" --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
     fi
+    node_agent_dir_setup
+    extract_package
+    setup_symlink
+    node-agent node configure ${NODE_AGENT_CONFIG_ARGS[@]}
     if [ $? -ne 0 ]; then
       echo "Node agent setup failed."
       exit 1
@@ -348,18 +369,22 @@ while [[ $# -gt 0 ]]; do
     --skip_verify_cert)
       SKIP_VERIFY_CERT="true"
     ;;
-    --skip_configure)
-      SKIP_CONFIGURE="true"
+    --disable_egress)
+      DISABLE_EGRESS="true"
+    ;;
+    --id)
+      NODE_AGENT_ID="$2"
+      shift
+    ;;
+    --cert_dir)
+      CERT_DIR="$2"
+      shift
     ;;
     --force)
       FORCE_INSTALL="true"
     ;;
-    -v|--version)
-      VERSION=$2
-      shift
-    ;;
     -c|--customer_id)
-      CUSTOMER_ID=$2
+      CUSTOMER_ID="$2"
       shift
     ;;
     -u|--url)
@@ -420,6 +445,8 @@ INSTALL_USER_HOME=$(eval cd ~"$INSTALL_USER" && pwd)
 NODE_AGENT_HOME="$INSTALL_USER_HOME/node-agent"
 NODE_AGENT_PKG_DIR="$NODE_AGENT_HOME/pkg"
 NODE_AGENT_RELEASE_DIR="$NODE_AGENT_HOME/release"
+NODE_AGENT_PKG_TGZ_PATH="$NODE_AGENT_RELEASE_DIR/$NODE_AGENT_PKG_TGZ"
+NODE_AGRNT_CERT_PATH="$NODE_AGENT_HOME/cert/$CERT_DIR"
 
 if [ "$TYPE" = "install" ]; then
   HEADER="$API_TOKEN_HEADER"
