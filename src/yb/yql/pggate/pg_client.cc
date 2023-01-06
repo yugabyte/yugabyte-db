@@ -599,6 +599,24 @@ class PgClient::Impl {
     return Status::OK();
   }
 
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string& table_id, const std::string& transaction_id) {
+    tserver::PgGetLockStatusRequestPB req;
+    tserver::PgGetLockStatusResponsePB resp;
+
+    if (!table_id.empty()) {
+      req.set_table_id(table_id);
+    }
+    if (!transaction_id.empty()) {
+      req.set_transaction_id(transaction_id);
+    }
+
+    RETURN_NOT_OK(proxy_->GetLockStatus(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    return resp;
+  }
+
   Result<int32> TabletServerCount(bool primary_only) {
     if (tablet_server_count_cache_[primary_only] > 0) {
       return tablet_server_count_cache_[primary_only];
@@ -815,6 +833,11 @@ Status PgClient::GetIndexBackfillProgress(
     const std::vector<PgObjectId>& index_ids,
     uint64_t** backfill_statuses) {
   return impl_->GetIndexBackfillProgress(index_ids, backfill_statuses);
+}
+
+Result<yb::tserver::PgGetLockStatusResponsePB> PgClient::GetLockStatusData(
+    const std::string& table_id, const std::string& transaction_id) {
+  return impl_->GetLockStatusData(table_id, transaction_id);
 }
 
 Result<int32> PgClient::TabletServerCount(bool primary_only) {

@@ -524,6 +524,19 @@ YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 
+// Functions----------------------------------------------------------------------------------------
+YBCStatus YBCAddFunctionParam(
+    YBCPgFunction handle, const char *name, const YBCPgTypeEntity *type_entity, uint64_t datum,
+    bool is_null);
+
+YBCStatus YBCAddFunctionTarget(
+    YBCPgFunction handle, const char *attr_name, const YBCPgTypeEntity *type_entity,
+    const YBCPgTypeAttrs type_attrs);
+
+YBCStatus YBCSRFGetNext(YBCPgFunction handle, uint64_t *values, bool *is_nulls, bool *has_data);
+
+YBCStatus YBCFinalizeFunctionTargets(YBCPgFunction handle);
+
 // Transaction control -----------------------------------------------------------------------------
 YBCStatus YBCPgBeginTransaction();
 YBCStatus YBCPgRecreateTransaction();
@@ -646,6 +659,8 @@ void* YBCPgSetThreadLocalErrStatus(void* new_status);
 void* YBCPgGetThreadLocalErrStatus();
 
 void YBCPgResetCatalogReadTime();
+
+YBCStatus YBCNewGetLockStatusDataSRF(YBCPgFunction *handle);
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
