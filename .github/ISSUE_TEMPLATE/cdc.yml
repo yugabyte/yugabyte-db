@@ -1,0 +1,24 @@
+name: YSQL-CDC
+description: Create a CDC issue.
+title: "[CDCSDK] Title"
+labels: ["area/cdcsdk", "status/awaiting-triage"]
+body:
+- type: textarea
+  id: cdcsdk
+  attributes:
+    label: Description
+    placeholder: |
+      **Provide a detailed description of the issue you want to report related to YSQL.**
+     
+      **Include steps to reproduce the issue.**
+    label: Source connector version
+    placeholder: |
+      **v1.9.5.y.15**
+    label: Connector configuration
+    placeholder: |
+      **Configuration properties used to deploy the YugabyteDB Source Connector**
+    label: YugabyteDB version
+    placeholder: |
+      **The YugabyteDB version with build number (if available)**
+  validations:
+    required: true
