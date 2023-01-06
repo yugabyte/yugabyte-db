@@ -91,13 +91,15 @@
   force = true
 
 [[redirects]]
-  from = "/v2.14/migrate/*"
-  to = "/preview/migrate/:splat"
-  force = true
-
-[[redirects]]
   from = "/:version/releases/*"
   to = "/preview/releases/"
+  force = true
+
+# Redirect for YugabyteDB Voyager
+
+[[redirects]]
+  from = "/:version/migrate/yb-voyager/*"
+  to = "/preview/migrate/"
   force = true
 
 # A few redirects to head off issues with version_menu_pagelinks
@@ -105,54 +107,67 @@
 [[redirects]]
   from = "/v2.12/explore/ysql-language-features/sql-feature-support/*"
   to = "/v2.12/explore/ysql-language-features/"
+  force = true
 
 [[redirects]]
   from = "/v2.8/explore/ysql-language-features/sql-feature-support/*"
   to = "/v2.8/explore/ysql-language-features/"
+  force = true
 
 [[redirects]]
   from = "/v2.12/explore/ysql-language-features/postgresql-compatibility/*"
   to = "/v2.12/explore/ysql-language-features/"
+  force = true
 
 [[redirects]]
   from = "/v2.8/explore/ysql-language-features/postgresql-compatibility/*"
   to = "/v2.8/explore/ysql-language-features/"
+  force = true
 
 [[redirects]]
   from = "/v2.12/develop/quality-of-service/*"
   to = "/v2.12/develop/"
+  force = true
 
 [[redirects]]
   from = "/v2.8/develop/quality-of-service/*"
   to = "/v2.8/develop/"
+  force = true
 
 [[redirects]]
   from = "/v2.14/develop/build-apps/*"
   to = "/v2.14/develop/learn/"
+  force = true
 
 [[redirects]]
   from = "/v2.12/develop/build-apps/*"
   to = "/v2.12/develop/learn/"
+  force = true
 
 [[redirects]]
   from = "/v2.8/develop/build-apps/*"
   to = "/v2.8/develop/learn/"
+  force = true
 
 [[redirects]]
   from = "/v2.12/drivers-orms/*"
   to = "/v2.12/reference/drivers/"
+  force = true
 
 [[redirects]]
   from = "/v2.8/drivers-orms/*"
   to = "/v2.8/reference/drivers/"
+  force = true
 
 [[redirects]]
   from = "/v2.12/explore/ysql-language-features/pg-extensions/*"
   to = "/v2.12/api/ysql/extensions/"
+  force = true
 
 [[redirects]]
   from = "/v2.8/explore/ysql-language-features/pg-extensions/*"
   to = "/v2.8/api/ysql/extensions/"
+  force = true
 
 # Redirect old cloud docs to root of current
 
@@ -404,13 +419,6 @@
 [[redirects]]
   from = "/stable/migrate/migrate-from-postgresql/"
   to = "/stable/manage/data-migration/bulk-export-ysql/"
-  force = true
-
-# Redirect for YugabyteDB Voyager
-
-[[redirects]]
-  from = "/:version/migrate/yb-voyager/*"
-  to = "/:version/migrate/:splat"
   force = true
 
 
