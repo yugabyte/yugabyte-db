@@ -172,8 +172,7 @@ CDC supports packed rows. However, if all the non-key columns of a packed row ar
 ## Limitations
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
-* Enabling CDC on tables created using previous versions of YugabyteDB is not supported, even after YugabyteDB is upgraded to version 2.13 or higher.
-  * Also, CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
+* CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
 * DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
 * A single stream can only be used to stream data from one namespace only.
