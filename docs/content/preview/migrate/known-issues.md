@@ -362,7 +362,7 @@ CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
 
 **GitHub link**: [Issue #705](https://github.com/yugabyte/yb-voyager/issues/705)
 
-**Description**: If you have a temporary table defined in a function or stored procedure in MySQL, and you have a `drop temporary table` statement associated with it, the schema gets exported as is, which is an invalid syntax in YugabyteDB.
+**Description**: If you have a temporary table defined in a function or stored procedure in MySQL and you have a `drop temporary table` statement associated with it, the schema gets exported as is, which is an invalid syntax in YugabyteDB.
 
 **Workaround**: Manually remove the temporary clause from the drop statement.
 
@@ -396,7 +396,8 @@ CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
   END;
 $body$
 LANGUAGE PLPGSQL
-SECURITY DEFINER;
+SECURITY DEFINER
+;
 ```
 
 Suggested change to the schema is to remove the temporary clause from the drop statement as follows:
@@ -411,7 +412,8 @@ CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
   END;
 $body$
 LANGUAGE PLPGSQL
-SECURITY DEFINER;
+SECURITY DEFINER
+;
 ```
 
 ---
@@ -434,7 +436,7 @@ An example schema on the source database is as follows:
 delimiter //
 CREATE FUNCTION foo (p_id int)
 RETURNS varchar(20)
-reads sql data
+READS SQL DATA
   BEGIN
     CREATE TEMPORARY TABLE temp(id int, name text,key(id));
     INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
@@ -453,7 +455,8 @@ CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
   END;
 $body$
 LANGUAGE PLPGSQL
-SECURITY DEFINER;
+SECURITY DEFINER
+;
 ```
 
 Choose one from the following suggested changes to the schema.
@@ -469,10 +472,11 @@ Choose one from the following suggested changes to the schema.
       END;
     $body$
     LANGUAGE PLPGSQL
-    SECURITY DEFINER;
+    SECURITY DEFINER
+    ;
     ```
 
-1. Create an index manually as follows:
+- Create an index manually as follows:
 
     ```sql
     CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
@@ -484,7 +488,8 @@ Choose one from the following suggested changes to the schema.
       END;
     $body$
     LANGUAGE PLPGSQL
-    SECURITY DEFINER;
+    SECURITY DEFINER
+    ;
     ```
 
 ---
@@ -530,7 +535,8 @@ max_date timestamp;max_date date;
   END;
 $body$
 LANGUAGE PLPGSQL
-SECURITY DEFINER;
+SECURITY DEFINER
+;
 ```
 
 Suggested change to the schema is to remove the extra declaration of the variable as follows:
@@ -547,7 +553,8 @@ max_date timestamp;
   END;
 $body$
 LANGUAGE PLPGSQL
-SECURITY DEFINER;
+SECURITY DEFINER
+;
 ```
 
 ### Oracle issues
