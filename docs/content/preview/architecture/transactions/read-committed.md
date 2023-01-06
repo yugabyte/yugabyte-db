@@ -1567,4 +1567,4 @@ If a statement in the Read Committed isolation level faces a conflict, it will b
 
 You can set these parameters on a per-session basis, or in the `ysql_pg_conf_csv` YB-TServer gflag on cluster startup.
 
-If the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict-beta-preview-faq-general-what-is-the-definition-of-the-beta-feature-tag) concurrency control policy is enabled, there won't be a need to manually tune these parameters for performance. Statements will restart only when all conflicting transactions have committed or rolled back, instead of retrying with an exponential backoff.
+If the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) concurrency control policy is enabled, there won't be a need to manually tune these parameters for performance. Statements will restart only when all conflicting transactions have committed or rolled back, instead of retrying with an exponential backoff.

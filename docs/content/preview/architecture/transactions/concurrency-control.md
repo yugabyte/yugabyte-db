@@ -13,7 +13,7 @@ type: docs
 
 [Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time.
 
-YugabyteDB provides two policies to handle conflicts between concurrent transactions as described in the following sections. 
+YugabyteDB provides two policies to handle conflicts between concurrent transactions as described in the following sections.
 
 For information on how row-level explicit locking clauses behave with these concurrency control policies, refer to [Row-level explicit locking clauses](#row-level-explicit-locking-clauses) .
 
@@ -78,7 +78,7 @@ SET yb_transaction_priority_lower_bound = 0.6;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -107,7 +107,7 @@ select * from test where k=1 for update;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -212,7 +212,7 @@ SET yb_transaction_priority_upper_bound = 0.4;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -240,7 +240,7 @@ select * from test where k=1 for update;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -291,7 +291,7 @@ Each retry will use a newer snapshot of the database in anticipation that the co
 
 Note that the retries will not be performed in case the amount of data to be sent from YSQL to the client proxy exceeds the TServer gflag `ysql_output_buffer_size`.
 
-## Wait-on-Conflict [[Beta]](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag)
+## Wait-on-Conflict [[Beta]](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag) {#wait-on-conflict}
 
 This mode of concurrency control is applicable only for YSQL and provides the same semantics as PostgreSQL.
 
@@ -355,7 +355,7 @@ insert into test values (2, 2);
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -369,7 +369,7 @@ begin transaction isolation level repeatable read;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -469,7 +469,7 @@ commit;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -483,7 +483,7 @@ begin transaction isolation level repeatable read;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -585,7 +585,7 @@ commit;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -599,7 +599,7 @@ begin transaction isolation level repeatable read;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -704,7 +704,7 @@ rollback;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -718,7 +718,7 @@ begin transaction isolation level repeatable read;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -822,7 +822,7 @@ A transaction can jump the queue even if it does conflict with waiting transacti
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -830,7 +830,7 @@ begin transaction isolation level repeatable read;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -838,7 +838,7 @@ begin transaction isolation level repeatable read;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -984,7 +984,7 @@ commit;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -998,7 +998,7 @@ begin transaction isolation level repeatable read;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -1102,7 +1102,7 @@ Add `enable_deadlock_detection=true` to the list of TServer gflags and restart t
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -1116,7 +1116,7 @@ begin transaction isolation level repeatable read;
    <td>
 
 ```sql
-begin transaction isolation level repeatable read;   
+begin transaction isolation level repeatable read;
 ```
 <br>
 
@@ -1178,7 +1178,7 @@ update test set v=6 where k=1;
 ```
 
 ```output
-ERROR:  Internal error: Transaction 00da00cd-87fa-431b-9521-253582fb23fe 
+ERROR:  Internal error: Transaction 00da00cd-87fa-431b-9521-253582fb23fe
 was aborted while waiting for locks
 ```
 
