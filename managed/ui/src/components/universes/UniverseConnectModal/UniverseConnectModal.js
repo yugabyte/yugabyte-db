@@ -70,7 +70,7 @@ class UniverseConnectModal extends Component {
         universeDetails: { clusters }
       } = universeInfo;
       const primaryCluster = getPrimaryCluster(clusters);
-      const userIntent = primaryCluster && primaryCluster.userIntent;
+      const userIntent = primaryCluster?.userIntent;
 
       const ycqlServiceUrl = getUniverseEndpoint(universeUUID) + '/ysqlservers';
       // check if there's a Hosted Zone
@@ -89,7 +89,7 @@ class UniverseConnectModal extends Component {
               endpointPayload: response.data
             })
           )
-          .catch(() => console.log('YCQL endpoint is unavailable'));
+          .catch(() => console.warn('YCQL endpoint is unavailable'));
       } else {
         // if no go to YCQL endpoint and fetch IPs
         axios
@@ -101,7 +101,7 @@ class UniverseConnectModal extends Component {
               endpointPayload: response.data
             })
           )
-          .catch(() => console.log('YCQL endpoint is unavailable'));
+          .catch(() => console.warn('YCQL endpoint is unavailable'));
       }
     }
   };
@@ -126,7 +126,7 @@ class UniverseConnectModal extends Component {
       } = universeInfo;
 
       const primaryCluster = getPrimaryCluster(clusters);
-      const userIntent = primaryCluster && primaryCluster.userIntent;
+      const userIntent = primaryCluster?.userIntent;
       const universeId = universeInfo.universeUUID;
       const ysqlRpcPort = _.get(communicationPorts, 'ysqlServerRpcPort', 5433);
 
@@ -157,8 +157,10 @@ class UniverseConnectModal extends Component {
           </YBCodeBlock>
         </Fragment>
       );
+
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       const isTLSEnabled = userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt;
-      const connectIp = this.state.connectIp || '127.0.0.1';
+      const connectIp = this.state.connectIp ?? '127.0.0.1';
       const jdbcConnection = `jdbc:postgresql://${connectIp}:${ysqlRpcPort}/yugabyte`;
       
       const jdbcTLSConnection = `${jdbcConnection}?sslmode=require`;

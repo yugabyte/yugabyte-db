@@ -138,6 +138,7 @@ export const NTPConfig: FC<NTPConfigProps> = ({
           <div className="info-text">Specify NTP servers you want to use</div>
           {GET_FIELD(fieldType, {
             name: 'ntpServers',
+            // eslint-disable-next-line react/display-name
             component: (field: any) => {
               const values =
                 fieldType === FIELD_TYPE.REDUX ? field.input.value : field.form.values.ntpServers;

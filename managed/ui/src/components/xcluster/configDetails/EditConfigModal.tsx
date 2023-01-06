@@ -69,7 +69,7 @@ export function EditConfigModal({ onHide, visible, replication }: Props) {
       initialValues={initialValues}
       submitLabel="Apply Changes"
       showCancelButton
-      render={(props: any) => {
+      render={() => {
         return (
           <Field
             name="name"

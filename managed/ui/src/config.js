@@ -8,7 +8,7 @@ export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
 // set auth cookies for API host domain and redirect to API host root instead of localhost:3000/
 // Need to manually set "userId", "customerId" and "PLAY_SESSION" cookies for localhost:3000
 export const ROOT_URL =
-  process.env.REACT_APP_YUGAWARE_API_URL ||
+  process.env.REACT_APP_YUGAWARE_API_URL ??
   (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v1' : '/api/v1');
 
 // Allow requests made to endpoints in ‘routes’ file.
@@ -22,7 +22,7 @@ export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
 // get SSO flag from global config loaded in index.html before UI app started
 export const USE_SSO = _.get(window, 'YB_Platform_Config.use_oauth', false);
 
-export const isSSOLogin = () => Cookies.get('apiToken') || localStorage.getItem('apiToken');
+export const isSSOLogin = () => Cookies.get('apiToken') ?? localStorage.getItem('apiToken');
 
 export const isSSOEnabled = () => _.get(window, 'YB_Platform_Config.use_oauth', false);
 

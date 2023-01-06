@@ -70,7 +70,7 @@ const getDestination = (params) => {
     if (params.defaultRecipients) {
       return '[Default Recipients]';
     }
-    return params.recipients && params.recipients.join(',');
+    return params.recipients?.join(',');
   }
   return params.webhookUrl;
 };

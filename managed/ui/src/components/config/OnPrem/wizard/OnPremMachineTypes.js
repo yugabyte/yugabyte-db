@@ -63,6 +63,7 @@ class OnPremListMachineTypes extends Component {
         {fields.map(function (fieldItem, fieldIdx) {
           const isReadOnly = self.isFieldReadOnly(fieldIdx);
           return (
+            // eslint-disable-next-line react/no-array-index-key
             <Row key={`fieldMap${fieldIdx}`}>
               <Col lg={1}>{removeRowButton(fieldIdx)}</Col>
               <Col lg={3}>

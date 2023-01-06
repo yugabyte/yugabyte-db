@@ -33,11 +33,13 @@ type ResponseMessage struct {
 }
 
 type CommonInfo struct {
-	Name    string `json:"name"`
-	IP      string `json:"ip"`
-	State   string `json:"state"`
-	Version string `json:"version"`
-	Port    int    `json:"port"`
+	Name     string `json:"name"`
+	IP       string `json:"ip"`
+	State    string `json:"state"`
+	Version  string `json:"version"`
+	ArchType string `json:"archType"`
+	OSType   string `json:"osType"`
+	Port     int    `json:"port"`
 }
 
 type NodeAgentConfig struct {

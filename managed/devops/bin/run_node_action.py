@@ -9,7 +9,7 @@ import uuid
 import warnings
 import logging
 import json
-from ybops.utils.remote_shell import RemoteShell, RpcRemoteShell
+from ybops.utils.remote_shell import RemoteShell
 
 warnings.filterwarnings("ignore")
 
@@ -276,6 +276,7 @@ def main():
     args = parse_args()
     if args.node_type == 'ssh':
         ssh_options = {
+            "connection_type": "ssh",
             "ssh_user": YB_USERNAME if args.user is None else args.user,
             "ssh_host": args.ip,
             "ssh_port": args.port,
@@ -288,19 +289,19 @@ def main():
         except Exception as e:
             sys.exit("Failed to establish SSH connection to {}:{} - {}"
                      .format(args.ip, args.port, str(e)))
-
     elif args.node_type == 'rpc':
         rpc_options = {
-            "user":  YB_USERNAME if args.user is None else args.user,
-            "ip": args.node_agent_ip,
-            "port": args.node_agent_port,
-            "cert_path": args.node_agent_cert_path,
-            "auth_token": args.node_agent_auth_token
+            "connection_type": "rpc",
+            "node_agent_user":  YB_USERNAME if args.user is None else args.user,
+            "node_agent_ip": args.node_agent_ip,
+            "node_agent_port": args.node_agent_port,
+            "node_agent_cert_path": args.node_agent_cert_path,
+            "node_agent_auth_token": args.node_agent_auth_token
         }
         logging.info("Using RPC connection to {}:{}"
                      .format(args.node_agent_ip, args.node_agent_port))
         try:
-            client = RpcRemoteShell(rpc_options)
+            client = RemoteShell(rpc_options)
         except Exception as e:
             sys.exit("Failed to establish RPC connection to {}:{} - {}"
                      .format(args.node_agent_ip, args.node_agent_port, str(e)))

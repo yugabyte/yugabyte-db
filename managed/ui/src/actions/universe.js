@@ -865,7 +865,7 @@ export async function fetchParticularFlag(dbVersion, params) {
 
 export async function validateGFlags(dbVersion, payload) {
   try {
-    const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
+    const apiToken = Cookies.get('apiToken') ?? localStorage.getItem('apiToken');
     if (apiToken && apiToken !== '') {
       axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
     }

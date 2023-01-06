@@ -170,8 +170,7 @@ const LiveQueriesComponent = ({ location }) => {
         </Alert>
       );
     }
-  } else {
-    if (errors.ycql > 0) {
+  } else if (errors.ycql > 0) {
       const percentFailed = parseFloat(errors.ycql) / (errors.ycql + ycqlQueries.length);
       failedQueries = (
         <Alert bsStyle={percentFailed > 0.8 ? 'danger' : 'warning'}>
@@ -179,7 +178,6 @@ const LiveQueriesComponent = ({ location }) => {
         </Alert>
       );
     }
-  }
 
   return (
     <div className="live-queries">

@@ -183,11 +183,11 @@ export function validateToken() {
   }
 
   // we support both sso and user login together
-  const authToken = Cookies.get('authToken') || localStorage.getItem('authToken');
+  const authToken = Cookies.get('authToken') ?? localStorage.getItem('authToken');
   if (authToken && authToken !== '') {
     axios.defaults.headers.common['X-AUTH-TOKEN'] = authToken;
   }
-  const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
+  const apiToken = Cookies.get('apiToken') ?? localStorage.getItem('apiToken');
   if (apiToken && apiToken !== '') {
     axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
   }
