@@ -12,6 +12,7 @@ import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.BiMap;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
 import com.yugabyte.yw.models.CommonBackupInfo;
 import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
@@ -41,7 +43,6 @@ import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.KmsConfig;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
@@ -388,7 +389,9 @@ public class BackupUtil {
       JsonNode backupScriptResponse) {
     ObjectMapper objectMapper = new ObjectMapper();
     List<RegionLocations> regionLocations = new ArrayList<>();
-    Map<String, Object> locations = objectMapper.convertValue(backupScriptResponse, Map.class);
+    Map<String, Object> locations =
+        objectMapper.convertValue(
+            backupScriptResponse, new TypeReference<Map<String, Object>>() {});
     for (Entry<String, Object> entry : locations.entrySet()) {
       if (!(entry.getKey().equals(SNAPSHOT_URL_FIELD)
           || entry.getKey().equals(BACKUP_SIZE_FIELD))) {

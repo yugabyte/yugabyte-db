@@ -72,7 +72,7 @@ func GetActiveSymlink() string {
 
 // GetInstallerSoftwareDir returns the yba_installer directory inside InstallRoot
 func GetInstallerSoftwareDir() string {
-	return dm.WorkingDirectory() + "/yba_installer-" + GetVersion()
+	return dm.WorkingDirectory() + "/yba_installer"
 }
 
 func PrunePastInstalls() {
@@ -156,20 +156,16 @@ func (dm directoryManager) ActiveSymlink() string {
 	return filepath.Join(dm.BaseInstall(), "software", InstallSymlink)
 }
 
-func getFileMatchingGlob(glob string) string {
-	matches, err := filepath.Glob(glob)
-	if err != nil || len(matches) != 1 {
-		log.Fatal(fmt.Sprintf("Expect to find one match for glob %s (err %s)", matches, err))
-	}
-	return matches[0]
-}
-
 func GetPostgresPackagePath() string {
-	return getFileMatchingGlob(PostgresPackageGlob)
+	return GetFileMatchingGlob(PostgresPackageGlob)
 }
 
 func GetJavaPackagePath() string {
-	return getFileMatchingGlob(javaBinaryGlob)
+	return GetFileMatchingGlob(javaBinaryGlob)
+}
+
+func GetTemplatesDir() string {
+	return GetFileMatchingGlob(filepath.Join(GetBinaryDir(), TemplateDirGlob))
 }
 
 func GetYBAInstallerDataDir() string {

@@ -65,7 +65,7 @@ class StandaloneMetricsPanel extends Component {
 
       props.metric = metrics[type][metricKey];
 
-      if (additionalMetricKeys && additionalMetricKeys.length) {
+      if (additionalMetricKeys?.length) {
         additionalMetricKeys.forEach((info) => {
           if (metrics[type][info.metric]) {
             // Get the first element and rename

@@ -59,7 +59,7 @@ func ConfigWithName(name string) (*Config, error) {
 	// Create config directory if not exists.
 	err := os.MkdirAll(configDir, os.ModePerm)
 	if err != nil {
-		fmt.Errorf("Error while creating config: %s", err.Error())
+		fmt.Errorf("Error while creating config - %s", err.Error())
 		return nil, err
 	}
 	// Create config file if not exists.
@@ -67,12 +67,12 @@ func ConfigWithName(name string) (*Config, error) {
 	if _, err = os.Stat(filename); os.IsNotExist(err) {
 		file, err := os.Create(filename)
 		if err != nil {
-			fmt.Errorf("Error while creating config file: %s", err.Error())
+			fmt.Errorf("Error while creating config file - %s", err.Error())
 			return nil, err
 		}
 		file.Close()
 	} else if err != nil {
-		fmt.Errorf("Error while creating config: %s", err.Error())
+		fmt.Errorf("Error while creating config - %s", err.Error())
 		return nil, err
 	}
 	config.viperInstance = viper.New()
@@ -81,7 +81,7 @@ func ConfigWithName(name string) (*Config, error) {
 	config.viperInstance.SetConfigName(name)
 	err = config.viperInstance.ReadInConfig()
 	if err != nil {
-		fmt.Errorf("Error reading the config file, %s", err)
+		fmt.Errorf("Error reading the config file - %s", err.Error())
 		return nil, err
 	}
 	syncMap.Store(name, config)
@@ -216,10 +216,19 @@ func (config *Config) StoreCommandFlagString(
 	return value, nil
 }
 
-func Version() string {
+func MustVersion() string {
+	version, err := Version()
+	if err != nil {
+		FileLogger().Fatalf("Error in getting version - %s", err.Error())
+	}
+	return version
+}
+
+func Version() (string, error) {
+	var version string
 	content, err := ioutil.ReadFile(VersionFile())
 	if err != nil {
-		FileLogger().Fatal("Error when opening file: ", err)
+		return version, fmt.Errorf("Error when opening file - %s", err.Error())
 	}
 	data := struct {
 		Version  string `json:"version_number"`
@@ -227,11 +236,12 @@ func Version() string {
 	}{}
 	err = json.Unmarshal(content, &data)
 	if err != nil {
-		FileLogger().Fatal("Error in parsing version file")
+		return version, fmt.Errorf("Error in parsing verson file - %s", err.Error())
 	}
 	format := "%s-%s"
 	if IsDigits(data.BuildNum) {
 		format = "%s-b%s"
 	}
-	return fmt.Sprintf(format, data.Version, data.BuildNum)
+	version = fmt.Sprintf(format, data.Version, data.BuildNum)
+	return version, nil
 }

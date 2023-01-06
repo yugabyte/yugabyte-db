@@ -307,12 +307,12 @@ export enum MetricMeasure {
   OVERALL = 'Overall',
   OUTLIER = 'Outlier',
   OUTLIER_TABLES = "Outlier_Tables"
-};
+}
 
 export enum SplitType {
   NODE = 'NODE',
   TABLE = 'TABLE'
-};
+}
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;
 export const MIN_OUTLIER_NUM_NODES = 1;

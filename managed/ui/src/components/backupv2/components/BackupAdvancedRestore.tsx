@@ -54,6 +54,7 @@ const STEPS = [
     title: 'Restore Backup',
     submitLabel: TEXT_RESTORE,
     component: RenameSingleKeyspace,
+    // eslint-disable-next-line react/display-name
     footer: (onClick: Function) => (
       <YBButton
         btnClass={`btn btn-default pull-right restore-wth-rename-but`}
@@ -359,6 +360,7 @@ function RestoreForm({
               label="Backup config"
               options={storageConfigs}
               components={{
+                // eslint-disable-next-line react/display-name
                 SingleValue: ({ data }: { data: any }) => (
                   <>
                     <span className="storage-cfg-name">{data.label}</span>

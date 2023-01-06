@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.yugabyte.yw.controllers.handlers.NodeAgentDownloadHandler;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
+import com.yugabyte.yw.controllers.handlers.NodeAgentHandler.NodeAgentDownloadFile;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -19,7 +19,6 @@ import play.mvc.Result;
 public class NodeAgentController extends AuthenticatedController {
 
   @Inject NodeAgentHandler nodeAgentHandler;
-  @Inject NodeAgentDownloadHandler nodeAgentDownloadHandler;
 
   public Result register(UUID customerUuid) {
     Customer.getOrBadRequest(customerUuid);
@@ -54,17 +53,6 @@ public class NodeAgentController extends AuthenticatedController {
     return PlatformResults.withData(nodeAgent);
   }
 
-  public Result update(UUID customerUuid, UUID nodeUuid) {
-    NodeAgent nodeAgent = nodeAgentHandler.updateRegistration(customerUuid, nodeUuid);
-    auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.NodeAgent,
-            nodeAgent.uuid.toString(),
-            Audit.ActionType.UpdateNodeAgent);
-    return PlatformResults.withData(nodeAgent);
-  }
-
   public Result unregister(UUID customerUuid, UUID nodeUuid) {
     NodeAgent.getOrBadRequest(customerUuid, nodeUuid);
     nodeAgentHandler.unregister(nodeUuid);
@@ -78,8 +66,8 @@ public class NodeAgentController extends AuthenticatedController {
   }
 
   public Result download(String downloadType, String os, String arch) {
-    NodeAgentDownloadHandler.NodeAgentDownloadFile fileToDownload =
-        nodeAgentDownloadHandler.validateAndGetDownloadFile(downloadType, os, arch);
+    NodeAgentDownloadFile fileToDownload =
+        nodeAgentHandler.validateAndGetDownloadFile(downloadType, os, arch);
     response()
         .setHeader(
             "Content-Disposition", "attachment; filename=" + fileToDownload.getContentType());

@@ -123,12 +123,9 @@ const validate = (values) => {
   if (!isDefinedNotNull(values.name)) {
     errors.name = 'Required';
   }
-  else {
-    
-    if(!specialChars.test(values.name)){
+  else if(!specialChars.test(values.name)){
       errors.name = 'Cannot have special characters except - and _';
     }
-  }
   if (!isDefinedNotNull(values.sshUser)) {
     errors.sshUser = 'Required';
   }

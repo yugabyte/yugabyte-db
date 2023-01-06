@@ -17,8 +17,8 @@ export const GFlagEditor = ({ fields, name }) => {
       textArray.forEach(text => {
         const match = gflagRegex.exec(text);
         if (match) {
-          // eslint-disable-next-line no-unused-vars
-          const [_, name, value] = match;          
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const [_, name, value] = match; // eslint-disable-line no-unused-vars  
           parsedFields.push({
             name,
             value

@@ -36,14 +36,14 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
@@ -160,7 +160,7 @@ In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to y
 
 You need to create an instance to run the YugabyteDB Anywhere server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
 
-- Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration: 
+- Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration:
 ![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
 
 - Select c5.xlarge as the instance type (4 vCPUs are recommended for production).

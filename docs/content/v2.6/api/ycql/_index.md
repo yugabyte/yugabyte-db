@@ -11,6 +11,8 @@ menu:
     identifier: api-cassandra
     parent: api
     weight: 3000
+    params:
+      classes: separator
 type: indexpage
 ---
 

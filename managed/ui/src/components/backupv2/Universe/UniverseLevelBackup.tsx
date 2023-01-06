@@ -8,12 +8,13 @@
  */
 
 import React, { FC, useState } from 'react';
-import { YBTabsPanel } from '../../panels';
-import { BackupList } from '..';
 import { DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { withRouter } from 'react-router';
-import { ScheduledBackup } from '../scheduled/ScheduledBackup';
 import { useSelector } from 'react-redux';
+
+import { YBTabsPanel } from '../../panels';
+import { BackupList } from '..';
+import { ScheduledBackup } from '../scheduled/ScheduledBackup';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
@@ -69,6 +70,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
         title={
           <DropdownButton
             pullRight
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             title={
               <span>
                 <i className="fa fa-gear" />
@@ -91,8 +96,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
               <MenuItem
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (currentUniverse?.data?.universeDetails?.universePaused) return;
                   setShowThrottleParametersModal(true);
                 }}
+                disabled={currentUniverse?.data?.universeDetails?.universePaused}
               >
                 Configure Throttle Parameters
               </MenuItem>

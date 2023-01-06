@@ -45,6 +45,12 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a
 explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 
+-- Batching should still be disabled if there is a filter
+-- clause on a batched relation.
+/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+
+/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p3)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1, p2, p3 where p1.a = p3.a AND p2.a = p3.a and p1.b = p2.b;
+
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 /*+IndexScan(p5 p5_hash)*/ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 

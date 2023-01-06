@@ -27,7 +27,12 @@ try:
     script_dir_yba_installer = os.path.dirname(os.path.realpath(__file__))
     # Using "yba_installer" so that the release package can be processed correctly in the build
     # job.
-    release_file = get_release_file(script_dir_yba_installer, "yba_installer")
+    release_file = get_release_file(
+        script_dir_yba_installer,
+        "yba_installer",
+        os_type="linux",
+        arch_type="x86_64")
+
     shutil.copyfile(args.package, release_file)
     if args.destination:
         if not os.path.exists(args.destination):

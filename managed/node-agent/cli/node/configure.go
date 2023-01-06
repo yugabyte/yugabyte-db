@@ -17,35 +17,113 @@ import (
 
 var (
 	configureCmd = &cobra.Command{
-		Use:   "configure",
-		Short: "Configures a node",
-		Run:   configureNodeHandler,
+		Use:    "configure",
+		Short:  "Configures a node",
+		PreRun: configurePreValidator,
+		Run:    configureNodeHandler,
 	}
 )
 
 func SetupConfigureCommand(parentCmd *cobra.Command) {
 	configureCmd.PersistentFlags().String("api_token", "", "API token for fetching config info.")
 	configureCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
-	configureCmd.PersistentFlags().Bool("skip_verify_cert", false,
-		"Skip Yugabyte Anywhere SSL cert verification.")
-	configureCmd.MarkPersistentFlagRequired("api_token")
-	configureCmd.MarkPersistentFlagRequired("url")
+	configureCmd.PersistentFlags().
+		Bool("skip_verify_cert", false, "Skip Yugabyte Anywhere SSL cert verification.")
+	configureCmd.PersistentFlags().
+		Bool("disable_egress", false, "Disable connection from node agent.")
+	/* Required only if egress is disabled. */
+	configureCmd.PersistentFlags().StringP("id", "i", "", "Node agent ID")
+	configureCmd.PersistentFlags().StringP("cert_dir", "d", "", "Node agent cert directory")
+	configureCmd.PersistentFlags().StringP("node_ip", "n", "", "Node IP")
+	configureCmd.PersistentFlags().StringP("node_port", "p", "", "Node Port")
+	/* End of non-plex flags. */
 	parentCmd.AddCommand(configureCmd)
 }
 
+func configurePreValidator(cmd *cobra.Command, args []string) {
+	if disabled, err := cmd.Flags().GetBool("disable_egress"); err != nil {
+		util.ConsoleLogger().Fatalf("Error in reading disable_egress - %s", err.Error())
+	} else if disabled {
+		cmd.MarkPersistentFlagRequired("id")
+		cmd.MarkPersistentFlagRequired("cert_dir")
+		cmd.MarkPersistentFlagRequired("node_ip")
+		cmd.MarkPersistentFlagRequired("node_port")
+	} else {
+		cmd.MarkPersistentFlagRequired("api_token")
+		cmd.MarkPersistentFlagRequired("url")
+	}
+}
+
 func configureNodeHandler(cmd *cobra.Command, args []string) {
-	if err := interactiveConfigHandler(cmd); err != nil {
-		util.ConsoleLogger().Fatalf("Unable to configure - %s", err.Error())
+	if disabled, err := cmd.Flags().GetBool("disable_egress"); err != nil {
+		util.ConsoleLogger().Fatalf("Error in reading disable_egress - %s", err.Error())
+	} else if disabled {
+		configureDisabledEgress(cmd)
+	} else {
+		interactiveConfigHandler(cmd)
+	}
+}
+
+func configureDisabledEgress(cmd *cobra.Command) {
+	config := util.CurrentConfig()
+	_, err := config.StoreCommandFlagString(
+		cmd,
+		"id",
+		util.NodeAgentIdKey,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Unable to store node agent ID - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		cmd,
+		"cert_dir",
+		util.PlatformCertsKey,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Unable to store node agent cert dir - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		cmd,
+		"node_ip",
+		util.NodeIpKey,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Unable to store node agent IP - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		cmd,
+		"node_port",
+		util.NodePortKey,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Unable to store node agent port - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagBool(
+		cmd,
+		"skip_verify_cert",
+		util.PlatformSkipVerifyCertKey,
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Unable to store skip_verify_cert value - %s", err.Error())
 	}
 }
 
 // Provides a fully interactive configuration setup for the user to configure
 // the node agent. It uses api token to fetch customers and finds
 // subsequent properties using the customer ID.
-func interactiveConfigHandler(cmd *cobra.Command) error {
+func interactiveConfigHandler(cmd *cobra.Command) {
 	apiToken, err := cmd.Flags().GetString("api_token")
 	if err != nil {
-		return fmt.Errorf("Need API Token during interactive config setup - %s", err.Error())
+		util.ConsoleLogger().
+			Fatalf("Need API Token during interactive config setup - %s", err.Error())
 	}
 	ctx := server.Context()
 	config := util.CurrentConfig()
@@ -57,7 +135,8 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 		util.ExtractBaseURL,
 	)
 	if err != nil {
-		return fmt.Errorf("Need Platform URL during interactive config setup - %s", err.Error())
+		util.ConsoleLogger().
+			Fatalf("Need Platform URL during interactive config setup - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagBool(
 		cmd,
@@ -65,7 +144,7 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 		util.PlatformSkipVerifyCertKey,
 	)
 	if err != nil {
-		return fmt.Errorf("Error storing skip_verify_cert value - %s", err.Error())
+		util.ConsoleLogger().Fatalf("Error storing skip_verify_cert value - %s", err.Error())
 	}
 	// Get node agent name and IP.
 	checkConfigAndUpdate(util.NodeIpKey, "Node IP")
@@ -73,15 +152,14 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 
 	err = server.RetrieveUser(apiToken)
 	if err != nil {
-		util.ConsoleLogger().Errorf("Error fetching the current user with the API key - %s", err)
-		return err
+		util.ConsoleLogger().Fatalf(
+			"Error fetching the current user with the API key - %s", err.Error())
 	}
 	providersHandler := task.NewGetProvidersHandler(apiToken)
 	// Get Providers from the platform (only on-prem providers displayed)
 	err = executor.GetInstance(ctx).ExecuteTask(ctx, providersHandler.Handle)
 	if err != nil {
-		util.ConsoleLogger().Errorf("Error fetching the providers - %s", err)
-		return err
+		util.ConsoleLogger().Fatalf("Error fetching the providers - %s", err)
 	}
 	providers := *providersHandler.Result()
 	i := 0
@@ -97,8 +175,7 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 		"Onprem Provider",
 	)
 	if err != nil {
-		util.ConsoleLogger().Errorf("Error while displaying providers: %s", err.Error())
-		return err
+		util.ConsoleLogger().Fatalf("Error while displaying providers - %s", err.Error())
 	}
 	selectedProvider := onpremProviders[providerNum]
 	config.Update(util.ProviderIdKey, selectedProvider.Uuid)
@@ -108,8 +185,7 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 	err = executor.GetInstance(ctx).
 		ExecuteTask(ctx, instanceTypesHandler.Handle)
 	if err != nil {
-		util.ConsoleLogger().Errorf("Error fetching the instance types - %s", err)
-		return err
+		util.ConsoleLogger().Fatalf("Error fetching the instance types - %s", err.Error())
 	}
 	instances := *instanceTypesHandler.Result()
 	instanceNum, err := displayOptionsAndGetSelected(
@@ -117,8 +193,7 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 		"Instance Type",
 	)
 	if err != nil {
-		util.ConsoleLogger().Errorf("Error while displaying instance Types: %s", err.Error())
-		return err
+		util.ConsoleLogger().Fatalf("Error while displaying instance Types - %s", err.Error())
 	}
 	selectedInstanceType := instances[instanceNum]
 	config.Update(util.NodeInstanceTypeKey, selectedInstanceType.InstanceTypeCode)
@@ -126,8 +201,7 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 	regions := selectedProvider.Regions
 	regionNum, err := displayOptionsAndGetSelected(displayInterfaces(regions), "Region")
 	if err != nil {
-		util.ConsoleLogger().Errorf("Error while displaying regions: %s", err.Error())
-		return err
+		util.ConsoleLogger().Fatalf("Error while displaying regions - %s", err.Error())
 	}
 	config.Update(util.NodeRegionKey, regions[regionNum].Code)
 
@@ -135,8 +209,7 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 	zones := regions[regionNum].Zones
 	zoneNum, err := displayOptionsAndGetSelected(displayInterfaces(zones), "Zone")
 	if err != nil {
-		util.ConsoleLogger().Errorf("Error while displaying zones: %s", err.Error())
-		return err
+		util.ConsoleLogger().Fatalf("Error while displaying zones - %s", err.Error())
 	}
 	config.Update(util.NodeAzIdKey, zones[zoneNum].Uuid)
 	config.Update(util.NodeZoneKey, zones[zoneNum].Code)
@@ -147,7 +220,6 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 		util.ConsoleLogger().Fatalf("Unable to register node agent - %s", err.Error())
 	}
 	util.ConsoleLogger().Info("Node Agent Registration Successful")
-	return nil
 }
 
 // Displays the options and prompts the user to select an option followed by validating the option.

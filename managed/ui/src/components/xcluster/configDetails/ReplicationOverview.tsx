@@ -39,7 +39,7 @@ export function ReplicationOverview({
       <div className="replication-divider" />
       <Row style={{ paddingLeft: '20px' }}>
         <Col lg={12}>
-          <b>Replication's Target Universe</b>
+          <b>{"Replication's Target Universe"}</b>
         </Col>
       </Row>
       <div className="replication-divider" />

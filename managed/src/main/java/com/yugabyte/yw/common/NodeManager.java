@@ -1340,11 +1340,11 @@ public class NodeManager extends DevopsBase {
       }
     }
     if (StringUtils.isNotBlank(nodeIp)) {
-      nodeAgentClient
+      getNodeAgentClient()
           .maybeGetNodeAgentClient(nodeIp)
           .ifPresent(
               nodeAgent -> {
-                commandArgs.add("--ansible_connection_type");
+                commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
                 NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, sensitiveArgs);
               });
@@ -2015,6 +2015,7 @@ public class NodeManager extends DevopsBase {
   private Collection<String> getCommunicationPortsParams(
       UserIntent userIntent, AccessKey accessKey, UniverseTaskParams.CommunicationPorts ports) {
     List<String> result = new ArrayList<>();
+    Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
     result.add("--master_http_port");
     result.add(Integer.toString(ports.masterHttpPort));
     result.add("--master_rpc_port");
@@ -2041,7 +2042,7 @@ public class NodeManager extends DevopsBase {
       result.add("--redis_proxy_rpc_port");
       result.add(Integer.toString(ports.redisServerRpcPort));
     }
-    if (accessKey.getKeyInfo().installNodeExporter) {
+    if (provider.details.installNodeExporter) {
       result.add("--node_exporter_http_port");
       result.add(Integer.toString(ports.nodeExporterPort));
     }

@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.password.RedactingService;
+import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -1819,6 +1821,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             isNextFallThrough,
             NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
             filteredNodes -> {
+              createInstallNodeAgentTasks(filteredNodes)
+                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              createWaitForNodeAgentTasks(nodesToBeCreated)
+                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createSetupServerTasks(
                       filteredNodes, p -> p.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);

@@ -110,7 +110,7 @@ class AddRegionList extends Component {
   };
 
   zoneConfigFormatter = (cell, row) => {
-    if (row.zoneKubeConfig && row.zoneKubeConfig.name) {
+    if (row.zoneKubeConfig?.name) {
       return row.zoneKubeConfig.name;
     } else {
       return null;
@@ -180,9 +180,9 @@ class AddRegionList extends Component {
     const { regionList } = formik.values;
     const currentRegion = regionList[regionIndex];
     const zoneIndex =
-      currentRegion && currentRegion.zoneList.length ? currentRegion.zoneList.length - 1 : 0;
+      currentRegion?.zoneList?.length ? currentRegion.zoneList.length - 1 : 0;
     const nonEditingZones =
-      currentRegion && currentRegion.zoneList ? currentRegion.zoneList.slice(0, zoneIndex) : [];
+      currentRegion?.zoneList ? currentRegion.zoneList?.slice(0, zoneIndex) : [];
     const regionOptions = REGION_METADATA.map((region) => ({
       value: region.code,
       label: region.name
@@ -274,7 +274,7 @@ class AddRegionList extends Component {
                       </Row>
                     </div>
 
-                    {currentRegion && currentRegion.regionCode && (
+                    {currentRegion?.regionCode && (
                       <FieldArray
                         name={`regionList[${regionIndex}].zoneList`}
                         render={(zoneArrayHelpers) => {
@@ -570,6 +570,7 @@ class AddRegionList extends Component {
                   )}
                   {displayedRegions.map((region, index) => (
                     <li
+                      // eslint-disable-next-line react/no-array-index-key
                       key={index}
                       onClick={() => {
                         // Regions edit popup handler

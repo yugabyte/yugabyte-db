@@ -53,7 +53,7 @@ export default class AddCertificateForm extends Component {
 
   readUploadedFileAsText = (inputFile, isRequired) => {
     const fileReader = new FileReader();
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       fileReader.onloadend = () => {
         resolve(fileReader.result);
       };
