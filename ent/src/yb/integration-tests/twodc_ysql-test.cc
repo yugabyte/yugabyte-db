@@ -156,6 +156,10 @@ class TwoDCYsqlTest : public TwoDCTestBase
                                       bool enable_cdc_sdk_in_producer = false,
                                       bool do_explict_transaction = false);
 
+  void ValidateSimpleReplicationWithPackedRowsUpgrade(
+      std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
+      uint32_t num_tablet_servers = 1, bool range_partitioned = false);
+
   Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1,
                     boost::optional<uint32_t> batch_size = boost::none) {
     if (batch_size) {
@@ -178,14 +182,15 @@ class TwoDCYsqlTest : public TwoDCTestBase
     return Status::OK();
   }
 
-  Result<std::vector<std::shared_ptr<client::YBTable>>>
-      SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
-                      std::vector<uint32_t> num_producer_tablets,
-                      uint32_t replication_factor,
-                      uint32_t num_masters = 1,
-                      bool colocated = false,
-                      boost::optional<std::string> tablegroup_name = boost::none,
-                      boost::optional<uint32_t> batch_size = boost::none) {
+  Result<std::vector<std::shared_ptr<client::YBTable>>> SetUpWithParams(
+      std::vector<uint32_t> num_consumer_tablets,
+      std::vector<uint32_t> num_producer_tablets,
+      uint32_t replication_factor,
+      uint32_t num_masters = 1,
+      bool colocated = false,
+      boost::optional<std::string> tablegroup_name = boost::none,
+      const bool ranged_partitioned = false,
+      boost::optional<uint32_t> batch_size = boost::none) {
     RETURN_NOT_OK(Initialize(replication_factor, num_masters, batch_size));
 
     if (num_consumer_tablets.size() != num_producer_tablets.size()) {
@@ -206,14 +211,16 @@ class TwoDCYsqlTest : public TwoDCTestBase
     std::vector<YBTableName> tables;
     std::vector<std::shared_ptr<client::YBTable>> yb_tables;
     for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
-      RETURN_NOT_OK(CreateYsqlTable(i, num_producer_tablets[i], &producer_cluster_,
-                                &tables, tablegroup_name, colocated));
+      RETURN_NOT_OK(CreateYsqlTable(
+          i, num_producer_tablets[i], &producer_cluster_, &tables, tablegroup_name, colocated,
+          ranged_partitioned));
       std::shared_ptr<client::YBTable> producer_table;
       RETURN_NOT_OK(producer_client()->OpenTable(tables[i * 2], &producer_table));
       yb_tables.push_back(producer_table);
 
-      RETURN_NOT_OK(CreateYsqlTable(i, num_consumer_tablets[i], &consumer_cluster_,
-                                &tables, tablegroup_name, colocated));
+      RETURN_NOT_OK(CreateYsqlTable(
+          i, num_consumer_tablets[i], &consumer_cluster_, &tables, tablegroup_name, colocated,
+          ranged_partitioned));
       std::shared_ptr<client::YBTable> consumer_table;
       RETURN_NOT_OK(consumer_client()->OpenTable(tables[(i * 2) + 1], &consumer_table));
       yb_tables.push_back(consumer_table);
@@ -510,9 +517,9 @@ class TwoDCYSqlTestConsistentTransationsTest : public TwoDCYsqlTest {
 
   Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateTableAndSetupReplication() {
     FLAGS_enable_replicate_transaction_status_table = true;
-    auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, 1, false /* colocated */,
-                                                boost::none /* tablegroup_name */,
-                                                0 /* batch_size */));
+    auto tables = VERIFY_RESULT(SetUpWithParams(
+        {4}, {4}, 3, 1, false /* colocated */, boost::none /* tablegroup_name */,
+        false /* ranged_partitioned */, 0 /* batch_size */));
     auto producer_table = tables[0];
     auto consumer_table = tables[1];
     const string kUniverseId = VERIFY_RESULT(GetUniverseId(&producer_cluster_));
@@ -669,13 +676,15 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(TwoDCYsqlTest, SimpleReplication) {
+void TwoDCYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
+    std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
+    uint32_t num_tablet_servers, bool range_partitioned) {
   FLAGS_ysql_enable_packed_row = false;
 
   constexpr auto kNumRecords = 1000;
-  constexpr int kNTabletsPerTable = 1;
-  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  auto tables = ASSERT_RESULT(SetUpWithParams(
+      consumer_tablet_counts, producer_tablet_counts, num_tablet_servers, 1, false, boost::none,
+      range_partitioned));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // tables contains both producer and consumer universe tables (alternately).
@@ -715,8 +724,11 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   // 3. Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
-  ASSERT_OK(CorrectlyPollingAllTablets(
-      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
+  uint32_t num_producer_tablets = 0;
+  for (const auto count : producer_tablet_counts) {
+    num_producer_tablets += count;
+  }
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), num_producer_tablets));
 
   auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
     for (const auto& consumer_table : consumer_tables) {
@@ -765,7 +777,7 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   // 7. Disable packing and resume replication
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), num_producer_tablets));
   ASSERT_OK(WaitFor(
       [&]() { return data_replicated_correctly(kNumRecords + 10); }, MonoDelta::FromSeconds(20),
       "IsDataReplicatedCorrectly"));
@@ -800,6 +812,29 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   ASSERT_OK(WaitFor(
       [&]() { return data_replicated_correctly(kNumRecords + 20); }, MonoDelta::FromSeconds(20),
       "IsDataReplicatedCorrectly"));
+}
+
+TEST_P(TwoDCYsqlTest, SimpleReplication) {
+  ValidateSimpleReplicationWithPackedRowsUpgrade(
+      /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1});
+}
+
+TEST_P(TwoDCYsqlTest, SimpleReplicationWithUnevenTabletCounts) {
+  ValidateSimpleReplicationWithPackedRowsUpgrade(
+      /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
+      /* num_tablet_servers */ 3);
+}
+
+TEST_P(TwoDCYsqlTest, SimpleReplicationWithRangedPartitions) {
+  ValidateSimpleReplicationWithPackedRowsUpgrade(
+      /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1},
+      /* num_tablet_servers */ 1, /* range_partitioned */ true);
+}
+
+TEST_P(TwoDCYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCounts) {
+  ValidateSimpleReplicationWithPackedRowsUpgrade(
+      /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
+      /* num_tablet_servers */ 3, /* range_partitioned */ true);
 }
 
 TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
