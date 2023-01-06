@@ -141,7 +141,34 @@ You can specify multiple hosts in the connection string to provide fallback opti
 postgres://username:password@host1:5433,host2:5433,host3:5433/database_name?load_balance=true
 ```
 
-The fallback hosts are only used during initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on. However, after the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+The following is a code snippet for connecting to YugabyteDB using multiple hosts:
+
+```go
+url := fmt.Sprintf("postgres://%s:%s@%s:%d",
+        dbUser, dbPassword, host1, port)
+
+    if host2 != "" {
+        url += fmt.Sprintf(",%s:%d", host2, port)
+    }
+
+    if host3 != "" {
+        url += fmt.Sprintf(",%s:%d", host3, port)
+    }
+
+    url += fmt.Sprintf("/%s", dbName)
+
+    if sslMode != "" {
+        url += fmt.Sprintf("?sslmode=%s", sslMode)
+
+        if sslRootCert != "" {
+            url += fmt.Sprintf("&sslrootcert=%s", sslRootCert)
+        }
+    }
+```
+
+The fallback hosts are only used during initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
+
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 #### Use SSL
 
