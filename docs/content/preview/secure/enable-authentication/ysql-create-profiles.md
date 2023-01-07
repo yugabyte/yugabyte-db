@@ -14,6 +14,17 @@ type: docs
 
 To enhance the security of your database, you can enable login profiles to lock accounts after a specified number of login attempts. This prevents brute force exploits.
 
+When enabled, database administrators with superuser privileges can assign login profiles to roles.
+
+A login profile consists of two parameters:
+
+- Number of failed attempts.
+- A lockout time period.
+
+The number of failed attempts increments by one every time authentication fails during login. If the number of failed attempts is greater than the preset limit, then the account is locked.
+
+If authentication is successful, or a locked account is unlocked, the number of failed attempts is reset to 0.
+
 ## Enable login profiles
 
 ### Start local clusters
@@ -46,9 +57,9 @@ A profile can be locked indefinitely or for a specific interval. The `role_profi
 - L (LOCKED): Role is locked indefinitely.
 - T (LOCKED(TIMED)): Role is locked until a certain timestamp
 
-A role is moved to LOCKED(TIMED) state when the number of consecutive failed attempts exceeds the limit. The interval (in seconds) to lock the role is read from pg_yb_profile.prfpasswordlocktime. The interval is added to the current timestamp and stored in pg_yb_role_profile.pg_yb_rolprflockeduntil. Login attempts by the role before pg_yb_role_profile.pg_yb_rolprflockeduntil will fail. If the column is NULL, then it is moved to LOCKED state instead.
+A role is moved to the LOCKED(TIMED) state when the number of consecutive failed attempts exceeds the limit. The interval (in seconds) to lock the role is read from `pg_yb_profile.prfpasswordlocktime`. The interval is added to the current timestamp and stored in `pg_yb_role_profile.pg_yb_rolprflockeduntil`. Login attempts by the role before `pg_yb_role_profile.pg_yb_rolprflockeduntil` will fail. If the column is NULL, then it is moved to LOCKED state instead.
 
-When the role successfully logs in after pg_yb_role_profile.pg_yb_rolprflockeduntil the role is moved to OPEN state, and it is allowed to login. Failed attempts after the lock time out period, will NOT modify pg_yb_role_profile.pg_yb_rolprflockeduntil.
+When the role successfully logs in after `pg_yb_role_profile.pg_yb_rolprflockeduntil`, the role is moved to the OPEN state, and is allowed to log in. Failed attempts after the lock time out period don't modify `pg_yb_role_profile.pg_yb_rolprflockeduntil`.
 
 ### Complete lockout
 
@@ -65,47 +76,77 @@ To re-enable accounts, do the following:
 
 ## Manage login profiles
 
-To manage login profiles
+When profiles are enabled, you can manage login profiles using the following commands:
 
-To revoke superuser from the DB admins so that they can no longer change privileges for other roles, do the following:
+- CREATE PROFILE
+- DROP PROFILE
+- ALTER ROLE
+
+Only superusers can create or drop profiles, and assign profiles to roles.
+
+To revoke superuser privileges from a user so that they can no longer change privileges for other roles, do the following:
 
 ```sql
-dev_database=# ALTER USER db_admin WITH NOSUPERUSER;
+ALTER USER db_admin WITH NOSUPERUSER;
 ```
 
-### Create a profile
+To create a profile, do the following:
 
+```sql
 CREATE PROFILE myprofile LIMIT 
 FAILED_LOGIN_ATTEMPTS <number> 
 [PASSWORD_LOCK_TIME <# of days>];
+```
 
-### Drop a profile
+To drop a profile, do the following:
 
+```sql
 DROP PROFILE myprofile;
+```
 
-### Attach a role to a profile
+To attach a role to a profile, do the following:
 
+```sql
 ALTER ROLE myuser PROFILE myprofile;
+```
 
-### Detach a role from a profile
+To detach a role from a profile, do the following:
 
+```sql
 ALTER ROLE myuser NOPROFILE;
+```
+
+Note that the association between a role and its profile should be removed using `ALTER ROLE ... NOPROFILE` before dropping a role.
 
 ### Lock and unlock roles
 
-Lock ROLE from logging in
+To unlock a role that has been locked out, do the following:
 
-ALTER ROLE myuser ACCOUNT LOCK;
-
-Unlock ROLE to allow login
-
+```sql
 ALTER ROLE myuser ACCOUNT UNLOCK;
+```
 
-The association between ROLE and PROFILE should be deleted before dropping a role using ALTER ROLE … NOPROFILE.
+To lock a role so that it can't log in, do the following:
 
-DROP ROLE myuser;
+```sql
+ALTER ROLE myuser ACCOUNT LOCK;
+```
 
 ### View profiles
+
+The `pg_yb_profile` system table lists profiles and their attributes.
+
+To view profiles, enter the following command:
+
+```sql
+SELECT * FROM pg_yb_profile;
+```
+
+You should see output similar to the following:
+
+```output
+
+```
 
 Run the following meta-command to verify the profiles:
 
