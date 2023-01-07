@@ -73,7 +73,6 @@ A role is moved to the LOCKED(TIMED) state when the number of consecutive failed
 
 When the role successfully logs in after `pg_yb_role_profile.pg_yb_rolprflockeduntil`, the role is moved to the OPEN state, and is allowed to log in. Failed attempts after the lock time out period don't modify `pg_yb_role_profile.pg_yb_rolprflockeduntil`. -->
 
-
 ## Manage login profiles
 
 When profiles are enabled, you can manage login profiles using the following commands:
@@ -95,8 +94,10 @@ To create a profile, do the following:
 ```sql
 CREATE PROFILE myprofile LIMIT
   FAILED_LOGIN_ATTEMPTS <number>;
+  [PASSWORD_LOCK_TIME <days>];
 ```
-<!--   [PASSWORD_LOCK_TIME <days>]; -->
+
+Note that PASSWORD_LOCK_TIME is optional, and timed locking is not currently implemented.
 
 To drop a profile, do the following:
 
@@ -145,7 +146,10 @@ SELECT * FROM pg_yb_profile;
 You should see output similar to the following:
 
 ```output
-
+  prfname  | prfmaxfailedloginattempts | prfpasswordlocktime 
+-----------+---------------------------+---------------------
+ myprofile |                         3 |                   0
+(1 row)
 ```
 
 The following table describes the columns and their values:
@@ -154,8 +158,7 @@ The following table describes the columns and their values:
 | :---- | :--- | :---------- |
 | prfname | name | Name of the profile. Must be unique. |
 | prfmaxfailedloginattempts | int | Maximum number of failed attempts allowed. |
-
-<!-- | prfpasswordlocktime | int | Interval in seconds to lock the account. NULL implies that the role will be locked indefinitely. | -->
+| prfpasswordlocktime | int | Interval in seconds to lock the account. NULL implies that the role will be locked indefinitely. |
 
 ### View role profile information
 
@@ -167,13 +170,22 @@ To view role profiles, enter the following command:
 SELECT * FROM pg_yb_role_profile;
 ```
 
+You should see output similar to the following:
+
+```output
+ rolprfrole | rolprfprofile | rolprfstatus | rolprffailedloginattempts | rolprflockeduntil 
+------------+---------------+--------------+---------------------------+-------------------
+      13287 |         16384 | o            |                         0 | 
+(1 row)
+```
+
 The following table describes the columns and their values:
 
 | COLUMN | TYPE | DEFAULT | DESCRIPTION |
 | :----- | :--- | :------ | :---------- |
 | `rolprfrole` | OID | | OID of the row in PG_ROLE
 | `rolprfprofile` | OID | | OID of the row in PROFILE
-| `rolprfstatus` | char | o | The status of the account, as follows:<ul><li>`o` (OPEN); allowed to login.</li><li>`t` (LOCKED(TIMED)); locked for a duration of the timestamp stored in `rolprflockeduntil`.</li><li>`l` (LOCKED); locked indefinitely and can only be unlocked by the admin.</li></ul>
+| `rolprfstatus` | char | o | The status of the account, as follows:<ul><li>`o` (OPEN); allowed to login.</li><li>`t` (LOCKED(TIMED)); locked for a duration of the timestamp stored in `rolprflockeduntil`. (Note that timed locking is not currently implemented.)</li><li>`l` (LOCKED); locked indefinitely and can only be unlocked by the admin.</li></ul>
 | `rolprffailedloginattempts` | int | 0 | Number of failed attempts by this role.
 | `rolprflockeduntil` | timestamptz | Null | If `rolprfstatus` is `t`, the duration that the role is locked. Otherwise, the value is NULL and not used.
 
