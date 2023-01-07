@@ -169,6 +169,45 @@
   to = "/v2.8/api/ysql/extensions/"
   force = true
 
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
+  to = "/v2.12/yugabyte-platform/troubleshoot/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
+  to = "/v2.8/yugabyte-platform/troubleshoot/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
+  to = "/v2.6/yugabyte-platform/troubleshoot/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
+  to = "/v2.12/yugabyte-platform/upgrade/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
+  to = "/v2.8/yugabyte-platform/upgrade/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
+  to = "/v2.6/yugabyte-platform/upgrade/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
+  to = "/v2.12/yugabyte-platform/install-yugabyte-platform/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
+  to = "/v2.8/yugabyte-platform/install-yugabyte-platform/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
+  to = "/v2.6/yugabyte-platform/install-yugabyte-platform/"
+  force = true
+
 # Redirect old cloud docs to root of current
 
 #[[redirects]]
@@ -342,6 +381,7 @@
   from = "/preview/develop/build-apps/go/ysql-pg/"
   to = "/preview/drivers-orms/go/pg/"
   force = true
+
 # Build an app for aiopg, now in integrations
 
 [[redirects]]
