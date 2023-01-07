@@ -14,22 +14,19 @@ type: docs
 
 To enhance the security of your database, you can enable login profiles to lock accounts after a specified number of login attempts. This prevents brute force exploits.
 
-When enabled, database administrators with superuser privileges can assign login profiles to roles.
+When enabled, database administrators with superuser (or in YugabyteDB Managed, `yb_db_admin`) privileges can create login profiles and assign the profiles to roles.
 
-A login profile consists of two parameters:
-
-- Number of failed attempts.
-- A lockout time period.
+When creating a profile, you must specify the number of failed attempts that are allowed before the account with the profile is locked.
 
 The number of failed attempts increments by one every time authentication fails during login. If the number of failed attempts is greater than the preset limit, then the account is locked.
 
-If authentication is successful, or a locked account is unlocked, the number of failed attempts is reset to 0.
+If authentication is successful, or a locked account is unlocked, the number of failed attempts resets to 0.
 
 ## Enable login profiles
 
 ### Start local clusters
 
-To enable login profiles in your local YugabyteDB clusters, include the YB-TServer `--ysql_enable_profile` flag with the [yugabyted start](../../../reference/configuration/yugabyted/#start) command `--tserver_flags` flag, as follows:
+To enable login profiles in your local YugabyteDB clusters, include the YB-TServer [--ysql_enable_profile](../../../reference/configuration/yb-tserver/#ysql-enable-profile) flag with the [yugabyted start](../../../reference/configuration/yugabyted/#start) command `--tserver_flags` flag, as follows:
 
 ```sh
 ./bin/yugabyted start --tserver_flags="ysql_enable_profile=true"
@@ -37,7 +34,7 @@ To enable login profiles in your local YugabyteDB clusters, include the YB-TServ
 
 ### Start YB-TServer services
 
-To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your YB-TServer services using the [--ysql_enable_profile](../../../reference/configuration/yb-tserver/#ysql-enable-profile) flag. Your command should look similar to the following:
+To enable login profiles in deployable YugabyteDB clusters, you need to start your YB-TServer services using the `--ysql_enable_profile` flag. Your command should look similar to the following:
 
 ```sh
 ./bin/yb-tserver \
@@ -48,22 +45,13 @@ To enable YSQL authentication in deployable YugabyteDB clusters, you need to sta
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-You can also enable YSQL login profiles by adding the `--ysql_enable_profile=true` to the YB-TServer configuration file (`tserver.conf`). For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
+You can also enable YSQL login profiles by adding the `--ysql_enable_profile=true` to the YB-TServer configuration file (`tserver.conf`).
 
-## Locked behaviour
+For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
 
-A profile can be locked indefinitely or for a specific interval. The `role_profile` has two states for the different LOCK behaviour:
+### Recover from complete lockout
 
-- L (LOCKED): Role is locked indefinitely.
-- T (LOCKED(TIMED)): Role is locked until a certain timestamp
-
-A role is moved to the LOCKED(TIMED) state when the number of consecutive failed attempts exceeds the limit. The interval (in seconds) to lock the role is read from `pg_yb_profile.prfpasswordlocktime`. The interval is added to the current timestamp and stored in `pg_yb_role_profile.pg_yb_rolprflockeduntil`. Login attempts by the role before `pg_yb_role_profile.pg_yb_rolprflockeduntil` will fail. If the column is NULL, then it is moved to LOCKED state instead.
-
-When the role successfully logs in after `pg_yb_role_profile.pg_yb_rolprflockeduntil`, the role is moved to the OPEN state, and is allowed to log in. Failed attempts after the lock time out period don't modify `pg_yb_role_profile.pg_yb_rolprflockeduntil`.
-
-### Complete lockout
-
-If you lock out all roles including admin roles, you must restart the cluster with the `--ysql_enable_profile` flag disabled.
+If you lock out all roles including administrator roles, you must restart the cluster with the `--ysql_enable_profile` flag disabled.
 
 While disabling login profiles allows users back in, you won't be able to change any profile information, as profile commands can't be run when the profile flag is off.
 
@@ -72,7 +60,19 @@ To re-enable accounts, do the following:
 1. Restart the cluster without profiles enabled.
 1. Create a new superuser.
 1. Restart the cluster with profiles enabled.
-1. Connect as the new superuser and issue the profile commands.
+1. Connect as the new superuser and issue the profile commands to unlock the accounts.
+
+<!--## Timed locked behaviour
+
+A profile can be locked indefinitely or for a specific interval. The `pg_yb_role_profile` has two states for the different LOCK behaviour:
+
+- L (LOCKED): Role is locked indefinitely.
+- T (LOCKED(TIMED)): Role is locked for a specified duration.
+
+A role is moved to the LOCKED(TIMED) state when the number of consecutive failed attempts exceeds the limit. The interval (in seconds) to lock the role is read from `pg_yb_profile.prfpasswordlocktime`. The interval is added to the current timestamp and stored in `pg_yb_role_profile.pg_yb_rolprflockeduntil`. Login attempts by the role before `pg_yb_role_profile.pg_yb_rolprflockeduntil` will fail. If the column is NULL, then it is moved to LOCKED state instead.
+
+When the role successfully logs in after `pg_yb_role_profile.pg_yb_rolprflockeduntil`, the role is moved to the OPEN state, and is allowed to log in. Failed attempts after the lock time out period don't modify `pg_yb_role_profile.pg_yb_rolprflockeduntil`. -->
+
 
 ## Manage login profiles
 
@@ -93,10 +93,10 @@ ALTER USER db_admin WITH NOSUPERUSER;
 To create a profile, do the following:
 
 ```sql
-CREATE PROFILE myprofile LIMIT 
-FAILED_LOGIN_ATTEMPTS <number> 
-[PASSWORD_LOCK_TIME <# of days>];
+CREATE PROFILE myprofile LIMIT
+  FAILED_LOGIN_ATTEMPTS <number>;
 ```
+<!--   [PASSWORD_LOCK_TIME <days>]; -->
 
 To drop a profile, do the following:
 
@@ -104,19 +104,19 @@ To drop a profile, do the following:
 DROP PROFILE myprofile;
 ```
 
-To attach a role to a profile, do the following:
+To assign a profile to a role, do the following:
 
 ```sql
 ALTER ROLE myuser PROFILE myprofile;
 ```
 
-To detach a role from a profile, do the following:
+To remove a profile from a role, do the following:
 
 ```sql
 ALTER ROLE myuser NOPROFILE;
 ```
 
-Note that the association between a role and its profile should be removed using `ALTER ROLE ... NOPROFILE` before dropping a role.
+Note that you should remove the association between a role and its profile using `ALTER ROLE ... NOPROFILE` before dropping a role.
 
 ### Lock and unlock roles
 
@@ -134,7 +134,7 @@ ALTER ROLE myuser ACCOUNT LOCK;
 
 ### View profiles
 
-The `pg_yb_profile` system table lists profiles and their attributes.
+The `pg_yb_profile` table lists profiles and their attributes.
 
 To view profiles, enter the following command:
 
@@ -148,32 +148,46 @@ You should see output similar to the following:
 
 ```
 
-Run the following meta-command to verify the profiles:
+The following table describes the columns and their values:
+
+| COLUMN | TYPE | DESCRIPTION |
+| :---- | :--- | :---------- |
+| prfname | name | Name of the profile. Must be unique. |
+| prfmaxfailedloginattempts | int | Maximum number of failed attempts allowed. |
+
+<!-- | prfpasswordlocktime | int | Interval in seconds to lock the account. NULL implies that the role will be locked indefinitely. | -->
+
+### View role profile information
+
+The `pg_yb_role_profile` table lists role profiles and their attributes.
+
+To view role profiles, enter the following command:
+
+```sql
+SELECT * FROM pg_yb_role_profile;
+```
+
+The following table describes the columns and their values:
+
+| COLUMN | TYPE | DEFAULT | DESCRIPTION |
+| :----- | :--- | :------ | :---------- |
+| `rolprfrole` | OID | | OID of the row in PG_ROLE
+| `rolprfprofile` | OID | | OID of the row in PROFILE
+| `rolprfstatus` | char | o | The status of the account, as follows:<ul><li>`o` (OPEN); allowed to login.</li><li>`t` (LOCKED(TIMED)); locked for a duration of the timestamp stored in `rolprflockeduntil`.</li><li>`l` (LOCKED); locked indefinitely and can only be unlocked by the admin.</li></ul>
+| `rolprffailedloginattempts` | int | 0 | Number of failed attempts by this role.
+| `rolprflockeduntil` | timestamptz | Null | If `rolprfstatus` is `t`, the duration that the role is locked. Otherwise, the value is NULL and not used.
+
+<!-- When login profiles are enabled, you can display these columns in the `pg_roles` table by running the following [meta-command](../../../admin/ysqlsh/#reference):
 
 ```sql
 yugabyte=# \dgP
 ```
-
-You should see output similar to the following:
-
-```output
-                                       List of roles
-  Role name   |                         Attributes                         |   Member of
---------------+------------------------------------------------------------+---------------
- db_admin     | Cannot login                                               | {engineering}
- developer    | Cannot login                                               | {engineering}
- engineering  | Cannot login                                               | {}
- postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
- qa           | Cannot login                                               | {engineering}
- yb_extension | Cannot login                                               | {}
- yb_fdw       | Cannot login                                               | {}
- yugabyte     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
-```
+-->
 
 ## Limitations and caveats
 
 - A profile can't be modified using `ALTER PROFILE`. If a profile needs to be modified, create a new profile. ALTER functionality will be implemented in the future.
-- Currently a role is locked indefinitely unless an admin unlocks the role. Locking a role for a specific period of time will be implemented in the future.
+- Currently a role is locked indefinitely unless an administrator unlocks the role. Locking a role for a specific period of time will be implemented in the future.
 - Login profiles are only applicable to challenge-response authentication methods. YugabyteDB also supports authentication methods that are not challenge-response, and login profiles are ignored for these methods as the authentication outcome has already been determined. The authentication methods are as follows:
   - Reject
   - ImplicitReject
