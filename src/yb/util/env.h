@@ -31,6 +31,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <boost/optional.hpp>
 
 #include "yb/gutil/callback_forward.h"
 
@@ -474,6 +475,9 @@ struct WritableFileOptions {
 
   // See CreateMode for details.
   Env::CreateMode mode;
+
+  // Set this variable to customize the default starting offset.
+  boost::optional<uint64_t> initial_offset;
 
   WritableFileOptions()
     : sync_on_close(false),
