@@ -70,7 +70,7 @@ $ ./bin/yb-ctl add_node
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command:
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+wget 'https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true' -O yb-sample-apps.jar
 ```
 
 By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. Note that the `yb-sample-apps.jar` sets the [consistency](../../../../admin/ycqlsh/#consistency) level to ONE by default. You can populate exactly one key with a `10KB` value into the system. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the universe.
