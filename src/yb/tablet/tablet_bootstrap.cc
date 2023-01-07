@@ -633,7 +633,7 @@ class TabletBootstrap {
     }
 
     *rebuilt_tablet = std::move(tablet_);
-    RETURN_NOT_OK(log_->EnsureInitialNewSegmentAllocated());
+    RETURN_NOT_OK(log_->EnsureSegmentInitialized());
     rebuilt_log->swap(log_);
     return Status::OK();
   }

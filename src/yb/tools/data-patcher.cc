@@ -609,7 +609,7 @@ Status ChangeTimeInWalDir(
   header.set_unused_tablet_id("TABLET ID");
   header.mutable_deprecated_schema();
 
-  RETURN_NOT_OK(new_segment.WriteHeaderAndOpen(header));
+  RETURN_NOT_OK(new_segment.WriteHeader(header));
 
   // Set up the new footer. This will be maintained as the segment is written.
   size_t num_entries = 0;

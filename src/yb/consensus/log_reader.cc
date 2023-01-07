@@ -190,13 +190,6 @@ Status LogReader::Init(const string& tablet_wal_path) {
     }
     CHECK(segment->IsInitialized()) << "Uninitialized segment at: " << segment->path();
 
-    if (!segment->HasFooter()) {
-      LOG_WITH_PREFIX(WARNING)
-          << "Log segment " << fqp << " was likely left in-progress "
-             "after a previous crash. Will try to rebuild footer by scanning data.";
-      RETURN_NOT_OK(segment->RebuildFooterByScanning());
-    }
-
     read_segments.push_back(segment);
   }
 
@@ -209,19 +202,33 @@ Status LogReader::Init(const string& tablet_wal_path) {
     string previous_seg_path;
     int64_t previous_seg_seqno = -1;
     for (const auto& segment : read_segments) {
-      VLOG_WITH_PREFIX(1) << " Log Reader Indexed: " << segment->footer().ShortDebugString();
       // Check that the log segments are in sequence.
+      const auto current_seg_seqno = segment->header().sequence_number();
       if (previous_seg_seqno != -1 &&
-          segment->header().sequence_number() != previous_seg_seqno + 1) {
+          current_seg_seqno != previous_seg_seqno + 1) {
         return STATUS(Corruption, Substitute("Segment sequence numbers are not consecutive. "
             "Previous segment: seqno $0, path $1; Current segment: seqno $2, path $3",
-            previous_seg_seqno, previous_seg_path, segment->header().sequence_number(),
+            previous_seg_seqno, previous_seg_path, current_seg_seqno,
                 segment->path()));
-        previous_seg_seqno++;
-      } else {
-        previous_seg_seqno = segment->header().sequence_number();
       }
+      previous_seg_seqno = current_seg_seqno;
       previous_seg_path = segment->path();
+
+      if (!segment->HasFooter()) {
+        const auto no_footer_warning_prefix = Format("Log segment $0 was likely left in-progress"
+                                        "after a previous crash.", segment->path());
+        if(current_seg_seqno == read_segments.back()->header().sequence_number()) {
+          LOG_WITH_PREFIX(WARNING) << no_footer_warning_prefix
+                                   << " Will try to reuse this segment as writable active segment";
+          RETURN_NOT_OK(AppendUnclosedSegmentUnlocked(segment));
+          continue;
+        }
+        LOG_WITH_PREFIX(WARNING) << no_footer_warning_prefix
+                                 << " Will try to rebuild footer by scanning data.";
+        RETURN_NOT_OK(segment->RebuildFooterByScanning());
+        VLOG_WITH_PREFIX(1) << " Log Reader Indexed: " << segment->footer().ShortDebugString();
+      }
+
       RETURN_NOT_OK(AppendSegmentUnlocked(segment));
     }
 
@@ -545,6 +552,13 @@ Status LogReader::AppendSegment(const scoped_refptr<ReadableLogSegment>& segment
 Status LogReader::AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment) {
   DCHECK(segment->IsInitialized());
   DCHECK(segment->HasFooter());
+
+  return segments_.push_back(segment->header().sequence_number(), segment);
+}
+
+Status LogReader::AppendUnclosedSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment) {
+  DCHECK(segment->IsInitialized());
+  SCHECK(!segment->HasFooter(), IllegalState, "unclosed segment shouldn't have a footer");
 
   return segments_.push_back(segment->header().sequence_number(), segment);
 }
