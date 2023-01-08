@@ -55,9 +55,6 @@ packages=(
   cmake
   curl
   git
-  git
-  git
-  libtool
   libtool
   locales
   maven
