@@ -333,7 +333,9 @@ void Batcher::TabletLookupFinished(
   } else {
     auto status = lookup_result.status();
     if (ClientError(status) == ClientErrorCode::kTablePartitionListRefreshed) {
-      status = op->yb_op->GetPartitionKey(&op->partition_key);
+      status = client::IsTolerantToPartitionsChange(*op->yb_op) ?
+          Status::OK() :
+          op->yb_op->GetPartitionKey(&op->partition_key);
       if (status.ok()) {
         LookupTabletFor(op);
         return;
