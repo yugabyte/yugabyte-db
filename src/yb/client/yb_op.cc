@@ -105,6 +105,15 @@ void SetKey(const Slice& value, PgsqlPartitionBound* bound) {
 }
 
 template <typename Req>
+void GetPartitionKey(const Req& request, std::string* partition_key) {
+  if (request.has_partition_key()) {
+    *partition_key = request.partition_key();
+  } else {
+    partition_key->clear();
+  }
+}
+
+template <typename Req>
 Result<const PartitionKey&> FindPartitionKeyByUpperBound(
     std::reference_wrapper<const TablePartitionList> partition_list, const Req& request) {
   const auto& partitions = partition_list.get();
@@ -120,6 +129,19 @@ Result<const PartitionKey&> FindPartitionKeyByUpperBound(
     --idx;
   }
   return partitions[idx];
+}
+
+template<class Req>
+bool IsNonIndexBackwardScan(const Req& request) {
+  return !request.has_index_request() && !request.is_forward_scan();
+}
+
+// Returns true if backward scan may depend on partitions change (for example, due to tablet
+// splitting). Currently, there's only one case: if table is range partitioned and a request
+// is non-index request, then additional action may be required to correctly handle a backward
+// scan (for example, to adjust partition key).
+bool IsPartitionsChangeDependantBackwardScan(const YBPgsqlReadOp& read_op) {
+  return !read_op.table()->IsHashPartitioned() && IsNonIndexBackwardScan(read_op.request());
 }
 
 template<class Req>
@@ -284,7 +306,7 @@ Status InitRangePartitionKey(
       request->paging_state().has_next_partition_key()) {
     // If this is a subsequent query, use the partition key from the paging state.
     SetPartitionKey(request->paging_state().next_partition_key(), request);
-  } else if (!request->is_forward_scan()) {
+  } else if (IsNonIndexBackwardScan(*request)) {
     // A special case for backward scan: partition is selected on base of upper bound.
     const auto& key = VERIFY_RESULT_REF(FindPartitionKeyByUpperBound(partitions, *request));
     SetPartitionKey(key, request);
@@ -874,9 +896,8 @@ Result<QLRowBlock> YBqlReadOp::MakeRowBlock() const {
 //--------------------------------------------------------------------------------------------------
 
 YBPgsqlOp::YBPgsqlOp(
-    const shared_ptr<YBTable>& table, std::string* partition_key, rpc::Sidecars* sidecars)
+    const shared_ptr<YBTable>& table, rpc::Sidecars* sidecars)
     : YBOperation(table), response_(new PgsqlResponsePB()),
-      partition_key_(partition_key ? std::move(*partition_key) : std::string()),
       sidecars_(*sidecars) {
 }
 
@@ -904,7 +925,7 @@ std::string ResponseSuffix(const PgsqlResponsePB& response) {
 
 YBPgsqlWriteOp::YBPgsqlWriteOp(
     const shared_ptr<YBTable>& table, rpc::Sidecars* sidecars, PgsqlWriteRequestPB* request)
-    : YBPgsqlOp(table, request ? request->mutable_partition_key() : nullptr, sidecars),
+    : YBPgsqlOp(table, sidecars),
       request_(request) {
   if (!request) {
     request_holder_ = std::make_unique<PgsqlWriteRequestPB>();
@@ -957,7 +978,8 @@ void YBPgsqlWriteOp::SetHashCode(const uint16_t hash_code) {
 
 Status YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
   if (!request_holder_) {
-    return YBPgsqlOp::GetPartitionKey(partition_key);
+    client::GetPartitionKey(*request_, partition_key);
+    return Status::OK();
   }
   RETURN_NOT_OK(InitWritePartitionKey(
       table_->InternalSchema(), table_->partition_schema(), request_));
@@ -970,7 +992,7 @@ Status YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
 
 YBPgsqlReadOp::YBPgsqlReadOp(
     const shared_ptr<YBTable>& table, rpc::Sidecars* sidecars, PgsqlReadRequestPB* request)
-    : YBPgsqlOp(table, request ? request->mutable_partition_key() : nullptr, sidecars),
+    : YBPgsqlOp(table, sidecars),
       request_(request),
       yb_consistency_level_(YBConsistencyLevel::STRONG) {
   if (!request) {
@@ -1025,15 +1047,16 @@ void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
 }
 
 Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
+  // This instance's partition_key may have stale value in case of backward scan and dynamically
+  // changed partitions. New key is calculated on-the-fly.
+  if (IsPartitionsChangeDependantBackwardScan(*this)) {
+    *partition_key = VERIFY_RESULT_REF(
+        FindPartitionKeyByUpperBound(*table_->GetPartitionsShared(), *request_));
+    return Status::OK();
+  }
   if (!request_holder_) {
-    // This instance's partition_key may have stale value in case of backward scan and dynamically
-    // changed partitions. New key is calculated on-the-fly.
-    if (table_->partition_schema().IsRangePartitioning() && !request_->is_forward_scan()) {
-      *partition_key = VERIFY_RESULT_REF(
-          FindPartitionKeyByUpperBound(*table_->GetPartitionsShared(), *request_));
-      return Status::OK();
-    }
-    return YBPgsqlOp::GetPartitionKey(partition_key);
+    client::GetPartitionKey(*request_, partition_key);
+    return Status::OK();
   }
 
   RETURN_NOT_OK(InitReadPartitionKey(
@@ -1159,6 +1182,11 @@ Status GetRangePartitionBounds(const Schema& schema,
                                vector<docdb::KeyEntryValue>* lower_bound,
                                vector<docdb::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
+}
+
+bool IsTolerantToPartitionsChange(const YBOperation& op) {
+  return (op.type() != YBOperation::PGSQL_READ) ||
+      !IsPartitionsChangeDependantBackwardScan(down_cast<const YBPgsqlReadOp&>(op));
 }
 
 Result<const PartitionKey&> TEST_FindPartitionKeyByUpperBound(
