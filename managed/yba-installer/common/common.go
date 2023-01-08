@@ -66,10 +66,10 @@ func MarkInstallStart() {
 }
 
 func PostInstall() {
-	// Symlink at /usr/local/bin/yba-ctl -> /opt/yba-ctl/yba-ctl -> actual yba-ctl
+	// Symlink at /usr/bin/yba-ctl -> /opt/yba-ctl/yba-ctl -> actual yba-ctl
 	if HasSudoAccess() {
 		CreateSymlink(GetInstallerSoftwareDir(), filepath.Dir(InputFile), goBinaryName)
-		CreateSymlink(filepath.Dir(InputFile), "/usr/local/bin", goBinaryName)
+		CreateSymlink(filepath.Dir(InputFile), "/usr/bin", goBinaryName)
 	}
 
 	MarkInstallComplete()
@@ -150,7 +150,7 @@ func copyBits(vers string) {
 	templateCpCmd := fmt.Sprintf("cp %s/* %s/%s",
 		configDirPath, GetInstallerSoftwareDir(), ConfigDir)
 
-	cronDirPath := GetFileMatchingGlob(cronDirGlob)
+	cronDirPath := GetCronDir()
 	cronCpCmd := fmt.Sprintf("cp %s/* %s/%s",
 		cronDirPath, GetInstallerSoftwareDir(), CronDir)
 
@@ -220,6 +220,11 @@ func Uninstall(serviceNames []string, removeData bool) {
 
 // Upgrade performs the upgrade procedures common to all services.
 func Upgrade(version string) {
+
+	// Change into the dir we are in so that we can specify paths relative to ourselves
+	// TODO(minor): probably not a good idea in the long run
+	os.Chdir(GetBinaryDir())
+
 	createUpgradeDirs()
 	copyBits(version)
 	extractPlatformSupportPackageAndYugabundle(version)
