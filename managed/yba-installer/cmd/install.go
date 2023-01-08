@@ -27,7 +27,8 @@ var installCmd = &cobra.Command{
 		// Only print results if we should fail.
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
-			log.Fatal("preflight failed")
+			log.Fatal("Preflight checks failed. To skip (not recommended), " +
+				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
 		// Run install

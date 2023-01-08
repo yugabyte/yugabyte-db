@@ -26,7 +26,6 @@ type Check interface {
 //
 // We will run all specified preflight checks and return errors for those that failed.
 // If an empty array is returned, there were no failures found.
-//
 func Run(checkList []Check, skipChecks ...string) []checks.Result {
 	// Preallocate underlying arrary
 	var results []checks.Result = make([]checks.Result, 0, len(checkList))
@@ -62,7 +61,7 @@ func Run(checkList []Check, skipChecks ...string) []checks.Result {
 func PrintPreflightResults(results []checks.Result) {
 	preflightWriter := tabwriter.NewWriter(os.Stdout, 3, 0, 1, ' ', 0)
 	fmt.Println("Preflight errors:")
-	fmt.Fprintln(preflightWriter, "#\tPreflight Check\tStatus\tError")
+	fmt.Fprintln(preflightWriter, "#\tCheck name\tStatus\tError")
 	for ii, result := range results {
 		fmt.Fprintf(preflightWriter, "%d\t%s\t%s\t%s\n",
 			ii+1,
