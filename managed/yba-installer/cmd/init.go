@@ -45,13 +45,14 @@ func ensureInstallerConfFile() {
 
 	if os.IsNotExist(err) {
 		userChoice := common.UserConfirm(
-			fmt.Sprintf(`
-			    No config file found at %[2]s.
-				Proceed with default settings from reference conf file %[1]s?
-				Note that some settings cannot be modified post-installation.
-				To customize the default settings, please copy the reference conf file at %[1]s to %[2]s,
-				change settings in %[2]s and re-run the install command.
-				`,
+			fmt.Sprintf(
+				("No config file found at %[2]s.\n\n"+
+					"Proceed with default settings from reference conf file %[1]s?\n\n"+
+					"Note that some settings cannot be modified post-installation.\n"+
+					"To customize the default settings, \n"+
+					"1. please copy the reference conf file at %[1]s to %[2]s,\n"+
+					"2. change settings in %[2]s \n"+
+					"and, 3. re-run the install command. \n"),
 				common.GetReferenceYaml(), common.InputFile),
 			common.DefaultNo)
 		if !userChoice {
@@ -60,7 +61,7 @@ func ensureInstallerConfFile() {
 		}
 
 		// Copy over reference yaml
-		common.MkdirAllOrFail(filepath.Dir(common.InputFile), 0744)
+		common.MkdirAllOrFail(filepath.Dir(common.InputFile), 0755)
 		common.CopyFile(common.GetReferenceYaml(), common.InputFile)
 		os.Chmod(common.InputFile, 0600)
 
