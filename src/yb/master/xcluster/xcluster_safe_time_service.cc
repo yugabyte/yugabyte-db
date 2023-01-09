@@ -446,10 +446,6 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
     if (consumer_registry && consumer_registry->role() != cdc::XClusterRole::ACTIVE) {
       const auto& producer_map = consumer_registry->producer_map();
       for (const auto& cluster_entry : producer_map) {
-        if (cluster_entry.second.disable_stream()) {
-          continue;
-        }
-
         const auto& cluster_uuid = cluster_entry.first;
         for (const auto& stream_entry : cluster_entry.second.stream_map()) {
           const auto& consumer_table_id = stream_entry.second.consumer_table_id();
