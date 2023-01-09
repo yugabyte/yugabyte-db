@@ -63,20 +63,6 @@ func cleanCmd() *cobra.Command {
 
 }
 
-var licenseCmd = &cobra.Command{
-	Use:   "license",
-	Short: "The license command prints out YBA Installer licensing requirements.",
-	Long: `
-    The license command prints out any licensing requirements associated with
-    YBA Installer in order for customers to run it. Currently there are no licensing
-    requirements for YBA Installer, but that could change in the future.
-    `,
-	Args: cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		License()
-	},
-}
-
 var startCmd = &cobra.Command{
 	Use: "start [serviceName]",
 	Short: "The start command is used to start service(s) required for your Yugabyte " +
@@ -234,7 +220,7 @@ func restoreBackupCmd() *cobra.Command {
 
 // called on module init
 func init() {
-	rootCmd.AddCommand(cleanCmd(), licenseCmd, versionCmd,
+	rootCmd.AddCommand(cleanCmd(), versionCmd,
 		createBackupCmd(), restoreBackupCmd(),
 		upgradeCmd, startCmd, stopCmd, restartCmd, statusCmd)
 	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "skip user confirmation")
