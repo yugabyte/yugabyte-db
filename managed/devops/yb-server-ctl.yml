@@ -127,6 +127,13 @@
         become: yes
         become_method: sudo
 
+      - name: Delete yb-bind check service
+        file:
+          path: "{{ systemd_dir }}/yb-bind_check.service"
+          state: absent
+        become: yes
+        become_method: sudo
+
       - name: Delete metrics collection timer
         file:
           path: "{{ systemd_dir }}/yb-collect_metrics.timer"

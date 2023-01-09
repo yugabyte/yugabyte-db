@@ -154,6 +154,11 @@
               /bin/systemctl restart yb-controller,
               /bin/systemctl enable yb-controller,
               /bin/systemctl disable yb-controller,
+              /bin/systemctl start yb-bind_check.service,
+              /bin/systemctl stop yb-bind_check.service,
+              /bin/systemctl restart yb-bind_check.service,
+              /bin/systemctl enable yb-bind_check.service,
+              /bin/systemctl disable yb-bind_check.service,
               /bin/systemctl start yb-zip_purge_yb_logs.timer,
               /bin/systemctl stop yb-zip_purge_yb_logs.timer,
               /bin/systemctl restart yb-zip_purge_yb_logs.timer,
@@ -220,6 +225,15 @@
     template:
       src: "yb-controller.service"
       dest: "{{ systemd_dir }}/yb-controller.service"
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      mode: 0644
+
+  # Adding yb-bind_check service files for the availability of the port
+  - name: Add yb-bind_check.service
+    template:
+      src: "yb-bind_check.service"
+      dest: "{{ systemd_dir }}/yb-bind_check.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
       mode: 0644
