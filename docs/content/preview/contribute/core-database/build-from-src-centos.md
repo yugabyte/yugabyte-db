@@ -55,7 +55,7 @@ sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-
 sudo yum install -y cmake3 ctest3 ninja-build
 ```
 
-### Prepare build tools
+### Build tools
 
 Make sure `cmake`/`ctest` binaries are at least version 3. On CentOS, one way to achieve this is to symlink them into `/usr/local/bin`.
 
