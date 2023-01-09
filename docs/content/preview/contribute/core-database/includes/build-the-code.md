@@ -5,7 +5,7 @@ cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
 
-The command above will build the release configuration, add the C++ binaries into the `build/release-<compiler>-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
+The command above will build the release configuration, add the binaries into the `build/release-<compiler>-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
 
 {{< note title="Note" >}}
 
