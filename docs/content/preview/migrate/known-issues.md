@@ -312,6 +312,15 @@ CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
 
 ---
 
+<!-- #### Export error for Function/Procedure names containing whitespaces/special characters
+
+**GitHub link**: [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
+
+**Description**: If you have some function or procedure in MySQL which contains some special characters or whitespaces, the export fails with an error.
+
+**Workaround**:
+--- -->
+
 #### `drop temporary table` statements are not supported
 
 **GitHub link**: [Issue #705](https://github.com/yugabyte/yb-voyager/issues/705)
@@ -958,6 +967,47 @@ Suggested change to the schema is to add the `asc` clause as follows:
 
 ```sql
 create index ON timestamp_demo (ts asc);
+```
+
+---
+
+#### Complex table names defined using special characters hang during data export
+
+**GitHub links**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688)
+
+**Description**: If you define complex names for tables using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123" , the migration hangs during the export data step.
+
+**Workaround**: For MySQL, use backticks around the table name in queries and for Oracle or PostgreSQL, use double quotes.
+
+**Example**
+
+An example schema on the source PostgreSQL database is as follows:
+
+```sql
+CREATE TABLE `xyz abc`(id int);
+INSERT INTO `xyz abc` VALUES(1);
+INSERT INTO `xyz abc` VALUES(2);
+INSERT INTO `xyz abc` VALUES(3);
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE TABLE "xyz abc" (id bigint);
+```
+
+The preceding example will result in an error as follows:
+
+```output
+2022-11-30 05:16:29 INFO logging.go:33 calculating approx num of rows to export for each table...
+2022-11-30 05:16:29 INFO mysql.go:59 Querying 'SELECT table_rows from information_schema.tables where table_name = 'xyz abc'' approx row count of table "xyz abc"
+2022-11-30 05:16:29 INFO mysql.go:65 Table "xyz abc" has approx {3 true} rows.
+2022-11-30 05:16:29 INFO source.go:237 Source DSN used for export: dbi:mysql:host=localhost;database=automation;port=3306;mysql_ssl_optional=1
+2022-11-30 05:16:29 INFO ora2pg_export_data.go:76 Executing command: ora2pg -q -t COPY -P 4 -o data.sql -b /home/centos/export-dir/data -c /home/centos/export-dir/temp/.ora2pg.conf --no_header
+2022-11-30 05:16:29 INFO common.go:79 After updating data file paths, TablesProgressMetadata:&{TableSchema:automation TableName:xyz abc FullTableName:automation.xyz abc InProgressFilePath:/home/centos/export-dir/data/tmp_xyz abc_data.sql FinalFilePath:/home/centos/export-dir/data/xyz abc_data.sql Status:0 CountLiveRows:0 CountTotalRows:3 FileOffsetToContinue:0 IsPartition:false ParentTable:}
+
+2022-11-30 05:16:30 INFO ora2pg_export_data.go:92 ora2pg STDOUT: ""
+2022-11-30 05:16:30 ERROR ora2pg_export_data.go:93 ora2pg STDERR: ""
 ```
 
 ---
