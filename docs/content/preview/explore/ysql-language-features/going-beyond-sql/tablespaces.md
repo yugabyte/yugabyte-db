@@ -74,7 +74,7 @@ The topology is shown in the following illustration:
   </li>
   <li>
     <a href="#platform" class="nav-link" id="platform-tab" data-toggle="tab" role="tab" aria-controls="platform" aria-selected="false">
-      <i class="fa-solid fa-server" aria-hidden="true"></i>
+      <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
     </a>
   </li>

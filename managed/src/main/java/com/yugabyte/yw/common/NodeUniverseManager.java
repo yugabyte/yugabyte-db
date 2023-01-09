@@ -262,7 +262,6 @@ public class NodeUniverseManager extends DevopsBase {
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     CloudType cloudType = universe.getNodeDeploymentMode(node);
     if (cloudType == CloudType.kubernetes) {
-      commandArgs.add("k8s");
       Map<String, String> k8sConfig =
           KubernetesUtil.getKubernetesConfigPerPod(
                   cluster.placementInfo,

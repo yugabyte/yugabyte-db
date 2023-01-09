@@ -1164,10 +1164,6 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
     const HybridTime& cdc_sdk_safe_time) {
-  if (cdc_sdk_op_id == OpId::Invalid()) {
-    return Status::OK();
-  }
-
   RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
   RETURN_NOT_OK(set_cdc_sdk_safe_time(cdc_sdk_safe_time));
 
