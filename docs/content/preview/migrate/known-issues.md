@@ -2,7 +2,6 @@
 title: Known issues and workarounds
 linkTitle: Known issues
 description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: known-issues-voyager

@@ -14,6 +14,8 @@ menu:
     weight: 1060
 type: indexpage
 showRightNav: true
+cascade:
+  unversioned: true
 ---
 
 ## Current supported releases

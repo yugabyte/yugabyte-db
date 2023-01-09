@@ -23,6 +23,8 @@ resources:
     url: /preview/develop/build-apps/
   - title: Troubleshoot
     url: /preview/yugabyte-cloud/cloud-troubleshoot/
+cascade:
+  unversioned: true
 ---
 
 Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
