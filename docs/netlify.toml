@@ -91,6 +91,11 @@
   force = true
 
 [[redirects]]
+  from = "/v2.14/migrate/*"
+  to = "/preview/migrate/:splat"
+  force = true
+
+[[redirects]]
   from = "/:version/releases/*"
   to = "/preview/releases/"
   force = true
