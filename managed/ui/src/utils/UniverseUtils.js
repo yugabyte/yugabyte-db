@@ -2,9 +2,9 @@
 import _ from 'lodash';
 
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
-import { PROVIDER_TYPES } from '../config';
+import { PROVIDER_TYPES , BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
-import { BASE_URL } from '../config';
+
 
 export const nodeInClusterStates = [
   NodeState.Live,
@@ -105,12 +105,12 @@ export function getProviderMetadata(provider) {
 }
 
 export function getClusterIndex(nodeDetails, clusters) {
-  const cluster = clusters.find((cluster) => cluster.uuid === nodeDetails.placementUuid);
-  if (!cluster) {
+  const universeCluster = clusters.find((cluster) => cluster.uuid === nodeDetails.placementUuid);
+  if (!universeCluster) {
     // Move orphaned nodes to end of list
     return Number.MAX_SAFE_INTEGER;
   }
-  return cluster.index;
+  return universeCluster.index;
 }
 
 export function nodeComparisonFunction(nodeDetailsA, nodeDetailsB, clusters) {
@@ -148,8 +148,8 @@ export const isYbcEnabledUniverse = (universeDetails) => {
 };
 
 export const isYbcInstalledInUniverse = (universeDetails) => {
-  return universeDetails?.ybcInstalled
-}
+  return universeDetails?.ybcInstalled;
+};
 
 /**
  * Returns an array of unique regions in the universe

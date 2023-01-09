@@ -72,6 +72,7 @@ export const HAInstances: FC<HAInstancesProps> = ({
         />
       );
     } else {
+      // eslint-disable-next-line no-lonely-if
       if (row.is_local) {
         return (
           <YBButton
@@ -93,6 +94,7 @@ export const HAInstances: FC<HAInstancesProps> = ({
   }
 
   if (error) {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-asserted-optional-chain
     return <HAErrorPlaceholder error={error} configUUID={config?.uuid!} />;
   }
 

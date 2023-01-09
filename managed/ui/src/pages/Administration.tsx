@@ -17,20 +17,16 @@ import { HAInstancesContainer } from '../components/ha/instances/HAInstanceConta
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
-interface Store {
-  customer: {
-    currentCustomer: Customer;
-  };
-}
-
 interface Customer {
   data: {
     features?: Record<string, any>;
   };
 }
 
-interface FeatureStore {
-  featureFlags: FetureFlags;
+interface Store {
+  customer: {
+    currentCustomer: Customer;
+  };
 }
 
 interface FetureFlags {
@@ -38,16 +34,24 @@ interface FetureFlags {
   test: any;
 }
 
+interface FeatureStore {
+  featureFlags: FetureFlags;
+}
+
 // string values will be used in URL
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 enum AdministrationTabs {
   HA = 'ha',
   AC = 'alertConfig'
 }
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 enum HighAvailabilityTabs {
   Replication = 'replication',
   Instances = 'instances'
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 enum AlertConfigurationTabs {
   Creation = 'alertCreation'
 }

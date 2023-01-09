@@ -348,7 +348,13 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
         // For 2DC, populate serialized data from WAL, to avoid unnecessary deserializing on
         // producer and re-serializing on consumer.
         auto kv_pair = record->add_key();
-        kv_pair->set_key(std::to_string(decoded_key.doc_key().hash()));
+        if (decoded_key.doc_key().has_hash()) {
+          // TODO: is there another way of getting this? Perhaps using kUpToHashOrFirstRange?
+          kv_pair->set_key(
+              PartitionSchema::EncodeMultiColumnHashValue(decoded_key.doc_key().hash()));
+        } else {
+          kv_pair->set_key(decoded_key.doc_key().Encode().ToStringBuffer());
+        }
         kv_pair->mutable_value()->set_binary_value(write_pair.key().ToBuffer());
       } else {
         AddPrimaryKey(decoded_key, schema, record);

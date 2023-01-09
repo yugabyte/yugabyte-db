@@ -6,10 +6,12 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"node-agent/app/task"
 	pb "node-agent/generated/service"
+	"node-agent/model"
 	"node-agent/util"
 	"os"
 	"os/exec"
@@ -51,7 +53,11 @@ func NewRPCServer(ctx context.Context, addr string, isTLS bool) (*RPCServer, err
 		return nil, err
 	}
 	gServer := grpc.NewServer(serverOpts...)
-	server := &RPCServer{addr: listener.Addr(), gServer: gServer, isTLS: isTLS}
+	server := &RPCServer{
+		addr:    listener.Addr(),
+		gServer: gServer,
+		isTLS:   isTLS,
+	}
 	pb.RegisterNodeAgentServer(gServer, server)
 	go func() {
 		if err := gServer.Serve(listener); err != nil {
@@ -87,8 +93,14 @@ func (server *RPCServer) Stop() {
 
 // Ping handles ping request.
 func (s *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.PingResponse, error) {
-	util.FileLogger().Debugf("Received: %v", in.Data)
-	return &pb.PingResponse{Data: in.Data}, nil
+	util.FileLogger().Debugf("Received ping")
+	config := util.CurrentConfig()
+	return &pb.PingResponse{
+		ServerInfo: &pb.ServerInfo{
+			Version:       config.String(util.PlatformVersionKey),
+			RestartNeeded: config.Bool(util.NodeAgentRestartKey),
+		},
+	}, nil
 }
 
 // ExecuteCommand executes a command on the server.
@@ -246,6 +258,26 @@ func (s *RPCServer) DownloadFile(
 		}
 	}
 	return nil
+}
+
+func (s *RPCServer) Update(
+	ctx context.Context,
+	in *pb.UpdateRequest,
+) (*pb.UpdateResponse, error) {
+	var err error
+	config := util.CurrentConfig()
+	state := in.GetState()
+	switch state {
+	case model.Upgrade.Name():
+		// Start the upgrade process as all the files are available.
+		err = HandleUpgradeState(ctx, config, in.GetUpgradeInfo())
+	case model.Upgraded.Name():
+		// Platform has confirmed that it has also rotated the cert and the key.
+		err = HandleUpgradedState(ctx, config)
+	default:
+		err = fmt.Errorf("Unhandled state - %s", state)
+	}
+	return &pb.UpdateResponse{}, err
 }
 
 /* End of gRPC methods. */

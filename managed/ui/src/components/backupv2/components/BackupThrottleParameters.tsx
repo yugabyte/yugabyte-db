@@ -96,6 +96,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
   const initialValues: ThrottleParameters = {
     ...throttleParameters!.data
   };
+
   const noOfCoresPerNode = currentUniverseResources.numCores / currentUniverseResources.numNodes;
   const defaultBufferPerNode = noOfCoresPerNode / 2 + 1;
 

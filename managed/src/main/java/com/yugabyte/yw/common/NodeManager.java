@@ -1340,11 +1340,11 @@ public class NodeManager extends DevopsBase {
       }
     }
     if (StringUtils.isNotBlank(nodeIp)) {
-      nodeAgentClient
+      getNodeAgentClient()
           .maybeGetNodeAgentClient(nodeIp)
           .ifPresent(
               nodeAgent -> {
-                commandArgs.add("--ansible_connection_type");
+                commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
                 NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, sensitiveArgs);
               });

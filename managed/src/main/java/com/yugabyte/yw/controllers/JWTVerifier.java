@@ -61,7 +61,7 @@ public class JWTVerifier {
           throw new PlatformServiceException(Status.UNAUTHORIZED, "Invalid token");
         }
         UUID clientUuid = UUID.fromString(clientId);
-        log.debug(
+        log.trace(
             "Getting JWT provider key for client type {} and client ID {}",
             clientTypeOp.get(),
             clientUuid);

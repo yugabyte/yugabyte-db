@@ -33,6 +33,7 @@ export const MetricsComparisonPanel = ({ metricsData, metricsKey, metricsLayout,
     return yaxisFormat;
   };
 
+  // eslint-disable-next-line react/display-name
   const chartLines = metricsData?.names?.map((val, i) => {
     return (
       <Line

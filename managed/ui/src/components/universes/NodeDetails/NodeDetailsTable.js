@@ -256,6 +256,7 @@ export default class NodeDetailsTable extends Component {
         className={`${clusterType}-node-details`}
         header={<h2 className="content-title">{panelTitle}</h2>}
         body={
+          // eslint-disable-next-line react/no-string-refs
           <BootstrapTable ref="nodeDetailTable" data={sortedNodeDetails}>
             <TableHeaderColumn
               dataField="name"

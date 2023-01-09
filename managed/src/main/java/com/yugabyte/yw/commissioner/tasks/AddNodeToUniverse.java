@@ -235,10 +235,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
 
       if (universe.isYbcEnabled()) {
-        createStartYbcTasks(Arrays.asList(currentNode))
-            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        createStartYbcTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-        // Wait for yb-controller to be responsive on each node.
+        // Wait for yb-controller to be responsive on current node.
         createWaitForYbcServerTask(nodeSet).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

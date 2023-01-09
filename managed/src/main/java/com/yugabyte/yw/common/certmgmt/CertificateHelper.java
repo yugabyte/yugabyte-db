@@ -43,6 +43,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Calendar;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -877,6 +878,17 @@ public class CertificateHelper {
       return certOutput.toString();
     } catch (Exception e) {
       LOG.error(e.getMessage(), e);
+      throw new RuntimeException(e.getMessage(), e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public static Collection<X509Certificate> getCertsFromFile(String path) {
+    try (FileInputStream in = new FileInputStream(path)) {
+      CertificateFactory fact = CertificateFactory.getInstance("X.509");
+      return (List<X509Certificate>) fact.generateCertificates(in);
+    } catch (Exception e) {
+      LOG.error("Failed to read cert file {}", path, e);
       throw new RuntimeException(e.getMessage(), e);
     }
   }

@@ -81,6 +81,7 @@ const STEPS = [
     title: 'Restore Backup',
     submitLabel: TEXT_RESTORE,
     component: RenameKeyspace,
+    // eslint-disable-next-line react/display-name
     footer: (onClick: Function) => (
       <YBButton
         btnClass={`btn btn-default pull-right restore-wth-rename-but`}
@@ -477,6 +478,7 @@ function RestoreChooseUniverseForm({
               };
             })}
             components={{
+              // eslint-disable-next-line react/display-name
               Option: (props: any) => {
                 if (props.data.value === backup_details.universeUUID) {
                   return (
@@ -630,7 +632,7 @@ export function RenameKeyspace({
             (keyspace: Keyspace_Table, index: number) =>
               values['searchText'] &&
               keyspace.keyspace &&
-              keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
+              !keyspace.keyspace.includes(values['searchText']) ? null : (
                 // eslint-disable-next-line react/jsx-indent
                 <Row key={index}>
                   <Col lg={6} className="keyspaces-input no-padding">

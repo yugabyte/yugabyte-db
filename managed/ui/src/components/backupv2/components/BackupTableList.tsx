@@ -61,9 +61,9 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
     backupType === BackupTypes.INCREMENT_BACKUP
       ? incrementalBackup?.responseList
       : backup.commonBackupInfo.responseList;
-  const filteredDBList = (dbList || [])
+  const filteredDBList = (dbList ?? [])
     .filter((e) => {
-      return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
+      return !(keyspaceSearch && !e.keyspace.includes(keyspaceSearch));
     })
     .map((table, index) => {
       return {
@@ -154,8 +154,8 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
     backupType === BackupTypes.INCREMENT_BACKUP
       ? incrementalBackup?.responseList
       : backup.commonBackupInfo.responseList;
-  const filteredDBList = (dbList || []).filter((e) => {
-    return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
+  const filteredDBList = (dbList ?? []).filter((e) => {
+    return !(keyspaceSearch && !e.keyspace.includes(keyspaceSearch));
   });
   return (
     <div className="backup-table-list ycql-table" id="ycql-table">
@@ -252,7 +252,7 @@ export const IncrementalTableBackupList: FC<YSQLTableProps> = ({
       {incrementalBackups.data
         .filter((e) => {
           return !(
-            keyspaceSearch && e.responseList.some((t) => t.keyspace.indexOf(keyspaceSearch) === -1)
+            keyspaceSearch && e.responseList.some((t) => !t.keyspace.includes(keyspaceSearch))
           );
         })
         .map((b) => (
@@ -281,7 +281,7 @@ const IncrementalBackupCard = ({
 
   const queryClient = useQueryClient();
 
-  let listComponent = null;
+  let listComponent: any = null;
   if (isExpanded) {
     if (
       backup.backupType === TableType.YQL_TABLE_TYPE ||

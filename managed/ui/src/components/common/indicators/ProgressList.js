@@ -33,6 +33,7 @@ export default class ProgressList extends Component {
     const listItems = this.props.items.map(function (item, idx) {
       const iconType = this.getIconByType(item.type);
       return (
+        // eslint-disable-next-line react/no-array-index-key
         <ListGroupItem key={idx} bsClass="progress-list-item">
           <i className={iconType}></i>
           {item.name}

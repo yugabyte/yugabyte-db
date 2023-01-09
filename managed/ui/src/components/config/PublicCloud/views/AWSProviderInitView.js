@@ -51,6 +51,7 @@ class AZInput extends Component {
       </option>,
       ...zones.map((zone, idx) => (
         <option
+          // eslint-disable-next-line react/no-array-index-key
           key={idx + 1}
           disabled={!(zonesAvailable.indexOf(zone) > -1 || zone === zonesAdded[index].zone)}
           value={zone}
@@ -111,10 +112,11 @@ class renderAZMappingForm extends Component {
       fields.push({});
     };
 
-    const zonesAdded = regionFormData && regionFormData.azToSubnetIds;
+    const zonesAdded = regionFormData?.azToSubnetIds;
     const azFieldList = fields.map((item, idx) => (
       <AZInput
         item={item}
+        // eslint-disable-next-line react/no-array-index-key
         key={idx}
         zones={zones}
         index={idx}
@@ -176,6 +178,7 @@ class renderRegions extends Component {
       ...(this.state.editRegionIndex === undefined
         ? //if add new flow - remove already added regions from region select picker
         _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
+          // eslint-disable-next-line react/no-array-index-key
           <option key={index + 1} value={region.destVpcRegion}>
             {region.destVpcRegion}
           </option>
@@ -189,6 +192,7 @@ class renderRegions extends Component {
           ),
           'destVpcRegion'
         ).map((region, index) => (
+          // eslint-disable-next-line react/no-array-index-key
           <option key={index + 1} value={region.destVpcRegion}>
             {region.destVpcRegion}
           </option>
@@ -339,6 +343,7 @@ class renderRegions extends Component {
             {fields.map((region, index) => {
               return (
                 <li
+                  // eslint-disable-next-line react/no-array-index-key
                   key={index}
                   onClick={() => {
                     // Regions edit popup handler
@@ -422,10 +427,8 @@ class renderRegions extends Component {
                         />
                       </div>
                       <div>
-                        {formRegions &&
-                          formRegions[index].azToSubnetIds &&
-                          formRegions[index].azToSubnetIds.length +
-                            (formRegions[index].azToSubnetIds.length > 1 ? ' zones' : ' zone')}
+                        {formRegions?.[index]?.azToSubnetIds?.length +
+                            (formRegions?.[index]?.azToSubnetIds?.length > 1 ? ' zones' : ' zone')}
                       </div>
                       <div>
                         <button
@@ -518,7 +521,7 @@ class AWSProviderInitView extends Component {
 
     const perRegionMetadata = {};
     if (this.state.networkSetupType !== 'new_vpc') {
-      formValues.regionList &&
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
         formValues.regionList.forEach(
           (item) =>
             (perRegionMetadata[item.destVpcRegion] = {
@@ -532,7 +535,7 @@ class AWSProviderInitView extends Component {
             })
         );
     } else {
-      formValues.regionList &&
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
         formValues.regionList.forEach(
           (item) =>
             (perRegionMetadata[item.destVpcRegion] = {
@@ -959,11 +962,9 @@ function validate(values) {
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is required';
   }
-  else {
-    if(!specialChars.test(values.accountName)){
+  else if(!specialChars.test(values.accountName)){
       errors.accountName = 'Account Name cannot have special characters except - and _';
     }
-  }
 
   if (!isNonEmptyArray(values.regionList)) {
     errors.regionList = { _error: 'Provider must have at least one region' };

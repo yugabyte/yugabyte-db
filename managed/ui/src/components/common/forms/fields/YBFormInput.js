@@ -27,7 +27,7 @@ export default class YBFormInput extends Component {
 
     return (
       <YBLabel {...this.props} infoContent={infoContent}>
-        <FormControl {...this.props.field} {...rest} onChange={this.handleChange} onBlur={this.handleBlur}/>
+        <FormControl {...field} {...rest} onChange={this.handleChange} onBlur={this.handleBlur}/>
       </YBLabel>
     );
   }

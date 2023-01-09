@@ -4,7 +4,7 @@ import { Row, Col, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Field } from 'formik';
 import * as Yup from 'yup';
-import { YBButton } from '../../../common/forms/fields';
+import { YBButton , YBFormInput } from '../../../common/forms/fields';
 import { YBModalForm } from '../../../common/forms';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import moment from 'moment';
@@ -14,7 +14,7 @@ import './certificates.scss';
 import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
 import { api } from '../../../../redesign/helpers/api';
-import { YBFormInput } from '../../../common/forms/fields';
+
 import { AssociatedUniverse } from '../../../common/associatedUniverse/AssociatedUniverse';
 import { YBConfirmModal } from '../../../modals';
 

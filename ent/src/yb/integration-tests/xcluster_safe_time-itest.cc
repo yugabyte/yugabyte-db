@@ -65,6 +65,12 @@ constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 const string kTableName2 = "test_table2";
 const string kDatabaseName = "yugabyte";
 
+namespace {
+auto GetSafeTime(tserver::TabletServer* tserver, const NamespaceId& namespace_id) {
+  return tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+}
+}  // namespace
+
 class XClusterSafeTimeTest : public TwoDCTestBase {
  public:
   void SetUp() override {
@@ -135,6 +141,8 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
         safe_time_table_name, CoarseMonoClock::Now() + MonoDelta::FromMinutes(1)));
   }
 
+  HybridTime GetProducerSafeTime() { return CHECK_RESULT(producer_tablet_peer_->LeaderSafeTime()); }
+
   Status GetNamespaceId() {
     master::GetNamespaceInfoResponsePB resp;
 
@@ -173,7 +181,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
 
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
+          auto safe_time_status = GetSafeTime(tserver, namespace_id_);
           if (!safe_time_status) {
             CHECK(safe_time_status.status().IsNotFound() || safe_time_status.status().IsTryAgain());
 
@@ -190,7 +198,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
     auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
+          auto safe_time_status = GetSafeTime(tserver, namespace_id_);
           if (!safe_time_status.ok() && safe_time_status.status().IsNotFound()) {
             return true;
           }
@@ -212,25 +220,34 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
 
 TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
   // 1. Make sure safe time is initialized.
-  auto ht_1 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_1 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_1));
 
   // 2. Write some data.
   LOG(INFO) << "Writing records for table " << producer_table_->name().ToString();
   WriteWorkload(0, 100, producer_client(), producer_table_->name());
-  auto ht_2 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_2 = GetProducerSafeTime();
 
   // 3. Make sure safe time has progressed.
   ASSERT_OK(WaitForSafeTime(ht_2));
   ASSERT_TRUE(VerifyWrittenRecords());
 
-  // 4. Make sure safe time is cleaned up when we pause replication.
+  // 4. Make sure safe time does not advance when we pause replication.
+  auto ht_before_pause = GetProducerSafeTime();
+  ASSERT_OK(WaitForSafeTime(ht_before_pause));
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
-  ASSERT_OK(WaitForNotFoundSafeTime());
+  // Wait for Pollers to Stop.
+  SleepFor(2s * kTimeMultiplier);
+  auto ht_after_pause = GetProducerSafeTime();
+  auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
+  auto safe_time_after_pause = ASSERT_RESULT(GetSafeTime(tserver, namespace_id_));
+  ASSERT_TRUE(safe_time_after_pause.is_valid());
+  ASSERT_GE(safe_time_after_pause, ht_before_pause);
+  ASSERT_LT(safe_time_after_pause, ht_after_pause);
 
   // 5.  Make sure safe time is reset when we resume replication.
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
-  auto ht_4 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_4 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_4));
 
   // 6. Make sure safe time is cleaned up when we switch to ACTIVE role.
@@ -239,7 +256,7 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
 
   // 7.  Make sure safe time is reset when we switch back to STANDBY role.
   ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-  auto ht_5 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_5 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_5));
 
   // 8.  Make sure safe time is cleaned up when we delete replication.
@@ -251,13 +268,13 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
 
 TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   // 1. Make sure safe time is initialized.
-  auto ht_1 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_1 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_1));
 
   // 2. Simulate replication lag and make sure safe time does not move.
   SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
   WriteWorkload(0, 100, producer_client(), producer_table_->name());
-  auto ht_2 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_2 = GetProducerSafeTime();
 
   // 3. Make sure safe time has not progressed beyond the write.
   ASSERT_NOK(WaitForSafeTime(ht_2));
@@ -712,7 +729,7 @@ class XClusterConsistencyNoSafeTimeTest : public XClusterConsistencyTest {
     for (auto& tserver : consumer_cluster()->mini_tablet_servers()) {
       RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
-            auto safe_time = tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
+            auto safe_time = GetSafeTime(tserver->server(), namespace_id_);
             CHECK(!safe_time);
 
             if (safe_time.status().ToString().find(
