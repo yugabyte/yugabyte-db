@@ -25,51 +25,6 @@ Currently, yb-voyager doesn't support the following features:
 
 ### MySQL issues
 
-#### Unsigned decimal types are not exported properly
-
-**GitHub link**: [Issue #573](https://github.com/yugabyte/yb-voyager/issues/573)
-
-**Description**: Unsigned decimal types lose their precision and have `UNSIGNED` exported along with them.
-
-**Workaround**: Manual intervention needed. Unsigned decimal type is not supported in YugabyteDB. You have to remove `UNSIGNED` and add the precision.
-
-**Example**
-
-An example schema on the source MySQL database is as follows:
-
-```sql
-create table if not exists fixed_point_types(
-     d_us decimal(10,2)unsigned,
-     dec_type dec(5,5) unsigned,
-     numeric_type numeric(10,5)unsigned,
-     fixed_type fixed(10,3)unsigned
-);
-```
-
-The exported schema is as follows:
-
-```sql
-CREATE TABLE fixed_point_types (
-        d_us DECIMAL UNSIGNED,
-        dec_type DECIMAL UNSIGNED,
-        numeric_type DECIMAL UNSIGNED,
-        fixed_type DECIMAL UNSIGNED
-) ;
-```
-
-Suggested change to the schema is as follows:
-
-```sql
-CREATE TABLE fixed_point_types (
-        d_us DECIMAL(10,2),
-        dec_type DECIMAL(5,5),
-        numeric_type DECIMAL(10,5),
-        fixed_type DECIMAL (10,3)
-) ;
-```
-
----
-
 #### Approaching MAX/MIN double precision values are not exported
 
 **GitHub link**: [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188)
@@ -554,6 +509,54 @@ $body$
 LANGUAGE PLPGSQL
 SECURITY DEFINER
 ;
+```
+
+---
+
+#### Exporting text type columns with default value
+
+**GitHub link**: [Issue #621](https://github.com/yugabyte/yb-voyager/issues/621)
+
+**Description**: If you have a default value for text type columns in MYSQL, it does not export properly and fails during import.
+
+**Workaround**: Manually remove the extra encoding DDLs from the exported files.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE text_types (
+    id int,
+    tt TINYTEXT DEFAULT ('c'),
+    te TEXT DEFAULT ('abc'),
+    mt MEDIUMTEXT DEFAULT ('abc'),
+    lt LONGTEXT DEFAULT ('abc')
+);
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE TABLE text_types (
+    id numeric(10),
+	tt text DEFAULT _utf8mb4\'c\',
+    te text DEFAULT _utf8mb4\'abc\',
+    mt text DEFAULT _utf8mb4\'abc\',
+    lt text DEFAULT _utf8mb4\'abc\'
+) ;
+```
+
+Suggested changes to the schema is to remove the encoding as follows:
+
+```sql
+CREATE TABLE text_types (
+    id numeric(10),
+    tt text DEFAULT 'c',
+    te text DEFAULT 'abc',
+    mt text DEFAULT 'abc',
+    lt text DEFAULT 'abc'
+) ;
 ```
 
 ### Oracle issues
