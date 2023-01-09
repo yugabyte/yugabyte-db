@@ -76,7 +76,7 @@ YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/u
 
 {{% includeMarkdown "common/build-the-code.md" %}}
 
-## Build release package
+### Build release package
 
 You can build a release package by executing:
 

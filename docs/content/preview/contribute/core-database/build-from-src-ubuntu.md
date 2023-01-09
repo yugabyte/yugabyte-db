@@ -81,6 +81,6 @@ sudo locale-gen en_US.UTF-8
 
 {{% includeMarkdown "common/build-the-code.md" %}}
 
-## Build release package
+### Build release package
 
 Currently a release package can only be built in [CentOS](../build-from-src-centos) & [MacOS](../build-from-src-macos).

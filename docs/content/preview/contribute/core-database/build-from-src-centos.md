@@ -85,7 +85,8 @@ There is no need to add any of those directories to `PATH`.
 
 {{% includeMarkdown "common/build-the-code.md" %}}
 
-## Build release package
+### Build release package
+
 You can build a release package by executing:
 
 ```shell
