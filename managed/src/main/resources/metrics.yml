@@ -2006,7 +2006,7 @@ master_get_tablet_location:
   range : true
   filters:
     export_type: "master_export"
-    service_type: "MasterService"
+    service_type: "MasterService|MasterClient"
     service_method: "GetTabletLocations"
   layout:
     title: "GetTabletLocations / sec"
@@ -2054,7 +2054,7 @@ master_ts_heartbeats:
   range : true
   filters:
     export_type: "master_export"
-    service_type: "MasterService"
+    service_type: "MasterService|MasterHeartbeat"
     service_method: "TSHeartbeat"
   layout:
     title: "TS Heartbeats / sec"
@@ -2085,17 +2085,17 @@ master_table_ops:
   function: "sum"
   filters:
     export_type: "master_export"
-    service_type: "MasterService"
-    saved_name: "handler_latency_yb_master_MasterService_DeleteTable_count|handler_latency_yb_master_MasterService_CreateTable_count"
-  group_by: "saved_name"
+    service_type: "MasterService|MasterDdl"
+    service_method: "CreateTable|DeleteTable"
+  group_by: "service_method"
   layout:
     title: "Create/Delete Table RPCs"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "handler_latency_yb_master_MasterService_DeleteTable_count": "Delete Table"
-        "handler_latency_yb_master_MasterService_CreateTable_count": "Create Table"
+        "DeleteTable": "Delete Table"
+        "CreateTable": "Create Table"
 
 master_cpu_util_secs:
   metric: "cpu_utime|cpu_stime"
