@@ -16,7 +16,7 @@ To enhance the security of your database, you can enable login profiles to lock 
 
 When enabled, database administrators with superuser (or in YugabyteDB Managed, `yb_db_admin`) privileges can create login profiles and assign roles to the profiles.
 
-There is no default profile for roles; you must explicitly assign all roles with login privileges to the profile if you want to policy to apply to all users. Users not associated with a profile continue to have unlimited login attempts.
+There is no default profile for roles; you must explicitly assign all roles with login privileges to the profile if you want the policy to apply to all users. Users not associated with a profile continue to have unlimited login attempts.
 
 When creating a profile, you must specify the number of failed attempts that are allowed before the account with the profile is locked.
 
@@ -51,11 +51,69 @@ You can also enable YSQL login profiles by adding the `--ysql_enable_profile=tru
 
 For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
 
+## Manage login profiles
+
+When profiles are enabled, you can manage login profiles using the following commands:
+
+- `CREATE PROFILE`
+- `DROP PROFILE`
+- `ALTER ROLE`
+
+Only superusers can create or drop profiles, and assign profiles to roles.
+
+### Create and drop profiles
+
+To create a profile, do the following:
+
+```sql
+CREATE PROFILE myprofile LIMIT
+  FAILED_LOGIN_ATTEMPTS <number>;
+  [PASSWORD_LOCK_TIME <days>];
+```
+
+Note that `PASSWORD_LOCK_TIME` is optional, and timed locking is not currently supported.
+
+You can drop a profile as follows:
+
+```sql
+DROP PROFILE myprofile;
+```
+
+### Assign roles to profiles
+
+You can assign a role to a profile as follows:
+
+```sql
+ALTER ROLE myuser PROFILE myprofile;
+```
+
+You can remove a role from a profile as follows:
+
+```sql
+ALTER ROLE myuser NOPROFILE;
+```
+
+Note that you should remove the association between a role and its profile using `ALTER ROLE ... NOPROFILE` before dropping a role.
+
+### Lock and unlock roles
+
+You can unlock a role that has been locked out as follows:
+
+```sql
+ALTER ROLE myuser ACCOUNT UNLOCK;
+```
+
+You can lock a role so that it can't log in as follows:
+
+```sql
+ALTER ROLE myuser ACCOUNT LOCK;
+```
+
 ### Recover from complete lockout
 
 If you lock out all roles including administrator roles, you must restart the cluster with the `--ysql_enable_profile` flag disabled.
 
-While disabling login profiles allows users back in, you won't be able to change any profile information, as profile commands can't be run when the profile flag is off.
+While disabling login profiles allows users back in, you won't be able to change any profile information, as profile commands can't be run when the profile flag is disabled.
 
 To re-enable accounts, do the following:
 
@@ -75,65 +133,11 @@ A role is moved to the LOCKED(TIMED) state when the number of consecutive failed
 
 When the role successfully logs in after `pg_yb_role_profile.pg_yb_rolprflockeduntil`, the role is moved to the OPEN state, and is allowed to log in. Failed attempts after the lock time out period don't modify `pg_yb_role_profile.pg_yb_rolprflockeduntil`. -->
 
-## Manage login profiles
-
-When profiles are enabled, you can manage login profiles using the following commands:
-
-- CREATE PROFILE
-- DROP PROFILE
-- ALTER ROLE
-
-Only superusers can create or drop profiles, and assign profiles to roles.
-
-To create a profile, do the following:
-
-```sql
-CREATE PROFILE myprofile LIMIT
-  FAILED_LOGIN_ATTEMPTS <number>;
-  [PASSWORD_LOCK_TIME <days>];
-```
-
-Note that PASSWORD_LOCK_TIME is optional, and timed locking is not currently implemented.
-
-To drop a profile, do the following:
-
-```sql
-DROP PROFILE myprofile;
-```
-
-To assign a profile to a role, do the following:
-
-```sql
-ALTER ROLE myuser PROFILE myprofile;
-```
-
-To remove a profile from a role, do the following:
-
-```sql
-ALTER ROLE myuser NOPROFILE;
-```
-
-Note that you should remove the association between a role and its profile using `ALTER ROLE ... NOPROFILE` before dropping a role.
-
-### Lock and unlock roles
-
-To unlock a role that has been locked out, do the following:
-
-```sql
-ALTER ROLE myuser ACCOUNT UNLOCK;
-```
-
-To lock a role so that it can't log in, do the following:
-
-```sql
-ALTER ROLE myuser ACCOUNT LOCK;
-```
-
-### View profiles
+## View profiles
 
 The `pg_yb_profile` table lists profiles and their attributes.
 
-To view profiles, enter the following command:
+To view profiles, execute the following statement:
 
 ```sql
 SELECT * FROM pg_yb_profile;
@@ -160,7 +164,7 @@ The following table describes the columns and their values:
 
 The `pg_yb_role_profile` table lists role profiles and their attributes.
 
-To view role profiles, enter the following command:
+To view profiles, execute the following statement:
 
 ```sql
 SELECT * FROM pg_yb_role_profile;
@@ -181,7 +185,7 @@ The following table describes the columns and their values:
 | :----- | :--- | :------ | :---------- |
 | `rolprfrole` | OID | | OID of the row in PG_ROLE
 | `rolprfprofile` | OID | | OID of the row in PROFILE
-| `rolprfstatus` | char | o | The status of the account, as follows:<ul><li>`o` (OPEN); allowed to login.</li><li>`t` (LOCKED(TIMED)); locked for a duration of the timestamp stored in `rolprflockeduntil`. (Note that timed locking is not currently implemented.)</li><li>`l` (LOCKED); locked indefinitely and can only be unlocked by the admin.</li></ul>
+| `rolprfstatus` | char | o | The status of the account, as follows:<ul><li>`o` (OPEN); allowed to login.</li><li>`t` (LOCKED(TIMED)); locked for a duration of the timestamp stored in `rolprflockeduntil`. (Note that timed locking is not supported.)</li><li>`l` (LOCKED); locked indefinitely and can only be unlocked by the admin.</li></ul>
 | `rolprffailedloginattempts` | int | 0 | Number of failed attempts by this role.
 | `rolprflockeduntil` | timestamptz | Null | If `rolprfstatus` is `t`, the duration that the role is locked. Otherwise, the value is NULL and not used.
 
@@ -194,7 +198,7 @@ yugabyte=# \dgP
 
 ## Limitations and caveats
 
-- A profile can't be modified using `ALTER PROFILE`. If a profile needs to be modified, create a new profile. ALTER functionality will be implemented in the future (see GitHub [#15560](https://github.com/yugabyte/yugabyte-db/issues/15560)).
+- A profile can't be modified using `ALTER PROFILE`. If a profile needs to be modified, create a new profile. `ALTER` functionality will be implemented in the future (see GitHub [#15560](https://github.com/yugabyte/yugabyte-db/issues/15560)).
 - Currently a role is locked indefinitely unless an administrator unlocks the role.
 - Login profiles are only applicable to challenge-response authentication methods. YugabyteDB also supports authentication methods that are not challenge-response, and login profiles are ignored for these methods as the authentication outcome has already been determined. The authentication methods are as follows:
   - Reject
@@ -205,5 +209,5 @@ yugabyte=# \dgP
 
   For more information on these authentication methods, refer to [Client Authentication](https://www.postgresql.org/docs/11/client-authentication.html) in the PostgreSQL documentation.
 
-- If the cluster SSL mode is allow or prefer, a single user login attempt can trigger two failed login attempts. For more information on SSL modes in PostgreSQL, refer to [SSL Support](https://www.postgresql.org/docs/11/libpq-ssl.html) in the PostgreSQL documentation.
-- The \h and \dg meta commands do not currently provide information about PROFILE and ROLE PROFILE catalog objects.
+- If the cluster SSL mode is `allow` or `prefer`, a single user login attempt can trigger two failed login attempts. For more information on SSL modes in PostgreSQL, refer to [SSL Support](https://www.postgresql.org/docs/11/libpq-ssl.html) in the PostgreSQL documentation.
+- The `\h` and `\dg` meta commands do not currently provide information about PROFILE and ROLE PROFILE catalog objects.
