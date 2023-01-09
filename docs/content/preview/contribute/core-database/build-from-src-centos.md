@@ -73,7 +73,7 @@ Linuxbrew allows us to create a portable package that contains its own copy of g
 However, we are transitioning away from using Linuxbrew and towards native toolchains on various platforms.
 
 Our build scripts may automatically install Linuxbrew in a directory such as `/opt/yb-build/brew/linuxbrew-<version>`.
-There is no need to add any of those directories to PATH.
+There is no need to add any of those directories to `PATH`.
 
 {{< /note >}}
 
