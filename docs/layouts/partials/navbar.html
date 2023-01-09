@@ -118,7 +118,7 @@
         </li>
       {{- end -}}
     </ul>
-    {{- if .Site.Params.versions -}}
+    {{- if and .Site.Params.versions (not .Params.unversioned) -}}
       <div class="header-version-dropdown main-heading-with-version">
         <ul class="mt-2 mt-lg-0">
           <li class="nav-item dropdown d-none d-lg-block">
