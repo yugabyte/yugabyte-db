@@ -68,6 +68,10 @@ YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/u
 
 {{< /note >}}
 
+## Build the code
+
+{{% includeMarkdown "./build-from-src-common.md" %}}
+
 ### Java
 
 YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
@@ -80,19 +84,6 @@ Also make sure Maven's `bin` directory is added to your `PATH` (for example, by 
 ```sh
 export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
 ```
-
-## Build the code
-
-Assuming this repository is checked out in `~/code/yugabyte-db`, run the following:
-
-```sh
-cd ~/code/yugabyte-db
-./yb_build.sh release
-```
-
-The command builds the release configuration, puts the C++ binaries in `build/release-clang-dynamic-ninja`, and creates the `build/latest` symlink to that directory.
-
-You can find the binaries you just built in the `build/latest` directory.
 
 ## Build release package
 

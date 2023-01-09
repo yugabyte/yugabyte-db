@@ -73,27 +73,9 @@ sudo apt-get install -y "${packages[@]}"
 sudo locale-gen en_US.UTF-8
 ```
 
-Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
+## Building the code
 
-```sh
-cd ~/code/yugabyte-db
-./yb_build.sh release --no-linuxbrew
-```
-
-{{< note title="Note" >}}
-
-If you see errors, such as `internal compiler error: Killed`, the system has probably run out of memory.
-Try again by running the build script with less concurrency, for example, `-j1`.
-
-{{< /note >}}
-
-The command above will build the release configuration, add the C++ binaries into the `build/release-gcc-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
-
-{{< tip title="Tip" >}}
-
-You can find the binaries you just built in `build/latest` directory.
-
-{{< /tip >}}
+{{% includeMarkdown "./build-from-src-common.md" %}}
 
 ## Build Java code
 
