@@ -9607,11 +9607,6 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
-void CatalogManager::DisableTabletSplittingInternal(
-    const MonoDelta& duration, const std::string& feature) {
-  tablet_split_manager_.DisableSplittingFor(duration, feature);
-}
-
 Status CatalogManager::DisableTabletSplitting(
     const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
     rpc::RpcContext* rpc) {
@@ -9620,7 +9615,17 @@ Status CatalogManager::DisableTabletSplitting(
   return Status::OK();
 }
 
-bool CatalogManager::IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion) {
+void CatalogManager::DisableTabletSplittingInternal(
+    const MonoDelta& duration, const std::string& feature) {
+  tablet_split_manager_.DisableSplittingFor(duration, feature);
+}
+
+void CatalogManager::ReenableTabletSplittingInternal(const std::string& feature) {
+  tablet_split_manager_.ReenableSplittingFor(feature);
+}
+
+bool CatalogManager::IsTabletSplittingCompleteInternal(
+    bool wait_for_parent_deletion, CoarseTimePoint deadline) {
   vector<TableInfoPtr> tables;
   {
     SharedLock lock(mutex_);
@@ -9629,7 +9634,9 @@ bool CatalogManager::IsTabletSplittingCompleteInternal(bool wait_for_parent_dele
     tables = std::vector(std::begin(tables_it), std::end(tables_it));
   }
   for (const auto& table : tables) {
-    if (!tablet_split_manager_.IsTabletSplittingComplete(*table, wait_for_parent_deletion)) {
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table,
+                                                         wait_for_parent_deletion,
+                                                         deadline)) {
       return false;
     }
   }
@@ -9640,7 +9647,7 @@ Status CatalogManager::IsTabletSplittingComplete(
     const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
     rpc::RpcContext* rpc) {
   resp->set_is_tablet_splitting_complete(
-      IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion()));
+      IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion(), rpc->GetClientDeadline()));
   return Status::OK();
 }
 

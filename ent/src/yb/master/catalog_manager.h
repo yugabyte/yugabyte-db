@@ -315,7 +315,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void PrepareRestore() override;
 
-  void EnableTabletSplitting(const std::string& feature) override;
+  void ReenableTabletSplitting(const std::string& feature) override;
 
   Status RunXClusterBgTasks();
 
