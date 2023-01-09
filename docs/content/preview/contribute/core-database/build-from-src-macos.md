@@ -70,7 +70,7 @@ YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/u
 
 ## Build the code
 
-{{% includeMarkdown "./build-from-src-common.md" %}}
+{{% includeMarkdown "common/build-the-code.md" %}}
 
 ### Java
 

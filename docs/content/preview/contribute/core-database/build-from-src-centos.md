@@ -77,9 +77,9 @@ There is no need to add any of those directories to PATH.
 
 {{< /note >}}
 
-## Building the code
+## Build the code
 
-{{% includeMarkdown "./build-from-src-common.md" %}}
+{{% includeMarkdown "common/build-the-code.md" %}}
 
 ## Build Java code
 

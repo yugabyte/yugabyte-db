@@ -73,9 +73,9 @@ sudo apt-get install -y "${packages[@]}"
 sudo locale-gen en_US.UTF-8
 ```
 
-## Building the code
+## Build the code
 
-{{% includeMarkdown "./build-from-src-common.md" %}}
+{{% includeMarkdown "common/build-the-code.md" %}}
 
 ## Build Java code
 
