@@ -41,7 +41,7 @@
 
 using std::vector;
 
-DEFINE_UNKNOWN_int32(process_split_tablet_candidates_interval_msec, 0,
+DEFINE_RUNTIME_int32(process_split_tablet_candidates_interval_msec, 0,
              "The minimum time between automatic splitting attempts. The actual splitting time "
              "between runs is also affected by catalog_manager_bg_task_wait_ms, which controls how "
              "long the bg tasks thread sleeps at the end of each loop. The top-level automatic "
@@ -51,11 +51,11 @@ DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
-DEFINE_UNKNOWN_uint64(outstanding_tablet_split_limit, 1,
+DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 1,
               "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
               "value is set to 0.");
 
-DEFINE_UNKNOWN_uint64(outstanding_tablet_split_limit_per_tserver, 1,
+DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit_per_tserver, 1,
               "Limit of the number of outstanding tablet splits per node. Limitation is disabled "
               "if this value is set to 0.");
 
@@ -65,19 +65,19 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_pitr_tables, true,
     "When set, it enables automatic tablet splitting of tables covered by "
     "Point In Time Restore schedules.");
 
-DEFINE_UNKNOWN_uint64(tablet_split_limit_per_table, 256,
+DEFINE_RUNTIME_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
               "disabled if this value is set to 0.");
 
-DEFINE_UNKNOWN_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
+DEFINE_RUNTIME_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
               "Seconds between checks for whether to split a table with TTL. Checks are disabled "
               "if this value is set to 0.");
 
-DEFINE_UNKNOWN_uint64(prevent_split_for_small_key_range_tablets_for_seconds, 300,
+DEFINE_RUNTIME_uint64(prevent_split_for_small_key_range_tablets_for_seconds, 300,
               "Seconds between checks for whether to split a tablet whose key range is too small "
               "to be split. Checks are disabled if this value is set to 0.");
 
-DEFINE_UNKNOWN_bool(sort_automatic_tablet_splitting_candidates, true,
+DEFINE_RUNTIME_bool(sort_automatic_tablet_splitting_candidates, true,
             "Whether we should sort candidates for new automatic tablet splits, so the largest "
             "candidates are picked first.");
 
@@ -126,7 +126,6 @@ TabletSplitManager::TabletSplitManager(
     filter_(filter),
     driver_(driver),
     cdc_split_driver_(cdcsdk_split_driver),
-    is_running_(false),
     last_run_time_(CoarseDuration::zero()),
     automatic_split_manager_time_ms_(
         METRIC_automatic_split_manager_time.Instantiate(metric_entity, 0))
@@ -308,6 +307,22 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(
     }
   }
   return Status::OK();
+}
+
+void TabletSplitManager::DisableSplittingFor(
+    const MonoDelta& disable_duration, const std::string& feature_name) {
+  DCHECK(!feature_name.empty());
+  UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
+  LOG(INFO) << Substitute("Disabling tablet splitting for $0 milliseconds for feature $1.",
+                          disable_duration.ToMilliseconds(), feature_name);
+  splitting_disabled_until_[feature_name] = CoarseMonoClock::Now() + disable_duration;
+}
+
+void TabletSplitManager::ReenableSplittingFor(const std::string& feature_name) {
+  DCHECK(!feature_name.empty());
+  UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
+  LOG(INFO) << Substitute("Re-enabling tablet splitting for feature $0.", feature_name);
+  splitting_disabled_until_.erase(feature_name);
 }
 
 void TabletSplitManager::DisableSplittingForTtlTable(const TableId& table_id) {
@@ -737,21 +752,25 @@ void TabletSplitManager::DoSplitting(
   ScheduleSplits(state.GetSplitsToSchedule());
 }
 
-bool TabletSplitManager::IsRunning() {
-  return is_running_;
+Status TabletSplitManager::WaitUntilIdle(CoarseTimePoint deadline) {
+  std::shared_lock<decltype(is_running_mutex_)> l(is_running_mutex_, deadline);
+  if (!l.owns_lock()) {
+    return STATUS_FORMAT(TimedOut,
+        "Tablet split manager iteration did not complete before deadline: $0", deadline);
+  }
+  return Status::OK();
 }
 
+// Wait for the tablet split manager to finish an ongoing run before checking whether splitting is
+// complete to avoid the following scenario:
+// 1. Thread A: Tablet split manager is about to enqueue a split for table T.
+// 2. Thread B: Disables splitting on table T and calls IsTabletSplittingComplete(T), which finds no
+//              outstanding splits.
+// 3. Thread A: Enqueues the split for table T.
 bool TabletSplitManager::IsTabletSplittingComplete(
-    const TableInfo& table, bool wait_for_parent_deletion) {
-  // It is important to check that is_running_ is false BEFORE checking for outstanding splits.
-  // Otherwise, we could have the following order of events:
-  // 1. Thread A: Tablet split manager enqueues a split for table T.
-  // 2. Thread B: disables splitting on T and calls IsTabletSplittingComplete(T), which finds no
-  //              outstanding splits.
-  // 3. Thread A: Starts the split for T and returns, setting is_running_ to false.
-  // 4. Thread B: reads is_running_ is false below, and IsTabletSplittingComplete returns true (even
-  //              though there is now an outstanding split for T).
-  if (is_running_) {
+    const TableInfo& table, bool wait_for_parent_deletion, CoarseTimePoint deadline) {
+  if (auto status = WaitUntilIdle(deadline); !status.ok()) {
+    LOG(WARNING) << status;
     return false;
   }
   // Deleted tables should not have any splits.
@@ -774,15 +793,6 @@ bool TabletSplitManager::IsTabletSplittingComplete(
   return !table.HasOutstandingSplits(wait_for_parent_deletion);
 }
 
-void TabletSplitManager::DisableSplittingFor(
-    const MonoDelta& disable_duration, const std::string& feature_name) {
-  DCHECK(!feature_name.empty());
-  UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
-  LOG(INFO) << Substitute("Disabling tablet splitting for $0 milliseconds for feature $1.",
-                          disable_duration.ToMilliseconds(), feature_name);
-  splitting_disabled_until_[feature_name] = CoarseMonoClock::Now() + disable_duration;
-}
-
 void TabletSplitManager::MaybeDoSplitting(
     const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map) {
   if (!FLAGS_enable_automatic_tablet_splitting) {
@@ -791,8 +801,10 @@ void TabletSplitManager::MaybeDoSplitting(
     return;
   }
 
-  is_running_ = true;
-  auto is_running_scope_exit = ScopeExit([this] { is_running_ = false; });
+  // This must be acquired before checking the disabled sets, since WaitForIdle expects that the
+  // tablet split manager will observe any new disabled set changes by the time its shared_lock
+  // of is_running_mutex_ returns.
+  std::unique_lock lock(is_running_mutex_);
 
   {
     UniqueLock<decltype(disabled_sets_mutex_)> lock(disabled_sets_mutex_);
@@ -800,8 +812,8 @@ void TabletSplitManager::MaybeDoSplitting(
     for (const auto& pair : splitting_disabled_until_) {
       if (now <= pair.second) {
         VLOG_WITH_FUNC(2) << Format(
-            "Skipping splitting run because automatic tablet splitting is disabled until $0",
-            pair.second);
+            "Skipping splitting run because automatic tablet splitting is disabled until $0 by "
+            "feature $1", pair.second, pair.first);
         return;
       }
     }

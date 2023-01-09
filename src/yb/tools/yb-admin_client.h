@@ -387,7 +387,7 @@ class ClusterAdminClient {
       int64_t disable_duration_ms, const std::string& feature_name);
 
   Result<master::IsTabletSplittingCompleteResponsePB> IsTabletSplittingCompleteInternal(
-      bool wait_for_parent_deletion);
+      bool wait_for_parent_deletion, const MonoDelta timeout = MonoDelta());
 
   std::string master_addr_list_;
   HostPort init_master_addr_;
@@ -425,14 +425,16 @@ class ClusterAdminClient {
   template<class Response, class Request, class Object>
   Result<Response> InvokeRpcNoResponseCheck(
       Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
-      const Object& obj, const Request& req, const char* error_message = nullptr);
+      const Object& obj, const Request& req, const char* error_message = nullptr,
+      const MonoDelta timeout = MonoDelta());
 
   // Perform RPC call by calling InvokeRpcNoResponseCheck
   // and check Response structure for error by using its has_error method (if any)
   template<class Response, class Request, class Object>
   Result<Response> InvokeRpc(
       Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
-      const Object& obj, const Request& req, const char* error_message = nullptr);
+      const Object& obj, const Request& req, const char* error_message = nullptr,
+      const MonoDelta timeout = MonoDelta());
 
  private:
   using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
