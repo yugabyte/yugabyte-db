@@ -73,24 +73,13 @@ sudo apt-get install -y "${packages[@]}"
 sudo locale-gen en_US.UTF-8
 ```
 
+### Java
+
+{{% includeMarkdown "common/java.md" %}}
+
 ## Build the code
 
 {{% includeMarkdown "common/build-the-code.md" %}}
-
-## Build Java code
-
-YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
-
-* JDK 8
-* [Apache Maven](https://maven.apache.org/).
-
-Also make sure Maven's bin directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.6.3`)
-
-```sh
-export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
-```
-
-For building YugabyteDB Java code, you'll need to install Java and Apache Maven.
 
 ## Build release package
 
