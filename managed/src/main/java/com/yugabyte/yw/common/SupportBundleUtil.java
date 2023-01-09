@@ -127,12 +127,20 @@ public class SupportBundleUtil {
     return sortedList;
   }
 
-  public List<String> filterList(List<String> list, String regex) {
-    // Filter and return only the strings which match a given regex pattern
-    List<String> result = new ArrayList<String>();
-    for (String entry : list) {
-      if (entry.matches(regex)) {
-        result.add(entry);
+  /**
+   * Filter and return only the strings which match given regex patterns.
+   *
+   * @param list original list of paths
+   * @param regexList list of regex strings to match against any of them
+   * @return list of paths after regex filtering
+   */
+  public List<Path> filterList(List<Path> list, List<String> regexList) {
+    List<Path> result = new ArrayList<Path>();
+    for (Path entry : list) {
+      for (String regex : regexList) {
+        if (entry.toString().matches(regex)) {
+          result.add(entry);
+        }
       }
     }
     return result;
@@ -195,72 +203,153 @@ public class SupportBundleUtil {
     }
   }
 
-  // Filters a list of log file paths with a regex pattern and between given start and end dates
-  public List<String> filterFilePathsBetweenDates(
-      List<String> logFilePaths,
-      String ybcLogsRegexPattern,
-      Date startDate,
-      Date endDate,
-      boolean isYbc)
-      throws ParseException {
-    // Filtering the file names based on regex
-    logFilePaths = filterList(logFilePaths, ybcLogsRegexPattern);
-
-    // Sort the files in descending order of date (done implicitly as date format is yyyyMMdd)
-    Collections.sort(logFilePaths, Collections.reverseOrder());
-
-    // Core logic for a loose bound filtering based on dates (little bit tricky):
-    // Gets all the files which have logs for requested time period,
-    // even when partial log statements present in the file.
-    // ----------------------------------------
-    // Ex: Assume log files are as follows (d1 = day 1, d2 = day 2, ... in sorted order)
-    // => d1.gz, d2.gz, d5.gz
-    // => And user requested {startDate = d3, endDate = d6}
-    // ----------------------------------------
-    // => Output files will be: {d2.gz, d5.gz}
-    // Due to d2.gz having all the logs from d2-d4, therefore overlapping with given startDate
-    Date minDate = null;
-    List<String> filteredLogFilePaths = new ArrayList<>();
-    for (String filePath : logFilePaths) {
-      String fileName =
-          filePath.substring(filePath.lastIndexOf('/') + 1, filePath.lastIndexOf('-'));
-      String trimmedFilePath = null;
-      if (isYbc) {
-        // Need trimmed file path starting from {./controller} for above function
-        trimmedFilePath = filePath.split("ybc-data/")[1];
-      } else {
-        // Need trimmed file path starting from {./master, ./tserver} for above function
-        trimmedFilePath = filePath.split("yb-data/")[1];
-      }
-      Matcher fileNameMatcher = Pattern.compile(ybcLogsRegexPattern).matcher(filePath);
-      if (fileNameMatcher.matches()) {
-        // Uses capturing and non capturing groups in regex pattern for easier retrieval of
-        // neccessary info.
-        // Group 1 = "yyyyMMdd" format in the file name of normal tserver logs.
-        // Group 2 = "yyyy-MM-dd" format for postgres log file names.
-        // dateStringsInFileName is a list of all the captured groups in the file name.
-        // It is useful for capturing both tserver file dates and postgres file dates
-        List<String> dateStringsInFileName = new ArrayList<>();
-        for (int groupIndex = 1; groupIndex <= fileNameMatcher.groupCount(); ++groupIndex) {
-          dateStringsInFileName.add(fileNameMatcher.group(groupIndex));
+  /**
+   * Uses capturing groups in regex pattern for easy retrieval of the file type. File type is
+   * considered to be the first capturing group in the file name regex. Used to segregate files
+   * based on master, tserver, WARNING, INFO, postgresql, controller, etc.
+   *
+   * <p>Example: If file name =
+   * "/mnt/disk0/yb-data/yb-data/tserver/logs/postgresql-2022-11-15_000000.log", Then file type =
+   * "/mnt/disk0/yb-data/yb-data/tserver/logs/postgresql-"
+   *
+   * @param fileName the entire file name or path
+   * @param fileRegexList list of regex strings to match against any of them
+   * @return the file type string
+   */
+  public String extractFileTypeFromFileNameAndRegex(String fileName, List<String> fileRegexList) {
+    String fileType = "";
+    try {
+      for (String fileRegex : fileRegexList) {
+        Matcher fileNameMatcher = Pattern.compile(fileRegex).matcher(fileName);
+        if (fileNameMatcher.matches()) {
+          fileType = fileNameMatcher.group(1);
+          return fileType;
         }
-        // Only one of the groups captured in the file name has a non null date
-        String fileDateString =
-            ObjectUtils.firstNonNull(
-                dateStringsInFileName.toArray(new String[dateStringsInFileName.size()]));
-        // yyyyMMdd -> for master and tserver log file names
-        // yyyy-MM-dd -> for postgres log file names
-        String[] possibleDateFormats = {"yyyyMMdd", "yyyy-MM-dd"};
-        Date fileDate = DateUtils.parseDate(fileDateString, possibleDateFormats);
-        if (checkDateBetweenDates(fileDate, startDate, endDate)) {
-          filteredLogFilePaths.add(trimmedFilePath);
-        } else if ((minDate == null && fileDate.before(startDate))
-            || (minDate != null && fileDate.equals(minDate))) {
-          filteredLogFilePaths.add(trimmedFilePath);
-          minDate = fileDate;
+      }
+    } catch (Exception e) {
+      log.error(
+          "Could not extract file type from file name '{}' and regex list '{}'.",
+          fileName,
+          fileRegexList);
+    }
+    return fileType;
+  }
+
+  /**
+   * Uses capturing groups in regex pattern for easier retrieval of neccessary info. Extracts dates
+   * in formats "yyyyMMdd" and "yyyy-MM-dd" in a captured group in the file regex.
+   *
+   * @param fileName the entire file name or path
+   * @param fileRegexList list of regex strings to match against any of them
+   * @return the date in the file name regex group
+   */
+  public Date extractDateFromFileNameAndRegex(String fileName, List<String> fileRegexList) {
+    Date fileDate = new Date(0);
+    try {
+      for (String fileRegex : fileRegexList) {
+        Matcher fileNameMatcher = Pattern.compile(fileRegex).matcher(fileName);
+        if (fileNameMatcher.matches()) {
+          for (int groupIndex = 1; groupIndex <= fileNameMatcher.groupCount(); ++groupIndex) {
+            try {
+              String fileDateString = fileNameMatcher.group(groupIndex);
+              // yyyyMMdd -> for master, tserver, controller log file names
+              // yyyy-MM-dd -> for postgres log file names
+              String[] possibleDateFormats = {"yyyyMMdd", "yyyy-MM-dd"};
+              fileDate = DateUtils.parseDate(fileDateString, possibleDateFormats);
+              return fileDate;
+            } catch (Exception e) {
+              // Do nothing and skip
+              log.warn(
+                  "Error while trying to parse file name '{}' with regex list '{}'",
+                  fileName,
+                  fileRegexList);
+            }
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.error(
+          "Could not extract date from file name '{}' and regex list '{}'.",
+          fileName,
+          fileRegexList);
+    }
+    return fileDate;
+  }
+
+  /**
+   * Filters a list of log file paths with regex pattern/s and between given start and end dates.
+   *
+   * <p>Core logic for a loose bound filtering based on dates (little bit tricky): Gets all the
+   * files which have logs for requested time period, even when partial log statements present in
+   * the file before the start date. Example: Assume log files are as follows (d1 = day 1, d2 = day
+   * 2, ... in sorted order) => d1.gz, d2.gz, d5.gz => And user requested {startDate = d3, endDate =
+   * d6} => Output files will be: {d2.gz, d5.gz} Due to d2.gz having all the logs from d2-d4,
+   * therefore overlapping with given startDate
+   *
+   * @param logFilePaths list of file paths to filter and retrieve.
+   * @param fileRegexList list of regex strings to match against any of them.
+   * @param startDate the start date to filter from (inclusive).
+   * @param endDate the end date to filter till (inclusive).
+   * @return list of paths after filtering based on dates.
+   * @throws ParseException
+   */
+  public List<Path> filterFilePathsBetweenDates(
+      List<Path> logFilePaths, List<String> fileRegexList, Date startDate, Date endDate)
+      throws ParseException {
+
+    // Final filtered log paths
+    List<Path> filteredLogFilePaths = new ArrayList<>();
+
+    // Initial filtering of the file names based on regex
+    logFilePaths = filterList(logFilePaths, fileRegexList);
+
+    // Map of the <fileType, List<filePath>>
+    // This is required so that we can filter each type of file according to start and end dates.
+    // Example of map:
+    // {"/mnt/d0/master/logs/log.INFO." :
+    //    ["/mnt/d0/master/logs/log.INFO.20221120-000000.log.gz",
+    //     "/mnt/d0/master/logs/log.INFO.20221121-000000.log"]}
+    // The reason we don't use a map of <fileType, List<Date>> is because we need to return the
+    // entire path.
+    Map<String, List<Path>> fileTypeToDate =
+        logFilePaths
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    p -> extractFileTypeFromFileNameAndRegex(p.toString(), fileRegexList)));
+
+    // Loop through each file type
+    for (String fileType : fileTypeToDate.keySet()) {
+      // Sort the files in descending order of extracted date
+      Collections.sort(
+          fileTypeToDate.get(fileType),
+          new Comparator<Path>() {
+            @Override
+            public int compare(Path path1, Path path2) {
+              Date date1 = extractDateFromFileNameAndRegex(path1.toString(), fileRegexList);
+              Date date2 = extractDateFromFileNameAndRegex(path2.toString(), fileRegexList);
+              return date2.compareTo(date1);
+            }
+          });
+
+      // Filter file paths according to start and end dates
+      // Add filtered date paths to final list
+      Date extraStartDate = null;
+      for (Path filePathToCheck : fileTypeToDate.get(fileType)) {
+        Date dateToCheck =
+            extractDateFromFileNameAndRegex(filePathToCheck.toString(), fileRegexList);
+        if (checkDateBetweenDates(dateToCheck, startDate, endDate)) {
+          filteredLogFilePaths.add(filePathToCheck);
+        }
+        // This is required to collect extra log/s before the start date for partial overlap
+        if ((extraStartDate == null && dateToCheck.before(startDate))
+            || (extraStartDate != null && extraStartDate.equals(dateToCheck))) {
+          extraStartDate = dateToCheck;
+          filteredLogFilePaths.add(filePathToCheck);
         }
       }
     }
+
     return filteredLogFilePaths;
   }
 

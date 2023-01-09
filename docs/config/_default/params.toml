@@ -6,8 +6,8 @@ algolia_docsearch = true
 version_menu = "Releases"
 
 # Change version_menu_pagelinks to true to go to the same page when you switch
-# versions from the dropdown menu. Currently doesn't work with our setup.
-version_menu_pagelinks = false
+# versions from the dropdown menu.
+version_menu_pagelinks = true
 
 [algolia]
   index = "yugabyte"
@@ -19,14 +19,14 @@ version_menu_pagelinks = false
   to = "content/$1/"
 
 [[links.developer]]
-  name = "GitHub"
-  url = "https://github.com/yugabyte/yugabyte-db"
-  icon = "fab fa-github"
-
-[[links.developer]]
   name = "Slack"
   url = "https://communityinviter.com/apps/yugabyte-db/register"
   icon = "fab fa-slack"
+
+[[links.developer]]
+  name = "GitHub"
+  url = "https://github.com/yugabyte/yugabyte-db"
+  icon = "fab fa-github"
 
 [[links.developer]]
   name = "Twitter"
@@ -52,25 +52,25 @@ version_menu_pagelinks = false
   ul_show = 1
 
 [[versions]]
-  url = "/preview/"
+  url = "/preview"
   version = "v2.17 (Preview)"
 [[versions]]
-  url = "/stable/"
+  url = "/stable"
   version = "v2.16 (STS)"
 [[versions]]
-  url = "/v2.14/"
+  url = "/v2.14"
   version = "v2.14 (LTS)"
 [[versions]]
-  url = "/v2.12/"
+  url = "/v2.12"
   version = "v2.12"
 [[versions]]
-  url = "/v2.8/"
+  url = "/v2.8"
   version = "v2.8"
 [[versions]]
-  url = "/v2.6/"
+  url = "/v2.6"
   version = "v2.6"
 [[versions]]
-  url = "https://docs-archive.yugabyte.com"
+  url = "https://docs-archive.yugabyte.com/v2.4"
   version = "Unsupported versions"
 
 # Custom params, regardless of theme
@@ -81,12 +81,10 @@ version_menu_pagelinks = false
 
 # Header logo link
 [yb.navbar_logo]
-  url = "https://www.yugabyte.com/"
+  url = "/"
   title = "Yugabyte"
-  newTab = true
 # Footer logo link
 [yb.footer_logo]
-  path = "/images/ybdocs-white.png"
-  url = "https://www.yugabyte.com/"
+  path = "/images/yugabytedb-logo.svg"
+  url = "/"
   title = "Yugabyte"
-  newTab = true

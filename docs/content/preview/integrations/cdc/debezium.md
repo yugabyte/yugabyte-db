@@ -6,7 +6,7 @@ beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/integrations/cdc/
 menu:
-  preview:
+  preview_integrations:
     identifier: cdc-debezium
     parent: integrations
     weight: 571
