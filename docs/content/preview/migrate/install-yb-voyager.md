@@ -67,8 +67,8 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#linux" class="nav-link active" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="true">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Linux
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      RHEL
     </a>
   </li>
   <li>
@@ -92,7 +92,7 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
   <li>
     <a href="#github" class="nav-link" id="github-tab" data-toggle="tab" role="tab" aria-controls="github" aria-selected="true">
       <i class="fab fa-github" aria-hidden="true"></i>
-      GitHub
+      Source
     </a>
   </li>
 </ul>
