@@ -440,7 +440,7 @@ Default: `false`
 
 ##### --ysql_enable_profile
 
-Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-create-profiles/).
+Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
 When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
 

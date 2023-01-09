@@ -570,7 +570,7 @@ Lists text search templates. If *pattern* is specified, only templates whose nam
 
 ##### \dg[S+] [ [pattern](#patterns) ]
 
-Lists database roles. (Because the concepts of "users" and "groups" have been unified into "roles", this command is now equivalent to [\du](#du-s-pattern-patterns).) By default, only user-created roles are shown; supply the `S` modifier to include system roles<!--; supply the `P` modifier to include role [login profiles](../../secure/enable-authentication/ysql-create-profiles/) (if enabled)-->. If pattern is specified, only those roles whose names match the *pattern* are listed. If the form `\dg+` is used, additional information is shown about each role; currently this adds the comment for each role.
+Lists database roles. (Because the concepts of "users" and "groups" have been unified into "roles", this command is now equivalent to [\du](#du-s-pattern-patterns).) By default, only user-created roles are shown; supply the `S` modifier to include system roles. If pattern is specified, only those roles whose names match the *pattern* are listed. If the form `\dg+` is used, additional information is shown about each role; currently this adds the comment for each role.
 
 ##### \dgr[+] [ [pattern](#patterns) ]
 

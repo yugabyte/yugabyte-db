@@ -36,7 +36,7 @@ In YSQL, further fine-grained control over client authentication is provided by 
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ysql-create-profiles/">
+    <a class="section-link icon-offset" href="ysql-login-profiles/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
         <div class="title">Configure login profiles</div>
