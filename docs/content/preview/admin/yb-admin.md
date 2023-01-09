@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-admin
     parent: admin
-    weight: 2465
+    weight: 30
 type: docs
 ---
 
