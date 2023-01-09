@@ -16,11 +16,13 @@ To enhance the security of your database, you can enable login profiles to lock 
 
 When enabled, database administrators with superuser (or in YugabyteDB Managed, `yb_db_admin`) privileges can create login profiles and assign roles to the profiles.
 
+There is no default profile for roles; you must explicitly assign all roles with login privileges to the profile if you want to policy to apply to all users. Users not associated with a profile continue to have unlimited login attempts.
+
 When creating a profile, you must specify the number of failed attempts that are allowed before the account with the profile is locked.
 
-The number of failed attempts increments by one every time authentication fails during login. If the number of failed attempts is equal to the preset limit, then the account is locked.
+The number of failed attempts increments by one every time authentication fails during login. If the number of failed attempts is equal to the preset limit, then the account is locked. For example, if the limit is 3, a user is locked out on the third failed attempt.
 
-If authentication is successful, or a locked account is unlocked, the number of failed attempts resets to 0.
+If authentication is successful, or if an administrator unlocks a locked account, the number of failed attempts resets to 0.
 
 ## Enable login profiles
 
@@ -82,12 +84,6 @@ When profiles are enabled, you can manage login profiles using the following com
 - ALTER ROLE
 
 Only superusers can create or drop profiles, and assign profiles to roles.
-
-To revoke superuser privileges from a user so that they can no longer change privileges for other roles, do the following:
-
-```sql
-ALTER USER db_admin WITH NOSUPERUSER;
-```
 
 To create a profile, do the following:
 
@@ -156,9 +152,9 @@ The following table describes the columns and their values:
 
 | COLUMN | TYPE | DESCRIPTION |
 | :---- | :--- | :---------- |
-| prfname | name | Name of the profile. Must be unique. |
-| prfmaxfailedloginattempts | int | Maximum number of failed attempts allowed. |
-| prfpasswordlocktime | int | Interval in seconds to lock the account. NULL implies that the role will be locked indefinitely. |
+| `prfname` | name | Name of the profile. Must be unique. |
+| `prfmaxfailedloginattempts` | int | Maximum number of failed attempts allowed. |
+| `prfpasswordlocktime` | int | Interval in seconds to lock the account. NULL implies that the role will be locked indefinitely. |
 
 ### View role profile information
 
