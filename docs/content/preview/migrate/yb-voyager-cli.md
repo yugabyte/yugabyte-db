@@ -247,6 +247,10 @@ Specifies the source database type (postrgresql, mysql or oracle).
 
 Specifies the domain name or IP address of the machine on which the source database server is running.
 
+### --source-db-port
+
+Specifies the port number of the machine on which the source database server is running.
+
 ### --source-db-user
 
 Specifies the username of the source database.
