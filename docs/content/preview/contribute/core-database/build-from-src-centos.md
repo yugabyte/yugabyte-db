@@ -79,11 +79,11 @@ There is no need to add any of those directories to `PATH`.
 
 ### Java
 
-{{% includeMarkdown "common/java.md" %}}
+{{% includeMarkdown "includes/java.md" %}}
 
 ## Build the code
 
-{{% includeMarkdown "common/build-the-code.md" %}}
+{{% includeMarkdown "includes/build-the-code.md" %}}
 
 ### Build release package
 
