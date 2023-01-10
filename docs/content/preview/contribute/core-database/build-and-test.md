@@ -175,8 +175,8 @@ It is advised to use external mini cluster instead of mini cluster unless there'
 
 YSQL java tests are located in `java/yb-pgsql/src/test/java/org/yb/pgsql/`.
 
-Some of those tests, named `TestPgRegress*`, use the PostgreSQL regress test framework: `src/postgres/src/test/regress`.
-They should each correspond to a schedule (e.g. `java/yb-pgsql/src/test/java/org/yb/pgsql/TestPgRegressArrays.java` references `src/postgres/src/test/regress/yb_arrays_schedule`) that is run by our modified version of `pg_regress`.
+Some of those tests, named `TestPgRegress*`, use the PostgreSQL regress test framework (see `src/postgres/src/test/regress`).
+They each correspond to a schedule (for example, `java/yb-pgsql/src/test/java/org/yb/pgsql/TestPgRegressArrays.java` references `src/postgres/src/test/regress/yb_arrays_schedule`) that is run by our modified version of `pg_regress`.
 Each schedule lists a serial order of test files to run.
 
 The test framework does the following:
