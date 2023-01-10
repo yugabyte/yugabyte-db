@@ -8,9 +8,10 @@ SET client_min_messages TO LOG;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 -- Note that parallel is not enforced on a single relation without
 -- the GUCs related to parallelism reset.
-/*+Parallel(s1.t1 5 hard)*/
+/*+Parallel(t1 5 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
-/*+Parallel(s1.t1 5 hard)*/
+-- Still it works for multiple relations.
+/*+Parallel(t11 5 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 as t11, s1.t1 as t12;
 
 SET parallel_setup_cost to 0;
