@@ -56,7 +56,7 @@ type: indexpage
         <div class="title">Build and test</div>
       </div>
       <div class="body">
-        Build and test.
+        Building and testing with yb_build.sh.
       </div>
     </a>
   </div>
