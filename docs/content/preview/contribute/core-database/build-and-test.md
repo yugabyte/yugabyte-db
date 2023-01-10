@@ -23,7 +23,7 @@ In general, they come down to these components:
   - postgres: C code for `postgres` binary and linked libraries for `yb-master` and `yb-tserver`
   - Java: CDC, Java tests, drivers, etc.
   - C++ tests
-  - `initdb`: precreated initial system catalog snapshot for YSQL
+  - `initdb`: pre-created initial system catalog snapshot for YSQL
 - test:
   - C++ tests
   - Java tests
@@ -85,7 +85,7 @@ The specific versions supported can be found in `./build-support/third-party-arc
 
 ### Thirdparty
 
-By default, thirdparty libraries are prebuilt into archives, and those archives are downloaded to be used during build.
+By default, thirdparty libraries are pre-built into archives, and those archives are downloaded to be used during build.
 Incremental builds currently do not detect when the thirdparty archive URL has been updated, so when that happens, you should manually run a `--clean` build to use the new thirdparty.
 
 ## Test
@@ -191,7 +191,7 @@ The files in `results` are compared with those in `expected` to determine pass/f
 
 {{< tip title="Tips" >}}
 
-   - If you want to quickly run specific sql files, you can create a dummy java file and dummy schedule with that one test in it.
+   - If you want to quickly run specific SQL files, you can create a dummy java file and dummy schedule with that one test in it.
    - Use the following naming convention (some older files haven't adopted it yet but should):
      - `sql/foo.sql`: unchanged from original PostgreSQL code
      - `sql/yb_foo.sql`: completely new file (for example, with new features)
