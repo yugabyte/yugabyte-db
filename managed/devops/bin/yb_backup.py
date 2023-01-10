@@ -2189,7 +2189,7 @@ class YBBackup:
                 '-o', 'UserKnownHostsFile=/dev/null',
                 # Control flags here are for ssh multiplexing (reuse the same ssh connections).
                 '-o', 'ControlMaster=auto',
-                '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
+                '-o', 'ControlPath={}/ssh-%r@%h:%p'.format(self.get_tmp_dir()),
                 '-o', 'ControlPersist=1m',
             ] if not self.args.ssh2_enabled else []
             ssh_command = [
