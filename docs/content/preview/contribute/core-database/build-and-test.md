@@ -162,6 +162,8 @@ Note that a high parallelism could result in failures if system resources are ov
 
 #### C++ (external) mini cluster
 
+C++ tests are located in `src/yb` or `ent/src/yb` and end in `test.cc`.
+
 Many C++ tests use external mini cluster or mini cluster to create clusters.
 A key difference is that external mini clusters create separate master/tserver/postgres processes (as in real life) while mini clusters create masters/tservers in memory within the same process and optionally spawn a separate tserver process.
 It is advised to use external mini cluster instead of mini cluster unless there's a reason otherwise, for example
@@ -171,30 +173,30 @@ It is advised to use external mini cluster instead of mini cluster unless there'
 
 #### YSQL regress tests
 
-YSQL java tests are in `java/yb-pgsql/src/test/java/org/yb/pgsql/`.  They can be run as:
+YSQL java tests are located in `java/yb-pgsql/src/test/java/org/yb/pgsql/`.
 
-```bash
-./yb_build.sh --java-test org.yb.pgsql.TestPgTruncate
-```
+Some of those tests, named `TestPgRegress*`, use the PostgreSQL regress test framework: `src/postgres/src/test/regress`.
+They should each correspond to a schedule (e.g. `java/yb-pgsql/src/test/java/org/yb/pgsql/TestPgRegressArrays.java` references `src/postgres/src/test/regress/yb_arrays_schedule`) that is run by our modified version of `pg_regress`.
+Each schedule lists a serial order of test files to run.
 
-Some of those tests, `TestPgRegress*`, use the PostgreSQL regress test framework: `src/postgres/src/test/regress`.
-They should each correspond to a schedule (e.g. `java/yb-pgsql/src/test/java/org/yb/pgsql/TestPgRegressArrays.java` references `src/postgres/src/test/regress/yb_arrays_schedule`)
-that is run by our modified version of `pg_regress`.
+The test framework does the following:
 
-Each schedule has a serial order of files to run.  For example, the `yb_arrays_schedule` will first run `build/latest/postgres_build/src/test/regress/sql/yb_pg_int8.sql`
-and output to `build/latest/postgres_build/src/test/regress/results/yb_pg_int8.out` because the first `test:` line in `yb_arrays_schedule` is `test: yb_pg_int8`.
-This will be compared with `build/latest/postgres_build/src/test/regress/expected/yb_pg_int8.out` for pass/fail.
-Note the `build/latest/postgres_build` prefix.  The source files (`src/postgres/src/test/regress/sql/foo.sql`) get copied there (`build/latest/postgres_build/src/test/regress/src/foo.sql`).
+1. Copy test files from the `src` directory to the `build` directory (this is technically done as part of build)
+1. Copy test files to a temporary `test` directory
+1. In the `test` directory, generate `sql`/`expected` from `input`/`output`
+1. In the `test` directory, generate `results` by running tests in `sql`
+1. Copy back `results` from the `test` directory to the `build` directory
+1. Delete the `test` directory
+
+The files in `results` are compared with those in `expected` to determine pass/fail.
 
 {{< tip title="Tips" >}}
 
    - If you want to quickly run specific sql files, you can create a dummy java file and dummy schedule with that one test in it.
-   - Use the naming convention (some older files haven't adopted it yet, but should):
+   - Use the following naming convention (some older files haven't adopted it yet but should):
      - `src/postgres/src/test/regress/sql/foo.sql`: unchanged from original PostgreSQL code
      - `src/postgres/src/test/regress/sql/yb_foo.sql`: completely new file (for example, with new features)
      - `src/postgres/src/test/regress/sql/yb_pg_foo.sql`: modified version of original PostgreSQL foo.sql (e.g. for compatibility edits)
      - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
-   - When creating new `yb_pg_foo.{out,sql}` files and adding them to one of our schedules, sort them into the schedule using `src/postgres/src/test/regress/serial_schedule` as reference.
-     Schedules `parallel_schedule` and `serial_schedule` should be untouched as they are from original PostgreSQL code.
 
 {{< /tip >}}
