@@ -57,7 +57,7 @@ explain (costs false) with test as (select 'z' val)
    ->  CTE Scan on test t2
 (6 rows)
 
--- Invoke function that throws internally throws an exception with two
+-- Invoke function that internally throws an exception with two
 -- levels of nesting.
 select test_hint_exception(0);
 NOTICE:  Execution of test_hint_exception at level 1
@@ -119,7 +119,7 @@ CONTEXT:  PL/pgSQL function test_hint_exception(integer) line 4 at RAISE
  
 (1 row)
 
--- Show plan with hint/
+-- Show plan with hint.
 explain (costs false) with test /*+ MergeJoin(t1 t2) */
   as (select 'x' val) select t1.val from test t1, test t2 where t1.val = t2.val;
 LOG:  pg_hint_plan:
@@ -173,7 +173,7 @@ explain (costs false) with test as (select 'y' val)
 drop function test_hint_exception;
 -- Test hints with function using transactions internally.
 create table test_hint_tab (a int);
--- Function called in a nested loop to check for hints hijts
+-- Function called in a nested loop to check for hints.
 create function test_hint_queries(run int, level int) returns void
 language plpgsql as $$
 declare c text;
@@ -183,8 +183,8 @@ begin
   if level > 2 then
     return;
   end if;
-  -- Mix of queries with and without hints.  The level is mixed
-  -- in the query string to show it in the query context.
+  -- Mix of queries with and without hints.  The level is mixed in the
+  -- query string to show it in the output generated.
   raise notice 'Execution % at level %, no hints', run, level;
   execute 'explain (costs false) with test
     as (select ' || level || ' val)
@@ -207,9 +207,9 @@ begin
     execute 'select test_hint_queries(' || i || ', 0)';
     insert into test_hint_tab (a) values (i);
     if i % 2 = 0 then
-        commit;
+      commit;
     else
-        rollback;
+      rollback;
     end if;
   end loop;
 end; $$;
