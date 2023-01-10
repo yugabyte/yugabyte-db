@@ -75,11 +75,11 @@ sudo locale-gen en_US.UTF-8
 
 ### Java
 
-{{% includeMarkdown "includes/java.md" %}}
+{{% readfile "includes/java.md" %}}
 
 ## Build the code
 
-{{% includeMarkdown "includes/build-the-code.md" %}}
+{{% readfile "includes/build-the-code.md" %}}
 
 ### Build release package
 
