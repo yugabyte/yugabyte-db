@@ -96,7 +96,7 @@ To create a security group that enables these artifacts, navigate to **Network S
 
 For YugabyteDB Anywhere to manage YugabyteDB nodes, it requires limited access to your Azure infrastructure. This can be accomplished by [registering an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
 
-Follow these steps to create the application registration:
+Complete the following steps to create the application registration:
 
 * Sign in to the Azure portal.
 * If you have access to multiple tenants, use the directory and subscription filter in the top menu to select the tenant used in previous steps to register an application.
@@ -119,7 +119,7 @@ Follow these steps to create the application registration:
 
 ## Assign a role to the application
 
-Access to Azure infrastructure resources in a subscription (VMs, network configurations) is restricted by the roles assigned to your application, giving you control over which resources can be accessed and at what level. You can set the scope at the level of the subscription, resource group, or resource. Permissions are inherited to lower levels of scope. Permissions should be assigned over a resource group that was created in the previous steps. For additional information, see the Azure documentation [Assign a role to the application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#assign-a-role-to-the-application).
+Access to Azure infrastructure resources in a subscription (virtual machines, network configurations) is restricted by the roles assigned to your application, giving you control over which resources can be accessed and at what level. You can set the scope at the level of the subscription, resource group, or resource. Permissions are inherited to lower levels of scope. Permissions should be assigned over a resource group that you already created. For additional information, see the Azure documentation [Assign a role to the application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#assign-a-role-to-the-application).
 
 Proceed by performing the following:
 
@@ -130,7 +130,7 @@ Proceed by performing the following:
 
 * Select  Network Contributor and Virtual Machine Contributor roles.
 
-* Select your application created in the previous step.
+* Select the application you created.
 
 * Click **Save**.
 
@@ -140,7 +140,7 @@ Since your service principal is set up, you can start using it for configuring Y
 
 ## Provision instance for YugabyteDB Anywhere
 
-To create an instance to run the YugabyteDB Anywhere server, navigate to **Virtual Machines > Add** and fill in the following values:
+To create an instance to run the YugabyteDB Anywhere server, navigate to **Virtual Machines > Add** and provide the following:
 
 * Select your active subscription and resource group.
 * Provide a name for the virtual machine.
@@ -148,9 +148,9 @@ To create an instance to run the YugabyteDB Anywhere server, navigate to **Virtu
 * Ignore the availability options.
 * Change the disk image to Ubuntu 16.04.
 * Choose Standard_D4s_v3 - 4 CPU/16GB memory instance.
-* Select the authentication type as ssh public key. Pick an existing key pair or create a new one to access the machine. Make sure you have the SSH access key, as this is important for enabling SSH access to this machine.
+* Select the authentication type as the SSH public key. Select an existing key pair or create a new one to access the machine. Ensure that you have the SSH access key, as this is important for enabling SSH access to this machine.
 * Select public inbound ports based on the network configuration. You can disable public access if you wish to access the instance from within a private network.
-* On the disks page, you can select any OS disk type.
-* Increase the data disk size to at least 100GiB by creating an attached new disk.
-* Continue to the next networking section and fill out the details for the virtual network and security group created in the previous steps.
+* On the disks page, select any OS disk type.
+* Increase the OS disk size to at least 100GB. For information on how to do this, see [Increase the size of the OS disk](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/expand-disks?tabs=ubuntu#increase-the-size-of-the-os-disk).
+* Continue to the next networking section and fill out the details for the virtual network and security group you created in [Create network security group](#create-network-security-group-(optional)).
 * Click **Review** and **Create** to launch the YugabyteDB Anywhere VM.
