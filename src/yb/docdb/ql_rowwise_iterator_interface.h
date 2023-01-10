@@ -16,6 +16,7 @@
 #include <memory>
 
 #include "boost/function/function_fwd.hpp"
+#include "boost/optional.hpp"
 
 #include "yb/common/common_fwd.h"
 
@@ -52,6 +53,7 @@ class YQLRowwiseIteratorIf {
 
   virtual std::string ToString() const = 0;
 
+  // Could be subset of actual table schema.
   virtual const Schema& schema() const = 0;
 
   //------------------------------------------------------------------------------------------------
@@ -78,8 +80,10 @@ class YQLRowwiseIteratorIf {
   // Common API methods.
   //------------------------------------------------------------------------------------------------
   // Read next row using the specified projection.
+  // REQUIRES: projection should be a subset of schema().
   Status NextRow(const Schema& projection, QLTableRow* table_row);
 
+  // Read next row using whole schema() as a projection.
   Status NextRow(QLTableRow* table_row);
 
   // Iterates over the rows until --
@@ -88,7 +92,7 @@ class YQLRowwiseIteratorIf {
   virtual Status Iterate(const YQLScanCallback& callback);
 
  private:
-  virtual Status DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;
+  virtual Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) = 0;
 };
 
 }  // namespace docdb

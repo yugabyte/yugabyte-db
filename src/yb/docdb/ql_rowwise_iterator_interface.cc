@@ -35,7 +35,7 @@ Status YQLRowwiseIteratorIf::NextRow(const Schema& projection, QLTableRow* table
 }
 
 Status YQLRowwiseIteratorIf::NextRow(QLTableRow* table_row) {
-  return DoNextRow(schema(), table_row);
+  return DoNextRow(boost::none, table_row);
 }
 
 Status YQLRowwiseIteratorIf::Iterate(const YQLScanCallback& callback) {
