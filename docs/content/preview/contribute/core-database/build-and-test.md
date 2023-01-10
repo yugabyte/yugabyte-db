@@ -228,7 +228,7 @@ Here are some ways the user may specify flags to tests (capitals are environment
 
 Here are some examples:
 
-```bash
+```sh
 YB_EXTRA_DAEMON_FLAGS="--log_ysql_catalog_versions=true" \
   YB_EXTRA_MASTER_FLAGS="--vmodule=master_heartbeat_service=2" \
   YB_EXTRA_TSERVER_FLAGS="--vmodule=heartbeater=2" \
@@ -237,14 +237,14 @@ YB_EXTRA_DAEMON_FLAGS="--log_ysql_catalog_versions=true" \
   --gtest_filter PgLibPqTest.DBCatalogVersion
 ```
 
-```bash
+```sh
 ./yb_build.sh \
   --cxx-test integration-tests_master_failover-itest \
   --gtest_filter MasterFailoverTest.DereferenceTasks \
   --test-args "--vmodule=master_failover-itest=1,catalog_manager=4"
 ```
 
-```bash
+```sh
 export YB_EXTRA_MVN_OPTIONS_IN_TESTS="-Dstyle.color=always"
 ./yb_build.sh \
   --java-test TestPgRegressPgMisc \
