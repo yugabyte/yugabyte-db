@@ -45,10 +45,12 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -91,6 +93,9 @@ DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 
 DECLARE_uint64(max_clock_skew_usec);
+
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
 namespace yb {
 namespace pgwrapper {
@@ -3038,6 +3043,82 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
       (termination_end - termination_start.load(std::memory_order_acquire)).ToMilliseconds();
   ASSERT_GT(termination_duration, 0);
   ASSERT_LT(termination_duration, RegularBuildVsDebugVsSanitizers(3000, 5000, 5000));
+}
+
+class PgMiniRf1PackedRowsTest : public PgMiniSingleTServerTest {
+ protected:
+  void BeforePgProcessStart() override {
+    FLAGS_ysql_enable_packed_row = true;
+    FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  }
+};
+
+// Microbenchmark, see
+// https://github.com/yugabyte/benchbase/blob/main/config/yugabyte/scan_workloads/yb_colocated/
+// scanG7_colo_pkey_rangescan_fullTableScan_increasingColumn.yaml
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns), PgMiniRf1PackedRowsTest) {
+  constexpr auto kDatabaseName = "testdb";
+  constexpr auto kNumColumns = 100;
+  constexpr auto kNumRows = IsDebug() ? 1000 : 10'000;
+  constexpr auto kNumScansPerIteration = 10;
+  constexpr auto kNumIterations = 3;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  {
+    std::string create_stmt = "CREATE TABLE t(col_bigint_id_1 bigint,";
+    for (int i = 1; i <= kNumColumns; ++i) {
+      create_stmt += Format("col_bigint_$0 bigint, ", i);
+    }
+    create_stmt += "PRIMARY KEY(col_bigint_id_1 ASC));";
+    ASSERT_OK(conn.Execute(create_stmt));
+  }
+
+  ASSERT_OK(
+      conn.Execute("CREATE FUNCTION random_between(low INT, high INT) RETURNS INT AS \n"
+                   "$$\n"
+                   "BEGIN\n"
+                   "   RETURN floor(random()*(high-low+1)+low);\n"
+                   "END;\n"
+                   "$$ LANGUAGE plpgsql STRICT;"));
+
+  {
+    LOG(INFO) << "Loading data...";
+
+    Stopwatch s(Stopwatch::ALL_THREADS);
+    s.start();
+
+    std::string load_stmt = "INSERT INTO t SELECT i";
+    for (int i = 1; i <= kNumColumns; ++i) {
+      load_stmt += ", random_between(1, 1000000)";
+    }
+    load_stmt += Format(" FROM generate_series(1, $0) as i;", kNumRows);
+    ASSERT_OK(conn.ExecuteFormat(load_stmt));
+
+    s.stop();
+    LOG(INFO) << "Load took: " << AsString(s.elapsed());
+  }
+
+  FlushAndCompactTablets();
+
+  const auto rows_inserted = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+  LOG(INFO) << "Rows inserted: " << rows_inserted;
+  ASSERT_EQ(rows_inserted, kNumRows);
+
+  for (int i = 0; i < kNumIterations; ++i) {
+    Stopwatch s(Stopwatch::ALL_THREADS);
+    s.start();
+
+    for (int j = 0; j < kNumScansPerIteration; ++j) {
+      auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE col_bigint_id_1>1"));
+      ASSERT_EQ(PQntuples(res.get()), kNumRows - 1);
+    }
+
+    s.stop();
+    LOG(INFO) << kNumScansPerIteration << " scan(s) took: " << AsString(s.elapsed());
+  }
 }
 
 } // namespace pgwrapper
