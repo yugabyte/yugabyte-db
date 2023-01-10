@@ -196,7 +196,7 @@ The files in `results` are compared with those in `expected` to determine pass/f
      - `sql/foo.sql`: unchanged from original PostgreSQL code
      - `sql/yb_foo.sql`: completely new file (for example, with new features)
      - `sql/yb_pg_foo.sql`: modified version of original PostgreSQL foo.sql (for example, with compatibility edits)
-     - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
+       - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
 
 {{< /tip >}}
 
