@@ -429,7 +429,7 @@ Choose one from the following suggested changes to the schema.
     ```sql
     CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
       BEGIN
-        CREATE TEMPORARY TABLE temp(id int, name text,key(id));
+        CREATE TEMPORARY TABLE temp(id int, name text);
         INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
         RETURN (SELECT name FROM temp);
       END;
