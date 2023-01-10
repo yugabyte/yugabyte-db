@@ -195,7 +195,7 @@ The files in `results` are compared with those in `expected` to determine pass/f
    - Use the following naming convention (some older files haven't adopted it yet but should):
      - `sql/foo.sql`: unchanged from original PostgreSQL code
      - `sql/yb_foo.sql`: completely new file (for example, with new features)
-     - `sql/yb_pg_foo.sql`: modified version of original PostgreSQL foo.sql (e.g. for compatibility edits)
+     - `sql/yb_pg_foo.sql`: modified version of original PostgreSQL foo.sql (for example, with compatibility edits)
      - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
 
 {{< /tip >}}
