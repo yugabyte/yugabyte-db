@@ -41,7 +41,7 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
   HybridTime RestartReadHt() override;
 
  private:
-  Status DoNextRow(const Schema& projection, QLTableRow* table_row) override;
+  Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) override;
 
   void Advance(bool increment);
 
