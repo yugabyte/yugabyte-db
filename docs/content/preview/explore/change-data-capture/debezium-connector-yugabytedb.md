@@ -224,7 +224,7 @@ For example:
 
 ### Tablet splitting
 
-YugabyteDB also supports [tablet splitting](../../../architecture/docdb-sharding/tablet-splitting). While streaming changes, if the YugabyteDB source connector detectes that a tablet has been split, it gracefully handles the splitting and starts polling for the children tablets.
+YugabyteDB also supports [tablet splitting](../../../architecture/docdb-sharding/tablet-splitting). While streaming changes, if the YugabyteDB source connector detects that a tablet has been split, it gracefully handles the splitting and starts polling for the children tablets.
 
 ### Dynamic addition of new tables
 
