@@ -599,7 +599,7 @@ func createNodeDetailsRequest(
 	nodeDetails.Region = config.String(util.NodeRegionKey)
 	nodeDetails.Zone = config.String(util.NodeZoneKey)
 	nodeDetails.InstanceType = config.String(util.NodeInstanceTypeKey)
-	nodeDetails.InstanceName = config.String(util.NodeInstanceNameKey)
+	nodeDetails.InstanceName = config.String(util.NodeNameKey)
 	nodeDetails.NodeConfigs = getNodeConfig(data)
 	return nodeDetails
 }
