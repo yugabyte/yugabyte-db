@@ -90,6 +90,12 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
     </a>
   </li>
   <li>
+    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li>
     <a href="#github" class="nav-link" id="github-tab" data-toggle="tab" role="tab" aria-controls="github" aria-selected="true">
       <i class="fab fa-github" aria-hidden="true"></i>
       Source
@@ -109,6 +115,9 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
   </div>
   <div id="airgapped" class="tab-pane fade" role="tabpanel" aria-labelledby="airgapped-tab">
 {{% readFile "./airgapped.md" %}}
+  </div>
+  <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
+{{% readFile "./docker.md" %}}
   </div>
   <div id="github" class="tab-pane fade" role="tabpanel" aria-labelledby="github-tab">
 {{% readFile "./github.md" %}}
