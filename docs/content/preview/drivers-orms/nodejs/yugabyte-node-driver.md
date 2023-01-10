@@ -70,7 +70,7 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| host  | Hostname of the YugabyteDB instance | localhost |
+| host  | Host name of the YugabyteDB instance. | localhost |
 | port |  Listen port for YSQL | 5433 |
 | database | Database name | yugabyte |
 | user | Database user | yugabyte |
@@ -84,6 +84,8 @@ Create a client to connect to the cluster using a connection string. The followi
 postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true?
     topology_keys=cloud.region.zone1,cloud.region.zone2
 ```
+
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 #### Use SSL
 
