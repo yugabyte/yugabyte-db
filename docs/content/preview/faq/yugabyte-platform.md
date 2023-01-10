@@ -11,7 +11,21 @@ menu:
     parent: faq
     weight: 2750
 type: docs
+showRightNav: false
 ---
+
+### Contents
+
+- [What is YugabyteDB Anywhere?](#what-is-yugabytedb-anywhere)
+- [How are the build artifacts packaged and stored for YugabyteDB Anywhere?](#how-are-the-build-artifacts-packaged-and-stored-for-yugabytedb-anywhere)
+- [How does YugabyteDB Anywhere installation work?](#how-does-yugabytedb-anywhere-installation-work)
+- [What are the OS requirements and permissions to run YugabyteDB Anywhere?](#what-are-the-os-requirements-and-permissions-to-run-yugabytedb-anywhere)
+- [What are the requirements to run YugabyteDB data nodes?](#what-are-the-requirements-to-run-yugabytedb-data-nodes)
+- [How does the YugabyteDB Anywhere UI interact with YugabyteDB data nodes?](#how-does-the-yugabytedb-anywhere-ui-interact-with-yugabytedb-data-nodes)
+- [Can I access the database machines that get spawned in public clouds?](#can-i-access-the-database-machines-that-get-spawned-in-public-clouds)
+- [How many machines do I need to try out YugabyteDB Anywhere against my load?](#how-many-machines-do-i-need-to-try-out-yugabytedb-anywhere-against-my-load)
+- [Can I control the properties (such as VPC, IOPS, tenancy, and so on) of the machines YugabyteDB Anywhere spins up?](#can-i-control-the-properties-such-as-vpc-iops-tenancy-and-so-on-of-the-machines-yugabytedb-anywhere-spins-up)
+- [How do I report a security vulnerability?](#how-do-i-report-a-security-vulnerability)
 
 ## What is YugabyteDB Anywhere?
 

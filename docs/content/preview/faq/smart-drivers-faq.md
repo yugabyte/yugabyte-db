@@ -12,7 +12,19 @@ menu:
     parent: faq
     weight: 2725
 type: docs
+showRightNav: false
 ---
+
+### Contents
+
+- [What is a smart driver?](#what-is-a-smart-driver)
+- [Why do I need connection load balancing?](#why-do-i-need-connection-load-balancing)
+- [When should I use a smart driver?](#when-should-i-use-a-smart-driver)
+- [How hard is it to port an application to use a smart driver?](#how-hard-is-it-to-port-an-application-to-use-a-smart-driver)
+- [How does the smart driver determine if a node is unhealthy, or the cluster configuration has changed?](#how-does-the-smart-driver-determine-if-a-node-is-unhealthy-or-the-cluster-configuration-has-changed)
+- [Do smart drivers know when a region fails?](#do-smart-drivers-know-when-a-region-fails)
+- [Do smart drivers provide metrics that can be monitored via JMX?](#do-smart-drivers-provide-metrics-that-can-be-monitored-via-jmx)
+- [Are there recommended settings for the maximum lifetime of a connection?](#are-there-recommended-settings-for-the-maximum-lifetime-of-a-connection)
 
 ### What is a smart driver?
 
