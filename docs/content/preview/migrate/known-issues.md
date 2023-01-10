@@ -971,13 +971,13 @@ create index ON timestamp_demo (ts asc);
 
 ---
 
-#### Complex table names defined using special characters hang during data export
+#### Exporting data with names for tables/functions/procedures using special characters fails
 
-**GitHub links**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688)
+**GitHub links**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
 
-**Description**: If you define complex names for tables using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123" , the migration hangs during the export data step.
+**Description**: If you define complex names for your source database tables/functions/procedures using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123", the migration hangs during the export data step.
 
-**Workaround**: For MySQL, use backticks around the table name in queries and for Oracle or PostgreSQL, use double quotes.
+**Workaround**: Rename the objects (Tables/functions/procedures) on the source database to something without special characters.
 
 **Example**
 
@@ -1011,3 +1011,49 @@ The preceding example will result in an error as follows:
 ```
 
 ---
+
+#### Import issue with case-senstivie schema names
+
+**GitHub links**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
+
+**Description**: If you migrate your database using a case-sensitive schema name, the migration will fail with a "no schema has been selected" or "schema already exists" error(s).
+
+**Workaround**: Currently, yb-voyager does not support migration via case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If required, you may alter the schema names to a case-sensitive alternative post-migration using the ALTER SCHEMA command.
+
+**Example**
+
+An example yb-voyager import-schema command with a case-sensitive schema name is as follows:
+
+```sh
+yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema "\"Test\""
+```
+
+The preceding example will result in an error as follows:
+
+```output
+ERROR: no schema has been selected to create in (SQLSTATE 3F000)
+```
+
+Suggested changes to the schema can be done using the following steps:
+
+1. Change the case sensitive schema name during schema migration as follows:
+
+    ```sh
+    yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema test
+    ```
+
+1. Alter the schema name post migration as follows:
+
+    ```sh
+    ALTER SCHEMA "test" RENAME TO "Test";
+    ```
