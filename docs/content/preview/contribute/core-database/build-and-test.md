@@ -87,6 +87,7 @@ The specific versions supported can be found in `./build-support/third-party-arc
 
 By default, thirdparty libraries are pre-built into archives, and those archives are downloaded to be used during build.
 Incremental builds currently do not detect when the thirdparty archive URL has been updated, so when that happens, you should run a `--clean` build to use the new thirdparty.
+Thirdparty may also be built locally using `--no-download-thirdparty`/`--ndltp`.
 
 ## Test
 
