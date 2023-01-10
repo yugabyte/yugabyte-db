@@ -9,7 +9,9 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -112,7 +114,14 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     // Filter the log files by a preliminary check of the name format
     String applicationLogsRegexPattern =
         config.getString("yb.support_bundle.application_logs_regex_pattern");
-    logFiles = supportBundleUtil.filterList(logFiles, applicationLogsRegexPattern);
+    logFiles =
+        supportBundleUtil
+            .filterList(
+                logFiles.stream().map(Paths::get).collect(Collectors.toList()),
+                Arrays.asList(applicationLogsRegexPattern))
+            .stream()
+            .map(Path::toString)
+            .collect(Collectors.toList());
 
     // Filters the log files whether it is between startDate and endDate
     for (String logFile : logFiles) {

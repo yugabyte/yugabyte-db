@@ -21,12 +21,6 @@
 
 #define DEFAULT_BATCH_ROWS_PER_TRANSACTION  20000
 
-/**
- * (#15362): We use a smaller default rows_per_transaction for colocated table to mitigate the
- * slow copy issue until a proper fix is put in place.
- */
-#define DEFAULT_BATCH_ROWS_PER_TRANSACTION_FOR_COLOCATED_TABLE 1000
-
 /* CopyStateData is private in commands/copy.c */
 typedef struct CopyStateData *CopyState;
 typedef int (*copy_data_source_cb) (void *outbuf, int minread, int maxread);

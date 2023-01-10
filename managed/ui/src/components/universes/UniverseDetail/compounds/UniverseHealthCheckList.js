@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Alert, Row } from 'react-bootstrap';
+import { Alert, Row , Panel } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { sortBy, values } from 'lodash';
@@ -9,7 +9,7 @@ import { sortBy, values } from 'lodash';
 import { YBLoading } from '../../../common/indicators';
 import TreeNode from '../../../common/TreeNode';
 import { YBPanelItem } from '../../../panels';
-import { Panel } from 'react-bootstrap';
+
 import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
@@ -46,7 +46,7 @@ export const UniverseHealthCheckList = (props) => {
     getPromiseState(healthCheck).isError() ||
     (getPromiseState(healthCheck).isSuccess() && isEmptyArray(healthCheck.data))
   ) {
-    content = <div>There're no finished Health checks available at the moment.</div>;
+    content = <div>{"There're no finished Health checks available at the moment."}</div>;
   } else if (getPromiseState(healthCheck).isSuccess() && isNonEmptyArray(healthCheck.data)) {
     const data = [...healthCheck.data].reverse();
     const timestamps = prepareData(data, currentUser.data.timezone);

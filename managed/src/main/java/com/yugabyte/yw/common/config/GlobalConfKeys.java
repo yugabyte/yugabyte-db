@@ -339,4 +339,11 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Max Log Message Size",
           "TODO",
           ConfDataType.BytesType);
+  public static final ConfKeyInfo<Duration> kmsRefreshInterval =
+      new ConfKeyInfo<>(
+          "yb.kms.refresh_interval",
+          ScopeType.GLOBAL,
+          "KMS Refresh Interval",
+          "Default refresh interval for the KMS providers.",
+          ConfDataType.DurationType);
 }

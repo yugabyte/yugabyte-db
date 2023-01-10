@@ -554,6 +554,9 @@ components:
                   ssl_protocols {{repl ConfigOption "tls_version" }};
                   ssl_certificate /opt/certs/server.cert;
                   ssl_certificate_key /opt/certs/server.key;
+                  {{repl if ConfigOptionEquals "hsts_enabled" "1"}}
+                  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+                  {{repl end}}
                 {{repl else}}
                   listen       80;
                   server_name  {{repl ConfigOption "hostname" }};
@@ -715,6 +718,12 @@ config:
         help_text: When enabled we will listen to https
         type: bool
         default: "1"
+      - name: hsts_enabled
+        title: Enable HSTS
+        help_text: Enable HTTP Strict Transport Security. (Requires setup of DNS and SSL certificate issued by a trusted Certificate Authority)
+        type: bool
+        default: "0"
+        when: '{{repl ConfigOptionEquals "https_enabled" "1" }}'
       - name: upload_size
         title: Maximum Request Size
         help_text: Maximum size of the file uploads allowed by Yugabyte Platform.

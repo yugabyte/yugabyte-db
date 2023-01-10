@@ -6266,8 +6266,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
   ASSERT_OK(test_client()->GetTablets(
       table, 0, &tablets_after_split, /* partition_list_version =*/nullptr));
 
-  // Wait until the 'cdc_parent_tablet_deletion_task_' has run. Then the parent tablet's entry
-  // should be removed from 'cdc_state' table.
+  // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
   SleepFor(MonoDelta::FromSeconds(2));
 
   client::TableHandle table_handle;
@@ -6277,8 +6276,57 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
 
   bool saw_row_child_one = false;
   bool saw_row_child_two = false;
-  // We should no longer see the entry corresponding to the parent tablet.
+  bool saw_row_parent = false;
+  // We should still see the entry corresponding to the parent tablet.
   TabletId parent_tablet_id = tablets[0].tablet_id();
+  for (const auto& row : client::TableRange(table_handle)) {
+    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+    LOG(INFO) << "Read cdc_state table row with tablet_id: " << tablet_id
+              << " stream_id: " << stream_id;
+
+    if (tablet_id == tablets_after_split[0].tablet_id()) {
+      saw_row_child_one = true;
+    } else if (tablet_id == tablets_after_split[1].tablet_id()) {
+      saw_row_child_two = true;
+    } else if (tablet_id == parent_tablet_id) {
+      saw_row_parent = true;
+    }
+  }
+
+  ASSERT_TRUE(saw_row_child_one && saw_row_child_two && saw_row_parent);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> first_tablet_after_split;
+  first_tablet_after_split.CopyFrom(tablets_after_split);
+  ASSERT_EQ(first_tablet_after_split[0].tablet_id(), tablets_after_split[0].tablet_id());
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> second_tablet_after_split;
+  second_tablet_after_split.CopyFrom(tablets_after_split);
+  second_tablet_after_split.DeleteSubrange(0, 1);
+  ASSERT_EQ(second_tablet_after_split.size(), 1);
+  ASSERT_EQ(second_tablet_after_split[0].tablet_id(), tablets_after_split[1].tablet_id());
+
+  GetChangesResponsePB change_resp_2 = ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, first_tablet_after_split, &change_resp_1.cdc_sdk_checkpoint()));
+  LOG(INFO) << "Number of records from GetChanges() call on first tablet after split: "
+            << change_resp_2.cdc_sdk_proto_records_size();
+  ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, first_tablet_after_split, &change_resp_2.cdc_sdk_checkpoint()));
+
+  GetChangesResponsePB change_resp_3 = ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, second_tablet_after_split, &change_resp_1.cdc_sdk_checkpoint()));
+  LOG(INFO) << "Number of records from GetChanges() call on second tablet after split: "
+            << change_resp_3.cdc_sdk_proto_records_size();
+  ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, second_tablet_after_split, &change_resp_3.cdc_sdk_checkpoint()));
+
+  // Wait until the 'cdc_parent_tablet_deletion_task_' has run. Then the parent tablet's entry
+  // should be removed from 'cdc_state' table.
+  SleepFor(MonoDelta::FromSeconds(2));
+
+  saw_row_child_one = false;
+  saw_row_child_two = false;
+  // We should no longer see the entry corresponding to the parent tablet.
   for (const auto& row : client::TableRange(table_handle)) {
     auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
     auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
@@ -6293,8 +6341,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
       saw_row_child_two = true;
     }
   }
-
-  ASSERT_TRUE(saw_row_child_one && saw_row_child_two);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDC)) {
@@ -6358,7 +6404,8 @@ TEST_F(
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   LOG(INFO) << "The tablet split error is now communicated to the client.";
 
-  auto get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
+  auto get_tablets_resp =
+      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
 
   // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
@@ -6597,7 +6644,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
 
   // We are calling: "GetTabletListToPollForCDC" when the client has streamed all the data from the
   // parent tablet.
-  get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
+  get_tablets_resp =
+      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
 
   // We should only see the entries for the 2 child tablets, which were created after the first
   // tablet split.
@@ -9649,12 +9697,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
-  // Calling 'GetTabletListToPollForCDC' before the split has been reported should only return the
-  // details of the current tablet.
-  auto get_tablets_resp =
-      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
-  ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs_size(), 1);
-
   change_resp_1 =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
@@ -9665,7 +9707,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   LOG(INFO) << "The tablet split error is now communicated to the client.";
 
-  get_tablets_resp =
+  auto get_tablets_resp =
       ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
 

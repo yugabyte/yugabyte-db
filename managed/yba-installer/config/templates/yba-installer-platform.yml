@@ -6,23 +6,59 @@ services:
 
       log.override.path="{{ baseInstall }}/data/logs"
 
-      play.crypto.secret="{{ yamlPath "platform.appSecret" }}"
+      play.crypto.secret="${PLATFORM_APP_SECRET}"
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
-      play.server.https.keyStore.path = "{{ installRoot }}/yb-platform/certs/server.ks"
+      play.server.https.keyStore.path = "{{ baseInstall }}/data/yba-installer/certs/server.ks"
       play.server.https.keyStore.type = "JKS"
       play.server.https.keyStore.password = "{{ yamlPath "platform.keyStorePassword" }}"
 
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
+
       db {
-        default.url="jdbc:postgresql://127.0.0.1:{{ yamlPath "postgres.port" }}/yugaware"
-        default.driver=org.postgresql.Driver
-        default.username="{{ yamlPath "platform.platformDbUser" }}"
-        default.password="{{ yamlPath "platform.platformDbPassword" }}"
-        default.logStatements=true
-        default.migration.initOnMigrate=true
-        default.migration.auto=true
+        # Tracking default postgresql connection details
+          default {
+            {{if eq (yamlPath "postgres.useExisting.enabled") "true" }}
+            username="" # these will be set via env var in the systemd unit
+            password="" # these will be set via env var in the systemd unit
+            host="{{ yamlPath "postgres.useExisting.host" }}"
+            port="{{ yamlPath "postgres.useExisting.port" }}"
+            dbname="yugaware"
+            {{end}}
+
+            {{if eq (yamlPath "postgres.install.enabled") "true" }}
+            username="postgres"
+            password=""
+            host="localhost"
+            port="{{ yamlPath "postgres.install.port" }}"
+            dbname="yugaware"
+            {{end}}
+            username=${?DB_USERNAME}
+            password=${?DB_PASSWORD}
+            driver="org.postgresql.Driver"
+            url="jdbc:postgresql://"${db.default.host}":"${db.default.port}"/"${db.default.dbname}
+            logStatements=true
+            # Config about flyway migrations.
+            migration {
+              initOnMigrate=true
+              auto=true
+              ignoreMissingMigrations=true
+              outOfOrder=true
+              # We want to use postgres db in production
+              # The migration scripts will be under resources/db.migration.default.postgres
+              # with common scripts under resources/db.migration.default.common
+              locations=["common","postgres"]
+           }
+        }
+        perf_advisor {
+          # We assume both databases are on the same PG instance. If not - this needs to be overriden
+          username=${db.default.username}
+          password=${db.default.password}
+          url="jdbc:postgresql://"${db.default.host}":"${db.default.port}"/"${db.perf_advisor.dbname}
+          createDatabaseUrl="jdbc:postgresql://"${db.default.host}":"${db.default.port}"/"${db.default.dbname}
+        }
       }
+
       ebean {
         default = ["com.yugabyte.yw.models.*"]
       }
@@ -50,8 +86,7 @@ services:
         security.type = "{{ yamlPath "platform.ybSecurityType" }}"
         security.clientID = ""
         security.clientID = "{{ yamlPath "platform.ybOidcClientId" }}"
-        security.secret = ""
-        security.secret = "{{ yamlPath "platform.ybOidcSecret" }}"
+        # security.secret = this is set via env var in the systemd unit
         security.discoveryURI = ""
         security.discoveryURI = "{{ yamlPath "platform.ybOidcDiscoveryUri" }}"
         security.oidcScope = ""
@@ -90,7 +125,7 @@ services:
         }
         cors {
           pathPrefixes = ["/"]
-          allowedOrigins =  ["{{ .GenerateCORSOrigin }}"]
+          allowedOrigins =  ["https://{{ yamlPath "host" }}"]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
           allowedHttpHeaders = [
@@ -117,14 +152,25 @@ services:
       Type=simple
 
       Environment="JAVA_HOME={{ installVersionDir }}/jdk8u345-b01"
+      Environment="YB_OIDC_SECRET={{ yamlPath "platform.ybOidcSecret" }}"
+      Environment="PLATFORM_APP_SECRET={{ yamlPath "platform.appSecret" }}"
+
+      {{if eq (yamlPath "postgres.useExisting.enabled") "true" }}
+      Environment="DB_PASSWORD={{ yamlPath "postgres.useExisting.password" }}"
+      Environment="DB_USERNAME={{ yamlPath "postgres.useExisting.username" }}"
+      {{end}}
 
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware \
         -Dconfig.file={{ .ConfFileLocation }} \
         -Dhttp.port=disabled \
         -Dhttps.port={{ yamlPath "platform.port" }}
 
+
       Restart=always
       RestartSec={{ yamlPath "platform.restartSeconds"}}
+
+      # allow platform to bind to port 443
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
 
       [Install]
       WantedBy=multi-user.target

@@ -36,7 +36,7 @@ export default class YBCost extends Component {
     const { value, multiplier, base = 'hour', isPricingKnown } = this.props;
     const finalCost = value ? value * timeFactor(base, multiplier) : 0;
 
-    return !!isPricingKnown ? (
+    return isPricingKnown ? (
       <YBFormattedNumber
         value={finalCost}
         maximumFractionDigits={2}

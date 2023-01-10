@@ -21,9 +21,7 @@ var installCmd = &cobra.Command{
         `,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		if force {
-			common.DisableUserConfirm()
-		}
+
 		// Preflight checks
 		results := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
 		// Only print results if we should fail.
@@ -36,17 +34,19 @@ var installCmd = &cobra.Command{
 		common.Install(common.GetVersion())
 
 		for _, name := range serviceOrder {
+			log.Info("About to install component " + name)
 			services[name].Install()
+			log.Info("Completed installing component " + name)
 		}
 
 		for _, name := range serviceOrder {
 			status := services[name].Status()
 			if status.Status != common.StatusRunning {
-				log.Fatal(status.Service + " is not running! Install failed")
+				log.Fatal(status.Service + " is not running! Install might have failed, please check " + common.YbaCtlLogFile)
 			}
 		}
 
-		common.MarkInstallComplete()
+		common.PostInstall()
 		log.Info("Successfully installed Yugabyte Anywhere!")
 	},
 }

@@ -92,7 +92,7 @@ The corresponding code for this widget is as follows. Note that the actual conte
   <li >
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab"
        role="tab" aria-controls="kubernetes" aria-selected="false">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -199,6 +199,26 @@ For more information on highlight options: <https://gohugo.io/content-management
 ### includeMarkdown
 
 Inserts the contents of a markdown file, rendered as part of the calling page. We use this primarily for [syntax diagrams](../syntax-diagrams/).
+
+## Landing Page sections
+
+### Learn through section
+
+This widget looks as follows:
+
+![Learn through section](/images/contribute/learn-through-section.png)
+
+The corresponding code for this widget is as follows.
+
+```go
+{{</* sections/text-with-right-image
+  title="Learn through examples"
+  description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
+  buttonText="Get started"
+  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  imageAlt="Yugabyte cloud" imageUrl="/images/homepage/learn-through-examples.svg"
+*/>}}
+```
 
 ## Other shortcodes
 

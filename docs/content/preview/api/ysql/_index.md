@@ -7,9 +7,9 @@ summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
 menu:
   preview:
-    identifier: api-ysql
     parent: api
-    weight: 2900
+    identifier: api-ysql
+    weight: 10
 aliases:
   - /preview/api/ysql/
   - /preview/api/postgresql/

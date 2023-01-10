@@ -42,21 +42,22 @@ func (r rootCheck) Execute() Result {
 		Check:  r.name,
 		Status: StatusPassed,
 	}
-	if _, existsErr := os.Stat(common.GetInstallRoot()); existsErr == nil {
-		err := fileutil.IsDirWriteable(common.GetInstallRoot())
+	if _, existsErr := os.Stat(common.GetSoftwareRoot()); existsErr == nil {
+		err := fileutil.IsDirWriteable(common.GetSoftwareRoot())
 		if err != nil {
-			res.Error = fmt.Errorf(common.GetInstallRoot() + " is not writeable.")
+			res.Error = fmt.Errorf(common.GetSoftwareRoot() + " is not writeable.")
 			res.Status = StatusCritical
 			return res
 		} else {
-			log.Info(common.GetInstallRoot() + " is writeable.")
+			log.Info(common.GetSoftwareRoot() + " is writeable.")
 		}
 		command := "bash"
 		// TODO: Also duplicated some df code in ssd.go.
 		// Should resolve with https://yugabyte.atlassian.net/browse/PLAT-6177
-		args := []string{"-c", "df --output=avail -h \"" + common.GetInstallRoot() + "\" | tail -n 1"}
-		output, err := common.ExecuteBashCommand(command, args)
+		args := []string{"-c", "df --output=avail -h \"" + common.GetSoftwareRoot() + "\" | tail -n 1"}
+		output, err := common.RunBash(command, args)
 		if err != nil {
+			// TODO: the pipe in the command above swallows any error with df
 			res.Error = err
 			res.Status = StatusCritical
 			return res
@@ -68,10 +69,10 @@ func (r rootCheck) Execute() Result {
 		freeSpaceString := freeSpaceArray[0]
 		freeSpace, _ := strconv.Atoi(freeSpaceString)
 		if freeSpace == 0 {
-			res.Error = fmt.Errorf(common.GetInstallRoot() + " does not have free space.")
+			res.Error = fmt.Errorf(common.GetSoftwareRoot() + " does not have free space.")
 			res.Status = StatusCritical
 		} else {
-			log.Info(common.GetInstallRoot() + " has free space.")
+			log.Info(common.GetSoftwareRoot() + " has free space.")
 		}
 	}
 	return res

@@ -7,6 +7,7 @@ import { CreateMaintenanceWindow } from './CreateMaintenanceWindow';
 
 import { MaintenanceWindowsList } from './MaintenanceWindowsList';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 enum VIEW_STATES {
   CREATE,
   LIST

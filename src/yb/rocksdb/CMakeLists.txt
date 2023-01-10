@@ -75,7 +75,6 @@ set(ROCKSDB_SRCS
     db/write_batch_base.cc
     db/write_controller.cc
     db/write_thread.cc
-    db/xfunc_test_points.cc
     db/db_iterator_wrapper.cc
     memtable/hash_linklist_rep.cc
     memtable/hash_skiplist_rep.cc
@@ -123,7 +122,6 @@ set(ROCKSDB_SRCS
     util/delete_scheduler.cc
     util/dynamic_bloom.cc
     util/env.cc
-    util/env_hdfs.cc
     util/env_posix.cc
     util/io_posix.cc
     util/thread_posix.cc
@@ -146,9 +144,7 @@ set(ROCKSDB_SRCS
     utilities/merge_operators/string_append/stringappend.cc
     utilities/merge_operators/uint64add.cc
     utilities/options/options_util.cc
-    utilities/redis/redis_lists.cc
     utilities/table_properties_collectors/compact_on_deletion_collector.cc
-    utilities/ttl/db_ttl_impl.cc
     utilities/write_batch_with_index/write_batch_with_index.cc
     utilities/write_batch_with_index/write_batch_with_index_internal.cc
     util/event_logger.cc
@@ -282,11 +278,8 @@ if (BUILD_TESTS AND
   target_compile_options(slice_transform_test PRIVATE "-Wno-array-bounds")
 endif()
 
-ADD_YB_TEST(utilities/merge_operators/string_append/stringappend_test)
 ADD_YB_TEST(utilities/options/options_util_test)
-ADD_YB_TEST(utilities/redis/redis_lists_test)
 ADD_YB_TEST(utilities/table_properties_collectors/compact_on_deletion_collector_test)
-ADD_YB_TEST(utilities/ttl/ttl_test)
 ADD_YB_TEST(utilities/write_batch_with_index/write_batch_with_index_test)
 
 if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")

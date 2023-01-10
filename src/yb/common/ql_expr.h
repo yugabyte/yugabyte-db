@@ -287,13 +287,13 @@ class QLExprExecutor {
 
   // Evaluate call to tablet-server builtin operator.
   virtual Status EvalTSCall(const QLBCallPB& ql_expr,
-                                    const QLTableRow& table_row,
-                                    QLValuePB *result,
-                                    const Schema *schema = nullptr);
+                            const QLTableRow& table_row,
+                            QLValuePB *result,
+                            const Schema *schema = nullptr);
 
   virtual Status ReadTSCallValue(const QLBCallPB& ql_expr,
-                                         const QLTableRow& table_row,
-                                         QLExprResultWriter result_writer);
+                                 const QLTableRow& table_row,
+                                 QLExprResultWriter result_writer);
 
   // Evaluate a boolean condition for the given row.
   Status EvalCondition(const QLConditionPB& condition,
@@ -319,17 +319,6 @@ class QLExprExecutor {
     return EvalExpr(ql_expr, &table_row, result_writer, schema);
   }
 
-  Status EvalExpr(const LWPgsqlExpressionPB& ql_expr,
-                  const QLTableRow* table_row,
-                  LWExprResultWriter result_writer,
-                  const Schema* schema = nullptr);
-
-  Status EvalExpr(const LWPgsqlExpressionPB& ql_expr,
-                  const QLTableRow& table_row,
-                  LWExprResultWriter result_writer) {
-    return EvalExpr(ql_expr, &table_row, result_writer);
-  }
-
   // Read evaluated value from an expression. This is only useful for aggregate function.
   Status ReadExprValue(const PgsqlExpressionPB& ql_expr,
                        const QLTableRow& table_row,
@@ -337,14 +326,9 @@ class QLExprExecutor {
 
   // Evaluate call to tablet-server builtin operator.
   virtual Status EvalTSCall(const PgsqlBCallPB& ql_expr,
-                                    const QLTableRow& table_row,
-                                    QLValuePB *result,
-                                    const Schema *schema = nullptr);
-
-  virtual Status EvalTSCall(const LWPgsqlBCallPB& ql_expr,
-                                    const QLTableRow& table_row,
-                                    LWQLValuePB *result,
-                                    const Schema *schema = nullptr);
+                            const QLTableRow& table_row,
+                            QLValuePB *result,
+                            const Schema *schema = nullptr);
 
   virtual Status ReadTSCallValue(const PgsqlBCallPB& ql_expr,
                                          const QLTableRow& table_row,
@@ -369,9 +353,8 @@ class QLExprExecutor {
       const PB& ql_expr, const QLTableRow* table_row, Writer result_writer, const Schema* schema);
 
   // Evaluate call to regular builtin operator.
-  template <class OpCode, class Expr, class Value>
-  Status EvalBFCall(
-      const Expr& ql_expr, const QLTableRow& table_row, Value* result);
+  template <class OpCode, class Expr>
+  Result<QLValuePB> EvalBFCall(const Expr& bfcall, const QLTableRow& table_row);
 };
 
 template <class It>

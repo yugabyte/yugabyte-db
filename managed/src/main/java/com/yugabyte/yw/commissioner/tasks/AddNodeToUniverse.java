@@ -235,11 +235,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
 
       if (universe.isYbcEnabled()) {
-        createStartYbcTasks(Arrays.asList(currentNode))
-            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        createStartYbcTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-        // Wait for yb-controller to be responsive on each node.
-        createWaitForYbcServerTask(null).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        // Wait for yb-controller to be responsive on current node.
+        createWaitForYbcServerTask(nodeSet).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       // Update the swamper target file.

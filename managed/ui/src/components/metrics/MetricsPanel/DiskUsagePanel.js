@@ -20,7 +20,7 @@ export default class DiskUsagePanel extends Component {
       const diskUsedObj = metric.data.find((item) => item.name === 'used');
       const diskFreeObj = metric.data.find((item) => item.name === 'free');
       const diskSizeObj = metric.data.find((item) => item.name === 'size');
-      const getLastElement = (arr) => arr && arr.length && arr[arr.length - 1];
+      const getLastElement = (arr) => arr?.length && arr[arr.length - 1];
 
       // If at least two out of three objects are defined we can figure out the rest
       if (!!diskUsedObj && !!diskFreeObj) {

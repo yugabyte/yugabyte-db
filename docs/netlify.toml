@@ -86,8 +86,131 @@
   force = true
 
 [[redirects]]
+  from = "/stable/migrate/*"
+  to = "/preview/migrate/:splat"
+  force = true
+
+[[redirects]]
+  from = "/v2.14/migrate/*"
+  to = "/preview/migrate/:splat"
+  force = true
+
+[[redirects]]
   from = "/:version/releases/*"
   to = "/preview/releases/"
+  force = true
+
+# Redirect for YugabyteDB Voyager
+
+[[redirects]]
+  from = "/:version/migrate/yb-voyager/*"
+  to = "/preview/migrate/"
+  force = true
+
+# A few redirects to head off issues with version_menu_pagelinks
+
+[[redirects]]
+  from = "/v2.12/explore/ysql-language-features/sql-feature-support/*"
+  to = "/v2.12/explore/ysql-language-features/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/explore/ysql-language-features/sql-feature-support/*"
+  to = "/v2.8/explore/ysql-language-features/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/explore/ysql-language-features/postgresql-compatibility/*"
+  to = "/v2.12/explore/ysql-language-features/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/explore/ysql-language-features/postgresql-compatibility/*"
+  to = "/v2.8/explore/ysql-language-features/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/develop/quality-of-service/*"
+  to = "/v2.12/develop/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/develop/quality-of-service/*"
+  to = "/v2.8/develop/"
+  force = true
+
+[[redirects]]
+  from = "/v2.14/develop/build-apps/*"
+  to = "/v2.14/develop/learn/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/develop/build-apps/*"
+  to = "/v2.12/develop/learn/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/develop/build-apps/*"
+  to = "/v2.8/develop/learn/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/drivers-orms/*"
+  to = "/v2.12/reference/drivers/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/drivers-orms/*"
+  to = "/v2.8/reference/drivers/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/explore/ysql-language-features/pg-extensions/*"
+  to = "/v2.12/api/ysql/extensions/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/explore/ysql-language-features/pg-extensions/*"
+  to = "/v2.8/api/ysql/extensions/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
+  to = "/v2.12/yugabyte-platform/troubleshoot/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
+  to = "/v2.8/yugabyte-platform/troubleshoot/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
+  to = "/v2.6/yugabyte-platform/troubleshoot/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
+  to = "/v2.12/yugabyte-platform/upgrade/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
+  to = "/v2.8/yugabyte-platform/upgrade/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
+  to = "/v2.6/yugabyte-platform/upgrade/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
+  to = "/v2.12/yugabyte-platform/install-yugabyte-platform/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
+  to = "/v2.8/yugabyte-platform/install-yugabyte-platform/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
+  to = "/v2.6/yugabyte-platform/install-yugabyte-platform/"
   force = true
 
 # Redirect old cloud docs to root of current
@@ -263,6 +386,7 @@
   from = "/preview/develop/build-apps/go/ysql-pg/"
   to = "/preview/drivers-orms/go/pg/"
   force = true
+
 # Build an app for aiopg, now in integrations
 
 [[redirects]]
@@ -342,12 +466,6 @@
   to = "/stable/manage/data-migration/bulk-export-ysql/"
   force = true
 
-# Redirect for YugabyteDB Voyager
-
-[[redirects]]
-  from = "/:version/migrate/yb-voyager/*"
-  to = "/:version/migrate/:splat"
-  force = true
 
 # Redirect older versions of specific sections
 
@@ -410,10 +528,20 @@
   to = "/preview/quick-start/:splat"
   status = 200
 
+[[redirects]]
+  from = "/preview/quick-start-yugabytedb-managed/*"
+  to = "/preview/quick-start-yugabytedb-managed/:splat"
+  force = true
+
 # Redirect all non-preview quick start links to preview
 
 [[redirects]]
   from = ":version/quick-start/*"
+  to = "/preview/quick-start/"
+  force = true
+
+[[redirects]]
+  from = ":version/quick-start-yugabytedb-managed/*"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 

@@ -6,8 +6,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -29,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.HashSet;
 import java.util.Arrays;
 import org.apache.commons.io.FileUtils;
@@ -46,13 +46,8 @@ public class YbcLogsComponentTest extends FakeDBApplication {
   @Mock public Config mockConfig;
   @Mock public SupportBundleUtil mockSupportBundleUtil = new SupportBundleUtil();
 
-  @Mock
-  public UniverseLogsComponent mockUniverseLogsComponent =
-      new UniverseLogsComponent(
-          mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
-
-  private final String testRegexPattern =
-      "(?:.*)(?:yb-)(?:controller)(?:.*)(\\d{8})-(?:\\d*)\\.(?:\\d*)(?:\\.gz|\\.zip)?";
+  private static final String testYbcLogsRegexPattern =
+      "((?:.*)(?:yb-)(?:controller)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
   private Universe universe;
   private Customer customer;
   private String fakeSupportBundleBasePath = "/tmp/yugaware_tests/support_bundle-ybc_logs/";
@@ -98,16 +93,24 @@ public class YbcLogsComponentTest extends FakeDBApplication {
     when(mockSupportBundleUtil.getDataDirPath(any(), any(), any(), any()))
         .thenReturn(fakeSupportBundleBasePath);
     when(mockConfig.getString("yb.support_bundle.ybc_logs_regex_pattern"))
-        .thenReturn(testRegexPattern);
-    when(mockSupportBundleUtil.filterFilePathsBetweenDates(
-            any(), any(), any(), any(), anyBoolean()))
+        .thenReturn(testYbcLogsRegexPattern);
+    when(mockSupportBundleUtil.extractFileTypeFromFileNameAndRegex(any(), any()))
+        .thenCallRealMethod();
+    when(mockSupportBundleUtil.extractDateFromFileNameAndRegex(any(), any())).thenCallRealMethod();
+    when(mockSupportBundleUtil.filterFilePathsBetweenDates(any(), any(), any(), any()))
         .thenCallRealMethod();
     when(mockSupportBundleUtil.filterList(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();
+    when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
+    when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
 
-    when(mockUniverseLogsComponent.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);
-    when(mockUniverseLogsComponent.getNodeFilePaths(any(), any(), any(), anyInt(), any()))
-        .thenReturn(fakeLogsList);
+    when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);
+    // Generate a fake shell response containing the entire list of file paths
+    // Mocks the server response
+    List<Path> fakeLogFilePathList =
+        fakeLogsList.stream().map(Paths::get).collect(Collectors.toList());
+    when(mockNodeUniverseManager.getNodeFilePaths(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(fakeLogFilePathList);
 
     when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))
         .thenAnswer(
@@ -134,11 +137,7 @@ public class YbcLogsComponentTest extends FakeDBApplication {
     // Calling the download function
     YbcLogsComponent ybcLogsComponent =
         new YbcLogsComponent(
-            mockUniverseInfoHandler,
-            mockNodeUniverseManager,
-            mockConfig,
-            mockSupportBundleUtil,
-            mockUniverseLogsComponent);
+            mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
     ybcLogsComponent.downloadComponentBetweenDates(
         customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 

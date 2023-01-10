@@ -47,6 +47,7 @@ constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kKeyColumnName = "key";
+static const uint32_t kRangePartitionInterval = 500;
 
 class TwoDCTestBase : public YBTest {
  public:
@@ -57,6 +58,7 @@ class TwoDCTestBase : public YBTest {
     std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
     HostPort pg_host_port_;
     boost::optional<client::TransactionManager> txn_mgr_;
+    size_t pg_ts_idx_;
 
     Result<pgwrapper::PGConn> Connect() {
       return ConnectToDB(std::string() /* dbname */);
@@ -108,12 +110,14 @@ class TwoDCTestBase : public YBTest {
       const boost::optional<std::string>& tablegroup_name,
       uint32_t num_tablets,
       bool colocated = false,
-      const ColocationId colocation_id = 0);
+      const ColocationId colocation_id = 0,
+      const bool ranged_partitioned = false);
 
   Status CreateYsqlTable(
       uint32_t idx, uint32_t num_tablets, Cluster* cluster,
       std::vector<client::YBTableName>* table_names,
-      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false);
+      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false,
+      const bool ranged_partitioned = false);
 
   Result<client::YBTableName> GetYsqlTable(
       Cluster* cluster,

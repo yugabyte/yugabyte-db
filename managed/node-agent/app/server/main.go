@@ -6,8 +6,6 @@ import (
 	"context"
 	"fmt"
 	"node-agent/app/executor"
-	"node-agent/app/scheduler"
-	"node-agent/app/task"
 	"node-agent/util"
 	"os"
 	"os/signal"
@@ -52,24 +50,23 @@ loop:
 	for {
 		select {
 		case <-ticker.C:
-			err := task.HandleUpgradedStateAfterRestart(ctx, config)
+			err := HandleRestart(ctx, config)
 			if err == nil {
 				ticker.Stop()
 				break loop
 			}
-			util.FileLogger().Errorf("Error while handling node agent UPGRADED state - %s", err.Error())
+			util.FileLogger().Errorf("Error handling restart - %s", err.Error())
 		case <-sigs:
 			cancelFunc()
 			return
 		}
 	}
-	server, err := NewRPCServer(ctx, fmt.Sprintf("%s:%s", host, port), true)
+	addr := fmt.Sprintf("%s:%s", host, port)
+	server, err := NewRPCServer(ctx, addr, true)
 	if err != nil {
 		util.FileLogger().Fatalf("Error in starting RPC server - %s", err.Error())
 	}
-	pingStateInterval := time.Duration(config.Int(util.NodePingIntervalKey)) * time.Second
-	scheduler.GetInstance(ctx).Schedule(ctx, pingStateInterval, task.HandleAgentState(config))
-	util.ConsoleLogger().Infof("Started Service")
+	util.FileLogger().Infof("Started Service on %s", addr)
 	<-sigs
 	server.Stop()
 	cancelFunc()

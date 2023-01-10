@@ -11,7 +11,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.FileData;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.YugawareProperty;
 import java.io.File;
 import java.io.InputStream;
@@ -167,48 +166,73 @@ public class ConfigHelper {
   }
 
   public void syncFileData(String storagePath, Boolean syncDataToDisk) {
-    Collection<File> diskFiles = Collections.emptyList();
-    for (String fileDirectoryName : FILE_DIRECTORY_TO_SYNC) {
-      File ywDir = new File(storagePath + "/" + fileDirectoryName);
-      if (ywDir.exists()) {
-        Collection<File> diskFile = FileUtils.listFiles(ywDir, null, true);
-        diskFiles =
-            Stream.of(diskFiles, diskFile).flatMap(Collection::stream).collect(Collectors.toList());
+    Boolean suppressExceptionsDuringSync =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.fs_stateless.suppress_error");
+    int fileCountThreshold =
+        runtimeConfigFactory.globalRuntimeConf().getInt("yb.fs_stateless.max_files_count_persist");
+    try {
+      Collection<File> diskFiles = Collections.emptyList();
+      List<FileData> dbFiles = FileData.getAll();
+      int currentFileCountDB = dbFiles.size();
+
+      for (String fileDirectoryName : FILE_DIRECTORY_TO_SYNC) {
+        File ywDir = new File(storagePath + "/" + fileDirectoryName);
+        if (ywDir.exists()) {
+          Collection<File> diskFile = FileUtils.listFiles(ywDir, null, true);
+          diskFiles =
+              Stream.of(diskFiles, diskFile)
+                  .flatMap(Collection::stream)
+                  .collect(Collectors.toList());
+        }
+      }
+      // List of files on disk with relative path to storage.
+      Set<String> filesOnDisk =
+          diskFiles
+              .stream()
+              .map(File::getAbsolutePath)
+              .map(fileName -> fileName.replace(storagePath, ""))
+              .collect(Collectors.toSet());
+      Set<FileData> fileDataNames = FileData.getAllNames();
+      Set<String> filesInDB =
+          fileDataNames.stream().map(FileData::getRelativePath).collect(Collectors.toSet());
+
+      if (!syncDataToDisk) {
+        Set<String> fileOnlyOnDisk = Sets.difference(filesOnDisk, filesInDB);
+        if (currentFileCountDB + fileOnlyOnDisk.size() > fileCountThreshold) {
+          // We fail in case the count exceeds the threshold.
+          throw new RuntimeException(
+              "The Maximum files count to be persisted in the DB exceeded the "
+                  + "configuration. Update the flag `yb.fs_stateless.max_files_count_persist` "
+                  + "to update the limit or try deleting some files");
+        }
+
+        // For all files only on disk, update them in the DB.
+        for (String file : fileOnlyOnDisk) {
+          LOG.info("Syncing file " + file + " to the DB");
+          FileData.writeFileToDB(storagePath + file, storagePath, runtimeConfigFactory);
+        }
+        LOG.info("Successfully Written " + fileOnlyOnDisk.size() + " files to DB.");
+      }
+
+      if (syncDataToDisk) {
+        Set<String> fileOnlyInDB = Sets.difference(filesInDB, filesOnDisk);
+        // For all files only in the DB, write them to disk.
+        for (String file : fileOnlyInDB) {
+          LOG.info("Syncing " + file + " file from the DB to FS");
+          FileData.writeFileToDisk(FileData.getFromFile(file), storagePath);
+        }
+        LOG.info("Successfully Written " + fileOnlyInDB.size() + " files to disk.");
+      }
+
+      Map<String, Object> ywFileDataSync = new HashMap<>();
+      ywFileDataSync.put("synced", "true");
+      loadConfigToDB(ConfigType.FileDataSync, ywFileDataSync);
+    } catch (Exception e) {
+      if (suppressExceptionsDuringSync) {
+        LOG.error(e.getMessage());
+      } else {
+        throw e;
       }
     }
-    // List of files on disk with relative path to storage.
-    Set<String> filesOnDisk =
-        diskFiles
-            .stream()
-            .map(File::getAbsolutePath)
-            .map(fileName -> fileName.replace(storagePath, ""))
-            .collect(Collectors.toSet());
-    Set<FileData> fileDataNames = FileData.getAllNames();
-    Set<String> filesInDB =
-        fileDataNames.stream().map(FileData::getRelativePath).collect(Collectors.toSet());
-
-    if (!syncDataToDisk) {
-      Set<String> fileOnlyOnDisk = Sets.difference(filesOnDisk, filesInDB);
-      // For all files only on disk, update them in the DB.
-      for (String file : fileOnlyOnDisk) {
-        LOG.info("Syncing file " + file + " to the DB");
-        FileData.writeFileToDB(storagePath + file, storagePath);
-      }
-      LOG.info("Successfully Written " + fileOnlyOnDisk.size() + " files to DB.");
-    }
-
-    if (syncDataToDisk) {
-      Set<String> fileOnlyInDB = Sets.difference(filesInDB, filesOnDisk);
-      // For all files only in the DB, write them to disk.
-      for (String file : fileOnlyInDB) {
-        LOG.info("Syncing " + file + " file from the DB to FS");
-        FileData.writeFileToDisk(FileData.getFromFile(file), storagePath);
-      }
-      LOG.info("Successfully Written " + fileOnlyInDB.size() + " files to disk.");
-    }
-
-    Map<String, Object> ywFileDataSync = new HashMap<>();
-    ywFileDataSync.put("synced", "true");
-    loadConfigToDB(ConfigType.FileDataSync, ywFileDataSync);
   }
 }

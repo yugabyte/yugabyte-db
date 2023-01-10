@@ -70,6 +70,7 @@ class OnPremStepper extends Component {
         return (
           <Col
             lg={cellSize}
+            // eslint-disable-next-line react/no-array-index-key
             key={idx}
             className={`stepper-cell ${currentStep === idx ? 'active-stepper-cell' : ''}`}
           >

@@ -319,7 +319,7 @@ export const PerfAdvisor: FC = () => {
                   bsClass='btn btn-orange rescanBtn'
                   disabled={!!isUniversePaused}
                   onClick={handleScan}
-                  data-toggle={!!isUniversePaused ? "tooltip" : ""}
+                  data-toggle={isUniversePaused ? "tooltip" : ""}
                   data-placement="left"
                   title="Universe Paused"
                 >
@@ -352,7 +352,7 @@ export const PerfAdvisor: FC = () => {
                     bsClass='btn btn-orange rescanBtn'
                     disabled={!!isUniversePaused}
                     onClick={handleScan}
-                    data-toggle={!!isUniversePaused ? "tooltip" : ""}
+                    data-toggle={isUniversePaused ? "tooltip" : ""}
                     data-placement="left"
                     title="Universe Paused"
 
@@ -361,7 +361,7 @@ export const PerfAdvisor: FC = () => {
                     {t('clusterDetail.performance.advisor.ReScanBtn')}
                   </Button>
                   <div className="ticketContent">
-                    <b>Note:</b>&nbsp; If this doesn't look right to you,&nbsp;
+                    <b>Note:</b>&nbsp; {"If this doesn't look right to you,"}&nbsp;
                     <a className="ticketLink" href={EXTERNAL_LINKS.SUPPORT_TICKET_LINK}>
                       {t('clusterDetail.performance.advisor.OpenSupportTicket')}
                     </a>

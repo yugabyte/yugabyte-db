@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-ctl
     parent: admin
-    weight: 2410
+    weight: 90
 aliases:
   - /admin/yb-ctl
 type: docs
@@ -215,6 +215,8 @@ On MacOS and Linux, for local clusters, every additional node after the first ne
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2
 sudo ifconfig lo0 alias 127.0.0.3
+sudo ifconfig lo0 alias 127.0.0.4
+sudo ifconfig lo0 alias 127.0.0.5
 ```
 
 The loopback addresses do not persist upon rebooting your computer.

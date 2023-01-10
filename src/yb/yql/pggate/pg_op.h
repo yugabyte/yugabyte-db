@@ -178,9 +178,8 @@ class PgsqlWriteOp : public PgsqlOp {
   HybridTime write_time_;
 };
 
-Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op);
 
-bool PrepareNextRequest(PgsqlReadOp* read_op);
+Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op);
 
 }  // namespace pggate
 }  // namespace yb

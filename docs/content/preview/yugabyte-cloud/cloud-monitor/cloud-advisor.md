@@ -118,7 +118,6 @@ Review the sharding strategies for your primary and secondary indexes. Consisten
 
 - At 80%+ CPU use, [Index](#index-suggestions) and [Schema](#schema-suggestions) suggestions may not provide any results.
 - On clusters with more than 3 databases and multiple unused indexes, the Index suggestions may not provide optimal results.
-- For clusters running YugabyteDB 2.8 and earlier, the [Connection skew](#connection-skew) may not offer any suggestions.
 
 ## Learn more
 

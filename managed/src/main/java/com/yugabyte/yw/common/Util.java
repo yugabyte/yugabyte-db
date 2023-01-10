@@ -116,6 +116,8 @@ public class Util {
   public static final String K8S_POD_FQDN_TEMPLATE =
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
+  public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
+
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
       ImmutableMap.<String, Long>builder()
           .put("s", TimeUnit.SECONDS.toNanos(1))
@@ -440,7 +442,7 @@ public class Util {
   // positive integer if v1 is newer than v2, a negative integer if v1
   // is older than v2.
   public static int compareYbVersions(String v1, String v2, boolean suppressFormatError) {
-    Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
+    Pattern versionPattern = Pattern.compile(YBA_VERSION_REGEX);
     Matcher v1Matcher = versionPattern.matcher(v1);
     Matcher v2Matcher = versionPattern.matcher(v2);
 

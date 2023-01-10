@@ -7,11 +7,16 @@ import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;
@@ -21,6 +26,8 @@ import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -67,6 +74,8 @@ public class NodeInstanceController extends AuthenticatedController {
 
   @Inject NodeConfigValidator nodeConfigValidator;
 
+  @Inject private KubernetesManagerFactory kubernetesManagerFactory;
+
   /**
    * GET endpoint for Node data
    *
@@ -100,8 +109,67 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails detail = universe.getNode(nodeName);
-    NodeDetailsResp resp = new NodeDetailsResp(detail, universe);
+    String helmValues = "";
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+        == CloudType.kubernetes) {
+      // Return helm values for the corresponding node also for k8s universes.
+      helmValues = getAZHelmValues(universe, nodeName);
+    }
+    NodeDetailsResp resp = new NodeDetailsResp(detail, universe, helmValues);
     return PlatformResults.withData(resp);
+  }
+
+  // Returns the helm values for the release the nodeName is present in.
+  private String getAZHelmValues(Universe universe, String nodeName) {
+    // From nodedetails, nodeName get cluster.
+    // From nodedetails get AZ name/code.
+    // From provider get if it is multi az.
+    // Get provider, azName get AZ config.
+    // Get helm release name, namespace name and call helm get values.
+    try {
+      NodeDetails nodeDetails = universe.getNodeOrBadRequest(nodeName);
+      UUID clusterUUID = nodeDetails.placementUuid;
+      Cluster cluster = universe.getCluster(clusterUUID);
+      boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
+      if (nodeDetails.cloudInfo == null) {
+        log.error(
+            String.format("Cloudinfo for node %s is null. Nodedetails: %s", nodeName, nodeDetails));
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format("Failed to get information about node %s.", nodeName));
+      }
+      String azName = nodeDetails.cloudInfo.az;
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+      // Get AZ uuid
+      Map<String, String> azConfig = AvailabilityZone.getByCode(provider, azName).config;
+      String helmReleaseName =
+          KubernetesUtil.getHelmReleaseName(
+              isMultiAz,
+              universe.getUniverseDetails().nodePrefix,
+              universe.name,
+              azName,
+              isReadOnlyCluster,
+              universe.getUniverseDetails().useNewHelmNamingStyle);
+      String namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              universe.getUniverseDetails().nodePrefix,
+              azName,
+              azConfig,
+              universe.getUniverseDetails().useNewHelmNamingStyle,
+              isReadOnlyCluster);
+      return kubernetesManagerFactory
+          .getManager()
+          .getOverridenHelmReleaseValues(namespace, helmReleaseName, azConfig);
+    } catch (Exception e) {
+      log.error(
+          String.format(
+              "Exception in getting helm values for universe: %s with node: %s exception: %s",
+              universe.universeUUID, nodeName, e.getMessage()),
+          e);
+      // Swallow the exception so that user can see other node details.
+      return "";
+    }
   }
 
   /**
@@ -200,7 +268,7 @@ public class NodeInstanceController extends AuthenticatedController {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {
         if (clientTypeOp.isPresent() && clientTypeOp.get() == ClientType.NODE_AGENT) {
           NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, getJWTClientUuid());
-          nodeAgent.ensureState(State.LIVE);
+          nodeAgent.ensureState(State.READY);
           List<ValidationResult> failedResults =
               nodeConfigValidator
                   .validateNodeConfigs(provider, nodeData)

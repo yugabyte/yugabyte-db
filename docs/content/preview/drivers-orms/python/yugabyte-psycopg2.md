@@ -80,7 +80,7 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| host | Hostname of the YugabyteDB instance | localhost |
+| host | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost |
 | port | Listen port for YSQL | 5433 |
 | database/dbname | Database name | yugabyte |
 | user | User connecting to the database | yugabyte |
@@ -102,11 +102,23 @@ You can provide the connection details in one of the following ways:
   user = 'username', password='xxx', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='true', topology_keys='cloud.region.zone1,cloud.region.zone2'
   ```
 
-The following is an example connection string for connecting to YugabyteDB.
+The following is an example connection string for connecting to YugabyteDB:
 
 ```python
 conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte',load_balance='true')
 ```
+
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+
+#### Use multiple addresses
+
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Delimit the addresses using commas, as follows:
+
+```python
+conn = psycopg2.connect(dbname='yugabyte',host='host1,host2,host3',port='5433',user='yugabyte',password='yugabyte',load_balance='true')
+```
+
+The hosts are only used during the initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
 
 #### Use SSL
 

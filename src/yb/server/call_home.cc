@@ -262,7 +262,14 @@ void CallHome::SendData(const string& payload) {
 
 void CallHome::ScheduleCallHome(int delay_seconds) {
   scheduler_->Schedule(
-      [this](const Status& status) { DoCallHome(); }, std::chrono::seconds(delay_seconds));
+      [this](const Status& status) {
+        if (!status.ok()) {
+          LOG(INFO) << "CallHome stopped: " << status.ToString();
+          return;
+        }
+        DoCallHome();
+      },
+      std::chrono::seconds(delay_seconds));
 }
 
 CollectionLevel CallHome::GetCollectionLevel() {

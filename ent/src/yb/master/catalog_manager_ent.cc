@@ -670,13 +670,11 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
   return Status::OK();
 }
 
-void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) {
-  auto tablet_result = tablet_peer()->shared_tablet_safe();
-  // TODO(tablet_ptr) The operation needs to hold a refcount for the tablet.
-  // https://github.com/yugabyte/yugabyte-db/issues/14546
-  LOG_IF(DFATAL, !tablet_result.ok()) << "Tablet is not running: " << tablet_result.status();
-  operation->SetTablet(*tablet_result);
+Status CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) {
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  operation->SetTablet(tablet);
   tablet_peer()->Submit(std::move(operation), leader_term);
+  return Status::OK();
 }
 
 Status CatalogManager::AddNamespaceEntriesToPB(
@@ -7991,7 +7989,6 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
           cond->set_op(QLOperator::QL_OP_AND);
           QLAddStringCondition(
               cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream);
-          cdc_state_table.AddColumns({master::kCdcCheckpoint}, read_req);
           cdc_state_table.AddColumns({master::kCdcLastReplicationTime}, read_req);
           // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
           RETURN_NOT_OK(session->TEST_ReadSync(read_op));
@@ -8003,11 +8000,10 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
             break;
           }
 
-          const auto& checkpoint = row_block->row(0).column(0);
-          const auto& last_replicated_time = row_block->row(0).column(1);
+          const auto& last_replicated_time = row_block->row(0).column(0);
           // Check checkpoint to ensure that there has been a poll for this tablet, or if the
           // split has been reported.
-          if (checkpoint.ToString() == OpId::Min().ToString() || last_replicated_time.IsNull()) {
+          if (last_replicated_time.IsNull()) {
             // No poll yet, so do not delete the parent tablet for now.
             VLOG(2) << "The stream: " << stream
                     << ", has not started polling for the child tablet: " << child_tablet

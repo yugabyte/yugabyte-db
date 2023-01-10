@@ -20,7 +20,7 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>Kubernetes</a>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
   <li>
@@ -30,7 +30,7 @@ type: docs
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-solid fa-cubes"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
 </ul>

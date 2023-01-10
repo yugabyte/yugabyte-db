@@ -94,7 +94,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   VersionedTablePartitionListPtr GetVersionedPartitions() const;
   TablePartitionList GetPartitionsCopy() const;
   int32_t GetPartitionCount() const;
-  int32_t GetPartitionListVersion() const;
+  PartitionListVersion GetPartitionListVersion() const;
 
   // Indexes available on the table.
   const IndexMap& index_map() const;
@@ -161,7 +161,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 };
 
 size_t FindPartitionStartIndex(
-    const TablePartitionList& partitions, const PartitionKey& partition_key, size_t group_by = 1);
+    const TablePartitionList& partitions, std::string_view partition_key, size_t group_by = 1);
 
 PartitionKeyPtr FindPartitionStart(
     const VersionedTablePartitionListPtr& versioned_partitions, const PartitionKey& partition_key,

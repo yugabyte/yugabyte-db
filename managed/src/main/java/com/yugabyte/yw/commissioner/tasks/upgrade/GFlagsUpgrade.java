@@ -176,8 +176,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             },
             masterNodes,
             tServerNodes,
-            DEFAULT_CONTEXT,
-            taskParams().ybcInstalled);
+            DEFAULT_CONTEXT);
         break;
     }
   }

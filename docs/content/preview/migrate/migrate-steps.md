@@ -2,7 +2,6 @@
 title: Migration steps
 linkTitle: Migration steps
 description: Run the steps to ensure a successful migration.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: migrate-steps
@@ -14,6 +13,8 @@ type: docs
 This page describes the steps to perform and verify a successful migration to YugabyteDB. Before proceeding with migration, ensure that you have completed the following steps:
 
 - [Install yb-voyager](../install-yb-voyager/#install-yb-voyager).
+- Check the [unsupported features](../known-issues/#unsupported-features) and [known issues](../known-issues/#known-issues).
+- Review [data modeling](../yb-voyager-cli/#data-modeling) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 

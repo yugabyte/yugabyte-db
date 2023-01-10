@@ -54,6 +54,7 @@ struct SliceParts {
     }
     size_t size = SumSizes();
     buffer->reserve(size);
+    buffer->Truncate(size);
     uint8_t* dest = buffer->mutable_data();
     CopyAllTo(dest);
     return buffer->AsSlice();

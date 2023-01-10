@@ -37,7 +37,8 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
                    const boost::optional<int32_t> hash_code = boost::none,
                    const boost::optional<int32_t> max_hash_code = boost::none,
                    const DocKey& start_doc_key = DefaultStartDocKey(),
-                   bool is_forward_scan = true);
+                   bool is_forward_scan = true,
+                   const size_t prefix_length = 0);
 
   // Scan for the given hash key, a condition, and optional doc_key.
   //
@@ -56,7 +57,8 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
                    const DocKey& start_doc_key = DefaultStartDocKey(),
                    bool is_forward_scan = true,
                    const DocKey& lower_doc_key = DefaultStartDocKey(),
-                   const DocKey& upper_doc_key = DefaultStartDocKey());
+                   const DocKey& upper_doc_key = DefaultStartDocKey(),
+                   const size_t prefix_length = 0);
 
   //------------------------------------------------------------------------------------------------
   // Access funtions.
@@ -66,6 +68,10 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
 
   bool is_forward_scan() const {
     return is_forward_scan_;
+  }
+
+  const size_t prefix_length() const {
+    return prefix_length_;
   }
 
   //------------------------------------------------------------------------------------------------
@@ -160,6 +166,8 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
 
   // Scan behavior.
   bool is_forward_scan_;
+
+  size_t prefix_length_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(DocPgsqlScanSpec);
 };

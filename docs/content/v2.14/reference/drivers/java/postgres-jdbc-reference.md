@@ -77,7 +77,7 @@ Use the `DriverManager.getConnection` method to create a connection object to pe
 JDBC Connection String
 
 ```java
-jdbc://postgresql://hostname:port/database
+jdbc:postgresql://hostname:port/database
 ```
 
 Example JDBC URL for connecting to YugabyteDB can be seen below.

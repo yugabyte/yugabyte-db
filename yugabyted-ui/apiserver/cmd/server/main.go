@@ -1,25 +1,22 @@
 package main
 
 import (
-        "apiserver/cmd/server/handlers"
-        "apiserver/cmd/server/helpers"
-        "apiserver/cmd/server/logger"
-        "apiserver/cmd/server/templates"
-        "context"
-        "embed"
-        "fmt"
-        "io/fs"
-        "net/http"
-        "os"
-        "strconv"
-        "time"
+    "apiserver/cmd/server/handlers"
+    "apiserver/cmd/server/helpers"
+    "apiserver/cmd/server/logger"
+    "apiserver/cmd/server/templates"
+    "embed"
+    "io/fs"
+    "net/http"
+    "os"
+    "strconv"
+    "time"
 
-        "html/template"
+    "html/template"
 
-        "github.com/jackc/pgx/v4/pgxpool"
-        "github.com/labstack/echo/v4"
-        "github.com/labstack/echo/v4/middleware"
-        "github.com/yugabyte/gocql"
+    "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/labstack/echo/v4"
+    "github.com/labstack/echo/v4/middleware"
 )
 
 const serverPortEnv string = "YUGABYTED_UI_PORT"
@@ -78,62 +75,10 @@ func getStaticFiles() http.FileSystem {
         return http.FS(fsys)
 }
 
-func createGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
-
-        // Initialize gocql client
-        cluster := gocql.NewCluster(helpers.HOST)
-
-        if helpers.Secure {
-                cluster.Authenticator = gocql.PasswordAuthenticator{
-                        Username: helpers.DbYcqlUser,
-                        Password: helpers.DbPassword,
-                }
-                cluster.SslOpts = &gocql.SslOptions{
-                        CaPath: helpers.SslRootCert,
-                }
-        }
-
-        // Use the same timeout as the Java driver.
-        cluster.Timeout = 12 * time.Second
-
-        // Create the session.
-        log.Debugf("Initializing gocql client.")
-
-        return cluster
-}
-
-func createPgClient(log logger.Logger) *pgxpool.Pool {
-
-        var url string
-
-        url = fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
-                helpers.DbYsqlUser, helpers.DbPassword, helpers.HOST, helpers.PORT, helpers.DbName)
-        if helpers.Secure {
-                secureOptions := fmt.Sprintf("sslmode=%s", helpers.SslMode)
-                if helpers.SslRootCert != "" {
-                        secureOptions = fmt.Sprintf("%s&%s", secureOptions, helpers.SslRootCert)
-                }
-                url = fmt.Sprintf("%s?%s", url, secureOptions)
-        }
-
-        log.Debugf("Initializing pgx client.")
-        conn, err := pgxpool.Connect(context.Background(), url)
-
-        if err != nil {
-                log.Errorf("Error initializing the pgx client.")
-                log.Errorf(err.Error())
-        }
-        return conn
-}
-
 func main() {
 
         // Initialize logger
-        var log logger.Logger
-        var cluster *gocql.ClusterConfig
-        var pgxConn *pgxpool.Pool
-
-        log, _ = logger.NewSugaredLogger()
+        log, _ := logger.NewSugaredLogger()
         defer log.Cleanup()
         log.Infof("Logger initialized")
 
@@ -145,19 +90,43 @@ func main() {
 
         e := echo.New()
 
-        cluster = createGoCqlClient(log)
-        pgxConn = createPgClient(log)
+        cluster := helpers.CreateGoCqlClient(log)
+
+        // We keep a map of pgx connections since we need to
+        // connect to all nodes (sql) for slow_queries
+        pgxConnMap := map[string]*pgxpool.Pool{}
+
+        // We don't actually need a pgx connection at startup
+        // The only place we use pgx connection is in slow_queries
+        // where we need a connection to every node in the cluster.
+        // The connections will be made when a request to slow_queries
+        // is made.
+        // We can uncomment the code below if we ever need to make sql
+        // queries to one node more immediately, eg. on the overview page
+
+        // pgxConn, err := helpers.CreatePgClient(log, helpers.HOST)
+        // if err != nil {
+        //     // In case of failure, set to nil
+        //     // We will try to set up a connection again later
+        //     log.Errorf("Error initializing the pgx client.")
+        //     log.Errorf(err.Error())
+        //     pgxConn = nil
+        // } else {
+        //     pgxConnMap[helpers.HOST] = pgxConn
+        // }
 
         gocqlSession, err := cluster.CreateSession()
         if err != nil {
+                // In case of failure, set to nil
+                // We will try to set up a connection again later
                 log.Errorf("Error initializing the gocql session.")
                 log.Errorf(err.Error())
+                gocqlSession = nil
         }
-        defer gocqlSession.Close()
-        defer pgxConn.Close()
 
         //todo: handle the error!
-        c, _ := handlers.NewContainer(log, gocqlSession, pgxConn)
+        c, _ := handlers.NewContainer(log, cluster, gocqlSession, pgxConnMap)
+        defer c.Cleanup()
 
         // Middleware
         e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{

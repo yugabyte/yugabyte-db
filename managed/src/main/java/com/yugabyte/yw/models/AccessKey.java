@@ -148,6 +148,16 @@ public class AccessKey extends Model {
   }
 
   public KeyInfo getKeyInfo() {
+    try {
+      Provider provider = Provider.getOrBadRequest(getProviderUUID());
+      if (provider.details != null) {
+        keyInfo.mergeFrom(provider.details);
+      } else {
+        keyInfo.mergeFrom(new ProviderDetails());
+      }
+    } catch (PlatformServiceException e) {
+      // Pass
+    }
     return this.keyInfo;
   }
 
@@ -157,8 +167,9 @@ public class AccessKey extends Model {
   @ApiModelProperty(
       value = "Expiration date of key",
       required = false,
+      example = "2022-12-12T13:07:18Z",
       accessMode = AccessMode.READ_WRITE)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Getter
   public Date expirationDate;
 
@@ -177,8 +188,9 @@ public class AccessKey extends Model {
   @ApiModelProperty(
       value = "Creation date of key",
       required = false,
+      example = "2022-12-12T13:07:18Z",
       accessMode = AccessMode.READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Getter
   public Date creationDate;
 

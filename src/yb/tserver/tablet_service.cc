@@ -216,6 +216,9 @@ METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader
 
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
+DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
+                 "Skip aborting active transactions during schema change");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -867,7 +870,8 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
 
     // After write operation is paused, active transactions will be aborted for YSQL transactions.
     if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE &&
-        req->should_abort_active_txns()) {
+        req->should_abort_active_txns() &&
+        !FLAGS_TEST_skip_aborting_active_transactions_during_schema_change) {
       DCHECK(req->has_transaction_id());
       if (tablet.tablet->transaction_participant() == nullptr) {
         auto status = STATUS(

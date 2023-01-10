@@ -71,16 +71,16 @@ void PTBcall::CollectReferencedIndexColnames(MCSet<string> *col_names) const {
 }
 
 string PTBcall::QLName(QLNameOption option) const {
-  string arg_names;
-  string keyspace;
-
   // cql_cast() is displayed as "cast(<col> as <type>)".
   if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
     CHECK_GE(args_->size(), 2);
     const string column_name = args_->element(0)->QLName(option);
-    const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type);
+    const auto& type = QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type);
     return strings::Substitute("cast($0 as $1)", column_name, type);
   }
+
+  string arg_names;
+  string keyspace;
 
   for (auto arg : args_->node_list()) {
     if (!arg_names.empty()) {
@@ -307,7 +307,7 @@ Status PTBcall::Analyze(SemContext *sem_context) {
       // Check if constant folding is possible between the two datatype.
       SemState arg_state(sem_context,
                          QLType::Create(formal_types[pindex]),
-                         YBColumnSchema::ToInternalDataType(QLType::Create(formal_types[pindex])),
+                         YBColumnSchema::ToInternalDataType(formal_types[pindex]),
                          sem_context->bindvar_name());
 
       RETURN_NOT_OK(expr->Analyze(sem_context));
@@ -366,7 +366,7 @@ Status PTBcall::CheckOperator(SemContext *sem_context) {
   if (sem_context->processing_set_clause() && sem_context->lhs_col() != nullptr) {
     if (sem_context->lhs_col()->ql_type()->IsCollection()) {
       // Only increment ("+") and decrement ("-") operators are allowed for collections.
-      const string type_name = QLType::ToCQLString(sem_context->lhs_col()->ql_type()->main());
+      const auto& type_name = QLType::ToCQLString(sem_context->lhs_col()->ql_type()->main());
       if (*name_ == "+" || *name_ == "-") {
         if (args_->element(0)->opcode() == TreeNodeOpcode::kPTRef) {
           name_->insert(0, type_name.c_str());
@@ -497,8 +497,8 @@ Status PTToken::Analyze(SemContext *sem_context) {
           ErrorCode::CQL_STATEMENT_INVALID);
     }
     SemState sem_state(sem_context);
-    sem_state.SetExprState(schema.Column(index).type(),
-                           YBColumnSchema::ToInternalDataType(schema.Column(index).type()));
+    auto type = schema.Column(index).type();
+    sem_state.SetExprState(type, YBColumnSchema::ToInternalDataType(type));
     if (arg->expr_op() == ExprOperator::kBindVar) {
       sem_state.set_bindvar_name(PTBindVar::bcall_arg_bindvar_name(func_name(), index));
     }

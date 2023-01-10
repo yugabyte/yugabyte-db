@@ -303,7 +303,7 @@ if (1) \
 
 static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
 
-int yb_default_copy_from_rows_per_transaction = 0;
+int yb_default_copy_from_rows_per_transaction = DEFAULT_BATCH_ROWS_PER_TRANSACTION;
 
 /* non-export function prototypes */
 static CopyState BeginCopy(ParseState *pstate, bool is_from, Relation rel,
@@ -2459,17 +2459,11 @@ CopyFrom(CopyState cstate)
 
 	/*
 	 * If the batch size is not explicitly set in the query by the user,
-	 * use the session variable value. We have different defaults depending
-	 * on whether the table is colocated or not (#15362).
+	 * use the session variable value.
 	 */
 	if (cstate->batch_size < 0)
 	{
-		int batch_size = yb_default_copy_from_rows_per_transaction;
-		if (batch_size == 0)
-			batch_size = YbGetTableProperties(cstate->rel)->is_colocated
-				? DEFAULT_BATCH_ROWS_PER_TRANSACTION_FOR_COLOCATED_TABLE
-				: DEFAULT_BATCH_ROWS_PER_TRANSACTION;
-		cstate->batch_size = batch_size;
+		cstate->batch_size = yb_default_copy_from_rows_per_transaction;
 	}
 
 #define MAX_BUFFERED_TUPLES 1000

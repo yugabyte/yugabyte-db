@@ -17,6 +17,11 @@
           "name": "regular_tablets_data_block_key_value_encoding",
           "class": 3,
           "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_expression_pushdown",
+          "class": 1,
+          "is_runtime": true
         }
       ]
     },
@@ -31,6 +36,11 @@
         {
           "name": "regular_tablets_data_block_key_value_encoding",
           "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_expression_pushdown",
+          "class": 1,
           "is_runtime": true
         }
       ]
