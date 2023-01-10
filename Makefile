@@ -8,7 +8,7 @@ MODULES = pg_hint_plan
 HINTPLANVER = 1.5
 
 REGRESS = init base_plan pg_hint_plan ut-init ut-A ut-S ut-J ut-L ut-G ut-R \
-	ut-fdw ut-W ut-T ut-fini hints_anywhere oldextversions
+	ut-fdw ut-W ut-T ut-fini hints_anywhere plpgsql oldextversions
 REGRESS_OPTS = --encoding=UTF8
 
 EXTENSION = pg_hint_plan

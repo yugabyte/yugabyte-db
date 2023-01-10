@@ -4884,7 +4884,13 @@ pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 static void
 pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	plpgsql_recurse_level--;
+
+	/*
+	 * If we come here, we should have gone through the statement begin
+	 * callback at least once.
+	 */
+	if (plpgsql_recurse_level > 0)
+		plpgsql_recurse_level--;
 }
 
 void plpgsql_query_erase_callback(ResourceReleasePhase phase,
@@ -4892,10 +4898,24 @@ void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 								  bool isTopLevel,
 								  void *arg)
 {
-	if (!isTopLevel || phase != RESOURCE_RELEASE_AFTER_LOCKS)
+	/* Cleanup is just applied once all the locks are released */
+	if (phase != RESOURCE_RELEASE_AFTER_LOCKS)
 		return;
-	/* Cancel plpgsql nest level*/
-	plpgsql_recurse_level = 0;
+
+	if (isTopLevel)
+	{
+		/* Cancel recurse level */
+		plpgsql_recurse_level = 0;
+	}
+	else if (plpgsql_recurse_level > 0)
+	{
+		/*
+		 * This applies when a transaction is aborted for a PL/pgSQL query,
+		 * like when a transaction triggers an exception, or for an internal
+		 * commit.
+		 */
+		plpgsql_recurse_level--;
+	}
 }
 
 
