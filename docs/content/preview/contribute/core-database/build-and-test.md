@@ -28,7 +28,7 @@ In general, they come down to these components:
   - Java tests
 
 `yb_build.sh -h` lists many options.
-Here are some of the common options to pay attention to.
+What follows are some of the common options to pay attention to.
 
 ## Build
 
