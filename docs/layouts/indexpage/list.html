@@ -22,13 +22,6 @@
         <h1>{{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}{{ if .Params.beta }}<a class="tag-beta" href="{{ .Params.beta }}">Beta</a>{{ end }}</h1>
         {{ with .Params.headcontent }}<div class="lead">{{ . | markdownify }}</div>{{ end }}
       </div>
-      {{ if and .Site.Params.versions (not .Params.unversioned) }}
-      <ul class="navbar-nav mt-2 mt-lg-0">
-        <li class="nav-item dropdown mr-4 d-none d-lg-block">
-          {{ partial "navbar-version-selector.html" . }}
-        </li>
-      </ul>
-      {{ end }}
     </div>
   </div>
   {{ partial "contribute_list" . }}
