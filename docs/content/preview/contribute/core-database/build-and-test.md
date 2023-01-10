@@ -206,7 +206,7 @@ The general hierarchy of flags is as follows:
 
 1. test framework: the framework may specify some default flags
 1. test superclass: any parent classes of the test class can set flags
-1. test subclass: child classes' flags should take precedence over parent classes
+1. test subclass: child classes' flags should take precedence over parent classes'
 1. test: a test itself may set flags
 1. user: the user running the test could add flags
 
