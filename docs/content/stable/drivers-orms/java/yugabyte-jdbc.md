@@ -113,7 +113,7 @@ The following table describes the connection parameters required to connect, inc
 The following is an example JDBC URL for connecting to YugabyteDB.
 
 ```sh
-jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
 

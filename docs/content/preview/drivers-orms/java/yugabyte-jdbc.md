@@ -103,17 +103,17 @@ implementation 'com.zaxxer:HikariCP:4.0.3'
 
 ### Step 2: Set up the database connection
 
-After setting up the dependencies, implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
+After setting up the dependencies, implement the Java client application using the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run queries on the sample data.
 
-Set up the driver properties to configure the credentials and SSL Certificates for connecting to your cluster. Java Apps can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. All the JDBC interfaces required for working with YugabyteDB database are part of `java.sql.*` package.
+Set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster. Java applications can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. All the JDBC interfaces required for working with YugabyteDB database are part of the `java.sql.*` package.
 
-Use the `DriverManager.getConnection` method for getting connection object for the YugabyteDB database, which can be used for performing DDLs and DMLs against the database.
+Use the `DriverManager.getConnection` method to obtain the connection object for the YugabyteDB database, which can then be used to perform DDL and DML operations against the database.
 
 The following table describes the connection parameters required to connect, including [smart driver parameters](../../smart-drivers/) for uniform and topology load balancing.
 
 | JDBC Parameter | Description | Default |
 | :------------- | :---------- | :------ |
-| hostname  | Hostname of the YugabyteDB instance | localhost
+| hostname  | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
 | port |  Listen port for YSQL | 5433
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
@@ -121,12 +121,25 @@ The following table describes the connection parameters required to connect, inc
 | `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
 | `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
-The following is an example JDBC URL for connecting to YugabyteDB.
+The following is an example JDBC URL for connecting to YugabyteDB:
 
 ```sh
-jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
+
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+
+#### Use multiple addresses
+
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Delimit the addresses using commas, as follows:
+
+```sh
+jdbc://yugabytedb://hostname1:port,hostname2:port,hostname3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+    topology-keys=cloud.region.zone1,cloud.region.zone2
+```
+
+The hosts are only used during the initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
 
 #### Use SSL
 
