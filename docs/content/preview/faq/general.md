@@ -3,6 +3,7 @@ title: FAQs about YugabyteDB
 headerTitle: General FAQ
 linkTitle: General FAQ
 description: Answers to common questions about YugabyteDB.
+headcontent: Answers to common questions about YugabyteDB
 aliases:
   - /preview/faq/product/
   - /preview/introduction/overview/
@@ -15,7 +16,7 @@ menu:
   preview_faq:
     identifier: faq-general
     parent: faq
-    weight: 2720
+    weight: 10
 type: docs
 rightNav:
   hideH3: true
@@ -28,26 +29,22 @@ rightNav:
 
 - [What is YugabyteDB?](#what-is-yugabytedb)
 - [What makes YugabyteDB unique?](#what-makes-yugabytedb-unique)
-- [What are the trade-offs involved in using YugabyteDB?](#what-are-the-trade-offs-involved-in-using-yugabytedb)
-- [When is YugabyteDB a good fit?](#when-is-yugabytedb-a-good-fit)
-- [When is YugabyteDB not a good fit?](#when-is-yugabytedb-not-a-good-fit)
 - [How many major releases YugabyteDB has had so far?](#how-many-major-releases-yugabytedb-has-had-so-far)
+- [Is YugabyteDB open source?](#is-yugabytedb-open-source)
 - [Can I deploy YugabyteDB to production?](#can-i-deploy-yugabytedb-to-production)
 - [Which companies are currently using YugabyteDB in production?](#which-companies-are-currently-using-yugabytedb-in-production)
 - [What is the definition of the "Beta" feature tag?](#what-is-the-definition-of-the-beta-feature-tag)
+- [How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Managed differ from each other?](#how-do-yugabytedb-yugabytedb-anywhere-and-yugabytedb-managed-differ-from-each-other)
+- [How do I report a security vulnerability?](#how-do-i-report-a-security-vulnerability)
+
+##### Evaluating YugabyteDB
+
+- [What are the trade-offs involved in using YugabyteDB?](#what-are-the-trade-offs-involved-in-using-yugabytedb)
+- [When is YugabyteDB a good fit?](#when-is-yugabytedb-a-good-fit)
+- [When is YugabyteDB not a good fit?](#when-is-yugabytedb-not-a-good-fit)
 - [Any performance benchmarks available?](#any-performance-benchmarks-available)
 - [What about correctness testing?](#what-about-correctness-testing)
-- [Is YugabyteDB open source?](#is-yugabytedb-open-source)
-- [How do I report a security vulnerability?](#how-do-i-report-a-security-vulnerability)
-- [How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Managed differ from each other?](#how-do-yugabytedb-yugabytedb-anywhere-and-yugabytedb-managed-differ-from-each-other)
 - [How does YugabyteDB compare to other SQL and NoSQL databases?](#how-does-yugabytedb-compare-to-other-sql-and-nosql-databases)
-
-##### APIs
-
-- [What client APIs are supported by YugabyteDB?](#what-client-apis-are-supported-by-yugabytedb)
-- [When should I pick YCQL over YSQL?](#when-should-i-pick-ycql-over-ysql)
-- [What is the difference between ysqlsh and psql?](#what-is-the-difference-between-ysqlsh-and-psql)
-- [What is the status of the YEDIS API?](#what-is-the-status-of-the-yedis-api)
 
 ##### Architecture
 
@@ -111,6 +108,67 @@ YugabyteDB feature highlights are listed below.
 #### Built-in enterprise features
 
 - Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/docdb-replication/change-data-capture/) and [2 Data Center Deployments](../../architecture/docdb-replication/async-replication/) are also included in open source.
+
+### How many major releases YugabyteDB has had so far?
+
+YugabyteDB has had the following major (stable) releases:
+
+- [v2.16]() in December 2022
+- [v2.14](https://blog.yugabyte.com/announcing-yugabytedb-2-14-higher-performance-and-security/) in July 2022.
+- [v2.12](https://blog.yugabyte.com/announcing-yugabytedb-2-12/) in February 2022. (There was no v2.10 release.)
+- [v2.8](https://blog.yugabyte.com/announcing-yugabytedb-2-8/) in November 2021.
+- [v2.6](https://blog.yugabyte.com/announcing-yugabytedb-2-6/) in July 2021.
+- [v2.4](https://blog.yugabyte.com/announcing-yugabytedb-2-4/) in January 2021.
+- [v2.2](https://blog.yugabyte.com/announcing-yugabytedb-2-2-distributed-sql-made-easy/) in July 2020.
+- [v2.1](https://blog.yugabyte.com/yugabytedb-2-1-is-ga-scaling-new-heights-with-distributed-sql/) in February 2020.
+- [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/ ) in September 2019.
+- [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019.
+- [v1.2](https://blog.yugabyte.com/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019.
+- [v1.1](https://blog.yugabyte.com/announcing-yugabyte-db-1-1-and-company-update/) in September 2018.
+- [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
+- [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
+
+Releases, including upcoming releases, are outlined on the [Releases Overview](/preview/releases/) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
+
+### Is YugabyteDB open source?
+
+Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
+
+### Can I deploy YugabyteDB to production?
+
+Yes, both YugabyteDB APIs are production ready. [YCQL](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) achieved this status starting with v1.0 in May 2018 while [YSQL](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) became production ready starting v2.0 in September 2019.
+
+### Which companies are currently using YugabyteDB in production?
+
+Reference deployments are listed in [Success Stories](https://www.yugabyte.com/success-stories/).
+
+### What is the definition of the "Beta" feature tag?
+
+Some features are marked Beta in every release. Following are the points to consider:
+
+- Code is well tested. Enabling the feature is considered safe. Some of these features enabled by default.
+
+- Support for the overall feature will not be dropped, though details may change in incompatible ways in a subsequent beta or GA release.
+
+- Recommended only for non-production use.
+
+Please do try our beta features and give feedback on them on our [Slack community]({{<slack-invite>}}) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
+
+### How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Managed differ from each other?
+
+[YugabyteDB](../../) is the 100% open source core database. It is the best choice for the startup organizations with strong technical operations expertise looking to deploy to production with traditional DevOps tools.
+
+[YugabyteDB Anywhere](../../yugabyte-platform/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options, and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
+
+[YugabyteDB Managed](../../yugabyte-cloud/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
+
+For a more detailed comparison between the above, see [Compare Products](https://www.yugabyte.com/compare-products/).
+
+### How do I report a security vulnerability?
+
+Please follow the steps in the [vulnerability disclosure policy](../../secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
+
+## Evaluating YugabyteDB
 
 ### What are the trade-offs involved in using YugabyteDB?
 
@@ -214,47 +272,6 @@ See some success stories at [yugabyte.com](https://www.yugabyte.com/success-stor
 
 YugabyteDB is not a good fit for traditional Online Analytical Processing (OLAP) use cases that need complete ad-hoc analytics. Use an OLAP store such as [Druid](http://druid.io/druid.html) or a data warehouse such as [Snowflake](https://www.snowflake.net/).
 
-### How many major releases YugabyteDB has had so far?
-
-YugabyteDB has had the following major (stable) releases:
-
-- [v2.16]() in December 2022
-- [v2.14](https://blog.yugabyte.com/announcing-yugabytedb-2-14-higher-performance-and-security/) in July 2022.
-- [v2.12](https://blog.yugabyte.com/announcing-yugabytedb-2-12/) in February 2022. (There was no v2.10 release.)
-- [v2.8](https://blog.yugabyte.com/announcing-yugabytedb-2-8/) in November 2021.
-- [v2.6](https://blog.yugabyte.com/announcing-yugabytedb-2-6/) in July 2021.
-- [v2.4](https://blog.yugabyte.com/announcing-yugabytedb-2-4/) in January 2021.
-- [v2.2](https://blog.yugabyte.com/announcing-yugabytedb-2-2-distributed-sql-made-easy/) in July 2020.
-- [v2.1](https://blog.yugabyte.com/yugabytedb-2-1-is-ga-scaling-new-heights-with-distributed-sql/) in February 2020.
-- [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/ ) in September 2019.
-- [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019.
-- [v1.2](https://blog.yugabyte.com/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019.
-- [v1.1](https://blog.yugabyte.com/announcing-yugabyte-db-1-1-and-company-update/) in September 2018.
-- [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
-- [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
-
-Releases, including upcoming releases, are outlined on the [Releases Overview](/preview/releases/) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
-
-### Can I deploy YugabyteDB to production?
-
-Yes, both YugabyteDB APIs are production ready. [YCQL](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) achieved this status starting with v1.0 in May 2018 while [YSQL](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) became production ready starting v2.0 in September 2019.
-
-### Which companies are currently using YugabyteDB in production?
-
-Reference deployments are listed in [Success Stories](https://www.yugabyte.com/success-stories/).
-
-### What is the definition of the "Beta" feature tag?
-
-Some features are marked Beta in every release. Following are the points to consider:
-
-- Code is well tested. Enabling the feature is considered safe. Some of these features enabled by default.
-
-- Support for the overall feature will not be dropped, though details may change in incompatible ways in a subsequent beta or GA release.
-
-- Recommended only for non-production use.
-
-Please do try our beta features and give feedback on them on our [Slack community]({{<slack-invite>}}) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
-
 ### Any performance benchmarks available?
 
 [Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked the Yugabyte Cloud QL (YCQL) API against standard Apache Cassandra using YCSB. YugabyteDB outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations.
@@ -267,24 +284,6 @@ Details for both the above benchmarks are published in [Building a Strongly Cons
 
 [Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/).
 
-### Is YugabyteDB open source?
-
-Starting with [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
-
-### How do I report a security vulnerability?
-
-Please follow the steps in the [vulnerability disclosure policy](../../secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
-
-### How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Managed differ from each other?
-
-[YugabyteDB](../../) is the 100% open source core database. It is the best choice for the startup organizations with strong technical operations expertise looking to deploy to production with traditional DevOps tools.
-
-[YugabyteDB Anywhere](../../yugabyte-platform/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
-
-[YugabyteDB Managed](../../yugabyte-cloud/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
-
-For a more detailed comparison between the above, see [Compare Products](https://www.yugabyte.com/compare-products/).
-
 ### How does YugabyteDB compare to other SQL and NoSQL databases?
 
 See [Compare YugabyteDB to other databases](../comparisons/)
@@ -293,49 +292,6 @@ See [Compare YugabyteDB to other databases](../comparisons/)
 - [Google Cloud Spanner](../comparisons/google-spanner/)
 - [MongoDB](../comparisons/mongodb/)
 - [CockroachDB](../comparisons/cockroachdb/)
-
-## APIs
-
-### What client APIs are supported by YugabyteDB?
-
-YugabyteDB supports two flavors of distributed SQL.
-
-#### Yugabyte SQL (YSQL)
-
-[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../../quick-start/explore/ysql/).
-
-#### Yugabyte Cloud QL (YCQL)
-
-[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../../api/ycql/quick-start/).
-
-{{< note title="Note" >}}
-
-The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../integrations/presto/) can help for basic cases).
-
-**The net impact is that you need to select an API first before undertaking detailed database schema/query design and implementation.**
-
-{{< /note >}}
-
-### When should I pick YCQL over YSQL?
-
-You should pick YCQL over YSQL if your application:
-
-- Does not require fully-relational data modeling constructs, such as foreign keys and JOINs. Note that strongly-consistent secondary indexes and unique constraints are supported by YCQL.
-- Needs to serve low-latency (sub-millisecond) queries.
-- Needs TTL-driven automatic data expiration.
-- Needs to integrate with stream processors, such as Apache Spark and KSQL.
-
-If you have a specific use case in mind, share it in our [Slack community]({{<slack-invite>}}) and the community can help you decide the best approach.
-
-### What is the difference between ysqlsh and psql?
-
-The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but uses different default values for some variables (for example, the default user, default database, and the path to TLS certificates). This is done for the user's convenience. In the Yugabyte `bin` directory, the deprecated `psql` alias opens the `ysqlsh` CLI. For more details, see [ysqlsh](../../admin/ysqlsh/).
-
-### What is the status of the YEDIS API?
-
-In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/).
-
-For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with the notion of keyspaces, tables, role-based access control, and more) is often a great fit, especially if the application is new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups, and more), correctness testing (using Jepsen), and performance optimization is in the YSQL and YCQL areas.
 
 ## Architecture
 

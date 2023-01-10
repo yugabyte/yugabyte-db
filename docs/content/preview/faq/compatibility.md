@@ -1,8 +1,9 @@
 ---
 title: FAQs about YugabyteDB API compatibility
-headerTitle: API compatibility FAQ
-linkTitle: API compatibility FAQ
-description: Answers to common questions about YugabyteDB API compatibility.
+headerTitle: API FAQ
+linkTitle: API FAQ
+description: Answers to common questions about YugabyteDB APIs and compatibility.
+headcontent: Answers to common questions about YugabyteDB APIs and compatibility
 aliases:
   - /faq/cassandra/
   - /preview/faq/cassandra/
@@ -10,7 +11,7 @@ menu:
   preview_faq:
     identifier: faq-api-compatibility
     parent: faq
-    weight: 2730
+    weight: 20
 type: docs
 rightNav:
   hideH3: true
@@ -21,7 +22,14 @@ rightNav:
 
 ##### General
 
-- [What does API compatibility exactly mean?](#what-does-api-compatibility-exactly-mean)
+- [What client APIs are supported by YugabyteDB?](#what-client-apis-are-supported-by-yugabytedb)
+- [When should I pick YCQL over YSQL?](#when-should-i-pick-ycql-over-ysql)
+- [What is the difference between ysqlsh and psql?](#what-is-the-difference-between-ysqlsh-and-psql)
+- [What is the status of the YEDIS API?](#what-is-the-status-of-the-yedis-api)
+
+##### API compatibility
+
+- [What does API compatibility mean exactly?](#what-does-api-compatibility-mean-exactly)
 - [Why are YugabyteDB APIs compatible with popular DB languages?](#why-are-yugabytedb-apis-compatible-with-popular-db-languages)
 
 ##### YSQL compatibility with PostgreSQL
@@ -41,7 +49,50 @@ rightNav:
 
 ## General
 
-### What does API compatibility exactly mean?
+### What client APIs are supported by YugabyteDB?
+
+YugabyteDB supports two flavors of distributed SQL.
+
+#### Yugabyte SQL (YSQL)
+
+[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../../quick-start/explore/ysql/).
+
+#### Yugabyte Cloud QL (YCQL)
+
+[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. Get started by [exploring YCQL features](../../api/ycql/quick-start/).
+
+{{< note title="Note" >}}
+
+The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../integrations/presto/) can help for basic cases).
+
+**The net impact is that you need to select an API first before undertaking detailed database schema/query design and implementation.**
+
+{{< /note >}}
+
+### When should I pick YCQL over YSQL?
+
+You should pick YCQL over YSQL if your application:
+
+- Does not require fully-relational data modeling constructs, such as foreign keys and JOINs. Note that strongly-consistent secondary indexes and unique constraints are supported by YCQL.
+- Needs to serve low-latency (sub-millisecond) queries.
+- Needs TTL-driven automatic data expiration.
+- Needs to integrate with stream processors, such as Apache Spark and KSQL.
+
+If you have a specific use case in mind, share it in our [Slack community]({{<slack-invite>}}) and the community can help you decide the best approach.
+
+### What is the difference between ysqlsh and psql?
+
+The YSQL shell (`ysqlsh`) is functionally similar to PostgreSQL's `psql` , but uses different default values for some variables (for example, the default user, default database, and the path to TLS certificates). This is done for the user's convenience. In the Yugabyte `bin` directory, the deprecated `psql` alias opens the `ysqlsh` CLI. For more details, see [ysqlsh](../../admin/ysqlsh/).
+
+### What is the status of the YEDIS API?
+
+In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/).
+
+For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with the notion of keyspaces, tables, role-based access control, and more) is often a great fit, especially if the application is new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups, and more), correctness testing (using Jepsen), and performance optimization is in the YSQL and YCQL areas.
+
+## API compatibility
+
+### What does API compatibility mean exactly?
 
 API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Because [client drivers](../../drivers-orms/), [command line shells](../../admin/), [IDE integrations](../../tools/), and other [ecosystem integrations](../../integrations/) of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
 

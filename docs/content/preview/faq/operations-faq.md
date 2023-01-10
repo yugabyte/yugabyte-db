@@ -7,7 +7,7 @@ menu:
   preview_faq:
     identifier: faq-operations
     parent: faq
-    weight: 2720
+    weight: 30
 type: docs
 showRightNav: false
 ---
