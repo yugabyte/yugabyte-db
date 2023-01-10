@@ -1,6 +1,6 @@
 @import "./_yb_headings.scss";
 @import "./_yb_bullets-and-number-list.scss";
-@import "./_version_dropdown.scss";
+@import "./_dropdown_list.scss";
 @import "./_contribute_list.scss";
 @import "./_admonition.scss";
 @import "./_code_block.scss";
@@ -401,7 +401,7 @@ body:not(.td-home) .td-main main {
 }
 
 @media (max-width: 767px) {
-  .main-heading-with-version {
+  .td-content .main-heading-with-version {
     display: flex;
     align-items: flex-start;
     justify-content: flex-start;
