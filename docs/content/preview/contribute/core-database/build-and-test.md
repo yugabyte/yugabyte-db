@@ -50,7 +50,7 @@ It should be run in case the initial system catalog in the source code is differ
 
 CMake is used.
 
-If there are any changes to CMake files since the last build, the next incremental build may throw a compilation error such as
+If there are any changes to CMake files since the last build, the next incremental build may throw a build error such as
 
 ```
 FAILED: build.ninja
