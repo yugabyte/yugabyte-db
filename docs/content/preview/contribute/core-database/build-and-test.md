@@ -201,3 +201,52 @@ The files in `results` are compared with those in `expected` to determine pass/f
      - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
 
 {{< /tip >}}
+
+### Test flags
+
+The general hierarchy of flags is as follows:
+
+1. test framework: the framework may specify some default flags
+1. test superclass: any parent classes of the test class can set flags
+1. test subclass: child classes' flags should take precedence over parent classes
+1. test: a test itself may set flags
+1. user: the user running the test could add flags
+
+There may be some areas where the order of precedence is not followed: help fixing this is welcome.
+
+Here are some ways the user may specify flags to tests (capitals are environment variables):
+
+- `YB_EXTRA_DAEMON_FLAGS`, `--extra-daemon-flags`, `--extra-daemon-args`: pass flags to master and tserver processes.
+  (This does not work on mini cluster.)
+- `YB_EXTRA_MASTER_FLAGS`: pass flags to master processes.
+  (Does not work on mini cluster.)
+- `YB_EXTRA_TSERVER_FLAGS`: pass flags to tserver processes.
+  (Does not work on mini cluster.)
+- `--test-args`: for C++ tests, pass flags to the test process.
+  (For mini cluster, it also affects masters/tservers since they share the same process.)
+- `YB_EXTRA_MVN_OPTIONS_IN_TESTS`, `--java-test-args`: for Java tests, pass flags in the form of Maven system parameters.
+
+Here are some examples:
+
+```bash
+YB_EXTRA_DAEMON_FLAGS="--log_ysql_catalog_versions=true" \
+  YB_EXTRA_MASTER_FLAGS="--vmodule=master_heartbeat_service=2" \
+  YB_EXTRA_TSERVER_FLAGS="--vmodule=heartbeater=2" \
+  ./yb_build.sh \
+  --cxx-test pgwrapper_pg_libpq-test \
+  --gtest_filter PgLibPqTest.DBCatalogVersion
+```
+
+```bash
+./yb_build.sh \
+  --cxx-test integration-tests_master_failover-itest \
+  --gtest_filter MasterFailoverTest.DereferenceTasks \
+  --test-args "--vmodule=master_failover-itest=1,catalog_manager=4"
+```
+
+```bash
+export YB_EXTRA_MVN_OPTIONS_IN_TESTS="-Dstyle.color=always"
+./yb_build.sh \
+  --java-test TestPgRegressPgMisc \
+  --java-test-args "-Dyb.javatest.keepdata=true"
+```
