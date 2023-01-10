@@ -14,8 +14,6 @@ type: docs
 ---
 
 
-# `yb_build.sh`
-
 `yb_build.sh` is one bash script for both building and testing.
 Some flags can turn off certain parts of build, and other flags can decide which tests to run.
 In general, they come down to these components:
