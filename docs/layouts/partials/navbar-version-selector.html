@@ -1,9 +1,8 @@
 {{ $versionName := .Site.Params.version_menu }}
+{{ $pagePermalink := .Page.RelPermalink }}
 <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-  {{ $currentVersion := $.Scratch.Get "docVersion" }}
   {{ range .Site.Params.versions }}
-    {{ $url := replace .url "/" "" }}
-    {{ if eq $url $currentVersion }}
+    {{ if hasPrefix $pagePermalink .url }}
       {{ $versionName = .version }}
       {{- if in .version "(Preview)" -}}
         {{ $versionName = replace .version "(Preview)" "<span class='metadata-tag-gray'>Preview</span>" }}
