@@ -373,9 +373,12 @@ body:not(.td-home) .td-main main {
 
   .main-heading-with-version {
     margin-top: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 
-    @media (max-width: 991px) {
-      margin-top: 0;
+    @media (min-width: 991px) {
+      margin: 20px 0;
     }
   }
 }
