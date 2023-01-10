@@ -4429,7 +4429,8 @@ TEST_F(
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   LOG(INFO) << "The tablet split error is now communicated to the client.";
 
-  auto get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
+  auto get_tablets_resp =
+      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
 
   // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
@@ -4668,7 +4669,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
 
   // We are calling: "GetTabletListToPollForCDC" when the client has streamed all the data from the
   // parent tablet.
-  get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
+  get_tablets_resp =
+      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
 
   // We should only see the entries for the 2 child tablets, which were created after the first
   // tablet split.

@@ -6736,7 +6736,6 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
           cond->set_op(QLOperator::QL_OP_AND);
           QLAddStringCondition(
               cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream);
-          cdc_state_table.AddColumns({master::kCdcCheckpoint}, read_req);
           cdc_state_table.AddColumns({master::kCdcLastReplicationTime}, read_req);
           // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
           RETURN_NOT_OK(session->TEST_ReadSync(read_op));
@@ -6748,11 +6747,10 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
             break;
           }
 
-          const auto& checkpoint = row_block->row(0).column(0);
-          const auto& last_replicated_time = row_block->row(0).column(1);
+          const auto& last_replicated_time = row_block->row(0).column(0);
           // Check checkpoint to ensure that there has been a poll for this tablet, or if the
           // split has been reported.
-          if (checkpoint.ToString() == OpId::Min().ToString() || last_replicated_time.IsNull()) {
+          if (last_replicated_time.IsNull()) {
             // No poll yet, so do not delete the parent tablet for now.
             VLOG(2) << "The stream: " << stream
                     << ", has not started polling for the child tablet: " << child_tablet
