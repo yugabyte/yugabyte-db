@@ -52,6 +52,14 @@ It should be run in case the initial system catalog in the source code is differ
 
 CMake is used.
 
+If there are any changes to CMake files since the last build, the next incremental build may throw a compilation error such as
+
+```
+FAILED: build.ninja
+```
+
+In that case, run the build with `--force-run-cmake`/`--frcm`.
+
 ### Build tool
 
 By default, `ninja` is used, but `make` is also supported.
@@ -76,6 +84,11 @@ By default, `clang` is used, but `gcc` is also supported.
 It can be specified using the `--gcc<version_number>` and `--clang<version_number>` flags.
 For example, `--gcc11` or `--clang15`.
 The specific versions supported can be found in `./build-support/third-party-archives.yml`, which details the configurations regularly tested in-house.
+
+### Thirdparty
+
+By default, thirdparty libraries are prebuilt into archives, and those archives are downloaded to be used during build.
+Incremental builds currently do not detect when the thirdparty archive URL has been updated, so when that happens, you should manually run a `--clean` build to use the new thirdparty.
 
 ## Test
 
