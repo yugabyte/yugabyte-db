@@ -32,7 +32,7 @@ In general, they come down to these components:
 
 ## Build
 
-### Items
+### Targets
 
 By default, all items are built.
 A target can be specified to narrow down what to build.
@@ -50,7 +50,7 @@ It should be run in case the initial system catalog in the source code is differ
 
 ### Build generator
 
-Cmake is used
+CMake is used.
 
 ### Build tool
 
