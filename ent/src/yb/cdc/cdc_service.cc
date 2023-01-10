@@ -4045,26 +4045,8 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTab
       impl_->AddEntriesForChildrenTabletsOnSplitOp(info, children_tablets, children_op_id),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   VLOG(1) << "Added entries for children tablets: " << children_tablets[0]->tablet_id() << " and "
-          << children_tablets[1]->tablet_id()
+          << children_tablets[1]->tablet_id() << ", of parent tablet: " << info.tablet_id
           << ", to 'cdc_state_metadata_' and 'tablet_checkpoints_'";
-
-  // Update the entries for the children tablets to 'cdc_state' table.
-  auto session = client()->NewSession();
-  for (auto const& child_tablet : children_tablets) {
-    ProducerTabletInfo child_info;
-    child_info.tablet_id = child_tablet->tablet_id();
-    child_info.stream_id = info.stream_id;
-
-    RETURN_NOT_OK_SET_CODE(
-        UpdateCheckpointAndActiveTime(
-            child_info, children_op_id, children_op_id, session, GetCurrentTimeMicros(),
-            CDCRequestSource::CDCSDK, true),
-        CDCError(CDCErrorPB::INTERNAL_ERROR));
-  }
-
-  VLOG(1) << "Updated entries active time, and safe time for children tablets: "
-          << children_tablets[0]->tablet_id() << " and " << children_tablets[1]->tablet_id()
-          << ", in 'cdc_state' table";
 
   return Status::OK();
 }
