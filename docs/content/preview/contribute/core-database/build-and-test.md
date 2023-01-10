@@ -149,6 +149,17 @@ To run a specific Java sub-test within a test file use the # syntax, for example
 
 `--scb` and `--sj` are recommended in case the C++ and Java code was already built beforehand.
 
+### Run tests multiple times
+
+`yb_build.sh` has a built-in capability of running tests multiple times with parallelism.
+
+- `--num_repetitions`/`-n`: number of times to run the test(s)
+- `--test-parallelism`/`--tp`: number of instances of the test to run in parallel
+
+Note that a high parallelism could result in failures if system resources are overused.
+
+### Test frameworks
+
 #### YSQL Java tests
 
 YSQL java tests are in `java/yb-pgsql/src/test/java/org/yb/pgsql/`.  They can be run as:
@@ -178,12 +189,3 @@ Note the `build/latest/postgres_build` prefix.  The source files (`src/postgres/
      Schedules `parallel_schedule` and `serial_schedule` should be untouched as they are from original PostgreSQL code.
 
 {{< /tip >}}
-
-### Run tests multiple times
-
-`yb_build.sh` has a built-in capability of running tests multiple times with parallelism.
-
-- `--num_repetitions`/`-n`: number of times to run the test(s)
-- `--test-parallelism`/`--tp`: number of instances of the test to run in parallel
-
-Note that a high parallelism could result in failures if system resources are overused.
