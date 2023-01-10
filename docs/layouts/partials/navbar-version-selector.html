@@ -10,6 +10,8 @@
         {{ $versionName = replace .version "(STS)" "<span class='metadata-tag-green'>STS</span>" }}
       {{- else if in .version "(LTS)" -}}
         {{ $versionName = replace .version "(LTS)" "<span class='metadata-tag-green'>LTS</span>" }}
+      {{- else if in .version "Unsupported" -}}
+        {{ $path = "/" }}
       {{ end }}
     {{ end }}
   {{ end }}
