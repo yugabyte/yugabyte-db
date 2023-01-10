@@ -10,6 +10,39 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1;
  Seq Scan on t1
 (1 row)
 
+-- Note that parallel is not enforced on a single relation without
+-- the GUCs related to parallelism reset.
+/*+Parallel(s1.t1 5 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Parallel(s1.t1 5 hard)
+duplication hint:
+error hint:
+
+   QUERY PLAN   
+----------------
+ Seq Scan on t1
+(1 row)
+
+/*+Parallel(s1.t1 5 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 as t11, s1.t1 as t12;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Parallel(s1.t1 5 hard)
+duplication hint:
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Nested Loop
+   ->  Seq Scan on t1 t11
+   ->  Materialize
+         ->  Seq Scan on t1 t12
+(4 rows)
+
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_table_scan_size to 0;
