@@ -224,15 +224,15 @@ For example:
 
 ### Tablet splitting
 
-YugabyteDB also supports [tablet splitting](../../architecture/docdb-sharding/tablet-splitting). While streaming changes, if the YugabyteDB source connector detectes that a tablet has been split, it will gracefully handle the splitting and will start polling for the children tablets.
+YugabyteDB also supports [tablet splitting](../../../architecture/docdb-sharding/tablet-splitting). While streaming changes, if the YugabyteDB source connector detectes that a tablet has been split, it gracefully handles the splitting and starts polling for the children tablets.
 
 ### Dynamic addition of new tables
 
-If a new table is added to a namespace on which there is an active stream ID, then it will be added to the stream. The YugabyteDB source connector launches a poller thread at startup which continuously checks if there is a new table added to the stream ID it is configured to poll for, once the connector detects that there is a new table, it signals the Kafka Connect runtime to restart the connector so that the newly added table can be polled. The behaviour of this poller thread can be governed by the configuration properties `auto.add.new.tables` and `new.table.poll.interval.ms`, refer to [configuration properties](#connector-configuration-properties) for more details.
+If a new table is added to a namespace on which there is an active stream ID, then it will be added to the stream. The YugabyteDB source connector launches a poller thread at startup which continuously checks if there is a new table added to the stream ID it is configured to poll for, after the connector detects that there is a new table, it signals the Kafka Connect runtime to restart the connector so that the newly added table can be polled. The behaviour of this poller thread can be governed by the configuration properties `auto.add.new.tables` and `new.table.poll.interval.ms`, refer to [configuration properties](#connector-configuration-properties) for more details.
 
 ### Schema evolution
 
-The YugabyteDB source connector caches schema at the tablet level, this means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, CDC service emits a record with the new schema for all the tablets, the YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
+The YugabyteDB source connector caches schema at the tablet level, this means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, CDC service emits a record with the new schema for all the tablets. The YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
 
 {{< warning title="No backfill support" >}}
 
@@ -633,7 +633,7 @@ The fields in the update event are:
 
 #### Primary key updates
 
-An UPDATE operation that changes a row's primary key field(s) is known as a primary key change. For a primary key change, in place of sending an UPDATE event record, the connector sends a DELETE event record for the old key and a CREATE event record for the new (updated) key. These events have the usual structure and content, and in addition, each one has a message header related to the primary key change:
+An UPDATE operation that changes a row's primary key field(s) is known as a primary key change. For a primary key change, in place of sending an UPDATE event record, the connector sends a DELETE event record for the old key, and a CREATE event record for the new (updated) key. These events have the usual structure and content, and in addition, each one has a message header related to the primary key change:
 
 * The DELETE event record has `__debezium.newkey` as a message header. The value of this header is the new primary key for the updated row.
 
@@ -730,7 +730,7 @@ Add a transformer in the source connector while using with before image; you can
 
 {{< /tip >}}
 
-Once you've enabled before image and are using the suggested transformers, the effect of an update statement with the record structure is as follows:
+After you've enabled before image and are using the suggested transformers, the effect of an update statement with the record structure is as follows:
 
 ```sql
 UPDATE customers SET email = 'service@example.com' WHERE id = 1;
@@ -1039,7 +1039,7 @@ See the following section for more details on `YBExtractNewRecordState`.
 
 ### Transformers
 
-There are three transformers available: YBExtractNewRecordState, ExtractTopic and PGCompatible.
+There are three transformers available: YBExtractNewRecordState, ExtractTopic, and PGCompatible.
 
 #### YBExtractNewRecordState SMT
 
@@ -1121,7 +1121,7 @@ The following properties are _required_ unless a default value is available:
 | database.user | N/A | The user which will be used to connect to the database. |
 | database.password | N/A | Password for the given user. |
 | database.dbname | N/A | The database from which to stream. |
-| database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, since it's also used to form the Kafka topic. |
+| database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, as it's also used to form the Kafka topic. |
 | database.streamid | N/A | Stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
 | table.max.num.tablets | 300 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
@@ -1273,6 +1273,7 @@ The following streaming metrics are available:
 ## Usage examples
 
 For examples on how to configure CDC in different setup configurations, refer to the list of [CDC examples] on GitHub(https://github.com/yugabyte/cdc-examples) for usage with various sinks and configuration information.
+
 ## Troubleshooting
 
 Debezium is a distributed system that captures all changes in multiple upstream databases; it never misses or loses an event. When the system is operating normally or being managed carefully then Debezium provides exactly once delivery of every change event record.
