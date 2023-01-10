@@ -119,6 +119,10 @@ To run a specific sub-test, for example the `TestMonoTime.TestCondition` sub-tes
 ./yb_build.sh release --cxx-test util_monotime-test --gtest_filter TestMonoTime.TestCondition
 ```
 
+`--gtest_filter` supports globbing.
+For example, `TestMonoTime.TestTime*` runs both `TestMonoTime.TestTimeVal` and `TestMonoTime.TestTimeSpec`.
+Make sure to escape or quote the `*` if your shell interprets it as a glob character.
+
 ### Java tests
 
 #### Run all tests
