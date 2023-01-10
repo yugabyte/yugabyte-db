@@ -72,9 +72,7 @@ func initServices() {
 	// services is an ordered map so services that depend on others should go later in the chain.
 	services = make(map[string]common.Component)
 	installPostgres := viper.GetBool("postgres.install.enabled")
-	if installPostgres {
-		services[PostgresServiceName] = NewPostgres("10.23")
-	}
+	services[PostgresServiceName] = NewPostgres("10.23")
 	services[PrometheusServiceName] = NewPrometheus("2.39.0")
 	services[YbPlatformServiceName] = NewPlatform(common.GetVersion())
 	// serviceOrder = make([]string, len(services))
