@@ -150,7 +150,7 @@ To create an instance to run the YugabyteDB Anywhere server, navigate to **Virtu
 * Choose Standard_D4s_v3 - 4 CPU/16GB memory instance.
 * Select the authentication type as the SSH public key. Select an existing key pair or create a new one to access the machine. Ensure that you have the SSH access key, as this is important for enabling SSH access to this machine.
 * Select public inbound ports based on the network configuration. You can disable public access if you wish to access the instance from within a private network.
-* On the disks page, you can select any OS disk type.
-* Increase the data disk size to at least 100GB.
+* On the disks page, select any OS disk type.
+* Increase the OS disk size to at least 100GB. For information on how to do this, see [Increase the size of the OS disk](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/expand-disks?tabs=ubuntu#increase-the-size-of-the-os-disk).
 * Continue to the next networking section and fill out the details for the virtual network and security group you created in [Create network security group](#create-network-security-group-(optional)).
 * Click **Review** and **Create** to launch the YugabyteDB Anywhere VM.
