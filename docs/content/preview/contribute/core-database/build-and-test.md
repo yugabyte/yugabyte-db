@@ -160,7 +160,16 @@ Note that a high parallelism could result in failures if system resources are ov
 
 ### Test frameworks
 
-#### YSQL Java tests
+#### C++ (external) mini cluster
+
+Many C++ tests use external mini cluster or mini cluster to create clusters.
+A key difference is that external mini clusters create separate master/tserver/postgres processes (as in real life) while mini clusters create masters/tservers in memory within the same process and optionally spawn a separate tserver process.
+It is advised to use external mini cluster instead of mini cluster unless there's a reason otherwise, for example
+
+- access to catalog manager internals is needed
+- there is little to no YSQL usage and speed is more important
+
+#### YSQL regress tests
 
 YSQL java tests are in `java/yb-pgsql/src/test/java/org/yb/pgsql/`.  They can be run as:
 
