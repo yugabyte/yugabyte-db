@@ -178,3 +178,12 @@ Note the `build/latest/postgres_build` prefix.  The source files (`src/postgres/
      Schedules `parallel_schedule` and `serial_schedule` should be untouched as they are from original PostgreSQL code.
 
 {{< /tip >}}
+
+### Run tests multiple times
+
+`yb_build.sh` has a built-in capability of running tests multiple times with parallelism.
+
+- `--num_repetitions`/`-n`: number of times to run the test(s)
+- `--test-parallelism`/`--tp`: number of instances of the test to run in parallel
+
+Note that a high parallelism could result in failures if system resources are overused.
