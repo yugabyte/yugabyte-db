@@ -27,6 +27,9 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
+#include "lib/dshash.h"
+#include "utils/dsa.h"
+
 #include "access/hash.h"
 #include "catalog/pg_authid.h"
 #include "executor/instrument.h"
@@ -103,6 +106,29 @@
 
 /* Update this if need a enum GUC with more options. */
 #define MAX_ENUM_OPTIONS 6
+
+extern volatile bool __pgsm_do_not_capture_error;
+#define PGSM_DISABLE_ERROR_CAPUTRE() \
+	do { \
+		__pgsm_do_not_capture_error = true
+
+#define PGSM_END_DISABLE_ERROR_CAPTURE() \
+	__pgsm_do_not_capture_error = false; \
+	} while (0)
+
+#define PGSM_ERROR_CAPTURE_ENABLED \
+	__pgsm_do_not_capture_error == false
+
+#ifdef USE_DYNAMIC_HASH
+	#define	PGSM_HASH_TABLE	dshash_table
+	#define	PGSM_HASH_TABLE_HANDLE	dshash_table_handle
+	#define	PGSM_HASH_SEQ_STATUS	dshash_seq_status
+#else
+	#define	PGSM_HASH_TABLE	HTAB
+	#define	PGSM_HASH_TABLE_HANDLE	HTAB*
+	#define	PGSM_HASH_SEQ_STATUS	HASH_SEQ_STATUS
+#endif
+
 typedef struct GucVariables
 {
 	enum config_type type;		/* PGC_BOOL, PGC_INT, PGC_REAL, PGC_STRING,
@@ -179,20 +205,6 @@ typedef struct CallTime
 	double		sum_var_time;	/* sum of variances in execution time in msec */
 }			CallTime;
 
-/*
- * Entry type for queries hash table (query ID).
- *
- * We use a hash table to keep track of query IDs that have their
- * corresponding query text added to the query buffer (pgsm_query_shared_buffer).
- *
- * This allow us to avoid adding duplicated queries to the buffer, therefore
- * leaving more space for other queries and saving some CPU.
- */
-typedef struct pgssQueryEntry
-{
-	uint64		queryid;		/* query identifier, also the key. */
-	size_t		query_pos;		/* query location within query buffer */
-}			pgssQueryEntry;
 
 typedef struct PlanInfo
 {
@@ -216,6 +228,7 @@ typedef struct pgssHashKey
 typedef struct QueryInfo
 {
 	uint64		parentid;		/* parent queryid of current query */
+	dsa_pointer	parent_query;
 	int64		type;			/* type of query, options are query, info,
 								 * warning, error, fatal */
 	char		application_name[APPLICATIONNAME_LEN];
@@ -323,7 +336,7 @@ typedef struct pgssEntry
 	Counters	counters;		/* the statistics for this query */
 	int			encoding;		/* query text encoding */
 	slock_t		mutex;			/* protects the counters only */
-	size_t		query_pos;		/* query location within query buffer */
+	dsa_pointer	query_pos;		/* query location within query buffer */
 } pgssEntry;
 
 /*
@@ -354,9 +367,18 @@ typedef struct pgssSharedState
 	 * This allows us to avoid having a large file on disk that would also
 	 * slowdown queries to the pg_stat_monitor view.
 	 */
-	bool		overflow;
 	size_t		n_bucket_cycles;
+	int         hash_tranche_id;
+	void        *raw_dsa_area;
+	PGSM_HASH_TABLE_HANDLE hash_handle;
 } pgssSharedState;
+
+typedef struct pgsmLocalState
+{
+	pgssSharedState *shared_pgssState;
+	dsa_area   *dsa;
+	PGSM_HASH_TABLE *shared_hash;
+}pgsmLocalState;
 
 #define ResetSharedState(x) \
 do { \
@@ -419,27 +441,23 @@ void		init_guc(void);
 GucVariable *get_conf(int i);
 
 /* hash_create.c */
+dsa_area   		*get_dsa_area_for_query_text(void);
+PGSM_HASH_TABLE	*get_pgssHash(void);
+
+void		pgsm_attach_shmem(void);
 bool		IsHashInitialize(void);
 void		pgss_shmem_startup(void);
 void		pgss_shmem_shutdown(int code, Datum arg);
 int			pgsm_get_bucket_size(void);
 pgssSharedState *pgsm_get_ss(void);
-HTAB	   *pgsm_get_plan_hash(void);
-HTAB	   *pgsm_get_hash(void);
-HTAB	   *pgsm_get_query_hash(void);
-HTAB	   *pgsm_get_plan_hash(void);
 void		hash_entry_reset(void);
 void		hash_query_entryies_reset(void);
 void		hash_query_entries();
 void		hash_query_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
 void		hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer);
 pgssEntry  *hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
-Size		hash_memsize(void);
-
-int			read_query_buffer(int bucket_id, uint64 queryid, char *query_txt, size_t pos);
-uint64		read_query(unsigned char *buf, uint64 queryid, char *query, size_t pos);
+Size		pgsm_ShmemSize(void);
 void		pgss_startup(void);
-void		set_qbuf(unsigned char *);
 
 /* hash_query.c */
 void		pgss_startup(void);
@@ -481,3 +499,9 @@ static const struct config_enum_entry track_options[] =
 #define HOOK_STATS_SIZE 0
 #endif
 
+void *pgsm_hash_find_or_insert(PGSM_HASH_TABLE *shared_hash, pgssHashKey *key, bool* found);
+void *pgsm_hash_find(PGSM_HASH_TABLE *shared_hash, pgssHashKey *key, bool* found);
+void pgsm_hash_seq_init(PGSM_HASH_SEQ_STATUS *hstat, PGSM_HASH_TABLE *shared_hash, bool lock);
+void *pgsm_hash_seq_next(PGSM_HASH_SEQ_STATUS *hstat);
+void pgsm_hash_seq_term(PGSM_HASH_SEQ_STATUS *hstat);
+void pgsm_hash_delete_current(PGSM_HASH_SEQ_STATUS *hstat, PGSM_HASH_TABLE *shared_hash, void *key);
