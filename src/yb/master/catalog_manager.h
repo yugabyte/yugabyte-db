@@ -1114,7 +1114,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                             const NamespaceId& namespace_id,
                             const Schema& schema,
                             int64_t term,
-                            YQLVirtualTable* vtable) REQUIRES(mutex_);
+                            yb::vtables::YQLVirtualTable* vtable) REQUIRES(mutex_);
 
   Status PrepareNamespace(YQLDatabase db_type,
                           const NamespaceName& name,
@@ -1982,7 +1982,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
 
-  const YQLPartitionsVTable& GetYqlPartitionsVtable() const;
+  const yb::vtables::YQLPartitionsVTable& GetYqlPartitionsVtable() const;
 
   void InitializeTableLoadState(
       const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);

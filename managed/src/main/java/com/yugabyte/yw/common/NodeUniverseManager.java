@@ -13,7 +13,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -21,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
@@ -33,6 +37,7 @@ public class NodeUniverseManager extends DevopsBase {
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
   public static final String CERTS_DIR = "/yugabyte-tls-config";
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
+  public static final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
 
   private final KeyLock<UUID> universeLock = new KeyLock<>();
 
@@ -328,6 +333,54 @@ public class NodeUniverseManager extends DevopsBase {
       return K8S_CERTS_DIR;
     }
     return getYbHomeDir(node, universe) + CERTS_DIR;
+  }
+
+  /**
+   * Checks if a file or directory exists on the node in the universe
+   *
+   * @param node
+   * @param universe
+   * @param remotePath
+   * @return true if file/directory exists, else false
+   */
+  public boolean checkNodeIfFileExists(NodeDetails node, Universe universe, String remotePath) {
+    List<String> params = new ArrayList<>();
+    params.add("check_file_exists");
+    params.add(remotePath);
+
+    ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params);
+
+    if (scriptOutput.extractRunCommandOutput().trim().equals("1")) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  /**
+   * Gets a list of all the absolute file paths at a given remote directory
+   *
+   * @param node
+   * @param universe
+   * @param remoteDirPath
+   * @param maxDepth
+   * @param fileType
+   * @return list of strings of all the absolute file paths
+   */
+  public List<Path> getNodeFilePaths(
+      NodeDetails node, Universe universe, String remoteDirPath, int maxDepth, String fileType) {
+    List<String> command = new ArrayList<>();
+    command.add("find");
+    command.add(remoteDirPath);
+    command.add("-maxdepth");
+    command.add(String.valueOf(maxDepth));
+    command.add("-type");
+    command.add(fileType);
+
+    ShellResponse shellOutput = runCommand(node, universe, command);
+    List<String> nodeFilePathStrings =
+        Arrays.asList(shellOutput.extractRunCommandOutput().trim().split("\n", 0));
+    return nodeFilePathStrings.stream().map(Paths::get).collect(Collectors.toList());
   }
 
   public enum UniverseNodeAction {

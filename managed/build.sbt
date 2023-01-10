@@ -164,7 +164,6 @@ libraryDependencies ++= Seq(
   "org.pac4j" % "pac4j-oauth" % "3.7.0" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "3.7.0" exclude("commons-io" , "commons-io"),
   "com.typesafe.play" %% "play-json" % "2.6.14",
-  "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
   "org.apache.velocity" % "velocity" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",

@@ -241,11 +241,15 @@ Specifies the path to the directory containing the data files to export.
 
 ### --source-db-type
 
-Specifies the source database type (postrgresql, mysql or oracle).
+Specifies the source database type (postgresql, mysql or oracle).
 
 ### --source-db-host
 
 Specifies the domain name or IP address of the machine on which the source database server is running.
+
+### --source-db-port
+
+Specifies the port number of the machine on which the source database server is running.
 
 ### --source-db-user
 
