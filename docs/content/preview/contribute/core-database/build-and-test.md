@@ -192,7 +192,7 @@ The files in `results` are compared with those in `expected` to determine pass/f
 
 {{< tip title="Tips" >}}
 
-- To quickly run specific a SQL file, create a dummy Java file and dummy schedule with that one test in it.
+- To quickly run a specific SQL file, create a dummy Java file and dummy schedule with that one test in it.
 - Use the following naming convention (some older files haven't adopted it yet, but should):
   - `sql/foo.sql`: Unchanged from original PostgreSQL code.
   - `sql/yb_foo.sql`: Completely new file (for example, with new features).
