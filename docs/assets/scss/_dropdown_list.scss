@@ -100,11 +100,16 @@
 
       .dropdown-menu {
         width: 100%;
+        transform:translate3d(0px, 38px, 0px)!important;
       }
     }
 
     @media (min-width: 992px) {
       display: none;
+    }
+    @media (max-width: 991px) and (min-width: 768px) {
+      margin-top: 18px;
+      width: calc(100% - 85px);
     }
   }
 }
