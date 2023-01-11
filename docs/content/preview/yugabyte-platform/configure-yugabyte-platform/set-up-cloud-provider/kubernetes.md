@@ -64,7 +64,7 @@ type: docs
 
 </ul>
 
-<br>This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
+This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -181,7 +181,7 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
 
 ## Select the Kubernetes service
 
-In the YugabyteDB Anywhere UI, navigate to **Configs > Cloud Provider Configuration > Managed Kubernetes Service** and select one of the Kubernetes service providers using the **Type** field, as per the following illustration:<br>
+In the YugabyteDB Anywhere UI, navigate to **Configs > Cloud Provider Configuration > Managed Kubernetes Service** and select one of the Kubernetes service providers using the **Type** field, as per the following illustration:
 
 ![Kubernetes config](/images/ee/k8s-setup/k8s-configure-empty.png)
 
@@ -479,3 +479,4 @@ The following overrides are available:
 
   For more information, see [Helm chart: Prerequisites](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
 
+- Overrides to use a secret for LDAP authentication. Refer to [Create secrets for Kubernetes](../../../../secure/authentication/ldap-authentication-ysql/#create-secrets-for-kubernetes).
