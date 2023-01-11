@@ -60,7 +60,7 @@ yb-voyager export schema --export-dir /path/to/yb/export/dir \
         --source-db-type sourceDB \
         --source-db-host localhost \
         --source-db-user username \
-        --source-db-password password \ # Specify the password in single quotes, if it contains special characters.
+        --source-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --source-db-name dbname \
         --source-db-schema schemaName \ # Not applicable for MySQL
         --use-orafce \
@@ -105,7 +105,7 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-type sourceDB \
         --source-db-host hostname \
         --source-db-user username \
-        --source-db-password password \ # Specify the password in single quotes, if it contains special characters.
+        --source-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --source-db-name dbname \
         --source-db-schema schemaName \ # Not applicable for MySQL
         --oracle-home string \ # Oracle only
@@ -151,7 +151,7 @@ yb-voyager import schema [ <arguments> ... ]
 yb-voyager import schema --export-dir /path/to/yb/export/dir \
         --target-db-host hostname \
         --target-db-user username \
-        --target-db-password password \ # Specify the password in single quotes, if it contains special characters.
+        --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name dbname \
         --target-db-schema schemaName \ # MySQL and Oracle only
         --start-clean
@@ -175,7 +175,7 @@ yb-voyager import data [ <arguments> ... ]
 yb-voyager import data --export-dir /path/to/yb/export/dir \
         --target-db-host hostname \
         --target-db-user username \
-        --target-db-password password \ # Specify the password in single quotes, if it contains special characters.
+        --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name dbname \
         --target-db-schema schemaName \ # MySQL and Oracle only
         --parallel-jobs connectionCount \
@@ -202,7 +202,7 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --target-db-host hostname \
         --target-db-port port \
         --target-db-user username \
-        --target-db-password password \ # Specify the password in single quotes, if it contains special characters.
+        --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name dbname \
         --target-db-schema schemaName \ # MySQL and Oracle only
         --data-dir "/path/to/files/dir/" \
@@ -255,7 +255,7 @@ Specifies the username of the source database.
 
 Specifies the password of the source database.
 
-Note that the password must be in single quotes, if it contains special characters.
+If the password contains special characters, enclose it in single quotes.
 
 ### --source-db-name
 
@@ -285,7 +285,7 @@ Specifies the username of the target database.
 
 Specifies the password of the target database.
 
-Note that the password must be in single quotes, if it contains special characters.
+If the password contains special characters, enclose it in single quotes.
 
 ### --target-db-name
 

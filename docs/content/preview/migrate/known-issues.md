@@ -221,13 +221,13 @@ CREATE TABLE address (
 An example schema on the source database is as follows:
 
 ```sql
-CREATE OR REPLACE VIEW v1 as select foo(id) from bar;
+CREATE OR REPLACE VIEW v1 AS SELECT foo(id) FROM bar;
 ```
 
 The exported schema is as follows:
 
 ```sql
-CREATE OR REPLACE VIEW v1 AS select foo(bar.id) AS foo(id) FROM bar;
+CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id) AS foo(id) FROM bar;
 ```
 
 Choose one from the following suggested changes to the schema.
@@ -235,13 +235,13 @@ Choose one from the following suggested changes to the schema.
 - Remove the alias as follows:
 
     ```sql
-    CREATE OR REPLACE VIEW v1 AS select foo(bar.id)FROM bar;
+    CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id) FROM bar;
     ```
 
 - Change the alias as follows:
 
     ```sql
-    CREATE OR REPLACE VIEW v1 AS select foo(bar.id) AS foo FROM bar;
+    CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id) AS foo FROM bar;
     ```
 
 ---
@@ -273,7 +273,7 @@ CREATE FUNCTION foo (p_id int)
 RETURNS varchar(20)
 READS SQL DATA
   BEGIN
-    RETURN (select p_name from bar where p_id=id);
+    RETURN (SELECT p_name FROM bar WHERE p_id=id);
   END//
 delimiter ;
 
@@ -301,7 +301,7 @@ SECURITY DEFINER
 ;
 
 /* View definition */
-CREATE OR REPLACE VIEW v1 AS select foo(bar.id) AS p_name FROM bar;
+CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id) AS p_name FROM bar;
 ```
 
 Suggested change is to type cast the reference to match the table column as follows:
@@ -311,15 +311,6 @@ CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
 ```
 
 ---
-
-<!-- #### Export error for Function/Procedure names containing whitespaces/special characters
-
-**GitHub link**: [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
-
-**Description**: If you have some function or procedure in MySQL which contains some special characters or whitespaces, the export fails with an error.
-
-**Workaround**:
---- -->
 
 #### `drop temporary table` statements are not supported
 
@@ -341,7 +332,7 @@ deterministic
   BEGIN
     DROP TEMPORARY TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
-    INSERT INTO temp(id,name) select id,p_name from bar where p_id=id;
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
     SELECT name FROM temp;
   END//
 delimiter;
@@ -354,7 +345,7 @@ CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
   BEGIN
     DROP TEMPORARY TABLE IF EXISTS temp;
     CREATE TEMPORARY TABLE temp(id int, name text);
-    INSERT INTO temp(id,name) select id,p_name from bar where p_id=id;
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
     SELECT name FROM temp;
   END;
 $body$
@@ -583,7 +574,7 @@ CREATE TABLE text_types (
 An example schema on the source Oracle database is as follows:
 
 ```sql
-create table numeric_size(
+CREATE TABLE numeric_size(
     num_min number(1,-84),
     num_max number(38,127),
     numeric_min numeric(1,-84),
@@ -791,7 +782,7 @@ ALTER SCHEMA "test" RENAME TO "Test";
 
 **Description**:  In YugabyteDB, if a table is partitioned on a column, then that column needs to be a part of the primary key columns. Creating a table where the partition key column is not part of the primary key columns results in an error.
 
-**Workaround**: Add all Partition columns to the Primary key columns.
+**Workaround**: Add all partition columns to the primary key columns.
 
 **Example**
 
@@ -799,16 +790,16 @@ An example schema on the source database is as follows:
 
 ```sql
 CREATE TABLE employees (
-employee_id integer NOT NULL,
-first_name varchar(20),
-last_name varchar(25),
-email varchar(25),
-phone_number varchar(20),
-hire_date timestamp DEFAULT statement_timestamp(),
-job_id varchar(10),
-salary double precision,
-part_name varchar(25),
-PRIMARY KEY (employee_id)) PARTITION BY RANGE (hire_date) ;
+    employee_id integer NOT NULL,
+    first_name varchar(20),
+    last_name varchar(25),
+    email varchar(25),
+    phone_number varchar(20),
+    hire_date timestamp DEFAULT statement_timestamp(),
+    job_id varchar(10),
+    salary double precision,
+    part_name varchar(25),
+    PRIMARY KEY (employee_id)) PARTITION BY RANGE (hire_date) ;
 ```
 
 The preceding example will result in an error as follows:
@@ -822,16 +813,17 @@ An example table with the suggested workaround is as follows:
 
 ```sql
 CREATE TABLE employees (
-employee_id integer NOT NULL,
-first_name varchar(20),
-last_name varchar(25),
-email varchar(25),
-phone_number varchar(20),
-hire_date timestamp DEFAULT statement_timestamp(),
-job_id varchar(10),
-salary double precision,
-part_name varchar(25),
-PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
+    employee_id integer NOT NULL,
+    first_name varchar(20),
+    last_name varchar(25),
+    email varchar(25),
+    phone_number varchar(20),
+    hire_date timestamp DEFAULT statement_timestamp(),
+    job_id varchar(10),
+    salary double precision,
+    part_name varchar(25),
+    PRIMARY KEY (employee_id, hire_date)
+) PARTITION BY RANGE (hire_date) ;
 ```
 
 ---
@@ -850,13 +842,13 @@ An example schema on the MySQL source database with primary key is as follows:
 /* Table definition */
 
 CREATE TABLE Sales (
-  cust_id INT NOT NULL,
-  name VARCHAR(40),
-  store_id VARCHAR(20) NOT NULL,
-  bill_no INT NOT NULL,
-  bill_date DATE NOT NULL,
-  amount DECIMAL(8,2) NOT NULL,
-  Primary key(bill_no,bill_date)
+    cust_id INT NOT NULL,
+    name VARCHAR(40),
+    store_id VARCHAR(20) NOT NULL,
+    bill_no INT NOT NULL,
+    bill_date DATE NOT NULL,
+    amount DECIMAL(8,2) NOT NULL,
+    PRIMARY KEY (bill_no,bill_date)
 )
 PARTITION BY RANGE (year(bill_date))(
     PARTITION p0 VALUES LESS THAN (2016),
@@ -871,13 +863,13 @@ The exported schema is as follows:
 ```sql
 /* Table definition */
 CREATE TABLE sales (
-        cust_id bigint NOT NULL,
-        name varchar(40),
-        store_id varchar(20) NOT NULL,
-        bill_no bigint NOT NULL,
-        bill_date timestamp NOT NULL,
-        amount decimal(8,2) NOT NULL,
-        PRIMARY KEY (bill_no,bill_date)
+    cust_id bigint NOT NULL,
+    name varchar(40),
+    store_id varchar(20) NOT NULL,
+    bill_no bigint NOT NULL,
+    bill_date timestamp NOT NULL,
+    amount decimal(8,2) NOT NULL,
+    PRIMARY KEY (bill_no,bill_date)
 ) PARTITION BY RANGE ((extract(year from date(bill_date)))) ;
 ```
 
@@ -885,12 +877,12 @@ Suggested change to the schema is to remove the primary/unique key from the expo
 
 ```sql
 CREATE TABLE sales (
-        cust_id bigint NOT NULL,
-        name varchar(40),
-        store_id varchar(20) NOT NULL,
-        bill_no bigint NOT NULL,
-        bill_date timestamp NOT NULL,
-        amount decimal(8,2) NOT NULL
+    cust_id bigint NOT NULL,
+    name varchar(40),
+    store_id varchar(20) NOT NULL,
+    bill_no bigint NOT NULL,
+    bill_date timestamp NOT NULL,
+    amount decimal(8,2) NOT NULL
 ) PARTITION BY RANGE ((extract(year from date(bill_date)))) ;
 ```
 
@@ -910,18 +902,18 @@ An example schema on the Oracle source database is as follows:
 
 ```sql
 CREATE TABLE test (
-  id               NUMBER,
-  country_code     VARCHAR2(3),
-  record_type      VARCHAR2(5),
-  descriptions     VARCHAR2(50),
-  CONSTRAINT t1_pk PRIMARY KEY (id)
+   id NUMBER,
+   country_code VARCHAR2(3),
+   record_type VARCHAR2(5),
+   descriptions VARCHAR2(50),
+   CONSTRAINT t1_pk PRIMARY KEY (id)
 )
 PARTITION BY LIST (country_code, record_type)
 (
   PARTITION part_gbr_abc VALUES (('GBR','A'), ('GBR','B'), ('GBR','C')),
-  PARTITION part_ire_ab  VALUES (('IRE','A'), ('IRE','B')),
-  PARTITION part_usa_a   VALUES (('USA','A')),
-  PARTITION part_others  VALUES (DEFAULT)
+  PARTITION part_ire_ab VALUES (('IRE','A'), ('IRE','B')),
+  PARTITION part_usa_a VALUES (('USA','A')),
+  PARTITION part_others VALUES (DEFAULT)
 );
 ```
 
@@ -960,13 +952,13 @@ ERROR: cannot use "list" partition strategy with more than one column (SQLSTATE 
 An example schema on the source database is as follows:
 
 ```sql
-create index ON timestamp_demo (ts);
+CREATE INDEX ON timestamp_demo (ts);
 ```
 
-Suggested change to the schema is to add the `asc` clause as follows:
+Suggested change to the schema is to add the `ASC` clause as follows:
 
 ```sql
-create index ON timestamp_demo (ts asc);
+CREATE INDEX ON timestamp_demo (ts ASC);
 ```
 
 ---
