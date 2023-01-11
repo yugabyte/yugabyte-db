@@ -43,6 +43,7 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | ASC/DESC/HASH on GIN indexes | [10653](https://github.com/yugabyte/yugabyte-db/issues/10653)|
 | CREATE SCHEMA with elements | [10865](https://github.com/yugabyte/yugabyte-db/issues/10865)|
 | Index on citext column | [9698](https://github.com/yugabyte/yugabyte-db/issues/9698)|
-
+| ABSTIME type | [15637](https://github.com/yugabyte/yugabyte-db/issues/15637)|
+| transaction ids (xid) | [15638](https://github.com/yugabyte/yugabyte-db/issues/15638)|
 
 
