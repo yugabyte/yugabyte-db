@@ -14,7 +14,7 @@ Try again by running the build script with less concurrency, for example, `-j1`.
 
 {{< /note >}}
 
-See more details about building and testing [here][build-and-test].
+For more details about building and testing, refer to [Build and test][build-and-test].
 
 [repo]: https://github.com/yugabyte/yugabyte-db
 [build-and-test]: ../build-and-test
