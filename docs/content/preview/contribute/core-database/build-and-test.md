@@ -38,7 +38,7 @@ By default, all items are built.
 A target can be specified to narrow down what to build.
 See `./yb_build.sh -h` for the supported targets.
 Besides that, certain flags may skip build of some items.
-For example, specifying a flag to run a C++ test will skip Java build (but running a Java test will not skip C++ build).
+For example, specifying a flag to run a C++ test skips the Java build (but running a Java test won't skip the C++ build).
 
 Although there is some intelligence to avoid rebuilding parts, it is incomplete.
 For example, postgres build uses a build stamp calculated off of a git commit and working changes, and on a mismatch, it will rerun postgres configure and make.
