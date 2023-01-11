@@ -1269,7 +1269,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       // Remove table row currently held by the variable.
       table_row.Clear();
       // Fetch main table row
-      RETURN_NOT_OK(table_iter_->NextRow(doc_projection, &table_row));
+      RETURN_NOT_OK(table_iter_->NextRow(&table_row));
 
       row_ptr = &table_row;
     }
@@ -1357,7 +1357,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
 
     if (VERIFY_RESULT(table_iter_->HasNext())) {
       row.Clear();
-      RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
+      RETURN_NOT_OK(table_iter_->NextRow(&row));
       bool is_match = true;
       RETURN_NOT_OK(expr_exec.Exec(row, nullptr, &is_match));
       if (is_match) {

@@ -872,6 +872,26 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensusMax
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ReplicationPause) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+  SleepFor(duration/2);
+  // Pause replication here for half the duration of the workload.
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  SleepFor(duration/2);
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
 TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
   // Use a 4 -> 1 mapping to ensure that multiple transactions are processed by the same tablet.
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {4}, 3, 1));
