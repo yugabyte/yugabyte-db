@@ -66,7 +66,6 @@ const (
 	NodeAzIdKey         = "node.azid"
 	NodeRegionKey       = "node.region"
 	NodeZoneKey         = "node.zone"
-	NodeInstanceNameKey = "node.instance_name"
 	NodeLoggerKey       = "node.log"
 	NodeAgentRestartKey = "node.restart"
 )
