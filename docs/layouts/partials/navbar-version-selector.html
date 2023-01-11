@@ -10,8 +10,6 @@
         {{ $versionName = replace .version "(STS)" "<span class='metadata-tag-green'>STS</span>" }}
       {{- else if in .version "(LTS)" -}}
         {{ $versionName = replace .version "(LTS)" "<span class='metadata-tag-green'>LTS</span>" }}
-      {{- else if in .version "Unsupported" -}}
-        {{ $path = "/" }}
       {{ end }}
     {{ end }}
   {{ end }}
@@ -22,7 +20,11 @@
   {{ if .Site.Params.version_menu_pagelinks }}
     {{ $pathArray := split .Page.RelPermalink "/" }}
     {{ $path = path.Join (after 2 $pathArray) }}
-    {{ $path = add (add "/" $path) "/" }}
+    {{- if eq $path "" -}}
+      {{ $path = add $path "/" }}
+    {{- else }}
+      {{ $path = add (add "/" $path) "/" }}
+    {{ end }}
   {{ end }}
   {{ range .Site.Params.versions }}
     {{ $versionName := .version }}
@@ -32,6 +34,8 @@
       {{ $versionName = replace .version "(STS)" "<span class='metadata-tag-green'>STS</span>" }}
     {{- else if in .version "(LTS)" -}}
       {{ $versionName = replace .version "(LTS)" "<span class='metadata-tag-green'>LTS</span>" }}
+    {{- else if in .version "Unsupported" -}}
+      {{ $path = "/" }}
     {{ end }}
     <a class="dropdown-item" href="{{ .url }}{{ $path }}">{{ $versionName | safeHTML }}</a>
   {{ end }}
