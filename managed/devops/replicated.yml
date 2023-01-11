@@ -85,6 +85,20 @@ custom_requirements:
         cluster: false
         dir: /var/lib/replicated
 cmds:
+  - name: get_docker_gateway_ip
+    cmd: raw
+    args:
+      - ip
+      - route
+      - show
+      - default
+      - "|"
+      - grep
+      - default
+      - "|"
+      - cut
+      - "-d' '"
+      - "-f3"
   - name: dbpass_cmd
     cmd: random
     args:
@@ -713,7 +727,9 @@ config:
         title: Docker Gateway IP Address
         type: text
         value: ""
-        default: 172.17.0.1
+        default_cmd:
+          name: get_docker_gateway_ip
+          value_at: 0
 
   - name: metrics
     title: Metrics config
