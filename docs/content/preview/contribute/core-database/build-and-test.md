@@ -37,7 +37,7 @@ What follows are some of the common options to pay attention to.
 By default, all items are built.
 A target can be specified to narrow down what to build.
 See `./yb_build.sh -h` for the supported targets.
-Besides that, certain flags may skip build of some items.
+Besides that, certain flags may skip building some items.
 For example, specifying a flag to run a C++ test skips the Java build (but running a Java test won't skip the C++ build).
 
 Although there is some intelligence to avoid rebuilding parts, it is incomplete.
