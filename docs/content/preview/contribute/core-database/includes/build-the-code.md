@@ -1,3 +1,9 @@
+<!--
++++
+private = true
++++
+-->
+
 Assuming [this repository][repo] is checked out in `~/code/yugabyte-db`, do the following:
 
 ```sh

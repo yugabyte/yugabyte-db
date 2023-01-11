@@ -13,7 +13,6 @@ menu:
 type: docs
 ---
 
-
 `yb_build.sh` is a bash script for both building and testing.
 Some flags can turn off certain parts of build, and other flags can decide which tests to run.
 In general, they come down to these components:
@@ -41,7 +40,7 @@ Besides that, certain flags may skip building some items.
 For example, specifying a flag to run a C++ test skips the Java build (but running a Java test won't skip the C++ build).
 
 Although there is some intelligence to avoid rebuilding parts, it is incomplete.
-For example, the postgres build uses a build stamp calculated from a git commit and working changes, and if there is a mismatch, it reruns postgres configure and make.
+For example, the postgres build uses a build stamp calculated from a git commit and working changes; if there is a mismatch, it reruns postgres configure and make.
 Java is worse in that it runs all the build even if there are no changes since the last run.
 Use the `--skip-cxx-build`/`--scb` and `--skip-java-build`/`--sj` flags to reduce incremental build times.
 
@@ -54,7 +53,7 @@ CMake is used.
 
 If there are any changes to CMake files since the last build, the next incremental build may throw a build error, such as the following:
 
-```
+```output
 FAILED: build.ninja
 ```
 
@@ -69,9 +68,9 @@ Specify the build tool using the `--make` and `--ninja` flags.
 
 The following build types are available:
 
-- release
-- fastdebug: less compiler optimizations and a few other tweaks on debug
 - debug (the default)
+- release
+- fastdebug: fewer compiler optimizations and a few other tweaks on debug
 - asan: address sanitizer
 - tsan: thread sanitizer
 
@@ -83,11 +82,11 @@ Specify the compiler using the `--gcc<version_number>` and `--clang<version_numb
 For example, `--gcc11` or `--clang15`.
 The specific versions supported can be found in `./build-support/third-party-archives.yml`, which details the configurations regularly tested in-house.
 
-### Thirdparty
+### Third-party
 
-By default, thirdparty libraries are pre-built into archives, and those archives are downloaded to be used during build.
-Incremental builds currently do not detect when the thirdparty archive URL has been updated, so when that happens, you should run a `--clean` build to use the new thirdparty.
-Thirdparty may also be built locally using `--no-download-thirdparty`/`--ndltp`.
+By default, third-party libraries are pre-built into archives, and those archives are downloaded to be used during build.
+Incremental builds currently do not detect when the third-party archive URL has been updated, so when that happens, you should run a `--clean` build to use the new third-party archive.
+You can also build the third-party archives locally using `--no-download-thirdparty` or `--ndltp`.
 
 ## Test
 
@@ -98,7 +97,7 @@ For example, several tests are disabled for the `tsan` build type.
 
 #### Run all tests
 
-To run all the C++ tests, you can use the following command:
+To run all the C++ tests, run the following command:
 
 ```sh
 ./yb_build.sh release --ctest
@@ -106,13 +105,13 @@ To run all the C++ tests, you can use the following command:
 
 #### Run specific tests
 
-To run a specific test, for example the `util_monotime-test` test, you can run the following command:
+To run a specific test, for example the `util_monotime-test` test, run the following command:
 
 ```sh
 ./yb_build.sh release --cxx-test util_monotime-test
 ```
 
-To run a specific sub-test, for example the `TestMonoTime.TestCondition` sub-test in `util_monotime-test`, you can run the following command:
+To run a specific sub-test, for example the `TestMonoTime.TestCondition` sub-test in `util_monotime-test`, run the following command:
 
 ```sh
 ./yb_build.sh release --cxx-test util_monotime-test --gtest_filter TestMonoTime.TestCondition
@@ -126,7 +125,7 @@ Make sure to escape or quote the `*` if your shell interprets it as a glob chara
 
 #### Run all tests
 
-To run all the Java tests, you can use the following command:
+To run all the Java tests, use the following command:
 
 ```sh
 ./yb_build.sh release --java-tests
@@ -193,8 +192,8 @@ The files in `results` are compared with those in `expected` to determine pass/f
 
 {{< tip title="Tips" >}}
 
-- If you want to quickly run specific SQL files, you can create a dummy Java file and dummy schedule with that one test in it.
-- Use the following naming convention (some older files haven't adopted it yet but should):
+- To quickly run specific a SQL file, create a dummy Java file and dummy schedule with that one test in it.
+- Use the following naming convention (some older files haven't adopted it yet, but should):
   - `sql/foo.sql`: Unchanged from original PostgreSQL code.
   - `sql/yb_foo.sql`: Completely new file (for example, with new features).
   - `sql/yb_pg_foo.sql`: Modified version of original PostgreSQL foo.sql (for example, with compatibility edits).
