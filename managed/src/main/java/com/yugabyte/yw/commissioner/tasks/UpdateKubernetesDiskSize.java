@@ -62,12 +62,19 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
                 cluster.placementInfo,
                 placement.masters,
                 taskParams().nodePrefix,
+                universe.name,
                 provider,
                 universe.getUniverseDetails().communicationPorts.masterRpcPort,
                 taskParams().useNewHelmNamingStyle);
         UserIntent newIntent = taskParams().getPrimaryCluster().userIntent;
         // run the disk resize tasks for each AZ in the Cluster
-        createResizeDiskTask(placement, masterAddresses, newIntent, isReadOnlyCluster);
+        createResizeDiskTask(
+            universe.name,
+            placement,
+            masterAddresses,
+            newIntent,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
       }
 
       // persist the changes to the universe

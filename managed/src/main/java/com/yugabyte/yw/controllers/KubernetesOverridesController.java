@@ -168,7 +168,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
       return KubernetesOverridesResponse.convertErrorsToKubernetesOverridesResponse(
           overrideErrorsSet);
     } catch (Exception e) {
-      LOG.error("Exception in validating kubernetes overrides: " + e);
+      LOG.error("Exception in validating kubernetes overrides: ", e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
   }

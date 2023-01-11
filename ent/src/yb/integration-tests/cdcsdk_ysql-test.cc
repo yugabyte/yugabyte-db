@@ -31,6 +31,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/gutil/walltime.h"
 #include "yb/rocksdb/db.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/master/catalog_manager_if.h"
@@ -1347,8 +1348,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint32_t replication_factor, bool add_tables_without_primary_key = false) {
     ASSERT_OK(SetUpWithParams(replication_factor, 1, false));
 
-    auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
-
     if (add_tables_without_primary_key) {
       // Adding tables without primary keys, they should not disturb any CDC related processes.
       std::string tables_wo_pk[] = {"table_wo_pk_1", "table_wo_pk_2", "table_wo_pk_3"};
@@ -1358,6 +1357,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       }
     }
 
+    auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(test_client()->GetTablets(
         table, 0, &tablets,
@@ -6266,8 +6266,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
   ASSERT_OK(test_client()->GetTablets(
       table, 0, &tablets_after_split, /* partition_list_version =*/nullptr));
 
-  // Wait until the 'cdc_parent_tablet_deletion_task_' has run. Then the parent tablet's entry
-  // should be removed from 'cdc_state' table.
+  // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
   SleepFor(MonoDelta::FromSeconds(2));
 
   client::TableHandle table_handle;
@@ -6277,8 +6276,57 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
 
   bool saw_row_child_one = false;
   bool saw_row_child_two = false;
-  // We should no longer see the entry corresponding to the parent tablet.
+  bool saw_row_parent = false;
+  // We should still see the entry corresponding to the parent tablet.
   TabletId parent_tablet_id = tablets[0].tablet_id();
+  for (const auto& row : client::TableRange(table_handle)) {
+    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+    LOG(INFO) << "Read cdc_state table row with tablet_id: " << tablet_id
+              << " stream_id: " << stream_id;
+
+    if (tablet_id == tablets_after_split[0].tablet_id()) {
+      saw_row_child_one = true;
+    } else if (tablet_id == tablets_after_split[1].tablet_id()) {
+      saw_row_child_two = true;
+    } else if (tablet_id == parent_tablet_id) {
+      saw_row_parent = true;
+    }
+  }
+
+  ASSERT_TRUE(saw_row_child_one && saw_row_child_two && saw_row_parent);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> first_tablet_after_split;
+  first_tablet_after_split.CopyFrom(tablets_after_split);
+  ASSERT_EQ(first_tablet_after_split[0].tablet_id(), tablets_after_split[0].tablet_id());
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> second_tablet_after_split;
+  second_tablet_after_split.CopyFrom(tablets_after_split);
+  second_tablet_after_split.DeleteSubrange(0, 1);
+  ASSERT_EQ(second_tablet_after_split.size(), 1);
+  ASSERT_EQ(second_tablet_after_split[0].tablet_id(), tablets_after_split[1].tablet_id());
+
+  GetChangesResponsePB change_resp_2 = ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, first_tablet_after_split, &change_resp_1.cdc_sdk_checkpoint()));
+  LOG(INFO) << "Number of records from GetChanges() call on first tablet after split: "
+            << change_resp_2.cdc_sdk_proto_records_size();
+  ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, first_tablet_after_split, &change_resp_2.cdc_sdk_checkpoint()));
+
+  GetChangesResponsePB change_resp_3 = ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, second_tablet_after_split, &change_resp_1.cdc_sdk_checkpoint()));
+  LOG(INFO) << "Number of records from GetChanges() call on second tablet after split: "
+            << change_resp_3.cdc_sdk_proto_records_size();
+  ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, second_tablet_after_split, &change_resp_3.cdc_sdk_checkpoint()));
+
+  // Wait until the 'cdc_parent_tablet_deletion_task_' has run. Then the parent tablet's entry
+  // should be removed from 'cdc_state' table.
+  SleepFor(MonoDelta::FromSeconds(2));
+
+  saw_row_child_one = false;
+  saw_row_child_two = false;
+  // We should no longer see the entry corresponding to the parent tablet.
   for (const auto& row : client::TableRange(table_handle)) {
     auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
     auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
@@ -6293,8 +6341,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
       saw_row_child_two = true;
     }
   }
-
-  ASSERT_TRUE(saw_row_child_one && saw_row_child_two);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDC)) {
@@ -6358,7 +6404,8 @@ TEST_F(
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   LOG(INFO) << "The tablet split error is now communicated to the client.";
 
-  auto get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
+  auto get_tablets_resp =
+      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
 
   // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
@@ -6597,7 +6644,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
 
   // We are calling: "GetTabletListToPollForCDC" when the client has streamed all the data from the
   // parent tablet.
-  get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
+  get_tablets_resp =
+      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
 
   // We should only see the entries for the 2 child tablets, which were created after the first
   // tablet split.
@@ -8642,7 +8690,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentGCedWithTabletBootStrap
   LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompatibillitySupportActiveTime)) {
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupportActiveTime)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   // We want to force every GetChanges to update the cdc_state table.
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
@@ -8717,6 +8765,83 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompatibillitySupportActiveTi
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GE(record_size, 100);
   LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBackwardCompatibillitySupportSafeTime)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 60;
+  // We want to force every GetChanges to update the cdc_state table.
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+
+  const uint32_t num_tservers = 3;
+  ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  GetChangesResponsePB change_resp;
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // Here we are creating a scenario where active_time is not set in the cdc_state table because of
+  // older server version, if we upgrade the server where active_time is part of cdc_state table,
+  // GetChanges call should successful not intents GCed error.
+  client::TableHandle cdc_state;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(cdc_state.Open(cdc_state_table, test_client()));
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GE(record_size, 100);
+  LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
+
+  // Call GetChanges again so that the checkpoint is updated.
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  const auto op = cdc_state.NewUpdateOp();
+  auto* const req = op->mutable_request();
+  QLAddStringHashValue(req, tablets[0].tablet_id());
+  QLAddStringRangeValue(req, stream_id);
+  // Intensionally set the active_time field to null
+  cdc_state.AddStringColumnValue(req, master::kCdcData, "");
+  // And set back only active time, so that safe _time does not exist.
+  auto map_value_pb = client::AddMapColumn(req, Schema::first_column_id() + master::kCdcDataIdx);
+  client::AddMapEntryToColumn(
+      map_value_pb, kCDCSDKActiveTime, std::to_string(GetCurrentTimeMicros()));
+  auto* condition = req->mutable_if_expr()->mutable_condition();
+  condition->set_op(QL_OP_EXISTS);
+  auto session = test_client()->NewSession();
+  EXPECT_OK(session->TEST_ApplyAndFlush(op));
+
+  // We confirm if 'UpdatePeersAndMetrics' thread has updated the checkpoint in tablet tablet peer.
+  for (uint tserver_index = 0; tserver_index < num_tservers; tserver_index++) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(tserver_index)) {
+      if (peer->tablet_id() == tablets[0].tablet_id()) {
+        ASSERT_OK(WaitFor(
+            [&]() -> Result<bool> {
+              return change_resp.cdc_sdk_checkpoint().index() ==
+                     peer->cdc_sdk_min_checkpoint_op_id().index;
+            },
+            MonoDelta::FromSeconds(60),
+            "Failed to update checkpoint in tablet peer."));
+      }
+    }
+  }
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotWithInvalidFromOpId)) {
@@ -9572,12 +9697,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
-  // Calling 'GetTabletListToPollForCDC' before the split has been reported should only return the
-  // details of the current tablet.
-  auto get_tablets_resp =
-      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
-  ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs_size(), 1);
-
   change_resp_1 =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
@@ -9588,7 +9707,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   LOG(INFO) << "The tablet split error is now communicated to the client.";
 
-  get_tablets_resp =
+  auto get_tablets_resp =
       ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
 
@@ -10019,6 +10138,43 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionDeleteRowsWit
   }
   LOG(INFO) << "Total insert count: " << insert_count << " update counts: " << delete_count;
   ASSERT_EQ(insert_count, 2 * delete_count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPrimaryKey)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  // Adding tables without primary keys, they should not disturb any CDC related processes.
+  std::vector<std::string> tables_wo_pk{"table_wo_pk_1", "table_wo_pk_2", "table_wo_pk_3"};
+  std::vector<YBTableName> table_list(3);
+  uint32_t idx = 0;
+  for (const auto& table_name : tables_wo_pk) {
+    table_list[idx] = ASSERT_RESULT(
+        CreateTable(&test_cluster_, kNamespaceName, table_name, 1 /* num_tablets */, false));
+    idx += 1;
+  }
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table_list[0], 0, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, tables_wo_pk[0]));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+
+  // Set checkpoint should throw an error, for the tablet that is not part of the stream, because
+  // it's non-primary key table.
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  LOG(INFO) << "Response for setcheckpoint: " << resp.DebugString();
+  ASSERT_TRUE(resp.has_error());
+
+  ASSERT_OK(WriteRowsHelper(
+      0 /* start */, 1 /* end */, &test_cluster_, true, 2, tables_wo_pk[0].c_str()));
+
+  // Get changes should throw an error, for the tablet that is not part of the stream, because
+  // it's non-primary key table.
+  auto change_resp = GetChangesFromCDC(stream_id, tablets);
+  ASSERT_FALSE(change_resp.ok());
 }
 
 }  // namespace enterprise

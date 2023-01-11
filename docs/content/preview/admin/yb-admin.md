@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-admin
     parent: admin
-    weight: 2465
+    weight: 30
 type: docs
 ---
 
@@ -1480,6 +1480,23 @@ For example:
     -master_addresses 127.0.0.1:7100 \
     create_change_data_stream ysql.yugabyte
 ```
+
+##### Enabling before image
+
+To create a change data capture (CDC) DB stream which also supports sending the before image of the record, use the following command.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: The namespace on which the DB stream ID is to be created.
+* `IMPLICIT`: Checkpointing type on the server.
+* `ALL`: Record type indicating the server that the stream should send the before image too.
 
 A successful operation of the above command returns a message with a DB stream ID:
 

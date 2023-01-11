@@ -80,7 +80,7 @@ class PgDmlRead : public PgDml {
                                bool end_inclusive);
 
   // Bind a column with an IN condition.
-  Status BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
+  Status BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr_values);
 
   Status BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
 

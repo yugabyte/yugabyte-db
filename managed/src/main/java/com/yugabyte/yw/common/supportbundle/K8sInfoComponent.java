@@ -71,7 +71,8 @@ class K8sInfoComponent implements SupportBundleComponent {
       Cluster universeCluster,
       KubernetesCluster kubernetesCluster,
       String nodePrefix,
-      String kubernetesClusterDir)
+      String kubernetesClusterDir,
+      boolean newNamingStyle)
       throws IOException {
     // Get pods, configmaps, services, statefulsets, persistant volume claims with full output.
     List<KubernetesResourceType> k8sResourcesWithOutput =
@@ -159,10 +160,15 @@ class K8sInfoComponent implements SupportBundleComponent {
       Provider provider =
           Provider.getOrBadRequest(UUID.fromString(universeCluster.userIntent.provider));
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      boolean isReadOnlyUniverseCluster = !universeCluster.clusterType.equals(ClusterType.PRIMARY);
+      boolean isReadOnlyUniverseCluster = universeCluster.clusterType == ClusterType.ASYNC;
       String helmReleaseName =
           KubernetesUtil.getHelmReleaseName(
-              isMultiAz, nodePrefix, namespaceToAzName.getValue(), isReadOnlyUniverseCluster);
+              isMultiAz,
+              nodePrefix,
+              universeCluster.userIntent.universeName,
+              namespaceToAzName.getValue(),
+              isReadOnlyUniverseCluster,
+              newNamingStyle);
       try {
         String localFilePath =
             String.format(
@@ -311,8 +317,7 @@ class K8sInfoComponent implements SupportBundleComponent {
         Provider provider =
             Provider.getOrBadRequest(UUID.fromString(universeCluster.userIntent.provider));
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-        boolean isReadOnlyUniverseCluster =
-            !universeCluster.clusterType.equals(ClusterType.PRIMARY);
+        boolean isReadOnlyUniverseCluster = universeCluster.clusterType == ClusterType.ASYNC;
 
         // Reorganize the k8s clusters with the all namespaces for each k8s cluster.
         List<KubernetesCluster> kubernetesClusters =
@@ -370,16 +375,22 @@ class K8sInfoComponent implements SupportBundleComponent {
           }
 
           runCommandsOnDbNamespaces(
-              universeCluster, kubernetesCluster, nodePrefix, kubernetesClusterDir);
+              universeCluster,
+              kubernetesCluster,
+              nodePrefix,
+              kubernetesClusterDir,
+              universe.getUniverseDetails().useNewHelmNamingStyle);
 
           // Get the storage class info for that cluster
           Set<String> allStorageClassNames =
               supportBundleUtil.getAllStorageClassNames(
+                  universe.name,
                   kubernetesManager,
                   kubernetesCluster,
                   isMultiAz,
                   nodePrefix,
-                  isReadOnlyUniverseCluster);
+                  isReadOnlyUniverseCluster,
+                  universe.getUniverseDetails().useNewHelmNamingStyle);
           for (String storageClassName : allStorageClassNames) {
             String storageClassFilePath =
                 String.format(

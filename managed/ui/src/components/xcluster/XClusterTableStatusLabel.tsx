@@ -79,7 +79,7 @@ export const XClusterTableStatusLabel = ({
   );
 
   switch (status) {
-    case XClusterTableStatus.RUNNING:
+    case XClusterTableStatus.RUNNING: {
       if (
         tableLagQuery.isLoading ||
         tableLagQuery.isIdle ||
@@ -101,6 +101,7 @@ export const XClusterTableStatusLabel = ({
       return maxNodeLag === undefined || maxNodeLag > maxAcceptableLag
         ? WARNING_LABEL
         : OPERATIONAL_LABEL;
+    }
     case XClusterTableStatus.WARNING:
       return WARNING_LABEL;
     case XClusterTableStatus.FAILED:

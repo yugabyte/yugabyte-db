@@ -83,15 +83,17 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
               primaryPI,
               primaryPlacement.masters,
               taskParams().nodePrefix,
+              universe.name,
               primaryProvider,
               taskParams().communicationPorts.masterRpcPort,
               taskParams().useNewHelmNamingStyle);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      createPodsTask(placement, masterAddresses, true);
+      createPodsTask(universe.name, placement, masterAddresses, true);
 
       // Following method assumes primary cluster.
-      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, pi, true);
+      createSingleKubernetesExecutorTask(
+          universe.name, KubernetesCommandExecutor.CommandType.POD_INFO, pi, true);
 
       Set<NodeDetails> tserversAdded =
           getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, true);

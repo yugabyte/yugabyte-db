@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"node-agent/model"
 	"node-agent/util"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -435,39 +436,6 @@ func (handler *GetInstanceTypesHandler) Result() *[]model.NodeInstanceType {
 	return handler.result
 }
 
-type GetAgentStateHandler struct {
-	result *string
-}
-
-func NewGetAgentStateHandler() *GetAgentStateHandler {
-	return &GetAgentStateHandler{}
-}
-
-func (handler *GetAgentStateHandler) Handle(ctx context.Context) (any, error) {
-	config := util.CurrentConfig()
-	res, err := httpClient().Do(
-		http.MethodGet,
-		util.PlatformGetAgentStateEndpoint(
-			config.String(util.CustomerIdKey),
-			config.String(util.NodeAgentIdKey),
-		),
-		nil,
-		nil,
-		nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	var state string
-	handler.result = &state
-	return UnmarshalResponse(handler.result, res)
-}
-
-func (handler *GetAgentStateHandler) Result() *string {
-	return handler.result
-}
-
 type PutAgentStateHandler struct {
 	state   model.NodeState
 	version string
@@ -503,42 +471,6 @@ func (handler *PutAgentStateHandler) Handle(ctx context.Context) (any, error) {
 }
 
 func (handler *PutAgentStateHandler) Result() *model.NodeAgent {
-	return handler.result
-}
-
-type PutAgentHandler struct {
-	result *model.NodeAgent
-}
-
-func NewPutAgentHandler() *PutAgentHandler {
-	return &PutAgentHandler{}
-}
-
-func (handler *PutAgentHandler) Handle(ctx context.Context) (any, error) {
-	config := util.CurrentConfig()
-	headers, err := platformHeadersWithJWT(config)
-	if err != nil {
-		return nil, err
-	}
-	res, err := httpClient().Do(
-		http.MethodPut,
-		util.PlatformPutAgentEndpoint(
-			config.String(util.CustomerIdKey),
-			config.String(util.NodeAgentIdKey),
-		),
-		headers,
-		nil,
-		createUpdateAgentRequest(config),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	handler.result = &model.NodeAgent{}
-	return UnmarshalResponse(handler.result, res)
-}
-
-func (handler *PutAgentHandler) Result() *model.NodeAgent {
 	return handler.result
 }
 
@@ -637,6 +569,8 @@ func createRegisterAgentRequest(config *util.Config) model.RegisterRequest {
 	req.IP = config.String(util.NodeIpKey)
 	req.Port = config.Int(util.NodePortKey)
 	req.Version = config.String(util.PlatformVersionKey)
+	req.ArchType = runtime.GOARCH
+	req.OSType = runtime.GOOS
 	req.State = model.Registering.Name()
 	return req
 }
@@ -650,16 +584,9 @@ func createUpdateAgentStateRequest(
 	req.Name = config.String(util.NodeNameKey)
 	req.IP = config.String(util.NodeIpKey)
 	req.Version = version
+	req.ArchType = runtime.GOARCH
+	req.OSType = runtime.GOOS
 	req.State = state.Name()
-	return req
-}
-
-func createUpdateAgentRequest(config *util.Config) model.StateUpdateRequest {
-	req := model.StateUpdateRequest{}
-	req.Name = config.String(util.NodeNameKey)
-	req.IP = config.String(util.NodeIpKey)
-	req.Version = config.String(util.PlatformVersionKey)
-	req.State = model.Upgrading.Name()
 	return req
 }
 
@@ -672,7 +599,7 @@ func createNodeDetailsRequest(
 	nodeDetails.Region = config.String(util.NodeRegionKey)
 	nodeDetails.Zone = config.String(util.NodeZoneKey)
 	nodeDetails.InstanceType = config.String(util.NodeInstanceTypeKey)
-	nodeDetails.InstanceName = config.String(util.NodeInstanceNameKey)
+	nodeDetails.InstanceName = config.String(util.NodeNameKey)
 	nodeDetails.NodeConfigs = getNodeConfig(data)
 	return nodeDetails
 }

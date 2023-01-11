@@ -110,13 +110,13 @@ public class AccessKeyRotationUtil {
               region.uuid,
               newKeyCode,
               null,
-              keyInfo.sshUser,
-              keyInfo.sshPort,
-              keyInfo.airGapInstall,
-              keyInfo.skipProvisioning,
-              keyInfo.setUpChrony,
-              keyInfo.ntpServers,
-              keyInfo.showSetUpChrony);
+              provider.details.sshUser,
+              provider.details.sshPort,
+              provider.details.airGapInstall,
+              provider.details.skipProvisioning,
+              provider.details.setUpChrony,
+              provider.details.ntpServers,
+              provider.details.showSetUpChrony);
     }
 
     if (newAccessKey == null) {

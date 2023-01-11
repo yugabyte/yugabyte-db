@@ -810,7 +810,7 @@ Status PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
         case ExprOperator::kSubColRef: {
           const PTSubscriptedColumn *ref = static_cast<const PTSubscriptedColumn *>(operand1.get());
           if (ref->desc()) {
-            sem_state->set_bindvar_name(PTBindVar::coll_bindvar_name(ref->desc()->name()));
+            sem_state->set_bindvar_name(PTBindVar::coll_value_bindvar_name(ref->desc()->name()));
           } else if (!sem_state->is_uncovered_index_select()) {
             return STATUS(
                 QLError, "Column doesn't exist", Slice(), QLError(ErrorCode::UNDEFINED_COLUMN));
@@ -1034,6 +1034,7 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
     } else if (op1->expr_op() == ExprOperator::kCollection) {
       const PTCollectionExpr *collection_expr = static_cast<const PTCollectionExpr *>(op1.get());
       std::vector<const ColumnDesc *> col_descs;
+      col_descs.reserve(collection_expr->values().size());
       for (auto &value : collection_expr->values()) {
         PTRef *ref = static_cast<PTRef *>(value.get());
         col_descs.push_back(ref->desc());
@@ -1463,6 +1464,18 @@ Status PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
   auto curr_ytype = desc_->ql_type();
   auto curr_itype = desc_->internal_type();
 
+  string arg_bindvar_name;
+  switch (curr_ytype->main()) {
+    case DataType::MAP:
+      arg_bindvar_name = PTBindVar::coll_map_key_bindvar_name(desc_->name());
+      break;
+    case DataType::LIST:
+      arg_bindvar_name = PTBindVar::coll_list_index_bindvar_name(desc_->name());
+      break;
+    default:
+      arg_bindvar_name = PTBindVar::default_bindvar_name();
+  }
+
   if (args_ != nullptr) {
     for (const auto &arg : args_->node_list()) {
       if (curr_ytype->keys_type() == nullptr) {
@@ -1472,6 +1485,7 @@ Status PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
 
       sem_state.SetExprState(curr_ytype->keys_type(),
                              client::YBColumnSchema::ToInternalDataType(curr_ytype->keys_type()));
+      sem_state.set_bindvar_name(arg_bindvar_name);
       RETURN_NOT_OK(arg->Analyze(sem_context));
 
       curr_ytype = curr_ytype->values_type();
@@ -1615,6 +1629,7 @@ Status PTBindVar::Analyze(SemContext *sem_context) {
   if (name_ == nullptr) {
     name_ = sem_context->bindvar_name();
   }
+  alternative_names_ = sem_context->alternative_bindvar_names();
 
   if (user_pos_ != nullptr) {
     int64_t pos = 0;
@@ -1660,8 +1675,18 @@ std::string PTBindVar::bcall_arg_bindvar_name(const std::string& bcall_name, siz
   return strings::Substitute("arg$0(system.$1)", arg_position, bcall_name);
 }
 
-// The name Cassandra uses for binding the collection elements.
-std::string PTBindVar::coll_bindvar_name(const std::string& col_name) {
+// The name Cassandra uses for binding the collection element keys.
+std::string PTBindVar::coll_map_key_bindvar_name(const std::string& col_name) {
+  return strings::Substitute("key($0)", col_name);
+}
+
+// The name Cassandra uses for binding the list element indexes.
+std::string PTBindVar::coll_list_index_bindvar_name(const std::string& col_name) {
+  return strings::Substitute("idx($0)", col_name);
+}
+
+// The name Cassandra uses for binding the collection element values.
+std::string PTBindVar::coll_value_bindvar_name(const std::string& col_name) {
   return strings::Substitute("value($0)", col_name);
 }
 

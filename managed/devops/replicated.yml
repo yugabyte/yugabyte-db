@@ -9,7 +9,7 @@
 replicated_api_version: "2.8.0"
 name: "yugaware"
 properties:
-  app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}'
+  app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_https_port"}}{{repl else}}http://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_http_port"}}{{repl end}}'
   logo_url: https://s3-us-west-2.amazonaws.com/assets.yugabyte.com/yb-logo.png
   console_title: YugaByte Platform Deployment Console
 backup:
@@ -277,9 +277,14 @@ components:
                 - job_name: 'platform'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   metrics_path: "/api/v1/prometheus_metrics"
+                  {{repl if ConfigOptionEquals "https_enabled" "1"}}
+                  scheme: https
+                  tls_config:
+                    insecure_skip_verify: true
+                  {{repl end}}
                   static_configs:
                     - targets: [
-                      '{{repl ConfigOption "docker_gateway" }}:{{repl ConfigOption "app_external_port"}}'
+                      '{{repl ConfigOption "docker_gateway" }}:{{repl if ConfigOptionEquals "https_enabled" "1"}}9443{{repl else}}9000{{repl end}}}'
                     ]
 
                 - job_name: "node"
@@ -432,21 +437,18 @@ components:
             value: '{{repl ConfigOption "no_proxy"}}'
             when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
         ports:
+          - private_port: "9443"
+            public_port: '{{repl ConfigOption "ui_https_port"}}'
+            port_type: tcp
+            when: '{{repl ConfigOptionEquals "https_enabled" "1"}}'
           - private_port: "9000"
-            public_port: '{{repl ConfigOption "app_external_port"}}'
-            interface: docker0
-            when: '{{repl ConfigOptionEquals "expose_app_port" "0"}}'
-          - private_port: "9000"
-            public_port: '{{repl ConfigOption "app_external_port"}}'
-            when: '{{repl ConfigOptionEquals "expose_app_port" "1"}}'
-        publish_events:
-          - name: YugaWare started
-            trigger: container-start
-            subscriptions:
-              - component: nginx
-                container: nginx
-                action: start
+            public_port: '{{repl ConfigOption "ui_http_port"}}'
+            port_type: tcp
+            when: '{{repl ConfigOptionEquals "http_enabled" "1"}}'
         config_files:
+          - filename: /opt/yugabyte/yugaware/conf/server.pem
+            contents: |
+              {{repl ConsoleSetting "tls.key.data"}}{{repl ConsoleSetting "tls.cert.data"}}
           - filename: /opt/yugabyte/yugaware/conf/application.docker.conf
             contents: |
               include classpath("application.common.conf")
@@ -485,7 +487,8 @@ components:
                 cors {
                   pathPrefixes = ["/"]
                   allowedOrigins = [
-                    "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}",
+                    "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_https_port"}}{{repl end}}",
+                    "{{repl if ConfigOptionEquals "http_enabled" "1"}}http://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_http_port"}}{{repl end}}",
                     "{{repl Trim (ConfigOption "support_origin_url") "/" }}"
                   ]
                   supportsCredentials=true
@@ -493,6 +496,19 @@ components:
                   allowedHttpHeaders = ["Accept", "Origin", "Content-Type", "X-Auth-Token", "X-AUTH-YW-API-TOKEN", ${play.filters.csrf.header.name}]
                 }
               }
+
+              {{repl if ConfigOptionNotEquals "http_enabled" "1"}}
+              http.port = disabled
+              {{repl else}}
+              http.port = 9000
+              {{repl end}}
+              {{repl if ConfigOptionEquals "https_enabled" "1"}}
+              https.port = 9443
+              play.server.https.keyStore {
+                path = /opt/yugabyte/yugaware/conf/server.pem
+                type = PEM
+              }
+              {{repl end}}
 
               yb {
                 devops.home = /opt/yugabyte/devops
@@ -514,7 +530,7 @@ components:
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
                 health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
-                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}"
+                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_https_port"}}{{repl else}}http://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_http_port"}}{{repl end}}"
                 security.ssh2_enabled = false
                 node_agent {
                   releases.path = "/opt/yugabyte/node-agent/releases"
@@ -525,68 +541,6 @@ components:
                 releases.path = "/opt/yugabyte/ybc/releases"
                 docker.release = "/opt/yugabyte/ybc/release"
               }
-
-  - name: nginx
-    containers:
-      - source: public
-        image_name: nginx
-        name: nginx
-        version: 1.23.1
-        cmd: ""
-        publish_events:
-          - name: Container nginx started
-            trigger: container-start
-            data: ""
-            subscriptions: []
-        customer_files: []
-        config_files:
-          - filename: /opt/certs/server.key
-            contents: '{{repl ConsoleSetting "tls.key.data"}}'
-          - filename: /opt/certs/server.cert
-            contents: '{{repl ConsoleSetting "tls.cert.data"}}'
-          - filename: /etc/nginx/conf.d/default.conf
-            contents: |
-              server {
-                {{repl if ConfigOptionEquals "https_enabled" "1"}}
-                  listen       443 ssl;
-                  server_name  {{repl ConfigOption "hostname" }};
-
-                  ssl_protocols {{repl ConfigOption "tls_version" }};
-                  ssl_certificate /opt/certs/server.cert;
-                  ssl_certificate_key /opt/certs/server.key;
-                {{repl else}}
-                  listen       80;
-                  server_name  {{repl ConfigOption "hostname" }};
-                {{repl end}}
-
-                  proxy_http_version 1.1;
-                  proxy_set_header X-Real-IP  $remote_addr;
-                  proxy_set_header X-Forwarded-For $remote_addr;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_set_header Host $host;
-
-                  proxy_read_timeout 600;
-
-
-                location / {
-                  proxy_pass http://{{repl ConfigOption "docker_gateway" }}:{{repl ConfigOption "app_external_port"}};
-                }
-                location ~ /settings/ha/internal/upload$ {
-                  proxy_pass http://{{repl ConfigOption "docker_gateway" }}:{{repl ConfigOption "app_external_port"}};
-                  # HA backp upload endpoint needs to allow bigger request size
-                  # Broaden the location match regex to cover more endpoints as needed
-                  client_max_body_size {{repl ConfigOption "upload_size"}};
-                }
-              }
-        ports:
-          - private_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
-            public_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
-            port_type: tcp
-            when: '{{repl or (ConfigOptionEquals "nginx_custom_port" "80") (ConfigOptionEquals "nginx_custom_port" "443")}}'
-          - private_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
-            public_port: '{{repl ConfigOption "nginx_custom_port" }}'
-            port_type: tcp
-            when: '{{repl ConfigOptionEquals "enable_custom_port" "1"}}'
 
 config:
   - name: database
@@ -688,33 +642,34 @@ config:
             - '^http[s]?:\/\/\w+([\.\-\_]\w+)*(:[0-9]+)?(\/.*)?$'
             - "Enter a valid URL of the form http://localhost:3000"
         help_text: Specify protocol-host to be whitelisted in the CORS filter.
-      - name: expose_app_port
-        title: Expose Yugaware HTTP Port
-        help_text: DEBUG ONLY - When enabled you can access yugaware directly (bypassing the nginx)
-        type: bool
-        default: "0"
-      - name: app_external_port
-        title: Yugaware Application Port
+      - name: ui_https_port
+        title: Yugaware UI HTTPS Port
+        help_text: Yugaware UI HTTPS Port
         type: text
-        value: ""
-        default: "9000"
-        when: '{{repl ConfigOptionEquals "expose_app_port" "1" }}'
-      - name: enable_custom_port
-        title: Enable Yugaware UI Custom Port
-        type: bool
-        value: ""
-        default: "0"
-      - name: nginx_custom_port
-        title: Yugaware UI Custom Port
-        type: text
-        value: ""
-        default: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
-        when: '{{repl ConfigOptionEquals "enable_custom_port" "1"}}'
+        default: "443"
+        when: '{{repl ConfigOptionEquals "https_enabled" "1"}}'
       - name: https_enabled
         title: Enable HTTPS
-        help_text: When enabled we will listen to https
+        help_text: When enabled we will listen to https (At least one of https or http should be enabled)
         type: bool
         default: "1"
+      - name: ui_http_port
+        title: Yugaware UI HTTP Port
+        help_text: Yugaware UI HTTP Port
+        type: text
+        default: "80"
+        when: '{{repl ConfigOptionEquals "http_enabled" "1"}}'
+      - name: http_enabled
+        title: Enable HTTP
+        help_text: When enabled we will listen to http (At least one of http or https should be enabled)
+        type: bool
+        default: "0"
+      - name: hsts_enabled
+        title: Enable HSTS
+        help_text: Enable HTTP Strict Transport Security. (Requires setup of DNS and SSL certificate issued by a trusted Certificate Authority)
+        type: bool
+        default: "0"
+        when: '{{repl ConfigOptionEquals "https_enabled" "1" }}'
       - name: upload_size
         title: Maximum Request Size
         help_text: Maximum size of the file uploads allowed by Yugabyte Platform.
@@ -798,7 +753,7 @@ state:
   ready:
     command: http_status_code
     args:
-    - '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}'
+    - '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_https_port"}}{{repl else}}http://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_http_port"}}{{repl end}}'
     - '200'
     - '15'
     timeout: 900

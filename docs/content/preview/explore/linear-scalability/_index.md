@@ -51,7 +51,7 @@ The following table summarizes the support for scalability and sharding across Y
 <div class="row">
 
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="scaling-transactions/">
+    <a class="section-link icon-offset" href="scaling-transactions-cloud/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
         <div class="title">Scaling transactions per second</div>

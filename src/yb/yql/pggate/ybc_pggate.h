@@ -379,8 +379,11 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num,
                                         bool start_inclusive,
                                         YBCPgExpr attr_value_end,
                                         bool end_inclusive);
-YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
-    YBCPgExpr *attr_values);
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
+                                   YBCPgExpr lhs,
+                                   int n_attr_values,
+                                   YBCPgExpr *attr_values);
+
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
 YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
@@ -569,6 +572,11 @@ YBCStatus YBCPgNewOperator(
     YBCPgStatement stmt, const char *opname, const YBCPgTypeEntity *type_entity,
     bool collate_is_valid_non_c, YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
+
+YBCStatus YBCPgNewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    YBCPgExpr *elems, YBCPgExpr *expr_handle);
 
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
                             bool is_null, size_t *type_size);

@@ -8,6 +8,7 @@ import { CONST_VAR } from '../helpers/const';
 import { CpuMeasureRecommendation } from '../../../redesign/helpers/dtos';
 import './styles.scss';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const Plotly = require('plotly.js/lib/index-basic.js');
 
 export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {

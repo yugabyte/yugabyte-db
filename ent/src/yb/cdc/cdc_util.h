@@ -76,6 +76,8 @@ struct ProducerTabletInfo {
 struct XClusterTabletInfo {
   ProducerTabletInfo producer_tablet_info;
   ConsumerTabletInfo consumer_tablet_info;
+  // Whether or not replication has been paused for this tablet.
+  bool disable_stream;
 
   const std::string& producer_tablet_id() const {
     return producer_tablet_info.tablet_id;

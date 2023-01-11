@@ -38,6 +38,7 @@ public class KubernetesCheckStorageClass extends AbstractTaskBase {
 
   public static class Params extends AbstractTaskParams {
     public Map<String, String> config;
+    public boolean newNamingStyle;
     public String namespace;
     public UUID providerUUID;
     public String helmReleaseName;
@@ -62,7 +63,11 @@ public class KubernetesCheckStorageClass extends AbstractTaskBase {
     // storage class name used by tserver
     String scName =
         k8s.getStorageClassName(
-            taskParams().config, taskParams().namespace, taskParams().helmReleaseName, false);
+            taskParams().config,
+            taskParams().namespace,
+            taskParams().helmReleaseName,
+            false,
+            taskParams().newNamingStyle);
     if (Strings.isNullOrEmpty(scName)) {
       // Could be using ephemeral volume
       throw new RuntimeException("TServer Volume does not support expansion");

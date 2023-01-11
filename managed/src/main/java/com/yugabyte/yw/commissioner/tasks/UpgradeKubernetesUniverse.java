@@ -88,6 +88,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
               primaryPI,
               primaryPlacement.masters,
               taskParams().nodePrefix,
+              universe.name,
               provider,
               universeDetails.communicationPorts.masterRpcPort,
               newNamingStyle);
@@ -193,7 +194,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       }
     }
 
-    createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi, isReadOnlyCluster);
+    createSingleKubernetesExecutorTask(universe.name, CommandType.POD_INFO, pi, isReadOnlyCluster);
 
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
 
@@ -210,6 +211,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
     if (masterChanged) {
       userIntent.masterGFlags = taskParams().masterGFlags;
       upgradePodsTask(
+          universe.name,
           placement,
           masterAddresses,
           null,
@@ -229,6 +231,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
       userIntent.tserverGFlags = taskParams().tserverGFlags;
       upgradePodsTask(
+          universe.name,
           placement,
           masterAddresses,
           null,

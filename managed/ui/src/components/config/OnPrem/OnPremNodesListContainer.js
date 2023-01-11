@@ -2,7 +2,7 @@
 
 import { connect } from 'react-redux';
 import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
-import { reset } from 'redux-form';
+import { reset , reduxForm } from 'redux-form';
 import { toast } from 'react-toastify';
 import OnPremNodesList from './OnPremNodesList';
 import {
@@ -24,9 +24,9 @@ import {
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure
 } from '../../../actions/tasks';
-import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
-import { reduxForm } from 'redux-form';
-import { closeUniverseDialog } from '../../../actions/universe';
+import { fetchUniverseList, fetchUniverseListResponse , closeUniverseDialog } from '../../../actions/universe';
+
+
 import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapStateToProps = (state) => {

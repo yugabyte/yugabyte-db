@@ -133,9 +133,10 @@ public class Users extends Model {
   @Encrypted private String authToken;
 
   @Column(nullable = true)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
   @ApiModelProperty(
       value = "API token creation date",
-      example = "1624255408795",
+      example = "2021-06-17T15:00:05-04:00",
       accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 

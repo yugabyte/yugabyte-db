@@ -33,7 +33,7 @@ export function backupConfigFormatter(row, configList) {
   return 'Config UUID (Missing)';
 }
 
-export function percentFormatter(cell, row) {
+export function percentFormatter(cell) {
   return <YBFormattedNumber value={cell / 100} formattedNumberStyle={'percent'} />;
 }
 
@@ -62,7 +62,7 @@ export function successStringFormatter(cell, row) {
       return (
         <span className="yb-pending-color">
           <YBLoadingCircleIcon size="inline" />
-          Pending ({percentFormatter(row.percentComplete, row)})
+          Pending ({percentFormatter(row.percentComplete)})
         </span>
       );
     case 'Failure':

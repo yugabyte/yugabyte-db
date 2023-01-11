@@ -41,10 +41,13 @@ For reference documentation, including using projects with SSL, refer to the [dr
 To develop Java driver applications for YugabyteDB, you need the following:
 
 - **Java Development Kit (JDK)**
-  Install JDK 8 or later. For more information on how to check your version of Java and install the JDK, see the [AdoptOpenJDK Installation Page](https://adoptopenjdk.net/installation.html).
+
+  Install JDK 8 or later. {{% jdk-setup %}}
 
 - **Create a Java project**
-  You can create Java projects using Maven or Gradle software project management tools. For ease-of-use, use an integrated development environment (IDE) such as IntelliJ IDEA or Eclipse IDE to configure Maven or Gradle to build and run your project.\
+
+  You can create Java projects using Maven or Gradle software project management tools. For ease-of-use, use an integrated development environment (IDE) such as IntelliJ IDEA or Eclipse IDE to configure Maven or Gradle to build and run your project.
+
   If you are not using an IDE, see [Building Maven](https://maven.apache.org/guides/development/guide-building-maven.html) or [Creating New Gradle Projects](https://docs.gradle.org/current/samples/sample_building_java_applications.html) for more information on how to set up a Java project.
 
     1. Create a project called "DriverDemo".

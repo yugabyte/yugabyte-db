@@ -154,7 +154,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         createNonRollingUpgradeTaskFlow(lambda, mastersAndTServers, context, isYbcPresent);
         break;
       case NON_RESTART_UPGRADE:
-        createNonRestartUpgradeTaskFlow(lambda, mastersAndTServers, context, isYbcPresent);
+        createNonRestartUpgradeTaskFlow(lambda, mastersAndTServers, context);
         break;
     }
   }
@@ -467,30 +467,23 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   public void createNonRestartUpgradeTaskFlow(
       IUpgradeSubTask nonRestartUpgradeLambda,
       Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
-      UpgradeContext context,
-      boolean isYbcPresent) {
+      UpgradeContext context) {
     createNonRestartUpgradeTaskFlow(
         nonRestartUpgradeLambda,
         mastersAndTServers.getLeft(),
         mastersAndTServers.getRight(),
-        context,
-        isYbcPresent);
+        context);
   }
 
   public void createNonRestartUpgradeTaskFlow(
       IUpgradeSubTask nonRestartUpgradeLambda,
       List<NodeDetails> masterNodes,
       List<NodeDetails> tServerNodes,
-      UpgradeContext context,
-      boolean isYbcPresent) {
+      UpgradeContext context) {
     createNonRestartUpgradeTaskFlow(
         nonRestartUpgradeLambda, masterNodes, ServerType.MASTER, context);
     createNonRestartUpgradeTaskFlow(
         nonRestartUpgradeLambda, tServerNodes, ServerType.TSERVER, context);
-    if (isYbcPresent) {
-      createNonRestartUpgradeTaskFlow(
-          nonRestartUpgradeLambda, tServerNodes, ServerType.CONTROLLER, context);
-    }
   }
 
   protected void createNonRestartUpgradeTaskFlow(

@@ -156,6 +156,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
         />
       </div>
       <div className="schedule-backup-list" onScroll={handleScroll}>
+        {/* eslint-disable-next-line react/display-name */}
         {schedules?.map((schedule) => (
           <ScheduledBackupCard
             schedule={schedule}

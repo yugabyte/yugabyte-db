@@ -4,7 +4,7 @@ linkTitle: Spring Data YugabyteDB
 description: Spring Data YugabyteDB
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: sdyb
     parent: spring-framework
     weight: 578
@@ -15,6 +15,12 @@ Spring Data modules are used for accessing databases and performing various task
 
 Spring Data YugabyteDB (SDYB) modules provide support for YSQL APIs and enable you to build cloud-native applications.
 
+{{< note title="Note" >}}
+
+SDYB requires Spring Boot v2.6.0 or earlier. Refer to [Compatibility matrix](#compatibility-matrix).
+
+{{< /note >}}
+
 ## Overview
 
 The following are some of the features included in Spring Data YugabyteDB (YSQL):
@@ -24,12 +30,12 @@ The following are some of the features included in Spring Data YugabyteDB (YSQL)
 - Yugabyte Distributed SQL transaction manager
 - Spring Boot starter support for YugabyteDB
 - Cluster awareness achieved via elimination of load balancer from SQL
-- Topology awareness necessary for developing geographically-distributed applications
+- Topology awareness for developing geographically-distributed applications
 - Partition awareness for achieving row-level geo-partitioning
 
 For more information, demonstrations, and contribution guidelines, see [Spring Data YugabyteDB GitHub project.](https://github.com/yugabyte/spring-data-yugabytedb/)
 
-## Project Dependencies
+## Project dependencies
 
 The project definition includes the following dependencies:
 
@@ -382,8 +388,8 @@ public class YsqlConfig extends AbstractYugabyteJdbcConfiguration {
 
 For additional information and examples, refer to [SDYB example](https://github.com/yugabyte/spring-data-yugabytedb-example).
 
-## Compatibility Matrix
+## Compatibility matrix
 
-| **SDYB** | **YugabyteDB Smart Driver** | **PostgreSQL JDBC Driver** |
-| -------- | --------------------------- | ------------------------ |
-| 2.3.0    | 42.3.4          | 42.2.7 or later
+| SDYB | YugabyteDB Smart Driver | PostgreSQL JDBC Driver | Spring Boot |
+| :--- | :---------------------- | :--------------------- | :---------- |
+| 2.3.0 | 42.3.4 | 42.2.7 or later | 2.6 or earlier |

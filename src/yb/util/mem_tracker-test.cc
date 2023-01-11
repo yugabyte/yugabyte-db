@@ -37,10 +37,6 @@
 #include <utility>
 #include <vector>
 
-#ifdef TCMALLOC_ENABLED
-#include <gperftools/malloc_extension.h>
-#endif
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -308,7 +304,7 @@ TEST(MemTrackerTest, SoftLimitExceeded) {
   }
 }
 
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
 TEST(MemTrackerTest, TcMallocRootTracker) {
   const auto kWaitTimeout = std::chrono::microseconds(
       FLAGS_mem_tracker_update_consumption_interval_us * 2);

@@ -682,7 +682,9 @@ class TestDriver : public ConsensusRoundCallback {
     CHECK_OK(pool_->SubmitFunc(std::bind(&TestDriver::Apply, this)));
   }
 
-  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {}
+  Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
+    return Status::OK();
+  }
 
   // Called in all modes to delete the transaction and, transitively, the consensus
   // round.

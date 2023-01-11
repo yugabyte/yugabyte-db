@@ -37,6 +37,8 @@
 namespace yb {
 namespace docdb {
 
+YB_STRONGLY_TYPED_BOOL(IsFlatDoc);
+
 class IntentAwareIterator;
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
@@ -92,12 +94,21 @@ class DocDBTableReader {
   // Returns true if value was found, false otherwise.
   Result<bool> Get(const Slice& root_doc_key, SubDocument* result);
 
+  // Same as get, but for rows that have doc keys with only one subkey.
+  // This is always true for YSQL.
+  // result shouldn't be nullptr and will be filled with the same number of primitives as number of
+  // columns passed to ctor in projection and in the same order.
+  Result<bool> GetFlat(const Slice& root_doc_key, std::vector<PrimitiveValue>* result);
+
+
  private:
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
   // at that row.
   Status InitForKey(const Slice& sub_doc_key);
 
+  class GetHelperBase;
   class GetHelper;
+  class FlatGetHelper;
 
   // Owned by caller.
   IntentAwareIterator* iter_;

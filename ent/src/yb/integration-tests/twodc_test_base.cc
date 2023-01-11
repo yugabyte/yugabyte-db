@@ -86,7 +86,6 @@ Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts, bool init_pos
   // Randomly select the tserver index that will serve the postgres proxy.
   const size_t pg_ts_idx = RandomUniformInt<size_t>(0, opts.num_tablet_servers - 1);
   const std::string pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
-
   // The 'pgsql_proxy_bind_address' flag must be set before starting the producer cluster. Each
   // tserver will store this address when it starts.
   const uint16_t producer_pg_port = producer_cluster_.mini_cluster_->AllocateFreePort();
@@ -116,6 +115,8 @@ Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts, bool init_pos
 
   producer_cluster_.client_ = VERIFY_RESULT(producer_cluster()->CreateClient());
   consumer_cluster_.client_ = VERIFY_RESULT(consumer_cluster()->CreateClient());
+  producer_cluster_.pg_ts_idx_ = pg_ts_idx;
+  consumer_cluster_.pg_ts_idx_ = pg_ts_idx;
 
   if (init_postgres) {
     RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
@@ -247,7 +248,8 @@ Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
     const boost::optional<std::string>& tablegroup_name,
     uint32_t num_tablets,
     bool colocated,
-    const ColocationId colocation_id) {
+    const ColocationId colocation_id,
+    const bool ranged_partitioned) {
   auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
   std::string colocation_id_string = "";
   if (colocation_id > 0) {
@@ -258,8 +260,9 @@ Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
   }
   std::string full_table_name =
       schema_name.empty() ? table_name : Format("$0.$1", schema_name, table_name);
-  std::string query =
-      Format("CREATE TABLE $0($1 int PRIMARY KEY) ", full_table_name, kKeyColumnName);
+  std::string query = Format(
+      "CREATE TABLE $0($1 int, PRIMARY KEY ($1$2)) ", full_table_name, kKeyColumnName,
+      ranged_partitioned ? " ASC" : "");
   // One cannot use tablegroup together with split into tablets.
   if (tablegroup_name.has_value()) {
     std::string with_clause =
@@ -273,7 +276,18 @@ Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
                                   : Format("$0, $1", colocation_id_string, colocated_clause);
     query += Format("WITH ($0)", with_clause);
     if (!colocated) {
-      query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
+      if (ranged_partitioned) {
+        if (num_tablets > 1) {
+          // Split at every 500 interval.
+          query += " SPLIT AT VALUES(";
+          for (size_t i = 0; i < num_tablets - 1; ++i) {
+            query +=
+                Format("($0)$1", i * kRangePartitionInterval, (i == num_tablets - 2) ? ")" : ", ");
+          }
+        }
+      } else {
+        query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
+      }
     }
   }
   EXPECT_OK(conn.Execute(query));
@@ -284,13 +298,14 @@ Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
 
 Status TwoDCTestBase::CreateYsqlTable(
     uint32_t idx, uint32_t num_tablets, Cluster* cluster, std::vector<YBTableName>* table_names,
-    const boost::optional<std::string>& tablegroup_name, bool colocated) {
+    const boost::optional<std::string>& tablegroup_name, bool colocated,
+    const bool ranged_partitioned) {
   // Generate colocation_id based on index so that we have the same colocation_id for
   // producer/consumer.
   const int colocation_id = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
   auto table = VERIFY_RESULT(CreateYsqlTable(
       cluster, kNamespaceName, "" /* schema_name */, Format("test_table_$0", idx), tablegroup_name,
-      num_tablets, colocated, colocation_id));
+      num_tablets, colocated, colocation_id, ranged_partitioned));
   table_names->push_back(table);
   return Status::OK();
 }
@@ -672,10 +687,10 @@ Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(const NamespaceId& names
           return true;
         }, safe_time_propagation_timeout_,
         Format("Wait for safe_time of namespace $0 to be valid", namespace_id)));
-    }
-
-    return Status::OK();
   }
+
+  return Status::OK();
+}
 
 } // namespace enterprise
 } // namespace yb

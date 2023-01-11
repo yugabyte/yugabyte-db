@@ -452,8 +452,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
                                const string& start_key, const string& end_key) {
     auto start_idx = FindPartitionStartIndex(sorted_partitions, start_key);
     auto end_idx = FindPartitionStartIndexExclusiveBound(sorted_partitions, end_key);
-    auto filtered_tablets =
-        ASSERT_RESULT(FilterTabletsByHashPartitionKeyRange(tablets, start_key, end_key));
+    auto filtered_tablets = FilterTabletsByKeyRange(tablets, start_key, end_key);
     std::vector<string> filtered_partitions;
     std::transform(filtered_tablets.begin(), filtered_tablets.end(),
                    std::back_inserter(filtered_partitions),
@@ -639,8 +638,7 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
       table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs)).get());
   // First, verify, that using empty bounds on both sides returns all tablets.
-  auto filtered_tablets =
-      ASSERT_RESULT(FilterTabletsByHashPartitionKeyRange(tablets, std::string(), std::string()));
+  auto filtered_tablets = FilterTabletsByKeyRange(tablets, std::string(), std::string());
   ASSERT_EQ(kNumTabletsPerTable, filtered_tablets.size());
 
   std::vector<std::string> partition_starts;
@@ -658,7 +656,8 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   ASSERT_NO_FATALS(VerifyKeyRangeFiltering(partition_starts, tablets, start_key, end_key));
 
   auto fixed_key = PartitionSchema::EncodeMultiColumnHashValue(10);
-  ASSERT_NOK(FilterTabletsByHashPartitionKeyRange(tablets, fixed_key, fixed_key));
+  filtered_tablets = FilterTabletsByKeyRange(tablets, fixed_key, fixed_key);
+  ASSERT_EQ(1, filtered_tablets.size());
 
   for (int i = 0; i < kNumIterations; i++) {
     auto start_idx = RandomUniformInt(0, PartitionSchema::kMaxPartitionKey - 1);
@@ -667,6 +666,92 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
                      PartitionSchema::EncodeMultiColumnHashValue(start_idx),
                      PartitionSchema::EncodeMultiColumnHashValue(end_idx)));
   }
+}
+
+TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
+  ASSERT_NO_FATALS(CreateTable(kTable3Name, 8, &client_table3_));
+
+  std::shared_ptr<YBTable> table;
+  ASSERT_OK(client_->OpenTable(kTable3Name, &table));
+
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
+            WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
+      table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs)).get());
+
+  std::vector<std::string> partitions;
+  partitions.reserve(tablets.size());
+  for (const auto& tablet : tablets) {
+    partitions.push_back(tablet->partition().partition_key_start());
+  }
+  std::sort(partitions.begin(), partitions.end());
+
+  // Special case: upper bound is not set, means upper bound is +Inf.
+  PgsqlReadRequestPB req;
+  auto wrapper = ASSERT_RESULT(TEST_FindPartitionKeyByUpperBound(partitions, req));
+  ASSERT_EQ(wrapper.get(), partitions.back());
+
+  // General cases.
+  for (bool is_inclusive : { true, false }) {
+    for (size_t idx = 0; idx < partitions.size(); ++idx) {
+      // Special case, tested seprately at the end.
+      if (idx == 0 && !is_inclusive) {
+        continue;
+      }
+
+      auto check_key = [&partitions, &req, idx, is_inclusive](const std::string& key) -> Status {
+        SCHECK_FORMAT((idx > 0 || is_inclusive), IllegalState, "", "");
+        req.clear_upper_bound();
+        req.mutable_upper_bound()->set_key(key);
+        req.mutable_upper_bound()->set_is_inclusive(is_inclusive);
+        auto* expected = is_inclusive ? &partitions[idx] : &partitions[idx - 1];
+        auto result = VERIFY_RESULT_REF(TEST_FindPartitionKeyByUpperBound(partitions, req));
+        SCHECK_EQ(*expected, result, IllegalState, Format(
+            "idx = $0, is_inclusive = $1, upper_bound = \"$2\"",
+            idx, is_inclusive, FormatBytesAsStr(req.upper_bound().key())));
+        return Status::OK();
+      };
+
+      // Get key and calculate bounds.
+      const auto& key = partitions[idx];
+      const uint16_t start = key.empty() ? 0 : PartitionSchema::DecodeMultiColumnHashValue(key);
+      const uint16_t last  = (idx < partitions.size() - 1 ?
+          PartitionSchema::DecodeMultiColumnHashValue(partitions[idx + 1]) :
+          std::numeric_limits<decltype(start)>::max()) - 1;
+
+      // 0. Special case: upper bound is empty means upper bound matches first partition start.
+      if (key.empty()) {
+        ASSERT_EQ(idx, 0);
+        ASSERT_OK(check_key(key));
+      }
+
+      // 1. Upper bound matches partition start.
+      ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(start)));
+
+      // 2. Upper bound matches partition last key.
+      ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(last)));
+
+      // 3. Upper bound matches some middle key from partition.
+      const auto middle = start + ((last - start) / 2);
+      ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(middle)));
+    }
+  }
+
+  // Special case: upper_bound is exclusive and points to the first partition.
+  // Generates crash in DEBUG and returns InvalidArgument for release builds.
+  req.clear_upper_bound();
+  req.mutable_upper_bound()->set_key(partitions.front());
+  req.mutable_upper_bound()->set_is_inclusive(false);
+#ifndef NDEBUG
+  ASSERT_DEATH({
+#endif
+  auto result = TEST_FindPartitionKeyByUpperBound(partitions, req);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsInvalidArgument());
+#ifndef NDEBUG
+  }, ".*Upped bound must not be exclusive when points to the first partition.*");
+#endif
 }
 
 TEST_F(ClientTest, TestListTables) {

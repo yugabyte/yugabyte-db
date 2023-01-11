@@ -111,6 +111,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
             helmDeletes.addSubTask(
                 createDestroyKubernetesTask(
                     universe.getUniverseDetails().nodePrefix,
+                    universe.name,
                     universe.getUniverseDetails().useNewHelmNamingStyle,
                     azName,
                     config,
@@ -123,6 +124,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           volumeDeletes.addSubTask(
               createDestroyKubernetesTask(
                   universe.getUniverseDetails().nodePrefix,
+                  universe.name,
                   universe.getUniverseDetails().useNewHelmNamingStyle,
                   azName,
                   config,
@@ -146,6 +148,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
             namespaceDeletes.addSubTask(
                 createDestroyKubernetesTask(
                     universe.getUniverseDetails().nodePrefix,
+                    universe.name,
                     universe.getUniverseDetails().useNewHelmNamingStyle,
                     azName,
                     config,
@@ -186,6 +189,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
   protected KubernetesCommandExecutor createDestroyKubernetesTask(
       String nodePrefix,
+      String universeName,
       boolean newNamingStyle,
       String az,
       Map<String, String> config,
@@ -196,7 +200,10 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     params.commandType = commandType;
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
-    params.helmReleaseName = KubernetesUtil.getHelmReleaseName(nodePrefix, az, isReadOnlyCluster);
+    params.universeName = universeName;
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            nodePrefix, universeName, az, isReadOnlyCluster, newNamingStyle);
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config. It is true in this

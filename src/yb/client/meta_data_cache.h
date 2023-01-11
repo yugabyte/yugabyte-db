@@ -15,6 +15,7 @@
 
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 
 #include <boost/container_hash/hash.hpp>
 
@@ -57,10 +58,9 @@ class YBMetaDataCache {
   // Opens the type with the given name. If the type has been opened before, returns the
   // previously opened type from cached_types_. If the type has not been opened before
   // in this client, this will do an RPC to ensure that the type exists and look up its info.
-  Status GetUDType(const std::string &keyspace_name,
-                   const std::string &type_name,
-                   std::shared_ptr<QLType> *ql_type,
-                   bool *cache_used);
+  // Second field in the resulting pair indicates the QLType was taken from the cache.
+  Result<std::pair<std::shared_ptr<QLType>, bool>> GetUDType(
+      const std::string &keyspace_name, const std::string &type_name);
 
   // Remove the type from cached_types_ if it is in the cache.
   void RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name);

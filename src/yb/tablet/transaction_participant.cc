@@ -217,9 +217,8 @@ class TransactionParticipant::Impl
       return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
-    if (metadata.external_transaction && metadata.status_tablet.empty()) {
-      return STATUS(InvalidArgument, Format("For external transaction $0, status tablet is empty",
-                                            metadata.transaction_id));
+    if (metadata.external_transaction) {
+      CHECK(!metadata.status_tablet.empty()) << "Adding metadata with no status tablet";
     }
     transactions_.insert(std::make_shared<RunningTransaction>(
         metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this));
@@ -1517,7 +1516,11 @@ class TransactionParticipant::Impl
       operation->CompleteWithStatus(Status::OK());
       return;
     }
-    participant_context_.SubmitUpdateTransaction(std::move(operation), term);
+    Status submit_status = participant_context_.SubmitUpdateTransaction(std::move(operation), term);
+    if (!submit_status.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << "Could not submit transaction status update operation: "
+                              << operation->ToString() << ", status: " << submit_status;
+    }
   }
 
   void HandleCleanup(

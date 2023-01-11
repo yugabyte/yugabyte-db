@@ -228,7 +228,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
         onConfirm={() => {
           removeTableFromXCluster.mutate({
             ...xClusterConfig,
-            tables: xClusterConfig.tables.filter((t) => t !== deleteTableDetails!.tableUUID)
+            tables: xClusterConfig.tables.filter((t) => t !== deleteTableDetails?.tableUUID)
           });
         }}
         onCancel={() => {

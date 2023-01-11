@@ -45,7 +45,6 @@
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/options_helper.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/rocksdb/util/xfunc.h"
 
 #include "yb/util/logging.h"
 #include <glog/logging.h>
@@ -195,14 +194,6 @@ ColumnFamilyOptions SanitizeOptions(const DBOptions& db_options,
   if (result.max_write_buffer_number_to_maintain < 0) {
     result.max_write_buffer_number_to_maintain = result.max_write_buffer_number;
   }
-  XFUNC_TEST("memtablelist_history", "transaction_xftest_SanitizeOptions",
-             xf_transaction_set_memtable_history1,
-             xf_transaction_set_memtable_history,
-             &result.max_write_buffer_number_to_maintain);
-  XFUNC_TEST("memtablelist_history_clear", "transaction_xftest_SanitizeOptions",
-             xf_transaction_clear_memtable_history1,
-             xf_transaction_clear_memtable_history,
-             &result.max_write_buffer_number_to_maintain);
 
   if (!result.prefix_extractor) {
     DCHECK(result.memtable_factory);

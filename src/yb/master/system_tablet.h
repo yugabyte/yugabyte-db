@@ -25,8 +25,9 @@ namespace master {
 // This is a virtual tablet that is used for our virtual tables in the system namespace.
 class SystemTablet : public tablet::AbstractTablet {
  public:
-  SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable> yql_virtual_table,
-               const TabletId& tablet_id);
+  SystemTablet(
+      const Schema& schema, std::unique_ptr<yb::vtables::YQLVirtualTable> yql_virtual_table,
+      const TabletId& tablet_id);
 
   docdb::DocReadContextPtr GetDocReadContext(const std::string& table_id = "") const override;
 
@@ -99,7 +100,7 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const std::string log_prefix_;
   docdb::DocReadContextPtr doc_read_context_;
-  std::unique_ptr<YQLVirtualTable> yql_virtual_table_;
+  std::unique_ptr<yb::vtables::YQLVirtualTable> yql_virtual_table_;
   TabletId tablet_id_;
 };
 

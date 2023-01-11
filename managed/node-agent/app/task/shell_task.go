@@ -280,7 +280,7 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 	return options
 }
 
-func HandleUpgradeScript(config *util.Config, ctx context.Context, version string) error {
+func HandleUpgradeScript(ctx context.Context, config *util.Config) error {
 	util.FileLogger().Debug("Initializing the upgrade script")
 	upgradeScriptTask := NewShellTask(
 		"upgradeScript",
@@ -289,39 +289,17 @@ func HandleUpgradeScript(config *util.Config, ctx context.Context, version strin
 			util.UpgradeScriptPath(),
 			"--type",
 			"upgrade",
-			"--version",
-			version,
 		},
 	)
 	errStr, err := upgradeScriptTask.Process(ctx)
 	if err != nil {
 		return errors.New(errStr)
 	}
-	return nil
-}
-
-// Shell task process for downloading the node-agent build package.
-func HandleDownloadPackageScript(config *util.Config, ctx context.Context) (string, error) {
-	util.FileLogger().Debug("Initializing the download package script")
-	jwtToken, err := util.GenerateJWT(config)
+	version, err := util.Version()
 	if err != nil {
-		util.FileLogger().Errorf("Failed to generate JWT during upgrade - %s", err.Error())
-		return "", err
+		return err
 	}
-	downloadPackageScript := NewShellTask(
-		"downloadPackageScript",
-		util.DefaultShell,
-		[]string{
-			util.InstallScriptPath(),
-			"--type",
-			"download_package",
-			"--url",
-			config.String(util.PlatformUrlKey),
-			"--jwt",
-			jwtToken,
-		},
-	)
-	return downloadPackageScript.Process(ctx)
+	return config.Update(util.PlatformVersionUpdateKey, version)
 }
 
 func OutputPreflightCheck(responses map[string]model.NodeInstanceValidationResponse) bool {

@@ -1332,6 +1332,11 @@ class PTBindVar : public PTExpr {
     return name_;
   }
 
+  // Access functions for alternative names.
+  const MCSharedPtr<MCVector<MCSharedPtr<MCString>>> &alternative_names() const {
+    return alternative_names_;
+  }
+
   // Access function for hash column if available.
   const ColumnDesc *hash_col() const {
     return hash_col_;
@@ -1392,8 +1397,14 @@ class PTBindVar : public PTExpr {
   static std::string bcall_arg_bindvar_name(
       const std::string& bcall_name, size_t arg_position);
 
-  // The name Cassandra uses for binding the collection elements.
-  static std::string coll_bindvar_name(const std::string& col_name);
+  // The name Cassandra uses for binding the map element keys.
+  static std::string coll_map_key_bindvar_name(const std::string& col_name);
+
+  // The name Cassandra uses for binding the list element indexes.
+  static std::string coll_list_index_bindvar_name(const std::string& col_name);
+
+  // The name Cassandra uses for binding the collection element values.
+  static std::string coll_value_bindvar_name(const std::string& col_name);
 
   // The name for binding the JSON attributes.
   static std::string json_bindvar_name(const std::string& col_name);
@@ -1410,6 +1421,7 @@ class PTBindVar : public PTExpr {
   boost::optional<int64_t> pos_; // pos after parsing is done.
   // Variable name.
   MCSharedPtr<MCString> name_;
+  MCSharedPtr<MCVector<MCSharedPtr<MCString>>> alternative_names_;
   // Hash column descriptor.
   const ColumnDesc *hash_col_ = nullptr;
 };

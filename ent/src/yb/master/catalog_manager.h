@@ -464,7 +464,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   const docdb::DocReadContext& doc_read_context();
 
-  void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
+  Status Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
 
   AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(
       const TabletInfoPtr& tablet, const std::string& snapshot_id,
@@ -714,6 +714,15 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     const std::string& consumer_table_id,
     const std::string& stream_id,
     const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
+
+  // Update the UniverseReplicationInfo object when toggling replication.
+  Status SetUniverseReplicationInfoEnabled(const std::string& producer_id,
+                                           bool is_enabled) EXCLUDES(mutex_);
+
+  // Update the cluster config and consumer registry objects when toggling replication.
+  Status SetConsumerRegistryEnabled(const std::string& producer_id,
+                                    bool is_enabled,
+                                    ClusterConfigInfo::WriteLock* l);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;

@@ -31,6 +31,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   const handleFlagSelect = (flag) => {
     let flagvalue = null;
+    // eslint-disable-next-line no-prototype-builtins
     const defaultKey = flag?.hasOwnProperty('current') ? 'current' : 'default'; // Guard condition to handle inconstintency in gflag metadata
     if (flag?.type === 'bool')
       if (['false', false].includes(flag[defaultKey])) flagvalue = false;
@@ -72,6 +73,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       setFilteredArr([flag?.data]);
       setSelectedFlag(flag?.data);
       if (flagvalue === undefined) {
+        // eslint-disable-next-line no-prototype-builtins
         const defaultKey = flag?.data?.hasOwnProperty('current') ? 'current' : 'default';
         formProps.setValues({
           ...gFlagProps,
@@ -138,6 +140,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   //renderers
   const renderFormComponent = (flag) => {
+    // eslint-disable-next-line no-prototype-builtins
     const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
     switch (flag?.type) {
       case 'bool':
@@ -221,7 +224,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       </FlexShrink>
       <div className="g-flag-list">
         <ListGroup>
-          {(filteredArr || []).map((flag, i) => {
+          {(filteredArr ?? []).map((flag, i) => {
             const isSelected = flag.name === selectedFlag?.name;
             return (
               <ListGroupItem
@@ -248,6 +251,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   const renderFlagDetails = () => {
     const showDocLink = mode !== EDIT && (toggleMostUsed || isMostUsed(selectedFlag?.name));
     if (selectedFlag) {
+      // eslint-disable-next-line no-prototype-builtins
       const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
       return (
         <>

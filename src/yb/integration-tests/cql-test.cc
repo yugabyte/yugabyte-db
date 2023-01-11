@@ -55,6 +55,8 @@ DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(disable_truncate_table);
 DECLARE_bool(cql_always_return_metadata_in_execute_response);
 DECLARE_bool(cql_check_table_schema_in_paging_state);
+DECLARE_bool(use_cassandra_authentication);
+DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 
 namespace yb {
 
@@ -785,6 +787,126 @@ TEST_F(CqlTest, PrepareWithDropTableWithPaging) {
 TEST_F(CqlTest, PrepareWithDropTableWithPaging_NoSchemaCheck) {
   FLAGS_cql_check_table_schema_in_paging_state = false;
   TestPrepareWithDropTableWithPaging();
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, PasswordReset) {
+  const string change_pwd = "ALTER ROLE cassandra WITH PASSWORD = 'updated_password'";
+
+  // Password reset disallowed when ycql_allow_non_authenticated_password_reset = false.
+  FLAGS_use_cassandra_authentication = false;
+  {
+    ASSERT_FALSE(FLAGS_ycql_allow_non_authenticated_password_reset);
+    auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+    Status s = session.ExecuteQuery(change_pwd);
+    ASSERT_NOK(s);
+    ASSERT_NE(s.message().ToBuffer().find("Unauthorized."), std::string::npos) << s;
+  }
+
+  // Password reset allowed when ycql_allow_non_authenticated_password_reset = true.
+  FLAGS_ycql_allow_non_authenticated_password_reset = true;
+  {
+    auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+    ASSERT_OK(session.ExecuteQuery(change_pwd));
+  }
+
+  // Login works with the updated password and the user is able to create a superuser.
+  FLAGS_ycql_allow_non_authenticated_password_reset = false;
+  FLAGS_use_cassandra_authentication = true;
+  driver_->SetCredentials("cassandra", "updated_password");
+  {
+    auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+    ASSERT_OK(session.ExecuteQuery("CREATE ROLE superuser_role WITH SUPERUSER = true AND LOGIN = "
+        "true AND PASSWORD = 'superuser_password'"));
+  }
+
+  // The created superuser account login works.
+  driver_->SetCredentials("superuser_role", "superuser_password");
+  ASSERT_RESULT(EstablishSession(driver_.get()));
+}
+
+TEST_F(CqlTest, SelectAggregateFunctions) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE tbl (k INT PRIMARY KEY, v INT, c INT) "
+                                 "WITH tablets = 5 AND transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX ON tbl (v)"));
+
+  auto cql = [&](int page_size, const string& query, const string& result) {
+      LOG(INFO) << "Page=" << page_size << " Execute query: " << query;
+      CassandraStatement stmt(query);
+      stmt.SetPageSize(page_size);
+      CassandraResult res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+      LOG(INFO) << "Result=" << res.RenderToString() << " HasMorePages=" << res.HasMorePages();
+      ASSERT_EQ(result, res.RenderToString());
+      // Expecting single-page result - ignoring ycqlsh command like 'Paging 1'.
+      ASSERT_FALSE(res.HasMorePages());
+    };
+
+  for (int i = 1; i <= 20; ++i) {
+    ASSERT_OK(session.ExecuteQuery(
+        Format("INSERT INTO tbl (k, v, c) VALUES ($0, $1, $2)", i, 10*i, 100*i)));
+  }
+
+  for (int page = 1; page <= 2; ++page) {
+    // LIMIT clause must be ignored for the aggregate functions.
+    for (string limit : {"", " LIMIT 1", " LIMIT 2"}) {
+      cql(page, "select count(*) from tbl" + limit, "20");
+      cql(page, "select count(k), min(k), avg(k), max(k), sum(k) from tbl" + limit,
+                "20,1,10,20,210");
+      cql(page, "select count(v), min(v), avg(v), max(v), sum(v) from tbl" + limit,
+                "20,10,105,200,2100");
+      cql(page, "select count(c), min(c), avg(c), max(c), sum(c) from tbl" + limit,
+                "20,100,1050,2000,21000");
+
+      // Test WHERE clause.
+      // Seq scan.
+      cql(page, "select count(k), min(k), avg(k), max(k), sum(k) from tbl where k != 1" + limit,
+                "19,2,11,20,209");
+      cql(page, "select count(v), min(v), avg(v), max(v), sum(v) from tbl where v > 50" + limit,
+                "15,60,130,200,1950");
+      cql(page, "select count(c), min(c), avg(c), max(c), sum(c) from tbl where v > 50" + limit,
+                "15,600,1300,2000,19500");
+      // Index Only scan. (Covering index.)
+      cql(page, "select count(v), min(v), avg(v), max(v), sum(v) from tbl where v = 50" + limit,
+                "1,50,50,50,50");
+      cql(page, "select count(v), min(v), avg(v), max(v), sum(v) from tbl "
+                    "where v in (50,60,70,80,90)" + limit,
+                "5,50,70,90,350");
+      cql(page, "select count(k), min(k), avg(k), max(k), sum(k) from tbl where v = 50" + limit,
+                "1,5,5,5,5");
+      // Index scan. (Non-covering index.)
+      cql(page, "select count(c), min(c), avg(c), max(c), sum(c) from tbl where v = 50" + limit,
+                "1,500,500,500,500");
+      cql(page, "select count(c), min(c), avg(c), max(c), sum(c) from tbl "
+                    "where v in (50,60,70,80,90)" + limit,
+                "5,500,700,900,3500");
+    }
+  }
+
+  ASSERT_OK(session.ExecuteQuery("TRUNCATE TABLE tbl"));
+  // Same value v=1 for all rows to test if all tablets are scanned when a secondary index is used.
+  for (int i = 1; i <= 20; ++i) {
+    ASSERT_OK(session.ExecuteQuery(
+        Format("INSERT INTO tbl (k, v, c) VALUES ($0, 1, $1)", i, 100*i)));
+  }
+
+  for (int page = 1; page <= 2; ++page) {
+    // LIMIT clause must be ignored for the aggregate functions.
+    for (string limit : {"", " LIMIT 1", " LIMIT 2"}) {
+      // Test WHERE clause.
+      // Index Only scan. (Covering index.)
+      cql(page, "select min(k) from tbl where v = 1" + limit, "1");
+      cql(page, "select count(k) from tbl where v = 1" + limit, "20");
+      cql(page, "select count(k), min(k), avg(k), max(k), sum(k) from tbl where v = 1" + limit,
+                "20,1,10,20,210");
+      // Index scan. (Non-covering index.)
+      cql(page, "select min(c) from tbl where v = 1" + limit, "100");
+      cql(page, "select count(c) from tbl where v = 1" + limit, "20");
+      cql(page, "select count(c), min(c), avg(c), max(c), sum(c) from tbl where v = 1" + limit,
+                "20,100,1050,2000,21000");
+    }
+  }
+
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

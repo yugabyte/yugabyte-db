@@ -64,9 +64,11 @@ namespace {
 
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
 constexpr const size_t kPgSequenceIsCalledColIdx = 3;
+const std::string kTxnLogPrefixTagSource("Session ");
+client::LogPrefixName kTxnLogPrefixTag = client::LogPrefixName::Build<&kTxnLogPrefixTagSource>();
 
 std::string SessionLogPrefix(uint64_t id) {
-  return Format("S $0: ", id);
+  return Format("Session id $0: ", id);
 }
 
 string GetStatusStringSet(const client::CollectedErrors& errors) {
@@ -700,8 +702,9 @@ Status PgClientSession::Perform(
   }
 
   auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline()));
-  auto* session = session_info.first;
+  auto* session = session_info.first.session.get();
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &context->sidecars(), &table_cache_));
+  auto ops_count = ops.size();
   auto data = std::make_shared<PerformData>(PerformData {
     .session_id = id_,
     .resp = resp,
@@ -711,8 +714,17 @@ Status PgClientSession::Perform(
     .used_read_time = session_info.second,
     .cache_setter = std::move(setter)
   });
-  session->FlushAsync([data](client::FlushStatus* flush_status) {
+
+  auto transaction = session_info.first.transaction;
+  session->FlushAsync([this, data, transaction, ops_count](client::FlushStatus* flush_status) {
     data->FlushDone(flush_status);
+    if (transaction) {
+      VLOG_WITH_PREFIX(2) << "FlushAsync of " << ops_count << " ops completed with transaction id "
+                          << transaction->id();
+    } else {
+      VLOG_WITH_PREFIX(2) << "FlushAsync of " << ops_count << " ops completed for non-distributed "
+                          << "transaction";
+    }
   });
   return Status::OK();
 }
@@ -777,7 +789,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
   return Status::OK();
 }
 
-Result<std::pair<client::YBSession*, PgClientSession::UsedReadTimePtr>>
+Result<std::pair<PgClientSession::SessionData, PgClientSession::UsedReadTimePtr>>
 PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint deadline) {
   const auto& options = req.options();
   PgClientSessionKind kind;
@@ -863,7 +875,7 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
   }
 
-  return std::make_pair(session, used_read_time);
+  return std::make_pair(sessions_[to_underlying(kind)], used_read_time);
 }
 
 std::string PgClientSession::LogPrefix() {
@@ -905,6 +917,7 @@ Status PgClientSession::BeginTransactionIfNecessary(
 
   txn = transaction_pool_provider_().Take(
       client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
+  txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
       txn_serial_no_ == options.txn_serial_no()) {
@@ -943,6 +956,7 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
     txn = VERIFY_RESULT(transaction_pool_provider_().TakeAndInit(isolation, deadline));
+    txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
     EnsureSession(PgClientSessionKind::kDdl)->SetTransaction(txn);
   }

@@ -23,7 +23,8 @@ const initialStateFeatureInTest = {
   enableRunTimeConfig: false,
   enablePITR: false,
   enableDedicatedNodes: false,
-  enableNotificationTemplates: false
+  enableNotificationTemplates: false,
+  enablePrefillKubeConfig: false,
 };
 
 const initialStateFeatureReleased = {
@@ -49,7 +50,8 @@ const initialStateFeatureReleased = {
   enableRunTimeConfig: false,
   enablePITR: false,
   enableDedicatedNodes: false,
-  enableNotificationTemplates: false
+  enableNotificationTemplates: false,
+  enablePrefillKubeConfig: false
 };
 
 export const FeatureFlag = (

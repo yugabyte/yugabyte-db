@@ -987,22 +987,30 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
 
   // Specify distinct columns or non.
   req->set_distinct(tnode->distinct());
+  if (tnode->distinct()) {
+    req->set_prefix_length(tnode->prefix_length());
+  }
 
   // Default row count limit is the page size.
   // We should return paging state when page size limit is hit.
   // For system tables, we do not support page size so do nothing.
-  if (!tnode->is_system()) {
+  if (!tnode->is_system() && !tnode->is_top_level_aggregate()) {
+    VLOG(1) << "Set request LIMIT to page size = " << params.page_size();
     req->set_limit(params.page_size());
     req->set_return_paging_state(true);
   }
 
   if (!tnode->child_select()) {
     // DocDB will do LIMIT and OFFSET computation for this query.
-    if (tnode->limit()) {
+    if (query_state->has_select_limit()) {
       // Setup request to DocDB according to the given LIMIT.
       size_t user_limit = query_state->select_limit() - query_state->read_count();
+      VLOG(1) << "This is leaf SELECT and query_state has select_limit. Adjusting limit in"
+              << " request: select_limit = " << query_state->select_limit()
+              << " read_count = " << query_state->read_count() << " user_limit = " << user_limit;
       if (!req->has_limit() || user_limit <= req->limit()) {
         // Set limit and instruct DocDB to clear paging state if limit is reached.
+        VLOG(1) << "Set request LIMIT to user_limit = " << user_limit;
         req->set_limit(user_limit);
         req->set_return_paging_state(false);
       }
@@ -1105,11 +1113,12 @@ Result<QueryPagingState*> Executor::LoadPagingStateFromUser(const PTSelectStmt* 
   // - User do not care about row counter of an inner or nested query.
   const StatementParameters& params = exec_context_->params();
   query_state = tnode_context->CreateQueryState(params, tnode->IsTopLevelReadNode());
-  if (tnode->limit()) {
+  // Ignore LIMIT for the aggregate functions.
+  if (tnode->limit() && !tnode->is_top_level_aggregate()) {
     RSTATUS_DCHECK(tnode->IsTopLevelReadNode(), Corruption,
                    "LIMIT clause cannot be applied to nested SELECT");
     if (!query_state->has_select_limit()) {
-      int32_t limit;
+      int32_t limit = -1;
       RETURN_NOT_OK(GetOffsetOrLimit(
           tnode,
           [](const PTSelectStmt* tnode) -> PTExpr::SharedPtr { return tnode->limit(); },
@@ -1124,7 +1133,7 @@ Result<QueryPagingState*> Executor::LoadPagingStateFromUser(const PTSelectStmt* 
     RSTATUS_DCHECK(tnode->IsTopLevelReadNode(), Corruption,
                    "OFFSET clause cannot be applied to nested SELECT");
     if (!query_state->has_select_offset()) {
-      int32_t offset;
+      int32_t offset = -1;
       RETURN_NOT_OK(GetOffsetOrLimit(
           tnode,
           [](const PTSelectStmt *tnode) -> PTExpr::SharedPtr { return tnode->offset(); },
@@ -1187,35 +1196,42 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
   }
 
   // Setup counters in read request to DocDB.
-  const int64_t current_fetch_row_count = tnode_context->row_count();
   const int64_t total_rows_skipped = query_state->skip_count();
   const int64_t total_row_count = query_state->read_count();
 
-  // If we reached the fetch limit (min of paging_size and limit clause), this batch is done.
-  int64_t fetch_limit = query_state->max_fetch_size();
-  if (fetch_limit >= 0 && current_fetch_row_count >= fetch_limit) {
-    // If we need to return a paging state to the user, we create it here so that we can resume from
-    // the exact place where we left off: partition index and primary key within that partition.
-    if (op->request().return_paging_state()) {
-      query_state->set_original_request_id(exec_context_->params().request_id());
-      query_state->set_table_id(tnode->table()->id());
-      query_state->set_total_num_rows_read(total_row_count);
-      query_state->set_total_rows_skipped(total_rows_skipped);
+  // Ignore the fetch limit for aggregate functions to allow all tablets processing.
+  if (!tnode->is_top_level_aggregate()) {
+    // If we reached the fetch limit (min of paging_size and limit clause), this batch is done.
+    const int64_t current_fetch_row_count = tnode_context->row_count();
+    const int64_t fetch_limit = query_state->max_fetch_size();
 
-      // Set the partition to resume from. Relevant for multi-partition selects, i.e. with IN
-      // condition on the partition columns.
-      query_state->set_next_partition_index(tnode_context->current_partition_index());
+    if (fetch_limit >= 0 && current_fetch_row_count >= fetch_limit) {
+      // If we need to return a paging state to the user, we create it here
+      // so that we can resume from the exact place where we left off:
+      // partition index and primary key within that partition.
+      if (op->request().return_paging_state()) {
+        query_state->set_original_request_id(exec_context_->params().request_id());
+        query_state->set_table_id(tnode->table()->id());
+        query_state->set_total_num_rows_read(total_row_count);
+        query_state->set_total_rows_skipped(total_rows_skipped);
 
-      // Write paging state to the node's rows_result to prepare for future batches.
-      RETURN_NOT_OK(tnode_context->ComposeRowsResultForUser(nullptr, true /* for_new_batches */));
+        // Set the partition to resume from. Relevant for multi-partition selects, i.e. with IN
+        // condition on the partition columns.
+        query_state->set_next_partition_index(tnode_context->current_partition_index());
+
+        // Write paging state to the node's rows_result to prepare for future batches.
+        RETURN_NOT_OK(tnode_context->ComposeRowsResultForUser(nullptr, true /* for_new_batches */));
+      }
+      return false;
     }
-    return false;
+
+    // Update limit for next scan request.
+    op->mutable_request()->set_limit(fetch_limit - current_fetch_row_count);
   }
 
   //------------------------------------------------------------------------------------------------
   // Fetch more results.
-  // Update limit, offset and paging_state information for next scan request.
-  op->mutable_request()->set_limit(fetch_limit - current_fetch_row_count);
+  // Update offset and paging_state information for next scan request.
   if (tnode->offset()) {
     // The paging state keeps a running count of the number of rows skipped so far.
     int64_t offset = std::max(static_cast<int64_t>(0),

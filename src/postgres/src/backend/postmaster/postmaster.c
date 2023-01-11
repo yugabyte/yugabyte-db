@@ -2931,7 +2931,7 @@ reaper(SIGNAL_ARGS)
 			if (proc->ybAnyLockAcquired)
 			{
 				YbCrashWhileLockIntermediateState = true;
-				ereport(ERROR,
+				ereport(LOG,
 						(errmsg("terminating active server processes due to backend crash while "
 						"acquiring LWLock")));
 				break;

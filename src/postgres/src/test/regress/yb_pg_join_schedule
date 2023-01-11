@@ -22,3 +22,4 @@ test: yb_pg_copy
 test: yb_pg_join
 
 test: yb_join_batching
+test: yb_join_batching_plans

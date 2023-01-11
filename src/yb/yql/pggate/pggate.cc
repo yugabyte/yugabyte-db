@@ -1110,9 +1110,9 @@ Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
                                                               end_inclusive);
 }
 
-Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, int attr_num, int n_attr_values,
-    PgExpr **attr_values) {
-  return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
+Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, YBCPgExpr lhs, int n_attr_values,
+                                      PgExpr **attr_values) {
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(lhs, n_attr_values, attr_values);
 }
 
 Status PgApiImpl::DmlAddRowUpperBound(YBCPgStatement handle,
@@ -1679,6 +1679,22 @@ void PgApiImpl::GetAndResetReadRpcStats(PgStatement *handle,
 void PgApiImpl::GetAndResetOperationFlushRpcStats(uint64_t* count,
                                                   uint64_t* wait_time) {
   pg_session_->GetAndResetOperationFlushRpcStats(count, wait_time);
+}
+
+// Tuple Expression -----------------------------------------------------------------------------
+Status PgApiImpl::NewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    const YBCPgExpr *elems, YBCPgExpr *expr_handle) {
+  if (!stmt) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  *expr_handle = stmt->arena().NewObject<PgTupleExpr>(
+      &stmt->arena(), tuple_type_entity, type_attrs, num_elems, elems);
+
+  return Status::OK();
 }
 
 // Transaction Control -----------------------------------------------------------------------------

@@ -4,18 +4,18 @@ import React, { Component, Fragment } from 'react';
 import { connect } from 'react-redux';
 import { Row, Col } from 'react-bootstrap';
 import { toast } from 'react-toastify';
-import { YBButton, YBAddRowButton, YBToggle, YBNumericInput } from '../../../common/forms/fields';
-import {
+import { YBButton, YBAddRowButton, YBToggle, YBNumericInput ,
   YBTextInputWithLabel,
   YBSelectWithLabel,
   YBDropZone,
   YBInputField
 } from '../../../common/forms/fields';
-import { change, Field } from 'redux-form';
+
+import { change, Field , reduxForm, FieldArray } from 'redux-form';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
 import { isNonEmptyObject, isNonEmptyString, trimString } from '../../../../utils/ObjectUtils';
-import { reduxForm, FieldArray } from 'redux-form';
+
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
 import { specialChars } from '../../constants';
@@ -31,6 +31,7 @@ class renderRegionInput extends Component {
   render() {
     const { fields } = this.props;
     const regionMappingList = fields.map((item, idx) => (
+      // eslint-disable-next-line react/no-array-index-key
       <FlexContainer key={idx}>
         <FlexGrow>
           <Row>
@@ -243,9 +244,9 @@ class GCPProviderInitView extends Component {
       );
     }
 
-    let destVpcField = <span />,
-      gcpProjectField = <span />,
-      regionInput = <span />;
+    let destVpcField = <span />;
+      let gcpProjectField = <span />;
+      let regionInput = <span />;
     if (this.state.networkSetupType !== 'new_vpc') {
       destVpcField = (
         <Row className="config-provider-row">
@@ -400,11 +401,9 @@ const validate = (values) => {
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is Required';
   }
-  else {
-    if(!specialChars.test(values.accountName)){
+  else if(!specialChars.test(values.accountName)){
       errors.accountName = 'Account Name cannot have special characters except - and _';
     }
-  }
   
   if (!isNonEmptyObject(values.gcpConfig)) {
     errors.gcpConfig = 'Provider Config is Required';

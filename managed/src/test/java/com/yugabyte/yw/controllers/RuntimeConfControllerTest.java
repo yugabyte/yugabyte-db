@@ -11,6 +11,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CONTENT_CONF_PATH;
@@ -20,6 +21,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.test.Helpers.BAD_REQUEST;
 import static play.test.Helpers.FORBIDDEN;
 import static play.test.Helpers.NOT_FOUND;
 import static play.test.Helpers.OK;
@@ -79,6 +81,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   private static final String GC_CHECK_INTERVAL_KEY = "yb.taskGC.gc_check_interval";
   private static final String EXT_SCRIPT_KEY = "yb.external_script";
   private static final String EXT_SCRIPT_SCHEDULE_KEY = "yb.external_script.schedule";
+  private static final String GLOBAL_KEY = "yb.ha.logScriptOutput";
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
@@ -192,12 +195,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {
-    Http.RequestBuilder request =
-        fakeRequest(
-                "PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, GC_CHECK_INTERVAL_KEY))
-            .header("X-AUTH-TOKEN", authToken)
-            .bodyText(interval);
-    return route(app, request);
+    return setKey(GC_CHECK_INTERVAL_KEY, interval, scopeUUID);
   }
 
   @Test
@@ -257,18 +255,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   private Result setExtScriptObject(String schedule, String content, UUID scopeUUID) {
-    Http.RequestBuilder request =
-        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, EXT_SCRIPT_KEY))
-            .header("X-AUTH-TOKEN", authToken)
-            .bodyText(
-                String.format(
-                    "{"
-                        + "  schedule = %s\n"
-                        + "  params = %s\n"
-                        + "  content = \"the script\"\n"
-                        + "}",
-                    schedule, content));
-    return route(app, request);
+    return setKey(
+        EXT_SCRIPT_KEY,
+        String.format(
+            "{" + "  schedule = %s\n" + "  params = %s\n" + "  content = \"the script\"\n" + "}",
+            schedule, content),
+        scopeUUID);
   }
 
   private Result getKey(UUID scopeUUID, String key) {
@@ -425,11 +417,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   private void setCloudEnabled(UUID scopeUUID) {
-    Http.RequestBuilder request =
-        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, "yb.cloud.enabled"))
-            .header("X-AUTH-TOKEN", authToken)
-            .bodyText("true");
-    route(app, request);
+    setKey("yb.cloud.enabled", "true", scopeUUID);
   }
 
   @Test
@@ -460,5 +448,33 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         NOT_FOUND,
         assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
             .status());
+  }
+
+  private Result setKey(String path, String newVal, UUID scopeUUID) {
+    Http.RequestBuilder request =
+        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, path))
+            .header("X-AUTH-TOKEN", authToken)
+            .bodyText(newVal);
+    return route(app, request);
+  }
+
+  @Test
+  public void scopeStrictnessTest() {
+    // Global key can only be set in global scope
+    Result r = assertPlatformException(() -> setKey(GLOBAL_KEY, "false", defaultCustomer.uuid));
+    assertEquals(BAD_REQUEST, r.status());
+    JsonNode rJson = Json.parse(contentAsString(r));
+    assertValue(rJson, "error", "Cannot set the key in this scope");
+
+    r = setKey(GLOBAL_KEY, "false", GLOBAL_SCOPE_UUID);
+    assertEquals(OK, r.status());
+  }
+
+  @Test
+  public void dataValidationTest() {
+    Result r = assertPlatformException(() -> setKey(GLOBAL_KEY, "Random", GLOBAL_SCOPE_UUID));
+    assertEquals(BAD_REQUEST, r.status());
+    JsonNode rJson = Json.parse(contentAsString(r));
+    assertValue(rJson, "error", "Not a valid boolean value");
   }
 }

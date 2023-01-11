@@ -1156,6 +1156,9 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
       CDCError(CDCErrorPB::LEADER_NOT_READY));
 
   ProducerTabletInfo producer_tablet{"" /* UUID */, req.stream_id(), req.tablet_id()};
+  RETURN_NOT_OK_SET_CODE(
+      CheckTabletValidForStream(producer_tablet), CDCError(CDCErrorPB::INVALID_REQUEST));
+
   OpId checkpoint;
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
   bool set_latest_entry = req.bootstrap();
@@ -1300,43 +1303,36 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
       }
     }
 
+    // Get the checkpoint from the parent tablet.
+    CDCSDKCheckpointPB parent_checkpoint_pb;
+    {
+      auto session = client()->NewSession();
+      ProducerTabletInfo parent_tablet = {
+          "" /* UUID */, req->table_info().stream_id(), req->tablet_id()};
+      auto result = GetLastCheckpoint(parent_tablet, session);
+      RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+      (*result).ToPB(&parent_checkpoint_pb);
+    }
+
     for (const auto& child_tablet_id : child_tablet_ids) {
       auto session = client()->NewSession();
-      ProducerTabletInfo producer_tablet = {
+      ProducerTabletInfo cur_child_tablet = {
           "" /* UUID */, req->table_info().stream_id(), child_tablet_id};
-      auto result = GetLastCheckpoint(producer_tablet, session);
-      RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-
-      const OpId& checkpoint = *result;
-      if (checkpoint == OpId()) {
-        LOG(WARNING)
-            << "The checkpoint of child tablet: " << child_tablet_id << ", is: " << checkpoint
-            << ", which means we have still not reported the tablet split error on the parent.";
-        // If the checkpoint on the child tablet is 0.0, that means the split error has not been
-        // reported to the client yet. Hence we only return the current tablet details, and not the
-        // child tablet details.
-        resp->Clear();
-
-        auto tablet_checkpoint_pair_pb = resp->add_tablet_checkpoint_pairs();
-        tablet_checkpoint_pair_pb->mutable_tablet_locations()->CopyFrom(
-            tablet_id_to_tablet_locations_map[req->tablet_id()]);
-
-        CDCSDKCheckpointPB checkpoint_pb;
-        ProducerTabletInfo producer_tablet = {
-            "" /* UUID */, req->table_info().stream_id(), req->tablet_id()};
-        auto result = GetLastCheckpoint(producer_tablet, session);
-        RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-        (*result).ToPB(&checkpoint_pb);
-        tablet_checkpoint_pair_pb->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint_pb);
-        break;
-      }
 
       auto tablet_checkpoint_pair_pb = resp->add_tablet_checkpoint_pairs();
       tablet_checkpoint_pair_pb->mutable_tablet_locations()->CopyFrom(
           tablet_id_to_tablet_locations_map[child_tablet_id]);
-      CDCSDKCheckpointPB checkpoint_pb;
-      (*result).ToPB(&checkpoint_pb);
-      tablet_checkpoint_pair_pb->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint_pb);
+
+      auto result = GetLastCheckpoint(cur_child_tablet, session);
+      RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+      if (result->is_valid_not_empty()) {
+        CDCSDKCheckpointPB checkpoint_pb;
+        (*result).ToPB(&checkpoint_pb);
+        tablet_checkpoint_pair_pb->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint_pb);
+      } else {
+        // Reuse the checkpoint from the parent.
+        tablet_checkpoint_pair_pb->mutable_cdc_sdk_checkpoint()->CopyFrom(parent_checkpoint_pb);
+      }
     }
   }
 
@@ -1481,9 +1477,12 @@ void CDCServiceImpl::GetChanges(
   // Check that requested tablet_id is part of the CDC stream.
   producer_tablet = {"" /* UUID */, stream_id, req->tablet_id()};
 
-  RPC_STATUS_RETURN_ERROR(
-      CheckTabletValidForStream(producer_tablet), resp->mutable_error(),
-      CDCErrorPB::INVALID_REQUEST, context);
+  auto status = CheckTabletValidForStream(producer_tablet);
+  if (!status.ok()) {
+    RPC_STATUS_RETURN_ERROR(
+        CheckTabletValidForStream(producer_tablet), resp->mutable_error(),
+        status.IsTabletSplit() ? CDCErrorPB::TABLET_SPLIT : CDCErrorPB::INVALID_REQUEST, context);
+  }
 
   auto tablet_peer = context_->LookupTablet(req->tablet_id());
 
@@ -1586,7 +1585,6 @@ void CDCServiceImpl::GetChanges(
 
   bool report_tablet_split = false;
   // Read the latest changes from the Log.
-  Status status;
   if (record.source_type == XCLUSTER) {
     status = GetChangesForXCluster(
         stream_id, req->tablet_id(), op_id, record, tablet_peer, session,
@@ -1661,8 +1659,7 @@ void CDCServiceImpl::GetChanges(
     }
     // This specific error indicates that a tablet split occured on the tablet.
     if (status.IsTabletSplit()) {
-      status = UpdateChildrenTabletsOnSplitOpForCDCSDK(
-          producer_tablet, OpId::FromPB(resp->cdc_sdk_checkpoint()));
+      status = UpdateChildrenTabletsOnSplitOpForCDCSDK(producer_tablet);
       RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
       report_tablet_split = true;
@@ -2164,14 +2161,19 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     }
 
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
-    uint64_t safe_time = 0;
     int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
     if (!row.column(4).IsNull()) {
       auto& map_value = row.column(4).map_value();
-      safe_time = VERIFY_RESULT(GetIntValueFromMap<uint64_t>(map_value, kCDCSDKSafeTime));
-      cdc_sdk_safe_time = HybridTime::FromPB(safe_time);
-      last_active_time_cdc_state_table =
-          VERIFY_RESULT(GetIntValueFromMap<int64_t>(map_value, kCDCSDKActiveTime));
+
+      auto safe_time_result = GetIntValueFromMap<uint64_t>(map_value, kCDCSDKSafeTime);
+      if (safe_time_result.ok()) {
+        cdc_sdk_safe_time = HybridTime::FromPB(safe_time_result.get());
+      }
+
+      auto last_active_time_result = GetIntValueFromMap<int64_t>(map_value, kCDCSDKActiveTime);
+      if (last_active_time_result.ok()) {
+        last_active_time_cdc_state_table = last_active_time_result.get();
+      }
     }
 
     VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
@@ -2204,6 +2206,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
         VLOG(2) << "We will remove the entry for the stream: " << stream_id
                 << ", from cdc_state table.";
         tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+        RemoveStreamFromCache(stream_id);
       }
       continue;
     }
@@ -2216,6 +2219,12 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
     const auto& op_id = *op_id_result;
+
+    // If a tablet_id, stream_id pair is in "uninitialized state", we don't need to send the
+    // checkpoint to the tablet peers.
+    if (op_id == OpId::Invalid() && last_active_time_cdc_state_table == 0) {
+      continue;
+    }
 
     // Check that requested tablet_id is part of the CDC stream.
     ProducerTabletInfo producer_tablet = {"" /* UUID */, stream_id, tablet_id};
@@ -3891,6 +3900,11 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(
   return stream_metadata;
 }
 
+void CDCServiceImpl::RemoveStreamFromCache(const CDCStreamId& stream_id) {
+  std::lock_guard<decltype(mutex_)> l(mutex_);
+  stream_metadata_.erase(stream_id);
+}
+
 void CDCServiceImpl::AddStreamMetadataToCache(
     const std::string& stream_id, const std::shared_ptr<StreamMetadata>& metadata) {
   std::lock_guard<decltype(mutex_)> l(mutex_);
@@ -4007,9 +4021,9 @@ void CDCServiceImpl::IsBootstrapRequired(
   context.RespondSuccess();
 }
 
-Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(
-    const ProducerTabletInfo& info, const OpId& split_op_id) {
+Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info) {
   auto tablets = VERIFY_RESULT(GetTablets(info.stream_id));
+  const OpId& children_op_id = OpId();
 
   std::array<const master::TabletLocationsPB*, 2> children_tablets;
   uint found_children = 0;
@@ -4028,29 +4042,11 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(
 
   // Add the entries for the children tablets in 'cdc_state_metadata_' and 'tablet_checkpoints_'.
   RETURN_NOT_OK_SET_CODE(
-      impl_->AddEntriesForChildrenTabletsOnSplitOp(info, children_tablets, split_op_id),
+      impl_->AddEntriesForChildrenTabletsOnSplitOp(info, children_tablets, children_op_id),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   VLOG(1) << "Added entries for children tablets: " << children_tablets[0]->tablet_id() << " and "
-          << children_tablets[1]->tablet_id()
+          << children_tablets[1]->tablet_id() << ", of parent tablet: " << info.tablet_id
           << ", to 'cdc_state_metadata_' and 'tablet_checkpoints_'";
-
-  // Update the entries for the children tablets to 'cdc_state' table.
-  auto session = client()->NewSession();
-  for (auto const& child_tablet : children_tablets) {
-    ProducerTabletInfo child_info;
-    child_info.tablet_id = child_tablet->tablet_id();
-    child_info.stream_id = info.stream_id;
-
-    RETURN_NOT_OK_SET_CODE(
-        UpdateCheckpointAndActiveTime(
-            child_info, split_op_id, split_op_id, session, GetCurrentTimeMicros(),
-            CDCRequestSource::CDCSDK, true),
-        CDCError(CDCErrorPB::INTERNAL_ERROR));
-  }
-
-  VLOG(1) << "Updated entries for children tablets: " << children_tablets[0]->tablet_id() << " and "
-          << children_tablets[1]->tablet_id()
-          << ", in 'cdc_state' table with checkpoint: " << split_op_id;
 
   return Status::OK();
 }

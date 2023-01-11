@@ -1,6 +1,6 @@
 ---
-title: Schedule universe YSQL data backups
-headerTitle: Schedule universe YSQL data backups
+title: Schedule YSQL data backups
+headerTitle: Schedule YSQL data backups
 linkTitle: Schedule data backups
 description: Use YugabyteDB Anywhere to create scheduled backups of universe YSQL data.
 aliases:
@@ -50,18 +50,28 @@ Before scheduling a backup of your universe YSQL data, create a policy, as follo
 1. Select the **Backups** tab and then select **Scheduled Backup Policies**.
 
 1. Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
-    
-   ![Create Backup form](/images/yp/scheduled-backup-ysql.png)<br>
-    
+   
+   ![Create Backup form](/images/yp/scheduled-backup-ysql-1.png)<br>
+   
 1. Provide the backup policy name.
-
-1. Specify the interval between backups or select **Use cron expression (UTC)**.
 
 1. Select the backup storage configuration. Notice that the contents of the **Select the storage config you want to use for your backup** list depends on your existing backup storage configurations. For more information, see [Configure backup storage](../../configure-backup-storage/).
 
 1. Select the database to backup. You may also choose to back up all databases associated with your universe.
 
 1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
+
+1. Specify the interval between backups or select **Use cron expression (UTC)**.
+
+1. For a YB Controller-powered universe, you can enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups. The incremental backups intervals be longer than the full scheduled backup frequency:
+
+   ![Incremental Backup](/images/yp/scheduled-backup-ycql-incremental.png)<br>
+
+   If you disable the full backup, the incremental backup stops. If you enable the full backup again, the incremental backup schedule starts on new full backups.
+
+   If you delete the main full backup schedule, the incremental backup schedule is also deleted.
+
+   You cannot modify any incremental backup-related property in the schedule; to overwrite any incremental backup property, you have to delete the existing schedule and create a new schedule if needed.
 
 1. Specify the number of threads that should be available for the backup process.
 
@@ -76,14 +86,12 @@ You can disable all backups, including scheduled ones, as follows:
 1. Navigate to the universe's **Tables** tab.
 1. Click **Actions > Disable Backup**.
 
-<!--
-
 ## Delete a scheduled backup
 
 You can permanently remove a scheduled backup, as follows:
 
 1. Navigate to the universe's **Backups** tab.
+2. Find the scheduled backup in the **Backups** list and click **... > Delete Backup**.
 
-2. Find the scheduled backup and click **... > Delete Schedule**.
+To delete a policy, select **Scheduled Backup Policies**, find the policy and click its **Actions > Delete Policy**.
 
-   -->

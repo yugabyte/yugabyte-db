@@ -66,15 +66,15 @@ func TestPing(t *testing.T) {
 	}
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
-	req := pb.PingRequest{Data: "Hello"}
+	req := pb.PingRequest{}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	res, err := client.Ping(ctx, &req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Data != "Hello" {
-		t.Fatalf("Expected 'Hello', found '%s'", res.Data)
+	if res.ServerInfo == nil {
+		t.Fatalf("ServerInfo must be set")
 	}
 }
 

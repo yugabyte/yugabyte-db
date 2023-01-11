@@ -161,7 +161,13 @@ public class MetaMasterController extends Controller {
                 false);
 
         String helmReleaseName =
-            KubernetesUtil.getHelmReleaseName(isMultiAz, universeDetails.nodePrefix, azName, false);
+            KubernetesUtil.getHelmReleaseName(
+                isMultiAz,
+                universeDetails.nodePrefix,
+                universe.name,
+                azName,
+                false,
+                universeDetails.useNewHelmNamingStyle);
 
         String ip =
             kubernetesManagerFactory

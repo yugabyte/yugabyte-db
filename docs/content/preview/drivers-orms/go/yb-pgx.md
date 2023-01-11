@@ -49,6 +49,12 @@ type: docs
 
 The [YugabyteDB PGX smart driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a distributed Go driver for [YSQL](/preview/api/ysql/) based on [jackc/pgx](https://github.com/jackc/pgx/), with a additional [connection load balancing](../../smart-drivers/) features.
 
+{{< note title="YugabyteDB Managed" >}}
+
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+
+{{< /note >}}
+
 ## CRUD operations
 
 For Go applications, most drivers provide database connectivity through the standard `database/sql` API.
@@ -88,21 +94,21 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
+| host | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
+| port |  Listen port for YSQL | 5433
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
-| host | Hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
 | dbname | Database name | yugabyte
 | `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
 | `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
-The following is an example connection string for connecting to YugabyteDB with uniform load balancing.
+The following is an example connection string for connecting to YugabyteDB with uniform load balancing:
 
 ```sh
 postgres://username:password@localhost:5433/database_name?load_balance=true
 ```
 
-The following is a code snippet for connecting to YugabyteDB using the connection parameters.
+The following is a code snippet for connecting to YugabyteDB using the connection parameters:
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
@@ -118,7 +124,7 @@ postgres://username:password@localhost:5433/database_name?load_balance=true&
     topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
 ```
 
-The following is a code snippet for connecting to YugabyteDB using topology-aware load balancing.
+The following is a code snippet for connecting to YugabyteDB using topology-aware load balancing:
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
@@ -126,6 +132,43 @@ baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1", baseUrl)
 conn, err := pgx.Connect(context.Background(), url)
 ```
+
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+
+#### Use multiple addresses
+
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Delimit the addresses using commas, as follows:
+
+```sh
+postgres://username:password@host1:5433,host2:5433,host3:5433/database_name?load_balance=true
+```
+
+The following is a code snippet for connecting to YugabyteDB using multiple hosts:
+
+```go
+url := fmt.Sprintf("postgres://%s:%s@%s:%d",
+        dbUser, dbPassword, host1, port)
+
+    if host2 != "" {
+        url += fmt.Sprintf(",%s:%d", host2, port)
+    }
+
+    if host3 != "" {
+        url += fmt.Sprintf(",%s:%d", host3, port)
+    }
+
+    url += fmt.Sprintf("/%s", dbName)
+
+    if sslMode != "" {
+        url += fmt.Sprintf("?sslmode=%s", sslMode)
+
+        if sslRootCert != "" {
+            url += fmt.Sprintf("&sslrootcert=%s", sslRootCert)
+        }
+    }
+```
+
+The hosts are only used during the initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
 
 #### Use SSL
 
@@ -336,7 +379,7 @@ func printAZInfo() {
 
 The **const** values are set to the defaults for a local installation of YugabyteDB. If you're using YugabyteDB Managed, replace the values as follows:
 
-- **host** - The host address of your cluster. The host address is displayed on the cluster Settings tab.
+- **host** - The host address of your cluster. The host address is displayed on the cluster **Settings** tab.
 - **user** - Your YugabyteDB database username. In YugabyteDB Managed, the default user is **admin**.
 - **password** - Your YugabyteDB database password.
 - **dbname** - The name of the YugabyteDB database. The default name is **yugabyte**.
@@ -575,6 +618,8 @@ func printAZInfo() {
 ```
 
 The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Managed, replace the **const** values in the file as mentioned in [pgx.Connect()](#step-3-write-your-application-with-pgx-connect).
+
+## Run the application
 
 Run the project `QuickStartApp2.go` using the following command:
 

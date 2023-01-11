@@ -309,9 +309,6 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
 
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
-    if (producer_entry_pb.disable_stream()) {
-      continue;
-    }
     // recreate the UUID connection information
     if (!ContainsKey(uuid_master_addrs_, producer_map.first)) {
       std::vector<HostPort> hp;
@@ -346,7 +343,8 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
               {consumer_tablet_id, stream_entry_pb.consumer_table_id()});
           auto xCluster_tablet_info = cdc::XClusterTabletInfo {
             .producer_tablet_info = producer_tablet_info,
-            .consumer_tablet_info = consumer_tablet_info
+            .consumer_tablet_info = consumer_tablet_info,
+            .disable_stream = producer_entry_pb.disable_stream()
           };
           producer_consumer_tablet_map_from_master_.emplace(xCluster_tablet_info);
         }
@@ -382,6 +380,11 @@ void CDCConsumer::TriggerPollForNewTablets() {
   std::lock_guard<rw_spinlock> write_lock_master(master_data_mutex_);
 
   for (const auto& entry : producer_consumer_tablet_map_from_master_) {
+    if (entry.disable_stream) {
+      // Replication for this stream has been paused/disabled, do not create a poller for this
+      // tablet.
+      continue;
+    }
     const auto& producer_tablet_info = entry.producer_tablet_info;
     const auto& consumer_tablet_info = entry.consumer_tablet_info;
     auto uuid = producer_tablet_info.universe_uuid;
@@ -540,8 +543,9 @@ bool CDCConsumer::ShouldContinuePolling(
   // We either no longer need to poll for this tablet, or a different tablet should be polling
   // for it now instead of this one (due to a local tablet split).
   if (it == producer_consumer_tablet_map_from_master_.end() ||
-      it->consumer_tablet_info.tablet_id != consumer_tablet_info.tablet_id) {
-    // We no longer care about this tablet, abort the cycle.
+      it->consumer_tablet_info.tablet_id != consumer_tablet_info.tablet_id ||
+      it->disable_stream) {
+    // We no longer want to poll for this tablet, abort the cycle.
     return false;
   }
   return is_leader_for_tablet_(it->consumer_tablet_info.tablet_id);

@@ -32,7 +32,6 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
 #include "yb/util/test_macros.h"
@@ -96,7 +95,7 @@ class CountMergeOperator: public AssociativeMergeOperator {
 };
 
 namespace {
-std::shared_ptr<DB> OpenDb(const std::string &dbname, const bool ttl = false,
+std::shared_ptr<DB> OpenDb(const std::string &dbname,
                            const size_t max_successive_merges = 0,
                            const uint32_t min_partial_merge_operands = 2) {
   DB *db;
@@ -107,14 +106,7 @@ std::shared_ptr<DB> OpenDb(const std::string &dbname, const bool ttl = false,
   options.min_partial_merge_operands = min_partial_merge_operands;
   Status s;
   CHECK_OK(DestroyDB(dbname, Options()));
-  if (ttl) {
-    std::cout << "Opening database with TTL\n";
-    DBWithTTL *db_with_ttl;
-    s = DBWithTTL::Open(options, dbname, &db_with_ttl);
-    db = db_with_ttl;
-  } else {
-    s = DB::Open(options, dbname, &db);
-  }
+  s = DB::Open(options, dbname, &db);
   if (!s.ok()) {
     std::cerr << s.ToString() << std::endl;
     assert(false);
@@ -430,7 +422,7 @@ void testSingleBatchSuccessiveMerge(DB *db, size_t max_num_merges,
       static_cast<size_t>((num_merges % (max_num_merges + 1))));
 }
 
-void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
+void runTest(int argc, const std::string &dbname) {
   bool compact = false;
   if (argc > 1) {
     compact = true;
@@ -438,7 +430,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
   }
 
   {
-    auto db = OpenDb(dbname, use_ttl);
+    auto db = OpenDb(dbname);
 
     {
       std::cout << "Test read-modify-write counters... \n";
@@ -458,7 +450,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
   {
     std::cout << "Test merge in memtable... \n";
     size_t max_merge = 5;
-    auto db = OpenDb(dbname, use_ttl, max_merge);
+    auto db = OpenDb(dbname, max_merge);
     MergeBasedCounters counters(db, 0);
     testCounters(&counters, db.get(), compact);
     testSuccessiveMerge(&counters, max_merge, max_merge * 2);
@@ -471,13 +463,13 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
     size_t max_merge = 100;
     for (uint32_t min_merge = 5; min_merge < 25; min_merge += 5) {
       for (uint32_t count = min_merge - 1; count <= min_merge + 1; count++) {
-        auto db = OpenDb(dbname, use_ttl, max_merge, min_merge);
+        auto db = OpenDb(dbname, max_merge, min_merge);
         MergeBasedCounters counters(db, 0);
         testPartialMerge(&counters, db.get(), max_merge, min_merge, count);
         ASSERT_OK(DestroyDB(dbname, Options()));
       }
       {
-        auto db = OpenDb(dbname, use_ttl, max_merge, min_merge);
+        auto db = OpenDb(dbname, max_merge, min_merge);
         MergeBasedCounters counters(db, 0);
         testPartialMerge(&counters, db.get(), max_merge, min_merge,
             min_merge * 10);
@@ -531,9 +523,6 @@ int main(int argc, char *argv[]) {
   FLAGS_never_fsync = true;
   rocksdb::port::InstallStackTraceHandler();
   rocksdb::runTest(argc, rocksdb::test::TmpDir() + "/merge_testdb");
-  rocksdb::runTest(argc,
-                   rocksdb::test::TmpDir() + "/merge_testdbttl",
-                   true); // Run test on TTL database
   printf("Passed all tests!\n");
   return 0;
 }

@@ -17,15 +17,11 @@ func setDefaultConfigs() {
 	if err != nil {
 		panic(err)
 	}
-	_, err = config.CompareAndUpdate(util.PlatformVersionKey, nil, util.Version())
+	_, err = config.CompareAndUpdate(util.PlatformVersionKey, nil, util.MustVersion())
 	if err != nil {
 		panic(err)
 	}
 	_, err = config.CompareAndUpdate(util.RequestTimeoutKey, nil, "20")
-	if err != nil {
-		panic(err)
-	}
-	_, err = config.CompareAndUpdate(util.NodePingIntervalKey, nil, "20")
 	if err != nil {
 		panic(err)
 	}

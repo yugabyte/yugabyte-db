@@ -12,4 +12,3 @@ WorkingDirectory={{yb_home_dir}}/bin
 ExecStart=/bin/bash {{yb_home_dir}}/bin/collect_metrics_wrapper.sh
 
 [Install]
-WantedBy=multi-user.target

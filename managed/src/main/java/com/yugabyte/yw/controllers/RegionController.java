@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.RegionEditFormData;
 import com.yugabyte.yw.forms.RegionFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -177,17 +178,67 @@ public class RegionController extends AuthenticatedController {
   }
 
   /**
-   * DELETE endpoint for deleting a existing Region.
+   * PUT endpoint for modifying an existing Region.
    *
    * @param customerUUID Customer UUID
    * @param providerUUID Provider UUID
    * @param regionUUID Region UUID
-   * @return JSON response on whether or not delete region was sucessful or not.
+   * @return JSON response on whether or not the operation was successful.
+   */
+  @ApiOperation(value = "Modify a region", response = Object.class, nickname = "editRegion")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "region",
+          value = "region edit form data",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RegionEditFormData",
+          required = true))
+  public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    RegionEditFormData form = formFactory.getFormDataOrBadRequest(RegionEditFormData.class).get();
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+
+    region.setSecurityGroupId(form.securityGroupId);
+    region.setVnetName(form.vnetName);
+    region.ybImage = form.ybImage;
+
+    region.update();
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Edit);
+    return PlatformResults.withData(region);
+  }
+
+  /**
+   * DELETE endpoint for deleting an existing Region.
+   *
+   * @param customerUUID Customer UUID
+   * @param providerUUID Provider UUID
+   * @param regionUUID Region UUID
+   * @return JSON response on whether the region was successfully deleted.
    */
   @ApiOperation(value = "Delete a region", response = Object.class, nickname = "deleteRegion")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-    region.disableRegionAndZones();
+
+    if (Provider.getOrBadRequest(customerUUID, providerUUID).getCloudCode()
+        == Common.CloudType.onprem) {
+      region.setActiveFlag(false);
+      region.update();
+    } else {
+      long nodeCount = region.getNodeCount();
+
+      if (nodeCount > 0) {
+        throw new PlatformServiceException(
+            FORBIDDEN,
+            String.format(
+                "There %s %d node%s in this region",
+                nodeCount > 1 ? "are" : "is", nodeCount, nodeCount > 1 ? "s" : ""));
+      }
+
+      region.delete();
+    }
+
     auditService()
         .createAuditEntryWithReqBody(
             ctx(), Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Delete);
