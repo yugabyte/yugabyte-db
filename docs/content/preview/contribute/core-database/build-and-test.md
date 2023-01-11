@@ -43,7 +43,7 @@ For example, specifying a flag to run a C++ test skips the Java build (but runni
 Although there is some intelligence to avoid rebuilding parts, it is incomplete.
 For example, the postgres build uses a build stamp calculated from a git commit and working changes, and if there is a mismatch, it reruns postgres configure and make.
 Java is worse in that it runs all the build even if there are no changes since the last run.
-Flags `--skip-cxx-build`/`--scb` and `--skip-java-build`/`--sj` can be useful to reduce incremental build times.
+Use the `--skip-cxx-build`/`--scb` and `--skip-java-build`/`--sj` flags to reduce incremental build times.
 
 `initdb` is a special case because it is only built if it hasn't been built before, but it isn't rebuilt again unless the `reinitdb` target is specified.
 You should run `reinitdb` in case the initial system catalog in the source code is different since the last time `initdb` was run, unless you intentionally want to use the old initial system catalog (for example, to test upgrades).
