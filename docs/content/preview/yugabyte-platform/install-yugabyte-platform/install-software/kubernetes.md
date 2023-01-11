@@ -157,7 +157,7 @@ By default, a load balancer is created to make YugabyteDB Anywhere accessible. I
 
 #### Turn off the load balancer
 
-You can disable the load balancer by changing the service type to `ClusterIP`:
+There are scenarios where you want to access YugabyteDB Anywhere via other ways like port-forward, other gateway/ingress solution, etc. In that case you can disable the load balancer by changing the service type to `ClusterIP`:
 
 ```yaml
 # yba-values.yaml
@@ -167,9 +167,13 @@ yugaware:
     type: "ClusterIP"
 ```
 
-TODO/RFC: What are other use-cases/ways of accessing the web interface here?
+If you plan to access YugabyteDB Anywhere by doing port-forwarding, you need to set `tls.hostname`. You can read more about it in the [Set DNS name](#set-dns-name) section.
 
-TODO: we actually need to set correct tls.hostname irrespective of the tls non-tls, otherwise CORS check fails. Needs to be `localhost:8080` in this case. But this is not required when we use LoadBalancer type service, why?
+```yaml
+# yba-values.yaml
+tls:
+  hostname: "localhost:8080"
+```
 
 Use the kubectl port-forward command to access the interface locally:
 
@@ -183,11 +187,12 @@ kubectl port-forward -n yb-platform svc/yw-test-yugaware-ui 8080:80
 
 #### Set up internal load balancer
 
-You can add annotations to the YugabyteDB Anywhere service to create an internal load balancer instead of a public-facing one. Since every cloud provider has different annontations for doing this, refer to the following documentation:
+You can add annotations to the YugabyteDB Anywhere service to create an internal load balancer instead of a public-facing one. Since every cloud provider has different annotations for doing this, refer to the following documentation:
 
 - For Google Cloud, see [GKE docs](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing).
 - For Azure, see [AKS docs](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
-- For AWS, see [EKS docs](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html).
+- For AWS, see [EKS docs](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html) and [AWS Load Balancer Controller docs](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/service/annotations/#lb-scheme).
+- For other providers, see [Internal load balancer](https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer) section from Kubernetes docs.
 
 For example, for a GKE cluster, you would add following lines to your values file:
 
@@ -196,13 +201,34 @@ For example, for a GKE cluster, you would add following lines to your values fil
 yugaware:
   service:
     # other values…
-    annontations:
+    annotations:
       networking.gke.io/load-balancer-type: "Internal"
 ```
 
-#### TODO Set the DNS name
+For an EKS cluster, you would use following:
 
-TODO: seems like this is not needed even if using Domain => LB IP setup. It just works fine. We probably need a section for CORS.
+```yaml
+# yba-values.yaml
+yugaware:
+  service:
+    # other values…
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
+```
+
+#### Set DNS name
+
+If you want to access YugabyteDB Anywhere via a domain or localhost, you need to set the `tls.hostname` field. This will make sure that the correct TLS and Cross-Origin Resource Sharing (CORS) settings are used.
+
+```yaml
+# yba-values.yaml
+tls:
+  hostname: "yba.example.com"
+```
+
+<!-- TODO: move things from the following section to this page -->
+<!-- https://docs.yugabyte.com/preview/yugabyte-platform/troubleshoot/install-upgrade-yp-issues/#configure-load-balancer-for-helm-charts  -->
+<!-- it was added as part of PLAT-3570 -->
 
 ### Configure TLS
 
@@ -244,7 +270,7 @@ tls:
 
 ### Control placement of YugabyteDB Anywhere pods
 
-The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity` and `toleration`. When you are using these constraints, make sure the storage class is setup according to the [Storage class considerations](#storage-class-considerations) section.
+The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity` and `toleration`. When you are using these constraints, make sure the storage class is setup according to the [Storage class considerations](../../prepare-environment/kubernetes/#storage-class-considerations) section. You can read more about pod placement in Kubernetes documentation page [Assigning Pods to Nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
 
 #### nodeSelector
 
@@ -286,7 +312,7 @@ tolerations:
 ```
 
 {{< note title="Scheduling the pods on dedicated nodes" >}}
-Tolerations don't gurantee scheduling on the tainted nodes. To make sure the YugabyteDB Anywhere pods use a dedicated set of nodes, you need to use [nodeSelector](#nodeselector) along with taints and tolerations to repel other pods.
+Tolerations don't guarantee scheduling on the tainted nodes. To make sure the YugabyteDB Anywhere pods use a dedicated set of nodes, you need to use [nodeSelector](#nodeselector) along with taints and tolerations to repel other pods.
 {{< /note >}}
 
 ### Modify resources
@@ -307,7 +333,7 @@ yugaware:
       memory: "8Gi"
 ```
 
-Similarly, you can modify the values for Prometheus and Postgres which are part of the chart.
+Similarly, you can modify the values for Prometheus and Postgres containers which are part of the chart.
 
 ```yaml
 # yba-values.yaml
@@ -362,28 +388,11 @@ yugaware:
   storage: "200Gi"
 ```
 
-#### Storage class considerations
-TODO: Update the prerequisites docs to link to this section instead of control the placement of pods one.
+It is recommend to use a storage class which is according to the [Storage class considerations](../../prepare-environment/kubernetes/#storage-class-considerations) section.
 
-TODO/RFC: Shouldn't this be in the prerequisites or in prepare the environment sections?  
-TODO/RFC: The current more details section is in prepare-on-prem-nodes, that should be in prerequisites.  
-
-
-When you are using multi-zone Kubernetes cluster, you should delay the creation of storage volumes (known as PersistentVolumes (PVs)) until the pod has been placed. To do this, you would use a `StorageClass` with its `VolumeBindingMode` set to `WaitForFirstConsumer`, as described in [Configure storage class volume binding](../../prepare-on-prem-nodes/#configure-storage-class-volume-binding). The following is a storage class YAML file for Google Kubernetes Engine (GKE):
-
-```yaml
-kind: StorageClass
-metadata:
-  name: yb-storage
-provisioner: kubernetes.io/gce-pd
-volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true
-reclaimPolicy: Delete
-parameters:
-  type: pd-ssd
-  fstype: xfs
-```
-If you do not delay the creation of the PV, it may get created in a location/zone that is not accessible to the pod, resulting in a failure to bring up the pod to a running state.
+{{< note title="The initial volume size" >}}
+It is recommend to set a large initial storage size because resizing the volumes later is challenging.
+{{< /note >}}
 
 <!-- TODO: update this when we revisit the "Pull and push YugabyteDB Docker images to private container registry" section as part of PLAT-6797  -->
 <!-- ### Pull images from private registry -->

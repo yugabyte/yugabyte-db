@@ -207,26 +207,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Use the **Zone** field to select a zone label that should match the value of failure domain zone label on the nodes. `topology.kubernetes.io/zone` would place the pods in that zone.
 
-1. Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and the following guidelines are taken into consideration:
-
-   - Volume binding mode should be set to `WaitForFirstConsumer`, as described in [Configure storage class volume binding](../../../troubleshoot/universe-issues/#configure-storage-class-volume-binding).
-
-   - An SSD-based storage class and an extent-based file system (XFS) should be used, as per recommendations provided in [Deployment checklist - Disks](../../../../deploy/checklist/#disks).
-
-     The following is a sample storage class YAML file for Google Kubernetes Engine (GKE). You are expected to modify it to suit your Kubernetes cluster:
-
-      ```yaml
-      kind: StorageClass
-      metadata:
-      	name: yb-storage
-      provisioner: kubernetes.io/gce-pd
-      volumeBindingMode: WaitForFirstConsumer
-      allowVolumeExpansion: true
-      reclaimPolicy: Delete
-      parameters:
-      	type: pd-ssd
-      	fstype: xfs
-      ```
+1. Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and the storage class is according to the [Storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#storage-class-considerations) section.
 
 1. Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
