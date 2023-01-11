@@ -41,7 +41,7 @@ For example, specifying a flag to run a C++ test skips the Java build (but runni
 
 Although there is some intelligence to avoid rebuilding parts, it is incomplete.
 For example, the postgres build uses a build stamp calculated from a git commit and working changes; if there is a mismatch, it reruns postgres configure and make.
-Java is worse in that it runs all the build even if there are no changes since the last run.
+The Java build always runs the full build.
 Use the `--skip-cxx-build`/`--scb` and `--skip-java-build`/`--sj` flags to reduce incremental build times.
 
 `initdb` is a special case because it is only built if it hasn't been built before, but it isn't rebuilt again unless the `reinitdb` target is specified.
@@ -79,7 +79,6 @@ The following build types are available:
 By default, `clang` is used, but `gcc` is also supported.
 
 Specify the compiler using the `--gcc<version_number>` and `--clang<version_number>` flags.
-For example, `--gcc11` or `--clang15`.
 The specific versions supported can be found in `./build-support/third-party-archives.yml`, which details the configurations regularly tested in-house.
 
 ### Third-party
@@ -164,7 +163,7 @@ Note that a high parallelism could result in failures if system resources are ov
 C++ tests are located in `src/yb` or `ent/src/yb` and end in `test.cc`.
 
 Many C++ tests use external mini cluster or mini cluster to create clusters.
-A key difference is that external mini clusters create separate master, tserver, and postgres processes (as in real life), while mini clusters create masters and tservers in memory in the same process and optionally spawn a separate postgres process.
+A key difference is that external mini clusters create separate master, tserver, and postgres processes (as in real life), while mini clusters create masters and tservers within the same process and optionally spawn a separate postgres process.
 Use external mini clusters instead of mini clusters unless you have a specific reason to do otherwise, such as:
 
 - you need access to catalog manager internals
