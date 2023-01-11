@@ -27,7 +27,7 @@ In general, they come down to these components:
   - C++ tests
   - Java tests
 
-For a full list of options, run `yb_build.sh -h.
+For a full list of options, run `yb_build.sh -h`.
 What follows are some of the common options to pay attention to.
 
 ## Build
