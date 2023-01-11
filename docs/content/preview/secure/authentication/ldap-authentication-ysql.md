@@ -145,7 +145,9 @@ To create a secret:
 
 To use LDAP password authentication on a new YugabyteDB cluster, follow these steps:
 
-1. Start the YugabyteDB cluster using the `--ysql_hba_conf_csv` configuration flag to enable LDAP authentication on YB-TServer. Use the following configuration to start a YugabyteDB cluster:
+1. Start the YugabyteDB cluster using the `--ysql_hba_conf_csv` configuration flag to enable LDAP authentication on YB-TServer.
+
+    Use the following configuration to start the cluster:
 
     ```sh
     --ysql_hba_conf_csv='host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldap.forumsys.com ldapprefix=""uid="" ldapsuffix="", dc=example, dc=com"" ldapport=389"'
@@ -157,16 +159,14 @@ This sample configuration uses an [online LDAP test server](https://www.forumsys
 
     For convenience, the configuration uses two [host-based authentication](../host-based-authentication/) rules:
 
-    * The first rule `host all yugabyte 127.0.0.1/0 password` allows access from localhost (127.0.0.1) to the admin user (`yugabyte`) with password authentication. This allows the administrator to log in with the yugabyte user to set up the roles (and permissions) for LDAP users.
+    * The first rule `host all yugabyte 127.0.0.1/0 password` allows access from localhost (127.0.0.1) to the admin user (`yugabyte`) with password authentication. This allows the administrator to log in to set up the roles (and permissions) for LDAP users.
     * The second rule configures LDAP authentication for all other user/host pairs, using simple bind with a uid-based username (`ldapprefix`) and a suffix defining the domain component (`dc`).
 
-1. Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
+1. Start the YSQL shell (ysqlsh) specifying the `yugabyte` user, and enter the password (default is `yugabyte`) when prompted.
 
     ```sh
     $ ./ysqlsh -U yugabyte -W
     ```
-
-1. When prompted for the password, enter the yugabyte password (default is `yugabyte`).
 
     ```output
     ysqlsh (11.2-YB-2.3.3.0-b0)
@@ -205,7 +205,7 @@ This sample configuration uses an [online LDAP test server](https://www.forumsys
 
 1. Connect using LDAP authentication.
 
-    Connect ysqlsh using the `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page.
+    Connect via ysqlsh using the `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page.
 
     ```sh
     $ ./ysqlsh -U riemann -W
