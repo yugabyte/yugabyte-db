@@ -71,11 +71,9 @@ The following build types are available:
 
 - release
 - fastdebug: less compiler optimizations and a few other tweaks on debug
-- debug
+- debug (the default)
 - asan: address sanitizer
 - tsan: thread sanitizer
-
-By default, `debug` is used.
 
 ### Compiler
 
@@ -142,7 +140,8 @@ To run a specific test:
 ./yb_build.sh release --java-test org.yb.client.TestYBClient
 ```
 
-To run a specific Java sub-test within a test file use the # syntax, for example:
+To run a specific Java sub-test within a test file, use the # syntax.
+For example:
 
 ```sh
 ./yb_build.sh release --java-test 'org.yb.client.TestYBClient#testClientCreateDestroy'
@@ -166,7 +165,7 @@ Note that a high parallelism could result in failures if system resources are ov
 C++ tests are located in `src/yb` or `ent/src/yb` and end in `test.cc`.
 
 Many C++ tests use external mini cluster or mini cluster to create clusters.
-A key difference is that external mini clusters create separate master/tserver/postgres processes (as in real life) while mini clusters create masters/tservers in memory within the same process and optionally spawn a separate tserver process.
+A key difference is that external mini clusters create separate master, tserver, and postgres processes (as in real life), while mini clusters create masters and tservers in memory in the same process and optionally spawn a separate postgres process.
 Use external mini clusters instead of mini clusters unless you have a specific reason to do otherwise, such as:
 
 - you need access to catalog manager internals
@@ -185,7 +184,7 @@ The test framework does the following:
 
 1. Copies test files from the `src` directory to the `build` directory (this is technically done as part of build).
 1. Copies test files to a temporary `test` directory.
-1. In the `test` directory, generate `sql`/`expected` from `input`/`output`
+1. In the `test` directory, generates `sql`/`expected` from `input`/`output`
 1. In the `test` directory, generates `results` by running tests in `sql`.
 1. Copies back `results` from the `test` directory to the `build` directory.
 1. Deletes the `test` directory.
@@ -196,10 +195,10 @@ The files in `results` are compared with those in `expected` to determine pass/f
 
 - If you want to quickly run specific SQL files, you can create a dummy Java file and dummy schedule with that one test in it.
 - Use the following naming convention (some older files haven't adopted it yet but should):
-  - `sql/foo.sql`: unchanged from original PostgreSQL code
-  - `sql/yb_foo.sql`: completely new file (for example, with new features)
-  - `sql/yb_pg_foo.sql`: modified version of original PostgreSQL foo.sql (for example, with compatibility edits)
-    - The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
+  - `sql/foo.sql`: Unchanged from original PostgreSQL code.
+  - `sql/yb_foo.sql`: Completely new file (for example, with new features).
+  - `sql/yb_pg_foo.sql`: Modified version of original PostgreSQL foo.sql (for example, with compatibility edits).
+    The goal here is to reduce the difference between `foo.sql` and `yb_pg_foo.sql`, when possible.
 
 {{< /tip >}}
 
@@ -207,11 +206,11 @@ The files in `results` are compared with those in `expected` to determine pass/f
 
 The general hierarchy of flags is as follows:
 
-1. test framework: the framework may specify some default flags
-1. test superclass: any parent classes of the test class can set flags
-1. test subclass: child classes' flags should take precedence over parent classes'
-1. test: a test itself may set flags
-1. user: the user running the test could add flags
+1. Test framework: the framework may specify some default flags.
+1. Test superclass: any parent classes of the test class can set flags.
+1. Test subclass: child class flags should take precedence over parent class flags.
+1. Test: a test itself may set flags.
+1. User: the user running the test could add flags.
 
 There may be some areas where the order of precedence is not followed: help fixing this is welcome.
 
