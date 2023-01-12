@@ -22,12 +22,18 @@ var installCmd = &cobra.Command{
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 
+		// Install the license if it is provided.
+		if licensePath != "" {
+			InstallLicense()
+		}
+
 		// Preflight checks
 		results := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
 		// Only print results if we should fail.
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
-			log.Fatal("preflight failed")
+			log.Fatal("Preflight checks failed. To skip (not recommended), " +
+				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
 		// Run install
@@ -39,14 +45,17 @@ var installCmd = &cobra.Command{
 			log.Info("Completed installing component " + name)
 		}
 
-		for _, name := range serviceOrder {
-			status := services[name].Status()
-			if status.Status != common.StatusRunning {
+		var statuses []common.Status
+		for _, service := range services {
+			status := service.Status()
+			statuses = append(statuses, status)
+			if !common.IsHappyStatus(status) {
 				log.Fatal(status.Service + " is not running! Install might have failed, please check " + common.YbaCtlLogFile)
 			}
 		}
 
 		common.PostInstall()
+		common.PrintStatus(statuses...)
 		log.Info("Successfully installed Yugabyte Anywhere!")
 	},
 }
@@ -54,5 +63,6 @@ var installCmd = &cobra.Command{
 func init() {
 	installCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
 		[]string{}, "Preflight checks to skip")
+	installCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
 	rootCmd.AddCommand(installCmd)
 }

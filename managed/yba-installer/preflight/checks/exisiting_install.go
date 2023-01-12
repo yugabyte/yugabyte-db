@@ -3,11 +3,12 @@ package checks
 import (
 	"fmt"
 	"os"
+
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 )
 
 // InstallExists initalizes the check
-var InstallExists = installExistsCheck{"install exists", true}
+var InstallExists = installExistsCheck{"install-exists", true}
 
 type installExistsCheck struct {
 	name        string
@@ -44,8 +45,8 @@ func (i installExistsCheck) Execute() Result {
 var InstallNotExists = installNotExistsCheck{"install does not exist", false}
 
 type installNotExistsCheck struct {
-	name				string
-	skipAllowed	bool
+	name        string
+	skipAllowed bool
 }
 
 // Name gets the check name.
@@ -61,7 +62,7 @@ func (i installNotExistsCheck) SkipAllowed() bool {
 // Execute runs the check.
 func (i installNotExistsCheck) Execute() Result {
 	res := Result{
-		Check: i.name,
+		Check:  i.name,
 		Status: StatusPassed,
 	}
 

@@ -192,6 +192,18 @@ class TwoDCTestBase : public YBTest {
 
   Status WaitForValidSafeTimeOnAllTServers(const NamespaceId& namespace_id);
 
+  // Wait for replication drain on a list of tables.
+  Status WaitForReplicationDrain(
+      const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
+      const master::WaitForReplicationDrainRequestPB& req,
+      int expected_num_nondrained,
+      int timeout_secs = kRpcTimeout);
+
+  // Populate a WaitForReplicationDrainRequestPB request from a list of tables.
+  void PopulateWaitForReplicationDrainRequest(
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+      master::WaitForReplicationDrainRequestPB* req);
+
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
   }
@@ -247,6 +259,13 @@ class TwoDCTestBase : public YBTest {
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+
+  // Function that translates the api response from a WaitForReplicationDrainResponsePB call into
+  // a status.
+  Status SetupWaitForReplicationDrainStatus(
+      Status api_status,
+      const master::WaitForReplicationDrainResponsePB& api_resp,
+      int expected_num_nondrained);
 };
 
 } // namespace enterprise

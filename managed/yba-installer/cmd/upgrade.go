@@ -47,7 +47,7 @@ var upgradeCmd = &cobra.Command{
 
 		for _, name := range serviceOrder {
 			status := services[name].Status()
-			if status.Status != common.StatusRunning {
+			if !common.IsHappyStatus(status) {
 				log.Fatal(status.Service + " is not running! upgrade failed")
 			}
 		}
@@ -68,12 +68,15 @@ var upgradeCmd = &cobra.Command{
 			log.Info("Completed restart of component " + name)
 		}
 
-		for _, name := range serviceOrder {
-			status := services[name].Status()
-			if status.Status != common.StatusRunning {
+		var statuses []common.Status
+		for _, service := range services {
+			status := service.Status()
+			statuses = append(statuses, status)
+			if !common.IsHappyStatus(status) {
 				log.Fatal(status.Service + " is not running! upgrade failed")
 			}
 		}
+		common.PrintStatus(statuses...)
 		// Here ends the postgres minor version/no upgrade workflow
 
 		common.PostUpgrade()
