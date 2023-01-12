@@ -16,7 +16,7 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import org.apache.commons.lang3.StringUtils;
 
-public abstract class AlertChannelBase implements AlertChannelInterface {
+abstract class AlertChannelBase implements AlertChannelInterface {
 
   @VisibleForTesting
   static final String DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE =
