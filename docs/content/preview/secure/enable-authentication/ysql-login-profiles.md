@@ -204,7 +204,7 @@ yugabyte=# \dgP
 
 <!--## Limitations and caveats
 
-- A profile can't be modified using `ALTER PROFILE`. If a profile needs to be modified, create a new profile. `ALTER` functionality will be implemented in the future (see GitHub [#15560](https://github.com/yugabyte/yugabyte-db/issues/15560)).
+- A profile can't be modified using `ALTER PROFILE`. If a profile needs to be modified, create a new profile.
 - Currently a role is locked indefinitely unless an administrator unlocks the role.
 - Login profiles are only applicable to challenge-response authentication methods. YugabyteDB also supports authentication methods that are not challenge-response, and login profiles are ignored for these methods as the authentication outcome has already been determined. The authentication methods are as follows:
   - Reject
@@ -216,4 +216,7 @@ yugabyte=# \dgP
   For more information on these authentication methods, refer to [Client Authentication](https://www.postgresql.org/docs/11/client-authentication.html) in the PostgreSQL documentation.
 
 - If the cluster SSL mode is `allow` or `prefer`, a single user login attempt can trigger two failed login attempts. For more information on SSL modes in PostgreSQL, refer to [SSL Support](https://www.postgresql.org/docs/11/libpq-ssl.html) in the PostgreSQL documentation.
-- The `\h` and `\dg` meta commands do not currently provide information about PROFILE and ROLE PROFILE catalog objects. -->
+- The `\h` and `\dg` meta commands do not currently provide information about PROFILE and ROLE PROFILE catalog objects.
+
+Enhancements to login profiles are tracked in GitHub issue [#15676](https://github.com/yugabyte/yugabyte-db/issues/15676).
+-->
