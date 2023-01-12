@@ -51,14 +51,6 @@ You should run `reinitdb` in case the initial system catalog in the source code 
 
 CMake is used.
 
-If there are any changes to CMake files since the last build, the next incremental build may throw a build error, such as the following:
-
-```output
-FAILED: build.ninja
-```
-
-In that case, run the build with `--force-run-cmake`/`--frcm`.
-
 ### Build tool
 
 By default, `ninja` is used, but `make` is also supported.
