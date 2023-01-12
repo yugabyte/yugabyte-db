@@ -1,4 +1,4 @@
-<!--
+---
 title: Create login profiles
 headerTitle: Create and configure login profiles in YSQL
 linkTitle: Create login profiles
@@ -10,7 +10,7 @@ menu:
     parent: enable-authentication
     weight: 725
 type: docs
--->
+---
 
 To enhance the security of your database, you can enable login profiles to lock accounts after a specified number of login attempts. This prevents brute force exploits.
 
