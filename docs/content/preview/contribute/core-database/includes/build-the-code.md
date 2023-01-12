@@ -1,3 +1,9 @@
+<!--
++++
+private = true
++++
+-->
+
 Assuming [this repository][repo] is checked out in `~/code/yugabyte-db`, do the following:
 
 ```sh
@@ -14,4 +20,7 @@ Try again by running the build script with less concurrency, for example, `-j1`.
 
 {{< /note >}}
 
+For more details about building and testing, refer to [Build and test][build-and-test].
+
 [repo]: https://github.com/yugabyte/yugabyte-db
+[build-and-test]: ../build-and-test
