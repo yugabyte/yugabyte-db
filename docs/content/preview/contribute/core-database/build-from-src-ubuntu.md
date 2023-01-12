@@ -83,4 +83,4 @@ sudo locale-gen en_US.UTF-8
 
 ### Build release package
 
-Currently a release package can only be built in [CentOS](../build-from-src-centos) & [MacOS](../build-from-src-macos).
+Currently, you can only build release packages in [CentOS](../build-from-src-centos) and [macOS](../build-from-src-macos).
