@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: ysqlsh
     parent: admin
-    weight: 2459
+    weight: 10
 type: docs
 ---
 

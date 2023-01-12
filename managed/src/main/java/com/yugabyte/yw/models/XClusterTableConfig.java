@@ -71,6 +71,11 @@ public class XClusterTableConfig extends Model {
   @JsonProperty("backupUuid")
   public Backup backup;
 
+  @ManyToOne
+  @JoinColumn(name = "restore_uuid", referencedColumnName = "restore_uuid")
+  @JsonProperty("restoreUuid")
+  public Restore restore;
+
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(
       value = "Time of the last try to restore data to the target universe",
@@ -133,6 +138,14 @@ public class XClusterTableConfig extends Model {
       return null;
     }
     return backup.backupUUID;
+  }
+
+  @JsonGetter("restoreUuid")
+  UUID getRestoreUuid() {
+    if (restore == null) {
+      return null;
+    }
+    return restore.restoreUUID;
   }
 
   /** This class is the primary key for XClusterTableConfig. */

@@ -31,7 +31,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 ## Recommendations
 
 - Most production applications require 4 to 8 vCPUs per node. Scale up smaller instance sizes; when the total number of vCPUs for your cluster exceeds 16, consider scaling out. For example, if you have a 3-node cluster with 2 vCPUs per node, scale up to 8 vCPUs per node before adding nodes.
-- Adding or removing nodes incurs a load on the cluster. Perform scaling operations when the cluster isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade application performance and increase the length of time of the scaling operation.
+- Adding or removing nodes incurs a load on the cluster. Depending on the amount of data in your database, horizontal scaling can also take time, as adding or removing nodes requires moving data between nodes. Perform scaling operations when the cluster isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade application performance and increase the length of time of the scaling operation.
 - Scaling operations block other cluster operations, such as backups and maintenance. Avoid scaling operations before maintenance windows and during scheduled backups. The operation will block a backup from running.
 - Before removing nodes from a cluster, make sure the reduced disk space will be sufficient for the existing and anticipated data.
 
@@ -67,7 +67,7 @@ To scale a single-region cluster:
 
 1. Click **Confirm and Save Changes** when you are done.
 
-Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.
+Depending on the number of nodes, whether you are adding or removing nodes, and the amount of data in your database, a horizontal scaling operation can take minutes or hours, during which time some cluster operations will not be available.
 
 ### Replicate-across-regions clusters
 

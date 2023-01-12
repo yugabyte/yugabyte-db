@@ -73,43 +73,14 @@ sudo apt-get install -y "${packages[@]}"
 sudo locale-gen en_US.UTF-8
 ```
 
-Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
+### Java
 
-```sh
-cd ~/code/yugabyte-db
-./yb_build.sh release --no-linuxbrew
-```
+{{% readfile "includes/java.md" %}}
 
-{{< note title="Note" >}}
+## Build the code
 
-If you see errors, such as `internal compiler error: Killed`, the system has probably run out of memory.
-Try again by running the build script with less concurrency, for example, `-j1`.
+{{% readfile "includes/build-the-code.md" %}}
 
-{{< /note >}}
+### Build release package
 
-The command above will build the release configuration, add the C++ binaries into the `build/release-gcc-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
-
-{{< tip title="Tip" >}}
-
-You can find the binaries you just built in `build/latest` directory.
-
-{{< /tip >}}
-
-## Build Java code
-
-YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
-
-* JDK 8
-* [Apache Maven](https://maven.apache.org/).
-
-Also make sure Maven's bin directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.6.3`)
-
-```sh
-export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
-```
-
-For building YugabyteDB Java code, you'll need to install Java and Apache Maven.
-
-## Build release package
-
-Currently a release package can only be built in [CentOS](../build-from-src-centos) & [MacOS](../build-from-src-macos).
+Currently, you can only build release packages in [CentOS](../build-from-src-centos) and [macOS](../build-from-src-macos).

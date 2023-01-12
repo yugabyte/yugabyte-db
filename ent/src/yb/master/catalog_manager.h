@@ -715,6 +715,15 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     const std::string& stream_id,
     const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
 
+  // Update the UniverseReplicationInfo object when toggling replication.
+  Status SetUniverseReplicationInfoEnabled(const std::string& producer_id,
+                                           bool is_enabled) EXCLUDES(mutex_);
+
+  // Update the cluster config and consumer registry objects when toggling replication.
+  Status SetConsumerRegistryEnabled(const std::string& producer_id,
+                                    bool is_enabled,
+                                    ClusterConfigInfo::WriteLock* l);
+
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
   SnapshotInfoMap non_txn_snapshot_ids_map_;

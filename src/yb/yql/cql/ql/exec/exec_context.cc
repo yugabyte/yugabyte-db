@@ -453,7 +453,7 @@ QueryPagingState::QueryPagingState(const StatementParameters& user_params,
 
   // Just default it to max_int.
   if (max_fetch_size_ <= 0) {
-    max_fetch_size_ = INT_MAX;
+    max_fetch_size_ = INT64_MAX;
   }
 }
 

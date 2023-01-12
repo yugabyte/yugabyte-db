@@ -64,41 +64,23 @@ brew install autoconf automake bash ccache cmake coreutils gnu-tar libtool \
 
 {{< note title="Note" >}}
 
-YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/usr/local/bin/bash` before proceeding. You may need to put `/usr/local/bin` as the first directory on `PATH` in your `~/.bashrc` to achieve that.
+YugabyteDB build scripts require at least Bash version 4. Make sure that `bash --version` outputs a version of 4 or higher before proceeding. You may need to put `/usr/local/bin` (Intel) or `/opt/homebrew/bin` (Apple Silicon) as the first directory on `PATH` in your `~/.bashrc` to achieve that.
 
 {{< /note >}}
 
 ### Java
 
-YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
-
-* Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install openjdk`.
-* [Apache Maven](https://maven.apache.org/) 3.3 or later.
-
-Also make sure Maven's `bin` directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). For example, if you've installed Maven into `~/tools/apache-maven-3.6.3`:
-
-```sh
-export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
-```
+{{% readfile "includes/java.md" %}}
 
 ## Build the code
 
-Assuming this repository is checked out in `~/code/yugabyte-db`, run the following:
+{{% readfile "includes/build-the-code.md" %}}
 
-```sh
-cd ~/code/yugabyte-db
-./yb_build.sh release
-```
+### Build release package
 
-The command builds the release configuration, puts the C++ binaries in `build/release-clang-dynamic-ninja`, and creates the `build/latest` symlink to that directory.
+Run the `yb_release` script to build a release package:
 
-You can find the binaries you just built in the `build/latest` directory.
-
-## Build release package
-
-You can build a release package by executing:
-
-```shell
+```output.sh
 $ ./yb_release
 ......
 2020-10-27 13:55:40,856 [yb_release.py:283 INFO] Generated a package at '/Users/me/code/yugabyte-db/build/yugabyte-2.5.1.0-6ab8013159fdca00ced7e6f5d2f98cacac6a536a-release-darwin-x86_64.tar.gz'

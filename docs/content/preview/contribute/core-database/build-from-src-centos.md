@@ -55,7 +55,7 @@ sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-
 sudo yum install -y cmake3 ctest3 ninja-build
 ```
 
-## Prepare build tools
+### Build tools
 
 Make sure `cmake`/`ctest` binaries are at least version 3. On CentOS, one way to achieve this is to symlink them into `/usr/local/bin`.
 
@@ -73,57 +73,23 @@ Linuxbrew allows us to create a portable package that contains its own copy of g
 However, we are transitioning away from using Linuxbrew and towards native toolchains on various platforms.
 
 Our build scripts may automatically install Linuxbrew in a directory such as `/opt/yb-build/brew/linuxbrew-<version>`.
-There is no need to add any of those directories to PATH.
+There is no need to add any of those directories to `PATH`.
 
 {{< /note >}}
 
-## Building the code
+### Java
 
-Assuming [this repository][repo] is checked out in `~/code/yugabyte-db`, do the following:
+{{% readfile "includes/java.md" %}}
 
-```sh
-cd ~/code/yugabyte-db
-./yb_build.sh release
-```
+## Build the code
 
-{{< note title="Note" >}}
+{{% readfile "includes/build-the-code.md" %}}
 
-If you see errors, such as `g++: internal compiler error: Killed`, the system has probably run out of memory.
-Try again by running the build script with less concurrency, for example, `-j1`.
+### Build release package
 
-{{< /note >}}
+Run the `yb_release` script to build a release package:
 
-The command above will build the release configuration, add the C++ binaries into the `build/release-gcc-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
-
-{{< tip title="Tip" >}}
-
-You can find the binaries you just built in `build/latest` directory, which would be a symbolic link to `build/release-gcc-dynamic-ninja` in this case.
-
-{{< /tip >}}
-
-For Linux, it will first make sure our custom Linuxbrew distribution is installed into `~/.linuxbrew-yb-build/linuxbrew-<version>`.
-
-[repo]: https://github.com/yugabyte/yugabyte-db
-
-## Build Java code
-
-YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
-
-* JDK 8
-* [Apache Maven](https://maven.apache.org/).
-
-Also make sure Maven's bin directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.6.3`)
-
-```sh
-export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
-```
-
-For building YugabyteDB Java code, you'll need to install Java and Apache Maven.
-
-## Build release package
-You can build a release package by executing:
-
-```shell
+```output.sh
 $ ./yb_release
 ......
 2020-10-27 20:52:27,978 [yb_release.py:283 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.5.1.0-8696bc05a97c4907b53d6446b5bfa7acb28ceef5-release-centos-x86_64.tar.gz'

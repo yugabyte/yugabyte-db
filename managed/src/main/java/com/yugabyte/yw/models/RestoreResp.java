@@ -18,10 +18,11 @@ import lombok.Value;
 public class RestoreResp {
   UUID restoreUUID;
   UUID universeUUID;
+  UUID sourceUniverseUUID;
   UUID customerUUID;
   String targetUniverseName;
   String sourceUniverseName;
-  Date creationTime;
+  Date createTime;
   Date updateTime;
   Restore.State state;
   long restoreSizeInBytes;

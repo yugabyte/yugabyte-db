@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskExecutor;
@@ -160,6 +161,7 @@ public class Module extends AbstractModule {
       bind(EncryptionAtRestManager.class).asEagerSingleton();
       bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
       bind(SetUniverseKey.class).asEagerSingleton();
+      bind(RefreshKmsService.class).asEagerSingleton();
       bind(CustomerTaskManager.class).asEagerSingleton();
       bind(YamlWrapper.class).asEagerSingleton();
       bind(AlertManager.class).asEagerSingleton();

@@ -24,7 +24,7 @@ This handles transient failures, such as a node rebooting or process crash due t
 
 ## Node failure
 
-Typically, if a node has failed, the system automatically recovers and continues to function with the remaining N-1 nodes. If the failed node does not recover soon enough, and N-1 >= 3, then the under-replicated tablets will be rereplicated automatically to return to RF=3 on the remaining N-1 nodes.
+Typically, if a node has failed, the system automatically recovers and continues to function with the remaining N-1 nodes. If the failed node does not recover soon enough, and N-1 >= 3, then the under-replicated tablets will be re-replicated automatically to return to RF=3 on the remaining N-1 nodes.
 
 If a node has experienced a permanent failure on a YB-TServer, you should start another YB-TServer process on a new node. This node will join the cluster, and the load balancer will automatically take the new YB-TServer into consideration and start rebalancing tablets to it.
 

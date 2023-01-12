@@ -11,8 +11,8 @@ var InstallChecks = []Check{
 	checks.Memory,
 	checks.Port,
 	checks.Python,
-	checks.Root,
-	checks.DiskSize,
+	checks.DiskAvail,
+	checks.License,
 }
 
 // InstallChecksWithPostgres adds onto the base list with postgres checks
@@ -22,4 +22,8 @@ var InstallChecksWithPostgres = append(InstallChecks, checks.Postgres)
 var UpgradeChecks = []Check{
 	checks.InstallExists,
 	checks.ValidateInstallerConfig,
+	checks.DiskAvail,
+	checks.Cpu,
+	checks.Memory,
+	checks.Python,
 }

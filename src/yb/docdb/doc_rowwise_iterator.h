@@ -13,8 +13,9 @@
 
 #pragma once
 
-#include <string>
 #include <atomic>
+#include <string>
+#include <variant>
 
 #include "yb/docdb/doc_reader.h"
 #include "yb/rocksdb/db.h"
@@ -123,6 +124,8 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
  private:
   template <class T>
   Status DoInit(const T& spec);
+  void ConfigureForYsql();
+  void InitResult();
 
   Result<bool> InitScanChoices(
       const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key);
@@ -137,7 +140,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   Status AdvanceIteratorToNextDesiredRow() const;
 
   // Read next row into a value map using the specified projection.
-  Status DoNextRow(const Schema& projection, QLTableRow* table_row) override;
+  Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) override;
 
   // Returns OK if row_key_ is pointing to a system key.
   Status ValidateSystemKey();
@@ -176,8 +179,13 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Indicates whether we've already finished iterating.
   bool done_;
 
-  // HasNext constructs the whole row's SubDocument.
-  SubDocument row_;
+  IsFlatDoc is_flat_doc_ = IsFlatDoc::kFalse;
+
+  // HasNext constructs the whole row's SubDocument or vector of values.
+  std::variant<std::monostate, SubDocument, std::vector<PrimitiveValue>> result_;
+  // Points to appropriate alternative owned by result_ field.
+  SubDocument* row_;
+  std::vector<PrimitiveValue>* values_;
 
   // The current row's primary key. It is set to lower bound in the beginning.
   Slice row_key_;
@@ -201,7 +209,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<KeyBytes> tuple_key_;
 
-  std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
+  std::unique_ptr<DocDBTableReader> doc_reader_;
 
   TableType table_type_;
   bool ignore_ttl_ = false;
