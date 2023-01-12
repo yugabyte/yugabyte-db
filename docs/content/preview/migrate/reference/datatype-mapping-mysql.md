@@ -1,7 +1,7 @@
 ---
-title: Datatype mapping from MySQL to YugabyteDB
-linkTitle: Datatype mapping
-description: Refer to the datatype mapping table when migrating data from MySQL to YugabyuteDB using YugabyteDB Voyager.
+title: Data type mapping from MySQL to YugabyteDB
+linkTitle: Data type mapping
+description: Refer to the data type mapping table when migrating data from MySQL to YugabyteDB using YugabyteDB Voyager.
 menu:
   preview:
     identifier: datatype-mapping-mysql
@@ -23,8 +23,10 @@ type: docs
   </li>
 </ul>
 
-| MySQL datatype | Mapped to YugabyeDB | Description |
-| :------------- | :------------------ | :---------- |
+The following table includes a list of supported data type mappings from MySQL to YugabyteDB using YugabyteDB Voyager:
+
+| MySQL data type | Data type mapped to YugabyeDB | Description |
+| :-------------- | :---------------------------- | :---------- |
 | BINARY | BYTEA |
 | VARBINARY | BYTEA |
 | BIT | BIT |
@@ -64,3 +66,7 @@ type: docs
 | INT/INTEGER UNSIGNED | BIGINT |
 | BIGINT SIGNED | BIGINT |
 | BIGINT UNSIGNED | NUMERIC(20) |
+
+## Learn more
+
+- [Data modeling](../data-modeling)

@@ -1,7 +1,7 @@
 ---
-title: Datatype mapping from Oracle to YugabyteDB
-linkTitle: Datatype mapping
-description: Refer to the datatype mapping table when migrating data from Oracle to YugabyuteDB using YugabyteDB Voyager.
+title: Data type mapping from Oracle to YugabyteDB
+linkTitle: Data type mapping
+description: Refer to the data type mapping table when migrating data from Oracle to YugabyteDB using YugabyteDB Voyager.
 menu:
   preview:
     identifier: datatype-mapping-oracle
@@ -23,8 +23,10 @@ type: docs
   </li>
 </ul>
 
-| Oracle datatype | Mapped to YugabyeDB | Comments |
-| :-------------- | :------------------ | :------- |
+The following table includes a list of supported data type mappings from Oracle to YugabyteDB using YugabyteDB Voyager:
+
+| Oracle data type | Data type mapped to YugabyeDB | Comments |
+| :--------------- | :---------------------------- | :------- |
 | CHAR | char |
 | NCHAR | char |
 | VARCHAR2 | varchar |
@@ -50,18 +52,20 @@ type: docs
 | CLOB | text | Currently, import data is not supported for BLOB/CLOB. Only the schema migration is allowed. |
 | NCLOB | text | Currently, import data is not supported for BLOB/CLOB. Only the schema migration is allowed. |
 | BFILE | bytea | Analysis of BFILES is still in progress and is currently unsupported. |
-| ROWID | oid | Currently, import schema is not supported. Failed SQL statements can be found in "export-dir/schema/failed.sql" |
-| UROWID [(size)] | oid | Currently, import schema is not supported. Failed SQL statements can be found in "export-dir/schema/failed.sql" |
-| SYS.AnyData | ANYDATA | Currently, import schema is not supported. Failed SQL statements can be found in "export-dir/schema/failed.sql" |
-| SYS.AnyType | ANYTYPE | Currently, import schema is not supported. Failed SQL statements can be found in "export-dir/schema/failed.sql" |
-| SYS.AnyDataSet | ANYDATASET | Currently, import schema is not supported. Failed SQL statements can be found in "export-dir/schema/failed.sql" |
-| XMLType | xml | Currently, import schema is not supported. Failed SQL statements can be found in "export-dir/schema/failed.sql" |
-| URIType | URITYPE | Currently, import schema is not supported. Failed SQL statements can be found in "export-dir/schema/failed.sql" |
+| ROWID | oid | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
+| UROWID [(size)] | oid | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
+| SYS.AnyData | ANYDATA | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
+| SYS.AnyType | ANYTYPE | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
+| SYS.AnyDataSet | ANYDATASET | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
+| XMLType | xml | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
+| URIType | URITYPE | Currently, import schema is not supported. Failed SQL statements can be found in `export-dir/schema/failed.sql` |
 
-### ANSI SUPPORTED DATA TYPES
+#### ANSI SUPPORTED DATA TYPES
 
-| Oracle datatype | Mapped to YugabyeDB |
-| :-------------- | :------------------ |
+The following table list the ANSI supported data types that can be mapped to YugabyteDB:
+
+| ANSI supported data type | Data type mapped to YugabyeDB |
+| :----------------------- | :---------------------------- |
 | CHARACTER(n) | CHAR(n) |
 | CHAR(n) | CHAR(n) |
 | CHARACTER VARYING(n) | VARCHAR(n) |
@@ -80,3 +84,7 @@ type: docs
 | FLOAT | double precision |
 | DOUBLE PRECISION | double precision |
 | REAL | double precision |
+
+## Learn more
+
+- [Data modeling](../data-modeling)

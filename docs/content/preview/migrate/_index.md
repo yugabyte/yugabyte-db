@@ -110,7 +110,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
         <div class="title">Reference</div>
       </div>
       <div class="body">
-        Learn about the CLI options, data modeling strategies and datatype mapping.
+        Learn about the yb-voyager CLI options, data modeling strategies and data type mapping support.
       </div>
     </a>
   </div>
