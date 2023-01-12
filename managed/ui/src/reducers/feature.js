@@ -21,7 +21,7 @@ const initialStateFeatureInTest = {
   enableGcpKMS: true,
   enableAzuKMS: true,
   allowOptionalAuth: false,
-  enablePITR: false,
+  enablePITR: true,
   enableDedicatedNodes: false,
   enableNotificationTemplates: false
 };
@@ -47,7 +47,7 @@ const initialStateFeatureReleased = {
   enableGcpKMS: true,
   enableAzuKMS: true,
   allowOptionalAuth: false,
-  enablePITR: false,
+  enablePITR: true,
   enableDedicatedNodes: false,
   enableNotificationTemplates: false
 };
