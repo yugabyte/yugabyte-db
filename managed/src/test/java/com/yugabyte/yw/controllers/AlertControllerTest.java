@@ -1356,11 +1356,11 @@ public class AlertControllerTest extends FakeDBApplication {
       assertThat(
           request.getBody().readString(Charset.defaultCharset()),
           equalTo(
-              "{\"username\":\"Slack Bot\","
-                  + "\"text\":\"alertConfiguration alert with severity level 'SEVERE' "
+              "{\n  \"username\" : \"Slack Bot\",\n"
+                  + "  \"text\" : \"alertConfiguration alert with severity level 'SEVERE' "
                   + "for universe 'Test Universe' is firing.\\n"
                   + "\\n[TEST ALERT!!!] Average memory usage for universe 'Test Universe' "
-                  + "is above 1%. Current value is 2%\",\"icon_url\":null}"));
+                  + "is above 1%. Current value is 2%\"\n}"));
     }
   }
 
