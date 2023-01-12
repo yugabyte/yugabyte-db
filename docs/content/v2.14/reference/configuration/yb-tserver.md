@@ -476,6 +476,14 @@ When YSQL authentication is enabled, you can sign into `ysqlsh` using the defaul
 
 Default: `false`
 
+##### --ysql_enable_profile
+
+Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
+
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
+
+Default: `false`
+
 ##### --pgsql_proxy_bind_address
 
 Specifies the TCP/IP bind addresses for the YSQL API. The default value of `0.0.0.0:5433` allows listening for all IPv4 addresses access to localhost on port `5433`. The `--pgsql_proxy_bind_address` value overwrites `listen_addresses` (default value of `127.0.0.1:5433`) that controls which interfaces accept connection attempts.
