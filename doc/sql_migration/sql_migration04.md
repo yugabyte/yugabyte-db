@@ -838,7 +838,7 @@ The example below shows migration when the root data is displayed.
 <tbody>
 <tr>
 <td align="left">
-<pre><code>SELECT staff_id, name, <b>CONNECT_BY_ROOT name as "ROOT" </b>
+<pre><code>SELECT staff_id, name, <b>CONNECT_BY_ROOT name as "Manager" </b>
   FROM staff_table 
   START WITH staff_id = '1001' 
   CONNECT BY PRIOR staff_id = manager_id;
@@ -855,15 +855,15 @@ The example below shows migration when the root data is displayed.
 <td align="left">
 <pre><code>WITH RECURSIVE staff_table_w( staff_id, 
  name, 
- ROOT ) AS 
+ Manager ) AS 
  (   SELECT staff_id, name, <b>name </b>
        FROM staff_table 
      UNION ALL 
-     SELECT n.staff_id, n.name, <b>w.ROOT </b>
+     SELECT n.staff_id, n.name, <b>w.Manager </b>
        FROM staff_table n, staff_table_w w 
        WHERE w.staff_id = n.manager_id
  )
- SELECT staff_id, name, ROOT 
+ SELECT staff_id, name, Manager 
  FROM staff_table_w;</code></pre>
 </td>
 </tr>
