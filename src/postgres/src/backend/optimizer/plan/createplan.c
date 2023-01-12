@@ -4632,53 +4632,6 @@ create_customscan_plan(PlannerInfo *root, CustomPath *best_path,
  *
  *****************************************************************************/
 
-static Relids
-get_batched_relids(NestPath *nest)
-{
-	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
-	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
-
-	Relids outer_unbatched =
-		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
-	Relids inner_batched = innerppi ? innerppi->yb_ppi_req_outer_batched : NULL;
-
-	/* Rels not in this join that can't be batched. */
-	Relids param_unbatched =
-		nest->path.param_info ?
-		nest->path.param_info->yb_ppi_req_outer_unbatched : NULL;
-
-	return bms_difference(bms_difference(inner_batched, outer_unbatched),
-						  param_unbatched);
-}
-
-static Relids
-get_unbatched_relids(NestPath *nest)
-{
-	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
-	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
-
-	Relids outer_unbatched =
-		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
-	Relids inner_batched =
-		innerppi ? innerppi->yb_ppi_req_outer_unbatched : NULL;
-
-	/* Rels not in this join that can't be batched. */
-	Relids param_unbatched =
-		nest->path.param_info ?
-		nest->path.param_info->yb_ppi_req_outer_unbatched : NULL;
-
-	return bms_union(outer_unbatched,
-					 bms_union(inner_batched, param_unbatched));
-}
-
-static inline bool
-yb_is_nestloop_batched(NestPath *nest)
-{
-	Relids batched_relids = get_batched_relids(nest);
-	return bms_overlap(nest->outerjoinpath->parent->relids,
-					  batched_relids);
-}
-
 static NestLoop *
 create_nestloop_plan(PlannerInfo *root,
 					 NestPath *best_path)
@@ -4707,7 +4660,7 @@ create_nestloop_plan(PlannerInfo *root,
 
 	Relids prev_yb_cur_batched_relids = root->yb_cur_batched_relids;
 
-	Relids batched_relids = get_batched_relids(best_path);
+	Relids batched_relids = yb_get_batched_relids(best_path);
 
 	root->yb_cur_batched_relids = bms_union(root->yb_cur_batched_relids,
 										    batched_relids);
@@ -4753,7 +4706,7 @@ create_nestloop_plan(PlannerInfo *root,
 
 		Relids batched_outerrelids =
 			bms_difference(outerrelids,
-						   get_unbatched_relids(best_path));
+						   yb_get_unbatched_relids(best_path));
 
 		Relids inner_relids = best_path->innerjoinpath->parent->relids;
 		
@@ -5433,6 +5386,7 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			arrexpr->element_typeid = scalar_type;
 			arrexpr->multidims = false;
 			arrexpr->array_collid = collid;
+			arrexpr->location = -1;
 			arrexpr->elements =
 				(List*) replace_nestloop_params(root, lsecond(opexpr->args));
 			saop->args = lappend(saop->args, arrexpr);

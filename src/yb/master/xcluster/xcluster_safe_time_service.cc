@@ -274,12 +274,16 @@ XClusterNamespaceToSafeTimeMap ComputeSafeTimeMap(
       continue;
     }
 
-    if (safe_time.is_special()) {
-      new_safe_time_map[namespace_id] = safe_time;
-      continue;
-    }
-
-    if (sys_namespace_it && (sys_safe_time.is_special() || sys_safe_time < safe_time)) {
+    if (!safe_time.is_special() &&
+        sys_namespace_it &&
+        (sys_safe_time.is_special() || sys_safe_time < safe_time)) {
+      // Set the safe time of the user namespace when the following 3 conditions are true:
+      // 1. The user namespace safe time is valid. If it's invalid, it means that not all tablets in
+      // the safe time table have valid values and we want to let GetNewSafeTime figure out the safe
+      // time.
+      // 2. The system namespace is in the safe time map.
+      // 3. The system namespace is either invalid or its safe time is less than than the user
+      // namespace safe time, and we always want to use the min of the two.
       safe_time = sys_safe_time;
     }
 

@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
@@ -65,6 +66,7 @@ public class AppInit {
       PitrConfigPoller pitrConfigPoller,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
+      RefreshKmsService refreshKmsService,
       BackupGarbageCollector backupGC,
       PerfAdvisorScheduler perfAdvisorScheduler,
       PlatformReplicationManager replicationManager,
@@ -206,6 +208,8 @@ public class AppInit {
       alertsGC.start();
 
       setUniverseKey.start();
+      // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
+      refreshKmsService.start();
 
       // Schedule garbage collection of backups
       backupGC.start();

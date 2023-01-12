@@ -108,6 +108,9 @@ DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(enable_replicate_transaction_status_table);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
+DECLARE_uint64(ysql_session_max_batch_size);
+DECLARE_bool(use_libbacktrace);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 namespace yb {
 
@@ -131,6 +134,7 @@ using tserver::enterprise::CDCConsumer;
 
 using pgwrapper::ToString;
 using pgwrapper::GetInt32;
+using pgwrapper::GetValue;
 using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
 using pgwrapper::PgSupervisor;
@@ -468,7 +472,9 @@ TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeries) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-class TwoDCYSqlTestConsistentTransationsTest : public TwoDCYsqlTest {
+constexpr int kTransactionalConsistencyTestDurationSecs = 30;
+
+class TwoDCYSqlTestConsistentTransactionsTest : public TwoDCYsqlTest {
  public:
   void MultiTransactionConsistencyTest(
       uint32_t transaction_size, uint32_t num_transactions, const YBTableName& producer_table,
@@ -494,8 +500,6 @@ class TwoDCYSqlTestConsistentTransationsTest : public TwoDCYsqlTest {
     });
 
     test_thread_holder.AddThread([&]() {
-      ASSERT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table.namespace_id()));
-      SleepFor(MonoDelta::FromSeconds(5));
       uint32_t num_read_records = 0;
       while (num_read_records < total_committed_records) {
         auto consumer_results = ScanToStrings(consumer_table, &consumer_cluster_);
@@ -515,29 +519,71 @@ class TwoDCYSqlTestConsistentTransationsTest : public TwoDCYsqlTest {
     test_thread_holder.JoinAll();
   }
 
-  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateTableAndSetupReplication() {
+  void AsyncTransactionConsistencyTest(const YBTableName& producer_table,
+                                       const YBTableName& consumer_table,
+                                       TestThreadHolder* test_thread_holder,
+                                       MonoDelta duration) {
+    // Create a writer thread for transactions of size 10 and and read thread to validate
+    // transactional atomicity. Run both threads for duration.
+    const auto transaction_size = 10;
+    test_thread_holder->AddThread([this, &producer_table, duration]() {
+      int32_t key = 0;
+      auto producer_conn =  ASSERT_RESULT(
+          producer_cluster_.ConnectToDB(producer_table.namespace_name()));
+      auto now = CoarseMonoClock::Now();
+      while (CoarseMonoClock::Now() < now + duration) {
+        ASSERT_OK(producer_conn.ExecuteFormat(
+            "insert into $0 values(generate_series($1, $2))",
+            GetCompleteTableName(producer_table), key, key + transaction_size - 1));
+        key += transaction_size;
+      }
+      // Assert at least 100 transactions were written.
+      ASSERT_GE(key, transaction_size * 100);
+    });
+
+    test_thread_holder->AddThread([this, &consumer_table, duration]() {
+      auto consumer_conn = ASSERT_RESULT(
+          consumer_cluster_.ConnectToDB(consumer_table.namespace_name()));
+      auto now = CoarseMonoClock::Now();
+      while (CoarseMonoClock::Now() < now + duration) {
+        auto result = ASSERT_RESULT(consumer_conn.FetchFormat(
+            "select count(*) from $0", GetCompleteTableName(consumer_table)));
+        auto count = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+        ASSERT_EQ(count % transaction_size , 0);
+      }
+    });
+  }
+
+  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateTableAndSetupReplication(
+      int num_masters = 3) {
     FLAGS_enable_replicate_transaction_status_table = true;
     auto tables = VERIFY_RESULT(SetUpWithParams(
-        {4}, {4}, 3, 1, false /* colocated */, boost::none /* tablegroup_name */,
+        {4}, {4}, 3, num_masters, false /* colocated */, boost::none /* tablegroup_name */,
         false /* ranged_partitioned */, 0 /* batch_size */));
     auto producer_table = tables[0];
     auto consumer_table = tables[1];
-    const string kUniverseId = VERIFY_RESULT(GetUniverseId(&producer_cluster_));
     RETURN_NOT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     RETURN_NOT_OK(VerifyUniverseReplication(kUniverseId, &resp));
 
     RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+    RETURN_NOT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table->name().namespace_id()));
 
     return std::make_pair(producer_table, consumer_table);
+  }
+
+  Status WaitForIntentsCleanedUpOnConsumer() {
+    return WaitFor([&]() {
+      return CountIntents(consumer_cluster()) == 0;
+    }, MonoDelta::FromSeconds(30), "Intents cleaned up");
   }
 };
 
 constexpr uint32_t kTransactionSize = 50;
 constexpr uint32_t kNumTransactions = 100;
 
-TEST_F(TwoDCYSqlTestConsistentTransationsTest, ConsistentTransactions) {
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -547,7 +593,8 @@ TEST_F(TwoDCYSqlTestConsistentTransationsTest, ConsistentTransactions) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransationsTest, ConsistentTransactionsWithApplyDisabled) {
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ConsistentTransactionsWithApplyDisabled) {
+  FLAGS_TEST_disable_apply_committed_transactions = true;
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -557,7 +604,7 @@ TEST_F(TwoDCYSqlTestConsistentTransationsTest, ConsistentTransactionsWithApplyDi
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransationsTest, LargeTransaction) {
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, LargeTransaction) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -567,7 +614,7 @@ TEST_F(TwoDCYSqlTestConsistentTransationsTest, LargeTransaction) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransationsTest, ManySmallTransactions) {
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ManySmallTransactions) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -577,13 +624,271 @@ TEST_F(TwoDCYSqlTestConsistentTransationsTest, ManySmallTransactions) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(TwoDCYSqlTestConsistentTransationsTest, UncommittedTransactions) {
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, UncommittedTransactions) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
       kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
       false /* commit_all_transactions */));
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, NonTransactionalWorkload) {
+  // Write 10000 rows non-transactionally to ensure there's no regression for non-transactional
+  // workloads.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(WriteWorkload(0, 10000, &producer_cluster_, tables_pair.first->name()));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBatches) {
+  // Write a large transaction spanning multiple write batches and then delete all rows on both
+  // producer and consumer and ensure we still maintain read consistency and can properly apply
+  // intents.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name_str = GetCompleteTableName(producer_table->name());
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(generate_series(0, 20000))", table_name_str));
+  auto tablet_peer_leaders = ListTabletPeers(producer_cluster(), ListPeersFilter::kLeaders);
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  ASSERT_OK(conn.ExecuteFormat("delete from $0", table_name_str));
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
+  // Write a transactional workload of updates with valdation for 30s and ensure there are no
+  // FATALs and that we maintain consistent reads.
+  FLAGS_enable_replicate_transaction_status_table = true;
+  const auto namespace_name = "demo";
+  const auto table_name = "account_balance";
+
+  ASSERT_OK(Initialize(3 /* replication_factor */, 1 /* num_masters */, 0 /* batch_size */));
+
+  ASSERT_OK(RunOnBothClusters(
+      [&](Cluster* cluster) { return CreateDatabase(cluster, namespace_name); }));
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.ExecuteFormat("create table $0(id int, name text, salary int);", table_name);
+  }));
+
+  auto table_name_with_id_list = ASSERT_RESULT(producer_client()->ListTables(table_name));
+  ASSERT_EQ(table_name_with_id_list.size(), 1);
+  auto table_name_with_id = table_name_with_id_list[0];
+  ASSERT_TRUE(table_name_with_id.has_table_id());
+  auto yb_table = ASSERT_RESULT(producer_client()->OpenTable(table_name_with_id.table_id()));
+
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {yb_table}));
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+  ASSERT_OK(WaitForValidSafeTimeOnAllTServers(table_name_with_id.namespace_id()));
+
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+
+  static const int num_users = 3;
+  for (int i = 0; i < num_users; i++) {
+    ASSERT_OK(producer_conn.ExecuteFormat(
+        "INSERT INTO account_balance VALUES($0, 'user$0', 1000000)", i));
+  }
+
+  auto result = ASSERT_RESULT(producer_conn.FetchFormat("select sum(salary) from account_balance"));
+  ASSERT_EQ(PQntuples(result.get()), 1);
+  auto total_salary = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+
+  // Transactional workload
+  auto test_thread_holder = TestThreadHolder();
+  test_thread_holder.AddThread([this, namespace_name]() {
+    std::string update_query;
+    for (int i = 0; i < num_users - 1; i++) {
+      update_query += Format(
+          "UPDATE account_balance SET salary = salary - 500 WHERE name = 'user$0';", i);
+    }
+    update_query += Format(
+        "UPDATE account_balance SET salary = salary + $0 WHERE name = 'user$1';",
+        500 * (num_users - 1), num_users - 1);
+    auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    auto now = CoarseMonoClock::Now();
+    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+      ASSERT_OK(producer_conn.ExecuteFormat("BEGIN TRANSACTION; $0; COMMIT;", update_query));
+    }
+  });
+
+
+  // Read validate workload.
+  test_thread_holder.AddThread([this, namespace_name, total_salary]() {
+    auto now = CoarseMonoClock::Now();
+    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+      auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+      auto result = ASSERT_RESULT(consumer_conn.FetchFormat(
+          "select sum(salary) from account_balance"));
+      ASSERT_EQ(PQntuples(result.get()), 1);
+      Result<int64_t> current_salary_result = GetValue<int64_t>(result.get(), 0, 0);
+      if (!current_salary_result.ok()) {
+        continue;
+      }
+      ASSERT_EQ(total_salary, *current_salary_result);
+    }
+  });
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, AddServerBetweenTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  // Sleep for half duration to ensure that the workloads AsyncTransactionConsistencyTest are
+  // running.
+  SleepFor(duration/2);
+  ASSERT_OK(consumer_cluster()->AddTabletServer());
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+
+  test_thread_holder.JoinAll();
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name_str = GetCompleteTableName(producer_table->name());
+
+  auto test_thread_holder = TestThreadHolder();
+  test_thread_holder.AddThread([&conn, &table_name_str] {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    int32_t key = 0;
+    int32_t step = 10;
+    auto now = CoarseMonoClock::Now();
+    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "insert into $0 values(generate_series($1, $2))", table_name_str, key, key + step - 1));
+      key += step;
+    }
+    ASSERT_OK(conn.Execute("COMMIT"));
+  });
+
+  // Sleep for half the duration of the workload (30s) to ensure that the workload is running before
+  // adding a server.
+  SleepFor(MonoDelta::FromSeconds(15));
+  ASSERT_OK(consumer_cluster()->AddTabletServer());
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+  test_thread_holder.JoinAll();
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, RestartServer) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  // Sleep for half duration to ensure that the workloads AsyncTransactionConsistencyTest are
+  // running.
+  SleepFor(duration/2);
+  auto restart_idx = consumer_cluster_.pg_ts_idx_ == 0 ? 1 : 0;
+  consumer_cluster()->mini_tablet_server(restart_idx)->Shutdown();
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, MasterLeaderRestart) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication(3 /* num_masters */));
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  // Sleep for half duration to ensure that the workloads AsyncTransactionConsistencyTest are
+  // running.
+  SleepFor(duration/2);
+  auto* mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+  mini_master->Shutdown();
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+  test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensusMaxBatchSize) {
+  FLAGS_consensus_max_batch_size_bytes = 8_KB;
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  for (int i = 0; i < 6; i++) {
+    SleepFor(duration/6);
+    ASSERT_OK(conn.ExecuteFormat("delete from $0", GetCompleteTableName(producer_table->name())));
+  }
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ReplicationPause) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+  SleepFor(duration/2);
+  // Pause replication here for half the duration of the workload.
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  SleepFor(duration/2);
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 

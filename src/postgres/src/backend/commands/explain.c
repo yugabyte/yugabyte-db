@@ -2140,7 +2140,12 @@ show_expression(Node *node, const char *qlabel,
 											ancestors);
 
 	/* Deparse the expression */
-	exprstr = deparse_expression(node, context, useprefix, false);
+	if (YBCPgIsYugaByteEnabled())
+		exprstr =
+			yb_deparse_expression(node, context, useprefix, false,
+								  es->verbose);
+	else
+		exprstr = deparse_expression(node, context, useprefix, false);
 
 	/* And add to es->str */
 	ExplainPropertyText(qlabel, exprstr, es);

@@ -400,10 +400,6 @@ body {
             display: block;
           }
 
-          .main-heading-with-version {
-            display: none;
-          }
-
           @media (max-width: 767px) {
             &::after {
               background-color: #eee;

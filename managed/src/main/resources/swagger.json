@@ -6797,7 +6797,7 @@
         },
         "states" : {
           "items" : {
-            "enum" : [ "Created", "InProgress", "Success", "Failed", "Aborted" ],
+            "enum" : [ "Created", "InProgress", "Completed", "Failed", "Aborted" ],
             "type" : "string"
           },
           "type" : "array",
@@ -7039,7 +7039,7 @@
         },
         "state" : {
           "description" : "State of the keyspace restore",
-          "enum" : [ "Created", "InProgress", "Success", "Failed", "Aborted" ],
+          "enum" : [ "Created", "InProgress", "Completed", "Failed", "Aborted" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -7121,7 +7121,7 @@
     },
     "RestoreResp" : {
       "properties" : {
-        "creationTime" : {
+        "createTime" : {
           "format" : "date-time",
           "type" : "string"
         },
@@ -7149,8 +7149,12 @@
         "sourceUniverseName" : {
           "type" : "string"
         },
+        "sourceUniverseUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "state" : {
-          "enum" : [ "Created", "InProgress", "Success", "Failed", "Aborted" ],
+          "enum" : [ "Created", "InProgress", "Completed", "Failed", "Aborted" ],
           "type" : "string"
         },
         "targetUniverseName" : {
@@ -7165,7 +7169,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creationTime", "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "state", "targetUniverseName", "universeUUID", "updateTime" ],
+      "required" : [ "createTime", "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "sourceUniverseUUID", "state", "targetUniverseName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {
@@ -10756,6 +10760,10 @@
           "description" : "Time of the last try to restore data to the target universe",
           "example" : "2022-04-26 15:37:32.610000",
           "format" : "date-time",
+          "type" : "string"
+        },
+        "restoreUuid" : {
+          "format" : "uuid",
           "type" : "string"
         },
         "status" : {

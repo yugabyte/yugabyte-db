@@ -180,7 +180,7 @@ public class CustomerTaskManager {
                             || restore.getState().equals(Restore.State.InProgress))
                 .collect(Collectors.toList());
         for (Restore restore : restoreList) {
-          restore.update(taskUUID, TaskInfo.State.Failure);
+          restore.update(taskUUID, Restore.State.Failed);
           RestoreKeyspace.update(restore, TaskInfo.State.Failure);
         }
       }

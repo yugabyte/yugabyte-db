@@ -115,6 +115,8 @@ Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts, bool init_pos
 
   producer_cluster_.client_ = VERIFY_RESULT(producer_cluster()->CreateClient());
   consumer_cluster_.client_ = VERIFY_RESULT(consumer_cluster()->CreateClient());
+  producer_cluster_.pg_ts_idx_ = pg_ts_idx;
+  consumer_cluster_.pg_ts_idx_ = pg_ts_idx;
 
   if (init_postgres) {
     RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
@@ -685,10 +687,10 @@ Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(const NamespaceId& names
           return true;
         }, safe_time_propagation_timeout_,
         Format("Wait for safe_time of namespace $0 to be valid", namespace_id)));
-    }
-
-    return Status::OK();
   }
+
+  return Status::OK();
+}
 
 } // namespace enterprise
 } // namespace yb

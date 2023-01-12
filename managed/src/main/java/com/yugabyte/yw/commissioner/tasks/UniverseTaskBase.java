@@ -2272,16 +2272,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     Restore restore = null;
     Optional<Restore> restoreIfPresent = Restore.fetchRestore(restoreBackupParams.prefixUUID);
-    if (!restoreIfPresent.isPresent()) {
+    if (restoreIfPresent.isPresent()) {
+      restore = restoreIfPresent.get();
+      restore.updateTaskUUID(taskUUID);
+      restore.update(taskUUID, Restore.State.InProgress);
+    } else {
       log.info(
           "Creating entry for restore taskUUID: {}, restoreUUID: {} ",
           taskUUID,
           restoreBackupParams.prefixUUID);
-      restore = Restore.create(TaskInfo.getOrBadRequest(taskUUID));
-    } else {
-      restore = restoreIfPresent.get();
-      restore.updateTaskUUID(taskUUID);
-      restore.update(taskUUID, TaskInfo.State.Running);
+      restore = Restore.create(taskUUID, restoreBackupParams);
     }
 
     return restore;

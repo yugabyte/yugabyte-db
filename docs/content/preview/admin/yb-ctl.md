@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-ctl
     parent: admin
-    weight: 2410
+    weight: 90
 aliases:
   - /admin/yb-ctl
 type: docs

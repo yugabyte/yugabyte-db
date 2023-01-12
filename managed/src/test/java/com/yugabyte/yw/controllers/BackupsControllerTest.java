@@ -130,7 +130,10 @@ public class BackupsControllerTest extends FakeDBApplication {
     taskInfoSub.setParentUuid(restoreTaskUUID);
     taskInfoSub.setPosition(1);
     taskInfoSub.save();
-    Restore restore = Restore.create(taskInfo);
+    Restore restore = Restore.create(restoreTaskUUID, restoreBackupParams);
+
+    restore.setState(Restore.State.Created);
+    restore.save();
   }
 
   private JsonNode listBackups(UUID universeUUID) {
@@ -1715,7 +1718,9 @@ public class BackupsControllerTest extends FakeDBApplication {
     taskInfoSub.setTaskState(TaskInfo.State.Success);
     taskInfoSub.save();
 
-    Restore restore = Restore.create(taskInfo);
+    Restore restore = Restore.create(taskUUID, restoreBackupParams);
+    restore.setState(Restore.State.Completed);
+    restore.save();
 
     ObjectNode bodyJson3 = Json.newObject();
     bodyJson3.put("direction", "DESC");
@@ -1733,7 +1738,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson3.put("direction", "DESC");
     bodyJson3.put("sortBy", "createTime");
     bodyJson3.put("offset", 0);
-    bodyJson3.set("filter", Json.newObject().set("states", Json.newArray().add("Success")));
+    bodyJson3.set("filter", Json.newObject().set("states", Json.newArray().add("Completed")));
     result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
     assertOk(result);
     restoreJson = Json.parse(contentAsString(result));
@@ -1758,7 +1763,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson3.put("sortBy", "createTime");
     bodyJson3.put("offset", 0);
     bodyJson3.set(
-        "filter", Json.newObject().set("states", Json.newArray().add("Created").add("Success")));
+        "filter", Json.newObject().set("states", Json.newArray().add("Created").add("Completed")));
     result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
     assertOk(result);
     restoreJson = Json.parse(contentAsString(result));
@@ -1817,7 +1822,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     taskInfoSub.setTaskState(TaskInfo.State.Success);
     taskInfoSub.save();
 
-    Restore restore = Restore.create(taskInfo);
+    Restore restore = Restore.create(taskUUID, restoreBackupParams);
 
     ObjectNode bodyJson3 = Json.newObject();
     bodyJson3.put("direction", "DESC");
