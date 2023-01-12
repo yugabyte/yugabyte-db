@@ -48,24 +48,15 @@ import algoliasearch from 'algoliasearch';
     let content = '';
     hitIs.forEach(hit => {
       const hitLevel0 = hit.hierarchy.lvl0;
-      const here = hit.url.split('#')[0].split('/').slice(4);
-      let breadcrumb = '';
       if (!hitLevel0) {
         return;
       }
-
-      for (let i = 0; i < here.length; i++) {
-        if (here[i] !== '') {
-          breadcrumb += here[i] + ' > ';
-        }
-      }
-      breadcrumb = breadcrumb.replaceAll('-', ' ');
 
       content += '<li>' +
         '<div class="search-title">' +
           '<a href="' + hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/') + '">' +
             '<span class="search-title-inner">' + hitLevel0 + '</span>' +
-            '<div class="breadcrumb-item">' + breadcrumb.slice(0, -3) + '</div>' +
+            '<div class="breadcrumb-item">' + hit.breadcrumb + '</div>' +
           '</a>' +
         '</div>' +
       '</li>';

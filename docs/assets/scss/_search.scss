@@ -115,9 +115,6 @@ body.td-searchpage {
 
     #doc-hit {
       padding-left: 0;
-      display: flex;
-      justify-content: space-between;
-      flex-flow: wrap;
 
       @media (max-width: 991px) and (min-width: 768px) {
         justify-content: center;
@@ -128,7 +125,6 @@ body.td-searchpage {
       }
 
       li {
-        width: 48%;
         min-width: 280px;
 
         &::before {
