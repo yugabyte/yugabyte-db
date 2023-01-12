@@ -37,8 +37,8 @@ var statusCmd = &cobra.Command{
 		} else {
 			// Print status for all services.
 			var statuses []common.Status
-			for _, name := range serviceOrder {
-				statuses = append(statuses, services[name].Status())
+			for _, service := range services {
+				statuses = append(statuses, service.Status())
 			}
 			common.PrintStatus(statuses...)
 		}

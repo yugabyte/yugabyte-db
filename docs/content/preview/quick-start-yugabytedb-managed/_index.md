@@ -19,7 +19,7 @@ rightNav:
   </li>
   <li>
     <a href="../quick-start/" class="nav-link">
-      <img src="/icons/server.svg" alt="Server Icon">
+      <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
   </li>

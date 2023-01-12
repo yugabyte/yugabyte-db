@@ -137,5 +137,7 @@ For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryptio
 
 ## Learn more
 
+- YugabyteDB Friday Tech Talk: [PostgreSQL Smart Drivers](https://youtu.be/FbXrRdB_4u0)
 - [Smart driver FAQ](../../faq/smart-drivers-faq/)
 - Smart driver [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
+- Blog: [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/)

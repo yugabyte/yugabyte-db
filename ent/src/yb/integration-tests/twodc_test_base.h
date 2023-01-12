@@ -58,6 +58,7 @@ class TwoDCTestBase : public YBTest {
     std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
     HostPort pg_host_port_;
     boost::optional<client::TransactionManager> txn_mgr_;
+    size_t pg_ts_idx_;
 
     Result<pgwrapper::PGConn> Connect() {
       return ConnectToDB(std::string() /* dbname */);

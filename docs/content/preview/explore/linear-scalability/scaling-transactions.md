@@ -20,14 +20,14 @@ This tutorial shows how YugabyteDB can scale seamlessly while running a read-wri
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../scaling-transactions-cloud/" class="nav-link">
-              <img src="/icons/cloud-icon.svg" alt="Icon">
-Use a cloud cluster
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      Use a cloud cluster
     </a>
   </li>
   <li>
     <a href="../scaling-transactions/" class="nav-link active">
-              <img src="/icons/server-iconsvg.svg" alt="Icon">
-Use a local cluster
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use a local cluster
     </a>
   </li>
 </ul>

@@ -6226,6 +6226,64 @@ Status CatalogManager::ChangeXClusterRole(const ChangeXClusterRoleRequestPB* req
   return Status::OK();
 }
 
+Status CatalogManager::SetUniverseReplicationInfoEnabled(const std::string& producer_id,
+                                                         bool is_enabled) {
+  scoped_refptr<UniverseReplicationInfo> universe;
+  {
+    SharedLock lock(mutex_);
+
+    universe = FindPtrOrNull(universe_replication_map_, producer_id);
+    if (universe == nullptr) {
+      return STATUS(NotFound, "Could not find CDC producer universe",
+                    producer_id, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+    }
+  }
+
+  // Update the Master's Universe Config with the new state.
+  {
+    auto l = universe->LockForWrite();
+    if (l->pb.state() != SysUniverseReplicationEntryPB::DISABLED &&
+        l->pb.state() != SysUniverseReplicationEntryPB::ACTIVE) {
+      return STATUS(
+          InvalidArgument,
+          Format("Universe Replication in invalid state: $0. Retry or Delete.",
+              SysUniverseReplicationEntryPB::State_Name(l->pb.state())),
+          producer_id,
+          MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+    if (is_enabled) {
+      l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
+    } else {
+      // DISABLE.
+      l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DISABLED);
+    }
+    RETURN_NOT_OK(CheckStatus(
+        sys_catalog_->Upsert(leader_ready_term(), universe),
+        "updating universe replication info in sys-catalog"));
+    l.Commit();
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::SetConsumerRegistryEnabled(const std::string& producer_id,
+                                                  bool is_enabled,
+                                                  ClusterConfigInfo::WriteLock* l) {
+  // Modify the Consumer Registry, which will fan out this info to all TServers on heartbeat.
+  {
+    auto producer_map = l->mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    {
+      auto it = producer_map->find(producer_id);
+      if (it == producer_map->end()) {
+        LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: " << producer_id;
+        return STATUS(NotFound, "Could not find CDC producer universe",
+                      producer_id, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+      }
+      (*it).second.set_disable_stream(!is_enabled);
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::SetUniverseReplicationEnabled(
     const SetUniverseReplicationEnabledRequestPB* req,
     SetUniverseReplicationEnabledResponsePB* resp,
@@ -6243,58 +6301,28 @@ Status CatalogManager::SetUniverseReplicationEnabled(
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  scoped_refptr<UniverseReplicationInfo> universe;
-  {
-    SharedLock lock(mutex_);
-
-    universe = FindPtrOrNull(universe_replication_map_, req->producer_id());
-    if (universe == nullptr) {
-      return STATUS(NotFound, "Could not find CDC producer universe",
-                    req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-    }
+  const auto is_enabled = req->is_enabled();
+  const auto is_replicating_transaction_status_table =
+      FindPtrOrNull(universe_replication_map_, kSystemXClusterReplicationId) != nullptr;
+  RETURN_NOT_OK(SetUniverseReplicationInfoEnabled(req->producer_id(), is_enabled));
+  if (is_replicating_transaction_status_table) {
+    RETURN_NOT_OK(SetUniverseReplicationInfoEnabled(kSystemXClusterReplicationId, is_enabled));
   }
 
-  // Update the Master's Universe Config with the new state.
-  {
-    auto l = universe->LockForWrite();
-    if (l->pb.state() != SysUniverseReplicationEntryPB::DISABLED &&
-        l->pb.state() != SysUniverseReplicationEntryPB::ACTIVE) {
-      return STATUS(
-          InvalidArgument,
-          Format("Universe Replication in invalid state: $0.  Retry or Delete.",
-              SysUniverseReplicationEntryPB::State_Name(l->pb.state())),
-          req->ShortDebugString(),
-          MasterError(MasterErrorPB::INVALID_REQUEST));
-    }
-    if (req->is_enabled()) {
-        l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
-    } else { // DISABLE.
-        l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DISABLED);
-    }
-    RETURN_NOT_OK(CheckStatus(
-        sys_catalog_->Upsert(leader_ready_term(), universe),
-        "updating universe replication info in sys-catalog"));
-    l.Commit();
+  // When updating the cluster config, make sure that the change to the user replication and
+  // system replication commit atomically by using the same lock.
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
+  RETURN_NOT_OK(SetConsumerRegistryEnabled(req->producer_id(), is_enabled, &l));
+  if (is_replicating_transaction_status_table) {
+    RETURN_NOT_OK(SetConsumerRegistryEnabled(kSystemXClusterReplicationId, is_enabled, &l));
   }
 
-  // Modify the Consumer Registry, which will fan out this info to all TServers on heartbeat.
-  {
-    auto cluster_config = ClusterConfig();
-    auto l = cluster_config->LockForWrite();
-    auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
-    auto it = producer_map->find(req->producer_id());
-    if (it == producer_map->end()) {
-      LOG(WARNING) << "Valid Producer Universe not in Consumer Registry: " << req->producer_id();
-      return STATUS(NotFound, "Could not find CDC producer universe",
-                    req->ShortDebugString(), MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-    }
-    (*it).second.set_disable_stream(!req->is_enabled());
-    l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-    RETURN_NOT_OK(CheckStatus(
-        sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-        "updating cluster config in sys-catalog"));
-    l.Commit();
-  }
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+  RETURN_NOT_OK(CheckStatus(
+      sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
+      "updating cluster config in sys-catalog"));
+  l.Commit();
 
   CreateXClusterSafeTimeTableAndStartService();
 
@@ -7989,7 +8017,6 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
           cond->set_op(QLOperator::QL_OP_AND);
           QLAddStringCondition(
               cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream);
-          cdc_state_table.AddColumns({master::kCdcCheckpoint}, read_req);
           cdc_state_table.AddColumns({master::kCdcLastReplicationTime}, read_req);
           // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
           RETURN_NOT_OK(session->TEST_ReadSync(read_op));
@@ -8001,11 +8028,10 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
             break;
           }
 
-          const auto& checkpoint = row_block->row(0).column(0);
-          const auto& last_replicated_time = row_block->row(0).column(1);
+          const auto& last_replicated_time = row_block->row(0).column(0);
           // Check checkpoint to ensure that there has been a poll for this tablet, or if the
           // split has been reported.
-          if (checkpoint.ToString() == OpId::Min().ToString() || last_replicated_time.IsNull()) {
+          if (last_replicated_time.IsNull()) {
             // No poll yet, so do not delete the parent tablet for now.
             VLOG(2) << "The stream: " << stream
                     << ", has not started polling for the child tablet: " << child_tablet

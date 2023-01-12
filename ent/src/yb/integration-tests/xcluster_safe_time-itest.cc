@@ -604,7 +604,6 @@ class XClusterConsistencyTest : public TwoDCTestBase {
 
 TEST_F(XClusterConsistencyTest, ConsistentReads) {
   constexpr auto kNumRecordsPerBatch = 10;
-  CHECK_GE(FLAGS_cdc_max_apply_batch_num_records, kNumRecordsPerBatch);
   uint32_t num_records_written = 0;
   StoreReadTimes();
 
@@ -678,7 +677,6 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
 
 TEST_F(XClusterConsistencyTest, LagInTransactionsTable) {
   constexpr auto kNumRecordsPerBatch = 10;
-  CHECK_GE(FLAGS_cdc_max_apply_batch_num_records, kNumRecordsPerBatch);
 
   // Pause replication on global transactions table
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =

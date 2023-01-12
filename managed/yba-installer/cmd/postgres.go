@@ -329,7 +329,8 @@ func (pg Postgres) runInitDB() {
 
 		command3 := "sudo"
 		arg3 := []string{"-u", userName, "bash", "-c",
-			pg.PgBin + "/initdb -U " + pg.getPgUserName() + " -D " + pg.ConfFileLocation}
+			pg.PgBin + "/initdb -U " + pg.getPgUserName() + " -D " + pg.ConfFileLocation +
+				" --locale=" + viper.GetString("postgres.install.locale")}
 		if _, err := common.RunBash(command3, arg3); err != nil {
 			log.Fatal("Failed to run initdb for postgres: " + err.Error())
 		}
@@ -338,7 +339,8 @@ func (pg Postgres) runInitDB() {
 
 		command1 := "bash"
 		arg1 := []string{"-c",
-			pg.PgBin + "/initdb -U " + pg.getPgUserName() + " " + " -D " + pg.ConfFileLocation}
+			pg.PgBin + "/initdb -U " + pg.getPgUserName() + " " + " -D " + pg.ConfFileLocation +
+				" --locale=" + viper.GetString("postgres.install.locale")}
 		if _, err := common.RunBash(command1, arg1); err != nil {
 			log.Fatal("Failed to run initdb for postgres: " + err.Error())
 		}
@@ -416,12 +418,26 @@ func (pg Postgres) createYugawareDatabase() {
 // Status prints the status output specific to Postgres.
 func (pg Postgres) Status() common.Status {
 	status := common.Status{
-		Service:    pg.Name(),
-		Port:       viper.GetInt("postgres.install.port"),
-		Version:    pg.version,
-		ConfigLoc:  pg.ConfFileLocation,
-		LogFileLoc: pg.postgresDirectories.LogFile,
+		Service: pg.Name(),
+		Port:    viper.GetInt("postgres.install.port"),
+		Version: pg.version,
 	}
+
+	// User brought there own service, we don't know much about the status
+	if viper.GetBool("postgres.useExisting.enabled") {
+		status.Status = common.StatusUserOwned
+		status.Port = viper.GetInt("postgres.useExisting.port")
+		host := viper.GetString("postgres.useExisting.host")
+		if host == "" {
+			host = "localhost"
+		}
+		status.Hostname = host
+		status.Version = "Unknown"
+		return status
+	}
+
+	status.ConfigLoc = pg.ConfFileLocation
+	status.LogFileLoc = pg.postgresDirectories.LogFile
 
 	// Set the systemd service file location if one exists
 	if common.HasSudoAccess() {

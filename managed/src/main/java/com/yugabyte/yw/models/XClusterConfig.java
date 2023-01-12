@@ -434,12 +434,26 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public void setRestoreTimeForTables(Set<String> tableIds, Date restoreTime) {
+  public void setRestoreForTables(Set<String> tableIds, Restore restore) {
     ensureTableIdsExist(tableIds);
     this.tables
         .stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.restoreTime = restoreTime);
+        .forEach(tableConfig -> tableConfig.restore = restore);
+    update();
+  }
+
+  @Transactional
+  public void setRestoreTimeForTables(Set<String> tableIds, Date restoreTime, UUID taskUUID) {
+    ensureTableIdsExist(tableIds);
+    this.tables
+        .stream()
+        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
+        .forEach(
+            tableConfig -> {
+              tableConfig.restoreTime = restoreTime;
+              tableConfig.restore.update(taskUUID, Restore.State.Completed);
+            });
     update();
   }
 

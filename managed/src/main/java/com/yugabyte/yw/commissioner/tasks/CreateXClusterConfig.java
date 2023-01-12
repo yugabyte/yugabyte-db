@@ -13,6 +13,8 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -31,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
+import play.libs.Json;
 
 @Slf4j
 public class CreateXClusterConfig extends XClusterConfigTaskBase {
@@ -41,6 +45,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
   protected CreateXClusterConfig(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
+
+  public List<Restore> restoreList = new ArrayList<>();
 
   @Override
   public void run() {
@@ -84,6 +90,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       setXClusterConfigStatus(XClusterConfigStatusType.Failed);
+      for (Restore restore : restoreList) {
+        restore.update(taskUUID, Restore.State.Failed);
+      }
       // Set tables in updating status to failed.
       Set<String> tablesInPendingStatus =
           xClusterConfig.getTableIdsInStatus(
@@ -219,10 +228,16 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       // Restore to the target universe.
       RestoreBackupParams restoreBackupParams =
           getRestoreBackupParams(targetUniverse, backupRequestParams, backup);
-      createAllRestoreSubtasks(
-          restoreBackupParams,
-          UserTaskDetails.SubTaskGroupType.RestoringBackup,
-          backup.category.equals(BackupCategory.YB_CONTROLLER));
+      Restore restore =
+          createAllRestoreSubtasks(
+              restoreBackupParams,
+              UserTaskDetails.SubTaskGroupType.RestoringBackup,
+              backup.category.equals(BackupCategory.YB_CONTROLLER));
+      restoreList.add(restore);
+
+      // Assign the created restore UUID for the tables in the DB.
+      xClusterConfig.setRestoreForTables(tableIdsNeedBootstrap, restore);
+
       // Set the restore time for the tables in the DB.
       createSetRestoreTimeTask(tableIdsNeedBootstrap)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
@@ -395,6 +410,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     restoreTaskParams.parallelism = backupRequestParams.parallelism;
     restoreTaskParams.disableChecksum = backupRequestParams.disableChecksum;
     restoreTaskParams.category = backup.category;
+    restoreTaskParams.prefixUUID = UUID.randomUUID();
     // Set storage info.
     restoreTaskParams.backupStorageInfoList = new ArrayList<>();
     RestoreBackupParams.BackupStorageInfo backupStorageInfo =

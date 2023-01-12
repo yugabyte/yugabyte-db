@@ -164,19 +164,6 @@ $(document).ready(() => {
     // Active main Nav.
     yugabyteActiveMainNav();
 
-    // Change the version dropdown text with the selected version text.
-    if ($('.version-selector') && $('.dropdown-menu')) {
-      const versionDir = location.pathname.split('/')[1];
-      if (versionDir !== '') {
-        $('.dropdown-menu a').each((index, element) => {
-          if ($(element).attr('href').indexOf(`/${versionDir}/`) !== -1) {
-            $('.version-selector').html($(element).html());
-            return false;
-          }
-        });
-      }
-    }
-
     $(document).on('click', '.header-menu li.dropdown', (event) => {
       if ($(window).width() < 992) {
         if ($(event.currentTarget).hasClass('active')) {
