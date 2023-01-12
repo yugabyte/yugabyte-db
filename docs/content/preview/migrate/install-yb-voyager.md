@@ -27,7 +27,7 @@ You can install YugabyteDB Voyager on the following:
 
     {{< note title = "note" >}}
 
-You will get the following error if you use MySQL/Oracle as the source database:
+You will get the following error if you use MySQL/Oracle as the source database on MacOS:
 
 ```output
 "ora2pg" not found. Check if it is installed and included in the path.
