@@ -128,7 +128,7 @@ class TwoDCTestBase : public YBTest {
       bool verify_schema_name = false,
       bool exclude_system_tables = true);
 
-  Status SetupUniverseReplication(
+  virtual Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);
 
   Status SetupUniverseReplication(
@@ -141,7 +141,7 @@ class TwoDCTestBase : public YBTest {
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
-      bool leader_only = true);
+      bool leader_only = true, const std::vector<std::string>& bootstrap_ids = {});
 
   Status SetupNSUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
