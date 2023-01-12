@@ -45,11 +45,8 @@ import algoliasearch from 'algoliasearch';
    * Main Docs section HTML.
    */
   function docsSection(hitIs) {
-    const searchValue = searchInput.value.trim();
-
     let content = '';
     hitIs.forEach(hit => {
-      let title = '';
       const hitLevel0 = hit.hierarchy.lvl0;
       const here = hit.url.split('#')[0].split('/').slice(4);
       let breadcrumb = '';
@@ -64,18 +61,14 @@ import algoliasearch from 'algoliasearch';
       }
       breadcrumb = breadcrumb.replaceAll('-', ' ');
 
-      if (searchValue.length >= 1) {
-        title = hitLevel0.replace(searchValue, '<em>' + searchValue + '</em>');
-      }
-
       content += '<li>' +
         '<div class="search-title">' +
-        '<a href="' + hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/') + '" title="' + title + '">' +
-        '<span class="search-title-inner">' + title + '</span>' +
-        '<div class="breadcrumb-item">' + breadcrumb.slice(0, -3) + '</div>' +
-        '</a>' +
+          '<a href="' + hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/') + '">' +
+            '<span class="search-title-inner">' + hitLevel0 + '</span>' +
+            '<div class="breadcrumb-item">' + breadcrumb.slice(0, -3) + '</div>' +
+          '</a>' +
         '</div>' +
-        '</li>';
+      '</li>';
     });
 
     return content;
