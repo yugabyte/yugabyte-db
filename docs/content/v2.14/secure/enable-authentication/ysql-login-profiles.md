@@ -5,7 +5,7 @@ linkTitle: Create login profiles
 description: Create and configure login profiles in YugabyteDB
 headcontent: Prevent brute force cracking with login profiles
 menu:
-  preview:
+  v2.14:
     identifier: ysql-login-profiles
     parent: enable-authentication
     weight: 725
