@@ -86,6 +86,9 @@ For example, several tests are disabled for the `tsan` build type.
 
 ### C++ tests
 
+By default, the `yb_build.sh` commands to run C++ tests will first build those tests.
+Build can be avoided using `--skip-cxx-build` or `--scb`.
+
 #### Run all tests
 
 To run all the C++ tests, run the following command:
@@ -113,6 +116,9 @@ For example, `TestMonoTime.TestTime*` runs both `TestMonoTime.TestTimeVal` and `
 Make sure to escape or quote the `*` if your shell interprets it as a glob character.
 
 ### Java tests
+
+By default, the `yb_build.sh` commands to run Java tests will first build key C++ targets and do the full Java build.
+Build can be avoided using `--skip-cxx-build`/`--scb` and `--skip-java-build`/`--sj`.
 
 #### Run all tests
 
