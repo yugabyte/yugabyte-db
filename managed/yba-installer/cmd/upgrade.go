@@ -85,5 +85,8 @@ var upgradeCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(upgradeCmd)
+	// Upgrade can only be run from the new version, not from the installed path
+	if !common.RunFromInstalled() {
+		rootCmd.AddCommand(upgradeCmd)
+	}
 }
