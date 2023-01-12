@@ -805,7 +805,7 @@ In a recursive query that uses a WITH clause, add a root column that also uses t
 2. Add root column to the column list of the query result of the WITH clause.
 
 -	In the first query, specify the root columnName to the values of the columns from the root to the node.
--	Specify m.columnName in the next query. (columnName is a root column.)
+-	Specify m.rootName in the next query. (rootName is a root column.)
 
 
 The following shows the conversion format containing rootName.
@@ -817,7 +817,7 @@ WITH RECURSIVE queryName(
 ( SELECT columnUsed, columnName
       FROM  targetTableOfHierarchicalQuery
     UNION ALL
-    SELECT columnUsed(qualified by n), w.columnName
+    SELECT columnUsed(qualified by n), w.rootName
       FROM  targetTableOfHierarchicalQuery  n,
             queryName  w
       WHERE conditionalExprOfConnectByClause )
@@ -856,12 +856,13 @@ The example below shows migration when the root data is displayed.
 <pre><code>WITH RECURSIVE staff_table_w( staff_id, 
  name, 
  Manager ) AS 
- ( SELECT staff_id, name, <b>name </b>
+ (   SELECT staff_id, name, <b>name </b>
        FROM staff_table 
      UNION ALL 
-     SELECT n.staff_id, n.name, <b>w.name </b>
+     SELECT n.staff_id, n.name, <b>w.Manager </b>
        FROM staff_table n, staff_table_w w 
-       WHERE w.staff_id = n.manager_id ) 
+       WHERE w.staff_id = n.manager_id
+ )
  SELECT staff_id, name, Manager 
  FROM staff_table_w;</code></pre>
 </td>
