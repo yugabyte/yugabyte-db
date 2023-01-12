@@ -25,6 +25,16 @@ You can install YugabyteDB Voyager on the following:
 - Ubuntu 18.04, 20.04, 22.04
 - MacOS (currently supported only for PostgreSQL source database)
 
+    {{< note title = "note" >}}
+
+You will get the following error if you use MySQL/Oracle as the source database:
+
+```output
+"ora2pg" not found. Check if it is installed and included in the path.
+```
+
+    {{< /note >}}
+
 ### Hardware requirements
 
 - Disk space must be at least 1.5 times the estimated size of the source database.
