@@ -210,7 +210,7 @@ The general hierarchy of flags is as follows:
 
 There may be some areas where the order of precedence is not followed: help fixing this is welcome.
 
-Some of the ways in which you can specify flags to tests (capitals are environment variables) are as follows:
+Some of the ways in which you can specify flags to tests (uppercase are environment variables) are as follows:
 
 - `YB_EXTRA_DAEMON_FLAGS`, `--extra-daemon-flags`, `--extra-daemon-args`: pass flags to master and tserver processes.
   (This does not work on mini cluster.)
