@@ -75,7 +75,6 @@ void GeoTransactionsTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves_per_table) = 10;
 
   pgwrapper::PgMiniTestBase::SetUp();
-  client_ = ASSERT_RESULT(cluster_->CreateClient());
   transaction_pool_ = nullptr;
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto mini_ts = cluster_->mini_tablet_server(i);

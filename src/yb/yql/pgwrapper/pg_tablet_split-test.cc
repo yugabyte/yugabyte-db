@@ -19,7 +19,7 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/mini_master.h"
@@ -37,6 +37,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/range.h"
 #include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -57,15 +58,38 @@ namespace pgwrapper {
 using TabletRecordsInfo =
     std::unordered_map<std::string, std::tuple<docdb::KeyBounds, ssize_t>>;
 
-class PgTabletSplitTest : public PgTabletSplitTestBase {};
+class PgTabletSplitTest : public PgTabletSplitTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+
+    PgTabletSplitTestBase::SetUp();
+  }
+
+  // Splits the last tablet for specified number of times.
+  Status DoLastTabletSplitForTableWithSingleTablet(
+      const std::string& table_name, size_t splits_number) {
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
+    const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK_EQ(peers.size(), 1, IllegalState, "");
+
+    RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), peers.front()->tablet_id()));
+
+    TabletSelector selector(splits_number, SelectLastTabletPolicy());
+    selector.verifier = [&selector](const PartitionKeyTabletMap& tablets) -> Status {
+      SCHECK_EQ(tablets.size(), selector.selections_count, IllegalState,
+                "Number of tablets does not match number of selection.");
+      return Status::OK();
+    };
+
+    return InvokeSplitsAndWaitForCompletion(
+        table_id, [&selector](const auto& tablets) { return selector(tablets); });
+  }
+};
 
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransaction)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
-
   auto conn = ASSERT_RESULT(Connect());
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS;"));
 
@@ -103,7 +127,6 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)
   // file as it's hard to create a table of such structure with the functionality inside
   // tablet-split-itest.cc.
   auto conn = ASSERT_RESULT(Connect());
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   // Create a table with combined key; this allows to have a unique DocKey with the same HASH.
   // Setting table's partitioning explicitly to have one of bounds be specified for each tablet.
@@ -184,8 +207,8 @@ class PgPartitioningVersionTest :
                       expected_partitioning_version, partitioning_version));
 
     // Make sure SST files appear to be able to split
-    RETURN_NOT_OK(WaitForAnySstFiles(peer));
-    return InvokeSplitTabletRpcAndWaitForSplitCompleted(peer);
+    RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
+    return InvokeSplitTabletRpcAndWaitForSplitCompleted(peer->tablet_id());
   }
 
   TabletRecordsInfo GetTabletRecordsInfo(
@@ -322,8 +345,6 @@ class PgPartitioningVersionTest :
 // execution path in context of table/tablet validation.
 TEST_P(PgPartitioningVersionTest, ManualSplit) {
   const auto expected_partitioning_version = GetParam();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_partitioning_version) = expected_partitioning_version;
 
   constexpr auto kNumRows = 1000;
@@ -389,8 +410,6 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
   // The purpose of the test is to verify operations are forwarded to the correct tablets based on
   // partition_key when it contains NULLs in user columns.
   const auto expected_partitioning_version = GetParam();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_partitioning_version) = expected_partitioning_version;
   if (expected_partitioning_version == 0) {
     // Allow tablet splitting even for partitioning_version == 0
@@ -441,7 +460,7 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       LOG(INFO) << "Split key: " << AsString(split_key);
 
       // Split index table.
-      ASSERT_OK(InvokeSplitTabletRpcAndWaitForSplitCompleted(parent_peer));
+      ASSERT_OK(InvokeSplitTabletRpcAndWaitForSplitCompleted(parent_peer->tablet_id()));
       ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
       // Keep current numbers of records persisted in tablets for further analyses.
@@ -498,8 +517,6 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
   // The purpose of the test is to verify operations are forwarded to the correct tablets based on
   // partition_key, where `ybuniqueidxkeysuffix` value is set to null.
   const auto expected_partitioning_version = GetParam();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_partitioning_version) = expected_partitioning_version;
   if (expected_partitioning_version == 0) {
     // Allow tablet splitting even for partitioning_version == 0
@@ -554,7 +571,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     LOG(INFO) << "Split key values: t0 = \"" << idx1_t0 << "\", i0 = " << idx1_i0;
 
     // Split unique index table (idx1).
-    ASSERT_OK(InvokeSplitTabletRpcAndWaitForSplitCompleted(parent_peer));
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForSplitCompleted(parent_peer->tablet_id()));
     ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
     // Turn compaction off to make all subsequent deletes are kept in regular db.
@@ -594,8 +611,6 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
 
 TEST_P(PgPartitioningVersionTest, SplitAt) {
   const auto expected_partitioning_version = GetParam();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_partitioning_version) = expected_partitioning_version;
 
   constexpr auto kNumRows = 1000;
@@ -640,6 +655,172 @@ TEST_P(PgPartitioningVersionTest, SplitAt) {
       "idx2", 4,
       adjust_partitions(expected_partitioning_version, {{"\"800\""}, {"\"600\""}, {"\"400\""}})));
 }
+
+class PgRangePartitionedTableSplitTest : public PgTabletSplitTest {
+ protected:
+  Status CreateTable(
+      PGConn* conn, const std::string& table_name, size_t rows_number,
+      std::string split_statement = std::string()) {
+    RETURN_NOT_OK(conn->Execute(Format("DROP TABLE IF EXISTS $0", table_name)));
+
+    RETURN_NOT_OK(conn->Execute(Format(
+       "CREATE TABLE $0(k INT GENERATED ALWAYS AS IDENTITY, v INT, PRIMARY KEY (k ASC)) $1",
+       table_name, split_statement)));
+
+    RETURN_NOT_OK(conn->Execute(Format(
+        "INSERT INTO $0(v) SELECT i FROM generate_series(1, $1) as i",
+        table_name, rows_number)));
+
+    return cluster_->FlushTablets();
+  }
+
+  std::string PrepareSelectResult(int lower_bound, int upper_bound) {
+    std::stringstream expected;
+    if (lower_bound < upper_bound) {
+      for (auto n = lower_bound + 1; n < upper_bound; ++n) {
+        if (expected.tellp()) {
+          expected << pgwrapper::DefaultRowSeparator();
+        }
+        expected << n;
+      }
+    } else {
+      for (auto n = upper_bound - 1; n > lower_bound; --n) {
+        if (expected.tellp()) {
+          expected << pgwrapper::DefaultRowSeparator();
+        }
+        expected << n;
+      }
+    }
+    return expected.str();
+  }
+};
+
+TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectMinMaxAfterSplit)) {
+  constexpr auto kNumRows = 4000;
+  constexpr auto kNumSplits = 3;
+  const auto table_name = "t";
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  for (const auto& column : {"k", "v"} ) {
+    for (const auto& aggregate : { "min", "max" }) {
+      ASSERT_OK(CreateTable(&conn, table_name, kNumRows));
+      ASSERT_OK(DoLastTabletSplitForTableWithSingleTablet(table_name, kNumSplits));
+
+      const bool is_min = ToLowerCase(aggregate) == "min";
+      const auto expected = std::to_string(is_min ? 1 : kNumRows);
+
+      // Executing in a loop to check the result after possible cache update.
+      for ([[maybe_unused]] auto _ : Range(5)) {
+        const auto query = Format(
+            "SELECT $0($1) FROM $2", aggregate, column, table_name);
+        LOG(INFO) << "Query: " << query;
+        const auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
+        ASSERT_EQ(result, expected);
+      }
+    }
+  }
+}
+
+TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectRangeAfterManualSplit)) {
+  constexpr auto kNumRows = 4000;
+  constexpr auto kNumSplits = 3;
+  const auto table_name = "t";
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  for (const auto& column : {"k", "v"} ) {
+    for (const auto& sort_order : { "ASC", "DESC" }) {
+      ASSERT_OK(CreateTable(&conn, table_name, kNumRows));
+      ASSERT_OK(DoLastTabletSplitForTableWithSingleTablet(table_name, kNumSplits));
+
+      const bool is_asc_ordering = ToLowerCase(sort_order) == "asc";
+      const auto lower_bound = is_asc_ordering ? 1 : kNumRows;
+      const auto upper_bound = is_asc_ordering ? kNumRows : 1;
+      const auto expected = PrepareSelectResult(lower_bound, upper_bound);
+
+      // Executing in a loop to check the result after possible cache update.
+      for ([[maybe_unused]] auto _ : Range(5)) {
+        const auto query = Format(
+            "SELECT $0 FROM $1 WHERE $0 > $2 and $0 < $3 ORDER BY $0 $4",
+            column, table_name, lower_bound, upper_bound, sort_order);
+        LOG(INFO) << "Query: " << query;
+        const auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
+        ASSERT_EQ(result, expected);
+      }
+    }
+  }
+}
+
+TEST_F(PgRangePartitionedTableSplitTest,
+       YB_DISABLE_TEST_IN_TSAN(SelectMiddleRangeAfterManualSplit)) {
+  // The intent of the test is to select a range that covers only a middle tablet, and to make sure
+  // we get the expected result when middle tablet has been split.
+  constexpr size_t kNumRows = 4000;
+  constexpr size_t kMiddlePoint = kNumRows / 3;
+  const auto table_name = "t";
+  const auto split_clause = Format("SPLIT AT VALUES(($0), ($1))", kMiddlePoint, 2 * kMiddlePoint);
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  for (const auto& column : {"k", "v"} ) {
+    for (const auto& sort_order : { "ASC", "DESC" }) {
+      ASSERT_OK(CreateTable(&conn, table_name, kNumRows, split_clause));
+
+      const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
+      const auto table = ASSERT_RESULT(catalog_manager())->GetTableInfo(table_id);
+      const auto tablets = GetTabletsByPartitionKey(table);
+      ASSERT_EQ(tablets.size(), 3);
+
+      // Exptract middle tablet bounds.
+      const auto parse_partition_key = [](const std::string& key) -> Result<int> {
+        docdb::SubDocKey doc_key;
+        RETURN_NOT_OK(doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+        SCHECK_EQ(doc_key.doc_key().range_group().size(), 1, IllegalState, "");
+        SCHECK_EQ(doc_key.doc_key().range_group().at(0).IsInt32(), true, IllegalState, "");
+        return doc_key.doc_key().range_group().at(0).GetInt32();
+      };
+      int partition_start = 0;
+      int partition_end = 0;
+
+      // Wrapping into a block to unlock tablet after parsing is done.
+      {
+        const auto middle_tablet = (++tablets.begin())->second;
+        const auto& partition = middle_tablet->LockForRead()->pb.partition();
+        ASSERT_TRUE(partition.has_partition_key_start());
+        ASSERT_TRUE(partition.has_partition_key_end());
+        partition_start = ASSERT_RESULT(parse_partition_key(partition.partition_key_start()));
+        partition_end = ASSERT_RESULT(parse_partition_key(partition.partition_key_end()));
+      }
+
+      // Wait for SST files appear
+      for (const auto& t : tablets) {
+        ASSERT_OK(WaitForAnySstFiles(cluster_.get(), t.second->tablet_id()));
+      }
+
+      // Split middle tablet
+      ASSERT_OK(InvokeSplitsAndWaitForCompletion(
+          table_id, TabletSelector(1, SelectMiddleTabletPolicy())));
+
+      // Prepare expected result.
+      const bool is_asc_ordering = ToLowerCase(sort_order) == "asc";
+      const auto lower_bound = is_asc_ordering ? partition_start : partition_end;
+      const auto upper_bound = is_asc_ordering ? partition_end : partition_start;
+      const auto expected = PrepareSelectResult(lower_bound, upper_bound);
+
+      // Executing in a loop to check the result after possible cache update.
+      for ([[maybe_unused]] auto _ : Range(5)) {
+        const auto query = Format(
+            "SELECT $0 FROM $1 WHERE $0 > $2 and $0 < $3 ORDER BY $0 $4",
+            column, table_name, lower_bound, upper_bound, sort_order);
+        LOG(INFO) << "Query: " << query;
+        const auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
+        ASSERT_EQ(result, expected);
+      }
+    }
+  }
+}
+
 
 INSTANTIATE_TEST_CASE_P(
     PgTabletSplitTest,

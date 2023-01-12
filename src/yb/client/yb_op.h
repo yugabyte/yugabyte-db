@@ -442,7 +442,8 @@ std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
 
 class YBPgsqlOp : public YBOperation {
  public:
-  YBPgsqlOp(const std::shared_ptr<YBTable>& table, std::string* partition_key);
+  YBPgsqlOp(
+      const std::shared_ptr<YBTable>& table);
   ~YBPgsqlOp();
 
   const PgsqlResponsePB& response() const { return *response_; }
@@ -466,16 +467,10 @@ class YBPgsqlOp : public YBOperation {
     return rows_data_holder_;
   }
 
-  Status GetPartitionKey(std::string* partition_key) const override {
-    *partition_key = partition_key_;
-    return Status::OK();
-  }
-
  protected:
   std::unique_ptr<PgsqlResponsePB> response_;
   RefCntBuffer rows_data_holder_;
   Slice rows_data_slice_;
-  std::string partition_key_;
 };
 
 class YBPgsqlWriteOp : public YBPgsqlOp {
@@ -603,7 +598,7 @@ class YBNoOp {
 
 Status InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema,
-    const std::string& last_partition, LWPgsqlReadRequestPB* request);
+    const TablePartitionList& partitions, LWPgsqlReadRequestPB* request);
 
 Status InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
@@ -619,6 +614,11 @@ Status GetRangePartitionBounds(
     const LWPgsqlReadRequestPB& request,
     std::vector<docdb::KeyEntryValue>* lower_bound,
     std::vector<docdb::KeyEntryValue>* upper_bound);
+
+bool IsTolerantToPartitionsChange(const YBOperation& op);
+
+Result<const PartitionKey&> TEST_FindPartitionKeyByUpperBound(
+    const TablePartitionList& partitions, const PgsqlReadRequestPB& request);
 
 }  // namespace client
 }  // namespace yb

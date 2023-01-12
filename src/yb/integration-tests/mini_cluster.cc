@@ -151,6 +151,36 @@ std::string GetFsRoot(const MiniClusterOptions& options) {
   return JoinPathSegments(GetTestDataDirectory(), GetClusterDataDirName(options));
 }
 
+template <typename PeersGetter>
+Status WaitAllReplicasRunning(MiniCluster* cluster, MonoDelta timeout, PeersGetter peers_getter) {
+  return LoggedWaitFor([cluster, list_peers = std::move(peers_getter)] {
+    std::unordered_set<std::string> tablet_ids;
+    auto peers = list_peers();
+    for (const auto& peer : peers) {
+      if (peer->state() != tablet::RaftGroupStatePB::RUNNING) {
+        return false;
+      }
+      tablet_ids.insert(peer->tablet_id());
+    }
+    auto replication_factor = cluster->num_tablet_servers();
+    return tablet_ids.size() * replication_factor == peers.size();
+  }, timeout, "Wait all replicas to be ready");
+}
+
+bool IsActive(tablet::TabletDataState tablet_data_state) {
+  return tablet_data_state != tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
+         tablet_data_state != tablet::TabletDataState::TABLET_DATA_TOMBSTONED &&
+         tablet_data_state != tablet::TabletDataState::TABLET_DATA_DELETED;
+}
+
+bool IsActive(const tablet::TabletPeer& peer) {
+  return IsActive(peer.tablet_metadata()->tablet_data_state());
+}
+
+bool IsForTable(const tablet::TabletPeer& peer, const TableId& table_id) {
+  return peer.tablet_metadata()->table_id() == table_id;
+}
+
 } // namespace
 
 MiniCluster::MiniCluster(const MiniClusterOptions& options)
@@ -771,7 +801,7 @@ void StepDownRandomTablet(MiniCluster* cluster) {
 std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const string& table_id) {
   std::unordered_set<string> tablet_ids;
   for (auto peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-    if (peer->tablet_metadata()->table_id() == table_id) {
+    if (IsForTable(*peer, table_id)) {
       tablet_ids.insert(peer->tablet_id());
     }
   }
@@ -807,8 +837,7 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPee
 }
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(
-    MiniCluster* cluster,
-    const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter) {
+    MiniCluster* cluster, TabletPeerFilter filter) {
   std::vector<tablet::TabletPeerPtr> result;
 
   for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
@@ -832,11 +861,44 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
   return result;
 }
 
+Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeers(
+    MiniCluster* cluster, const TabletId& tablet_id, TabletPeerFilter filter) {
+  auto peers = ListTabletPeers(
+      cluster, [&tablet_id, filter = std::move(filter)](const auto& peer) {
+        return (peer->tablet_id() == tablet_id) && (!filter || filter(peer));
+      });
+
+  // Sanity check to make sure table is the same accross all peers.
+  TableId table_id;
+  std::string table_name;
+  for (const auto& peer : peers) {
+    const auto& metadata = *peer->tablet_metadata();
+    if (table_id.empty()) {
+      table_id = metadata.table_id();
+      table_name = metadata.table_name();
+    } else if (table_id != metadata.table_id()) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Tablet $0 peer $1 table $2 ($3) does not match expected table $4 ($5).",
+          tablet_id, peer->permanent_uuid(), metadata.table_id(),
+          metadata.table_name(), table_name, table_id);
+    }
+  }
+
+  return peers;
+}
+
+Result<std::vector<tablet::TabletPeerPtr>> ListTabletActivePeers(
+    MiniCluster* cluster, const TabletId& tablet_id) {
+  return ListTabletPeers(cluster, tablet_id, [](const auto& peer) {
+    return IsActive(*peer);
+  });
+}
+
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id) {
   return ListTabletPeers(cluster, [&table_id](const auto& peer) {
-    return peer->tablet_metadata() &&
-           peer->tablet_metadata()->table_id() == table_id &&
+    return peer->tablet_metadata() && IsForTable(*peer, table_id) &&
            peer->tablet_metadata()->tablet_data_state() !=
                tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
            peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
@@ -845,31 +907,16 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
 
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
       MiniCluster* cluster, const TableId& table_id) {
-  return ListTabletPeers(cluster, [table_id](const std::shared_ptr<tablet::TabletPeer>& peer) {
-    return peer->tablet_metadata()->table_id() == table_id;
+  return ListTabletPeers(cluster, [&table_id](const tablet::TabletPeerPtr& peer) {
+    return IsForTable(*peer, table_id);
   });
 }
 
-namespace {
-
-bool IsActive(tablet::TabletDataState tablet_data_state) {
-  return tablet_data_state != tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
-         tablet_data_state != tablet::TabletDataState::TABLET_DATA_TOMBSTONED &&
-         tablet_data_state != tablet::TabletDataState::TABLET_DATA_DELETED;
-}
-
-} // namespace
-
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
     MiniCluster* cluster, const TableId& table_id) {
-  std::vector<tablet::TabletPeerPtr> result;
-  for (auto peer : ListTableTabletPeers(cluster, table_id)) {
-    const auto tablet_meta = peer->tablet_metadata();
-    if (IsActive(tablet_meta->tablet_data_state())) {
-      result.push_back(peer);
-    }
-  }
-  return result;
+  return ListTabletPeers(cluster, [&table_id](const tablet::TabletPeerPtr& peer) {
+    return IsForTable(*peer, table_id) && IsActive(*peer);
+  });
 }
 
 std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(MiniCluster* cluster) {
@@ -982,18 +1029,19 @@ std::thread RestartsThread(
 }
 
 Status WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout) {
-  return WaitFor([cluster] {
-    std::unordered_set<std::string> tablet_ids;
-    auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
-    for (const auto& peer : peers) {
-      if (peer->state() != tablet::RaftGroupStatePB::RUNNING) {
-        return false;
-      }
-      tablet_ids.insert(peer->tablet_id());
-    }
-    auto replication_factor = cluster->num_tablet_servers();
-    return tablet_ids.size() * replication_factor == peers.size();
-  }, timeout, "Wait all replicas to be ready");
+  return WaitAllReplicasRunning(
+      cluster, timeout,
+      [cluster]() {
+        return ListTabletPeers(cluster, ListPeersFilter::kAll);
+  });
+}
+
+Status WaitAllReplicasReady(MiniCluster* cluster, const TableId& table_id, MonoDelta timeout) {
+  return WaitAllReplicasRunning(
+      cluster, timeout,
+      [cluster, &table_id](){
+        return ListTableTabletPeers(cluster, table_id);
+  });
 }
 
 Status WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, MonoDelta timeout) {
@@ -1093,7 +1141,7 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     if (!participant) {
       continue;
     }
-    if (filter && !filter(peer.get())) {
+    if (filter && !filter(peer)) {
       continue;
     }
     auto intents_count_result = participant->TEST_CountIntents();
@@ -1254,6 +1302,46 @@ Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {
     },
     timeout,
     Format("Wait for SST files of peer: $0", peer->permanent_uuid()));
+}
+
+Status WaitForAnySstFiles(MiniCluster* cluster, const TabletId& tablet_id, MonoDelta timeout) {
+  const auto peers = VERIFY_RESULT(ListTabletActivePeers(cluster, tablet_id));
+  SCHECK_EQ(peers.size(), cluster->num_tablet_servers(), IllegalState, "");
+  for (const auto& peer : peers) {
+    RETURN_NOT_OK(WaitForAnySstFiles(peer, timeout));
+  }
+  return Status::OK();
+}
+
+Status WaitForPeersAreFullyCompacted(
+    MiniCluster* cluster, const std::vector<TabletId>& tablet_ids, MonoDelta timeout) {
+  std::unordered_set<TabletId> ids(tablet_ids.begin(), tablet_ids.end());
+  auto peers = ListTabletPeers(cluster, [&ids](const tablet::TabletPeerPtr& peer) {
+    return ids.contains(peer->tablet_id());
+  });
+
+  std::stringstream description;
+  description << "Waiting for peers [" << CollectionToString(ids) << "] are fully compacted.";
+
+  const auto s = LoggedWaitFor([&peers, &ids](){
+    for (size_t n = 0; n < peers.size(); ++n) {
+      const auto peer = peers[n];
+      if (!peer) {
+        continue;
+      }
+      if (peer->tablet_metadata()->has_been_fully_compacted()) {
+        ids.erase(peer->tablet_id());
+        peers[n] = nullptr;
+      }
+    }
+    return ids.empty();
+  }, timeout, description.str());
+
+  if (!s.ok() && !ids.empty()) {
+    LOG(ERROR) <<
+      "Failed to wait for peers [" << CollectionToString(ids) << "] are fully compacted.";
+  }
+  return s;
 }
 
 void ActivateCompactionTimeLogging(MiniCluster* cluster) {
