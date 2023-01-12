@@ -8,8 +8,8 @@ User={{ user_name }}
 Group={{ user_name }}
 {% endif %}
 Unit=yb-zip_purge_yb_logs.service
-# Run hourly at minute 0 (beginning) of every hour
-OnCalendar=00/1:00
+# Run every 5 minutes
+OnCalendar=*:0/5
 
 [Install]
 WantedBy=timers.target

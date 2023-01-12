@@ -55,6 +55,9 @@ $$
            $func1$;
        END IF;
 
+       -- Delete migration Alter Architecture Type that was moved from 212 to 216
+       DELETE FROM SCHEMA_VERSION WHERE VERSION='212' AND DESCRIPTION='Alter Architecture Type';
+
        -- Fix next migration here
     END IF;
   END;

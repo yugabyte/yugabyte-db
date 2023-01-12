@@ -56,3 +56,16 @@ INSERT INTO pk_tbl VALUES(1), (2), (3);
 ALTER TABLE pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
 ALTER TABLE pk_tbl ADD COLUMN v2 SERIAL;
 DROP TABLE pk_tbl;
+
+-- Verify cache cleanup of table names when TABLE RENAME fails.
+CREATE TABLE rename_test (id int);
+SET yb_test_fail_next_ddl TO true;
+ALTER TABLE rename_test RENAME TO foobar;
+-- The table name must be unchanged.
+SELECT * FROM rename_test;
+-- The name 'foobar' must be invalid.
+SELECT * FROM foobar;
+-- Rename operation must succeed now.
+ALTER TABLE rename_test RENAME TO foobar;
+DROP TABLE foobar;
+
