@@ -74,8 +74,13 @@ func (te *TaskExecutor) SubmitTask(ctx context.Context, handler util.Handler) (*
 	te.wg.Add(1)
 	future := &Future{ch: make(chan struct{})}
 	go func() {
-		defer close(future.ch)
-		defer te.wg.Done()
+		defer func() {
+			te.wg.Done()
+			if err := recover(); err != nil {
+				future.err = fmt.Errorf("Panic occurred: %v", err)
+			}
+			close(future.ch)
+		}()
 		select {
 		// TaskExecutor level context.
 		case <-te.ctx.Done():
