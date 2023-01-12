@@ -31,8 +31,6 @@ Read replicas require the following:
 
 ## Limitations
 
-- The sum of the replication factor for all read replicas of a cluster can't be greater than 7.
-- You can't change the replication factor after the read replica is created.
 - You can't access read replicas from public IP addresses; connect to read replicas via peered VPCs.
 
 ## Add or edit read replicas
