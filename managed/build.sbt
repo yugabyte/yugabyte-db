@@ -182,7 +182,6 @@ libraryDependencies ++= Seq(
   "io.kamon" %% "kamon-bundle" % "2.2.2",
   "io.kamon" %% "kamon-prometheus" % "2.2.2",
   "org.unix4j" % "unix4j-command" % "0.6",
-  "com.github.dikhan" % "pagerduty-client" % "3.1.2",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
   "io.fabric8" % "kubernetes-client" % "5.10.2",
@@ -208,6 +207,10 @@ libraryDependencies ++= Seq(
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
+)
+
+excludeDependencies ++= Seq(
+  ExclusionRule("org.hibernate.validator", "hibernate-validator")
 )
 // Clear default resolvers.
 appResolvers := None
