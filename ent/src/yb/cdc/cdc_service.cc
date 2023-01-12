@@ -2982,7 +2982,7 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
       LOG(WARNING) << err_message;
       return STATUS(ServiceUnavailable, err_message, CDCError(CDCErrorPB::INTERNAL_ERROR));
     }
-    tablet_peer->log()->GetLatestEntryOpId().ToPB(resp.mutable_op_id());
+    VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType()).ToPB(resp.mutable_op_id());
 
     return resp;
   }
@@ -3007,7 +3007,7 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
     }
 
     // Add op_id to response.
-    OpId op_id = tablet_peer->log()->GetLatestEntryOpId();
+    OpId op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
     op_id.ToPB(resp.add_op_ids());
   }
 
@@ -3193,7 +3193,7 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
           LOG(WARNING) << err_message;
           return STATUS(InternalError, err_message);
         }
-        op_id = tablet_peer->log()->GetLatestEntryOpId();
+        op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
 
         // Add checkpoint for rollback before modifying tablet state.
         impl_->AddTabletCheckpoint(
@@ -3454,7 +3454,7 @@ Status CDCServiceImpl::BootstrapProducerHelper(
           LOG(WARNING) << err_message;
           return STATUS(InternalError, err_message);
         }
-        op_id = tablet_peer->log()->GetLatestEntryOpId();
+        op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
         // Update the term and index for the consumed checkpoint
         // to tablet's LEADER as well as FOLLOWER.
         op_id_min.cdc_op_id = OpId(OpId::kUnknownTerm, op_id.index);

@@ -384,7 +384,7 @@ Status TwoDCTestBase::SetupReverseUniverseReplication(
 Status TwoDCTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
     const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
-    bool leader_only) {
+    bool leader_only, const std::vector<string>& bootstrap_ids) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
   if (!FLAGS_certs_for_cdc_dir.empty() && !FLAGS_certs_dir.empty()) {
@@ -421,6 +421,14 @@ Status TwoDCTestBase::SetupUniverseReplication(
   req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
   for (const auto& table : tables) {
     req.add_producer_table_ids(table->id());
+  }
+
+  SCHECK(
+      bootstrap_ids.empty() || bootstrap_ids.size() == tables.size(), InvalidArgument,
+      "Bootstrap Ids for all tables should be provided");
+
+  for (const auto& bootstrap_id : bootstrap_ids) {
+    req.add_producer_bootstrap_ids(bootstrap_id);
   }
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
