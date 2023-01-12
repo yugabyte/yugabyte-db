@@ -336,12 +336,10 @@ Status KvStoreInfo::LoadTablesFromPB(
     tables.emplace(table_info->table_id, table_info);
 
     const Schema& schema = table_info->schema();
-    if (table_info->primary()) {
-      if (schema.table_properties().is_ysql_catalog_table()) {
-        // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
-        // to set cotable ID.
-        table_info->doc_read_context->schema.set_cotable_id(table_info->cotable_id);
-      }
+    if (!table_info->primary() && schema.table_properties().is_ysql_catalog_table()) {
+      // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
+      // to set cotable ID.
+      table_info->doc_read_context->schema.set_cotable_id(table_info->cotable_id);
     }
     if (schema.has_colocation_id()) {
       colocation_to_table.emplace(schema.colocation_id(), table_info);
