@@ -32,5 +32,8 @@ func cleanCmd() *cobra.Command {
 }
 
 func init() {
-	rootCmd.AddCommand(cleanCmd())
+	// Clean must be run from installed yba-ctl
+	if common.RunFromInstalled() {
+		rootCmd.AddCommand(cleanCmd())
+	}
 }
