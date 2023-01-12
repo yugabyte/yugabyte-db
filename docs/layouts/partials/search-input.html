@@ -1,12 +1,12 @@
 {{ if .Site.Params.algolia_docsearch -}}
 <div class="search-area">
   <i class="search-icon"></i>
-  <input type="search" id="search-query" name="query" style="width: 400px;border: 1px solid #d7dee4;height: 32px;text-indent: 38px;border-radius: 8px;outline:none;font-size: 13px;color: #0b1117;" class="td-search-input" placeholder="Search documentation" aria-label="Search documentation"
+  <input type="search" id="search-query" name="query"  class="td-search-input" placeholder="Search documentation" aria-label="Search documentation"
   autocomplete="off">
+  <div class="reset-input"></div>
   {{ if ne .Type "searchpage" }}
   <div class="search-result" style="display:none">
     <div class="algolia-data" id="docs">
-      <h2 style="display:none">Docs</h2>
       <ul id="doc-hit" class="content-panel"></ul>
       <div id="pagination-docs" class="pager"></div>
     </div>
