@@ -113,6 +113,7 @@ DECLARE_bool(use_libbacktrace);
 DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_bool(TEST_xcluster_disable_replication_transaction_status_table);
 DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 
 namespace yb {
 
@@ -799,11 +800,44 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
   ASSERT_OK(consumer_cluster()->AddTabletServer());
   ASSERT_OK(
       consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
-  test_thread_holder.JoinAll();
 
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, RefreshCheckpointAfterRestart) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  FLAGS_TEST_force_get_checkpoint_from_cdc_state = true;
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name_str = GetCompleteTableName(producer_table->name());
+
+  auto test_thread_holder = TestThreadHolder();
+  test_thread_holder.AddThread([&conn, &table_name_str] {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    int32_t key = 0;
+    int32_t step = 10;
+    auto now = CoarseMonoClock::Now();
+    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "insert into $0 values(generate_series($1, $2))", table_name_str, key, key + step - 1));
+      key += step;
+    }
+    ASSERT_OK(conn.Execute("COMMIT"));
+  });
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+  ASSERT_OK(consumer_cluster()->AddTabletServer());
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
 
 TEST_F(TwoDCYSqlTestConsistentTransactionsTest, RestartServer) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
