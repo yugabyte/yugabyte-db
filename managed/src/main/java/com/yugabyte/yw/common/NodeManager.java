@@ -869,8 +869,6 @@ public class NodeManager extends DevopsBase {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
               subcommand.add("--configure_ybc");
-              subcommand.add("--ybc_package");
-              subcommand.add(ybcPackage);
               subcommand.add("--ybc_dir");
               subcommand.add(ybcDir);
             }
@@ -924,8 +922,6 @@ public class NodeManager extends DevopsBase {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
               subcommand.add("--configure_ybc");
-              subcommand.add("--ybc_package");
-              subcommand.add(ybcPackage);
               subcommand.add("--ybc_dir");
               subcommand.add(ybcDir);
               subcommand.add("--tags");
@@ -1035,8 +1031,6 @@ public class NodeManager extends DevopsBase {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
               subcommand.add("--configure_ybc");
-              subcommand.add("--ybc_package");
-              subcommand.add(ybcPackage);
               subcommand.add("--ybc_dir");
               subcommand.add(ybcDir);
               subcommand.add("--tags");
