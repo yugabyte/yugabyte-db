@@ -205,7 +205,6 @@ public class RegionTest extends FakeDBApplication {
     Provider testProvider = ModelFactory.gcpProvider(defaultCustomer);
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     Region r1 = Region.create(testProvider, "region-2", "region 2", "default-image");
-    UUID randomUUID = UUID.randomUUID();
     List<Region> fetchedRegions = Region.getByProvider(defaultProvider.uuid);
     assertEquals(fetchedRegions.size(), 1);
   }
@@ -214,7 +213,6 @@ public class RegionTest extends FakeDBApplication {
   public void testGetByProviderMultipleRegions() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     Region r1 = Region.create(defaultProvider, "region-2", "region 2", "default-image");
-    UUID randomUUID = UUID.randomUUID();
     List<Region> fetchedRegions = Region.getByProvider(defaultProvider.uuid);
     assertEquals(fetchedRegions.size(), 2);
   }
@@ -224,7 +222,7 @@ public class RegionTest extends FakeDBApplication {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     assertNotNull(r.uuid);
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(r);
-    assertTrue(envVars.isEmpty());
+    assertEquals("{ybImage=default-image}", envVars.toString());
   }
 
   @Test

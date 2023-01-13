@@ -43,6 +43,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -123,6 +124,9 @@ public class Region extends Model {
 
   @JsonIgnore
   public void setActiveFlag(Boolean active) {
+    if (active && !this.active) {
+      throw new IllegalStateException("Cannot activate already inactive region");
+    }
     this.active = active;
   }
 
@@ -300,6 +304,13 @@ public class Region extends Model {
     return details;
   }
 
+  @JsonIgnore
+  public boolean isUpdateNeeded(Region region) {
+    return !Objects.equals(this.getSecurityGroupId(), region.getSecurityGroupId())
+        || !Objects.equals(this.getVnetName(), region.getVnetName())
+        || !Objects.equals(this.getYbImage(), region.getYbImage());
+  }
+
   /** Query Helper for PlacementRegion with region code */
   public static final Finder<UUID, Region> find = new Finder<UUID, Region>(Region.class) {};
 
@@ -339,10 +350,10 @@ public class Region extends Model {
     region.provider = provider;
     region.code = code;
     region.name = name;
-    region.setYbImage(ybImage);
     region.latitude = latitude;
     region.longitude = longitude;
     region.setRegionDetails(details);
+    region.setYbImage(ybImage);
     region.save();
     return region;
   }
@@ -459,8 +470,9 @@ public class Region extends Model {
     String regionQuery =
         " select r.uuid, r.code, r.name, r.provider_uuid"
             + "   from region r join provider p on p.uuid = r.provider_uuid "
-            + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
-            + "  where p.uuid = :p_UUID and p.customer_uuid = :c_UUID"
+            + "   left outer join availability_zone zone "
+            + " on zone.region_uuid = r.uuid and zone.active = true "
+            + "  where p.uuid = :p_UUID and p.customer_uuid = :c_UUID and r.active = true"
             + "  group by r.uuid "
             + " having count(zone.uuid) >= "
             + minZoneCount;
