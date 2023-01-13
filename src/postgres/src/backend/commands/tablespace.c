@@ -666,7 +666,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	 * For YB clusters there are no directories associated with a tablespace.
 	 * Hence no need to clean up any physical infrastructure.
 	 */
-	if (IsYugaByteEnabled())
+	if (!IsYugaByteEnabled())
 	{
 		/*
 		 * Try to remove the physical infrastructure.

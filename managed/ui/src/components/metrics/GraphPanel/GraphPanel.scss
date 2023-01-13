@@ -1,9 +1,8 @@
 /* Copyright (c) YugaByte, Inc. */
-
+// TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully (PLAT-5689)
 @import '../../../_style/colors.scss';
 @import '../../../_style/mixins.scss';
 
-// TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully
 .graph-panel-container {
   margin-top: 4px;
   margin-bottom: 10px;

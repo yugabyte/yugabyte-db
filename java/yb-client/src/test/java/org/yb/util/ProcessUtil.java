@@ -30,7 +30,8 @@ public final class ProcessUtil {
   private static String UNIX_PROCESS_CLASS_NAME =  "java.lang.UNIXProcess";
   private static String JDK9_PROCESS_IMPL_CLASS_NAME = "java.lang.ProcessImpl";
 
-  private static Set<String> VALID_SIGNALS =  ImmutableSet.of("STOP", "CONT", "TERM", "KILL");
+  private static Set<String> VALID_SIGNALS =  ImmutableSet.of("STOP", "CONT", "TERM", "KILL",
+                                                              "SIGSEGV");
 
   private ProcessUtil() {
   }

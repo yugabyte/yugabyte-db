@@ -11,8 +11,9 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_STATE_CHANGE_CONTEXT_H
-#define YB_CONSENSUS_STATE_CHANGE_CONTEXT_H
+#pragma once
+
+#include "yb/consensus/consensus.messages.h"
 
 namespace yb {
 namespace consensus {
@@ -29,16 +30,16 @@ struct StateChangeContext {
         is_config_locked_(is_locked) {
   }
 
-  StateChangeContext(StateChangeReason in_reason, string uuid)
+  StateChangeContext(StateChangeReason in_reason, std::string uuid)
       : reason(in_reason),
         new_leader_uuid(uuid) {
   }
 
   StateChangeContext(StateChangeReason in_reason,
-                     ChangeConfigRecordPB change_rec,
-                     string remove = "")
+                     const LWChangeConfigRecordPB& change_rec,
+                     std::string remove = "")
       : reason(in_reason),
-        change_record(change_rec),
+        change_record(change_rec.ToGoogleProtobuf()),
         remove_uuid(remove) {
   }
 
@@ -74,14 +75,14 @@ struct StateChangeContext {
 
   // Auxiliary info for some of the reasons above.
   // Value is filled when the change reason is NEW_LEADER_ELECTED.
-  const string new_leader_uuid;
+  const std::string new_leader_uuid;
 
   // Value is filled when the change reason is LEADER/FOLLOWER_CONFIG_CHANGE_COMPLETE.
   const ChangeConfigRecordPB change_record;
 
   // Value is filled when the change reason is LEADER_CONFIG_CHANGE_COMPLETE
   // and it is a REMOVE_SERVER, then that server's uuid is saved here by the master leader.
-  const string remove_uuid;
+  const std::string remove_uuid;
 
   // If this is true, the call-stack above has taken the lock for the raft consensus state. Needed
   // in SysCatalogStateChanged for master to not re-get the lock. Not used for tserver callback.
@@ -93,5 +94,3 @@ struct StateChangeContext {
 
 } // namespace consensus
 } // namespace yb
-
-#endif // YB_CONSENSUS_STATE_CHANGE_CONTEXT_H

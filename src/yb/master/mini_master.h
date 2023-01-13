@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_MINI_MASTER_H
-#define YB_MASTER_MINI_MASTER_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -148,5 +147,3 @@ class MiniMaster {
 
 } // namespace master
 } // namespace yb
-
-#endif /* YB_MASTER_MINI_MASTER_H */

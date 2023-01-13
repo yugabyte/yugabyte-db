@@ -49,7 +49,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
@@ -61,16 +61,18 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
+using std::vector;
+
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_uint64(transaction_min_running_check_delay_ms, 50,
+DEFINE_UNKNOWN_uint64(transaction_min_running_check_delay_ms, 50,
               "When transaction with minimal start hybrid time is updated at transaction "
               "participant, we wait at least this number of milliseconds before checking its "
               "status at transaction coordinator. Used for the optimization that deletes "
               "provisional records RocksDB SSTable files.");
 
-DEFINE_uint64(transaction_min_running_check_interval_ms, 250,
+DEFINE_UNKNOWN_uint64(transaction_min_running_check_interval_ms, 250,
               "While transaction with minimal start hybrid time remains the same, we will try "
               "to check its status at transaction coordinator at regular intervals this "
               "long (ms). Used for the optimization that deletes "
@@ -81,16 +83,17 @@ DEFINE_test_flag(double, transaction_ignore_applying_probability, 0,
 DEFINE_test_flag(bool, fail_in_apply_if_no_metadata, false,
                  "Fail when applying intents if metadata is not found.");
 
-DEFINE_int32(max_transactions_in_status_request, 128,
+DEFINE_UNKNOWN_int32(max_transactions_in_status_request, 128,
              "Request status for at most specified number of transactions at once. "
                  "0 disables load time transaction status resolution.");
 
-DEFINE_uint64(transactions_cleanup_cache_size, 256, "Transactions cleanup cache size.");
+DEFINE_UNKNOWN_uint64(transactions_cleanup_cache_size, 256, "Transactions cleanup cache size.");
 
-DEFINE_uint64(transactions_status_poll_interval_ms, 500 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_uint64(transactions_status_poll_interval_ms, 500 * yb::kTimeMultiplier,
               "Transactions poll interval.");
 
-DEFINE_bool(transactions_poll_check_aborted, true, "Check aborted transactions during poll.");
+DEFINE_UNKNOWN_bool(transactions_poll_check_aborted, true,
+    "Check aborted transactions during poll.");
 
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
@@ -173,6 +176,7 @@ class TransactionParticipant::Impl
           [this] { return running_requests_.empty(); });
 
       MinRunningNotifier min_running_notifier(nullptr /* applier */);
+      DumpClear(RemoveReason::kShutdown);
       transactions_.clear();
       TransactionsModifiedUnlocked(&min_running_notifier);
       status_resolvers.swap(status_resolvers_);
@@ -213,6 +217,10 @@ class TransactionParticipant::Impl
       return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
+    if (metadata.external_transaction && metadata.status_tablet.empty()) {
+      return STATUS(InvalidArgument, Format("For external transaction $0, status tablet is empty",
+                                             metadata.transaction_id));
+    }
     transactions_.insert(std::make_shared<RunningTransaction>(
         metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this));
     TransactionsModifiedUnlocked(&min_running_notifier);
@@ -240,7 +248,7 @@ class TransactionParticipant::Impl
     });
   }
 
-  std::pair<size_t, size_t> TEST_CountIntents() {
+  Result<std::pair<size_t, size_t>> TEST_CountIntents() {
     {
       MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard<std::mutex> lock(mutex_);
@@ -248,6 +256,15 @@ class TransactionParticipant::Impl
     }
 
     std::pair<size_t, size_t> result(0, 0);
+    // There is possibility that a shutdown race could happen during this iterating
+    // operation in RocksDB. To prevent the race, we should increase the pending_op_counter_
+    // before the operation, then shutdown will be delayed if it detects there is still
+    // operation hasn't finished yet. In another case, if RocksDB has already been shutted down,
+    // the operation will have NOT_OK status.
+    ScopedRWOperation operation(pending_op_counter_);
+    if (!operation.ok()) {
+      return STATUS(NotFound, "RocksDB has been shut down.");
+    }
     auto iter = docdb::CreateRocksDBIterator(db_.intents,
                                              key_bounds_,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -268,7 +285,8 @@ class TransactionParticipant::Impl
     return result;
   }
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) {
+  template <class PB>
+  Result<TransactionMetadata> PrepareMetadata(const PB& pb) {
     if (pb.has_isolation()) {
       auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(pb));
       std::unique_lock<std::mutex> lock(mutex_);
@@ -298,13 +316,11 @@ class TransactionParticipant::Impl
 
   boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
-      bool external_transaction) {
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator = LockAndFind(
-        id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
-        external_transaction);
+        id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
       return boost::none;
     }
@@ -325,7 +341,8 @@ class TransactionParticipant::Impl
   }
 
   void RequestStatusAt(const StatusRequest& request) {
-    auto lock_and_iterator = LockAndFind(*request.id, *request.reason, request.flags);
+    auto lock_and_iterator = LockAndFind(
+        *request.id, *request.reason, request.flags);
     if (!lock_and_iterator.found()) {
       request.callback(
           STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
@@ -453,10 +470,10 @@ class TransactionParticipant::Impl
         if (op_id > checkpoint_op_id) {
           break;
         }
-        VLOG_WITH_PREFIX(2) << "Cleaning tx opid is: " << op_id.ToString()
+        VLOG_WITH_PREFIX(2) << "Cleaning txn apply opid is: " << op_id.ToString()
                             << " checkpoint opid is: " << checkpoint_op_id.ToString()
                             << " txn id: " << id;
-        (**it).ScheduleRemoveIntents(*it);
+        (**it).ScheduleRemoveIntents(*it, front.reason);
         RemoveTransaction(it, front.reason, min_running_notifier);
       }
       VLOG_WITH_PREFIX(2) << "Cleaned from queue: " << id;
@@ -507,7 +524,7 @@ class TransactionParticipant::Impl
   }
 
   void FillStatusTablets(std::vector<BlockingTransactionData>* inout) {
-    // TODO(pessimistic) optimize locking
+    // TODO(wait-queues) optimize locking
     std::vector<boost::optional<TabletId>> status_tablet_opts;
     for (auto& blocker : *inout) {
       blocker.status_tablet = GetStatusTablet(blocker.id).get_value_or("");
@@ -624,8 +641,7 @@ class TransactionParticipant::Impl
       // We are not trying to cleanup intents here because we don't know whether this transaction
       // has intents of not.
       auto lock_and_iterator = LockAndFind(
-          data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
-          data.is_external);
+          data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
       if (!lock_and_iterator.found()) {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
@@ -645,13 +661,14 @@ class TransactionParticipant::Impl
             << "Transaction was previously applied with another commit ht: " << existing_commit_ht
             << ", new commit ht: " << data.commit_ht;
       } else {
-        transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
+        CHECK(transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
           txn->SetLocalCommitData(data.commit_ht, data.aborted);
-        });
-
-        LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
-            << "Apply transaction before last safe time " << data.transaction_id
-            << ": " << data.log_ht << " vs " << last_safe_time_;
+        }));
+        if (!lock_and_iterator.transaction().external_transaction()) {
+          LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
+              << "Apply transaction before last safe time " << data.transaction_id
+              << ": " << data.log_ht << " vs " << last_safe_time_;
+        }
       }
     }
 
@@ -690,36 +707,43 @@ class TransactionParticipant::Impl
   void NotifyApplied(const TransactionApplyData& data) {
     VLOG_WITH_PREFIX(4) << Format("NotifyApplied($0)", data);
 
-    if (data.leader_term != OpId::kUnknownTerm) {
-      tserver::UpdateTransactionRequestPB req;
-      req.set_tablet_id(data.status_tablet);
-      req.set_propagated_hybrid_time(participant_context_.Now().ToUint64());
-      auto& state = *req.mutable_state();
-      state.set_transaction_id(data.transaction_id.data(), data.transaction_id.size());
-      state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
-      state.add_tablets(participant_context_.tablet_id());
-      auto client_result = client();
-      if (!client_result.ok()) {
-        LOG_WITH_PREFIX(WARNING) << "Get client failed: " << client_result.status();
-        return;
-      }
+    NotifyApplied(data.leader_term, data.status_tablet, data.transaction_id);
+  }
 
-      auto handle = rpcs_.Prepare();
-      if (handle != rpcs_.InvalidHandle()) {
-        *handle = UpdateTransaction(
-            TransactionRpcDeadline(),
-            nullptr /* remote_tablet */,
-            *client_result,
-            &req,
-            [this, handle](const Status& status,
-                           const tserver::UpdateTransactionRequestPB& req,
-                           const tserver::UpdateTransactionResponsePB& resp) {
-              client::UpdateClock(resp, &participant_context_);
-              rpcs_.Unregister(handle);
-              LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
-            });
-        (**handle).SendRpc();
-      }
+  void NotifyApplied(int64_t leader_term, const TabletId& status_tablet,
+                     const TransactionId& transaction_id) {
+    if (leader_term == OpId::kUnknownTerm) {
+      return;
+    }
+
+    tserver::UpdateTransactionRequestPB req;
+    req.set_tablet_id(status_tablet);
+    req.set_propagated_hybrid_time(participant_context_.Now().ToUint64());
+    auto& state = *req.mutable_state();
+    state.set_transaction_id(transaction_id.data(), transaction_id.size());
+    state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
+    state.add_tablets(participant_context_.tablet_id());
+    auto client_result = client();
+    if (!client_result.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Get client failed: " << client_result.status();
+      return;
+    }
+
+    auto handle = rpcs_.Prepare();
+    if (handle != rpcs_.InvalidHandle()) {
+      *handle = UpdateTransaction(
+          TransactionRpcDeadline(),
+          nullptr /* remote_tablet */,
+          *client_result,
+          &req,
+          [this, handle](const Status& status,
+                         const tserver::UpdateTransactionRequestPB& req,
+                         const tserver::UpdateTransactionResponsePB& resp) {
+            client::UpdateClock(resp, &participant_context_);
+            rpcs_.Unregister(handle);
+            LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
+          });
+      (**handle).SendRpc();
     }
   }
 
@@ -737,7 +761,9 @@ class TransactionParticipant::Impl
         return Status::OK();
       }
     } else {
-      transactions_.modify(it, [&data](auto& txn) { txn->SetApplyOpId(data.op_id); });
+      CHECK(transactions_.modify(it, [&data](auto& txn) {
+        txn->SetApplyOpId(data.op_id);
+      }));
 
       if ((**it).ProcessingApply()) {
         VLOG_WITH_PREFIX(2) << "Don't cleanup transaction because it is applying intents: "
@@ -782,6 +808,7 @@ class TransactionParticipant::Impl
     loader_.WaitAllLoaded();
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
+    DumpClear(RemoveReason::kSetDB);
     transactions_.clear();
     TransactionsModifiedUnlocked(&min_running_notifier);
   }
@@ -1079,6 +1106,16 @@ class TransactionParticipant::Impl
     return metadata;
   }
 
+  Result<bool> IsExternalTransaction(const TransactionId& transaction_id) {
+    auto lock_and_iterator = LockAndFind(transaction_id,
+                                         "is external transaction"s,
+                                         TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+    if (!lock_and_iterator.found()) {
+      return STATUS(NotFound, Format("Unknown transaction $0", transaction_id));
+    }
+    return lock_and_iterator.transaction().external_transaction();
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
@@ -1239,11 +1276,16 @@ class TransactionParticipant::Impl
       while (!remove_queue_.empty()) {
         auto& front = remove_queue_.front();
         auto it = transactions_.find(front.id);
-        if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
-          // It is regular case, since the coordinator returns ABORTED for already applied
-          // transaction. But this particular tablet could not yet apply it, so
-          // it would add such transaction to remove queue.
-          // And it is the main reason why we are waiting for safe time, before removing intents.
+        if (it == transactions_.end() ||
+            (**it).local_commit_time().is_valid() ||
+            (**it).external_transaction()) {
+          // A couple possibilities:
+          // 1. This is an xcluster transaction so we want to skip the remove path for ABORTED
+          // transactions.
+          // 2. Since the coordinator returns ABORTED for already applied transaction. But this
+          // particular tablet could not yet apply it, so it would add such transaction to remove
+          // queue. And it is the main reason why we are waiting for safe time, before removing
+          // intents.
           VLOG_WITH_PREFIX(4) << "Evicting txn from remove queue, w/o removing intents: "
                               << front.ToString();
           remove_queue_.pop_front();
@@ -1280,7 +1322,7 @@ class TransactionParticipant::Impl
     OpId op_id = (**it).GetApplyOpId();
 
     if (running_requests_.empty() && op_id < checkpoint_op_id) {
-      (**it).ScheduleRemoveIntents(*it);
+      (**it).ScheduleRemoveIntents(*it, reason);
       RemoveTransaction(it, reason, min_running_notifier);
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
                           << " , apply record op_id: " << op_id
@@ -1296,7 +1338,7 @@ class TransactionParticipant::Impl
     // Since we try to remove the transaction after all its records are removed from the provisional
     // DB, it is safe to complete removal at this point, because it means that there will be no more
     // queries to status of this transactions.
-    immediate_cleanup_queue_.push_back(ImmediateCleanupQueueEntry{
+    immediate_cleanup_queue_.push_back(ImmediateCleanupQueueEntry {
       .request_id = request_serial_,
       .transaction_id = (**it).id(),
       .reason = reason,
@@ -1324,15 +1366,15 @@ class TransactionParticipant::Impl
   };
 
   LockAndFindResult LockAndFind(
-      const TransactionId& id, const std::string& reason, TransactionLoadFlags flags,
-      bool external_transaction = false) {
+      const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
     loader_.WaitLoaded(id);
     bool recently_removed;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
-        if (!external_transaction && (**it).start_ht() <= ignore_all_transactions_started_before_) {
+        if (!(**it).external_transaction() &&
+            (**it).start_ht() <= ignore_all_transactions_started_before_) {
           YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
               << "Ignore transaction for '" << reason << "' because of limit: "
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
@@ -1358,7 +1400,7 @@ class TransactionParticipant::Impl
     if (flags.Test(TransactionLoadFlag::kCleanup)) {
       VLOG_WITH_PREFIX(2) << "Schedule cleanup for: " << id;
       auto cleanup_task = std::make_shared<CleanupIntentsTask>(
-          &participant_context_, &applier_, id);
+          &participant_context_, &applier_, RemoveReason::kNotFound, id);
       cleanup_task->Prepare(cleanup_task);
       participant_context_.StrandEnqueue(cleanup_task.get());
     }
@@ -1404,19 +1446,30 @@ class TransactionParticipant::Impl
     return log_prefix_;
   }
 
+  void DumpClear(RemoveReason reason) {
+      if (FLAGS_dump_transactions) {
+        for (const auto& txn : transactions_) {
+          DumpRemove(*txn, reason);
+        }
+      }
+  }
+
+  void DumpRemove(const RunningTransaction& transaction, RemoveReason reason) {
+    YB_TRANSACTION_DUMP(
+        Remove, participant_context_.tablet_id(), transaction.id(), participant_context_.Now(),
+        static_cast<uint8_t>(reason));
+  }
+
   void RemoveTransaction(Transactions::iterator it, RemoveReason reason,
                          MinRunningNotifier* min_running_notifier)
       REQUIRES(mutex_) {
     auto now = CoarseMonoClock::now();
     CleanupRecentlyRemovedTransactions(now);
     auto& transaction = **it;
-    YB_TRANSACTION_DUMP(
-        Remove, participant_context_.tablet_id(), transaction.id(), participant_context_.Now(),
-        static_cast<uint8_t>(reason));
+    DumpRemove(transaction, reason);
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
-    VLOG_WITH_PREFIX(4) << "Remove transaction: " << transaction.id();
     transactions_.erase(it);
     TransactionsModifiedUnlocked(min_running_notifier);
   }
@@ -1458,9 +1511,9 @@ class TransactionParticipant::Impl
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);
       } else {
-        transactions_.modify(it, [now](const auto& txn) {
+        CHECK(transactions_.modify(it, [now](const auto& txn) {
           txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusResponseReceived);
-        });
+        }));
       }
     }
   }
@@ -1474,7 +1527,11 @@ class TransactionParticipant::Impl
       operation->CompleteWithStatus(Status::OK());
       return;
     }
-    participant_context_.SubmitUpdateTransaction(std::move(operation), term);
+    Status submit_status = participant_context_.SubmitUpdateTransaction(std::move(operation), term);
+    if (!submit_status.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << "Could not submit transaction status update operation: "
+                              << operation->ToString() << ", status: " << submit_status;
+    }
   }
 
   void HandleCleanup(
@@ -1503,23 +1560,23 @@ class TransactionParticipant::Impl
 
   Status ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
     // data.state.tablets contains only status tablet.
-    if (data.state.tablets_size() != 1) {
+    if (data.state.tablets().size() != 1) {
       return STATUS_FORMAT(InvalidArgument,
                            "Expected only one table during APPLYING, state received: $0",
                            data.state);
     }
     HybridTime commit_time(data.state.commit_hybrid_time());
     TransactionApplyData apply_data = {
-        .leader_term = data.leader_term,
-        .transaction_id = id,
-        .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(data.state.aborted().set())),
-        .op_id = data.op_id,
-        .commit_ht = commit_time,
-        .log_ht = data.hybrid_time,
-        .sealed = data.sealed,
-        .status_tablet = data.state.tablets(0),
-        .is_external = data.state.has_external_commit_ht()
-      };
+      .leader_term = data.leader_term,
+      .transaction_id = id,
+      .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(data.state.aborted().set())),
+      .op_id = data.op_id,
+      .commit_ht = commit_time,
+      .log_ht = data.hybrid_time,
+      .sealed = data.sealed,
+      .status_tablet = data.state.tablets().front().ToBuffer(),
+      .is_external = data.state.has_external_hybrid_time()
+    };
     if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);
     }
@@ -1576,6 +1633,9 @@ class TransactionParticipant::Impl
     TransactionStatusResolver* resolver = nullptr;
     for (;;) {
       auto& txn = **index.begin();
+      if (txn.external_transaction()) {
+        break;
+      }
       if (txn.abort_check_ht() > now) {
         break;
       }
@@ -1586,9 +1646,9 @@ class TransactionParticipant::Impl
       VLOG_WITH_PREFIX(4)
           << "Check aborted: " << metadata.status_tablet << ", " << metadata.transaction_id;
       resolver->Add(metadata.status_tablet, metadata.transaction_id);
-      index.modify(index.begin(), [now](const auto& txn) {
+      CHECK(index.modify(index.begin(), [now](const auto& txn) {
         txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusRequestSent);
-      });
+      }));
     }
 
     // We don't introduce limit on number of status resolutions here, because we cannot predict
@@ -1736,6 +1796,11 @@ Result<bool> TransactionParticipant::Add(const TransactionMetadata& metadata) {
 }
 
 Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
+    const LWTransactionMetadataPB& pb) {
+  return impl_->PrepareMetadata(pb);
+}
+
+Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
     const TransactionMetadataPB& pb) {
   return impl_->PrepareMetadata(pb);
 }
@@ -1743,9 +1808,8 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
 boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>
     TransactionParticipant::PrepareBatchData(
     const TransactionId& id, size_t batch_idx,
-    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
-    bool external_transaction) {
-  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches, external_transaction);
+    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
+  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches);
 }
 
 void TransactionParticipant::BatchReplicated(
@@ -1762,7 +1826,7 @@ boost::optional<TransactionLocalState> TransactionParticipant::LocalTxnData(
   return impl_->LocalTxnData(id);
 }
 
-std::pair<size_t, size_t> TransactionParticipant::TEST_CountIntents() const {
+Result<std::pair<size_t, size_t>> TransactionParticipant::TEST_CountIntents() const {
   return impl_->TEST_CountIntents();
 }
 
@@ -1790,6 +1854,10 @@ void TransactionParticipant::Handle(
 
 void TransactionParticipant::Cleanup(TransactionIdSet&& set) {
   return impl_->Cleanup(std::move(set), this);
+}
+
+Result<bool> TransactionParticipant::IsExternalTransaction(const TransactionId& transaction_id) {
+  return impl_->IsExternalTransaction(transaction_id);
 }
 
 Status TransactionParticipant::ProcessReplicated(const ReplicatedData& data) {

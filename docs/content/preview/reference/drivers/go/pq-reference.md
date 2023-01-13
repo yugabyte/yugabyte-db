@@ -43,9 +43,7 @@ The driver allows Go programmers to connect to YugabyteDB database to execute DM
 
 ## Fundamentals
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../../develop/build-apps/go/ysql-pq).
-
-What follows breaks down the quick start example to understand how to perform common tasks required for Go application development using the PQ driver.
+Learn how to perform common tasks required for Go application development using the YugabyteDB PQ driver.
 
 ### Import the driver package
 
@@ -198,14 +196,20 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ### SSL modes
 
+Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. YugabyteDB Managed clusters are always SSL/TLS enabled.
+
+The following table summarizes the SSL modes and their support in the driver:
+
 | SSL Mode | Client Driver Behavior | YugabyteDB Support |
 | :------- | :--------------------- | ------------------ |
 | disable  | SSL Disabled | Supported
-| allow    | SSL enabled only if server requires SSL connection | Not supported
-| prefer (default) | SSL enabled only if server requires SSL connection | Not supported
+| allow    | SSL enabled only if server requires SSL connection | Supported
+| prefer (default) | SSL enabled only if server requires SSL connection | Supported
 | require | SSL enabled for data encryption and Server identity is not verified | Supported
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
+
+YugabyteDB Managed requires SSL/TLS, and connections using SSL mode `disable` will fail.
 
 ## Transaction and isolation levels
 

@@ -17,8 +17,9 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.RuntimeConfigPreChangeNotifier;
+import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
+import com.yugabyte.yw.common.config.RuntimeConfigPreChangeNotifier;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -70,6 +71,8 @@ public class RuntimeConfController extends AuthenticatedController {
   @Inject private RuntimeConfigPreChangeNotifier preChangeNotifier;
 
   @Inject private RuntimeConfigChangeNotifier changeNotifier;
+
+  @Inject private Map<String, ConfKeyInfo<?>> keyMetaData;
 
   @Inject
   public RuntimeConfController(SettableRuntimeConfigFactory settableRuntimeConfigFactory) {
@@ -136,6 +139,15 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      value = "List mutable keys",
+      response = ConfKeyInfo.class,
+      responseContainer = "List",
+      notes = "List all the mutable runtime config keys with metadata")
+  public Result listKeyInfo() {
+    return PlatformResults.withData(keyMetaData.values());
+  }
+
+  @ApiOperation(
       value = "List configuration scopes",
       response = RuntimeConfigFormData.class,
       notes =
@@ -149,7 +161,7 @@ public class RuntimeConfController extends AuthenticatedController {
 
   @ApiOperation(
       value = "List configuration entries for a scope",
-      response = RuntimeConfigFormData.class,
+      response = ScopedConfig.class,
       notes = "Lists all runtime config entries for a given scope for current customer.")
   public Result getConfig(UUID customerUUID, UUID scopeUUID, boolean includeInherited) {
     LOG.trace(

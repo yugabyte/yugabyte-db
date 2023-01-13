@@ -70,7 +70,7 @@ const getDestination = (params) => {
     if (params.defaultRecipients) {
       return '[Default Recipients]';
     }
-    return params.recipients && params.recipients.join(',');
+    return params.recipients?.join(',');
   }
   return params.webhookUrl;
 };
@@ -142,13 +142,13 @@ export const AlertDestinationChannels = (props) => {
           </MenuItem>
 
           {!isReadOnly && (
-          <MenuItem
-            onClick={() => {
-              deleteChannel(row);
-            }}
-          >
-            <i className="fa fa-trash"></i> Delete Channel
-          </MenuItem>
+            <MenuItem
+              onClick={() => {
+                deleteChannel(row);
+              }}
+            >
+              <i className="fa fa-trash"></i> Delete Channel
+            </MenuItem>
           )}
 
           {
@@ -173,16 +173,16 @@ export const AlertDestinationChannels = (props) => {
           who should receive the notification.
         </div>
         {!isReadOnly && (
-        <div>
-          <YBButton
-            btnText="Add Channel"
-            btnClass="btn btn-orange"
-            onClick={() => {
-              setType('create');
-              setShowModal(true);
-            }}
-          />
-        </div>
+          <div>
+            <YBButton
+              btnText="Add Channel"
+              btnClass="btn btn-orange"
+              onClick={() => {
+                setType('create');
+                setShowModal(true);
+              }}
+            />
+          </div>
         )}
       </div>
       <Row>

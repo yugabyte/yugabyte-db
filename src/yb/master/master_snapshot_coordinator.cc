@@ -50,43 +50,40 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+
+using std::vector;
+using std::string;
 
 using namespace std::literals;
 using namespace std::placeholders;
 
 DECLARE_int32(sys_catalog_write_timeout_ms);
 
-DEFINE_uint64(snapshot_coordinator_poll_interval_ms, 5000,
+DEFINE_UNKNOWN_uint64(snapshot_coordinator_poll_interval_ms, 5000,
               "Poll interval for snapshot coordinator in milliseconds.");
 
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
 
-DEFINE_bool(schedule_snapshot_rpcs_out_of_band, true,
-            "Should tablet snapshot RPCs be scheduled out of band from the periodic"
-            " background scheduling.");
-TAG_FLAG(schedule_snapshot_rpcs_out_of_band, runtime);
+DEFINE_RUNTIME_bool(schedule_snapshot_rpcs_out_of_band, true,
+    "Should tablet snapshot RPCs be scheduled out of band from the periodic"
+    " background scheduling.");
 
-DEFINE_bool(schedule_restoration_rpcs_out_of_band, true,
-            "Should tablet restoration RPCs be scheduled out of band from the periodic"
-            " background scheduling.");
-TAG_FLAG(schedule_restoration_rpcs_out_of_band, runtime);
+DEFINE_RUNTIME_bool(schedule_restoration_rpcs_out_of_band, true,
+    "Should tablet restoration RPCs be scheduled out of band from the periodic"
+    " background scheduling.");
 
-DEFINE_bool(skip_crash_on_duplicate_snapshot, false,
-            "Should we not crash when we get a create snapshot request with the same "
-            "id as one of the previous snapshots.");
-TAG_FLAG(skip_crash_on_duplicate_snapshot, runtime);
+DEFINE_RUNTIME_bool(skip_crash_on_duplicate_snapshot, false,
+    "Should we not crash when we get a create snapshot request with the same "
+    "id as one of the previous snapshots.");
 
 DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
                  "Sleep for these many seconds on followers during sys catalog restore");
-TAG_FLAG(TEST_delay_sys_catalog_restore_on_followers_secs, runtime);
-
-DECLARE_bool(allow_consecutive_restore);
 
 namespace yb {
 namespace master {
@@ -95,26 +92,26 @@ namespace {
 
 YB_DEFINE_ENUM(Bound, (kFirst)(kLast));
 
-void SubmitWrite(
+Status SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term,
     SnapshotCoordinatorContext* context,
     const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
   auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
-      /* context */ nullptr, /* tablet= */ nullptr);
+      /* context */ nullptr, /* tablet= */ nullptr, /* rpc_context= */ nullptr);
   if (synchronizer) {
     query->set_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
   }
   *query->operation().AllocateRequest()->mutable_write_batch() = std::move(write_batch);
-  context->Submit(query.release()->PrepareSubmit(), leader_term);
+  return context->Submit(query.release()->PrepareSubmit(), leader_term);
 }
 
 Status SynchronizedWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term, CoarseTimePoint deadline,
     SnapshotCoordinatorContext* context) {
   auto synchronizer = std::make_shared<Synchronizer>();
-  SubmitWrite(std::move(write_batch), leader_term, context, synchronizer);
+  RETURN_NOT_OK(SubmitWrite(std::move(write_batch), leader_term, context, synchronizer));
   return synchronizer->WaitUntil(ToSteady(deadline));
 }
 
@@ -176,10 +173,10 @@ class MasterSnapshotCoordinator::Impl {
       const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline) {
     auto synchronizer = std::make_shared<Synchronizer>();
     auto snapshot_id = TxnSnapshotId::GenerateRandom();
-    SubmitCreate(
+    RETURN_NOT_OK(SubmitCreate(
         entries, imported, SnapshotScheduleId::Nil(), HybridTime::kInvalid, snapshot_id,
         leader_term,
-        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
+        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer)));
     RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
 
     return snapshot_id;
@@ -233,7 +230,7 @@ class MasterSnapshotCoordinator::Impl {
     VLOG(1) << __func__ << "(" << id << ", " << operation.ToString() << ")";
 
     auto snapshot = std::make_unique<SnapshotState>(
-        &context_, id, *operation.request(),
+        &context_, id, operation.request()->ToGoogleProtobuf(),
         GetRpcLimit(FLAGS_max_concurrent_snapshot_rpcs,
                     FLAGS_max_concurrent_snapshot_rpcs_per_tserver, leader_term));
 
@@ -267,9 +264,11 @@ class MasterSnapshotCoordinator::Impl {
       snapshot_empty = (**emplace_result.first).Empty();
     }
 
-    RETURN_NOT_OK(operation.tablet()->ApplyOperation(operation, /* batch_idx= */ -1, write_batch));
+    auto tablet = VERIFY_RESULT(operation.tablet_safe());
+    RETURN_NOT_OK(tablet->ApplyOperation(
+        operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
     if (sys_catalog_snapshot_data) {
-      RETURN_NOT_OK(operation.tablet()->snapshots().Create(*sys_catalog_snapshot_data));
+      RETURN_NOT_OK(tablet->snapshots().Create(*sys_catalog_snapshot_data));
     }
 
     ExecuteOperations(operations, leader_term);
@@ -413,7 +412,7 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     auto synchronizer = std::make_shared<Synchronizer>();
-    SubmitDelete(snapshot_id, leader_term, synchronizer);
+    RETURN_NOT_OK(SubmitDelete(snapshot_id, leader_term, synchronizer));
     return synchronizer->WaitUntil(ToSteady(deadline));
   }
 
@@ -438,11 +437,13 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
+    auto tablet = VERIFY_RESULT(operation.tablet_safe());
     if (delete_sys_catalog_snapshot) {
-      RETURN_NOT_OK(operation.tablet()->snapshots().Delete(operation));
+      RETURN_NOT_OK(tablet->snapshots().Delete(operation));
     }
 
-    RETURN_NOT_OK(operation.tablet()->ApplyOperation(operation, /* batch_idx= */ -1, write_batch));
+    RETURN_NOT_OK(tablet->ApplyOperation(
+        operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
 
     ExecuteOperations(operations, leader_term);
 
@@ -497,9 +498,10 @@ class MasterSnapshotCoordinator::Impl {
     if (leader_term >= 0) {
       context_.PrepareRestore();
     }
+    auto tablet = VERIFY_RESULT(operation.tablet_safe());
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
       RETURN_NOT_OK_PREPEND(
-          context_.RestoreSysCatalog(restoration.get(), operation.tablet(), complete_status),
+          context_.RestoreSysCatalog(restoration.get(), tablet.get(), complete_status),
           "Restore sys catalog failed");
     }
     return Status::OK();
@@ -1196,7 +1198,7 @@ class MasterSnapshotCoordinator::Impl {
       int64_t leader_term) {
     auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
     // If this tablet did not participate in snapshot, i.e. was deleted.
-    // We just change hybrid hybrid time limit and clear hide state.
+    // We just change hybrid time limit and clear hide state.
     auto task = context_.CreateAsyncTabletSnapshotOp(
         tablet_info, operation.is_tablet_part_of_snapshot ? snapshot_id_str : std::string(),
         tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
@@ -1204,6 +1206,9 @@ class MasterSnapshotCoordinator::Impl {
                           std::bind(&Impl::FinishRestoration, this, _1, leader_term)));
     task->SetSnapshotHybridTime(operation.restore_at);
     task->SetRestorationId(operation.restoration_id);
+    if (!operation.schedule_id.IsNil()) {
+      task->SetSnapshotScheduleId(operation.schedule_id);
+    }
     if (operation.sys_catalog_restore_needed) {
       task->SetMetadata(tablet_info->table()->LockForRead()->pb);
       // Populate metadata for colocated tables.
@@ -1211,7 +1216,11 @@ class MasterSnapshotCoordinator::Impl {
         auto lock = tablet_info->LockForRead();
         for (const auto& table_id : lock->pb.table_ids()) {
           auto table_info_result = context_.GetTableById(table_id);
-          LOG_IF(FATAL, !table_info_result.ok()) << "Table not found for table id" << table_id;
+          // TODO(Sanket): Should make this check FATAL once GHI#14609 is fixed.
+          if (!table_info_result.ok()) {
+            LOG(WARNING) << "Table " << table_id << " does not exist";
+            continue;
+          }
           task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
         }
       }
@@ -1340,7 +1349,11 @@ class MasterSnapshotCoordinator::Impl {
 
   void PollSchedulesComplete(const PollSchedulesData& data, int64_t leader_term) EXCLUDES(mutex_) {
     for (const auto& id : data.delete_snapshots) {
-      SubmitDelete(id, leader_term, nullptr);
+      Status submit_status = SubmitDelete(id, leader_term, /* synchronizer */ nullptr);
+      // TODO(submit_error): is this sufficient to handle this error?
+      LOG_IF(DFATAL, !submit_status.ok())
+          << "Failed to submit delete operation for snapshot " << id << ". "
+          << submit_status;
     }
     for (const auto& operation : data.schedule_operations) {
       switch (operation.type) {
@@ -1406,13 +1419,13 @@ class MasterSnapshotCoordinator::Impl {
 
     auto query = std::make_unique<tablet::WriteQuery>(
         leader_term, CoarseMonoClock::Now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
-        nullptr /* context */, nullptr /* tablet */);
+        nullptr /* context */, nullptr /* tablet */, nullptr /* rpc_context */);
 
     auto* write_batch = query->operation().AllocateRequest()->mutable_write_batch();
     auto pair = write_batch->add_write_pairs();
-    pair->set_key((*encoded_key).AsSlice().cdata(), (*encoded_key).size());
-    char value = { docdb::ValueEntryTypeAsChar::kTombstone };
-    pair->set_value(&value, 1);
+    pair->dup_key(encoded_key->AsSlice());
+    char value = docdb::ValueEntryTypeAsChar::kTombstone;
+    pair->dup_value(Slice(&value, 1));
 
     query->set_callback([this, id, &map](const Status& s) {
       if (s.ok()) {
@@ -1422,7 +1435,9 @@ class MasterSnapshotCoordinator::Impl {
       CleanupObjectAborted(id, map);
     });
 
-    context_.Submit(query.release()->PrepareSubmit(), leader_term);
+    Status submit_status = context_.Submit(query.release()->PrepareSubmit(), leader_term);
+    LOG_IF(DFATAL, !submit_status.ok())
+        << "Failed to submit cleanup operation: " << submit_status;
   }
 
   Status ExecuteScheduleOperation(
@@ -1435,7 +1450,7 @@ class MasterSnapshotCoordinator::Impl {
       CreateSnapshotAborted(entries.status(), operation.schedule_id, operation.snapshot_id);
       return entries.status();
     }
-    SubmitCreate(
+    return SubmitCreate(
         *entries, /* imported= */ false, operation.schedule_id,
         operation.previous_snapshot_hybrid_time, operation.snapshot_id, leader_term,
         [this, schedule_id = operation.schedule_id, snapshot_id = operation.snapshot_id,
@@ -1449,7 +1464,6 @@ class MasterSnapshotCoordinator::Impl {
             locked_synchronizer->StatusCB(status);
           }
         });
-    return Status::OK();
   }
 
   void CreateSnapshotAborted(
@@ -1465,7 +1479,7 @@ class MasterSnapshotCoordinator::Impl {
     (**it).SnapshotFinished(snapshot_id, status);
   }
 
-  void SubmitCreate(
+  Status SubmitCreate(
       const SysRowEntries& entries, bool imported, const SnapshotScheduleId& schedule_id,
       HybridTime previous_snapshot_hybrid_time, TxnSnapshotId snapshot_id, int64_t leader_term,
       tablet::OperationCompletionCallback completion_clbk) {
@@ -1482,36 +1496,39 @@ class MasterSnapshotCoordinator::Impl {
         if (unique_tablet_ids.insert(entry.id()).second) {
           VLOG(1) << __func__ << "(Adding tablet " << entry.id()
                   << " for snapshot " << snapshot_id << ")";
-          request->add_tablet_id(entry.id());
+          request->mutable_tablet_id()->push_back(request->arena().DupSlice(entry.id()));
         }
       }
     }
 
     request->set_snapshot_hybrid_time(context_.Clock()->MaxGlobalNow().ToUint64());
     request->set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER);
-    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    request->dup_snapshot_id(snapshot_id.AsSlice());
     request->set_imported(imported);
     if (schedule_id) {
-      request->set_schedule_id(schedule_id.data(), schedule_id.size());
+      request->dup_schedule_id(schedule_id.AsSlice());
     }
     if (previous_snapshot_hybrid_time) {
       request->set_previous_snapshot_hybrid_time(previous_snapshot_hybrid_time.ToUint64());
     }
 
-    request->mutable_extra_data()->PackFrom(entries);
+    // TODO(lw_uc) implement PackFrom for LWAny.
+    google::protobuf::Any temp_any;
+    temp_any.PackFrom(entries);
+    request->mutable_extra_data()->CopyFrom(temp_any);
 
     operation->set_completion_callback(std::move(completion_clbk));
 
-    context_.Submit(std::move(operation), leader_term);
+    return context_.Submit(std::move(operation), leader_term);
   }
 
-  void SubmitDelete(const TxnSnapshotId& snapshot_id, int64_t leader_term,
-                    const std::shared_ptr<Synchronizer>& synchronizer) {
+  Status SubmitDelete(const TxnSnapshotId& snapshot_id, int64_t leader_term,
+                      const std::shared_ptr<Synchronizer>& synchronizer) {
     auto operation = std::make_unique<tablet::SnapshotOperation>(nullptr);
     auto request = operation->AllocateRequest();
 
     request->set_operation(tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER);
-    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    request->dup_snapshot_id(snapshot_id.AsSlice());
 
     operation->set_completion_callback(
         [this, wsynchronizer = std::weak_ptr<Synchronizer>(synchronizer), snapshot_id]
@@ -1525,7 +1542,7 @@ class MasterSnapshotCoordinator::Impl {
           }
         });
 
-    context_.Submit(std::move(operation), leader_term);
+    return context_.Submit(std::move(operation), leader_term);
   }
 
   Status SubmitRestore(
@@ -1537,16 +1554,16 @@ class MasterSnapshotCoordinator::Impl {
     auto request = operation->AllocateRequest();
 
     request->set_operation(tserver::TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG);
-    request->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    request->dup_snapshot_id(snapshot_id.AsSlice());
     request->set_snapshot_hybrid_time(restore_at.ToUint64());
     if (restoration_id) {
-      request->set_restoration_id(restoration_id.data(), restoration_id.size());
+      request->dup_restoration_id(restoration_id.AsSlice());
     }
 
     operation->set_completion_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
 
-    context_.Submit(std::move(operation), leader_term);
+    RETURN_NOT_OK(context_.Submit(std::move(operation), leader_term));
 
     return synchronizer->Wait();
   }
@@ -1595,7 +1612,10 @@ class MasterSnapshotCoordinator::Impl {
     }
     lock->unlock();
 
-    SubmitWrite(std::move(write_batch), leader_term, &context_);
+    Status submit_status = SubmitWrite(std::move(write_batch), leader_term, &context_);
+    // TODO(submit_error): is this sufficient to handle this error?
+    LOG_IF(DFATAL, !submit_status.ok())
+        << "Failed to submit snapshot update operation: " << submit_status;
   };
 
   void FinishRestoration(RestorationState* restoration, int64_t leader_term) REQUIRES(mutex_) {
@@ -1627,16 +1647,21 @@ class MasterSnapshotCoordinator::Impl {
         docdb::KeyValueWriteBatchPB write_batch;
         schedule->mutable_options().add_restoration_times(
             last_restorations_update_ht_.ToUint64());
-        Status s = schedule->StoreToWriteBatch(&write_batch);
-        if (s.ok()) {
-          SubmitWrite(std::move(write_batch), leader_term, &context_);
+        Status store_to_write_batch_status = schedule->StoreToWriteBatch(&write_batch);
+        if (store_to_write_batch_status.ok()) {
+          Status submit_status = SubmitWrite(std::move(write_batch), leader_term, &context_);
+          if (!submit_status.ok()) {
+            // TODO(submit_error): is this sufficient to handle this error?
+            LOG(DFATAL) << "Failed to submit schedule update operation: " << submit_status;
+            return;
+          }
         } else {
           LOG(INFO) << "Unable to prepare write batch for schedule "
-                    << schedule->id();
+                    << schedule->id() << ": " << store_to_write_batch_status;
         }
       } else {
         LOG(INFO) << "Snapshot Schedule with id " << restoration->schedule_id()
-                  << " not found";
+                  << " not found" << ": " << schedule.status();
       }
     }
 
@@ -1664,7 +1689,12 @@ class MasterSnapshotCoordinator::Impl {
       LOG(DFATAL) << "Failed to prepare write batch for snapshot: " << status;
       return;
     }
-    SubmitWrite(std::move(write_batch), leader_term, &context_);
+    status = SubmitWrite(std::move(write_batch), leader_term, &context_);
+    if (!status.ok()) {
+      // TODO(submit_error): is this sufficient to handle this error?
+      LOG(DFATAL) << "Failed to submit snapshot operation: " << status;
+      return;
+    }
 
     // Resume index backfill for restored tables.
     // They are actually resumed by the catalog manager bg tasks thread.
@@ -1755,7 +1785,7 @@ class MasterSnapshotCoordinator::Impl {
               << " entry to sys catalog";
     docdb::KeyValueWriteBatchPB write_batch;
     RETURN_NOT_OK(restoration->StoreToWriteBatch(&write_batch));
-    SubmitWrite(std::move(write_batch), leader_term, &context_);
+    RETURN_NOT_OK(SubmitWrite(std::move(write_batch), leader_term, &context_));
     return Status::OK();
   }
 

@@ -28,18 +28,6 @@ export interface ClusterRegionInfo  {
    * @memberof ClusterRegionInfo
    */
   placement_info: PlacementInfo;
-  /**
-   * 
-   * @type {boolean}
-   * @memberof ClusterRegionInfo
-   */
-  is_default?: boolean;
-  /**
-   * If the leaders should be pinned to this region
-   * @type {boolean}
-   * @memberof ClusterRegionInfo
-   */
-  is_affinitized?: boolean;
 }
 
 

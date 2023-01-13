@@ -34,6 +34,9 @@
 
 #include "yb/util/test_macros.h"
 
+using std::string;
+using std::shared_ptr;
+
 namespace rocksdb {
 
 class AutoRollLoggerTest : public RocksDBTest {

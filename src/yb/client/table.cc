@@ -26,8 +26,11 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(
+using std::string;
+
+DEFINE_UNKNOWN_int32(
     max_num_tablets_for_table, 5000,
     "Max number of tablets that can be specified in a CREATE TABLE statement");
 
@@ -173,7 +176,7 @@ int32_t YBTable::GetPartitionCount() const {
   return narrow_cast<int32_t>(partitions_->keys.size());
 }
 
-int32_t YBTable::GetPartitionListVersion() const {
+PartitionListVersion YBTable::GetPartitionListVersion() const {
   SharedLock<decltype(mutex_)> lock(mutex_);
   return partitions_->version;
 }
@@ -310,11 +313,11 @@ void YBTable::FetchPartitions(
 //--------------------------------------------------------------------------------------------------
 
 size_t FindPartitionStartIndex(const TablePartitionList& partitions,
-                               const PartitionKey& partition_key,
+                               std::string_view partition_key,
                                size_t group_by) {
   auto it = std::lower_bound(partitions.begin(), partitions.end(), partition_key);
   if (it == partitions.end() || *it > partition_key) {
-    DCHECK(it != partitions.begin()) << "Could not find partition start while looking for "
+    CHECK(it != partitions.begin()) << "Could not find partition start while looking for "
         << partition_key << " in " << yb::ToString(partitions);
     --it;
   }

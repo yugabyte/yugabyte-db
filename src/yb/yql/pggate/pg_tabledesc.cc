@@ -27,6 +27,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+using std::string;
+
 namespace yb {
 namespace pggate {
 
@@ -101,12 +103,12 @@ const std::vector<std::string>& PgTableDesc::GetPartitions() const {
   return table_partitions_->keys;
 }
 
-const std::string& PgTableDesc::LastPartition() const {
-  return table_partitions_->keys.back();
-}
-
 size_t PgTableDesc::GetPartitionCount() const {
   return table_partitions_->keys.size();
+}
+
+client::PartitionListVersion PgTableDesc::GetPartitionListVersion() const {
+  return table_partitions_->version;
 }
 
 Result<string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {

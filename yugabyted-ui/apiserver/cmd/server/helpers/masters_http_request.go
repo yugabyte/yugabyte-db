@@ -33,10 +33,20 @@ type RegistrationStruct struct {
     BroadcastAddresses []HostPortAddress `json:"broadcast_addresses"`
 }
 
+type ErrorStruct struct {
+    Code string `json:"code"`
+    Message string `json:"message"`
+    PosixCode int32 `json:"posix_code"`
+    SourceFile string `json:"source_file"`
+    SourceLine int32 `json:"source_line"`
+    Errors string `json:"errors"`
+}
+
 type Master struct {
     InstanceId InstanceIdStruct `json:"instance_id"`
     Registration RegistrationStruct `json:"registration"`
     Role string `json:"role"`
+    Error *ErrorStruct `json:"error"`
 }
 
 type MastersFuture struct {

@@ -11,10 +11,12 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H
-#define YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H
+#pragma once
 
 #include <memory>
+
+#include "boost/function/function_fwd.hpp"
+#include "boost/optional.hpp"
 
 #include "yb/common/common_fwd.h"
 
@@ -28,6 +30,9 @@ class Slice;
 
 namespace docdb {
 
+YB_STRONGLY_TYPED_BOOL(ContinueScan);
+using YQLScanCallback = boost::function<Result<ContinueScan>(const QLTableRow& row)>;
+
 class YQLRowwiseIteratorIf {
  public:
   typedef std::unique_ptr<YQLRowwiseIteratorIf> UniPtr;
@@ -37,7 +42,7 @@ class YQLRowwiseIteratorIf {
   // Pure virtual API methods.
   //------------------------------------------------------------------------------------------------
   // Checks whether next row exists.
-  virtual Result<bool> HasNext() const = 0;
+  virtual Result<bool> HasNext() = 0;
 
   // Skip the current row.
   virtual void SkipRow() = 0;
@@ -48,6 +53,7 @@ class YQLRowwiseIteratorIf {
 
   virtual std::string ToString() const = 0;
 
+  // Could be subset of actual table schema.
   virtual const Schema& schema() const = 0;
 
   //------------------------------------------------------------------------------------------------
@@ -62,7 +68,7 @@ class YQLRowwiseIteratorIf {
   }
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  virtual Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
+  virtual Status GetNextReadSubDocKey(SubDocKey* sub_doc_key);
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
   virtual Result<Slice> GetTupleId() const;
@@ -74,15 +80,20 @@ class YQLRowwiseIteratorIf {
   // Common API methods.
   //------------------------------------------------------------------------------------------------
   // Read next row using the specified projection.
+  // REQUIRES: projection should be a subset of schema().
   Status NextRow(const Schema& projection, QLTableRow* table_row);
 
+  // Read next row using whole schema() as a projection.
   Status NextRow(QLTableRow* table_row);
 
+  // Iterates over the rows until --
+  //  - callback fails or returns false.
+  //  - Iterator reaches end of iteration.
+  virtual Status Iterate(const YQLScanCallback& callback);
+
  private:
-  virtual Status DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;
+  virtual Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) = 0;
 };
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H

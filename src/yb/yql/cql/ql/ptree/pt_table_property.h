@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_TABLE_PROPERTY_H_
-#define YB_YQL_CQL_QL_PTREE_PT_TABLE_PROPERTY_H_
+#pragma once
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
@@ -98,7 +97,7 @@ class PTTableProperty : public PTProperty {
     return property_type_;
   }
 
-  string name() const;
+  std::string name() const;
 
   PTOrderBy::Direction direction() const {
     DCHECK_EQ(property_type_, PropertyType::kClusteringOrder);
@@ -113,7 +112,7 @@ class PTTableProperty : public PTProperty {
   TableId copartition_table_id() const;
 
  protected:
-  bool IsValidProperty(const string& property_name) {
+  bool IsValidProperty(const std::string& property_name) {
     return kPropertyDataTypes.find(property_name) != kPropertyDataTypes.end();
   }
 
@@ -125,12 +124,12 @@ class PTTableProperty : public PTProperty {
   std::shared_ptr<client::YBTable> copartition_table_;
 
  private:
-  Status AnalyzeSpeculativeRetry(const string &val);
+  Status AnalyzeSpeculativeRetry(const std::string &val);
 
   static const std::map<std::string, PTTableProperty::KVProperty> kPropertyDataTypes;
 };
 
-std::ostream& operator<<(ostream& os, const PropertyType& property_type);
+std::ostream& operator<<(std::ostream& os, const PropertyType& property_type);
 
 class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
  public:
@@ -272,5 +271,3 @@ struct Transactions {
 
 } // namespace ql
 } // namespace yb
-
-#endif // YB_YQL_CQL_QL_PTREE_PT_TABLE_PROPERTY_H_

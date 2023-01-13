@@ -22,6 +22,8 @@
 
 #include <gtest/gtest.h>
 
+using std::vector;
+
 DECLARE_uint64(rate_limiter_min_rate);
 
 namespace yb {

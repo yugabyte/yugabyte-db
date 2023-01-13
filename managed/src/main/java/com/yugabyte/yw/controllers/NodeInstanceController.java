@@ -2,13 +2,21 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;
@@ -18,6 +26,8 @@ import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -29,6 +39,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeConfig.ValidationResult;
 import com.yugabyte.yw.models.helpers.NodeConfigValidator;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -63,6 +74,8 @@ public class NodeInstanceController extends AuthenticatedController {
 
   @Inject NodeConfigValidator nodeConfigValidator;
 
+  @Inject private KubernetesManagerFactory kubernetesManagerFactory;
+
   /**
    * GET endpoint for Node data
    *
@@ -96,8 +109,67 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails detail = universe.getNode(nodeName);
-    NodeDetailsResp resp = new NodeDetailsResp(detail, universe);
+    String helmValues = "";
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+        == CloudType.kubernetes) {
+      // Return helm values for the corresponding node also for k8s universes.
+      helmValues = getAZHelmValues(universe, nodeName);
+    }
+    NodeDetailsResp resp = new NodeDetailsResp(detail, universe, helmValues);
     return PlatformResults.withData(resp);
+  }
+
+  // Returns the helm values for the release the nodeName is present in.
+  private String getAZHelmValues(Universe universe, String nodeName) {
+    // From nodedetails, nodeName get cluster.
+    // From nodedetails get AZ name/code.
+    // From provider get if it is multi az.
+    // Get provider, azName get AZ config.
+    // Get helm release name, namespace name and call helm get values.
+    try {
+      NodeDetails nodeDetails = universe.getNodeOrBadRequest(nodeName);
+      UUID clusterUUID = nodeDetails.placementUuid;
+      Cluster cluster = universe.getCluster(clusterUUID);
+      boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
+      if (nodeDetails.cloudInfo == null) {
+        log.error(
+            String.format("Cloudinfo for node %s is null. Nodedetails: %s", nodeName, nodeDetails));
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format("Failed to get information about node %s.", nodeName));
+      }
+      String azName = nodeDetails.cloudInfo.az;
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+      // Get AZ uuid
+      Map<String, String> azConfig = AvailabilityZone.getByCode(provider, azName).config;
+      String helmReleaseName =
+          KubernetesUtil.getHelmReleaseName(
+              isMultiAz,
+              universe.getUniverseDetails().nodePrefix,
+              universe.name,
+              azName,
+              isReadOnlyCluster,
+              universe.getUniverseDetails().useNewHelmNamingStyle);
+      String namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              universe.getUniverseDetails().nodePrefix,
+              azName,
+              azConfig,
+              universe.getUniverseDetails().useNewHelmNamingStyle,
+              isReadOnlyCluster);
+      return kubernetesManagerFactory
+          .getManager()
+          .getOverridenHelmReleaseValues(namespace, helmReleaseName, azConfig);
+    } catch (Exception e) {
+      log.error(
+          String.format(
+              "Exception in getting helm values for universe: %s with node: %s exception: %s",
+              universe.universeUUID, nodeName, e.getMessage()),
+          e);
+      // Swallow the exception so that user can see other node details.
+      return "";
+    }
   }
 
   /**
@@ -196,7 +268,7 @@ public class NodeInstanceController extends AuthenticatedController {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {
         if (clientTypeOp.isPresent() && clientTypeOp.get() == ClientType.NODE_AGENT) {
           NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, getJWTClientUuid());
-          nodeAgent.ensureState(State.LIVE);
+          nodeAgent.ensureState(State.READY);
           List<ValidationResult> failedResults =
               nodeConfigValidator
                   .validateNodeConfigs(provider, nodeData)
@@ -314,37 +386,39 @@ public class NodeInstanceController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
-    NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = universe.universeUUID;
-    taskParams.expectedUniverseVersion = universe.version;
-    taskParams.nodeName = nodeName;
-    taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
-    if (universe.isYbcEnabled()) {
-      taskParams.installYbc = true;
-      taskParams.enableYbc = true;
-      taskParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
-      taskParams.ybcInstalled = true;
-    }
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
+    NodeTaskParams taskParams = new NodeTaskParams();
+
+    if (nodeAction == NodeActionType.REBOOT || nodeAction == HARD_REBOOT) {
+      RebootNodeInUniverse.Params params =
+          UniverseControllerRequestBinder.deepCopy(
+              universe.getUniverseDetails(), RebootNodeInUniverse.Params.class);
+      params.isHardReboot = nodeAction == HARD_REBOOT;
+      taskParams = params;
+    } else {
+      taskParams =
+          UniverseControllerRequestBinder.deepCopy(
+              universe.getUniverseDetails(), NodeTaskParams.class);
+    }
+
+    taskParams.nodeName = nodeName;
+    taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
     if (nodeAction == NodeActionType.STOP
         || nodeAction == NodeActionType.REMOVE
         || nodeAction == NodeActionType.DELETE
-        || nodeAction == NodeActionType.REBOOT) {
+        || nodeAction == NodeActionType.REBOOT
+        || nodeAction == NodeActionType.HARD_REBOOT) {
       // Always check this?? For now leaving it as is since it breaks many tests
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }
-    taskParams.clusters = universe.getUniverseDetails().clusters;
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
         || nodeAction == NodeActionType.START_MASTER
         || nodeAction == NodeActionType.STOP) {
-      taskParams.rootCA = universe.getUniverseDetails().rootCA;
-      taskParams.clientRootCA = universe.getUniverseDetails().clientRootCA;
-      taskParams.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
             String.format(

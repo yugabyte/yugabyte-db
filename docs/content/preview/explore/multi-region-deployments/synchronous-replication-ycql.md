@@ -36,19 +36,19 @@ type: docs
 
 YugabyteDB can be deployed in a globally distributed manner to serve application queries from the region closest to the end users with low latencies as well as to survive any outages to ensure high availability.
 
-This page simulates AWS regions on a local machine. First, you deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`) and start a key-value workload against this universe. Next, you change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
+This page simulates AWS regions on a local machine. First, you deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`) and start a key-value workload against this cluster. Next, you change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
 
 This page uses the [yb-ctl](../../../admin/yb-ctl/) local cluster management utility.
 
-## Create a multi-zone universe in US West
+## Create a multi-zone cluster in US West
 
-If you have a previously running local universe, destroy it using the following command:
+If you have a previously running local cluster, destroy it using the following command:
 
 ```sh
 ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with a replication factor (RF) of `3`, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following command:
+Start a new local cluster with a replication factor (RF) of `3`, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following command:
 
 ```sh
 ./bin/yb-ctl --rf 3 create --placement_info "aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c"
@@ -56,11 +56,11 @@ Start a new local universe with a replication factor (RF) of `3`, and each repli
 
 In this deployment, the YB-Masters are each placed in a separate zone to allow them to survive the loss of a zone. You can view the masters on the [dashboard](http://localhost:7000/), as per the following illustration:
 
-![Multi-zone universe masters](/images/ce/online-reconfig-multi-zone-masters.png)
+![Multi-zone cluster masters](/images/ce/online-reconfig-multi-zone-masters.png)
 
 You can view the tablet servers on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
-![Multi-zone universe tservers](/images/ce/online-reconfig-multi-zone-tservers.png)
+![Multi-zone cluster tservers](/images/ce/online-reconfig-multi-zone-tservers.png)
 
 ## Start a workload
 
@@ -81,7 +81,7 @@ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
 
 You should now see some read and write load on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
-![Multi-zone universe load](/images/ce/online-reconfig-multi-zone-load.png)
+![Multi-zone cluster load](/images/ce/online-reconfig-multi-zone-load.png)
 
 ## Add nodes
 

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_TEST_BASE_H
-#define YB_CONSENSUS_LOG_TEST_BASE_H
+#pragma once
 
 #include <utility>
 #include <vector>
@@ -42,10 +41,13 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol-test-util.h"
+
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
@@ -53,6 +55,8 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+
+#include "yb/rpc/lightweight_message.h"
 
 #include "yb/server/clock.h"
 #include "yb/server/hybrid_clock.h"
@@ -100,8 +104,8 @@ static Status AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
                                            ssize_t* size = nullptr) {
   ReplicateMsgs replicates;
   for (int i = 0; i < count; i++) {
-    auto replicate = std::make_shared<ReplicateMsg>();
-    ReplicateMsg* repl = replicate.get();
+    auto replicate = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
+    auto* repl = replicate.get();
 
     repl->mutable_id()->CopyFrom(*op_id);
     repl->set_op_type(NO_OP);
@@ -113,7 +117,7 @@ static Status AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
     if (size) {
       // If we're tracking the sizes we need to account for the fact that the Log wraps the log
       // entry in an LogEntryBatchPB, and each actual entry will have a one-byte tag.
-      *size += repl->ByteSize() + 1;
+      *size += repl->SerializedSize() + 1;
     }
     replicates.push_back(replicate);
   }
@@ -140,9 +144,9 @@ static Status AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
 class LogTestBase : public YBTest {
  public:
 
-  typedef pair<int, int> DeltaId;
+  typedef std::pair<int, int> DeltaId;
 
-  typedef std::tuple<int, int, string> TupleForAppend;
+  typedef std::tuple<int, int, std::string> TupleForAppend;
 
   LogTestBase()
       : schema_({ ColumnSchema("key", INT32, false, true),
@@ -196,10 +200,10 @@ class LogTestBase : public YBTest {
 
   void CheckRightNumberOfSegmentFiles(int expected) {
     // Test that we actually have the expected number of files in the fs. We should have n segments.
-    const vector<string> files =
+    const std::vector<std::string> files =
         ASSERT_RESULT(env_->GetChildren(tablet_wal_path_, ExcludeDots::kTrue));
     int count = 0;
-    for (const string& s : files) {
+    for (const std::string& s : files) {
       if (HasPrefixString(s, FsManager::kWalFileNamePrefix)) {
         count++;
       }
@@ -241,7 +245,7 @@ class LogTestBase : public YBTest {
       consensus::OperationType op_type = consensus::OperationType::WRITE_OP,
       TransactionId txn_id = TransactionId::Nil(),
       TransactionStatus txn_status = TransactionStatus::APPLYING) {
-    auto replicate = std::make_shared<ReplicateMsg>();
+    auto replicate = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
     replicate->set_op_type(op_type);
     replicate->mutable_id()->CopyFrom(opid);
     replicate->mutable_committed_op_id()->CopyFrom(committed_opid);
@@ -251,7 +255,7 @@ class LogTestBase : public YBTest {
     if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
       ASSERT_TRUE(!txn_id.IsNil());
       replicate->mutable_transaction_state()->set_status(txn_status);
-      replicate->mutable_transaction_state()->set_transaction_id(txn_id.data(), txn_id.size());
+      replicate->mutable_transaction_state()->dup_transaction_id(txn_id.AsSlice());
     } else if (op_type == consensus::OperationType::WRITE_OP) {
       if (writes.empty()) {
         const int opid_index_as_int = static_cast<int>(opid.index());
@@ -270,7 +274,7 @@ class LogTestBase : public YBTest {
 
       auto write_batch = batch_request->mutable_write_batch();
       if (!txn_id.IsNil()) {
-        write_batch->mutable_transaction()->set_transaction_id(txn_id.data(), txn_id.size());
+        write_batch->mutable_transaction()->dup_transaction_id(txn_id.AsSlice());
       }
       for (const auto &w : writes) {
         AddKVToPB(std::get<0>(w), std::get<1>(w), std::get<2>(w), write_batch);
@@ -330,8 +334,8 @@ class LogTestBase : public YBTest {
     return log_->AllocateSegmentAndRollOver();
   }
 
-  string DumpSegmentsToString(const SegmentSequence& segments) {
-    string dump;
+  std::string DumpSegmentsToString(const SegmentSequence& segments) {
+    std::string dump;
     for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
       dump.append("------------\n");
       strings::SubstituteAndAppend(&dump, "Segment: $0, Path: $1\n",
@@ -360,7 +364,7 @@ class LogTestBase : public YBTest {
   // Reusable entries vector that deletes the entries on destruction.
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<Clock> clock_;
-  string tablet_wal_path_;
+  std::string tablet_wal_path_;
   RestartSafeCoarseMonoClock restart_safe_coarse_mono_clock_;
 };
 
@@ -371,7 +375,7 @@ enum CorruptionType {
   FLIP_BYTE
 };
 
-Status CorruptLogFile(Env* env, const string& log_path,
+Status CorruptLogFile(Env* env, const std::string& log_path,
                       CorruptionType type, size_t corruption_offset) {
   faststring buf;
   RETURN_NOT_OK_PREPEND(ReadFileToString(env, log_path, &buf),
@@ -396,5 +400,3 @@ Status CorruptLogFile(Env* env, const string& log_path,
 
 } // namespace log
 } // namespace yb
-
-#endif // YB_CONSENSUS_LOG_TEST_BASE_H

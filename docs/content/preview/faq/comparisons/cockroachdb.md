@@ -2,7 +2,7 @@
 title: Compare CockroachDB with YugabyteDB
 headerTitle: CockroachDB
 linkTitle: CockroachDB
-description: Compare CockroachDB with YugabyteDB in terms of performance, PostgreSQL compatibility, and architecture.
+description: Compare CockroachDB with YugabyteDB in terms of database performance, PostgreSQL compatibility, and architecture.
 aliases:
   - /comparisons/cockroachdb/
 menu:
@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB’s sharding, replication and transactions architecture is similar to that CockroachDB given that both are inspired by the [Google Spanner design paper](https://research.google.com/archive/spanner-osdi2012.pdf). Additionally, both use Raft as the distributed consensus replication algorithm and RocksDB as the per-node storage engine. The following sections highlight the advantages and similarities YugabyteDB has when compared with CockroachDB.
+YugabyteDB's sharding, replication, and transactions architecture is similar to CockroachDB in that both are inspired by the [Google Spanner design paper](https://research.google.com/archive/spanner-osdi2012.pdf). Additionally, both use Raft as the distributed consensus replication algorithm and RocksDB as the per-node storage engine. The following sections highlight the advantages and similarities YugabyteDB has when compared with CockroachDB.
 
 ## Advantages
 
@@ -31,7 +31,7 @@ YugabyteDB beats CockroachDB in the context of multiple developer benefits inclu
 
 ## Similarities
 
-Following blogs highlight how YugabyteDB works as an open source, cloud native Spanner derivative similar to CockroachDB.
+Following blogs highlight how YugabyteDB works as an open-source, cloud-native Spanner derivative similar to CockroachDB.
 
 - [Rise of Globally Distributed SQL Databases – Redefining Transactional Stores for Cloud Native Era](https://blog.yugabyte.com/rise-of-globally-distributed-sql-databases-redefining-transactional-stores-for-cloud-native-era/)
 
@@ -42,7 +42,3 @@ Following blogs highlight how YugabyteDB works as an open source, cloud native S
 - [Docker, Kubernetes and the Rise of Cloud Native Databases](https://blog.yugabyte.com/docker-kubernetes-and-the-rise-of-cloud-native-databases/)
 
 - [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugabyteDB](https://blog.yugabyte.com/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db/)
-
-## Join webinar
-
-[Join the upcoming live webinar](https://www.yugabyte.com/yugabytedb-vs-cockroachdb/) to review the comprehensive report that benchmarks YugabyteDB against CockroachDB while highlighting the architectural choices that enables YugabyteDB to have 3x higher throughput and 4.5x lower latency.

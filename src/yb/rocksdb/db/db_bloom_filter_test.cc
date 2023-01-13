@@ -17,6 +17,8 @@
 
 #include "yb/util/random_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 // DB tests related to bloom filter.
@@ -929,7 +931,6 @@ TEST_F(DBBloomFilterTest, PrefixExtractorBlockFilter) {
   delete iter;
 }
 
-#ifndef ROCKSDB_LITE
 class BloomStatsTestWithParam
     : public DBBloomFilterTest,
         public testing::WithParamInterface<std::tuple<bool, bool>> {
@@ -1136,8 +1137,6 @@ void PrefixScanInit(DBBloomFilterTest* dbtest) {
 }  // namespace
 
 TEST_F(DBBloomFilterTest, PrefixScan) {
-  XFUNC_TEST("", "dbtest_prefix", prefix_skip1, XFuncPoint::SetSkip,
-      kSkipNoPrefix);
   while (ChangeFilterOptions()) {
     int count;
     Slice prefix;
@@ -1185,7 +1184,6 @@ TEST_F(DBBloomFilterTest, PrefixScan) {
     ASSERT_EQ(env_->random_read_counter_.Read(), 2);
     Close();
   }  // end of while
-  XFUNC_TEST("", "dbtest_prefix", prefix_skip1, XFuncPoint::SetSkip, 0);
 }
 
 TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
@@ -1373,7 +1371,6 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
             TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 }
 
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
 

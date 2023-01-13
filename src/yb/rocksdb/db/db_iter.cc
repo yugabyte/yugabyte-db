@@ -181,6 +181,9 @@ class DBIter: public Iterator {
   void Seek(const Slice& target) override;
   void SeekToFirst() override;
   void SeekToLast() override;
+  bool ScanForward(
+      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+      ScanCallback* scan_callback) override;
 
   void RevalidateAfterUpperBoundChange() override {
     if (iter_->Valid() && direction_ == kForward) {
@@ -857,6 +860,21 @@ void DBIter::SeekToLast() {
   }
 }
 
+bool DBIter::ScanForward(
+    const Slice& upperbound, KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+  LOG_IF(DFATAL, !iter_->Valid()) << "Iterator should be valid.";
+  LOG_IF(DFATAL, direction_ != kForward) << "Only forward direction scan is supported.";
+
+  if (upperbound.empty() || (iterate_upper_bound_ != nullptr && !upperbound.empty() &&
+                             user_comparator_->Compare(upperbound, *iterate_upper_bound_) >= 0)) {
+    return iter_->ScanForward(
+        user_comparator_, iterate_upper_bound_ ? *iterate_upper_bound_ : upperbound,
+        key_filter_callback, scan_callback);
+  }
+
+  return iter_->ScanForward(user_comparator_, upperbound, key_filter_callback, scan_callback);
+}
+
 Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,
                         const Comparator* user_key_comparator,
                         InternalIterator* internal_iter,
@@ -909,6 +927,12 @@ void ArenaWrappedDBIter::RegisterCleanup(CleanupFunction function, void* arg1,
 
 void ArenaWrappedDBIter::RevalidateAfterUpperBoundChange() {
   db_iter_->RevalidateAfterUpperBoundChange();
+}
+
+bool ArenaWrappedDBIter::ScanForward(
+    const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+    ScanCallback* scan_callback) {
+  return db_iter_->ScanForward(upperbound, key_filter_callback, scan_callback);
 }
 
 ArenaWrappedDBIter* NewArenaWrappedDbIterator(

@@ -29,6 +29,13 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 
+using std::string;
+using std::max;
+
+DEFINE_RUNTIME_bool(
+    ycql_bind_collection_assignment_using_column_name, false,
+    "Enable using column name for binding the value of subscripted collection column");
+
 namespace yb {
 namespace ql {
 
@@ -79,6 +86,19 @@ Status PTAssign::Analyze(SemContext *sem_context) {
 
       sem_state.SetExprState(curr_ytype->keys_type(),
                              client::YBColumnSchema::ToInternalDataType(curr_ytype->keys_type()));
+      string subscripted_column_bindvar_name;
+      switch (col_desc_->ql_type()->main()) {
+        case DataType::MAP:
+          subscripted_column_bindvar_name = PTBindVar::coll_map_key_bindvar_name(col_desc_->name());
+          break;
+        case DataType::LIST:
+          subscripted_column_bindvar_name =
+              PTBindVar::coll_list_index_bindvar_name(col_desc_->name());
+          break;
+        default:
+          subscripted_column_bindvar_name = PTBindVar::default_bindvar_name();
+      }
+      sem_state.set_bindvar_name(subscripted_column_bindvar_name);
       RETURN_NOT_OK(arg->Analyze(sem_context));
 
       curr_ytype = curr_ytype->values_type();
@@ -104,8 +124,28 @@ Status PTAssign::Analyze(SemContext *sem_context) {
 
   sem_state.set_processing_assignee(false);
 
+  auto rhs_bindvar_name = lhs_->bindvar_name();
+  if (has_subscripted_column()) {
+    // For "UPDATE ... SET map[x] = ? ..." or "UPDATE ... SET list[x] = ? ..." when GFlag
+    // ycql_bind_collection_assignment_using_column_name is enabled where x is an integer:
+    // 1. allow both "column_name" and "value(column_name)" as the bindvar name.
+    // 2. "column_name" is the primary bindvar name since PreparedStatements can only support a
+    // single name.
+    //
+    // Note that nested maps and lists are only allowed if they are frozen. A frozen collection
+    // can't be updated, hence only checking the first node in the node_list is sufficient here.
+    auto subscripted_bindvar_name = PTBindVar::coll_value_bindvar_name(col_desc_->name());
+    if (subscript_args_->node_list().front()->expr_op() == ExprOperator::kConst &&
+        FLAGS_ycql_bind_collection_assignment_using_column_name) {
+      sem_state.add_alternate_bindvar_name(subscripted_bindvar_name);
+    } else {
+      rhs_bindvar_name = MCMakeShared<MCString>(
+          sem_context->PSemMem(), subscripted_bindvar_name.data(), subscripted_bindvar_name.size());
+    }
+  }
+
   // Setup the expected datatypes, and analyze the rhs value.
-  sem_state.SetExprState(curr_ytype, curr_itype, lhs_->bindvar_name(), col_desc_);
+  sem_state.SetExprState(curr_ytype, curr_itype, rhs_bindvar_name, col_desc_);
   RETURN_NOT_OK(rhs_->Analyze(sem_context));
   RETURN_NOT_OK(rhs_->CheckRhsExpr(sem_context));
 
@@ -197,8 +237,8 @@ Status PTUpdateStmt::Analyze(SemContext *sem_context) {
 namespace {
 
 Status MultipleColumnSetError(const ColumnDesc* const col_desc,
-                                      const PTAssign* const assign_expr,
-                                      SemContext* sem_context) {
+                              const PTAssign* const assign_expr,
+                              SemContext* sem_context) {
   return sem_context->Error(
       assign_expr,
       strings::Substitute("Multiple incompatible setting of column $0.",

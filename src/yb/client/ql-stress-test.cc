@@ -66,6 +66,8 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::string;
+
 DECLARE_bool(TEST_combine_batcher_errors);
 DECLARE_bool(allow_preempting_compactions);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
@@ -162,9 +164,9 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Status WriteRow(const YBSessionPtr& session,
-                          const TableHandle& table,
-                          int32_t key,
-                          const std::string& value) {
+                  const TableHandle& table,
+                  int32_t key,
+                  const std::string& value) {
     auto op = InsertRow(session, table, key, value);
     RETURN_NOT_OK(session->TEST_Flush());
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
@@ -206,8 +208,8 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Status WriteRow(const YBSessionPtr& session,
-                          int32_t key,
-                          const std::string& value) {
+                  int32_t key,
+                  const std::string& value) {
     return QLStressTest::WriteRow(session, table_, key, value);
   }
 
@@ -272,7 +274,6 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
   size_t total_leaders = 0;
   *total_entries = 0;
   bool result = true;
-  size_t replicated_limit = FLAGS_detect_duplicates_for_retryable_requests ? 1 : 0;
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
     auto leader = peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
@@ -292,9 +293,13 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
       *total_entries += tablet_entries;
       ++total_leaders;
     }
-    // Last write request could be rejected as duplicate, so followers would not be able to
-    // cleanup replicated requests.
-    if (request_counts.running != 0 || (leader && request_counts.replicated > replicated_limit)) {
+
+    // When duplicates detection is enabled, we use the global min running request id shared by
+    // all tablets for the client so that cleanup of requests on one tablet can be withheld by
+    // requests on a different tablet. The upper bound of residual requests is not deterministic.
+    if (request_counts.running != 0 ||
+        (!FLAGS_detect_duplicates_for_retryable_requests &&
+         leader && request_counts.replicated > 0)) {
       result = false;
     }
   }

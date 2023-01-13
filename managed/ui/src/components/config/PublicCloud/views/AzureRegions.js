@@ -291,7 +291,7 @@ export const AzureRegions = ({ regions, onChange }) => {
 
       {isModalVisible && (
         <Formik
-          initialValues={currentRegion || initialRegionForm}
+          initialValues={currentRegion ?? initialRegionForm}
           validationSchema={validationSchema}
         >
           {({ values, errors, isValid, setFieldValue }) => (
@@ -346,6 +346,7 @@ export const AzureRegions = ({ regions, onChange }) => {
               <h5>AZ Mapping</h5>
               {values.azToSubnetIds.map((item, index) => (
                 <Row
+                  // eslint-disable-next-line react/no-array-index-key
                   key={index}
                   className={(index >= (zonesMap[values.region.value] || []).length) &&
                              values.region ? "invisible" : "visible"}

@@ -19,22 +19,20 @@ directories.
 
 import os
 import logging
-import argparse
 import re
 import sys
 import multiprocessing
 import subprocess
-import json
 import hashlib
 import time
 import semantic_version  # type: ignore
 import shlex
 import pathlib
 
-from subprocess import check_call
+from overrides import overrides
+from typing import List, Dict, Optional, Any, Set, Callable
 
 from yugabyte_pycommon import (  # type: ignore
-    init_logging,
     run_program,
     WorkDirContext,
     mkdir_p,
@@ -54,12 +52,12 @@ from yb.common_util import (
     shlex_join,
     check_arch,
     is_macos_arm64,
+    init_logging,
 )
 from yb import compile_commands
 from yb.compile_commands import (
     create_compile_commands_symlink, CompileCommandProcessor, get_compile_commands_file_path)
-from overrides import overrides
-from typing import List, Dict, Optional, Any, Set
+from yb.cmake_cache import CMakeCache, load_cmake_cache
 
 
 ALLOW_REMOTE_COMPILATION = True
@@ -81,6 +79,9 @@ REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and
 TRANSIENT_BUILD_ERRORS = ['missing separator.  Stop.']
 TRANSIENT_BUILD_RETRIES = 3
 
+COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES = ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LDFLAGS_EX']
+# CPPFLAGS are preprocessor flags.
+ALL_FLAG_ENV_VAR_NAMES = COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES + ['CPPFLAGS']
 
 # These files include generated files from the same directory as the including file itself, so their
 # directory need to be added to the list of include directories when we generate compilation
@@ -102,14 +103,17 @@ TRANSIENT_BUILD_RETRIES = 3
 # command in compile_commands.json.
 FILES_INCLUDING_GENERATED_FILES_FROM_SAME_DIR = ['guc.c', 'tuplesort.c']
 
+UNDEFINED_DYNAMIC_LOOKUP_FLAG_RE = re.compile(r'\s-undefined\s+dynamic_lookup\b')
+
 
 def sha256(s: str) -> str:
     return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
 
-def adjust_error_on_warning_flag(flag: str, step: str, language: str) -> Optional[str]:
+def adjust_compiler_flag(flag: str, step: str, language: str) -> Optional[str]:
     """
-    Adjust a given compiler flag according to the build step and language.
+    Adjust a given compiler flag according to the build step and language. If this returns None,
+    the flag should be removed from the command line.
     """
     assert language in ('c', 'c++')
     assert step in BUILD_STEPS
@@ -133,19 +137,54 @@ def adjust_error_on_warning_flag(flag: str, step: str, language: str) -> Optiona
     return flag
 
 
-def filter_compiler_flags(compiler_flags: str, step: str, language: str) -> str:
-    """
-    This function optionaly removes flags that turn warnings into errors.
-    """
-    assert language in ('c', 'c++')
+def adjust_linker_flag(flag: str, step: str) -> Optional[str]:
     assert step in BUILD_STEPS
-    adjusted_flags = [
-        adjust_error_on_warning_flag(flag, step, language)
-        for flag in compiler_flags.split()
-    ]
-    return ' '.join([
-        flag for flag in adjusted_flags if flag is not None
+    if step == 'configure':
+        # During the configuration step, do not ignore unresolved symbols. This may cause the
+        # configure script to conclude that certain functions are present that are actually
+        # absent, e.g. fls.
+        if flag in ['-Wl,--allow-shlib-undefined', '-Wl,--unresolved-symbols=ignore-all']:
+            return None
+    return flag
+
+
+def adjust_compiler_or_linker_flags(
+        flags_str: str,
+        step: str,
+        flag_var_name: str) -> str:
+    """
+    >>> adjust_compiler_or_linker_flags('-some_flag -undefined dynamic_lookup -some_other_flag',
+    ...                                 'configure',
+    ...                                 'LDFLAGS_EX')
+    '-some_flag -some_other_flag'
+    >>> adjust_compiler_or_linker_flags('-undefined dynamic_lookup -some_other_flag',
+    ...                                 'configure',
+    ...                                 'LDFLAGS_EX')
+    '-some_other_flag'
+    """
+    assert flag_var_name in COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES
+    assert step in BUILD_STEPS
+    adjust_fn: Callable[[str], Optional[str]]
+    if flag_var_name.startswith('LD'):
+        def adjust_fn(flag: str) -> Optional[str]:
+            return adjust_linker_flag(flag, step)
+    else:
+        language = 'c++' if flag_var_name.startswith('CXX') else 'c'
+
+        def adjust_fn(flag: str) -> Optional[str]:
+            return adjust_compiler_flag(flag, step, language)
+    adjusted_optional_flag_list = [adjust_fn(flag) for flag in flags_str.split()]
+    new_flags_str = ' '.join([
+        flag for flag in adjusted_optional_flag_list if flag is not None
     ])
+    if step == 'configure' and flag_var_name.startswith('LD'):
+        # We remove the "-undefined dynamic_lookup" flag from the linker flags for the same reason
+        # as we remove other flags that tell the linker to ignore unresolved symbols. We have to
+        # do it here with a regex because it consists of two separate arguments.
+        new_flags_str = ' '.join(
+            UNDEFINED_DYNAMIC_LOOKUP_FLAG_RE.sub(' ', ' ' + new_flags_str).strip().split()
+        )
+    return new_flags_str
 
 
 class PostgresBuilder(YbBuildToolBase):
@@ -157,6 +196,8 @@ class PostgresBuilder(YbBuildToolBase):
     pg_config_path: str
     compiler_type: str
     env_vars_for_build_stamp: Set[str]
+    shared_library_suffix: str
+    cmake_cache: CMakeCache
 
     def __init__(self) -> None:
         super().__init__()
@@ -187,37 +228,18 @@ class PostgresBuilder(YbBuildToolBase):
             self.set_env_var(name, to_append)
 
     @overrides
-    def get_description(self) -> str:
-        return __doc__
-
-    @overrides
     def add_command_line_args(self) -> None:
         parser = self.arg_parser
         parser.add_argument('--clean',
                             action='store_true',
                             help='Clean PostgreSQL build and installation directories.')
 
-        # These flags automatically get propagated to the appropriate environment variables,
-        # such as CFLAGS, CXXFLAGS, LDFLAGS, LDFLAGS_EX, CPPFLAGS.
-        parser.add_argument('--cflags', help='C compiler flags')
-        parser.add_argument('--cxxflags', help='C++ compiler flags')
-        parser.add_argument('--ldflags', help='Linker flags for all binaries')
-        parser.add_argument('--ldflags_ex', help='Linker flags for executables')
-        parser.add_argument('--cppflags', help='C/C++ preprocessor flags')
-
-        parser.add_argument('--openssl_include_dir', help='OpenSSL include dir')
-        parser.add_argument('--openssl_lib_dir', help='OpenSSL lib dir')
         parser.add_argument('--run_tests',
                             action='store_true',
                             help='Run PostgreSQL tests after building it.')
         parser.add_argument('--step',
                             choices=BUILD_STEPS,
                             help='Run a specific step of the build process')
-        parser.add_argument('--compiler_version',
-                            help='Compiler version (e.g. 14.0.3)')
-        parser.add_argument('--compiler_family',
-                            choices=['gcc', 'clang'],
-                            help='Compiler family (e.g. clang or gcc)')
         parser.add_argument(
             '--shared_library_suffix',
             help='Shared library suffix used on the current platform. Used to set DLSUFFIX '
@@ -230,15 +252,22 @@ class PostgresBuilder(YbBuildToolBase):
 
         self.build_root = os.path.abspath(self.args.build_root)
         self.build_root_realpath = os.path.realpath(self.build_root)
+
+        self.cmake_cache = load_cmake_cache(self.build_root)
+
         self.build_type = get_build_type_from_build_root(self.build_root)
         self.pg_build_root = os.path.join(self.build_root, 'postgres_build')
         self.build_stamp_path = os.path.join(self.pg_build_root, 'build_stamp')
         self.pg_prefix = os.path.join(self.build_root, 'postgres')
         self.postgres_src_dir = os.path.join(YB_SRC_ROOT, 'src', 'postgres')
         self.pg_config_path = os.path.join(self.build_root, 'postgres', 'bin', 'pg_config')
-        self.compiler_type = self.args.compiler_type
-        self.openssl_include_dir = self.args.openssl_include_dir
-        self.openssl_lib_dir = self.args.openssl_lib_dir
+        self.compiler_type = self.cmake_cache.get_or_raise('YB_COMPILER_TYPE')
+
+        # A space-separated list of include directories to specify when configuring Postgres.
+        self.include_dirs = self.cmake_cache.get_or_raise('PG_INCLUDE_DIRS')
+
+        # The same but for library directories.
+        self.lib_dirs = self.cmake_cache.get_or_raise('PG_LIB_DIRS')
 
         if not self.compiler_type:
             raise RuntimeError(
@@ -248,7 +277,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.skip_pg_compile_commands = os.environ.get('YB_SKIP_PG_COMPILE_COMMANDS') == '1'
         self.should_configure = self.args.step is None or self.args.step == 'configure'
         self.should_make = self.args.step is None or self.args.step == 'make'
-        self.thirdparty_dir = self.args.thirdparty_dir
+        self.thirdparty_dir = self.cmake_cache.get_or_raise('YB_THIRDPARTY_DIR')
 
         path_env_var_value: Optional[str] = os.getenv('PATH')
         if path_env_var_value is None:
@@ -259,8 +288,9 @@ class PostgresBuilder(YbBuildToolBase):
             if not self.original_path:
                 logging.warning("PATH is empty")
 
-        self.compiler_family = self.args.compiler_family
-        self.compiler_version = self.args.compiler_version
+        self.compiler_family = self.cmake_cache.get_or_raise('COMPILER_FAMILY')
+        self.compiler_version = self.cmake_cache.get_or_raise('COMPILER_VERSION')
+        self.shared_library_suffix = self.cmake_cache.get_or_raise('YB_SHARED_LIBRARY_SUFFIX')
 
     def adjust_cflags_in_makefile(self) -> None:
         makefile_global_path = os.path.join(self.pg_build_root, 'src/Makefile.global')
@@ -304,9 +334,21 @@ class PostgresBuilder(YbBuildToolBase):
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)
         self.set_env_var('YB_SRC_ROOT', YB_SRC_ROOT)
 
-        for var_name in ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LDFLAGS_EX', 'CPPFLAGS']:
-            arg_value = getattr(self.args, var_name.lower())
-            self.set_env_var(var_name, arg_value)
+        env_var_to_cmake_cache_mapping = {
+            'CFLAGS': 'POSTGRES_FINAL_C_FLAGS',
+            'CXXFLAGS': 'POSTGRES_FINAL_CXX_FLAGS',
+            'CPPFLAGS': 'POSTGRES_EXTRA_PREPROCESSOR_FLAGS',
+            'LDFLAGS': 'POSTGRES_FINAL_LD_FLAGS',
+            'LDFLAGS_EX': 'POSTGRES_FINAL_EXE_LD_FLAGS',
+
+            # Extra linker flags to add after the Yugabyte libraries when linking executables. For
+            # example, this can be used to add tcmalloc static library to satisfy missing symbols in
+            # Yugabyte libraries. This is relevant when building with GCC and linking with ld. With
+            # Clang and lld, the order of libraries does not matter.
+            'YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS': 'PG_EXE_LD_FLAGS_AFTER_YB_LIBS'
+        }
+        for env_var_name, cmake_cache_var_name in env_var_to_cmake_cache_mapping.items():
+            self.set_env_var(env_var_name, self.cmake_cache.get_or_raise(cmake_cache_var_name))
 
         additional_c_cxx_flags = [
             '-Wimplicit-function-declaration',
@@ -357,11 +399,11 @@ class PostgresBuilder(YbBuildToolBase):
         if self.is_gcc():
             additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
-        for var_name in ['CFLAGS', 'CXXFLAGS']:
-            os.environ[var_name] = filter_compiler_flags(
+        for var_name in COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES:
+            os.environ[var_name] = adjust_compiler_or_linker_flags(
                     os.environ.get(var_name, '') + ' ' + ' '.join(additional_c_cxx_flags),
                     step,
-                    language='c' if var_name == 'CFLAGS' else 'c++')
+                    flag_var_name=var_name)
         if step == 'make':
             self.adjust_cflags_in_makefile()
 
@@ -461,6 +503,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
+                '--enable-nls',
                 '--with-icu',
                 '--with-ldap',
                 '--with-openssl',
@@ -469,8 +512,8 @@ class PostgresBuilder(YbBuildToolBase):
                 # (libuuid-based for Unix/Mac).
                 '--with-uuid=e2fs',
                 '--with-libedit-preferred',
-                '--with-includes=' + self.openssl_include_dir,
-                '--with-libraries=' + self.openssl_lib_dir,
+                '--with-includes=' + self.include_dirs,
+                '--with-libraries=' + self.lib_dirs,
                 # We're enabling debug symbols for all types of builds.
                 '--enable-debug']
         if is_macos_arm64():
@@ -600,41 +643,43 @@ class PostgresBuilder(YbBuildToolBase):
                 return build_stamp_file.read().strip()
         return None
 
+    def write_debug_scripts(self, env_script_content: str) -> None:
+        """
+        Create the following convenience scripts in the current directory:
+        - env.sh: an environment setup script.
+        - make.sh: a wrapper around the make command.
+        """
+        with open('env.sh', 'w') as out_f:
+            out_f.write(env_script_content)
+
+        make_script_path = 'make.sh'
+        with open(make_script_path, 'w') as out_f:
+            out_f.write(
+                '\n'.join([
+                    '#!/usr/bin/env bash',
+                    '. "${BASH_SOURCE%/*}"/env.sh',
+                    'make "$@"'
+                ]) + '\n'
+            )
+
+        run_program(['chmod', 'u+x', make_script_path])
+
     def make_postgres(self) -> None:
         self.set_env_vars('make')
+
         # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
         # But in case YB project is built with make, MAKELEVEL is not 0 at this point.
-        make_cmd = ['make', 'MAKELEVEL=0']
+        make_cmd: List[str] = ['make', 'MAKELEVEL=0']
         if is_macos_arm64():
             make_cmd = ['arch', '-arm64'] + make_cmd
 
-        make_parallelism_str: Optional[str] = os.environ.get('YB_MAKE_PARALLELISM')
-        make_parallelism: Optional[int] = None
-        if make_parallelism_str is not None:
-            make_parallelism = int(make_parallelism_str)
-        if self.build_uses_remote_compilation and not self.remote_compilation_allowed:
-            # Since we're building everything locally in this case, and YB_MAKE_PARALLELISM is
-            # likely specified for distributed compilation, cap it at some factor times the number
-            # of CPU cores.
-            parallelism_cap = multiprocessing.cpu_count() * 2
-            if make_parallelism:
-                make_parallelism = min(parallelism_cap, make_parallelism)
-            else:
-                make_parallelism = parallelism_cap
-
+        make_parallelism = self.get_make_parallelism()
         if make_parallelism:
-            make_cmd += ['-j', str(int(make_parallelism))]
+            make_cmd += ['-j', str(make_parallelism)]
 
         self.set_env_var('YB_COMPILER_TYPE', self.compiler_type)
 
-        # Create a script allowing to easily run "make" from the build directory with the right
-        # environment.
-        env_script_content = ''
-        for env_var_name in CONFIG_ENV_VARS:
-            env_var_value = os.environ.get(env_var_name)
-            if env_var_value is None:
-                raise RuntimeError("Expected env var %s to be set" % env_var_name)
-            env_script_content += "export %s=%s\n" % (env_var_name, quote_for_bash(env_var_value))
+        env_script_content = self.get_env_script_content()
 
         pg_compile_commands_paths = []
 
@@ -647,17 +692,7 @@ class PostgresBuilder(YbBuildToolBase):
 
         for work_dir in work_dirs:
             with WorkDirContext(work_dir):
-                # Create a script to run Make easily with the right environment.
-                make_script_path = 'make.sh'
-                with open(make_script_path, 'w') as out_f:
-                    out_f.write(
-                        '#!/usr/bin/env bash\n'
-                        '. "${BASH_SOURCE%/*}"/env.sh\n'
-                        'make "$@"\n')
-                with open('env.sh', 'w') as out_f:
-                    out_f.write(env_script_content)
-
-                run_program(['chmod', 'u+x', make_script_path])
+                self.write_debug_scripts(env_script_content)
 
                 make_cmd_suffix = []
                 if work_dir == third_party_extensions_dir:
@@ -670,38 +705,7 @@ class PostgresBuilder(YbBuildToolBase):
                 complete_make_cmd = make_cmd + make_cmd_suffix
                 complete_make_cmd_str = shlex_join(complete_make_cmd)
                 complete_make_install_cmd = make_cmd + ['install'] + make_cmd_suffix
-                attempt = 0
-                while attempt <= TRANSIENT_BUILD_RETRIES:
-                    attempt += 1
-                    make_result = run_program(
-                        complete_make_cmd_str,
-                        stdout_stderr_prefix='make',
-                        cwd=work_dir,
-                        error_ok=True,
-                        shell=True  # TODO: get rid of shell=True.
-                    )
-                    if make_result.failure():
-                        transient_err = False
-                        stderr_lines = make_result.get_stderr().split('\n')
-                        for line in stderr_lines:
-                            if any(transient_error_pattern in line
-                                   for transient_error_pattern in TRANSIENT_BUILD_ERRORS):
-                                transient_err = True
-                                logging.info(f'Transient error: {line}')
-                                break
-                        if transient_err:
-                            logging.info(
-                                f"Transient error during build attempt {attempt}. "
-                                f"Re-trying make command: {complete_make_cmd_str}.")
-                        else:
-                            make_result.print_output_to_stdout()
-                            raise RuntimeError("PostgreSQL compilation failed")
-                    else:
-                        logging.info("Successfully ran 'make' in the %s directory", work_dir)
-                        break  # No error, break out of retry loop
-                else:
-                    raise RuntimeError(
-                        f"Maximum build attempts reached ({TRANSIENT_BUILD_RETRIES} attempts).")
+                self.run_make_with_retries(work_dir, complete_make_cmd_str)
 
                 if self.build_type != 'compilecmds' or work_dir == self.pg_build_root:
                     run_program(
@@ -734,6 +738,72 @@ class PostgresBuilder(YbBuildToolBase):
 
         if self.export_compile_commands:
             self.write_compile_commands_files(pg_compile_commands_paths)
+
+    def run_make_with_retries(self, work_dir: str, complete_make_cmd_str: str) -> None:
+        """
+        Runs Make in the current directory with up to TRANSIENT_BUILD_RETRIES retries.
+        """
+        attempt = 0
+        while attempt <= TRANSIENT_BUILD_RETRIES:
+            attempt += 1
+            make_result = run_program(
+                complete_make_cmd_str,
+                stdout_stderr_prefix='make',
+                cwd=work_dir,
+                error_ok=True,
+                shell=True  # TODO: get rid of shell=True.
+            )
+            if make_result.failure():
+                transient_err = False
+                stderr_lines = make_result.get_stderr().split('\n')
+                for line in stderr_lines:
+                    if any(transient_error_pattern in line
+                           for transient_error_pattern in TRANSIENT_BUILD_ERRORS):
+                        transient_err = True
+                        logging.info(f'Transient error: {line}')
+                        break
+                if transient_err:
+                    logging.info(
+                        f"Transient error during build attempt {attempt}. "
+                        f"Re-trying make command: {complete_make_cmd_str}.")
+                else:
+                    make_result.print_output_to_stdout()
+                    raise RuntimeError("PostgreSQL compilation failed")
+            else:
+                logging.info("Successfully ran 'make' in the %s directory", work_dir)
+                break  # No error, break out of retry loop
+        else:
+            raise RuntimeError(
+                    f"Maximum build attempts reached ({TRANSIENT_BUILD_RETRIES} attempts).")
+
+    def get_env_script_content(self) -> str:
+        """
+        Returns a Bash script that sets all variables necessary to easily rerun the "make" step
+        of Postgres build (either for Postgres itself or for some contrib project).
+        """
+        env_script_content = ''
+        for env_var_name in CONFIG_ENV_VARS:
+            env_var_value = os.environ.get(env_var_name)
+            if env_var_value is None:
+                raise RuntimeError("Expected env var %s to be set" % env_var_name)
+            env_script_content += "export %s=%s\n" % (env_var_name, quote_for_bash(env_var_value))
+        return env_script_content
+
+    def get_make_parallelism(self) -> Optional[int]:
+        make_parallelism_str: Optional[str] = os.environ.get('YB_MAKE_PARALLELISM')
+        make_parallelism: Optional[int] = None
+        if make_parallelism_str is not None:
+            make_parallelism = int(make_parallelism_str)
+        if self.build_uses_remote_compilation and not self.remote_compilation_allowed:
+            # Since we're building everything locally in this case, and YB_MAKE_PARALLELISM is
+            # likely specified for distributed compilation, cap it at some factor times the number
+            # of CPU cores.
+            parallelism_cap = multiprocessing.cpu_count() * 2
+            if make_parallelism:
+                make_parallelism = min(parallelism_cap, make_parallelism)
+            else:
+                make_parallelism = parallelism_cap
+        return make_parallelism
 
     def write_compile_commands_file(
             self,
@@ -777,7 +847,7 @@ class PostgresBuilder(YbBuildToolBase):
         compile_command_processor = CompileCommandProcessor(
             self.build_root,
             extra_args=[
-                f'-DDLSUFFIX="{self.args.shared_library_suffix}"'
+                f'-DDLSUFFIX="{self.shared_library_suffix}"'
             ],
             add_original_dir_to_path_for_files=set(FILES_INCLUDING_GENERATED_FILES_FROM_SAME_DIR))
 
@@ -873,7 +943,7 @@ class PostgresBuilder(YbBuildToolBase):
 
 
 def main() -> None:
-    init_logging()
+    init_logging(verbose=False)
     check_arch()
     if get_bool_env_var('YB_SKIP_POSTGRES_BUILD'):
         logging.info("Skipping PostgreSQL build (YB_SKIP_POSTGRES_BUILD is set)")

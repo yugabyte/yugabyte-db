@@ -20,6 +20,8 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
@@ -33,9 +35,12 @@ class PgTxnTest : public PgMiniTestBase {
 
  protected:
   void AssertEffectiveIsolationLevel(PGConn* conn, const string& expected) {
-    auto value = ASSERT_RESULT(
+    auto value_from_deprecated_guc = ASSERT_RESULT(
         conn->FetchValue<std::string>("SHOW yb_effective_transaction_isolation_level"));
-    ASSERT_EQ(value, expected);
+    auto value_from_proc = ASSERT_RESULT(
+        conn->FetchValue<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
+    ASSERT_EQ(value_from_deprecated_guc, value_from_proc);
+    ASSERT_EQ(value_from_deprecated_guc, expected);
   }
 };
 

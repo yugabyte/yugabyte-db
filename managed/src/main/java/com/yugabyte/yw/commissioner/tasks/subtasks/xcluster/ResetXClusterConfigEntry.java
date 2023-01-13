@@ -17,7 +17,8 @@ public class ResetXClusterConfigEntry extends XClusterConfigTaskBase {
 
   @Override
   public String getName() {
-    return String.format("%s(xClusterConfig=%s)", super.getName(), taskParams().xClusterConfig);
+    return String.format(
+        "%s(xClusterConfig=%s)", super.getName(), taskParams().getXClusterConfig());
   }
 
   @Override

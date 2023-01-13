@@ -84,18 +84,19 @@
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(wait_if_no_leader_master, false,
+DEFINE_UNKNOWN_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
             "this flag determines if yb-admin should wait for the entire duration of timeout or"
             "in case a leader master appears in that duration or return error immediately.");
 
-DEFINE_string(certs_dir_name, "",
+DEFINE_UNKNOWN_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
-DEFINE_string(client_node_name, "", "Client node name.");
+DEFINE_UNKNOWN_string(client_node_name, "", "Client node name.");
 
-DEFINE_bool(
+DEFINE_UNKNOWN_bool(
     disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
@@ -114,6 +115,10 @@ using namespace std::literals;
 
 using std::cout;
 using std::endl;
+using std::string;
+using std::pair;
+using std::make_pair;
+using std::vector;
 
 using google::protobuf::RepeatedPtrField;
 using google::protobuf::util::MessageToJsonString;
@@ -674,6 +679,39 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
     cout << "Found WAL retention time for table " << table_name.table_name() << ": "
          << info.wal_retention_secs.get() << " seconds" << endl;
   }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::PromoteAutoFlags(
+    const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
+  master::PromoteAutoFlagsRequestPB req;
+  master::PromoteAutoFlagsResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_max_flag_class(max_flag_class);
+  req.set_promote_non_runtime_flags(promote_non_runtime_flags);
+  req.set_force(force);
+  RETURN_NOT_OK(master_cluster_proxy_->PromoteAutoFlags(req, &resp, &rpc));
+  if (resp.has_error()) {
+    const auto status = StatusFromPB(resp.error().status());
+    if (!status.IsAlreadyPresent()) {
+      return status;
+    }
+  }
+
+  std::cout << "PromoteAutoFlags status: " << std::endl;
+  if (!resp.has_new_config_version()) {
+    std::cout << "No new AutoFlags to promote";
+  } else {
+    std::cout << "New AutoFlags were promoted. Config version: " << resp.new_config_version();
+    if (resp.non_runtime_flags_promoted()) {
+      std::cout << std::endl;
+      std::cout << "All YbMaster and YbTserver processes need to be restarted to apply the "
+                   "promoted AutoFlags";
+    }
+  }
+  std::cout << std::endl;
+
   return Status::OK();
 }
 

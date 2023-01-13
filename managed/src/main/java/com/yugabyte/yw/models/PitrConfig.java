@@ -5,7 +5,6 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
@@ -26,14 +25,16 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.Transient;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.SnapshotInfo;
 import org.yb.CommonTypes.TableType;
+import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
-@ApiModel(description = "")
+@ApiModel(description = "PITR config created on the universe")
 @Entity
 @Slf4j
 @Data
+@EqualsAndHashCode(callSuper = false)
 public class PitrConfig extends Model {
 
   private static final Finder<UUID, PitrConfig> find =
@@ -57,7 +58,11 @@ public class PitrConfig extends Model {
   @JsonBackReference
   public Universe universe;
 
-  @Transient List<SnapshotInfo> snapshots;
+  @Transient State state;
+
+  @Transient long minRecoverTimeInMillis;
+
+  @Transient long maxRecoverTimeInMillis;
 
   @ApiModelProperty(value = "Table Type", accessMode = READ_WRITE)
   @Column(nullable = false)
@@ -68,13 +73,13 @@ public class PitrConfig extends Model {
   @Column(nullable = false)
   public String dbName;
 
-  @ApiModelProperty(value = "Interval between snasphots in milli seconds", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Interval between snasphots in seconds", accessMode = READ_WRITE)
   @Column(nullable = false)
-  public long scheduleInterval = 86400L * 1000L;
+  public long scheduleInterval = 86400L;
 
-  @ApiModelProperty(value = "Retention Period", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Retention Period in seconds", accessMode = READ_WRITE)
   @Column(nullable = false)
-  public long retentionPeriod = 86400L * 1000L * 7L;
+  public long retentionPeriod = 86400L * 7L;
 
   @ApiModelProperty(value = "Create time of the PITR config", accessMode = READ_ONLY)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
@@ -85,6 +90,10 @@ public class PitrConfig extends Model {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @Column
   private Date updateTime;
+
+  public UUID getUuid() {
+    return uuid;
+  }
 
   public static PitrConfig create(UUID scheduleUUID, CreatePitrConfigParams params) {
     PitrConfig pitrConfig = new PitrConfig();

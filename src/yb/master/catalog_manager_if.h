@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_MANAGER_IF_H
-#define YB_MASTER_CATALOG_MANAGER_IF_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -161,7 +160,7 @@ class CatalogManagerIf {
 
   virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
 
-  virtual Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) = 0;
+  virtual Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) = 0;
 
   virtual Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const = 0;
 
@@ -227,7 +226,7 @@ class CatalogManagerIf {
 
   virtual Status VisitSysCatalog(int64_t term) = 0;
 
-  virtual scoped_refptr<TableInfo> NewTableInfo(TableId id) = 0;
+  virtual scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) = 0;
 
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
   virtual Status SplitTablet(const TabletId& tablet_id, ManualSplit is_manual_split) = 0;
@@ -253,6 +252,8 @@ class CatalogManagerIf {
 
   virtual TabletSplitManager* tablet_split_manager() = 0;
 
+  virtual XClusterSafeTimeService* TEST_xcluster_safe_time_service() = 0;
+
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 
   virtual intptr_t tablets_version() const = 0;
@@ -272,5 +273,3 @@ bool IsYcqlTable(const TableInfo& table);
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_CATALOG_MANAGER_IF_H

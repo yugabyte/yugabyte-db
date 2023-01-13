@@ -29,8 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_METADATA_H
-#define YB_TABLET_TABLET_METADATA_H
+
+#pragma once
 
 #include <memory>
 #include <string>
@@ -48,6 +48,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/schema_packing.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -72,9 +73,14 @@ extern const std::string kIntentsSubdir;
 extern const std::string kIntentsDBSuffix;
 extern const std::string kSnapshotsDirSuffix;
 
+const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
+
 YB_STRONGLY_TYPED_BOOL(Primary);
 
 struct TableInfo {
+ private:
+  class PrivateTag {};
+ public:
   // Table id, name and type.
   std::string table_id;
   std::string namespace_name;
@@ -85,6 +91,7 @@ struct TableInfo {
   TableType table_type;
   Uuid cotable_id; // table_id as Uuid
 
+  std::string log_prefix;
   // The table schema, secondary index map, index info (for index table only) and schema version.
   const std::unique_ptr<docdb::DocReadContext> doc_read_context;
   std::unique_ptr<IndexMap> index_map;
@@ -103,8 +110,10 @@ struct TableInfo {
   // We use the retention time from the primary table.
   uint32_t wal_retention_secs = 0;
 
-  TableInfo();
-  TableInfo(Primary primary,
+  // Public ctor with private argument to allow std::make_shared, but prevent public usage.
+  TableInfo(const std::string& log_prefix, PrivateTag);
+  TableInfo(const std::string& tablet_log_prefix,
+            Primary primary,
             std::string table_id,
             std::string namespace_name,
             std::string table_name,
@@ -122,7 +131,8 @@ struct TableInfo {
   TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
   ~TableInfo();
 
-  Status LoadFromPB(const TableId& primary_table_id, const TableInfoPB& pb);
+  static Result<TableInfoPtr> LoadFromPB(
+      const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
 
   std::string ToString() const {
@@ -137,10 +147,20 @@ struct TableInfo {
 
   const Schema& schema() const;
 
-  Status MergeWithRestored(const TableInfoPB& pb);
+  Status MergeWithRestored(const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite);
+
+  const std::string& LogPrefix() const {
+    return log_prefix;
+  }
+
+  bool primary() const {
+    return cotable_id.IsNil();
+  }
 
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
+ private:
+  Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -155,13 +175,16 @@ struct KvStoreInfo {
         rocksdb_dir(rocksdb_dir_),
         snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
-  Status LoadFromPB(const KvStoreInfoPB& pb,
+  Status LoadFromPB(const std::string& tablet_log_prefix,
+                    const KvStoreInfoPB& pb,
                     const TableId& primary_table_id,
                     bool local_superblock);
 
-  Status MergeWithRestored(const KvStoreInfoPB& pb);
+  Status MergeWithRestored(
+      const KvStoreInfoPB& pb, bool colocated, docdb::OverwriteSchemaPacking overwrite);
 
   Status LoadTablesFromPB(
+      const std::string& tablet_log_prefix,
       const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
 
   void ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const;
@@ -183,6 +206,9 @@ struct KvStoreInfo {
 
   // See KvStoreInfoPB field with the same name.
   bool has_been_fully_compacted = false;
+
+  // See KvStoreInfoPB field with the same name.
+  uint64_t last_full_compaction_time = kNoLastFullCompactionTime;
 
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
@@ -278,6 +304,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   SchemaVersion schema_version(
       const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
+  Result<SchemaVersion> schema_version(ColocationId colocation_id) const;
+
+  Result<SchemaVersion> schema_version(const Uuid& cotable_id) const;
+
   const std::string& indexed_table_id(const TableId& table_id = "") const;
 
   bool is_index(const TableId& table_id = "") const;
@@ -319,9 +349,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id);
 
+  Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+
   int64_t cdc_min_replicated_index() const;
 
   OpId cdc_sdk_min_checkpoint_op_id() const;
+
+  HybridTime cdc_sdk_safe_time() const;
 
   Status SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
 
@@ -335,6 +369,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void set_has_been_fully_compacted(const bool& value) {
     std::lock_guard<MutexType> lock(data_mutex_);
     kv_store_.has_been_fully_compacted = value;
+  }
+
+  uint64_t last_full_compaction_time() {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.last_full_compaction_time;
+  }
+
+  void set_last_full_compaction_time(const uint64& value) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    kv_store_.last_full_compaction_time = value;
   }
 
   bool AddSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
@@ -405,7 +449,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Status SaveTo(const std::string& path);
 
   // Merge this metadata with restored metadata located at specified path.
-  Status MergeWithRestored(const std::string& path);
+  Status MergeWithRestored(const std::string& path, docdb::OverwriteSchemaPacking overwrite);
 
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
   // then delete all of the rowsets in this tablet.
@@ -477,7 +521,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<std::string> TopSnapshotsDir() const;
 
   // Return standard "T xxx P yyy" log prefix.
-  std::string LogPrefix() const;
+  const std::string& LogPrefix() const;
 
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids() const;
 
@@ -531,13 +575,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const std::string& wal_dir);
 
   // Constructor for loading an existing Raft group.
-  RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id);
+  RaftGroupMetadata(FsManager* fs_manager, const RaftGroupId& raft_group_id);
 
   Status LoadFromDisk();
 
   // Update state of metadata to that of the given superblock PB.
   Status LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock,
-                                    bool local_superblock);
+                            bool local_superblock);
 
   Status ReadSuperBlock(RaftGroupReplicaSuperBlockPB *pb);
 
@@ -603,6 +647,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // The minimum CDCSDK checkpoint Opid that has been consumed by client.
   OpId cdc_sdk_min_checkpoint_op_id_ GUARDED_BY(data_mutex_);
 
+  // The minimum hybrid time based on which data is retained for before image
+  HybridTime cdc_sdk_safe_time_ GUARDED_BY(data_mutex_);
+
   bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
@@ -615,6 +662,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
+
+  const std::string log_prefix_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };
@@ -632,5 +681,3 @@ Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
 
 } // namespace tablet
 } // namespace yb
-
-#endif /* YB_TABLET_TABLET_METADATA_H */

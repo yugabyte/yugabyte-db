@@ -20,6 +20,7 @@
 #include <atomic>
 #include <bitset>
 #include <chrono>
+#include <compare>
 #include <cstdint>
 #include <fstream>
 #include <functional>

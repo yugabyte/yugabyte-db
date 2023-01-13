@@ -29,6 +29,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 namespace integration_tests {
 namespace {

@@ -48,7 +48,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
         <div class="title">Start and stop processes</div>
       </div>
       <div class="body">
-        Start and stop processes.
+        Start and stop the node processes.
       </div>
     </a>
   </div>
@@ -144,7 +144,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
         <div class="title">Upgrade YugabyteDB software</div>
       </div>
       <div class="body">
-        Upgrade YugabyteDB software.
+        Upgrade YugabyteDB software powering your universes.
       </div>
     </a>
   </div>

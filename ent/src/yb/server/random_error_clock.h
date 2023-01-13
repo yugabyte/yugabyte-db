@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_SERVER_RANDOM_ERROR_CLOCK_H
-#define ENT_SRC_YB_SERVER_RANDOM_ERROR_CLOCK_H
+#pragma once
 
 #include "yb/util/physical_time.h"
 
@@ -38,5 +37,3 @@ class RandomErrorClock : public PhysicalClock {
 
 } // namespace server
 } // namespace yb
-
-#endif // ENT_SRC_YB_SERVER_RANDOM_ERROR_CLOCK_H

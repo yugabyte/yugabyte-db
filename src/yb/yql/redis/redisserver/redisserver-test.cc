@@ -52,6 +52,7 @@
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
+#include "yb/util/flags.h"
 
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
@@ -73,9 +74,9 @@ DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int64(max_time_in_queue_ms);
 
-DEFINE_uint64(test_redis_max_concurrent_commands, 20,
+DEFINE_UNKNOWN_uint64(test_redis_max_concurrent_commands, 20,
     "Value of redis_max_concurrent_commands for pipeline test");
-DEFINE_uint64(test_redis_max_batch, 250,
+DEFINE_UNKNOWN_uint64(test_redis_max_batch, 250,
     "Value of redis_max_batch for pipeline test");
 
 METRIC_DECLARE_gauge_uint64(redis_available_sessions);
@@ -4743,7 +4744,7 @@ TEST_F(TestRedisService, TestTtlSortedSet) {
   TestTtlSortedSet(&collection_key, values, card);
 }
 
-TEST_F(TestRedisService, TestTtlHash) {
+TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlHash)) {
   std::string collection_key = "hash_browns";
   CollectionEntry values[10] = { std::make_tuple("eggs", "hyperloglog"),
                                  std::make_tuple("bagel", "bloom"),

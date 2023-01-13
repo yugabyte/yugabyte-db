@@ -31,6 +31,7 @@
 #include "access/reloptions.h"
 #include "catalog/pg_database.h"
 #include "common/pg_yb_common.h"
+#include "executor/instrument.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "utils/guc.h"
@@ -58,17 +59,6 @@
  * TODO: Improve cache versioning and refresh logic to be more fine-grained to
  * reduce frequency and/or duration of cache refreshes.
  */
-extern uint64_t yb_catalog_cache_version;
-
-/* Stores the catalog version info that is fetched from the local tserver. */
-extern YbTserverCatalogInfo yb_tserver_catalog_info;
-
-/*
- * Stores the shared memory array db_catalog_versions_ index of the slot
- * allocated for the MyDatabaseId, or -1 if no slot has been allocated for
- * MyDatabaseId.
- */
-extern int yb_my_database_id_shm_index;
 
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
@@ -83,7 +73,17 @@ extern int yb_my_database_id_shm_index;
  */
 extern uint64_t YBGetActiveCatalogCacheVersion();
 
-extern void YBResetCatalogVersion();
+extern uint64_t YbGetCatalogCacheVersion();
+
+extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+
+extern void YbResetCatalogCacheVersion();
+
+extern uint64_t YbGetLastKnownCatalogCacheVersion();
+
+extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
+
+extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
 typedef enum GeolocationDistance {
     ZONE_LOCAL,
@@ -193,7 +193,12 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
-extern bool YbIsDatabaseColocated(Oid dbid);
+/*
+ * Return whether a database with oid dbid is a colocated database.
+ * legacy_colocated_database is one output parameter. Its value indicates
+ * whether database with oid dbid is a legacy colocated database.
+ */
+extern bool YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -218,6 +223,12 @@ extern bool YBTransactionsEnabled();
  * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
  */
 extern bool IsYBReadCommitted();
+
+/*
+ * Whether wait-queues are enabled for the cluster or not (via the TServer gflag
+ * enable_wait_queues).
+ */
+extern bool YBIsWaitQueueEnabled();
 
 /*
  * Whether to allow users to use SAVEPOINT commands at the query layer.
@@ -493,6 +504,14 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * Block index state changes:
+ * - "indisready": indislive to indisready
+ * - "getsafetime": indisready to backfill (specifically, the get safe time)
+ * - "indisvalid": backfill to indisvalid
+ */
+extern char *yb_test_block_index_state_change;
+
+/*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
  * Currently: yb_debug_log_docdb_requests.
@@ -506,7 +525,10 @@ extern const char* YBDatumToString(Datum datum, Oid typid);
 /*
  * Get a string representation of a tuple (row) given its tuple description (schema).
  */
-extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+
+/* Get a string representation of a bitmapset (for debug purposes only!) */
+extern const char* YbBitmapsetToString(Bitmapset *bms);
 
 /*
  * Checks if the master thinks initdb has already been done.
@@ -524,6 +546,8 @@ extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
+extern void YBGetAndResetOperationFlushRpcStats(uint64_t *count,
+												uint64_t *wait_time);
 
 bool YBReadFromFollowersEnabled();
 int32_t YBFollowerReadStalenessMs();
@@ -561,7 +585,9 @@ YbTableProperties YbTryGetTableProperties(Relation rel);
  */
 bool YBIsSupportedLibcLocale(const char *localebuf);
 
-void YBTestFailDdlIfRequested();
+/* Spin wait while test guc var actual equals expected. */
+extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
+										const char *msg);
 
 char *YBDetailSorted(char *input);
 
@@ -666,6 +692,8 @@ bool YBCIsRegionLocal(Relation rel);
  * for all range-partitioned tables with more than one tablet.
  * Return an empty string when duplicate split points exist
  * after tablet splitting.
+ * Return an emptry string when a NULL value is present in split points
+ * after tablet splitting.
  */
 extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 
@@ -673,5 +701,43 @@ extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
 												 void		*extra);
+/*
+ * Update read RPC statistics for EXPLAIN ANALYZE.
+ */
+void YbUpdateReadRpcStats(YBCPgStatement handle,
+						  YbPgRpcStats *reads, YbPgRpcStats *tbl_reads);
+
+/*
+ * If the tserver gflag --ysql_disable_server_file_access is set to
+ * true, then prevent any server file writes/reads/execution.
+ */
+extern void YBCheckServerAccessIsAllowed();
+
+void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
+
+uint64_t YbGetSharedCatalogVersion();
+uint32_t YbGetNumberOfDatabases();
+
+/*
+ * This function helps map the user intended row-level lock policy i.e., "userLockWaitPolicy" of
+ * type enum LockWaitPolicy to the "effectiveWaitPolicy" of type enum WaitPolicy as defined in
+ * common.proto.
+ *
+ * The semantics of the WaitPolicy enum differs slightly from the traditional LockWaitPolicy in
+ * Postgres as explained in common.proto. This is due to historical reasons. WaitPolicy in
+ * common.proto was created as a copy of LockWaitPolicy to be passed to the Tserver to help in
+ * appropriate conflict-resolution steps for the different row-level lock policies.
+ *
+ * This function does the following:
+ * 1. Log a warning for a userLockWaitPolicy of LockWaitSkip and LockWaitError because SKIP LOCKED
+ *		and NO WAIT are not supported yet.
+ * 2. Set effectiveWaitPolicy to either WAIT_BLOCK if wait queues are enabled. Else, set it to
+ *		WAIT_ERROR (which actually uses the "Fail on Conflict" conflict management policy instead
+ *		of "no wait" semantics as explained in "enum WaitPolicy" in common.proto).
+ */
+void YBUpdateRowLockPolicyForSerializable(
+		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy);
+
+const char* yb_fetch_current_transaction_priority(void);
 
 #endif /* PG_YB_UTILS_H */

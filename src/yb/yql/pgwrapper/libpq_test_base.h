@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_LIBPQ_TEST_BASE_H
-#define YB_YQL_PGWRAPPER_LIBPQ_TEST_BASE_H
+#pragma once
 
 #include "yb/util/monotime.h"
 #include "yb/util/tostring.h"
@@ -27,13 +26,13 @@ class LibPqTestBase : public PgWrapperTestBase {
  protected:
   void SetUp() override;
   Result<PGConn> Connect(bool simple_query_protocol = false);
-  Result<PGConn> ConnectToDB(const string& db_name, bool simple_query_protocol = false);
+  Result<PGConn> ConnectToDB(const std::string& db_name, bool simple_query_protocol = false);
   Result<PGConn> ConnectToDBAsUser(
-      const string& db_name,
-      const string& user,
+      const std::string& db_name,
+      const std::string& user,
       bool simple_query_protocol = false);
   Result<PGConn> ConnectUsingString(
-      const string& conn_str,
+      const std::string& conn_str,
       CoarseTimePoint deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(10),
       bool simple_query_protocol = false);
   static bool TransactionalFailure(const Status& status);
@@ -41,5 +40,3 @@ class LibPqTestBase : public PgWrapperTestBase {
 
 } // namespace pgwrapper
 } // namespace yb
-
-#endif // YB_YQL_PGWRAPPER_LIBPQ_TEST_BASE_H

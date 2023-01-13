@@ -24,18 +24,20 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DestroyUniverse extends UniverseTaskBase {
 
-  private Set<UUID> lockedXClusterUniversesUuidSet = null;
+  protected Set<UUID> lockedXClusterUniversesUuidSet = null;
 
   @Inject
   public DestroyUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -90,6 +92,11 @@ public class DestroyUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
         if (primaryCluster.userIntent.providerType.equals(CloudType.onprem)) {
+          // Remove all nodes from load balancer.
+          createManageLoadBalancerTasks(
+              createLoadBalancerMap(
+                  universe.getUniverseDetails(), null, new HashSet<>(universe.getNodes()), null));
+
           // Stop master and tservers.
           createStopServerTasks(universe.getNodes(), "master", params().isForceDelete)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
@@ -172,7 +179,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     if (!universeDetails.rootAndClientRootCASame) {
       // Create the task to delete clientRootCerts.
       DeleteCertificate clientRootCertDeletiontask =
-          createDeleteCertificateTask(params().customerUUID, universeDetails.clientRootCA);
+          createDeleteCertificateTask(params().customerUUID, universeDetails.getClientRootCA());
       // Add it to the task list.
       if (clientRootCertDeletiontask != null) {
         subTaskGroup.addSubTask(clientRootCertDeletiontask);
@@ -201,7 +208,7 @@ public class DestroyUniverse extends UniverseTaskBase {
    * <p>Note: it relies on the fact that the unlock universe operation on a universe that is not
    * locked by this task is a no-op.
    */
-  private void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
+  protected void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
     // XCluster configs whose other universe exists.
     List<XClusterConfig> xClusterConfigs =
         XClusterConfig.getByUniverseUuid(params().universeUUID)
@@ -265,7 +272,9 @@ public class DestroyUniverse extends UniverseTaskBase {
       }
 
       // Create the subtasks to delete all the xCluster configs.
-      xClusterConfigs.forEach(this::createDeleteXClusterConfigSubtasks);
+      xClusterConfigs.forEach(
+          xClusterConfig ->
+              createDeleteXClusterConfigSubtasks(xClusterConfig, params().isForceDelete));
       log.debug("Subtasks created to delete these xCluster configs: {}", xClusterConfigs);
     } catch (Exception e) {
       log.error(

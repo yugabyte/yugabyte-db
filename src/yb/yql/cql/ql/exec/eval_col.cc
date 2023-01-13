@@ -35,7 +35,7 @@ using std::shared_ptr;
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
-                                        QLReferencedColumnsPB *columns_pb) {
+                                QLReferencedColumnsPB *columns_pb) {
   // Write a list of columns to be read before executing the statement.
   const MCSet<int32>& column_refs = tnode->column_refs();
   for (auto column_ref : column_refs) {

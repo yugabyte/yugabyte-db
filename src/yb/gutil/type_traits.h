@@ -71,12 +71,9 @@
 //   is_convertible
 // We can add more type traits as required.
 
-#ifndef BASE_TYPE_TRAITS_H_
-#define BASE_TYPE_TRAITS_H_
+#pragma once
 
 #include <utility>
-using std::make_pair;
-using std::pair;                  // For pair
 
 #include "yb/gutil/template_util.h"     // For true_type and false_type
 
@@ -377,5 +374,3 @@ struct is_convertible
 #define PROPAGATE_POD_FROM_TEMPLATE_ARGUMENT(TemplateName)             \
     typedef int Dummy_Type_For_PROPAGATE_POD_FROM_TEMPLATE_ARGUMENT ATTRIBUTE_UNUSED
 #define ENFORCE_POD(TypeName) typedef int Dummy_Type_For_ENFORCE_POD ATTRIBUTE_UNUSED
-
-#endif  // BASE_TYPE_TRAITS_H_

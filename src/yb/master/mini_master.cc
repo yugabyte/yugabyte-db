@@ -46,6 +46,9 @@
 #include "yb/util/net/tunnel.h"
 #include "yb/util/status.h"
 
+using std::string;
+using std::vector;
+
 using strings::Substitute;
 
 DECLARE_bool(TEST_simulate_fs_create_failure);

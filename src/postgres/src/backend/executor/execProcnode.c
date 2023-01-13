@@ -461,6 +461,35 @@ ExecProcNodeFirst(PlanState *node)
 
 
 /*
+ * Update Yugabyte specific run-time statistics.
+ */
+static void
+YbUpdateInstrument(PlanState *node)
+{
+	switch (nodeTag(node))
+	{
+	case T_IndexScanState:
+		YbExecUpdateInstrumentIndexScan((IndexScanState *) node,
+										node->instrument);
+		break;
+	case T_IndexOnlyScanState:
+		YbExecUpdateInstrumentIndexOnlyScan((IndexOnlyScanState *) node,
+											node->instrument);
+		break;
+	case T_SeqScanState:
+		YbExecUpdateInstrumentSeqScan((SeqScanState *) node,
+									  node->instrument);
+		break;
+	case T_ForeignScanState:
+		YbExecUpdateInstrumentForeignScan((ForeignScanState *) node,
+										  node->instrument);
+		break;
+	default:
+		break;
+	}
+}
+
+/*
  * ExecProcNode wrapper that performs instrumentation calls.  By keeping
  * this a separate function, we avoid overhead in the normal case where
  * no instrumentation is wanted.
@@ -475,6 +504,7 @@ ExecProcNodeInstr(PlanState *node)
 	result = node->ExecProcNodeReal(node);
 
 	InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
+	YbUpdateInstrument(node);
 
 	return result;
 }

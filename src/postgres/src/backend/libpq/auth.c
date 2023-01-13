@@ -41,6 +41,10 @@
 #include "utils/timestamp.h"
 
 #include "pg_yb_utils.h"
+#include "access/htup_details.h"
+#include "catalog/pg_yb_role_profile.h"
+#include "commands/yb_profile.h"
+#include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 
@@ -50,7 +54,7 @@
  */
 static void sendAuthRequest(Port *port, AuthRequest areq, const char *extradata,
 				int extralen);
-static void auth_failed(Port *port, int status, char *logdetail);
+static void auth_failed(Port *port, int status, char *logdetail, bool lockout);
 static char *recv_password_packet(Port *port);
 
 
@@ -149,6 +153,8 @@ ULONG		(*__ldap_start_tls_sA) (
 #endif
 
 static int	CheckLDAPAuth(Port *port);
+
+static char* get_ldap_password(char* ldapbindpasswd);
 
 /* LDAP_OPT_DIAGNOSTIC_MESSAGE is the newer spelling */
 #ifndef LDAP_OPT_DIAGNOSTIC_MESSAGE
@@ -262,7 +268,7 @@ ClientAuthentication_hook_type ClientAuthentication_hook = NULL;
  * particular, if logdetail isn't NULL, we send that string to the log.
  */
 static void
-auth_failed(Port *port, int status, char *logdetail)
+auth_failed(Port *port, int status, char *logdetail, bool role_is_locked_out)
 {
 	const char *errstr;
 	char	   *cdetail;
@@ -345,9 +351,11 @@ auth_failed(Port *port, int status, char *logdetail)
 		logdetail = cdetail;
 
 	ereport(FATAL,
-			(errcode(errcode_return),
-			 errmsg(errstr, port->user_name),
-			 logdetail ? errdetail_log("%s", logdetail) : 0));
+		(errcode(errcode_return),
+		 role_is_locked_out
+			? errmsg("role \"%s\" is locked. Contact your database administrator.", port->user_name)
+			: errmsg(errstr, port->user_name),
+		 logdetail ? errdetail_log("%s", logdetail) : 0));
 
 	/* doesn't return */
 }
@@ -626,10 +634,56 @@ ClientAuthentication(Port *port)
 	if (ClientAuthentication_hook)
 		(*ClientAuthentication_hook) (port, status);
 
+
+	/*
+	 * If conditions are met, update the role's profile entry.  Specific
+	 * authentication methods are isolated from profile handling.
+	 */
+	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist &&
+		IsProfileHandlingRequired(port->hba->auth_method))
+	{
+		bool profile_is_disabled = false;
+		HeapTuple roleTuple, profileTuple = NULL;
+		Oid roleid = InvalidOid;
+
+		/* Get role info from pg_authid */
+		roleTuple = SearchSysCache1(AUTHNAME, PointerGetDatum(port->user_name));
+		if (HeapTupleIsValid(roleTuple))
+		{
+			roleid = HeapTupleGetOid(roleTuple);
+			profileTuple = yb_get_role_profile_tuple_by_role_oid(roleid);
+			if (HeapTupleIsValid(profileTuple))
+			{
+				Form_pg_yb_role_profile rolprfform = (Form_pg_yb_role_profile)
+											GETSTRUCT(profileTuple);
+				if (rolprfform->rolprfstatus != YB_ROLPRFSTATUS_OPEN)
+				{
+					profile_is_disabled = true;
+				}
+			}
+			ReleaseSysCache(roleTuple);
+		}
+
+		if (status == STATUS_OK && !profile_is_disabled)
+		{
+			if (roleid != InvalidOid)
+				YbResetFailedAttemptsIfAllowed(roleid);
+			sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
+		}
+		else
+		{
+			/* Do not increment login attempts if no password was supplied */
+			if (roleid != InvalidOid && status != STATUS_EOF)
+				profile_is_disabled = YbMaybeIncFailedAttemptsAndDisableProfile(roleid);
+			auth_failed(port, status, logdetail, profile_is_disabled);
+		}
+		return;
+	}
+
 	if (status == STATUS_OK)
 		sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
 	else
-		auth_failed(port, status, logdetail);
+		auth_failed(port, status, logdetail, false);
 }
 
 
@@ -1048,9 +1102,7 @@ static int
 CheckYbTserverKeyAuth(Port *port, char **logdetail)
 {
 	char	   *passwd;
-	int			result;
 	uint64_t	client_key;
-	uint64_t   *server_key;
 
 	sendAuthRequest(port, AUTH_REQ_PASSWORD, NULL, 0);
 
@@ -1070,17 +1122,10 @@ CheckYbTserverKeyAuth(Port *port, char **logdetail)
 		pfree(passwd);
 	}
 
-	server_key = yb_get_role_password(port->user_name, logdetail);
-	if (server_key)
-	{
-		result = yb_plain_key_verify(port->user_name, *server_key, client_key,
-									 logdetail);
-		pfree(server_key);
-	}
-	else
-		result = STATUS_ERROR;
-
-	return result;
+	uint64_t auth_key;
+	return yb_get_role_password(port->user_name, logdetail, &auth_key)
+		? yb_plain_key_verify(port->user_name, auth_key, client_key, logdetail)
+		: STATUS_ERROR;
 }
 
 
@@ -2680,9 +2725,13 @@ CheckLDAPAuth(Port *port)
 		 * Bind with a pre-defined username/password (if available) for
 		 * searching. If none is specified, this turns into an anonymous bind.
 		 */
+		char* hba_password = get_ldap_password(port->hba->ldapbindpasswd);
+
 		r = ldap_simple_bind_s(ldap,
 							   port->hba->ldapbinddn ? port->hba->ldapbinddn : "",
-							   port->hba->ldapbindpasswd ? port->hba->ldapbindpasswd : "");
+							   hba_password);
+		pfree(hba_password);
+
 		if (r != LDAP_SUCCESS)
 		{
 			ereport(LOG,
@@ -2846,6 +2895,24 @@ errdetail_for_ldap(LDAP *ldap)
 	return 0;
 }
 
+static char *
+get_ldap_password(char* ldapbindpasswd)
+{
+	/* Return password stored in YSQL_LDAP_BIND_PWD_ENV env var */
+	if (strncmp(ldapbindpasswd, "YSQL_LDAP_BIND_PWD_ENV", 22) == 0)
+	{
+		if (getenv("YSQL_LDAP_BIND_PWD_ENV") != NULL)
+		{
+			return pstrdup(getenv("YSQL_LDAP_BIND_PWD_ENV"));
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				errmsg("expected env variable YSQL_LDAP_BIND_PWD_ENV to be defined, got NULL")));
+	}
+
+	/* Return password as defined in hba.conf */
+	return pstrdup(ldapbindpasswd);
+}
 #endif							/* USE_LDAP */
 
 

@@ -35,6 +35,8 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 namespace yb {
 namespace crc {
 

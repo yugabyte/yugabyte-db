@@ -6,6 +6,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.validation.Valid;
 import lombok.ToString;
+import play.data.validation.Constraints;
 import play.data.validation.Constraints.MaxLength;
 import play.data.validation.Constraints.Pattern;
 import play.data.validation.Constraints.Required;
@@ -43,6 +44,9 @@ public class XClusterConfigCreateFormData {
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
   public BootstrapParams bootstrapParams;
 
+  @ApiModelProperty("Run the pre-checks without actually running the subtasks")
+  public boolean dryRun = false;
+
   @ApiModel(description = "Bootstrap parameters")
   @ToString
   public static class BootstrapParams {
@@ -57,6 +61,18 @@ public class XClusterConfigCreateFormData {
 
     @Required
     @ApiModelProperty(value = "Parameters used to do Backup/restore", required = true)
-    public BackupRequestParams backupRequestParams;
+    public BootstarpBackupParams backupRequestParams;
+
+    @ApiModel(description = "Backup parameters for bootstrapping")
+    @ToString
+    public static class BootstarpBackupParams {
+      @Constraints.Required
+      @ApiModelProperty(value = "Storage configuration UUID", required = true)
+      public UUID storageConfigUUID;
+
+      // The number of concurrent commands to run on nodes over SSH
+      @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
+      public int parallelism = 8;
+    }
   }
 }

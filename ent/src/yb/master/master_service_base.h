@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_MASTER_MASTER_SERVICE_BASE_H
-#define ENT_SRC_YB_MASTER_MASTER_SERVICE_BASE_H
+#pragma once
 
 namespace yb {
 namespace master {
@@ -24,5 +23,3 @@ class CatalogManager;
 } // namespace yb
 
 #include "../../../../src/yb/master/master_service_base.h"
-
-#endif // ENT_SRC_YB_MASTER_MASTER_SERVICE_BASE_H

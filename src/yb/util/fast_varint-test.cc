@@ -28,6 +28,9 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/varint.h"
 
+using std::string;
+using std::numeric_limits;
+
 using namespace std::literals;
 using strings::Substitute;
 using yb::FormatBytesAsStr;

@@ -15,7 +15,9 @@
 
 #include "yb/client/transaction.h"
 
+#include <atomic>
 #include <unordered_set>
+#include <boost/atomic.hpp>
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
@@ -37,8 +39,9 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -52,27 +55,28 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
+using std::vector;
+
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(txn_print_trace_every_n, 0,
-             "Controls the rate at which txn traces are printed. Setting this to 0 "
-             "disables printing the collected traces.");
+DEFINE_RUNTIME_int32(txn_print_trace_every_n, 0,
+    "Controls the rate at which txn traces are printed. Setting this to 0 "
+    "disables printing the collected traces.");
 TAG_FLAG(txn_print_trace_every_n, advanced);
-TAG_FLAG(txn_print_trace_every_n, runtime);
 
-DEFINE_int32(txn_slow_op_threshold_ms, 0,
-             "Controls the rate at which txn traces are printed. Setting this to 0 "
-             "disables printing the collected traces.");
+DEFINE_RUNTIME_int32(txn_slow_op_threshold_ms, 0,
+    "Controls the rate at which txn traces are printed. Setting this to 0 "
+    "disables printing the collected traces.");
 TAG_FLAG(txn_slow_op_threshold_ms, advanced);
-TAG_FLAG(txn_slow_op_threshold_ms, runtime);
 
-DEFINE_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
               "Interval of transaction heartbeat in usec.");
-DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
+DEFINE_UNKNOWN_bool(transaction_disable_heartbeat_in_tests, false,
+    "Disable heartbeat during test.");
 DECLARE_uint64(max_clock_skew_usec);
 
-DEFINE_bool(auto_promote_nonlocal_transactions_to_global, true,
+DEFINE_UNKNOWN_bool(auto_promote_nonlocal_transactions_to_global, true,
             "Automatically promote transactions touching data outside of region to global.");
 
 DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
@@ -93,7 +97,7 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
 
-DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
+DECLARE_bool(enable_wait_queues);
 
 namespace yb {
 namespace client {
@@ -105,6 +109,31 @@ YB_STRONGLY_TYPED_BOOL(SendHeartbeatToNewTablet);
 YB_STRONGLY_TYPED_BOOL(SetReady);
 YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSealed)(kPromoting));
 YB_DEFINE_ENUM(OldTransactionState, (kRunning)(kAborting)(kAborted)(kNone));
+
+struct LogPrefixTag {
+  explicit LogPrefixTag(const std::string* name_ = nullptr, uint64_t value_ = 0)
+      : name(name_), value(value_)
+  {}
+
+  const std::string* name;
+  uint64_t value;
+};
+
+static_assert(sizeof(LogPrefixTag) == 2 * sizeof(uint64_t));
+
+struct TaggedLogPrefix {
+  std::string prefix;
+  boost::atomic<LogPrefixTag> tag;
+};
+
+std::ostream& operator<<(std::ostream& str, const TaggedLogPrefix& value) {
+  const auto tag = value.tag.load(boost::memory_order_acquire);
+  str << value.prefix;
+  if (tag.name) {
+    str << " [" << *tag.name << tag.value << "]";
+  }
+  return str << ": ";
+}
 
 } // namespace
 
@@ -600,11 +629,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return false;
     }
 
-    if (!FLAGS_auto_promote_nonlocal_transactions_to_global ||
-        FLAGS_enable_wait_queue_based_pessimistic_locking) {
+    if (!FLAGS_auto_promote_nonlocal_transactions_to_global || FLAGS_enable_wait_queues) {
       if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
         YB_LOG_EVERY_N_SECS(WARNING, 100)
-            << "Cross-region transactions are disabled in clusters with pessimistic locking "
+            << "Cross-region transactions are disabled in clusters with wait queues "
             << "enabled. This will be supported in a future release. "
             << "See: https://github.com/yugabyte/yugabyte-db/issues/13585";
       }
@@ -783,7 +811,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return Status::OK();
   }
 
-  const std::string& LogPrefix() {
+  const TaggedLogPrefix& LogPrefix() const {
     return log_prefix_;
   }
 
@@ -959,9 +987,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return Status::OK();
   }
 
+  void SetLogPrefixTag(const LogPrefixName& name, uint64_t id) {
+    log_prefix_.tag.store(LogPrefixTag(&name.Get(), id), boost::memory_order_release);
+    VLOG_WITH_PREFIX(2) << "Log prefix tag changed";
+  }
+
  private:
   void CompleteConstruction() {
-    log_prefix_ = Format("$0$1: ", metadata_.transaction_id, child_ ? " (CHILD)" : "");
+    LOG_IF(FATAL, !IsAcceptableAtomicImpl(log_prefix_.tag));
+    log_prefix_.prefix = Format("$0$1", metadata_.transaction_id, child_ ? " (CHILD)" : "");
     heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     new_heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     commit_handle_ = manager_->rpcs().InvalidHandle();
@@ -1601,7 +1635,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // But here we just replace characters inplace.
         // It would not crash anyway, and could produce wrong id in the logs.
         // It is ok, since one moment before we would output nil id.
-        log_prefix_.replace(0, id_str.length(), id_str);
+        log_prefix_.prefix.replace(0, id_str.length(), id_str);
       } else {
         status = decode_result.status();
       }
@@ -1948,7 +1982,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   Status status_ GUARDED_BY(mutex_);
 
   // The following fields are initialized in CompleteConstruction() and can be used with no locking.
-  std::string log_prefix_;
+  TaggedLogPrefix log_prefix_;
   rpc::Rpcs::Handle heartbeat_handle_;
   rpc::Rpcs::Handle new_heartbeat_handle_;
   rpc::Rpcs::Handle commit_handle_;
@@ -2155,6 +2189,10 @@ Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePo
 
 bool YBTransaction::HasSubTransaction(SubTransactionId id) {
   return impl_->HasSubTransaction(id);
+}
+
+void YBTransaction::SetLogPrefixTag(const LogPrefixName& name, uint64_t value) {
+  return impl_->SetLogPrefixTag(name, value);
 }
 
 } // namespace client

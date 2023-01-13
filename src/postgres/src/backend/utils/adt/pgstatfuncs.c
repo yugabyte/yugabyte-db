@@ -1174,11 +1174,11 @@ pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
 
 /*
  * For this function, there exists a corresponding entry in pg_proc which dictates the input and schema of the output row.
- * This is used in a different manner from other methods like pgstat_get_backend_activity_start which will be called individually 
- * in parallel. This method will return the rows in batched format all at once. Note that {i,o,o,o} in pg_proc means that for the 
+ * This is used in a different manner from other methods like pgstat_get_backend_activity_start which will be called individually
+ * in parallel. This method will return the rows in batched format all at once. Note that {i,o,o,o} in pg_proc means that for the
  * corresponding entry at the same index, it is an input if labeled i but output (represented by o) otherwise.
  */
-Datum 
+Datum
 yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 {
 	#define PG_YBSTAT_TERMINATED_QUERIES_COLS 6
@@ -1217,7 +1217,8 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 	for (size_t i = 0; i < num_queries; i++)
 	{
 		if (has_privs_of_role(GetUserId(), queries[i].st_userid) ||
-			is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS))
+			is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS) ||
+			IsYbDbAdminUser(GetUserId()))
 		{
 			Datum		values[PG_YBSTAT_TERMINATED_QUERIES_COLS];
 			bool		nulls[PG_YBSTAT_TERMINATED_QUERIES_COLS];
@@ -1955,4 +1956,36 @@ pg_stat_get_archiver(PG_FUNCTION_ARGS)
 	/* Returns the record as Datum */
 	PG_RETURN_DATUM(HeapTupleGetDatum(
 									  heap_form_tuple(tupdesc, values, nulls)));
+}
+
+/* Returns backend_allocated_mem_bytes from the process's beid */
+Datum
+yb_pg_stat_get_backend_allocated_mem_bytes(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	int64		result;
+	PgBackendStatus *beentry;
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	result = beentry->yb_st_allocated_mem_bytes;
+
+	PG_RETURN_INT64(result);
+}
+
+/* Returns rss_mem_bytes from the process's beid */
+Datum
+yb_pg_stat_get_backend_rss_mem_bytes(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	int64		result;
+	LocalPgBackendStatus *local_beentry;
+
+	if ((local_beentry = pgstat_fetch_stat_local_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	result = local_beentry->yb_backend_rss_mem_bytes;
+
+	PG_RETURN_INT64(result);
 }

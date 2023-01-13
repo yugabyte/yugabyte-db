@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.forms;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -11,23 +9,32 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
-import com.google.common.collect.ImmutableList;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.ClusterAZ;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
+import lombok.ToString;
+import org.apache.commons.lang3.StringUtils;
+import play.data.validation.Constraints;
+
+import javax.annotation.Nullable;
+import javax.validation.constraints.Size;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,11 +47,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
-import javax.validation.constraints.Size;
-import lombok.ToString;
-import org.apache.commons.lang3.StringUtils;
-import play.data.validation.Constraints;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -96,7 +100,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS
   // communication between server and client.
-  @ApiModelProperty public UUID clientRootCA = null;
+  // This is made 'protected' to make sure there is no direct setting/getting
+  @ApiModelProperty protected UUID clientRootCA = null;
 
   // This flag represents whether user has chosen to use same certificates for node to node and
   // client to server communication.
@@ -119,8 +124,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // UUID of task which set updateInProgress flag.
   @ApiModelProperty public UUID updatingTaskUUID = null;
-
-  @ApiModelProperty public boolean backupInProgress = false;
 
   // This tracks that if latest operation on this universe has successfully completed. This flag is
   // reset each time a new operation on the universe starts, and is set at the very end of that
@@ -161,6 +164,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Place all masters into default region flag.
   @ApiModelProperty public boolean mastersInDefaultRegion = true;
 
+  @ApiModelProperty public Map<ClusterAZ, String> existingLBs = null;
+
+  // Override the default DB present in pre-built Ami
+  @ApiModelProperty(hidden = true)
+  public boolean overridePrebuiltAmiDBVersion = false;
+
   /** Allowed states for an imported universe. */
   public enum ImportedState {
     NONE, // Default, and for non-imported universes.
@@ -185,7 +194,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   /** Types of Clusters that can make up a universe. */
   public enum ClusterType {
     PRIMARY,
-    ASYNC
+    ASYNC,
+    ADDON
   }
 
   /** Allowed states for an exposing service of a universe */
@@ -236,6 +246,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // This is set internally by the placement util in the server, client should not set it.
     @ApiModelProperty public int index = 0;
 
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    public List<Region> regions;
+
     /** Default to PRIMARY. */
     private Cluster() {
       this(ClusterType.PRIMARY, new UserIntent());
@@ -249,15 +262,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       assert clusterType != null && userIntent != null;
       this.clusterType = clusterType;
       this.userIntent = userIntent;
-    }
-
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
-    public List<Region> getRegions() {
-      List<Region> regions = ImmutableList.of();
-      if (userIntent.regionList != null && !userIntent.regionList.isEmpty()) {
-        regions = Region.find.query().where().idIn(userIntent.regionList).findList();
-      }
-      return regions.isEmpty() ? null : regions;
     }
 
     public boolean equals(Cluster other) {
@@ -293,11 +297,32 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
-    public void validate(boolean validateGFlagsConsistency) {
+    public void validate(boolean validateGFlagsConsistency, boolean isAuthEnforced) {
       checkDeviceInfo();
       checkStorageType();
+      validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+      }
+    }
+
+    /**
+     * Validate to ensure that the user is not able to create a universe via API when they disable
+     * YSQL Auth or YCQL Auth but yb.universe.auth.is_enforced runtime config value is true
+     *
+     * @param isAuthEnforced Runtime config value denoting if user is manadated to have auth.
+     */
+    private void validateAuth(boolean isAuthEnforced) {
+      if (isAuthEnforced) {
+        boolean enableYSQLAuth = userIntent.enableYSQLAuth;
+        boolean enableYCQLAuth = userIntent.enableYCQLAuth;
+        if ((userIntent.enableYSQL && !enableYSQLAuth)
+            || (userIntent.enableYCQL && !enableYCQLAuth)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Global Policy mandates auth-enforced universes."
+                  + "Make sure to enableAuth in request.");
+        }
       }
     }
 
@@ -384,6 +409,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   /** The user defined intent for the universe. */
   public static class UserIntent {
+
     // Nice name for the universe.
     @Constraints.Required() @ApiModelProperty public String universeName;
 
@@ -470,6 +496,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public ExposingServiceState enableExposingService = ExposingServiceState.NONE;
 
     @ApiModelProperty public String awsArnString;
+
+    @ApiModelProperty() public boolean enableLB = false;
 
     // When this is set to true, YW will setup the universe to communicate by way of hostnames
     // instead of ip addresses. These hostnames will have been provided during on-prem provider
@@ -565,6 +593,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
+      newUserIntent.enableLB = enableLB;
       if (deviceInfo != null) {
         newUserIntent.deviceInfo = deviceInfo.clone();
       }
@@ -580,9 +609,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getInstanceTypeForProcessType(nodeDetails.dedicatedTo);
     }
 
-    public String getInstanceTypeForProcessType(
-        @Nullable UniverseDefinitionTaskBase.ServerType type) {
-      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterInstanceType != null) {
+    public String getInstanceTypeForProcessType(@Nullable UniverseTaskBase.ServerType type) {
+      if (type == UniverseTaskBase.ServerType.MASTER && masterInstanceType != null) {
         return masterInstanceType;
       }
       return instanceType;
@@ -592,9 +620,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getDeviceInfoForProcessType(nodeDetails.dedicatedTo);
     }
 
-    public DeviceInfo getDeviceInfoForProcessType(
-        @Nullable UniverseDefinitionTaskBase.ServerType type) {
-      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
+    public DeviceInfo getDeviceInfoForProcessType(@Nullable UniverseTaskBase.ServerType type) {
+      if (type == UniverseTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
         return masterDeviceInfo;
       }
       return deviceInfo;
@@ -729,6 +756,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   public Cluster upsertCluster(
       UserIntent userIntent, PlacementInfo placementInfo, UUID clusterUuid) {
+    return upsertCluster(userIntent, placementInfo, clusterUuid, ClusterType.ASYNC);
+  }
+
+  /**
+   * Add a cluster with the specified UserIntent, PlacementInfo, and uuid to the list of clusters if
+   * one does not already exist. Otherwise, update the existing cluster with the specified
+   * UserIntent and PlacementInfo.
+   *
+   * @param userIntent UserIntent describing the cluster.
+   * @param placementInfo PlacementInfo describing the placement of the cluster.
+   * @param clusterUuid uuid of the cluster we want to change.
+   * @param clusterType type of the cluster we want to change.
+   * @return the updated/inserted cluster.
+   */
+  public Cluster upsertCluster(
+      UserIntent userIntent,
+      PlacementInfo placementInfo,
+      UUID clusterUuid,
+      ClusterType clusterType) {
     Cluster cluster = getClusterByUuid(clusterUuid);
     if (cluster != null) {
       if (userIntent != null) {
@@ -738,7 +784,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         cluster.placementInfo = placementInfo;
       }
     } else {
-      cluster = new Cluster(ClusterType.ASYNC, userIntent == null ? new UserIntent() : userIntent);
+      cluster = new Cluster(clusterType, userIntent == null ? new UserIntent() : userIntent);
       cluster.placementInfo = placementInfo;
       clusters.add(cluster);
     }
@@ -798,9 +844,32 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public List<Cluster> getReadOnlyClusters() {
+    return getClusterByType(ClusterType.ASYNC);
+  }
+
+  /**
+   * Helper API to retrieve a Cluster in the Universe represented by these Params by its UUID.
+   *
+   * @return a list of all AddOns in the Universe represented by these Params.
+   */
+  @JsonIgnore
+  public List<Cluster> getAddOnClusters() {
+    return getClusterByType(ClusterType.ADDON);
+  }
+
+  @JsonIgnore
+  public List<Cluster> getClusterByType(ClusterType clusterType) {
     return clusters
         .stream()
-        .filter(c -> c.clusterType.equals(ClusterType.ASYNC))
+        .filter(c -> c.clusterType.equals(clusterType))
+        .collect(Collectors.toList());
+  }
+
+  @JsonIgnore
+  public List<Cluster> getNonPrimaryClusters() {
+    return clusters
+        .stream()
+        .filter(c -> !c.clusterType.equals(ClusterType.PRIMARY))
         .collect(Collectors.toList());
   }
 
@@ -830,6 +899,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return Iterables.getOnlyElement(foundClusters, null);
   }
 
+  // the getter has some logic built around, as there are no other layer to
+  // have such logic at a common place
+  public UUID getClientRootCA() {
+    return (rootCA != null && rootAndClientRootCASame) ? rootCA : clientRootCA;
+  }
+
+  public void setClientRootCA(UUID clientRootCA) {
+    this.clientRootCA = clientRootCA;
+  }
+
   /**
    * Helper API to retrieve nodes that are in a specified cluster.
    *
@@ -838,12 +917,36 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public Set<NodeDetails> getNodesInCluster(UUID uuid) {
-    if (nodeDetailsSet == null) return null;
+    if (nodeDetailsSet == null) {
+      return null;
+    }
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public void setExistingLBs(List<Cluster> clusters) {
+    Map<ClusterAZ, String> existingLBsMap = new HashMap<>();
+    for (Cluster cluster : clusters) {
+      if (cluster.userIntent.enableLB) {
+        // Get AZs in cluster
+        List<PlacementInfo.PlacementAZ> azList =
+            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.placementInfo);
+        for (PlacementInfo.PlacementAZ placementAZ : azList) {
+          String lbName = placementAZ.lbName;
+          AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
+          if (!Strings.isNullOrEmpty(lbName)) {
+            ClusterAZ clusterAZ = new ClusterAZ(cluster.uuid, az);
+            existingLBsMap.computeIfAbsent(clusterAZ, v -> lbName);
+          }
+        }
+      }
+    }
+    this.existingLBs = existingLBsMap;
   }
 
   public static class BaseConverter<T extends UniverseDefinitionTaskParams>
       extends StdConverter<T, T> {
+
     @Override
     public T convert(T taskParams) {
       // If there is universe level communication port set then push it down to node level
@@ -877,6 +980,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       allowGetters = true)
   @ToString
   public static class XClusterInfo {
+
     @ApiModelProperty("The value of certs_for_cdc_dir gflag")
     public String sourceRootCertDirPath;
 

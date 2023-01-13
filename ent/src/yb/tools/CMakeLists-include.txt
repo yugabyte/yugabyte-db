@@ -25,6 +25,10 @@ set(YB_ADMIN_LIB_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/yb-admin_client_ent.cc
   PARENT_SCOPE)
 
+set(TOOLS_LIB_SRCS_EXTENSIONS
+  ${YB_ENT_CURRENT_SOURCE_DIR}/yb-backup-test_base_ent.cc
+  PARENT_SCOPE)
+
 # Additional tests support.
 set(YB_ENT_CURRENT_SOURCE_DIR
   ${YB_ENT_CURRENT_SOURCE_DIR}
@@ -32,10 +36,12 @@ set(YB_ENT_CURRENT_SOURCE_DIR
 
 set(TOOLS_EXTENSIONS_TEST_LINK_LIBS
   pg_wrapper_test_base
+  yb-backup-test_base_ent
   PARENT_SCOPE)
 
 set(TOOLS_EXTENSIONS_TESTS
   yb-admin-test_ent
   yb-admin_client_ent_test
   yb-backup-test_ent
+  yb-backup-cross-feature-test_ent
   PARENT_SCOPE)

@@ -10,15 +10,26 @@
 import axios from 'axios';
 import { ROOT_URL } from '../../../config';
 
+export function getNameSpaces(uUUID: string) {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${uUUID}/namespaces`;
+  return axios.get(requestUrl).then((resp) => resp.data);
+}
+
 export function getPITRConfigs(uUUID: string) {
   const cUUID = localStorage.getItem('customerId');
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${uUUID}/pitr_config`;
   return axios.get(requestUrl).then((resp) => resp.data);
 }
 
-export function createPITRConfig(uUUID: string, payload: Record<string, string>) {
+export function createPITRConfig(
+  uUUID: string,
+  tableType: string,
+  keyspaceName: string,
+  payload: Record<string, string>
+) {
   const cUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${uUUID}/pitr_config`;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${uUUID}/keyspaces/${tableType}/${keyspaceName}/pitr_config`;
   return axios.post(requestUrl, payload);
 }
 
@@ -30,6 +41,6 @@ export function deletePITRConfig(uUUID: string, pUUID: string) {
 
 export function restoreSnapShot(uUUID: string, payload: Record<string, string>) {
   const cUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${uUUID}/restore_snapshot`;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${uUUID}/pitr`;
   return axios.post(requestUrl, payload);
 }

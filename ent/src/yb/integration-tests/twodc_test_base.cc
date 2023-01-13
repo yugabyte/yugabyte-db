@@ -42,6 +42,9 @@
 #include "yb/util/thread.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/util/file_util.h"
+
+using std::string;
 
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_bool(enable_ysql);
@@ -51,6 +54,9 @@ DECLARE_int32(replication_factor);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
+DECLARE_string(certs_for_cdc_dir);
+DECLARE_string(certs_dir);
+DECLARE_bool(enable_replicate_transaction_status_table);
 
 namespace yb {
 
@@ -80,7 +86,6 @@ Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts, bool init_pos
   // Randomly select the tserver index that will serve the postgres proxy.
   const size_t pg_ts_idx = RandomUniformInt<size_t>(0, opts.num_tablet_servers - 1);
   const std::string pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
-
   // The 'pgsql_proxy_bind_address' flag must be set before starting the producer cluster. Each
   // tserver will store this address when it starts.
   const uint16_t producer_pg_port = producer_cluster_.mini_cluster_->AllocateFreePort();
@@ -110,6 +115,8 @@ Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts, bool init_pos
 
   producer_cluster_.client_ = VERIFY_RESULT(producer_cluster()->CreateClient());
   consumer_cluster_.client_ = VERIFY_RESULT(consumer_cluster()->CreateClient());
+  producer_cluster_.pg_ts_idx_ = pg_ts_idx;
+  consumer_cluster_.pg_ts_idx_ = pg_ts_idx;
 
   if (init_postgres) {
     RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
@@ -241,7 +248,8 @@ Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
     const boost::optional<std::string>& tablegroup_name,
     uint32_t num_tablets,
     bool colocated,
-    const ColocationId colocation_id) {
+    const ColocationId colocation_id,
+    const bool ranged_partitioned) {
   auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
   std::string colocation_id_string = "";
   if (colocation_id > 0) {
@@ -252,8 +260,9 @@ Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
   }
   std::string full_table_name =
       schema_name.empty() ? table_name : Format("$0.$1", schema_name, table_name);
-  std::string query =
-      Format("CREATE TABLE $0($1 int PRIMARY KEY) ", full_table_name, kKeyColumnName);
+  std::string query = Format(
+      "CREATE TABLE $0($1 int, PRIMARY KEY ($1$2)) ", full_table_name, kKeyColumnName,
+      ranged_partitioned ? " ASC" : "");
   // One cannot use tablegroup together with split into tablets.
   if (tablegroup_name.has_value()) {
     std::string with_clause =
@@ -267,7 +276,18 @@ Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
                                   : Format("$0, $1", colocation_id_string, colocated_clause);
     query += Format("WITH ($0)", with_clause);
     if (!colocated) {
-      query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
+      if (ranged_partitioned) {
+        if (num_tablets > 1) {
+          // Split at every 500 interval.
+          query += " SPLIT AT VALUES(";
+          for (size_t i = 0; i < num_tablets - 1; ++i) {
+            query +=
+                Format("($0)$1", i * kRangePartitionInterval, (i == num_tablets - 2) ? ")" : ", ");
+          }
+        }
+      } else {
+        query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
+      }
     }
   }
   EXPECT_OK(conn.Execute(query));
@@ -278,13 +298,14 @@ Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
 
 Status TwoDCTestBase::CreateYsqlTable(
     uint32_t idx, uint32_t num_tablets, Cluster* cluster, std::vector<YBTableName>* table_names,
-    const boost::optional<std::string>& tablegroup_name, bool colocated) {
+    const boost::optional<std::string>& tablegroup_name, bool colocated,
+    const bool ranged_partitioned) {
   // Generate colocation_id based on index so that we have the same colocation_id for
   // producer/consumer.
   const int colocation_id = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
   auto table = VERIFY_RESULT(CreateYsqlTable(
       cluster, kNamespaceName, "" /* schema_name */, Format("test_table_$0", idx), tablegroup_name,
-      num_tablets, colocated, colocation_id));
+      num_tablets, colocated, colocation_id, ranged_partitioned));
   table_names->push_back(table);
   return Status::OK();
 }
@@ -363,7 +384,29 @@ Status TwoDCTestBase::SetupReverseUniverseReplication(
 Status TwoDCTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
     const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
-    bool leader_only) {
+    bool leader_only, const std::vector<string>& bootstrap_ids) {
+  // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
+  // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
+  if (!FLAGS_certs_for_cdc_dir.empty() && !FLAGS_certs_dir.empty()) {
+    auto* env = Env::Default();
+    if (!env->DirExists(FLAGS_certs_for_cdc_dir)) {
+      RETURN_NOT_OK(env->CreateDir(FLAGS_certs_for_cdc_dir));
+    }
+    const auto universe_sub_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, universe_id);
+    RETURN_NOT_OK(CopyDirectory(
+        env, FLAGS_certs_dir, universe_sub_dir, UseHardLinks::kFalse, CreateIfMissing::kTrue,
+        RecursiveCopy::kFalse));
+    LOG(INFO) << "Copied certs from " << FLAGS_certs_dir << " to " << universe_sub_dir;
+
+    if (FLAGS_enable_replicate_transaction_status_table) {
+      const auto system_sub_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, "system");
+      RETURN_NOT_OK(CopyDirectory(
+          env, FLAGS_certs_dir, system_sub_dir, UseHardLinks::kFalse, CreateIfMissing::kTrue,
+          RecursiveCopy::kFalse));
+      LOG(INFO) << "Copied certs from " << FLAGS_certs_dir << " to " << system_sub_dir;
+    }
+  }
+
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
 
@@ -380,21 +423,22 @@ Status TwoDCTestBase::SetupUniverseReplication(
     req.add_producer_table_ids(table->id());
   }
 
+  SCHECK(
+      bootstrap_ids.empty() || bootstrap_ids.size() == tables.size(), InvalidArgument,
+      "Bootstrap Ids for all tables should be provided");
+
+  for (const auto& bootstrap_id : bootstrap_ids) {
+    req.add_producer_bootstrap_ids(bootstrap_id);
+  }
+
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client->proxy_cache(),
       VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  return WaitFor([&] () -> Result<bool> {
-    if (!master_proxy->SetupUniverseReplication(req, &resp, &rpc).ok()) {
-      return false;
-    }
-    if (resp.has_error()) {
-      return false;
-    }
-    return true;
-  }, MonoDelta::FromSeconds(30), "Setup universe replication");
+
+  return master_proxy->SetupUniverseReplication(req, &resp, &rpc);
 }
 
 Status TwoDCTestBase::SetupNSUniverseReplication(
@@ -441,23 +485,32 @@ Status TwoDCTestBase::VerifyUniverseReplication(
 }
 
 Status TwoDCTestBase::VerifyUniverseReplication(
-    MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp) {
-  return LoggedWaitFor([=]() -> Result<bool> {
-    master::GetUniverseReplicationRequestPB req;
-    req.set_producer_id(universe_id);
-    resp->Clear();
+    MiniCluster* consumer_cluster, YBClient* consumer_client, const std::string& universe_id,
+    master::GetUniverseReplicationResponsePB* resp) {
+  master::IsSetupUniverseReplicationDoneResponsePB setup_resp;
+  RETURN_NOT_OK(
+      WaitForSetupUniverseReplication(consumer_cluster, consumer_client, universe_id, &setup_resp));
+  if (setup_resp.has_replication_error()) {
+    RETURN_NOT_OK(StatusFromPB(setup_resp.replication_error()));
+  }
 
-    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-        &consumer_client->proxy_cache(),
-        VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  return LoggedWaitFor(
+      [=]() -> Result<bool> {
+        master::GetUniverseReplicationRequestPB req;
+        req.set_producer_id(universe_id);
+        resp->Clear();
 
-    Status s = master_proxy->GetUniverseReplication(req, resp, &rpc);
-    return s.ok() && !resp->has_error() &&
-            resp->entry().state() == master::SysUniverseReplicationEntryPB::ACTIVE;
-  }, MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication");
+        auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+            &consumer_client->proxy_cache(),
+            VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
+        rpc::RpcController rpc;
+        rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+        Status s = master_proxy->GetUniverseReplication(req, resp, &rpc);
+        return s.ok() && !resp->has_error() &&
+               resp->entry().state() == master::SysUniverseReplicationEntryPB::ACTIVE;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication");
 }
 
 Status TwoDCTestBase::VerifyNSUniverseReplication(
@@ -495,6 +548,25 @@ Status TwoDCTestBase::ToggleUniverseReplication(
   return Status::OK();
 }
 
+Status TwoDCTestBase::ChangeXClusterRole(cdc::XClusterRole role) {
+  master::ChangeXClusterRoleRequestPB req;
+  master::ChangeXClusterRoleResponsePB resp;
+
+  req.set_role(role);
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  RETURN_NOT_OK(master_proxy->ChangeXClusterRole(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
     YBClient* consumer_client, const std::string& universe_id, int timeout) {
   return LoggedWaitFor([=]() -> Result<bool> {
@@ -513,47 +585,29 @@ Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_clu
   }, MonoDelta::FromMilliseconds(timeout), "Verify universe replication deleted");
 }
 
-Status TwoDCTestBase::VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
-    YBClient* consumer_client, const std::string& producer_id,
+Status TwoDCTestBase::WaitForSetupUniverseReplication(
+    MiniCluster* consumer_cluster, YBClient* consumer_client, const std::string& universe_id,
     master::IsSetupUniverseReplicationDoneResponsePB* resp) {
-  return LoggedWaitFor([=]() -> Result<bool> {
-    master::IsSetupUniverseReplicationDoneRequestPB req;
-    req.set_producer_id(producer_id);
-    resp->Clear();
+  return LoggedWaitFor(
+      [=]() -> Result<bool> {
+        master::IsSetupUniverseReplicationDoneRequestPB req;
+        req.set_producer_id(universe_id);
+        resp->Clear();
 
-    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-        &consumer_client->proxy_cache(),
-        VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+        auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+            &consumer_client->proxy_cache(),
+            VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
+        rpc::RpcController rpc;
+        rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
-    Status s = master_proxy->IsSetupUniverseReplicationDone(req, resp, &rpc);
+        RETURN_NOT_OK(master_proxy->IsSetupUniverseReplicationDone(req, resp, &rpc));
+        if (resp->has_error()) {
+          return StatusFromPB(resp->error().status());
+        }
 
-    if (!s.ok() || resp->has_error()) {
-      LOG(WARNING) << "Encountered error while waiting for setup_universe_replication to complete: "
-                   << (!s.ok() ? s.ToString() : "resp=" + resp->error().status().message());
-    }
-    return resp->has_done() && resp->done();
-  }, MonoDelta::FromSeconds(kRpcTimeout), "Verify universe replication failed");
-}
-
-Status TwoDCTestBase::IsSetupUniverseReplicationDone(MiniCluster* consumer_cluster,
-  YBClient* consumer_client, const std::string& universe_id,
-    master::IsSetupUniverseReplicationDoneResponsePB* resp) {
-  return LoggedWaitFor([=]() -> Result<bool> {
-    master::IsSetupUniverseReplicationDoneRequestPB req;
-    req.set_producer_id(universe_id);
-    resp->Clear();
-
-    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-        &consumer_client->proxy_cache(),
-        VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-
-    Status s = master_proxy->IsSetupUniverseReplicationDone(req, resp, &rpc);
-    return s.ok() && resp->has_done() && resp->done();
-  }, MonoDelta::FromSeconds(kRpcTimeout), "Is setup replication done");
+        return resp->has_done() && resp->done();
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Is setup replication done");
 }
 
 Status TwoDCTestBase::GetCDCStreamForTable(
@@ -626,6 +680,67 @@ Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uui
 
     return resp.has_error() && resp.error().code() == master::MasterErrorPB::OBJECT_NOT_FOUND;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Waiting for universe to delete");
+}
+
+Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(const NamespaceId& namespace_id) {
+  for (auto& tserver : consumer_cluster()->mini_tablet_servers()) {
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto safe_time =
+              tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+          if (!safe_time) {
+            return false;
+          }
+          CHECK(safe_time->is_valid());
+          return true;
+        }, safe_time_propagation_timeout_,
+        Format("Wait for safe_time of namespace $0 to be valid", namespace_id)));
+  }
+
+  return Status::OK();
+}
+
+Status TwoDCTestBase::WaitForReplicationDrain(
+    const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
+    const master::WaitForReplicationDrainRequestPB& req,
+    int expected_num_nondrained,
+    int timeout_secs) {
+  master::WaitForReplicationDrainResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(timeout_secs));
+  auto s = master_proxy->WaitForReplicationDrain(req, &resp, &rpc);
+  return SetupWaitForReplicationDrainStatus(s, resp, expected_num_nondrained);
+}
+
+void TwoDCTestBase::PopulateWaitForReplicationDrainRequest(
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+    master::WaitForReplicationDrainRequestPB* req) {
+  for (const auto& producer_table : producer_tables) {
+    master::ListCDCStreamsResponsePB list_resp;
+    ASSERT_OK(GetCDCStreamForTable(producer_table->id(), &list_resp));
+    ASSERT_EQ(list_resp.streams_size(), 1);
+    ASSERT_EQ(list_resp.streams(0).table_id(0), producer_table->id());
+    req->add_stream_ids(list_resp.streams(0).stream_id());
+  }
+}
+
+Status TwoDCTestBase::SetupWaitForReplicationDrainStatus(
+    Status api_status,
+    const master::WaitForReplicationDrainResponsePB& api_resp,
+    int expected_num_nondrained) {
+  if (!api_status.ok()) {
+    return api_status;
+  }
+  if (api_resp.has_error()) {
+    return STATUS(IllegalState,
+        Format("WaitForReplicationDrain returned error: $0", api_resp.error().DebugString()));
+  }
+  if (api_resp.undrained_stream_info_size() != expected_num_nondrained) {
+    return STATUS(IllegalState,
+        Format("Mismatched number of non-drained streams. Expected $0, got $1.",
+               expected_num_nondrained, api_resp.undrained_stream_info_size()));
+  }
+  return Status::OK();
 }
 
 } // namespace enterprise

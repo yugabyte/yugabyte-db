@@ -19,13 +19,13 @@ Use the `COPY` statement to transfer data between tables and files. `COPY TO` co
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -88,7 +88,7 @@ Notice the `\.` terminator. You can simply execute `\i t.sql` at the  [`ysqlsh`]
 
 {{< note title="Some client-side languages have a dedicated exposure of COPY" >}}
 
-For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this works for YugabyteDB) has dedicated cursor methods for `COPY`.  See <a href="https://www.psycopg.org/docs/usage.html#using-copy-to-and-copy-from" target="_blank">Using COPY TO and COPY FROM <i class="fas fa-external-link-alt"></i></a>
+For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this works for YugabyteDB) has dedicated cursor methods for `COPY`.  See <a href="https://www.psycopg.org/docs/usage.html#using-copy-to-and-copy-from" target="_blank">Using COPY TO and COPY FROM <i class="fa-solid fa-up-right-from-square"></i></a>
 
 {{< /note >}}
 

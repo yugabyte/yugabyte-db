@@ -32,37 +32,35 @@
 
 #include "yb/tablet/operations/write_operation.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/trace.h"
 
 DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
                  "How much latency to inject when a write operation is applied.");
 DEFINE_test_flag(bool, tablet_pause_apply_write_ops, false,
                  "Pause applying of write operations.");
-TAG_FLAG(TEST_tablet_inject_latency_on_apply_write_txn_ms, runtime);
-TAG_FLAG(TEST_tablet_pause_apply_write_ops, runtime);
 
 namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<WritePB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, WritePB* request) {
-  replicate->set_allocated_write(request);
+void RequestTraits<LWWritePB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, LWWritePB* request) {
+  replicate->ref_write(request);
 }
 
 template <>
-WritePB* RequestTraits<WritePB>::MutableRequest(consensus::ReplicateMsg* replicate) {
+LWWritePB* RequestTraits<LWWritePB>::MutableRequest(consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_write();
 }
 
-Status WriteOperation::Prepare() {
+Status WriteOperation::Prepare(IsLeaderSide is_leader_side) {
   TRACE_EVENT0("txn", "WriteOperation::Prepare");
   return Status::OK();
 }
@@ -87,7 +85,7 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
     TEST_PAUSE_IF_FLAG(TEST_tablet_pause_apply_write_ops);
   }
 
-  *complete_status = tablet()->ApplyRowOperations(this);
+  *complete_status = VERIFY_RESULT(tablet_safe())->ApplyRowOperations(this);
   // Failure is regular case, since could happen because transaction was aborted, while
   // replicating its intents.
   LOG_IF(INFO, !complete_status->ok()) << "Apply operation failed: " << *complete_status;

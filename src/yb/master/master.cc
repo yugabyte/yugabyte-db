@@ -74,7 +74,7 @@
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -82,11 +82,13 @@
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 
-DEFINE_int32(master_rpc_timeout_ms, 1500,
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+DEFINE_UNKNOWN_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
 TAG_FLAG(master_rpc_timeout_ms, experimental);
 
-DEFINE_int32(master_yb_client_default_timeout_ms, 60000,
+DEFINE_UNKNOWN_int32(master_yb_client_default_timeout_ms, 60000,
              "Default timeout for the YBClient embedded into the master.");
 
 METRIC_DEFINE_entity(cluster);
@@ -94,41 +96,42 @@ METRIC_DEFINE_entity(cluster);
 using namespace std::literals;
 using std::min;
 using std::vector;
+using std::string;
 
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
 using strings::Substitute;
 
-DEFINE_int32(master_tserver_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_tserver_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master tserver service");
 TAG_FLAG(master_tserver_svc_num_threads, advanced);
 
-DEFINE_int32(master_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master service");
 TAG_FLAG(master_svc_num_threads, advanced);
 
-DEFINE_int32(master_consensus_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_consensus_svc_num_threads, 10,
              "Number of RPC threads for the master consensus service");
 TAG_FLAG(master_consensus_svc_num_threads, advanced);
 
-DEFINE_int32(master_remote_bootstrap_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_num_threads, 10,
              "Number of RPC threads for the master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_num_threads, advanced);
 
-DEFINE_int32(master_tserver_svc_queue_length, 1000,
+DEFINE_UNKNOWN_int32(master_tserver_svc_queue_length, 1000,
              "RPC queue length for master tserver service");
 TAG_FLAG(master_tserver_svc_queue_length, advanced);
 
-DEFINE_int32(master_svc_queue_length, 1000,
+DEFINE_UNKNOWN_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
 
-DEFINE_int32(master_consensus_svc_queue_length, 1000,
+DEFINE_UNKNOWN_int32(master_consensus_svc_queue_length, 1000,
              "RPC queue length for master consensus service");
 TAG_FLAG(master_consensus_svc_queue_length, advanced);
 
-DEFINE_int32(master_remote_bootstrap_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_queue_length, advanced);
 
@@ -138,6 +141,9 @@ DEFINE_test_flag(string, master_extra_list_host_port, "",
 DECLARE_int64(inbound_rpc_memory_limit);
 
 DECLARE_int32(master_ts_rpc_timeout_ms);
+
+DECLARE_bool(TEST_enable_db_catalog_version_mode);
+
 namespace yb {
 namespace master {
 
@@ -292,7 +298,7 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_master_svc_queue_length,
       std::make_unique<tserver::PgClientServiceImpl>(
-          master_tablet_server_.get() /* tablet_server */,
+          *master_tablet_server_,
           client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
           &messenger()->scheduler(), nullptr /* xcluster_safe_time_map */)));
 
@@ -589,6 +595,41 @@ uint32_t Master::GetAutoFlagConfigVersion() const {
 }
 
 AutoFlagsConfigPB Master::GetAutoFlagsConfig() const { return auto_flags_manager_->GetConfig(); }
+
+Status Master::get_ysql_db_oid_to_cat_version_info_map(
+    bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
+  DCHECK(FLAGS_create_initial_sys_catalog_snapshot);
+  DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+  // This function can only be called during initdb time.
+  DbOidToCatalogVersionMap versions;
+  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(&versions));
+  if (size_only) {
+    resp->set_num_entries(narrow_cast<uint32_t>(versions.size()));
+  } else {
+    // We assume that during initdb:
+    // (1) we only create databases, not drop databases;
+    // (2) databases OIDs are allocated increasingly.
+    // Based upon these assumptions, we can have a simple shm_index assignment algorithm by
+    // doing shm_index++. As a result, a subsequent call to this function will return either
+    // identical or a superset of the result of any previous calls. For example, if the first
+    // call sees two DB oids [1, 16384], this function will return (1, 0), (16384, 1). If the
+    // next call sees 3 DB oids [1, 16384, 16385], we return (1, 0), (16384, 1), (16385, 2)
+    // which is a superset of the result of the first call. This is to ensure that the
+    // shm_index assigned to a DB oid remains the same during the lifetime of the DB.
+    int shm_index = 0;
+    uint32_t db_oid = kInvalidOid;
+    for (const auto& it : versions) {
+      auto* entry = resp->add_entries();
+      CHECK_LT(db_oid, it.first);
+      db_oid = it.first;
+      entry->set_db_oid(db_oid);
+      entry->set_current_version(it.second.first);
+      entry->set_shm_index(shm_index++);
+    }
+  }
+  LOG(INFO) << "resp: " << resp->ShortDebugString();
+  return Status::OK();
+}
 
 } // namespace master
 } // namespace yb

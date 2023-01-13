@@ -18,7 +18,7 @@ For example, `yb_enable_expression_pushdown` requires all yb-tservers to run a v
 
 New AutoFlags are defined using the following syntax in the primary cpp file where their value is used.
 
-`DEFINE_AUTO_<value_type>(<flag_name>, <flag_class>, INITIAL_VAL(<initial_value>) , TARGET_VAL(<target_value>), "<usage>");`
+`DEFINE_RUNTIME_AUTO_<value_type>(<flag_name>, <flag_class>, INITIAL_VAL(<initial_value>) , TARGET_VAL(<target_value>), "<usage>");`
 
 - value_type: [`bool`, `int32`, `int64`, `uint64`, `double`, `string`]
 - flag_name: A friendly descriptive name for the AutoFlag.
@@ -28,7 +28,7 @@ New AutoFlags are defined using the following syntax in the primary cpp file whe
 - usage: Usage information about the AutoFlag.
 
 Ex:  
-`DEFINE_AUTO_bool(fun_with_flags, kLocalPersisted, INITIAL_VAL(false), TARGET_VAL(true), "Vexillology is the study of flags.");`
+`DEFINE_RUNTIME_AUTO_bool(fun_with_flags, kLocalPersisted, INITIAL_VAL(false), TARGET_VAL(true), "Vexillology is the study of flags.");`
 
 
 If you need to use the AutoFlag in additional files then you can declare them  using the following syntax.

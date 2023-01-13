@@ -21,7 +21,7 @@
 #include "yb/rpc/connection.h"
 
 #include "yb/util/date_time.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/string_util.h"
 
@@ -41,53 +41,38 @@
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
-DEFINE_bool(ycql_enable_audit_log,
-            false,
-            "Enable YCQL audit. Use ycql_audit_* flags for fine-grained configuration");
-TAG_FLAG(ycql_enable_audit_log, runtime);
+DEFINE_RUNTIME_bool(ycql_enable_audit_log, false,
+    "Enable YCQL audit. Use ycql_audit_* flags for fine-grained configuration");
 
 // IMPORTANT:
 // These flags are expected to change at runtime, but due to the nature of std::string we shouldn't
 // access them directly as a concurrent read-write access would lead to an undefined behaviour.
 // Instead, use GFLAGS_NAMESPACE::GetCommandLineOption("flag_name", &result)
 
-DEFINE_string(ycql_audit_log_level,
-              "ERROR",
-              "Severity level at which an audit will be logged. Could be INFO, WARNING, or ERROR");
-TAG_FLAG(ycql_audit_log_level, runtime);
+DEFINE_RUNTIME_string(ycql_audit_log_level, "ERROR",
+    "Severity level at which an audit will be logged. Could be INFO, WARNING, or ERROR");
 
-DEFINE_string(ycql_audit_included_keyspaces,
-              "",
-              "Comma separated list of keyspaces to be included in the audit log, "
-              "if none - includes all (non-excluded) keyspaces");
-TAG_FLAG(ycql_audit_included_keyspaces, runtime);
+DEFINE_RUNTIME_string(ycql_audit_included_keyspaces, "",
+    "Comma separated list of keyspaces to be included in the audit log, "
+    "if none - includes all (non-excluded) keyspaces");
 
-DEFINE_string(ycql_audit_excluded_keyspaces,
-              "system,system_schema,system_virtual_schema,system_auth",
-              "Comma separated list of keyspaces to be excluded from the audit log");
-TAG_FLAG(ycql_audit_excluded_keyspaces, runtime);
+DEFINE_RUNTIME_string(ycql_audit_excluded_keyspaces,
+    "system,system_schema,system_virtual_schema,system_auth",
+    "Comma separated list of keyspaces to be excluded from the audit log");
 
-DEFINE_string(ycql_audit_included_categories,
-              "",
-              "Comma separated list of categories to be included in the audit log, "
-              "if none - includes all (non-excluded) categories");
-TAG_FLAG(ycql_audit_included_categories, runtime);
+DEFINE_RUNTIME_string(ycql_audit_included_categories, "",
+    "Comma separated list of categories to be included in the audit log, "
+    "if none - includes all (non-excluded) categories");
 
-DEFINE_string(ycql_audit_excluded_categories,
-              "",
-              "Comma separated list of categories to be excluded from the audit log");
-TAG_FLAG(ycql_audit_excluded_categories, runtime);
+DEFINE_RUNTIME_string(ycql_audit_excluded_categories, "",
+    "Comma separated list of categories to be excluded from the audit log");
 
-DEFINE_string(ycql_audit_included_users,
-              "",
-              "Comma separated list of users to be included in the audit log, "
-              "if none - includes all (non-excluded) users");
-TAG_FLAG(ycql_audit_included_users, runtime);
+DEFINE_RUNTIME_string(ycql_audit_included_users, "",
+    "Comma separated list of users to be included in the audit log, "
+    "if none - includes all (non-excluded) users");
 
-DEFINE_string(ycql_audit_excluded_users,
-              "",
-              "Comma separated list of users to be excluded from the audit log");
-TAG_FLAG(ycql_audit_excluded_users, runtime);
+DEFINE_RUNTIME_string(ycql_audit_excluded_users, "",
+    "Comma separated list of users to be excluded from the audit log");
 
 
 namespace yb {

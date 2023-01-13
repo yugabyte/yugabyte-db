@@ -8,6 +8,8 @@ import { ClustersRouting } from '@app/features/clusters/ClustersRouting';
 import { themeVariables } from '@app/theme/variables';
 import { PerformanceRouting } from './clusters/PerformanceRouting';
 import { GettingStarted } from './welcome/GettingStarted';
+import { OverviewRouting } from '@app/features/clusters/OverviewRouting';
+import { DatabasesRouting } from '@app/features/clusters/DatabasesRouting';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -86,13 +88,15 @@ export const MainLayout: FC = () => {
           <Announcement />
           */}
           <Switch>
+              <Route path={'/overview'} component={OverviewRouting} />
+              <Route path={'/databases'} component={DatabasesRouting} />
               <Route path={'/cluster'} component={ClustersRouting} />
               <Route path={'/performance'} component={PerformanceRouting} />
               <Route path={'/alerts'} component={GettingStarted} />
-              <Route path={'/admin'} component={GettingStarted} />
+              <Route path={'/debug'} component={GettingStarted} />
               <Route exact path={'/'} render={() => {
                   return (
-                    <Redirect to="/cluster/tabOverview" />
+                    <Redirect to="/overview" />
                   )
               }
 

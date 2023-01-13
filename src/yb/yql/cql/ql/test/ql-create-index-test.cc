@@ -16,6 +16,8 @@
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
+using std::string;
+
 namespace yb {
 namespace master {
 class CatalogManager;

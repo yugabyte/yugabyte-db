@@ -18,8 +18,6 @@
 // under the License.
 //
 // This file defines a collection of statistics collectors.
-#ifndef ROCKSDB_DB_TABLE_PROPERTIES_COLLECTOR_H
-#define ROCKSDB_DB_TABLE_PROPERTIES_COLLECTOR_H
 
 #pragma once
 
@@ -152,5 +150,3 @@ class UserKeyTablePropertiesCollectorFactory
 };
 
 }  // namespace rocksdb
-
-#endif // ROCKSDB_DB_TABLE_PROPERTIES_COLLECTOR_H

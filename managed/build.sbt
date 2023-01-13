@@ -5,6 +5,8 @@ import sbt.Tests._
 
 import scala.sys.process.Process
 
+historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
+
 useCoursier := false
 
 // ------------------------------------------------------------------------------------------------
@@ -144,13 +146,15 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
+  "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
-  "com.azure" % "azure-core" % "1.13.0",
-  "com.azure" % "azure-identity" % "1.2.3",
-  "com.azure" % "azure-security-keyvault-keys" % "4.2.5",
-  "com.azure" % "azure-storage-blob" % "12.7.0",
+  // Used below azure versions from azure-sdk-bom:1.2.6
+  "com.azure" % "azure-core" % "1.32.0",
+  "com.azure" % "azure-identity" % "1.6.0",
+  "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
+  "com.azure" % "azure-storage-blob" % "12.19.1",
   "javax.mail" % "mail" % "1.4.7",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
@@ -160,7 +164,6 @@ libraryDependencies ++= Seq(
   "org.pac4j" % "pac4j-oauth" % "3.7.0" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "3.7.0" exclude("commons-io" , "commons-io"),
   "com.typesafe.play" %% "play-json" % "2.6.14",
-  "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
   "org.apache.velocity" % "velocity" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
@@ -183,12 +186,14 @@ libraryDependencies ++= Seq(
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
   "io.fabric8" % "kubernetes-client" % "5.10.2",
-  "org.apache.commons" % "commons-text" % "1.9",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
   "io.swagger" % "swagger-annotations" % "1.5.22", // needed for annotations in prod code
   "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
+  // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
+  // Remove once YBM starts using real PG DB.
+  "org.hsqldb" % "hsqldb" % "2.3.4",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
@@ -201,6 +206,8 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
+  "io.grpc" % "grpc-testing" % "1.48.0" % Test,
+  "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
 )
 // Clear default resolvers.
 appResolvers := None
@@ -301,13 +308,20 @@ cleanPlatform := {
   cleanModules.value
 }
 
+lazy val moveYbcPackageEnvName = "MOVE_YBC_PKG"
+lazy val moveYbcPackage = getBoolEnvVar(moveYbcPackageEnvName)
+
 versionGenerate := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
   val status = Process("../build-support/gen_version_info.py --build-type=" + buildType + " " +
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
-  Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
+  if (moveYbcPackage) {
+    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf" + " -s", baseDirectory.value).!
+  } else {
+    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
+  }
   status
 }
 
@@ -414,8 +428,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b4"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.28-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b13"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.37-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b14"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -423,18 +438,13 @@ libraryDependencies ++= Seq(
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
-  // TODO(Shashank): Remove this in Step 3:
-  // Overrides to address vulnerability in swagger-play2
-  "com.typesafe.akka" %% "akka-actor" % "2.5.16"
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
-// TODO(Shashank): Remove these in Step 3:
-dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8"
+// SSO functionality only works on the older version of nimbusds.
+// Azure library upgrade tries to upgrade nimbusds to latest version.
+dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 

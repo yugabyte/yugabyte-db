@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-admin
     parent: admin
-    weight: 2465
+    weight: 30
 type: docs
 ---
 
@@ -1481,6 +1481,23 @@ For example:
     create_change_data_stream ysql.yugabyte
 ```
 
+##### Enabling before image
+
+To create a change data capture (CDC) DB stream which also supports sending the before image of the record, use the following command.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: The namespace on which the DB stream ID is to be created.
+* `IMPLICIT`: Checkpointing type on the server.
+* `ALL`: Record type indicating the server that the stream should send the before image too.
+
 A successful operation of the above command returns a message with a DB stream ID:
 
 ```output
@@ -1839,6 +1856,38 @@ The CDC bootstrap ids are the ones that should be used with [`setup_universe_rep
 {{< /note >}}
 
 ---
+
+#### get_replication_status
+
+Returns the replication status of all consumer streams. If *producer_universe_uuid* is provided, this will only return streams that belong to an associated universe key.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> get_replication_status [ <producer_universe_uuid> ]
+```
+
+* *producer_universe_uuid*: Optional universe-unique identifier (can be any string, such as a string of a UUID).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    get_replication_status e260b8b6-e89f-4505-bb8e-b31f74aa29f3
+```
+
+```output
+statuses {
+  table_id: "03ee1455f2134d5b914dd499ccad4377"
+  stream_id: "53441ad2dd9f4e44a76dccab74d0a2ac"
+  errors {
+    error: REPLICATION_MISSING_OP_ID
+    error_detail: "Unable to find expected op id on the producer"
+  }
+}
+```
 
 ### Decommissioning commands
 

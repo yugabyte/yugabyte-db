@@ -13,8 +13,7 @@
 //
 // This file contains the QLValue class that represents QL values.
 
-#ifndef YB_COMMON_QL_NAME_H
-#define YB_COMMON_QL_NAME_H
+#pragma once
 
 #include <string>
 
@@ -48,5 +47,3 @@ class YcqlName {
 };
 
 } // namespace yb
-
-#endif // YB_COMMON_QL_NAME_H

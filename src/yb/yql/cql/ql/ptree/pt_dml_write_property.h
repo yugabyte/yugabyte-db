@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_DML_WRITE_PROPERTY_H_
-#define YB_YQL_CQL_QL_PTREE_PT_DML_WRITE_PROPERTY_H_
+#pragma once
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -67,7 +66,7 @@ class PTDmlWriteProperty : public PTProperty {
   }
 
  protected:
-  bool IsValidProperty(const string& property_name) {
+  bool IsValidProperty(const std::string& property_name) {
     return kPropertyDataTypes.find(property_name) != kPropertyDataTypes.end();
   }
 
@@ -77,7 +76,7 @@ class PTDmlWriteProperty : public PTProperty {
   static const std::map<std::string, PTDmlWriteProperty::KVProperty> kPropertyDataTypes;
 };
 
-std::ostream& operator<<(ostream& os, const DmlWritePropertyType& property_type);
+std::ostream& operator<<(std::ostream& os, const DmlWritePropertyType& property_type);
 
 class PTDmlWritePropertyListNode : public TreeListNode<PTDmlWriteProperty> {
  public:
@@ -169,5 +168,3 @@ struct Options {
 
 } // namespace ql
 } // namespace yb
-
-#endif // YB_YQL_CQL_QL_PTREE_PT_DML_WRITE_PROPERTY_H_

@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_LEADER_ELECTION_H
-#define YB_CONSENSUS_LEADER_ELECTION_H
+#pragma once
 
 #include <functional>
 #include <map>
@@ -269,5 +268,3 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
 
 } // namespace consensus
 } // namespace yb
-
-#endif /* YB_CONSENSUS_LEADER_ELECTION_H */

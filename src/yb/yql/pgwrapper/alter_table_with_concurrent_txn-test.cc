@@ -75,8 +75,7 @@ TEST_F(AlterTableWithConcurrentTxnTest, YB_DISABLE_TEST_IN_TSAN(TServerLeaderCha
 
   ASSERT_NOK(txn_conn.Execute("COMMIT"));
 
-  auto res = ASSERT_RESULT(txn_conn.FetchFormat("SELECT COUNT(*) FROM $0", "p"));
-  int64_t value = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  auto value = ASSERT_RESULT(txn_conn.FetchValue<PGUint64>(Format("SELECT COUNT(*) FROM $0", "p")));
   ASSERT_EQ(value, 1);
 }
 

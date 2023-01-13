@@ -18,7 +18,12 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/util/flags.h"
 #include "yb/yql/pggate/pg_session.h"
+
+DEFINE_test_flag(bool, use_monotime_for_rpc_wait_time, false,
+                 "Flag to enable use of MonoTime::Now() instead of CoarseMonoClock::Now() "
+                 "in order to avoid 0 timings in the tests.");
 
 using namespace std::literals;
 
@@ -27,8 +32,10 @@ namespace pggate {
 namespace {
 
 Status PatchStatus(const Status& status, const PgObjectIds& relations) {
-  auto op_index = PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR
-      ? OpIndex::ValueFromStatus(status) : boost::none;
+  if (PgsqlRequestStatus(status) != PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
+    return status;
+  }
+  auto op_index = OpIndex::ValueFromStatus(status);
   if (op_index && *op_index < relations.size()) {
     return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
         .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));
@@ -68,6 +75,20 @@ Result<rpc::CallResponsePtr> PerformFuture::Get() {
   RETURN_NOT_OK(PatchStatus(result.status, relations_));
   session_->TrySetCatalogReadPoint(result.catalog_read_time);
   return result.response;
+}
+
+Result<rpc::CallResponsePtr> PerformFuture::Get(MonoDelta* wait_time) {
+  if (PREDICT_FALSE(FLAGS_TEST_use_monotime_for_rpc_wait_time)) {
+    auto start_time = MonoTime::Now();
+    auto response = Get();
+    *wait_time += MonoTime::Now() - start_time;
+    return response;
+  }
+
+  auto start_time = CoarseMonoClock::Now();
+  auto response = Get();
+  *wait_time += CoarseMonoClock::Now() - start_time;
+  return response;
 }
 
 } // namespace pggate

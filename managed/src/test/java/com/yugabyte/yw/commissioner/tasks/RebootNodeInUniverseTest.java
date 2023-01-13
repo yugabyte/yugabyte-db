@@ -15,9 +15,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.yb.client.YBClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -34,10 +39,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import play.libs.Json;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class RebootNodeInUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
+
+  @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
 
   public void setUp(boolean withMaster, int numNodes, int replicationFactor) {
     super.setUp();
@@ -86,64 +93,70 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    } catch (Exception e) {
+    } catch (Exception ignored) {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
   }
 
-  private static final List<TaskType> REBOOT_NODE_TASK_SEQUENCE =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.RebootServer,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.SetNodeState,
-          TaskType.UniverseUpdateSucceeded);
+  private List<TaskType> rebootNodeTaskSequence(boolean isHardReboot) {
+    return ImmutableList.of(
+        TaskType.SetNodeState,
+        TaskType.AnsibleClusterServerCtl,
+        isHardReboot ? TaskType.HardRebootServer : TaskType.RebootServer,
+        TaskType.AnsibleClusterServerCtl,
+        TaskType.WaitForServer,
+        TaskType.WaitForServerReady,
+        TaskType.SetNodeState,
+        TaskType.UniverseUpdateSucceeded);
+  }
 
-  private static final List<JsonNode> REBOOT_NODE_TASK_EXPECTED_RESULTS =
-      ImmutableList.of(
-          Json.toJson(ImmutableMap.of("state", "Rebooting")),
-          Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Live")),
-          Json.toJson(ImmutableMap.of()));
+  private List<JsonNode> rebootNodeTaskExpectedResults(boolean isHardReboot) {
+    String state = isHardReboot ? "HardRebooting" : "Rebooting";
+    return ImmutableList.of(
+        Json.toJson(ImmutableMap.of("state", state)),
+        Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("state", "Live")),
+        Json.toJson(ImmutableMap.of()));
+  }
 
-  private static final List<TaskType> REBOOT_NODE_WITH_MASTER =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForMasterLeader,
-          TaskType.RebootServer,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.SetNodeState,
-          TaskType.UniverseUpdateSucceeded);
+  private List<TaskType> rebootNodeWithMaster(boolean isHardReboot) {
+    return ImmutableList.of(
+        TaskType.SetNodeState,
+        TaskType.AnsibleClusterServerCtl,
+        TaskType.AnsibleClusterServerCtl,
+        TaskType.WaitForMasterLeader,
+        isHardReboot ? TaskType.HardRebootServer : TaskType.RebootServer,
+        TaskType.AnsibleClusterServerCtl,
+        TaskType.WaitForServer,
+        TaskType.WaitForServerReady,
+        TaskType.AnsibleClusterServerCtl,
+        TaskType.WaitForServer,
+        TaskType.WaitForServerReady,
+        TaskType.SetNodeState,
+        TaskType.UniverseUpdateSucceeded);
+  }
 
-  private static final List<JsonNode> REBOOT_NODE_WITH_MASTER_RESULTS =
-      ImmutableList.of(
-          Json.toJson(ImmutableMap.of("state", "Rebooting")),
-          Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
-          Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Live")),
-          Json.toJson(ImmutableMap.of()));
+  private List<JsonNode> rebootNodeWithMasterResults(boolean isHardReboot) {
+    String state = isHardReboot ? "HardRebooting" : "Rebooting";
+    return ImmutableList.of(
+        Json.toJson(ImmutableMap.of("state", state)),
+        Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+        Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("state", "Live")),
+        Json.toJson(ImmutableMap.of()));
+  }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
     taskParams.nodeName = nodeName;
@@ -162,16 +175,16 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   }
 
   private void assertRebootNodeSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition, RebootType type) {
+      Map<Integer, List<TaskInfo>> subTasksByPosition, RebootType type, boolean isHardReboot) {
     int position = 0;
     int taskPosition = 0;
     switch (type) {
       case WITH_MASTER:
-        for (TaskType taskType : REBOOT_NODE_WITH_MASTER) {
+        for (TaskType taskType : rebootNodeWithMaster(isHardReboot)) {
           List<TaskInfo> tasks = subTasksByPosition.get(taskPosition);
           assertEquals(1, tasks.size());
           assertEquals(taskType, tasks.get(0).getTaskType());
-          JsonNode expectedResults = REBOOT_NODE_WITH_MASTER_RESULTS.get(position);
+          JsonNode expectedResults = rebootNodeWithMasterResults(isHardReboot).get(position);
           List<JsonNode> taskDetails =
               tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
@@ -180,11 +193,11 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
         }
         break;
       case ONLY_TSERVER:
-        for (TaskType taskType : REBOOT_NODE_TASK_SEQUENCE) {
+        for (TaskType taskType : rebootNodeTaskSequence(isHardReboot)) {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           assertEquals(1, tasks.size());
           assertEquals(taskType, tasks.get(0).getTaskType());
-          JsonNode expectedResults = REBOOT_NODE_TASK_EXPECTED_RESULTS.get(position);
+          JsonNode expectedResults = rebootNodeTaskExpectedResults(isHardReboot).get(position);
           List<JsonNode> taskDetails =
               tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
@@ -196,11 +209,13 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testRebootNodeWithNoMaster() {
+  @Parameters({"false", "true"})
+  public void testRebootNodeWithNoMaster(boolean isHardReboot) {
     setUp(true, 6, 3);
-    NodeTaskParams taskParams = new NodeTaskParams();
+    RebootNodeInUniverse.Params taskParams = new RebootNodeInUniverse.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 2;
+    taskParams.isHardReboot = isHardReboot;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n4"); // Node with no master process.
     assertEquals(Success, taskInfo.getTaskState());
@@ -208,15 +223,17 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRebootNodeSequence(subTasksByPosition, RebootType.ONLY_TSERVER);
+    assertRebootNodeSequence(subTasksByPosition, RebootType.ONLY_TSERVER, isHardReboot);
   }
 
   @Test
-  public void testRebootNodeWithMaster() {
+  @Parameters({"false", "true"})
+  public void testRebootNodeWithMaster(boolean isHardReboot) {
     setUp(true, 4, 3);
-    NodeTaskParams taskParams = new NodeTaskParams();
+    RebootNodeInUniverse.Params taskParams = new RebootNodeInUniverse.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 2;
+    taskParams.isHardReboot = isHardReboot;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
@@ -224,6 +241,6 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRebootNodeSequence(subTasksByPosition, RebootType.WITH_MASTER);
+    assertRebootNodeSequence(subTasksByPosition, RebootType.WITH_MASTER, isHardReboot);
   }
 }

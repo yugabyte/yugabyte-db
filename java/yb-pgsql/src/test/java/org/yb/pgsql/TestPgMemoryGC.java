@@ -5,8 +5,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
-import org.yb.util.YBTestRunnerNonSanitizersOrAArch64;
-import org.yb.util.SystemUtil;
+import org.yb.util.YBTestRunnerNonSanOrAArch64Mac;
 
 import java.sql.Statement;
 import java.util.Collections;
@@ -16,8 +15,9 @@ import static org.yb.AssertionWrappers.assertTrue;
 
 /*
  * Verify that the freed memory allocated by a query is released to OS.
+ * Skip verifying for override threshold for non Linux distribution as Mac doesn't use TCmalloc
  */
-@RunWith(value = YBTestRunnerNonSanitizersOrAArch64.class)
+@RunWith(value = YBTestRunnerNonSanOrAArch64Mac.class)
 public class TestPgMemoryGC extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgMemoryGC.class);
 
@@ -73,11 +73,6 @@ public class TestPgMemoryGC extends BasePgSQLTest {
 
   @Test
   public void testPgMemoryGcThresholdOverride() throws Exception {
-    // Skip verifying for override threshold for non Linux distribution as Mac doesn't use TCmalloc
-    if (!SystemUtil.IS_LINUX) {
-      return;
-    }
-
     // Set the GC threshold to a high value and verify the GC is not triggered.
     checkRssDiffForGcThreshold(HIGH_PG_GC_THRESHOLD_BYTES,
         "Freed bytes should be not recycled when GC threshold is high",

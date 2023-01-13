@@ -142,7 +142,8 @@ public class YbcHandler {
             true)
         < 0) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot install universe with DB version lower than 2.14.0.0-b1");
+          BAD_REQUEST,
+          "Cannot install universe with DB version lower than " + Util.YBC_COMPATIBLE_DB_VERSION);
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();

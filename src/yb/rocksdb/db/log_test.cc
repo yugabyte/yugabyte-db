@@ -34,6 +34,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 namespace log {
 

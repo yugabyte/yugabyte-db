@@ -21,22 +21,22 @@
 
 #include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(use_node_hostname_for_local_tserver, false,
+DEFINE_UNKNOWN_bool(use_node_hostname_for_local_tserver, false,
     "Connect to local t-server by using host name instead of local IP");
 
 // A macro for logging the function name and the state of the current transaction.
@@ -127,17 +127,15 @@ const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
 const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
 #endif
 
-DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
+DEFINE_UNKNOWN_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
              "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
 
 PgTxnManager::PgTxnManager(
     PgClient* client,
     scoped_refptr<ClockBase> clock,
-    const tserver::TServerSharedObject* tserver_shared_object,
     PgCallbacks pg_callbacks)
     : client_(client),
       clock_(std::move(clock)),
-      tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
 }
 
@@ -329,6 +327,10 @@ Status PgTxnManager::RestartReadPoint() {
   return Status::OK();
 }
 
+void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
+  active_sub_transaction_id_ = id;
+}
+
 Status PgTxnManager::CommitTransaction() {
   return FinishTransaction(Commit::kTrue);
 }
@@ -369,6 +371,7 @@ void PgTxnManager::ResetTxnAndSession() {
   priority_ = 0;
   in_txn_limit_ = HybridTime();
   ++txn_serial_no_;
+  active_sub_transaction_id_ = 0;
 
   enable_follower_reads_ = false;
   read_only_ = false;
@@ -409,10 +412,13 @@ std::string PgTxnManager::TxnStateDebugStr() const {
 uint64_t PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
   if (!ddl_mode_ && !txn_in_progress_) {
     ++txn_serial_no_;
+    active_sub_transaction_id_ = 0;
   }
   options->set_isolation(isolation_level_);
   options->set_ddl_mode(ddl_mode_);
   options->set_txn_serial_no(txn_serial_no_);
+  options->set_active_sub_transaction_id(active_sub_transaction_id_);
+
   if (txn_in_progress_ && in_txn_limit_) {
     options->set_in_txn_limit_ht(in_txn_limit_.ToUint64());
   }

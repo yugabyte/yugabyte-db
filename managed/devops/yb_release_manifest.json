@@ -16,8 +16,8 @@
     "remote_role.yml",
     "setup-cgroup.yml",
     "edit_authorized_keys.yml",
-    "reinstall-package.yml",
-    "configure_ssh2.yml"
+    "configure_ssh2.yml",
+    "install-third-party.yml"
   ],
   "bin": [
     "bin/common.sh",
@@ -36,7 +36,8 @@
     "bin/ybcloud.sh",
     "bin/edit_universe_details.py",
     "bin/filtered_logs.sh",
-    "bin/node_utils.sh"
+    "bin/node_utils.sh",
+    "bin/yb_attach_detach.py"
   ],
   "filter_plugins": [
     "filter_plugins/*"
@@ -49,6 +50,9 @@
   ],
   "opscli": [
     "opscli/*"
+  ],
+  "pex": [
+    "pex/*"
   ],
   "plugins": [
     "plugins/*"
@@ -67,5 +71,8 @@
     "vars/cloud/azu.yml",
     "vars/cloud/gcp.yml",
     "vars/cloud/onprem.yml"
+  ],
+  "connection_plugins": [
+    "connection_plugins/node_agent_rpc.py"
   ]
 }

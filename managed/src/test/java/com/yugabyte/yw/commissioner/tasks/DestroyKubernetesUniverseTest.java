@@ -185,6 +185,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverse(false);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
     taskParams.customerUUID = defaultCustomer.uuid;
@@ -206,6 +207,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverse(true);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
     taskParams.customerUUID = defaultCustomer.uuid;
@@ -219,6 +221,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverse(true);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = true;
     taskParams.customerUUID = defaultCustomer.uuid;
@@ -241,7 +244,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ false);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
-
+    defaultUniverse.save();
     ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor.forClass(String.class);
 
@@ -275,6 +278,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ true);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
 
     String nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.code);
     String nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.code);
@@ -295,8 +299,11 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     config2.put("KUBENAMESPACE", ns2);
 
     az1.updateConfig(config1);
+    az1.save();
     az2.updateConfig(config2);
+    az2.save();
     az3.updateConfig(config3);
+    az3.save();
 
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
@@ -328,6 +335,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ false);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V2TO3.toString()));
+    defaultUniverse.save();
 
     ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor.forClass(String.class);

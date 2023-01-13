@@ -38,29 +38,24 @@
       background: rgba(43, 89, 195, 0.1);
     }
 
-    .outlier-chart-penultimate-button,
-    .outlier-chart-first-button,
-    .outlier-chart-last-button,
-    .outlier-chart-buttons {
-      border: 1px solid #E5E5E9;
-      font-family: 'Inter';
-      font-style: normal;
-      font-weight: 400;
-      font-size: 13px;
-      line-height: 16px;
-    }
-
-    .outlier-chart-penultimate-button,
-    .outlier-chart-buttons {
+    .outlier-chart-button {
       border-radius: 0;
-    }
 
-    .outlier-chart-first-button {
-      border-radius: 8px 0 0 8px;
-    }
+      &__penultimate {
+        border-radius: 0;
+      }
 
-    .outlier-chart-last-button {
-      border-radius: 0 8px 8px 0;
+      &__only {
+        border-radius: 8px;
+      }
+
+      &__first {
+        border-radius: 8px 0 0 8px;
+      }
+
+      &__last {
+        border-radius: 0 8px 8px 0;
+      }
     }
 
     .outlier-dropdown {
@@ -68,6 +63,11 @@
     }
 
     .btn {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 16px;
       height: 26px;
       padding: 4px 12px;
     }

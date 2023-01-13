@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TABLET_SERVER_TEST_BASE_H_
-#define YB_TSERVER_TABLET_SERVER_TEST_BASE_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
@@ -70,7 +69,7 @@ class TabletServerServiceProxy;
 
 class TabletServerTestBase : public YBTest {
  public:
-  typedef pair<int32_t, int32_t> KeyValue;
+  typedef std::pair<int32_t, int32_t> KeyValue;
 
   explicit TabletServerTestBase(TableType table_type = YQL_TABLE_TYPE);
   ~TabletServerTestBase();
@@ -101,7 +100,7 @@ class TabletServerTestBase : public YBTest {
                             int32_t count,
                             int32_t num_batches = -1,
                             TabletServerServiceProxy* proxy = nullptr,
-                            string tablet_id = kTabletId,
+                            std::string tablet_id = kTabletId,
                             std::vector<uint64_t>* write_hybrid_times_collector = nullptr,
                             TimeSeries *ts = nullptr,
                             bool string_field_defined = true);
@@ -110,7 +109,7 @@ class TabletServerTestBase : public YBTest {
   void DeleteTestRowsRemote(int32_t first_row,
                             int32_t count,
                             TabletServerServiceProxy* proxy = nullptr,
-                            string tablet_id = kTabletId);
+                            std::string tablet_id = kTabletId);
 
   void BuildTestRow(int index, QLWriteRequestPB* req);
 
@@ -148,5 +147,3 @@ class TabletServerTestBase : public YBTest {
 
 } // namespace tserver
 } // namespace yb
-
-#endif /* YB_TSERVER_TABLET_SERVER_TEST_BASE_H_ */

@@ -50,11 +50,12 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(num_counter_threads, 8, "Number of counting threads to launch");
-DEFINE_int32(num_summer_threads, 1, "Number of summing threads to launch");
-DEFINE_int32(num_slowreader_threads, 1, "Number of 'slow' reader threads to launch");
-DEFINE_int32(inserts_per_thread, 1000, "Number of rows inserted by the inserter thread");
+DEFINE_UNKNOWN_int32(num_counter_threads, 8, "Number of counting threads to launch");
+DEFINE_UNKNOWN_int32(num_summer_threads, 1, "Number of summing threads to launch");
+DEFINE_UNKNOWN_int32(num_slowreader_threads, 1, "Number of 'slow' reader threads to launch");
+DEFINE_UNKNOWN_int32(inserts_per_thread, 1000, "Number of rows inserted by the inserter thread");
 
 using std::shared_ptr;
 
@@ -113,7 +114,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     shared_ptr<TimeSeries> updates = ts_collector_.GetTimeSeries("updated");
 
-    LocalTabletWriter writer(this->tablet().get(), &this->client_schema_);
+    LocalTabletWriter writer(this->tablet(), &this->client_schema_);
 
     faststring update_buf;
 
@@ -228,7 +229,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   // with a different value.
   void DeleteAndReinsertCycleThread(int tid) {
     int32_t iteration = 0;
-    LocalTabletWriter writer(this->tablet().get());
+    LocalTabletWriter writer(this->tablet());
 
     while (running_insert_count_.count() > 0) {
       for (int i = 0; i < 100; i++) {
@@ -244,7 +245,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   // succeed in UPDATING a ghost row.
   void StubbornlyUpdateSameRowThread(int tid) {
     int32_t iteration = 0;
-    LocalTabletWriter writer(this->tablet().get());
+    LocalTabletWriter writer(this->tablet());
     while (running_insert_count_.count() > 0) {
       for (int i = 0; i < 100; i++) {
         Status s = this->UpdateTestRow(&writer, tid, iteration++);

@@ -11,14 +11,13 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_TRUNCATE_OPERATION_H
-#define YB_TABLET_OPERATIONS_TRUNCATE_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
 
 #include "yb/gutil/macros.h"
-#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
 
@@ -35,13 +34,13 @@ namespace tablet {
 // Operation Context for the Truncate operation.
 // Keeps track of the Operation states (request, result, ...)
 // Executes the truncate transaction.
-class TruncateOperation : public OperationBase<OperationType::kTruncate, TruncatePB> {
+class TruncateOperation : public OperationBase<OperationType::kTruncate, LWTruncatePB> {
  public:
   template <class... Args>
   explicit TruncateOperation(Args&&... args)
       : OperationBase(std::forward<Args>(args)...) {}
 
-  Status Prepare() override { return Status::OK(); }
+  Status Prepare(IsLeaderSide is_leader_side) override { return Status::OK(); }
 
  private:
   // Starts the TruncateOperation by assigning it a timestamp.
@@ -51,5 +50,3 @@ class TruncateOperation : public OperationBase<OperationType::kTruncate, Truncat
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif  // YB_TABLET_OPERATIONS_TRUNCATE_OPERATION_H

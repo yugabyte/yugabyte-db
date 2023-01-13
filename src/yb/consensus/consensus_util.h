@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_UTIL_H
-#define YB_CONSENSUS_CONSENSUS_UTIL_H
+#pragma once
 
 #include <float.h>
 
@@ -50,5 +49,3 @@ inline std::string MakeTabletLogPrefix(const std::string& tablet_id, const std::
 
 }  // namespace consensus
 }  // namespace yb
-
-#endif // YB_CONSENSUS_CONSENSUS_UTIL_H

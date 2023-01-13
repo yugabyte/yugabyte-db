@@ -2,7 +2,14 @@ package models
 
 type HealthCheckInfo struct {
 
-	BuildInfo BuildInfo `json:"build_info"`
+    // UUIDs of dead nodes
+    DeadNodes []string `json:"dead_nodes"`
 
-	RuntimeInfo RuntimeInfo `json:"runtime_info"`
+    MostRecentUptime int64 `json:"most_recent_uptime"`
+
+    // UUIDs of under-replicated tablets
+    UnderReplicatedTablets []string `json:"under_replicated_tablets"`
+
+    // UUIDs of leaderless tablets
+    LeaderlessTablets []string `json:"leaderless_tablets"`
 }

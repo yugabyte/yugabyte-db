@@ -175,23 +175,11 @@ make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 
 readonly -a VALID_COMPILER_TYPES=(
   gcc
-  gcc5
-  gcc6
-  gcc7
-  gcc8
-  gcc9
-  gcc10
   gcc11
   gcc12
   clang
-  clang7
-  clang8
-  clang9
-  clang10
-  clang11
-  clang12
-  clang13
   clang14
+  clang15
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -206,7 +194,6 @@ readonly -a VALID_ARCHITECTURES=(
   x86_64
   aarch64
   arm64
-  graviton2
 )
 make_regex_from_list VALID_ARCHITECTURES "${VALID_ARCHITECTURES[@]}"
 
@@ -348,7 +335,7 @@ decide_whether_to_use_linuxbrew() {
             ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
                $build_type =~ ^(release|prof_(gen|use))$ &&
               "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]]; then
+              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
       YB_USE_LINUXBREW=1
     fi
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
@@ -499,16 +486,7 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${YB_TARGET_ARCH} == "x86_64" ]]; then
-        if [[ ${build_type} =~ ^(debug|fastdebug|release|tsan|prof_(gen|use))$ ]]; then
-          YB_COMPILER_TYPE=clang14
-        else
-          YB_COMPILER_TYPE=clang13
-        fi
-      else
-        # https://github.com/yugabyte/yugabyte-db/issues/12603
-        YB_COMPILER_TYPE=clang12
-      fi
+      YB_COMPILER_TYPE=clang15
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -535,14 +513,6 @@ is_gcc() {
 
 is_ubuntu() {
   [[ -f /etc/issue ]] && grep -q Ubuntu /etc/issue
-}
-
-build_compiler_if_necessary() {
-  # Sometimes we have to build the compiler before we can run CMake.
-  if is_clang && is_linux; then
-    log "Building clang before we can run CMake with compiler pointing to clang"
-    "$YB_THIRDPARTY_DIR/build_thirdparty.sh" llvm
-  fi
 }
 
 set_compiler_type_based_on_jenkins_job_name() {
@@ -1232,22 +1202,15 @@ download_toolchain() {
           -n ${YB_THIRDPARTY_DIR:-} && ${YB_THIRDPARTY_DIR##*/} == *linuxbrew* ]]; then
     # TODO: get rid of the hard-coded URL below and always include linuxbrew_url.txt in the
     # thirdparty archives that are built for Linuxbrew.
-    local linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
+    linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
     linuxbrew_url+="20181203T161736v9/linuxbrew-20181203T161736v9.tar.gz"
-  else
-    for file_name_part in linuxbrew toolchain; do
-      local url_file_path="$YB_THIRDPARTY_DIR/${file_name_part}_url.txt"
-      if [[ -f $url_file_path ]]; then
-        toolchain_urls+=( "$(<"$url_file_path")" )
-        break
-      fi
-    done
   fi
 
   if [[ -n ${linuxbrew_url:-} ]]; then
     toolchain_urls+=( "$linuxbrew_url" )
   fi
   if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} &&
+        -z ${YB_LLVM_TOOLCHAIN_DIR:-} &&
         ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]]; then
     YB_LLVM_TOOLCHAIN_URL=$(
       activate_virtualenv &>/dev/null
@@ -1298,18 +1261,25 @@ download_toolchain() {
 
     if [[ ${is_llvm} == "true" ]]; then
       if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} &&
-            $YB_LLVM_TOOLCHAIN_DIR != "$extracted_dir" &&
-            ${YB_LLVM_TOOLCHAIN_DIR_MISMATCH_WARNING_LOGGED:-0} == "0" ]]; then
-        log_thirdparty_and_toolchain_details
-        log "Warning: YB_LLVM_TOOLCHAIN_DIR is already set to '$YB_LLVM_TOOLCHAIN_DIR', cannot " \
-            "set it to '$extracted_dir'. This may happen in case the LLVM toolchain version used " \
-            "to built third-party dependencies is different from the most recent one for the " \
-            "same major version that we have just picked to build YugabyteDB with."
-        export YB_LLVM_TOOLCHAIN_DIR_MISMATCH_WARNING_LOGGED=1
+            ${YB_LLVM_TOOLCHAIN_DIR} != "${extracted_dir}" ]]; then
+        if [[ ${YB_LLVM_TOOLCHAIN_MISMATCH_WARNING_LOGGED:-0} == "0" &&
+              ${YB_SUPPRESS_LLVM_TOOLCHAIN_MISMATCH_WARNING:-0} != "1" ]]; then
+          log_thirdparty_and_toolchain_details
+          log "Warning: YB_LLVM_TOOLCHAIN_DIR is already set to '${YB_LLVM_TOOLCHAIN_DIR}'," \
+              "cannot set it to '${extracted_dir}'. This may happen in case the LLVM toolchain" \
+              "version used to build third-party dependencies is different from the one we are" \
+              "using now to build YugabyteDB, normally determined by the llvm-installer Python" \
+              "module. To fix this permanently, third-party dependencies should be rebuilt using" \
+              "our most recent build of the LLVM toolchain for this major version, but in most" \
+              "cases this is not a problem. To suppress this warning, set the" \
+              "YB_SUPPRESS_LLVM_TOOLCHAIN_MISMATCH_WARNING env var to 1."
+          export YB_LLVM_TOOLCHAIN_MISMATCH_WARNING_LOGGED=1
+        fi
+      else
+        export YB_LLVM_TOOLCHAIN_DIR=$extracted_dir
+        yb_llvm_toolchain_dir_origin="downloaded from $toolchain_url"
+        save_llvm_toolchain_info_to_build_dir
       fi
-      export YB_LLVM_TOOLCHAIN_DIR=$extracted_dir
-      yb_llvm_toolchain_dir_origin="downloaded from $toolchain_url"
-      save_llvm_toolchain_info_to_build_dir
     fi
   done
 
@@ -2014,7 +1984,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${build_type:-} ]]; then
     build_type=$_build_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Setting build type to '$build_type' based on predefined build root ('$basename')"
     fi
     validate_build_type "$build_type"
@@ -2025,7 +1995,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     export YB_COMPILER_TYPE=$_compiler_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Automatically setting compiler type to '$YB_COMPILER_TYPE' based on predefined build" \
           "root ('$basename')"
     fi
@@ -2036,7 +2006,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${YB_LINKING_TYPE:-} ]]; then
     export YB_LINKING_TYPE=$_linking_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Automatically setting linking type to '$YB_LINKING_TYPE' based on predefined build" \
           "root ('$basename')"
     fi
@@ -2401,14 +2371,14 @@ lint_java_code() {
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
              "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrAArch64\.class\)' \
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
             "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
-            "YBTestRunnerNonSanitizersOrAArch64, " \
+            "YBTestRunnerNonSanOrAArch64Mac, " \
             "nor YBTestRunnerReleaseOnly are being used in test"
         num_errors+=1
       fi
@@ -2503,6 +2473,9 @@ set_prebuilt_thirdparty_url() {
       if [[ ${YB_LINKING_TYPE:-dynamic} != "dynamic" ]]; then
         # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
         thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
+      fi
+      if [[ ! ${build_type} =~ ^(asan|tsan)$ && ${YB_COMPILER_TYPE} == clang* ]]; then
+        thirdparty_tool_cmd_line+=( "--allow-older-os" )
       fi
       "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
@@ -2652,10 +2625,12 @@ build_clangd_index() {
   log "Building Clangd index at ${clangd_index_path}"
   (
     set -x
+    # The location of the final compilation database file needs to be consistent with that in the
+    # compile_commands.py module.
     time "${YB_LLVM_TOOLCHAIN_DIR}/bin/clangd-indexer" \
         --executor=all-TUs \
         "--format=${format}" \
-        "${BUILD_ROOT}/compile_commands.json" \
+        "${BUILD_ROOT}/compile_commands/combined_postprocessed/compile_commands.json" \
         >"${clangd_index_path}"
   )
 }

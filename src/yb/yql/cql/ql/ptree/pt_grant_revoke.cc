@@ -33,6 +33,7 @@ namespace ql {
 
 using std::shared_ptr;
 using std::to_string;
+using std::string;
 using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------

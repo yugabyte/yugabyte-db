@@ -17,21 +17,21 @@ type: docs
 
   <li >
     <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
     <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
   </li>
 
   <li >
     <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link active">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
     </a>
   </li>
@@ -50,64 +50,37 @@ Update packages on your system, install development tools and additional package
 
 ```sh
 sudo apt-get update
-sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build \
-                     cmake curl rsync python3-pip python3-venv zip autoconf libtool \
-                     pkg-config libssl1.0-dev libicu-dev bison flex \
-                     libncurses5-dev
+packages=(
+  autoconf
+  cmake
+  curl
+  git
+  git
+  git
+  libtool
+  libtool
+  locales
+  maven
+  ninja-build
+  patchelf
+  pkg-config
+  python3-pip
+  python3-venv
+  rsync
+  zip
+)
+sudo apt-get install -y "${packages[@]}"
+sudo locale-gen en_US.UTF-8
 ```
 
-Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
+### Java
 
-```sh
-cd ~/code/yugabyte-db
-./yb_build.sh release
-```
+{{% readfile "includes/java.md" %}}
 
-{{< note title="Note" >}}
+## Build the code
 
-If you see errors, such as `g++: internal compiler error: Killed`, the system has probably run out of memory.
-Try again by running the build script with less concurrency, for example, `-j1`.
+{{% readfile "includes/build-the-code.md" %}}
 
-{{< /note >}}
+### Build release package
 
-The command above will build the release configuration, add the C++ binaries into the `build/release-gcc-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
-
-
-{{< note title="Note" >}}
-If you are getting errors in the form of:
-```
-uild/release-gcc-dynamic-ninja/postgres_build/src/backend/libpq/be-secure-openssl.o: In function `my_sock_read':
-src/postgres/src/backend/libpq/be-secure-openssl.c:665: undefined reference to `BIO_get_data'
-build/release-gcc-dynamic-ninja/postgres_build/src/backend/libpq/be-secure-openssl.o: In function `my_sock_write':
-src/postgres/src/backend/libpq/be-secure-openssl.c:685: undefined reference to `BIO_get_data'
-```
-The code is probably not finding the right path for libssl1.0. Try a clean build `./yb_build.sh --clean release`.
-If that doesn't work, look into your $PATH if some other openssl version path is being used.
-{{< /note >}}
-
-
-
-{{< tip title="Tip" >}}
-
-You can find the binaries you just built in `build/latest` directory.
-
-{{< /tip >}}
-
-## Build Java code
-
-YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
-
-* JDK 8
-* [Apache Maven](https://maven.apache.org/).
-
-Also make sure Maven's bin directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.6.3`)
-
-```sh
-export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
-```
-
-For building YugabyteDB Java code, you'll need to install Java and Apache Maven.
-
-## Build release package
-
-Currently a release package can only be built in [CentOS](../build-from-src-centos) & [MacOS](../build-from-src-macos).
+Currently, you can only build release packages in [CentOS](../build-from-src-centos) and [macOS](../build-from-src-macos).

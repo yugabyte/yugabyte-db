@@ -40,6 +40,7 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/fs/fs_manager.h"
@@ -62,7 +63,7 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -72,24 +73,23 @@
 
 using namespace yb::size_literals;
 
-DEFINE_int32(remote_bootstrap_begin_session_timeout_ms, 5000,
+DEFINE_UNKNOWN_int32(remote_bootstrap_begin_session_timeout_ms, 5000,
              "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls.");
 TAG_FLAG(remote_bootstrap_begin_session_timeout_ms, hidden);
 
-DEFINE_int32(remote_bootstrap_end_session_timeout_sec, 15,
+DEFINE_UNKNOWN_int32(remote_bootstrap_end_session_timeout_sec, 15,
              "Tablet server RPC client timeout for EndRemoteBootstrapSession calls. "
              "The timeout is usually a large value because we have to wait for the remote server "
              "to get a CHANGE_ROLE config change accepted.");
 TAG_FLAG(remote_bootstrap_end_session_timeout_sec, hidden);
 
-DEFINE_bool(remote_bootstrap_save_downloaded_metadata, false,
-            "Save copies of the downloaded remote bootstrap files for debugging purposes. "
-            "Note: This is only intended for debugging and should not be normally used!");
+DEFINE_RUNTIME_bool(remote_bootstrap_save_downloaded_metadata, false,
+    "Save copies of the downloaded remote bootstrap files for debugging purposes. "
+    "Note: This is only intended for debugging and should not be normally used!");
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, advanced);
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, hidden);
-TAG_FLAG(remote_bootstrap_save_downloaded_metadata, runtime);
 
-DEFINE_int32(committed_config_change_role_timeout_sec, 30,
+DEFINE_UNKNOWN_int32(committed_config_change_role_timeout_sec, 30,
              "Number of seconds to wait for the CHANGE_ROLE to be in the committed config before "
              "timing out. ");
 TAG_FLAG(committed_config_change_role_timeout_sec, hidden);
@@ -123,6 +123,7 @@ using rpc::Messenger;
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using std::min;
 using strings::Substitute;
 using tablet::TabletDataState;
 using tablet::TabletDataState_Name;
@@ -347,6 +348,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                               &wal_root_dir);
     }
     auto table_info = std::make_shared<tablet::TableInfo>(
+        consensus::MakeTabletLogPrefix(tablet_id_, fs_manager().uuid()),
         tablet::Primary::kTrue, table_id, table.namespace_name(), table.table_name(),
         table.table_type(), schema, IndexMap(table.indexes()),
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,

@@ -52,6 +52,8 @@
 #include "yb/util/opid.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+
 namespace yb {
 namespace tablet {
 
@@ -63,7 +65,7 @@ class TestRaftGroupMetadata : public YBTabletTest {
 
   void SetUp() override {
     YBTabletTest::SetUp();
-    writer_.reset(new LocalTabletWriter(harness_->tablet().get()));
+    writer_.reset(new LocalTabletWriter(harness_->tablet()));
   }
 
   void BuildPartialRow(int key, int intval, const char* strval,
@@ -138,7 +140,8 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   const string snapshotId = "0123456789ABCDEF0123456789ABCDEF";
   tserver::TabletSnapshotOpRequestPB request;
   request.set_snapshot_id(snapshotId);
-  tablet::SnapshotOperation operation(tablet.get(), &request);
+  tablet::SnapshotOperation operation(tablet);
+  operation.AllocateRequest()->CopyFrom(request);
   operation.set_hybrid_time(tablet->clock()->Now());
   operation.set_op_id(OpId(-1, 2));
   ASSERT_OK(tablet->snapshots().Create(&operation));

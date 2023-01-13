@@ -36,7 +36,6 @@
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
@@ -49,14 +48,14 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/slice.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/striped64.h"
 #include "yb/util/trace.h"
 
-DEFINE_int32(lock_contention_trace_threshold_cycles,
+DEFINE_UNKNOWN_int32(lock_contention_trace_threshold_cycles,
              2000000, // 2M cycles should be about 1ms
              "If acquiring a spinlock takes more than this number of "
              "cycles, and a Trace is currently active, then the current "

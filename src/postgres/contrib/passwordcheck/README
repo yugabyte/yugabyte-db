@@ -1,0 +1,15 @@
+passwordcheck has been replaced by passwordcheck_extra.
+However the name of the plugin continues to be passwordcheck because the team
+decided that it will be confusing to have two plugins for the same function.
+
+The steps followed to replace the plugin are:
+
+* Choose commit referred below as subsequent commits add support for PG15.
+* Overwrite passwordcheck.c with passwordcheck_extra.c (using cp)
+* Remove all occurrences of "_extra" as the name of the plugin is unchanged.
+
+Tests from passwordcheck (with some changes) and passwordcheck_extra are also
+run.
+
+Refer: https://github.com/michaelpq/pg_plugins/blob/0ff60215081e28ca70f311a2ec26448952329344/passwordcheck_extra/passwordcheck_extra.c
+Phabricator: https://phabricator.dev.yugabyte.com/D19632

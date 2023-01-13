@@ -84,5 +84,10 @@ public class WaitForLoadBalance extends AbstractTaskBase {
     if (!ret) {
       throw new RuntimeException(getName() + " did not complete.");
     }
+    log.info(
+        "Completed {}: hostPorts={}, numTservers={}.",
+        getName(),
+        hostPorts,
+        taskParams().numTservers);
   }
 }

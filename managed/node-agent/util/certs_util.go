@@ -4,6 +4,11 @@
 package util
 
 import (
+	"crypto"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -52,8 +57,8 @@ func SaveCerts(config *Config, cert string, key string, subDir string) error {
 }
 
 func DeleteCerts(subDir string) error {
-	FileLogger().Infof("Deleting certs %s", subDir)
 	certsDir := filepath.Join(CertsDir(), subDir)
+	FileLogger().Infof("Deleting certs %s", certsDir)
 	err := os.RemoveAll(certsDir)
 	if err != nil {
 		FileLogger().Errorf("Error while deleting certs %s, err %s", certsDir, err.Error())
@@ -62,8 +67,8 @@ func DeleteCerts(subDir string) error {
 }
 
 func DeleteRelease(release string) error {
-	FileLogger().Infof("Deleting release dir %s", release)
 	releaseDir := filepath.Join(ReleaseDir(), release)
+	FileLogger().Infof("Deleting release dir %s", releaseDir)
 	err := os.RemoveAll(releaseDir)
 	if err != nil {
 		FileLogger().Errorf("Error while deleting release dir %s, err %s", release, err.Error())
@@ -77,6 +82,24 @@ func ServerCertPath(config *Config) string {
 		config.String(PlatformCertsKey),
 		NodeAgentCertFile,
 	)
+}
+
+// ServerCertPaths returns both old and new paths.
+func ServerCertPaths(config *Config) []string {
+	certPaths := []string{}
+	keys := []string{PlatformCertsKey, PlatformCertsUpgradeKey}
+	for _, key := range keys {
+		val := config.String(key)
+		if val == "" {
+			continue
+		}
+		path := filepath.Join(CertsDir(), val, NodeAgentCertFile)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			continue
+		}
+		certPaths = append(certPaths, path)
+	}
+	return certPaths
 }
 
 func ServerKeyPath(config *Config) string {
@@ -114,4 +137,71 @@ func GenerateJWT(config *Config) (string, error) {
 	FileLogger().Infof("Created JWT using %s key", config.String(PlatformCertsKey))
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	return token.SignedString(key)
+}
+
+// PublicKeyFromCert extracts public key from a cert.
+func PublicKeyFromCert(certFilepath string) (crypto.PublicKey, error) {
+	bytes, err := ioutil.ReadFile(certFilepath)
+	if err != nil {
+		FileLogger().Errorf("Error while reading the certificate: %s", err.Error())
+		return nil, err
+	}
+	block, _ := pem.Decode(bytes)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		FileLogger().Errorf("Error while parsing the certificate: %s", err.Error())
+		return nil, err
+	}
+	if cert.PublicKeyAlgorithm != x509.RSA {
+		err = errors.New("RSA public key is expected")
+		FileLogger().Errorf("Error - %s", err.Error())
+		return nil, err
+	}
+	return cert.PublicKey, nil
+}
+
+func PublicKey(config *Config) (crypto.PublicKey, error) {
+	return PublicKeyFromCert(ServerCertPath(config))
+}
+
+func PublicKeys(config *Config) ([]crypto.PublicKey, error) {
+	keys := []crypto.PublicKey{}
+	paths := ServerCertPaths(config)
+	for _, path := range paths {
+		key, err := PublicKeyFromCert(path)
+		if err != nil {
+			return keys, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+func VerifyJWT(config *Config, authToken string) (*jwt.MapClaims, error) {
+	publicKeys, err := PublicKeys(config)
+	if err != nil {
+		FileLogger().Errorf("Error in getting the public key: %s", err.Error())
+		return nil, err
+	}
+	for idx, publicKey := range publicKeys {
+		token, err := jwt.ParseWithClaims(
+			authToken,
+			&jwt.MapClaims{},
+			func(token *jwt.Token) (interface{}, error) {
+				_, ok := token.Method.(*jwt.SigningMethodRSA)
+				if !ok {
+					return nil, fmt.Errorf("Unexpected token signing method")
+				}
+				return publicKey, nil
+			},
+		)
+		if err == nil {
+			return token.Claims.(*jwt.MapClaims), nil
+		}
+		if idx == len(publicKeys)-1 {
+			// All keys are exhausted.
+			FileLogger().Errorf("Failed to validate claim - %s", err.Error())
+		}
+	}
+	return nil, fmt.Errorf("Invalid token")
 }

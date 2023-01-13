@@ -107,6 +107,10 @@ message KvStoreInfoPB {
   optional bool has_been_fully_compacted = 8;
 
   repeated bytes snapshot_schedules = 9;
+
+  // Uint64 representation of a HybridTime indicating the last time the tablet was fully
+  // compacted. Defaults to 0 (i.e. HybridTime::kMin).
+  optional uint64 last_full_compaction_time = 10;
 }
 
 // The super-block keeps track of the Raft group.
@@ -202,6 +206,8 @@ message RaftGroupReplicaSuperBlockPB {
   // Minimum checkpoint op id for cdcsdk streams. This value is used to retain intents
   // with op id larger than this one.
   optional OpIdPB cdc_sdk_min_checkpoint_op_id = 33;
+
+  optional fixed64 cdc_sdk_safe_time = 34;
 }
 
 message FilePB {

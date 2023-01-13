@@ -17,7 +17,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/table/plain_table_factory.h"
 
 #include <stdint.h>
@@ -27,6 +26,8 @@
 #include "yb/rocksdb/table/plain_table_builder.h"
 #include "yb/rocksdb/table/plain_table_reader.h"
 #include "yb/rocksdb/port/port.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -120,4 +121,3 @@ const char PlainTablePropertyNames::kNumBloomBlocks[] =
     "rocksdb.plain.table.bloom.numblocks";
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

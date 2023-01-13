@@ -72,6 +72,7 @@ set(CLIENT_SRCS
 
 set(CLIENT_LIBS
   yb_common
+  yb_ql_common
   yb_partition
   master_proto
   master_rpc
@@ -109,7 +110,7 @@ endif()
 # and therefore don't need to worry about export strictness)
 ADD_YB_LIBRARY(yb_client_test_util
                SRCS client-test-util.cc
-               DEPS gmock gtest yb_client)
+               DEPS gmock gtest yb_client yb_test_util)
 
 ADD_YB_LIBRARY(ql-dml-test-base
                SRCS ql-dml-test-base.cc txn-test-base.cc snapshot_test_util.cc

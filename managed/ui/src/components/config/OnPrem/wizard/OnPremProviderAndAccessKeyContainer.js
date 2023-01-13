@@ -123,12 +123,9 @@ const validate = (values) => {
   if (!isDefinedNotNull(values.name)) {
     errors.name = 'Required';
   }
-  else {
-    
-    if(!specialChars.test(values.name)){
+  else if(!specialChars.test(values.name)){
       errors.name = 'Cannot have special characters except - and _';
     }
-  }
   if (!isDefinedNotNull(values.sshUser)) {
     errors.sshUser = 'Required';
   }
@@ -136,7 +133,7 @@ const validate = (values) => {
     errors.privateKeyContent = 'Required';
   }
   if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
-    errors.ntpServers = 'NTP servers cannot be empty'
+    errors.ntpServers = 'NTP servers cannot be empty';
   }
   return errors;
 };

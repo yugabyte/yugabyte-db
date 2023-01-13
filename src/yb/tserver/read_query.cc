@@ -15,9 +15,10 @@
 
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
-#include "yb/common/pg_types.h"
 
 #include "yb/gutil/bind.h"
+
+#include "yb/rpc/sidecars.h"
 
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/read_result.h"
@@ -34,7 +35,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
@@ -54,25 +55,21 @@ DEFINE_test_flag(bool, assert_reads_served_by_follower, false, "If set, we verif
                  "consistency level is CONSISTENT_PREFIX, and that this server is not the leader "
                  "for the tablet");
 
-DEFINE_bool(parallelize_read_ops, true,
-            "Controls whether multiple (Redis) read ops that are present in a operation "
-            "should be executed in parallel.");
+DEFINE_RUNTIME_bool(parallelize_read_ops, true,
+    "Controls whether multiple (Redis) read ops that are present in a operation "
+    "should be executed in parallel.");
 TAG_FLAG(parallelize_read_ops, advanced);
-TAG_FLAG(parallelize_read_ops, runtime);
 
-DEFINE_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
-            "Controls whether ysql follower reads that specify a not-yet-safe read time "
-            "should be rejected. This will force them to go to the leader, which will likely be "
-            "faster than waiting for safe time to catch up.");
+DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
+    "Controls whether ysql follower reads that specify a not-yet-safe read time "
+    "should be rejected. This will force them to go to the leader, which will likely be "
+    "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
-TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, runtime);
 
 METRIC_DEFINE_coarse_histogram(server, read_time_wait,
                                "Read Time Wait",
                                yb::MetricUnit::kMicroseconds,
                                "Number of microseconds read queries spend waiting for safe time");
-
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
 namespace yb {
 namespace tserver {
@@ -268,54 +265,17 @@ Status ReadQuery::DoPerform() {
   // Get the most restrictive row mark present in the batch of PostgreSQL requests.
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
   RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
-  if (!req_->pgsql_batch().empty()) {
-    uint64_t last_breaking_catalog_version = 0; // unset.
-    uint32_t last_db_oid = kPgInvalidOid; // unset.
-    for (const auto& pg_req : req_->pgsql_batch()) {
-      bool invalidated = false;
-      // For postgres requests check that the syscatalog version matches.
-      if (pg_req.has_ysql_catalog_version()) {
-        // For now we use either ysql_catalog_version or ysql_db_catalog_version but not both.
-        CHECK(!pg_req.has_ysql_db_catalog_version());
-        // Note that in initdb/bootstrap mode, even if FLAGS_enable_db_catalog_version_mode is
-        // on it will be ignored and we'll use ysql_catalog_version not ysql_db_catalog_version.
-        if (last_breaking_catalog_version == 0) {
-          // Initialize last breaking version if not yet set.
-          server_.get_ysql_catalog_version(
-              nullptr /* current_version */, &last_breaking_catalog_version);
-        }
-        if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
-          invalidated = true;
-        }
-      } else if (pg_req.has_ysql_db_catalog_version()) {
-        CHECK(FLAGS_TEST_enable_db_catalog_version_mode);
-        CHECK_NE(pg_req.ysql_db_oid(), kPgInvalidOid);
-        if (last_db_oid == kPgInvalidOid) {
-          last_db_oid = pg_req.ysql_db_oid();
-          server_.get_ysql_db_catalog_version(
-            pg_req.ysql_db_oid(), nullptr /* current_version */, &last_breaking_catalog_version);
-        } else {
-          // There should be only one db oid in a request.
-          CHECK_EQ(last_db_oid, pg_req.ysql_db_oid());
-        }
-        if (pg_req.ysql_db_catalog_version() < last_breaking_catalog_version) {
-          invalidated = true;
-        }
-      }
-      if (invalidated) {
+  CatalogVersionChecker catalog_version_checker(server_);
+  for (const auto& pg_req : req_->pgsql_batch()) {
+    RETURN_NOT_OK(catalog_version_checker(pg_req));
+    RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
+    if (IsValidRowMarkType(current_row_mark)) {
+      if (!req_->has_transaction()) {
         return STATUS(
-            QLError, "The catalog snapshot used for this transaction has been invalidated",
-            TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
+            NotSupported, "Read request with row mark types must be part of a transaction",
+            TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED));
       }
-      RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
-      if (IsValidRowMarkType(current_row_mark)) {
-        if (!req_->has_transaction()) {
-          return STATUS(
-              NotSupported, "Read request with row mark types must be part of a transaction",
-              TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED));
-        }
-        batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
-      }
+      batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
     }
   }
   const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
@@ -331,7 +291,7 @@ Status ReadQuery::DoPerform() {
     // Serializable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
     RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
-    abstract_tablet_ = leader_peer.peer->shared_tablet();
+    abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet_safe());
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
         req_->tablet_id(), std::move(peer_tablet.tablet_peer),
@@ -362,7 +322,9 @@ Status ReadQuery::DoPerform() {
   }
 
   if (!abstract_tablet_->system() && tablet()->metadata()->hidden()) {
-    return STATUS(NotFound, "Tablet not found", req_->tablet_id());
+    return STATUS(
+        NotFound, "Tablet not found", req_->tablet_id(),
+        TabletServerError(TabletServerErrorPB::TABLET_NOT_FOUND));
   }
 
   if (FLAGS_TEST_simulate_time_out_failures_msecs > 0 && RandomUniformInt(0, 10) < 2) {
@@ -405,8 +367,12 @@ Status ReadQuery::DoPerform() {
   if (serializable_isolation || has_row_mark) {
     auto deadline = context_.GetClientDeadline();
     auto query = std::make_unique<tablet::WriteQuery>(
-        leader_peer.leader_term, deadline, leader_peer.peer.get(),
-        leader_peer.peer->tablet(), nullptr /* response */,
+        leader_peer.leader_term,
+        deadline,
+        leader_peer.peer.get(),
+        leader_peer.tablet,
+        nullptr /* rpc_context */,
+        nullptr /* response */,
         docdb::OperationKind::kRead);
 
     auto& write = *query->operation().AllocateRequest();
@@ -416,7 +382,7 @@ Status ReadQuery::DoPerform() {
       write_batch.set_row_mark_type(batch_row_mark);
       query->set_read_time(read_time_);
     }
-    write.set_unused_tablet_id(""); // For backward compatibility.
+    write.ref_unused_tablet_id(""); // For backward compatibility.
     write_batch.set_deprecated_may_have_metadata(true);
     write.set_batch_idx(req_->batch_idx());
     if (req_->has_subtransaction() && req_->subtransaction().has_subtransaction_id()) {
@@ -425,7 +391,7 @@ Status ReadQuery::DoPerform() {
     }
     // TODO(dtxn) write request id
 
-    RETURN_NOT_OK(leader_peer.peer->tablet()->CreateReadIntents(
+    RETURN_NOT_OK(leader_peer.tablet->CreateReadIntents(
         req_->transaction(), req_->subtransaction(), req_->ql_batch(), req_->pgsql_batch(),
         &write_batch));
 
@@ -499,7 +465,7 @@ bool ReadQuery::IsPgsqlFollowerReadAtAFollower() const {
 Status ReadQuery::Complete() {
   for (;;) {
     resp_->Clear();
-    context_.ResetRpcSidecars();
+    context_.sidecars().Reset();
     VLOG(1) << "Read time: " << read_time_ << ", safe: " << safe_ht_to_read_;
     const auto result = VERIFY_RESULT(DoRead());
     if (allow_retry_ && read_time_ && read_time_ == result) {
@@ -675,13 +641,14 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       tablet::QLReadRequestResult result;
       TRACE("Start HandleQLReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandleQLReadRequest(
-          context_.GetClientDeadline(), read_time, ql_read_req, req_->transaction(), &result));
+          context_.GetClientDeadline(), read_time, ql_read_req, req_->transaction(), &result,
+          &context_.sidecars().Start()));
       TRACE("Done HandleQLReadRequest");
       if (result.restart_read_ht.is_valid()) {
         return FormRestartReadHybridTime(result.restart_read_ht);
       }
       result.response.set_rows_data_sidecar(
-          narrow_cast<int32_t>(context_.AddRpcSidecar(result.rows_data)));
+          narrow_cast<int32_t>(context_.sidecars().Complete()));
       resp_->add_ql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();
@@ -691,22 +658,21 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
     ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req_);
     size_t total_num_rows_read = 0;
     for (PgsqlReadRequestPB& pgsql_read_req : *mutable_req->mutable_pgsql_batch()) {
-      tablet::PgsqlReadRequestResult result;
+      tablet::PgsqlReadRequestResult result(&context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
-      size_t num_rows_read;
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(
           context_.GetClientDeadline(), read_time,
           !allow_retry_ /* is_explicit_request_read_time */, pgsql_read_req, req_->transaction(),
-          req_->subtransaction(), &result, &num_rows_read));
+          req_->subtransaction(), &result));
 
-      total_num_rows_read += num_rows_read;
+      total_num_rows_read += result.num_rows_read;
 
       TRACE("Done HandlePgsqlReadRequest");
       if (result.restart_read_ht.is_valid()) {
         return FormRestartReadHybridTime(result.restart_read_ht);
       }
       result.response.set_rows_data_sidecar(
-          narrow_cast<int32_t>(context_.AddRpcSidecar(result.rows_data)));
+          narrow_cast<int32_t>(context_.sidecars().Complete()));
       resp_->add_pgsql_batch()->Swap(&result.response);
     }
 

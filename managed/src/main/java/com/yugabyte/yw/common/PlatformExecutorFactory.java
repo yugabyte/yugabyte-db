@@ -95,12 +95,16 @@ public class PlatformExecutorFactory {
             new LinkedBlockingQueue<>(queueCapacity == 0 ? Integer.MAX_VALUE : queueCapacity),
             namedThreadFactory);
     shutdownHookHandler.addShutdownHook(
-        () -> {
-          log.debug("Shutting down thread pool - {}", poolName);
-          boolean isTerminated =
-              MoreExecutors.shutdownAndAwaitTermination(
-                  executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-          log.debug("Shutdown status for thread pool- {} is {}", poolName, isTerminated);
+        executor,
+        (exec) -> {
+          // Do not use the executor directly as it can create strong reference.
+          if (exec != null) {
+            log.debug("Shutting down thread pool - {}", poolName);
+            boolean isTerminated =
+                MoreExecutors.shutdownAndAwaitTermination(
+                    exec, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+            log.debug("Shutdown status for thread pool- {} is {}", poolName, isTerminated);
+          }
         });
     return executor;
   }

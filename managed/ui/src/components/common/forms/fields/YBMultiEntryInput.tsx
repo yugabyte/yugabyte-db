@@ -131,18 +131,18 @@ export const YBLabelledMultiEntryInput : FC<YBMultiEntryInputProps & {label:stri
   }
   return (
     <YBLabel
-    label={label}
+      label={label}
    
-  >
-    <YBMultiEntryInput styles={{ menu: provided => ({ ...provided, zIndex: 2 }) }} {...rest}/>
-    {hasError && (
-            <div
-              className={`help-block standard-error`}
-              data-testid="yb-label-validation-error"
-            >
-              <span className='field-error'>{errorMsg}</span>
-            </div>
-          )}
+    >
+      <YBMultiEntryInput styles={{ menu: provided => ({ ...provided, zIndex: 2 }) }} {...rest}/>
+      {hasError && (
+        <div
+          className={`help-block standard-error`}
+          data-testid="yb-label-validation-error"
+        >
+          <span className='field-error'>{errorMsg}</span>
+        </div>
+      )}
     </YBLabel>
-  )
-}
+  );
+};

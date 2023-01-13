@@ -21,7 +21,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -370,13 +369,6 @@ public class CustomerController extends AuthenticatedController {
     if (response.has("error")) {
       throw new PlatformServiceException(BAD_REQUEST, response.get("error"));
     }
-    auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Customer,
-            customerUUID.toString(),
-            Audit.ActionType.AddMetrics,
-            request().body().asJson());
     return PlatformResults.withRawData(response);
   }
 
@@ -388,12 +380,9 @@ public class CustomerController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     ObjectNode hostInfo = Json.newObject();
     hostInfo.put(
-        Common.CloudType.aws.name(),
-        cloudQueryHelper.currentHostInfo(
-            Common.CloudType.aws,
-            ImmutableList.of("instance-id", "vpc-id", "privateIp", "region")));
+        Common.CloudType.aws.name(), cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws));
     hostInfo.put(
-        Common.CloudType.gcp.name(), cloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null));
+        Common.CloudType.gcp.name(), cloudQueryHelper.getCurrentHostInfo(Common.CloudType.gcp));
 
     return PlatformResults.withRawData(hostInfo);
   }

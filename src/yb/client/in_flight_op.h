@@ -11,12 +11,11 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_IN_FLIGHT_OP_H
-#define YB_CLIENT_IN_FLIGHT_OP_H
+#pragma once
 
 #include <string>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client_fwd.h"
 
@@ -70,5 +69,3 @@ struct InFlightOp {
 } // namespace internal
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_IN_FLIGHT_OP_H

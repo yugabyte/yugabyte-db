@@ -42,8 +42,7 @@
 // limitations under the License.
 
 
-#ifndef YB_UTIL_BIT_STREAM_UTILS_H
-#define YB_UTIL_BIT_STREAM_UTILS_H
+#pragma once
 
 #include "yb/gutil/port.h"
 #include "yb/util/bit-util.h"
@@ -174,5 +173,3 @@ class BitReader {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_BIT_STREAM_UTILS_H

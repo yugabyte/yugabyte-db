@@ -44,20 +44,19 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 
-DEFINE_string(master_addresses, "localhost:7100",
+DEFINE_UNKNOWN_string(master_addresses, "localhost:7100",
               "Comma-separated list of YB Master server addresses");
-DEFINE_string(init_master_addrs, "",
+DEFINE_UNKNOWN_string(init_master_addrs, "",
               "host:port of any yb-master in a cluster");
-DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+DEFINE_UNKNOWN_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 // Command-specific flags
-DEFINE_bool(exclude_dead, false, "Exclude dead tservers from output");
+DEFINE_UNKNOWN_bool(exclude_dead, false, "Exclude dead tservers from output");
 
 using std::cerr;
 using std::endl;
@@ -85,14 +84,14 @@ constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
 
 Status GetUniverseConfig(ClusterAdminClientClass* client,
-                                 const ClusterAdminCli::CLIArguments&) {
+                         const ClusterAdminCli::CLIArguments&) {
   RETURN_NOT_OK_PREPEND(client->GetUniverseConfig(), "Unable to get universe config");
   return Status::OK();
 }
 
 Status ChangeBlacklist(ClusterAdminClientClass* client,
-                               const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
-                               const std::string& errStr) {
+                       const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
+                       const std::string& errStr) {
   if (args.size() < 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
@@ -976,6 +975,47 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
     RETURN_NOT_OK(client->GetWalRetentionSecs(table_name));
     return Status::OK();
   });
+
+  Register(
+      "promote_auto_flags",
+      "[<max_flags_class> (default kExternal) [<promote_non_runtime_flags> (default true) "
+      "[force]]]",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() > 3) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
+        AutoFlagClass max_flag_class = AutoFlagClass::kExternal;
+        bool promote_non_runtime_flags = true;
+        bool force = false;
+
+        if (args.size() > 0) {
+          max_flag_class = VERIFY_RESULT_PREPEND(
+              ParseEnumInsensitive<AutoFlagClass>(args[0]),
+              "Invalid value provided for max_flags_class");
+        }
+
+        if (args.size() > 1) {
+          if (IsEqCaseInsensitive(args[1], "false")) {
+            promote_non_runtime_flags = false;
+          } else if (!IsEqCaseInsensitive(args[1], "true")) {
+            return STATUS(InvalidArgument, "Invalid value provided for promote_non_runtime_flags");
+          }
+        }
+
+        if (args.size() > 2) {
+          if (IsEqCaseInsensitive(args[2], "force")) {
+            force = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+
+        RETURN_NOT_OK_PREPEND(
+            client->PromoteAutoFlags(ToString(max_flag_class), promote_non_runtime_flags, force),
+            "Unable to promote AutoFlags");
+        return Status::OK();
+      });
 } // NOLINT, prevents long function message
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

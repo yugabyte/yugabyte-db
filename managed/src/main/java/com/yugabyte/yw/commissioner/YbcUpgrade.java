@@ -16,6 +16,15 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YbcClient;
+import org.yb.ybc.ControllerStatus;
+import org.yb.ybc.UpgradeRequest;
+import org.yb.ybc.UpgradeRequest.Builder;
+import org.yb.ybc.UpgradeResponse;
+import org.yb.ybc.UpgradeResultRequest;
+import org.yb.ybc.UpgradeResultResponse;
+
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,14 +35,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
-import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YbcClient;
-import org.yb.ybc.ControllerStatus;
-import org.yb.ybc.UpgradeRequest;
-import org.yb.ybc.UpgradeRequest.Builder;
-import org.yb.ybc.UpgradeResponse;
-import org.yb.ybc.UpgradeResultRequest;
-import org.yb.ybc.UpgradeResultResponse;
 
 @Singleton
 @Slf4j

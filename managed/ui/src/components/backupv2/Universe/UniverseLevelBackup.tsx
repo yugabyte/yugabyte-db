@@ -7,15 +7,18 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC } from 'react';
+import React, { FC, useState } from 'react';
+import { DropdownButton, MenuItem, Tab } from 'react-bootstrap';
+import { withRouter } from 'react-router';
+import { useSelector } from 'react-redux';
+
 import { YBTabsPanel } from '../../panels';
 import { BackupList } from '..';
-import { Tab } from 'react-bootstrap';
-import './UniverseLevelBackup.scss';
-import { withRouter } from 'react-router';
 import { ScheduledBackup } from '../scheduled/ScheduledBackup';
-import { useSelector } from 'react-redux';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
+import { isYbcInstalledInUniverse } from '../../../utils/UniverseUtils';
+import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
+import { BackupAdvancedRestore } from '../components/BackupAdvancedRestore';
 import './UniverseLevelBackup.scss';
 
 interface UniverseBackupProps {
@@ -27,10 +30,32 @@ interface UniverseBackupProps {
 
 const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
   const featureFlags = useSelector((state: any) => state.featureFlags);
+  const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
+  const YBCInstalled =
+    (featureFlags.test.enableYbc || featureFlags.released.enableYbc) &&
+    isYbcInstalledInUniverse(currentUniverse.data.universeDetails);
+
+  const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
+  const [showThrottleParametersModal, setShowThrottleParametersModal] = useState(false);
+
   return (
     <YBTabsPanel id="backup-tab-panel">
       <Tab eventKey="backupList" title="Backups" unmountOnExit>
         <BackupList allowTakingBackup universeUUID={uuid} />
+        <BackupAdvancedRestore
+          onHide={() => {
+            setShowAdvancedRestore(false);
+          }}
+          visible={showAdvancedRestore}
+          currentUniverseUUID={uuid}
+        />
+        {YBCInstalled && (
+          <BackupThrottleParameters
+            visible={showThrottleParametersModal}
+            onHide={() => setShowThrottleParametersModal(false)}
+            currentUniverseUUID={uuid}
+          />
+        )}
       </Tab>
       <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
         <ScheduledBackup universeUUID={uuid} />
@@ -40,6 +65,48 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
           <PointInTimeRecovery universeUUID={uuid} />
         </Tab>
       )}
+      <Tab
+        tabClassName="advanced_configs"
+        title={
+          <DropdownButton
+            pullRight
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            title={
+              <span>
+                <i className="fa fa-gear" />
+                Advanced
+              </span>
+            }
+            id="advanced_config_but"
+          >
+            <MenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                if (currentUniverse?.data?.universeDetails?.universePaused) return;
+                setShowAdvancedRestore(true);
+              }}
+              disabled={currentUniverse?.data?.universeDetails?.universePaused}
+            >
+              Advanced Restore
+            </MenuItem>
+            {YBCInstalled && (
+              <MenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (currentUniverse?.data?.universeDetails?.universePaused) return;
+                  setShowThrottleParametersModal(true);
+                }}
+                disabled={currentUniverse?.data?.universeDetails?.universePaused}
+              >
+                Configure Throttle Parameters
+              </MenuItem>
+            )}
+          </DropdownButton>
+        }
+      ></Tab>
     </YBTabsPanel>
   );
 };

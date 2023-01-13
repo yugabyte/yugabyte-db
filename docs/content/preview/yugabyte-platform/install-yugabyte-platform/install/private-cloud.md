@@ -4,7 +4,6 @@ headerTitle: Overview
 linkTitle: Overview
 description: Installing YugabyteDB Anywhere on private cloud
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Installing YugabyteDB Anywhere on private cloud
 menu:
   preview_yugabyte-platform:
     identifier: install-3-private-cloud
@@ -18,27 +17,27 @@ For installation overview, select one of the following installation types:
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../public-cloud/" class="nav-link">
-      <i class="fas fa-cloud"></i>
+      <i class="fa-solid fa-cloud"></i>
       Public Cloud
     </a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li >
     <a href="../private-cloud/" class="nav-link active">
-      <i class="fas fa-unlink"></i>
+      <i class="fa-solid fa-link-slash"></i>
       Private Cloud
     </a>
   </li>
 </ul>
 
-Click elements of the following chart to access detailed steps:
+The following diagram depicts the YugabyteDB Anywhere installation process in a private cloud:
 
 <div class="image-with-map">
 <img src="/images/ee/flowchart/yb-install-private-cloud.png" usemap="#image-map">

@@ -4,6 +4,7 @@ package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.common.NodeActionType.ADD;
 import static com.yugabyte.yw.common.NodeActionType.DELETE;
+import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.QUERY;
 import static com.yugabyte.yw.common.NodeActionType.REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.RELEASE;
@@ -14,7 +15,7 @@ import static com.yugabyte.yw.common.NodeActionType.STOP;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -73,27 +74,28 @@ public class NodeDetails {
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
-    ToBeAdded(DELETE),
+    ToBeAdded(DELETE, ADD),
     // Set when a new node is created in the cloud provider.
-    InstanceCreated(DELETE),
+    InstanceCreated(DELETE, ADD),
     // Set when a node has gone through the Ansible set-up task.
-    ServerSetup(DELETE),
-    // Set when a new node is provisioned and configured but before it is added into
+    ServerSetup(DELETE, ADD),
+    // Set when a new node is provisioned and configured, but before it is added into
     // the existing cluster.
-    ToJoinCluster(REMOVE),
-    // Set when reprovision node.
+    ToJoinCluster(REMOVE, ADD),
+    // Set when re-provisioning node. Used for third-party software upgrades.
     Reprovisioning(),
     // Set after the node (without any configuration) is created using the IaaS provider at the
     // end of the provision step before it is set up and configured.
-    Provisioned(DELETE),
+    Provisioned(DELETE, ADD),
     // Set after the YB software installed and some basic configuration done on a provisioned node.
-    SoftwareInstalled(START, DELETE),
+    SoftwareInstalled(START, DELETE, ADD),
     // Set after the YB software is upgraded via Rolling Restart.
     UpgradeSoftware(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
-    Live(STOP, REMOVE, QUERY, REBOOT),
+    // Setting state to Live must be towards the end as ADD cannot be an option here.
+    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT),
     // Set when node is about to enter the stopped state.
     // The actions in Live state should apply because of the transition from Live to Stopping.
     Stopping(STOP, REMOVE),
@@ -115,11 +117,13 @@ public class NodeDetails {
     // Set after the node has been removed (unjoined) from the cluster.
     Removed(ADD, RELEASE),
     // Set when node is about to enter the Live state from Removed/Decommissioned state.
-    Adding(DELETE, RELEASE),
+    // RELEASE is an option for convenience-
+    // If stuck in Adding stuck, we can just RELEASE instead of REMOVE and then RELEASE.
+    Adding(DELETE, RELEASE, ADD, REMOVE),
     // Set when a stopped/removed node is about to enter the Decommissioned state.
     // The actions in Removed state should apply because of the transition from Removed to
     // BeingDecommissioned.
-    BeingDecommissioned(ADD, RELEASE),
+    BeingDecommissioned(RELEASE),
     // After a stopped/removed node is returned back to the IaaS.
     Decommissioned(ADD, DELETE),
     // Set when the cert is being updated.
@@ -136,8 +140,10 @@ public class NodeDetails {
     // Set after the node has been terminated in the IaaS provider.
     // If the node is still hanging around due to failure, it can be deleted.
     Terminated(DELETE),
-    // Set when the node is being rebooted
-    Rebooting();
+    // Set when the node is being rebooted.
+    Rebooting(REBOOT),
+    // Set when the node is being stopped + started.
+    HardRebooting(HARD_REBOOT);
 
     private final NodeActionType[] allowedActions;
 
@@ -180,7 +186,7 @@ public class NodeDetails {
   @ApiModelProperty(value = "Master HTTP port")
   public int masterHttpPort = 7000;
 
-  @ApiModelProperty(value = "Master RCP port")
+  @ApiModelProperty(value = "Master RPC port")
   public int masterRpcPort = 7100;
 
   // True if this node is a tserver, along with port info.
@@ -238,7 +244,7 @@ public class NodeDetails {
   public boolean cronsActive = true;
 
   @ApiModelProperty(value = "Used for configurations where each node can have only one process")
-  public UniverseDefinitionTaskBase.ServerType dedicatedTo = null;
+  public UniverseTaskBase.ServerType dedicatedTo = null;
 
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
@@ -299,10 +305,10 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isActionAllowedOnState(NodeActionType actionType) {
-    return state == null ? false : state.allowedActions().contains(actionType);
+    return state != null && state.allowedActions().contains(actionType);
   }
 
-  /** Validates if the action is allowed on the state for the node. */
+  /* Validates if the action is allowed on the state for the node. */
   @JsonIgnore
   public void validateActionOnState(NodeActionType actionType) {
     if (!isActionAllowedOnState(actionType)) {
@@ -325,6 +331,7 @@ public class NodeDetails {
         || state == NodeState.Removing
         || state == NodeState.Removed
         || state == NodeState.Starting
+        || state == NodeState.Stopping
         || state == NodeState.Stopped
         || state == NodeState.Adding
         || state == NodeState.BeingDecommissioned
@@ -332,7 +339,8 @@ public class NodeDetails {
         || state == NodeState.SystemdUpgrade
         || state == NodeState.Terminating
         || state == NodeState.Terminated
-        || state == NodeState.Rebooting);
+        || state == NodeState.Rebooting
+        || state == NodeState.HardRebooting);
   }
 
   @JsonIgnore
@@ -350,6 +358,14 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isInTransit() {
     return IN_TRANSIT_STATES.contains(state);
+  }
+
+  @JsonIgnore
+  public boolean isInTransit(NodeState omittedState) {
+    if (omittedState != state) {
+      return isInTransit();
+    }
+    return false;
   }
 
   // This is invoked to see if the node can be deleted from the universe JSON.

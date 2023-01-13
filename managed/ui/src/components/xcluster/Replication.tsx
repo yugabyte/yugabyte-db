@@ -53,7 +53,7 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
         <Col lg={12}>
           <XClusterConfigList currentUniverseUUID={currentUniverseUUID} />
           <CreateConfigModal
-            currentUniverseUUID={currentUniverseUUID}
+            sourceUniverseUUID={currentUniverseUUID}
             onHide={hideModal}
             visible={showModal && visibleModal === 'addClusterReplicationModal'}
           />

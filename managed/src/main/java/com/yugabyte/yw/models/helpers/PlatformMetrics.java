@@ -59,6 +59,7 @@ public enum PlatformMetrics {
   SCHEDULE_BACKUP_STATUS("Backup schedule status for universe", Unit.STATUS),
   UNIVERSE_INACTIVE_CRON_NODES("Count of nodes with inactive cronjob for universe", Unit.COUNT),
   SSH_KEY_ROTATION_STATUS("SSH Key rotation task status for universe", Unit.STATUS, false),
+  PITR_CONFIG_STATUS("PITR Config Status for DB", Unit.STATUS),
   // Alert Subsystem
   ALERT_QUERY_STATUS("Alert query status", Unit.STATUS),
   ALERT_QUERY_TOTAL_ALERTS("Total number of alerts, returned by Prometheus", Unit.COUNT),
@@ -90,12 +91,15 @@ public enum PlatformMetrics {
   UNIVERSE_BACKUP_IN_PROGRESS(
       "Flag, indicating that universe backup is in progress", Unit.STATUS, false),
   UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS, false),
+  UNIVERSE_NODE_PROCESS_STATUS("Flag, indicating expected node process status", Unit.STATUS, false),
   UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY(
       "Remaining Encryption-at-Rest config validity in days", Unit.DAY, false),
   UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT, true),
   UNIVERSE_SSH_KEY_EXPIRY_DAY(
       "Remaining days to expiry for SSH key of the universe", Unit.DAY, false),
-  UNIVERSE_METRIC_COLLECTION_STATUS("Metric Collection status for the universe", Unit.STATUS);
+  UNIVERSE_METRIC_COLLECTION_STATUS("Metric Collection status for the universe", Unit.STATUS),
+  UNIVERSE_PRIVATE_ACCESS_KEY_STATUS(
+      "Flag, indicating that private access key's permission is unchanged", Unit.STATUS);
 
   private final String help;
   private final Unit unit;

@@ -21,13 +21,14 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include <glog/logging.h>
 
 #include "yb/rocksdb/utilities/env_mirror.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -413,4 +414,3 @@ Status EnvMirror::UnlockFile(FileLock* l) {
 }
 
 }  // namespace rocksdb
-#endif

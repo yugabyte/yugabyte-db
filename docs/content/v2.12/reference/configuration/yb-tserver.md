@@ -496,7 +496,19 @@ To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` 
 
 ##### --ysql_pg_conf
 
-Comma-separated list of PostgreSQL setting assignments.
+Deprecated. Use `--ysql_pg_conf_csv` instead.
+
+##### --ysql_pg_conf_csv
+
+Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file.
+
+For example:
+
+```sh
+--ysql_pg_conf_csv="suppress_nonpg_logs=true,log_connections=on"
+```
+
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
 ##### --ysql_timezone
 
@@ -811,6 +823,32 @@ This flag requires a restart or rolling restart.
 Default: `DEFAULTS`
 
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
+##### --ssl_protocols
+
+Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
+
+Default: An empty string, which is equivalent to allowing all protocols except "ssl2" and "ssl3".
+
+You can pass a comma-separated list of strings, where the strings can be one of "ssl2", "ssl3", "tls10", "tls11", "tls12", and "tls13".
+
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, set the flag to tls12 as follows:
+
+```sh
+--ssl_protocols = tls12
+```
+
+To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set to tls12, tls13, and all available subsequent versions.
+
+```sh
+--ssl_protocols = tls12,tls13
+```
+
+In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag as follows:
+
+```sh
+--ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
+```
 
 ---
 

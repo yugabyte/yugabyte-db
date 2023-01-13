@@ -58,6 +58,7 @@ namespace yb {
 namespace rpc {
 
 using std::shared_ptr;
+using std::string;
 
 namespace {
 
@@ -91,7 +92,7 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 
 }  // anonymous namespace
 
-Result<size_t> RpcCallPBParams::ParseRequest(Slice param) {
+Result<size_t> RpcCallPBParams::ParseRequest(Slice param, const RefCntBuffer& buffer) {
   google::protobuf::io::CodedInputStream in(param.data(), narrow_cast<int>(param.size()));
   SetupLimit(&in);
   auto& message = request();
@@ -113,7 +114,8 @@ const google::protobuf::Message* RpcCallPBParams::CastMessage(const AnyMessageCo
   return msg.protobuf();
 }
 
-Result<size_t> RpcCallLWParams::ParseRequest(Slice param) {
+Result<size_t> RpcCallLWParams::ParseRequest(Slice param, const RefCntBuffer& buffer) {
+  buffer_ = buffer;
   RETURN_NOT_OK(request().ParseFromSlice(param));
   return 0;
 }
@@ -190,16 +192,8 @@ void RpcContext::RespondApplicationError(int error_ext_id, const std::string& me
   responded_ = true;
 }
 
-size_t RpcContext::AddRpcSidecar(const Slice& car) {
-  return call_->AddRpcSidecar(car);
-}
-
-void RpcContext::ResetRpcSidecars() {
-  call_->ResetRpcSidecars();
-}
-
-void RpcContext::ReserveSidecarSpace(size_t space) {
-  call_->ReserveSidecarSpace(space);
+Sidecars& RpcContext::sidecars() {
+  return call_->sidecars();
 }
 
 const Endpoint& RpcContext::remote_address() const {

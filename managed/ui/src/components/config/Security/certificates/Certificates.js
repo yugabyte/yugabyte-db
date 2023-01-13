@@ -4,7 +4,7 @@ import { Row, Col, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Field } from 'formik';
 import * as Yup from 'yup';
-import { YBButton } from '../../../common/forms/fields';
+import { YBButton , YBFormInput } from '../../../common/forms/fields';
 import { YBModalForm } from '../../../common/forms';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import moment from 'moment';
@@ -14,7 +14,7 @@ import './certificates.scss';
 import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
 import { api } from '../../../../redesign/helpers/api';
-import { YBFormInput } from '../../../common/forms/fields';
+
 import { AssociatedUniverse } from '../../../common/associatedUniverse/AssociatedUniverse';
 import { YBConfirmModal } from '../../../modals';
 
@@ -269,29 +269,29 @@ class Certificates extends Component {
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
       ? userCertificates.data
-          .reduce((allCerts, cert) => {
-            const certInfo = {
-              type: cert.certType,
-              uuid: cert.uuid,
-              name: cert.label,
-              expiryDate: cert.expiryDate,
-              certificate: cert.certificate,
-              creationTime: cert.startDate,
-              privateKey: cert.privateKey,
-              customCertInfo: cert.customCertInfo,
-              inUse: cert.inUse,
-              universeDetails: cert.universeDetails,
-              hcVaultCertParams: cert.customHCPKICertInfo
-            };
+        .reduce((allCerts, cert) => {
+          const certInfo = {
+            type: cert.certType,
+            uuid: cert.uuid,
+            name: cert.label,
+            expiryDate: cert.expiryDate,
+            certificate: cert.certificate,
+            creationTime: cert.startDate,
+            privateKey: cert.privateKey,
+            customCertInfo: cert.customCertInfo,
+            inUse: cert.inUse,
+            universeDetails: cert.universeDetails,
+            hcVaultCertParams: cert.customHCPKICertInfo
+          };
 
-            const isVaultCert = cert.certType === 'HashicorpVault';
-            if (isVaultCert) {
-              isHCVaultEnabled && allCerts.push(certInfo);
-            } else allCerts.push(certInfo);
+          const isVaultCert = cert.certType === 'HashicorpVault';
+          if (isVaultCert) {
+            isHCVaultEnabled && allCerts.push(certInfo);
+          } else allCerts.push(certInfo);
 
-            return allCerts;
-          }, [])
-          .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
+          return allCerts;
+        }, [])
+        .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
       : [];
 
     return (

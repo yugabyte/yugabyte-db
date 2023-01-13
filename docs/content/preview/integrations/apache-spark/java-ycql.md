@@ -5,7 +5,7 @@ description: Build a Java-based application using Apache Spark and YugabyteDB.
 aliases:
   - /preview/integrations/apache-spark/java/
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark-2-java-ycql
     parent: apache-spark
     weight: 574
@@ -16,7 +16,7 @@ type: docs
 
   <li >
     <a href="../java-ycql/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       Java
     </a>
   </li>

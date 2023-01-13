@@ -25,15 +25,20 @@ public class ShutdownHookHandlerTest {
     ShutdownHookHandler handler = new ShutdownHookHandler(mockApplicationLifecycle);
     int weights[] = new int[] {1, 2, 1, 3, 1, 5, 2, 10, 7, 9, 5, 3};
     List<Integer> weightOrders = new ArrayList<>();
+    List<Object> objects = new ArrayList<>();
     for (int i = 0; i < weights.length; i++) {
       int weight = weights[i];
+      Object referent = new Object();
+      objects.add(referent);
       handler.addShutdownHook(
-          weight,
-          () -> {
+          referent,
+          (obj) -> {
+            assertTrue(obj == referent);
             synchronized (weightOrders) {
               weightOrders.add(weight);
             }
-          });
+          },
+          weight);
     }
     // Invoke the hooks now.
     handler.onApplicationShutdown();

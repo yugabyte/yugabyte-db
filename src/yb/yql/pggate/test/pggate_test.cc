@@ -19,8 +19,7 @@
 #include <string>
 #include <unordered_set>
 
-#include <boost/optional.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
@@ -40,6 +39,8 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+
+using std::string;
 
 using namespace std::literals;
 

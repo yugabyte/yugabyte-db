@@ -35,7 +35,6 @@ package yb.tserver;
 
 option java_package = "org.yb.tserver";
 
-import "yb/common/common_net.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/rpc/rpc_header.proto";

@@ -29,6 +29,9 @@
 #include "yb/util/status_format.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
+#include "yb/util/flags.h"
+
+using std::string;
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -40,19 +43,19 @@ using yb::operator"" _MB;
 
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(rpc_slow_query_threshold_ms);
-DEFINE_int32(rpcz_max_cql_query_dump_size, 4_KB,
+DEFINE_UNKNOWN_int32(rpcz_max_cql_query_dump_size, 4_KB,
              "The maximum size of the CQL query string in the RPCZ dump.");
-DEFINE_int32(rpcz_max_cql_batch_dump_count, 4_KB,
+DEFINE_UNKNOWN_int32(rpcz_max_cql_batch_dump_count, 4_KB,
              "The maximum number of CQL batch elements in the RPCZ dump.");
-DEFINE_bool(throttle_cql_calls_on_soft_memory_limit, true,
+DEFINE_UNKNOWN_bool(throttle_cql_calls_on_soft_memory_limit, true,
             "Whether to reject CQL calls when soft memory limit is reached.");
-DEFINE_bool(display_bind_params_in_cql_details, true,
+DEFINE_UNKNOWN_bool(display_bind_params_in_cql_details, true,
             "Whether to show bind params for CQL calls details in the RPCZ dump.");
 
 constexpr int kDropPolicy = 1;
 constexpr int kRejectPolicy = 0;
 
-DEFINE_int32(throttle_cql_calls_policy, kRejectPolicy,
+DEFINE_UNKNOWN_int32(throttle_cql_calls_policy, kRejectPolicy,
               "Policy for throttling CQL calls. 1 - drop throttled calls. "
               "0 - respond with OVERLOADED error.");
 
@@ -63,13 +66,13 @@ DECLARE_uint64(rpc_max_message_size);
 // and hence max cql message length to 253MB
 // This length corresponds to 3 strings with size of 64MB along with any additional fields
 // and overheads
-DEFINE_int32(max_message_length, 254_MB,
+DEFINE_UNKNOWN_int32(max_message_length, 254_MB,
              "The maximum message length of the cql message.");
 
 // By default the CQL server sends CQL EVENTs (opcode=0x0c) only if the connection was
 // subscribed (via REGISTER request) for particular events. The flag allows to send all
 // available event always - even if the connection was not subscribed for events.
-DEFINE_bool(cql_server_always_send_events, false,
+DEFINE_UNKNOWN_bool(cql_server_always_send_events, false,
             "All CQL connections automatically subscribed for all CQL events.");
 
 DECLARE_int32(client_read_write_timeout_ms);
@@ -192,11 +195,11 @@ Slice CQLInboundCall::method_name() const {
   return remote_method.method_name();
 }
 
-void CQLInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void CQLInboundCall::DoSerialize(rpc::ByteBlocks* output) {
   TRACE_EVENT0("rpc", "CQLInboundCall::Serialize");
   CHECK_GT(response_msg_buf_.size(), 0);
 
-  output->push_back(std::move(response_msg_buf_));
+  output->emplace_back(std::move(response_msg_buf_));
 }
 
 void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,
@@ -329,6 +332,8 @@ void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
+          // rpcs with an invalid request may have a null request_
+          || (trace_ && request_ && request_->trace_requested())
           || (trace_ && trace_->must_print())
           || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
       LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:";

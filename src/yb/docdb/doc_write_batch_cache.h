@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_WRITE_BATCH_CACHE_H_
-#define YB_DOCDB_DOC_WRITE_BATCH_CACHE_H_
+#pragma once
 
 #include <unordered_map>
 #include <string>
@@ -80,5 +79,3 @@ class DocWriteBatchCache {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_DOC_WRITE_BATCH_CACHE_H_

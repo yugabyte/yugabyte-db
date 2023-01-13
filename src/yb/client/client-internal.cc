@@ -83,7 +83,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
@@ -108,6 +108,7 @@ DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
 DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 
@@ -115,6 +116,7 @@ using std::set;
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using std::pair;
 using strings::Substitute;
 
 using namespace std::placeholders;
@@ -282,6 +284,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterEstimatedDataLoss);
@@ -556,7 +559,8 @@ Status YBClient::Data::DeleteTable(YBClient* client,
                                    const bool is_index_table,
                                    CoarseTimePoint deadline,
                                    YBTableName* indexed_table_name,
-                                   bool wait) {
+                                   bool wait,
+                                   const TransactionMetadata *txn) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   int attempts = 0;
@@ -566,6 +570,14 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   }
   if (!table_id.empty()) {
     req.mutable_table()->set_table_id(table_id);
+  }
+  if (FLAGS_ysql_ddl_rollback_enabled && txn) {
+    // If 'txn' is set, this means this delete operation should actually result in the
+    // deletion of table data only if this transaction is a success. Therefore ensure that
+    // 'wait' is not set, because it makes no sense to wait for the deletion to complete if we want
+    // to postpone the deletion until end of transaction.
+    DCHECK(!wait);
+    txn->ToPB(req.mutable_transaction());
   }
   req.set_is_index_table(is_index_table);
   const Status status = SyncLeaderMasterRpc(
@@ -1072,10 +1084,10 @@ Status YBClient::Data::FlushTablesHelper(YBClient* client,
 }
 
 Status YBClient::Data::FlushTables(YBClient* client,
-                                           const vector<YBTableName>& table_names,
-                                           bool add_indexes,
-                                           const CoarseTimePoint deadline,
-                                           const bool is_compaction) {
+                                   const vector<YBTableName>& table_names,
+                                   bool add_indexes,
+                                   const CoarseTimePoint deadline,
+                                   const bool is_compaction) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);
@@ -1087,10 +1099,10 @@ Status YBClient::Data::FlushTables(YBClient* client,
 }
 
 Status YBClient::Data::FlushTables(YBClient* client,
-                                           const vector<TableId>& table_ids,
-                                           bool add_indexes,
-                                           const CoarseTimePoint deadline,
-                                           const bool is_compaction) {
+                                   const vector<TableId>& table_ids,
+                                   bool add_indexes,
+                                   const CoarseTimePoint deadline,
+                                   const bool is_compaction) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);

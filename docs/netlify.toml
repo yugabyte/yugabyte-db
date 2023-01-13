@@ -11,21 +11,22 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.100.2"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.100.2"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
-  HUGO_VERSION = "0.100.2"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
-# Redirects
+################ REDIRECTS ################
+#
 # - Default status is a 301 unless otherwise specified.
 # - First match wins: put wildcards AFTER specific paths!
 # - Wildcards include empty matches: /v1.0/* WILL match /v1.0
@@ -41,35 +42,192 @@
   to = "/images/:splat"
   status = 200
 
-# Bypass the landing page
-
-# [[redirects]]
-#   from = "/"
-#   to = "/preview/"
-#   force = true
-
-# Catch-all for old links to /latest (now called /preview)
+# Ancient links to CDC should go to explore
 
 [[redirects]]
-  from = "/latest/*"
-  to = "/preview/:splat"
+  from = "/:version/deploy/cdc/*"
+  to = "/preview/explore/change-data-capture/"
+  force = true
+
+# CDC java console client is documented on its repo only now
+
+[[redirects]]
+  from = "/:version/explore/change-data-capture/cdc-java-console-client/*"
+  to = "/preview/explore/change-data-capture/"
+
+# CDC page structure is no longer OS-oriented
+
+[[redirects]]
+  from = "/:version/explore/change-data-capture/macos/*"
+  to = "/:version/explore/change-data-capture/"
+
+# 2.8 is the last version with Docker-swarm
+
+[[redirects]]
+  from = "/:version/deploy/docker-swarm/*"
+  to = "/v2.8/deploy/docker/docker-swarm/"
+  force = true
+
+# Old links to deploy and develop and releases
+
+[[redirects]]
+  from = "/latest/deploy/*"
+  to = "/preview/deploy/"
+  force = true
+
+[[redirects]]
+  from = "/latest/develop/*"
+  to = "/preview/develop/"
+  force = true
+
+[[redirects]]
+  from = "/latest/migrate/*"
+  to = "/preview/migrate/"
+  force = true
+
+[[redirects]]
+  from = "/stable/migrate/*"
+  to = "/preview/migrate/:splat"
+  force = true
+
+[[redirects]]
+  from = "/v2.14/migrate/*"
+  to = "/preview/migrate/:splat"
+  force = true
+
+[[redirects]]
+  from = "/:version/releases/*"
+  to = "/preview/releases/"
+  force = true
+
+# Redirect for YugabyteDB Voyager
+
+[[redirects]]
+  from = "/:version/migrate/yb-voyager/*"
+  to = "/preview/migrate/"
+  force = true
+
+# A few redirects to head off issues with version_menu_pagelinks
+
+[[redirects]]
+  from = "/v2.12/explore/ysql-language-features/sql-feature-support/*"
+  to = "/v2.12/explore/ysql-language-features/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/explore/ysql-language-features/sql-feature-support/*"
+  to = "/v2.8/explore/ysql-language-features/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/explore/ysql-language-features/postgresql-compatibility/*"
+  to = "/v2.12/explore/ysql-language-features/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/explore/ysql-language-features/postgresql-compatibility/*"
+  to = "/v2.8/explore/ysql-language-features/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/develop/quality-of-service/*"
+  to = "/v2.12/develop/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/develop/quality-of-service/*"
+  to = "/v2.8/develop/"
+  force = true
+
+[[redirects]]
+  from = "/v2.14/develop/build-apps/*"
+  to = "/v2.14/develop/learn/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/develop/build-apps/*"
+  to = "/v2.12/develop/learn/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/develop/build-apps/*"
+  to = "/v2.8/develop/learn/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/drivers-orms/*"
+  to = "/v2.12/reference/drivers/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/drivers-orms/*"
+  to = "/v2.8/reference/drivers/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/explore/ysql-language-features/pg-extensions/*"
+  to = "/v2.12/api/ysql/extensions/"
+  force = true
+
+[[redirects]]
+  from = "/v2.8/explore/ysql-language-features/pg-extensions/*"
+  to = "/v2.8/api/ysql/extensions/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
+  to = "/v2.12/yugabyte-platform/troubleshoot/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
+  to = "/v2.8/yugabyte-platform/troubleshoot/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
+  to = "/v2.6/yugabyte-platform/troubleshoot/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
+  to = "/v2.12/yugabyte-platform/upgrade/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
+  to = "/v2.8/yugabyte-platform/upgrade/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
+  to = "/v2.6/yugabyte-platform/upgrade/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
+  to = "/v2.12/yugabyte-platform/install-yugabyte-platform/"
+  force = true
+[[redirects]]
+  from = "/v2.8/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
+  to = "/v2.8/yugabyte-platform/install-yugabyte-platform/"
+  force = true
+[[redirects]]
+  from = "/v2.6/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
+  to = "/v2.6/yugabyte-platform/install-yugabyte-platform/"
   force = true
 
 # Redirect old cloud docs to root of current
 
-[[redirects]]
-  from = "/:version/yugabyte-cloud/cloud-quickstart/"
-  to = "/preview/quick-start-yugabytedb-managed/"
-  force = true
+#[[redirects]]
+#  from = "/:version/yugabyte-cloud/cloud-quickstart/"
+#  to = "/preview/yugabyte-cloud/cloud-quickstart/"
+#  force = true
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/cloud-quickstart/qs-add/"
-  to = "/preview/quick-start-yugabytedb-managed/"
+  to = "/preview/yugabyte-cloud/cloud-quickstart/"
   force = true
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/cloud-quickstart/qs-connect/"
-  to = "/preview/quick-start-yugabytedb-managed/"
+  to = "/preview/yugabyte-cloud/cloud-quickstart/"
   force = true
 
 [[redirects]]
@@ -120,8 +278,17 @@
   to = "https://docs-archive.yugabyte.com/v2.4/"
   force = true
 
+# [[redirects]]
+#   from = "/v2.6/*"
+#   to = "https://docs-archive.yugabyte.com/v2.6/"
+#   force = true
+
 # Build an app was in quick-start, now in develop
 
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
+  to = "/preview/develop/build-apps/cloud-add-ip/"
+  force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
   to = "/preview/develop/build-apps/c/cloud-ysql-c/"
@@ -161,6 +328,70 @@
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
   to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
+  force = true
+
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-hibernate/"
+  to = "/preview/drivers-orms/orms/ysql-hibernate/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-ebean/"
+  to = "/preview/drivers-orms/orms/ysql-ebean/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-spring-data/"
+  to = "/preview/drivers-orms/orms/ysql-spring-data/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/go/ysql-pg/"
+  to = "/preview/drivers-orms/orms/ysql-pg/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/go/ysql-gorm/"
+  to = "/preview/drivers-orms/orms/ysql-gorm/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-sqlalchemy/"
+  to = "/preview/drivers-orms/orms/ysql-sqlalchemy/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-django/"
+  to = "/preview/drivers-orms/orms/ysql-django/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/nodejs/ysql-sequelize/"
+  to = "/preview/drivers-orms/orms/ysql-sequelize/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/nodejs/ysql-prisma/"
+  to = "/preview/drivers-orms/orms/ysql-prisma/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/csharp/ysql-entity-framework/"
+  to = "/preview/drivers-orms/orms/ysql-entity-framework/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/csharp/ysql-dapper/"
+  to = "/preview/drivers-orms/orms/ysql-dapper/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/rust/ysql-diesel/"
+  to = "/preview/drivers-orms/orms/ysql-diesel/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-sdyb/"
+  to = "/preview/integrations/spring-framework/sdyb/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/go/ysql-pg/"
+  to = "/preview/drivers-orms/go/pg/"
+  force = true
+
+# Build an app for aiopg, now in integrations
+
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-aiopg/"
+  to = "/preview/integrations/aiopg/"
   force = true
 
 # Manual import was in migrate, now in manage
@@ -235,12 +466,6 @@
   to = "/stable/manage/data-migration/bulk-export-ysql/"
   force = true
 
-# Redirect for YugabyteDB Voyager
-
-[[redirects]]
-  from = "/:version/migrate/yb-voyager/*"
-  to = "/:version/migrate/:splat"
-  force = true
 
 # Redirect older versions of specific sections
 
@@ -286,11 +511,6 @@
   force = true
 
 [[redirects]]
-  from = "/:version/releases/*"
-  to = "/preview/releases/:splat"
-  force = true
-
-[[redirects]]
   from = "/:version/troubleshoot/*"
   to = "/preview/troubleshoot/:splat"
   force = true
@@ -300,39 +520,28 @@
   to = "/preview/yedis/"
   force = true
 
-# Make sure stable and preview quick-starts don't get redirected.
+# Make sure preview quick-start doesn't get redirected.
 # (All other versions get redirected to preview.)
-
-[[redirects]]
-  from = "/stable/quick-start/*"
-  to = "/stable/quick-start/:splat"
-  status = 200
 
 [[redirects]]
   from = "/preview/quick-start/*"
   to = "/preview/quick-start/:splat"
   status = 200
 
-# Stable quick-starts need defaults,
-# since archiving from /preview removes aliases
-
 [[redirects]]
-  from = "/stable/quick-start/install/"
-  to = "/stable/quick-start/#install-yugabytedb"
+  from = "/preview/quick-start-yugabytedb-managed/*"
+  to = "/preview/quick-start-yugabytedb-managed/:splat"
   force = true
 
-[[redirects]]
-  from = "/stable/quick-start/create-local-cluster/"
-  to = "/stable/quick-start/#create-a-local-cluster"
-  force = true
-
-[[redirects]]
-  from = "/stable/quick-start/explore/"
-  to = "/stable/quick-start/explore/ysql/"
-  force = true
+# Redirect all non-preview quick start links to preview
 
 [[redirects]]
   from = ":version/quick-start/*"
+  to = "/preview/quick-start/"
+  force = true
+
+[[redirects]]
+  from = ":version/quick-start-yugabytedb-managed/*"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
@@ -401,29 +610,75 @@
 # Build an application redirects to Drivers and ORMs
 
 [[redirects]]
-  from = "/preview/develop/build-apps/java/ycql/"
-  to = "/preview/drivers-orms/java/ycql/"
+   from = "/preview/develop/build-apps/java/ysql-yb-jdbc/"
+   to = "/preview/drivers-orms/java/yugabyte-jdbc/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/java/ycql-4.6/"
-  to = "/preview/drivers-orms/java/ycql-4.6/"
+   from = "/preview/develop/build-apps/java/ysql-jdbc/"
+   to = "/preview/drivers-orms/java/postgres-jdbc/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/go/ycql/"
-  to = "/preview//drivers-orms/go/ycql/"
+   from = "/preview/develop/build-apps/ruby/ysql-rails-activerecord/"
+   to = "/preview/drivers-orms/ruby/activerecord/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/python/ycql/"
-  to = "/preview//drivers-orms/python/ycql/"
+   from = "/preview/develop/build-apps/python/ysql-psycopg2/"
+   to = "/preview/drivers-orms/python/postgres-psycopg2/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/nodejs/ycql/"
-  to = "/preview//drivers-orms/nodejs/ycql/"
+   from = "/preview/develop/build-apps/nodejs/ysql-pg/"
+   to = "/preview/drivers-orms/nodejs/yugabyte-node-driver/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/csharp/ycql/"
-  to = "/preview//drivers-orms/csharp/ycql/"
+   from = "/preview/develop/build-apps/csharp/ysql/"
+   to = "/preview/drivers-orms/csharp/postgres-npgsql/"
 
+[[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-yb-pgx/"
+   to = "/preview/drivers-orms/go/yb-pgx/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-pgx/"
+   to = "/preview/drivers-orms/go/pgx/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-pq/"
+   to = "/preview/drivers-orms/go/pq/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/:lang/:driver/"
+   to = "/preview/drivers-orms/:lang/:driver/"
+
+# Foreign data wrappers from SQL features to Advanced features
+
+[[redirects]]
+   from = "/preview/explore/ysql-language-features/foreign-data-wrappers/"
+   to = "/preview/explore/ysql-language-features/advanced-features/foreign-data-wrappers/"
+
+# Fault tolerance redirects
+
+[[redirects]]
+   from = "/preview/explore/fault-tolerance/*"
+   to = "/preview/explore/fault-tolerance/macos/"
+
+# Prometheus integration redirects
+
+[[redirects]]
+   from = "/preview/explore/observability/prometheus-integration/*"
+   to = "/preview/explore/observability/prometheus-integration/macos/"
+
+##########################################################
+# Catch-all for old links to /latest (now called /preview)
+#
+# This one is last on purpose...
+##########################################################
+
+[[redirects]]
+  from = "/latest/*"
+  to = "/preview/:splat"
+  force = true
+
+##########################################################
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme

@@ -42,7 +42,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/random.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/memory/arena.h"
@@ -50,27 +50,29 @@
 #include "yb/util/object_pool.h"
 #include "yb/util/size_literals.h"
 
-DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
+using std::vector;
+using std::string;
+
+DEFINE_RUNTIME_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
 TAG_FLAG(enable_tracing, advanced);
-TAG_FLAG(enable_tracing, runtime);
 
-DEFINE_int32(sampled_trace_1_in_n, 1000, "Flag to enable/disable sampled tracing. 0 disables.");
+DEFINE_RUNTIME_int32(sampled_trace_1_in_n, 1000,
+    "Flag to enable/disable sampled tracing. 0 disables.");
 TAG_FLAG(sampled_trace_1_in_n, advanced);
-TAG_FLAG(sampled_trace_1_in_n, runtime);
 
-DEFINE_bool(use_monotime_for_traces, false, "Flag to enable use of MonoTime::Now() instead of "
+DEFINE_RUNTIME_bool(use_monotime_for_traces, false,
+    "Flag to enable use of MonoTime::Now() instead of "
     "CoarseMonoClock::Now(). CoarseMonoClock is much cheaper so it is better to use it. However "
     "if we need more accurate sub-millisecond level breakdown, we could use MonoTime.");
 TAG_FLAG(use_monotime_for_traces, advanced);
-TAG_FLAG(use_monotime_for_traces, runtime);
 
-DEFINE_int32(tracing_level, 0, "verbosity levels (like --v) up to which tracing is enabled.");
+DEFINE_RUNTIME_int32(tracing_level, 0,
+    "verbosity levels (like --v) up to which tracing is enabled.");
 TAG_FLAG(tracing_level, advanced);
-TAG_FLAG(tracing_level, runtime);
 
-DEFINE_int32(print_nesting_levels, 5, "controls the depth of the child traces to be printed.");
+DEFINE_RUNTIME_int32(print_nesting_levels, 5,
+    "controls the depth of the child traces to be printed.");
 TAG_FLAG(print_nesting_levels, advanced);
-TAG_FLAG(print_nesting_levels, runtime);
 
 namespace yb {
 
@@ -194,38 +196,34 @@ int64_t GetCurrentMicrosFast(CoarseTimePoint now) {
 } // namespace
 
 ScopedAdoptTrace::ScopedAdoptTrace(Trace* t)
-    : old_trace_(Trace::threadlocal_trace_), is_enabled_(GetAtomicFlag(&FLAGS_enable_tracing)) {
-  if (is_enabled_) {
-    trace_ = t;
-    Trace::threadlocal_trace_ = t;
-    DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
-  }
+    : old_trace_(Trace::threadlocal_trace_) {
+  trace_ = t;
+  Trace::threadlocal_trace_ = t;
+  DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
 }
 
 ScopedAdoptTrace::~ScopedAdoptTrace() {
-  if (is_enabled_) {
-    Trace::threadlocal_trace_ = old_trace_;
-    // It's critical that we Release() the reference count on 't' only
-    // after we've unset the thread-local variable. Otherwise, we can hit
-    // a nasty interaction with tcmalloc contention profiling. Consider
-    // the following sequence:
-    //
-    //   1. threadlocal_trace_ has refcount = 1
-    //   2. we call threadlocal_trace_->Release() which decrements refcount to 0
-    //   3. this calls 'delete' on the Trace object
-    //   3a. this calls tcmalloc free() on the Trace and various sub-objects
-    //   3b. the free() calls may end up experiencing contention in tcmalloc
-    //   3c. we try to account the contention in threadlocal_trace_'s TraceMetrics,
-    //       but it has already been freed.
-    //
-    // In the best case, we just scribble into some free tcmalloc memory. In the
-    // worst case, tcmalloc would have already re-used this memory for a new
-    // allocation on another thread, and we end up overwriting someone else's memory.
-    //
-    // Waiting to Release() only after 'unpublishing' the trace solves this.
-    trace_.reset();
-    DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
-  }
+  Trace::threadlocal_trace_ = old_trace_;
+  // It's critical that we Release() the reference count on 't' only
+  // after we've unset the thread-local variable. Otherwise, we can hit
+  // a nasty interaction with tcmalloc contention profiling. Consider
+  // the following sequence:
+  //
+  //   1. threadlocal_trace_ has refcount = 1
+  //   2. we call threadlocal_trace_->Release() which decrements refcount to 0
+  //   3. this calls 'delete' on the Trace object
+  //   3a. this calls tcmalloc free() on the Trace and various sub-objects
+  //   3b. the free() calls may end up experiencing contention in tcmalloc
+  //   3c. we try to account the contention in threadlocal_trace_'s TraceMetrics,
+  //       but it has already been freed.
+  //
+  // In the best case, we just scribble into some free tcmalloc memory. In the
+  // worst case, tcmalloc would have already re-used this memory for a new
+  // allocation on another thread, and we end up overwriting someone else's memory.
+  //
+  // Waiting to Release() only after 'unpublishing' the trace solves this.
+  trace_.reset();
+  DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
 }
 
 // Struct which precedes each entry in the trace.

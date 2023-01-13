@@ -26,7 +26,7 @@ YugabyteDB Managed offers a number of deployment and replication options in geo-
 | Partition by region | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
 | xCluster active-passive | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery, low latency I/O |
 | xCluster active-active | Eventual (timeline) | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery-, low latency I/O |
-| Read replica | Strong in source, eventual in replica | Low in primary region (1-10ms) | Low in region (1-10ms) | Low latency reads |
+| Read replica | Strong in source, eventual in replica | Low in region (1-10ms) | Low in primary region (1-10ms) | Low latency reads |
 
 ## Single region multi-zone cluster
 
@@ -51,11 +51,15 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 - Applications accessing data from remote regions may experience higher read/write latencies
 - Not resilient to region-level outages, such as those caused by natural disasters like floods or ice storms
 
+**Fault tolerance**
+
+Availability Zone Level, with a minimum of 3 nodes across 3 availability zones in a single region.
+
 **Deployment**
 
 To deploy a multi-zone cluster, create a single-region cluster with Availability Zone Level fault tolerance. Refer to [Create a single-region cluster](../create-clusters/create-single-region/).
 
-If you deploy your cluster in a VPC, you can [geo-partition](#partition-by-region) the cluster after it is created.
+<!--If you deploy your cluster in a VPC, you can [geo-partition](#partition-by-region) the cluster after it is created.-->
 
 ## Replicate across regions
 
@@ -63,7 +67,7 @@ In a cluster that is replicated across regions, the nodes of the cluster are dep
 
 ![Single cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-2.png)
 
-**Resilience**: Putting cluster nodes in different regions provides a  higher degree of failure independence. In the event of a failure, the database cluster continues to serve data requests from the remaining regions while automatically replicating the data in the background to maintain the desired level of resilience.
+**Resilience**: Putting cluster nodes in different regions provides a  higher degree of failure independence. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
 
 **Consistency**: All writes are synchronously replicated. Transactions are globally consistent.
 
@@ -79,9 +83,19 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 **Tradeoffs**
 
 - Write latency can be high (depends on the distance/network packet transfer times)
-- Follower reads trade off consistency for latency
+- [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql) trade off consistency for latency
+
+**Fault tolerance**
+
+Region Level, with a minimum of 3 nodes across 3 regions.
+
+**Deployment**
 
 To deploy a multi-region replicated cluster, refer to [Replicate across regions](../create-clusters/create-clusters-multisync/).
+
+**Learn more**
+
+[Replication](../../../architecture/docdb-replication/replication/)
 
 ## Partition by region
 
@@ -96,6 +110,8 @@ Here's how it works:
 3. Finally pin each table so the data lives in different zones of the target region.
 
 With this deployment mode, the cluster automatically keeps specific rows and all the table shards (known as tablets) in the specified region. In addition to complying with data sovereignty requirements, you also get low-latency access to data from users in the region while maintaining transactional consistency semantics.
+
+In YugabyteDB Managed, a partition-by-region cluster consists initially of a primary region where all tables that aren't geo-partitioned (that is, don't reside in a tablespace) reside, and any number of additional regions where you can store partitioned data, whether it's to reduce latencies or comply with data sovereignty requirements. Tablespaces are automatically placed in all the regions.
 
 ![Geo-partitioned cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-5.png)
 
@@ -116,7 +132,18 @@ With this deployment mode, the cluster automatically keeps specific rows and all
 - Row-level geo-partitioning is helpful for specific use cases where the dataset and access to the data is logically partitioned. Examples include users in different countries accessing their accounts, and localized products (or product inventory) in a product catalog.
 - When users travel, access to their data will incur cross-region latency because their data is pinned to a different region.
 
-To deploy a geo-partioned cluster, contact {{% support-cloud %}}.
+**Fault tolerance**
+
+The regions in the cluster can have fault tolerance of None (single node, no HA), Node Level (minimum 3 nodes in a single availability zone), or Availability Zone Level (minimum 3 nodes in 3 availability zones; recommended). Any regions you add to the cluster have the same fault tolerance as the primary region.
+
+**Deployment**
+
+To deploy a partition-by-region cluster, refer to [Partition by region](../create-clusters/create-clusters-geopartition/).
+
+**Learn more**
+
+- [Row-level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)
+- [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
 
 ## Cross-cluster
 
@@ -128,7 +155,13 @@ Here's how it works:
 
 2. You then set up cross cluster asynchronous replication from one cluster to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
 
-To deploy a cross-cluster replication cluster, contact {{% support-cloud %}}.
+**Deployment**
+
+To deploy a cross-cluster replication cluster, first [deploy your primary cluster](#single-region-multi-zone-cluster), then contact {{% support-cloud %}} to add the replica.
+
+**Learn more**
+
+[xCluster replication](../../../architecture/docdb-replication/async-replication/)
 
 ### Active-passive
 
@@ -187,7 +220,7 @@ For applications that have writes happening from a single zone or region but wan
 
 ![Read replicas](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-6.png)
 
-**Resilience**: If you deploy the nodes of the primary cluster across zones, you get zone-level resilience. Read replicas don't participate in the Raft consistency protocol and therefore don't affect resilience.
+**Resilience**: If you deploy the nodes of the primary cluster across zones or regions, you get zone- or region-level resilience. Read replicas don't participate in the Raft consistency protocol and therefore don't affect resilience.
 
 **Consistency**: The data in the replica clusters is timeline consistent, which is better than eventual consistency.
 
@@ -204,11 +237,21 @@ For applications that have writes happening from a single zone or region but wan
 - The primary cluster and the read replicas are correlated clusters, not two independent clusters. In other words, adding read replicas doesn't improve resilience.
 - Read replicas can't take writes, so write latency from remote regions can be high even if there is a read replica near the client.
 
-To deploy a read replica cluster, contact {{% support-cloud %}}.
+**Fault tolerance**
+
+Read replicas have a minimum of 1 node. Adding nodes to the read replica increases the replication factor (that is, adds copies of the data) to protect the read replica from node failure.
+
+**Deployment**
+
+You can add replicas to an existing primary cluster as needed. Refer to [Read replicas](../../cloud-clusters/managed-read-replica/).
+
+**Learn more**
+
+[Read replicas](../../../architecture/docdb-replication/read-replicas/)
 
 ## Learn more
 
-- [Multi-DC deployments](../../../deploy/multi-dc/)
+- [DocDB replication layer](../../../architecture/docdb-replication/)
 - Webinar: [Engineering Around the Physics of Latency](https://vimeo.com/548171949)
 - Blog: [9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/)
 - Blog: [Geo-partitioning of Data in YugabyteDB](https://blog.yugabyte.com/geo-partitioning-of-data-in-yugabytedb/)

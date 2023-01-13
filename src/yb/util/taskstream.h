@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_TASKSTREAM_H
-#define YB_UTIL_TASKSTREAM_H
+#pragma once
 
 #include <atomic>
 #include <chrono>
@@ -20,7 +19,7 @@
 #include <memory>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/blocking_queue.h"
@@ -30,7 +29,6 @@
 
 using namespace std::chrono_literals;
 
-using std::vector;
 
 namespace yb {
 class ThreadPool;
@@ -233,5 +231,3 @@ void TaskStream<T>::ProcessItem(T* item) {
 }
 
 }  // namespace yb
-
-#endif  // YB_UTIL_TASKSTREAM_H

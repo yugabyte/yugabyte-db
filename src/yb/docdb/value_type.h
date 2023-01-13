@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_VALUE_TYPE_H_
-#define YB_DOCDB_VALUE_TYPE_H_
+#pragma once
 
 #include <bitset>
 #include <string>
@@ -117,8 +116,6 @@ namespace docdb {
     \
     /* Flag type for merge record flags */ \
     ((kMergeFlags, 'k')) /* ASCII code 107 */ \
-    /* Indicator for whether an intent is for a row lock. */ \
-    ((kRowLock, 'l'))  /* ASCII code 108 */ \
     ((kBitSet, 'm')) /* ASCII code 109 */ \
     ((kSubTransactionId, 'n')) /* ASCII code 110 */ \
     /* Timestamp value in microseconds */ \
@@ -186,6 +183,7 @@ namespace docdb {
     ((kUuid, '_')) /* ASCII code 95 */ \
     \
     /* Indicator for whether an intent is for a row lock. */ \
+    ((kRowLock, 'l'))  /* ASCII code 108 */ \
     ((kSubTransactionId, 'n')) /* ASCII code 110 */ \
     /* Timestamp value in microseconds */ \
     ((kTimestamp, 's'))  /* ASCII code 115 */ \
@@ -309,5 +307,3 @@ inline bool IsMergeRecord(const Slice& value) {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_VALUE_TYPE_H_

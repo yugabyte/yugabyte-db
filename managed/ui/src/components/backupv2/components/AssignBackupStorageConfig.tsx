@@ -67,7 +67,8 @@ export const AssignBackupStorageConfig: FC<BackupStorageConfigProps> = ({
       <div className="storage-location-path">
         <div>
           <div className="title">Selected backup location:</div>
-          {backup.responseList[0].defaultLocation ?? backup.responseList[0].storageLocation}
+          {backup.commonBackupInfo.responseList[0].defaultLocation ??
+            backup.commonBackupInfo.responseList[0].storageLocation}
         </div>
       </div>
       <div className="help-text">

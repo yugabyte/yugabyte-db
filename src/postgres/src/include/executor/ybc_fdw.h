@@ -20,11 +20,8 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBC_FDW_H
-#define YBC_FDW_H
+#pragma once
 
 #include "postgres.h"
 
 extern Datum ybc_fdw_handler();
-
-#endif							/* YBC_FDW_H */

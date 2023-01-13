@@ -11,7 +11,7 @@ import PropTypes from 'prop-types';
 import _ from 'lodash';
 import moment from 'moment';
 
-import { MetricConsts, MetricMeasure } from '../../metrics/constants';
+import { MetricConsts, MetricMeasure, MetricTypes } from '../../metrics/constants';
 import { METRIC_FONT } from '../MetricsConfig';
 import {
   divideYAxisByThousand,
@@ -27,7 +27,7 @@ import './MetricsPanel.scss';
 
 const Plotly = require('plotly.js/lib/core');
 
-const MIN_OUTLIER_BUTTONS_WIDTH = 320;
+const MIN_OUTLIER_BUTTONS_WIDTH = 290;
 const WIDTH_OFFSET = 23;
 const CONTAINER_PADDING = 60;
 const MAX_GRAPH_WIDTH_PX = 600;
@@ -39,12 +39,13 @@ const DEFAULT_CONTAINER_WIDTH = 1200;
 
 export default class MetricsPanel extends Component {
   constructor(props) {
-    super(props)
+    super(props);
     this.outlierButtonsRef = React.createRef();
     this.state = {
       outlierButtonsWidth: null,
-      focusedButton: null
-    }
+      focusedButton: null,
+      isItemInDropdown: false
+    };
   }
 
   static propTypes = {
@@ -58,9 +59,11 @@ export default class MetricsPanel extends Component {
       currentUser,
       shouldAbbreviateTraceName = true,
       metricMeasure,
-      operations
+      operations,
+      metricType
     } = this.props;
-    const metric = metricMeasure === MetricMeasure.OUTLIER ? _.cloneDeep(this.props.metric) : this.props.metric;
+    const metric = (metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES)
+      ? _.cloneDeep(this.props.metric) : this.props.metric;
     if (isNonEmptyObject(metric)) {
       const layoutHeight = this.props.height || DEFAULT_HEIGHT;
       const layoutWidth =
@@ -79,7 +82,9 @@ export default class MetricsPanel extends Component {
           // If the metrics API returns data without instanceName field in case of
           // outliers, it belongs to cluster average data
         } else if (metricMeasure === MetricMeasure.OUTLIER && !dataItem['instanceName']) {
-          dataItem['fullname'] = MetricConsts.CLUSTER_AVERAGE;
+          dataItem['fullname'] = MetricConsts.NODE_AVERAGE;
+        } else if (metricType === MetricTypes.OUTLIER_TABLES) {
+          dataItem['fullname'] = dataItem['tableName'];
         } else {
           dataItem['fullname'] = dataItem['name'];
         }
@@ -92,7 +97,12 @@ export default class MetricsPanel extends Component {
           dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
           // Legend name from outlier should be based on instance name in case of outliers
         } else if (metricMeasure === MetricMeasure.OUTLIER) {
-          dataItem['name'] = dataItem['instanceName'] ?? MetricConsts.CLUSTER_AVERAGE;
+          dataItem['name'] = dataItem['instanceName']
+            ? dataItem['instanceName'] + (this.state.isItemInDropdown ? ' (' + dataItem['name'] + ')' : '')
+            : MetricConsts.NODE_AVERAGE;
+        } else if (metricType === MetricTypes.OUTLIER_TABLES) {
+          dataItem['name'] = dataItem['namespaceName'] ?
+            `${dataItem['namespaceName']}.${dataItem['tableName']}` : dataItem['tableName'];
         }
         // Only show upto first 8 traces in the legend
         if (i >= 8) {
@@ -122,7 +132,11 @@ export default class MetricsPanel extends Component {
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
-        data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
+        if (metricType === MetricTypes.OUTLIER_TABLES && data?.namespaceName) {
+          data.hovertemplate = '%{data.namespaceName}.%{data.fullname}: %{y} at %{x} <extra></extra>';
+        } else {
+          data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
+        }
         if (data.y) {
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;
@@ -222,7 +236,7 @@ export default class MetricsPanel extends Component {
       if (prevData && currData && !_.isEqual(prevData, currData)) {
         // When user is on a specific tab and when they switch from Overall
         // to Outlier, we need to ensure offsetWidth is maintained
-        if (!this.state.focusedButton) {
+        if (!this.state.outlierButtonsWidth) {
           this.setState({
             outlierButtonsWidth: this.outlierButtonsRef.current?.offsetWidth
           });
@@ -233,10 +247,12 @@ export default class MetricsPanel extends Component {
     }
   }
 
-  loadDataByMetricOperation(metricOperation) {
-    this.plotGraph(metricOperation);
+  loadDataByMetricOperation(metricOperation, isItemInDropdown) {
     this.setState({
-      focusedButton: metricOperation
+      focusedButton: metricOperation,
+      isItemInDropdown: isItemInDropdown
+    }, () => {
+      this.plotGraph(metricOperation);
     });
   }
 
@@ -247,19 +263,21 @@ export default class MetricsPanel extends Component {
   }
 
   getClassName(idx, metricOperationsDisplayedLength, metricOperationsDropdownLength) {
-    let className = "outlier-chart-buttons";
-    if (idx === 0) {
-      className = "outlier-chart-first-button";
+    let className = "outlier-chart-button";
+    if (this.props.operations?.length === 1) {
+      className = "outlier-chart-button__only";
+    } else if (idx === 0) {
+      className = "outlier-chart-button__first";
     } else if (idx === metricOperationsDisplayedLength - 1 && metricOperationsDropdownLength >= 1) {
-      className = "outlier-chart-penultimate-button";
+      className = "outlier-chart-button__penultimate";
     } else if (idx === metricOperationsDisplayedLength - 1 && !metricOperationsDropdownLength) {
-      className = "outlier-chart-last-button";
+      className = "outlier-chart-button__last";
     }
     return className;
   }
 
   render() {
-    const { prometheusQueryEnabled, operations, metricMeasure } = this.props;
+    const { prometheusQueryEnabled, operations, metricMeasure, metricType } = this.props;
     let showDropdown = false;
     let numButtonsInDropdown = 0;
     let metricOperationsDisplayed = operations;
@@ -270,7 +288,7 @@ export default class MetricsPanel extends Component {
       </Tooltip>
     );
     const getMetricsUrl = (internalUrl) => {
-      var url = new URL(internalUrl);
+      const url = new URL(internalUrl);
       url.hostname = window.location.hostname;
       return url.href;
     };
@@ -286,16 +304,16 @@ export default class MetricsPanel extends Component {
         numButtonsInDropdown = 4;
       }
       showDropdown = true;
-      metricOperationsDisplayed = operations.slice(0, operations.length - numButtonsInDropdown);
-      metricOperationsDropdown = operations.slice(operations.length - numButtonsInDropdown);
+      metricOperationsDisplayed = operations?.slice(0, operations.length - numButtonsInDropdown);
+      metricOperationsDropdown = operations?.slice(operations.length - numButtonsInDropdown);
     }
     const focusedButton = this.state.focusedButton ? this.state.focusedButton : operations?.[0];
 
     return (
       <div id={this.props.metricKey} className="metrics-panel">
         <span ref={this.outlierButtonsRef} className="outlier-buttons-container">
-          {metricMeasure === MetricMeasure.OUTLIER &&
-            operations.length > 1 &&
+          {(metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES) &&
+            operations.length > 0 &&
             metricOperationsDisplayed.map((operation, idx) => {
               return (
                 <Button
@@ -306,7 +324,7 @@ export default class MetricsPanel extends Component {
                   )}
                   key={idx}
                   active={operation === focusedButton}
-                  onClick={() => this.loadDataByMetricOperation(operation)}>{operation}</Button>)
+                  onClick={() => this.loadDataByMetricOperation(operation, false)}>{operation}</Button>);
             })
           }
           {showDropdown && metricOperationsDropdown.length >= 1 &&
@@ -323,7 +341,7 @@ export default class MetricsPanel extends Component {
                     // className='outlier-button'
                     key={idx}
                     active={operation === focusedButton}
-                    onClick={() => this.loadDataByMetricOperation(operation)}>{operation}</MenuItem>)
+                    onClick={() => this.loadDataByMetricOperation(operation, true)}>{operation}</MenuItem>);
                 })
               }
             </DropdownButton>

@@ -112,14 +112,14 @@ class TaskDetail extends Component {
           {/* TODO use API response to check retryable. */}
           {allowRetry && isNonEmptyString(currentTaskData.title) &&
             currentTaskData.retryable && (
-              <div
-                className="btn btn-orange text-center pull-right task-detail-button"
-                onClick={() => self.retryTaskClicked(taskUUID)}
-              >
-                <i className="fa fa-refresh"></i>
+            <div
+              className="btn btn-orange text-center pull-right task-detail-button"
+              onClick={() => self.retryTaskClicked(taskUUID)}
+            >
+              <i className="fa fa-refresh"></i>
                 Retry Task
-              </div>
-            )}
+            </div>
+          )}
         </div>
       );
     };
@@ -183,7 +183,7 @@ class TaskDetail extends Component {
           <Link to="/tasks/">Tasks</Link>
           <span>
             <i className="fa fa-chevron-right"></i>
-            {(currentTaskData && currentTaskData.title) || 'Task Details'}
+            {(currentTaskData?.title) || 'Task Details'}
           </span>
         </h2>
       );
@@ -197,11 +197,11 @@ class TaskDetail extends Component {
             <YBResourceCount
               className="text-align-right pull-right"
               kind="Target universe"
-              size={currentTaskData.title && currentTaskData.title.split(' : ')[1]}
+              size={currentTaskData.title?.split(' : ')[1]}
             />
             <YBResourceCount
               kind="Task name"
-              size={currentTaskData.title && currentTaskData.title.split(' : ')[0]}
+              size={currentTaskData.title?.split(' : ')[0]}
             />
             {taskTopLevelData}
           </div>
@@ -209,7 +209,16 @@ class TaskDetail extends Component {
         </div>
 
         <YBPanelItem
-          header={<h2>Task details</h2>}
+          header={
+            <h2>
+              {currentTaskData.correlationId ? (
+                <Link to={`/logs/?queryRegex=${currentTaskData.correlationId}`}>
+                  Task details
+                </Link>
+              ) :
+                ('Task details')}
+            </h2>
+          }
           body={
             <div className="task-detail-container">
               <Row className="task-heading-row">

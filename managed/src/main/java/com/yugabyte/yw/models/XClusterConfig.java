@@ -18,6 +18,7 @@ import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -174,7 +175,14 @@ public class XClusterConfig extends Model {
   public CommonTypes.TableType setTableType(
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
     if (!this.tableType.equals(TableType.UNKNOWN)) {
-      log.warn("tableType for {} is already set; skip setting it", this);
+      log.info("tableType for {} is already set; skip setting it", this);
+      return getTableTypeAsCommonType();
+    }
+    if (tableInfoList.isEmpty()) {
+      log.warn(
+          "tableType for {} is unknown and cannot be deducted from tableInfoList because "
+              + "it is empty",
+          this);
       return getTableTypeAsCommonType();
     }
     CommonTypes.TableType typeAsCommonType = tableInfoList.get(0).getTableType();
@@ -239,14 +247,20 @@ public class XClusterConfig extends Model {
   }
 
   @JsonIgnore
-  public Set<String> getTableIdsWithReplicationSetup(boolean done) {
+  public Set<String> getTableIdsWithReplicationSetup(Set<String> tableIds, boolean done) {
     return this.tables
         .stream()
-        .filter(table -> table.replicationSetupDone == done)
+        .filter(table -> tableIds.contains(table.tableId) && table.replicationSetupDone == done)
         .map(table -> table.tableId)
         .collect(Collectors.toSet());
   }
 
+  @JsonIgnore
+  public Set<String> getTableIdsWithReplicationSetup(boolean done) {
+    return getTableIdsWithReplicationSetup(getTables(), done);
+  }
+
+  @JsonIgnore
   public Set<String> getTableIdsWithReplicationSetup() {
     return getTableIdsWithReplicationSetup(true /* done */);
   }
@@ -289,7 +303,8 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public void addTablesIfNotExist(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
+  public void addTablesIfNotExist(
+      Set<String> tableIds, Set<String> tableIdsNeedBootstrap, boolean areIndexTables) {
     if (tableIds.isEmpty()) {
       return;
     }
@@ -307,11 +322,23 @@ public class XClusterConfig extends Model {
               .collect(Collectors.toSet());
     }
     addTables(nonExistingTableIds, nonExistingTableIdsNeedBootstrap);
+    if (areIndexTables) {
+      this.setIndexTableForTables(tableIds, true /* indexTable */);
+    }
+  }
+
+  public void addTablesIfNotExist(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
+    addTablesIfNotExist(tableIds, tableIdsNeedBootstrap, false /* areIndexTables */);
+  }
+
+  public void addTablesIfNotExist(
+      Set<String> tableIds, XClusterConfigCreateFormData.BootstrapParams bootstrapParams) {
+    addTablesIfNotExist(tableIds, bootstrapParams != null ? bootstrapParams.tables : null);
   }
 
   @Transactional
   public void addTablesIfNotExist(Set<String> tableIds) {
-    addTablesIfNotExist(tableIds, null /* tableIdsNeedBootstrap */);
+    addTablesIfNotExist(tableIds, (Set<String>) null /* tableIdsNeedBootstrap */);
   }
 
   @Transactional
@@ -407,12 +434,26 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public void setRestoreTimeForTables(Set<String> tableIds, Date restoreTime) {
+  public void setRestoreForTables(Set<String> tableIds, Restore restore) {
     ensureTableIdsExist(tableIds);
     this.tables
         .stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.restoreTime = restoreTime);
+        .forEach(tableConfig -> tableConfig.restore = restore);
+    update();
+  }
+
+  @Transactional
+  public void setRestoreTimeForTables(Set<String> tableIds, Date restoreTime, UUID taskUUID) {
+    ensureTableIdsExist(tableIds);
+    this.tables
+        .stream()
+        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
+        .forEach(
+            tableConfig -> {
+              tableConfig.restoreTime = restoreTime;
+              tableConfig.restore.update(taskUUID, Restore.State.Completed);
+            });
     update();
   }
 
@@ -444,6 +485,35 @@ public class XClusterConfig extends Model {
         .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
         .forEach(tableConfig -> tableConfig.bootstrapCreateTime = moment);
     update();
+  }
+
+  @Transactional
+  public void setStatusForTables(Collection<String> tableIds, XClusterTableConfig.Status status) {
+    ensureTableIdsExist(new HashSet<>(tableIds));
+    this.tables
+        .stream()
+        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
+        .forEach(tableConfig -> tableConfig.status = status);
+    update();
+  }
+
+  @JsonIgnore
+  public Set<String> getTableIdsInStatus(
+      Collection<String> tableIds, XClusterTableConfig.Status status) {
+    return getTableIdsInStatus(tableIds, Collections.singleton(status));
+  }
+
+  @JsonIgnore
+  public Set<String> getTableIdsInStatus(
+      Collection<String> tableIds, Collection<XClusterTableConfig.Status> statuses) {
+    ensureTableIdsExist(new HashSet<>(tableIds));
+    return this.tables
+        .stream()
+        .filter(
+            tableConfig ->
+                tableIds.contains(tableConfig.tableId) && statuses.contains(tableConfig.status))
+        .map(tableConfig -> tableConfig.tableId)
+        .collect(Collectors.toSet());
   }
 
   public String getReplicationGroupName() {
@@ -498,7 +568,6 @@ public class XClusterConfig extends Model {
     this.status = XClusterConfigStatusType.Initialized;
     this.paused = false;
     this.tables.forEach(tableConfig -> tableConfig.restoreTime = null);
-    this.tableType = TableType.UNKNOWN;
     this.update();
   }
 
@@ -542,6 +611,17 @@ public class XClusterConfig extends Model {
     } else {
       xClusterConfig.setTables(createFormData.tables);
     }
+    return xClusterConfig;
+  }
+
+  @Transactional
+  public static XClusterConfig create(
+      XClusterConfigCreateFormData createFormData,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
+      Set<String> indexTableIdSet) {
+    XClusterConfig xClusterConfig = create(createFormData);
+    xClusterConfig.setTableType(requestedTableInfoList);
+    xClusterConfig.setIndexTableForTables(indexTableIdSet, true /* indexTable */);
     return xClusterConfig;
   }
 

@@ -80,6 +80,7 @@ using std::make_pair;
 using std::map;
 using std::pair;
 using std::vector;
+using std::string;
 using strings::SubstituteAndAppend;
 
 static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");

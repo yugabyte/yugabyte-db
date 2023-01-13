@@ -4,7 +4,7 @@ linkTitle: YSQL
 description: Build a Spark application using Spark SQL with YugabyteDB
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark-4-sql
     parent: apache-spark
     weight: 579
@@ -15,7 +15,7 @@ type: docs
 
   <li >
     <a href="../java-ysql/" class="nav-link">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       Java
     </a>
   </li>

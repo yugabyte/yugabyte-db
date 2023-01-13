@@ -56,6 +56,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 namespace tablet {
 
@@ -82,7 +85,7 @@ class CompositePushdownTest : public YBTabletTest {
     int nrows = 10 * 12 * 28;
     int i = 0;
 
-    LocalTabletWriter writer(tablet().get());
+    LocalTabletWriter writer(tablet());
     for (int16_t year = 2000; year <= 2010; year++) {
       for (int8_t month = 1; month <= 12; month++) {
         for (int8_t day = 1; day <= 28; day++) {
@@ -126,13 +129,14 @@ class CompositePushdownTest : public YBTabletTest {
     QLReadRequestResult result;
     TransactionMetadataPB transaction;
     QLAddColumns(schema_, {}, req);
+    WriteBuffer rows_data(1024);
     EXPECT_OK(tablet()->HandleQLReadRequest(
-        CoarseTimePoint::max() /* deadline */, read_time, *req, transaction, &result));
+        CoarseTimePoint::max() /* deadline */, read_time, *req, transaction, &result, &rows_data));
 
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status())
         << "Error: " << result.response.error_message();
 
-    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, result.rows_data);
+    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());
     for (const auto& row : row_block->rows()) {
       results->push_back(row.ToString());
     }

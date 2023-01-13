@@ -57,11 +57,11 @@ import {
   isNonEmptyString,
   isEmptyObject,
   makeFirstLetterUpperCase
-} from '../../../utils/ObjectUtils';
+, createErrorMessage } from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
 import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
 import { toast } from 'react-toastify';
-import { createErrorMessage } from '../../../utils/ObjectUtils';
+
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -266,6 +266,8 @@ const formFieldNames = [
   'primary.awsArnString',
   'primary.useSystemd',
   'primary.dedicatedNodes',
+  'primary.universeOverrides',
+  'primary.azOverrides',
   'async.universeName',
   'async.provider',
   'async.providerType',
@@ -358,6 +360,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     if (isNonEmptyObject(userIntent.masterGFlags)) {
       Object.keys(userIntent.masterGFlags).forEach((key) => {
         const masterObj = {};
+        // eslint-disable-next-line no-prototype-builtins
         if (userIntent?.tserverGFlags?.hasOwnProperty(key)) {
           masterObj['TSERVER'] = userIntent.tserverGFlags[key];
         }
@@ -367,9 +370,10 @@ function getFormData(currentUniverse, formType, clusterType) {
       });
     }
     if (isNonEmptyObject(userIntent.tserverGFlags)) {
+      // eslint-disable-next-line no-prototype-builtins
       Object.keys(userIntent.tserverGFlags).forEach((key) => {
         const tserverObj = {};
-        if (!userIntent.masterGFlags.hasOwnProperty(key)) {
+        if (!Object.prototype.hasOwnProperty.call(userIntent.masterGFlags, key)) {
           tserverObj['TSERVER'] = userIntent.tserverGFlags[key];
           tserverObj['Name'] = key;
           data[clusterType].gFlags.push(tserverObj);
@@ -402,6 +406,8 @@ function mapStateToProps(state, ownProps) {
       universeName: '',
       ybSoftwareVersion: '',
       ybcSoftwareVersion: '',
+      universeOverrides: '',
+      azOverrides: '',
       numNodes: 3,
       isMultiAZ: true,
       instanceType: 'c5.4xlarge',
@@ -526,6 +532,8 @@ function mapStateToProps(state, ownProps) {
       'primary.useSystemd',
       'primary.ybcSoftwareVersion',
       'primary.dedicatedNodes',
+      'primary.universeOverrides',
+      'primary.azOverrides',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -610,7 +618,7 @@ const validateProviderFields = (values, props, clusterType) => {
     if (currentProviderCode === 'gcp' || currentProviderCode === 'kubernetes') {
       const specialCharsRegex = /^[a-z0-9-]*$/;
       const errorProviderName = currentProviderCode === 'gcp' ? 
-          currentProviderCode.toUpperCase() : makeFirstLetterUpperCase(currentProviderCode);
+        currentProviderCode.toUpperCase() : makeFirstLetterUpperCase(currentProviderCode);
 
       if (!specialCharsRegex.test(currentClusterData.universeName)) {
         errors.universeName =
@@ -628,6 +636,7 @@ const validateProviderFields = (values, props, clusterType) => {
     const portMap = new Map();
     portFields.forEach((portField) => {
       if (portMap.has(currentClusterData[portField])) {
+        // eslint-disable-next-line no-prototype-builtins
         if (!errors.hasOwnProperty(portMap.get(currentClusterData[portField]))) {
           errors[portMap.get(currentClusterData[portField])] = notUniquePortError;
         }

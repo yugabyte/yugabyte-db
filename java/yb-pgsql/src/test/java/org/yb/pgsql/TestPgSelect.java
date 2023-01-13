@@ -331,7 +331,7 @@ public class TestPgSelect extends BasePgSQLTest {
                                              String stmt,
                                              boolean pushdown_expected) throws Exception {
     verifyStatementMetric(statement, stmt, AGGREGATE_PUSHDOWNS_METRIC,
-                          pushdown_expected ? 1 : 0, 1, 1, true);
+                          pushdown_expected ? 1 : 0, 0, 1, true);
   }
 
   @Test
@@ -353,9 +353,15 @@ public class TestPgSelect extends BasePgSQLTest {
       verifyStatementPushdownMetric(
           statement, "SELECT COUNT(*) FROM aggtest", true);
 
-      // Don't pushdown if there's a WHERE condition.
+      // Pushdown if there's a pushable WHERE condition.
       verifyStatementPushdownMetric(
-          statement, "SELECT COUNT(*) FROM aggtest WHERE h > 0", false);
+          statement, "SELECT COUNT(*) FROM aggtest WHERE h > 0", true);
+
+      // Don't pushdown if there's a not pushable WHERE condition.
+      verifyStatementPushdownMetric(
+          statement,
+          "SELECT COUNT(*) FROM aggtest WHERE CASE h WHEN 42 THEN true ELSE false END",
+          false);
 
       // Pushdown for BIGINT COUNT/MAX/MIN.
       verifyStatementPushdownMetric(
@@ -534,10 +540,10 @@ public class TestPgSelect extends BasePgSQLTest {
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
       if (colOrder.equals("HASH")) {
-        assertTrue("Expect no pushdown for IS NOT NULL when colOrder is HASH",
-                  explainOutput.contains("Filter: (b IS NOT NULL)"));
-        assertTrue("Expect YSQL-level filter",
-                  explainOutput.contains("Rows Removed by Filter: 2"));
+        assertTrue("Expect SeqScan on t1 when colOrder is HASH",
+                  explainOutput.contains("Seq Scan on t1"));
+        assertTrue("Expect filter pushdown to DocDB",
+                  explainOutput.contains("Remote Filter: (b IS NOT NULL)"));
       }
       else {
         assertTrue("Expect pushdown for IS NOT NULL when colOrder is ASC or DESC",
@@ -581,10 +587,10 @@ public class TestPgSelect extends BasePgSQLTest {
       assertRowSet(statement, query, expectedRows);
 
       if (colOrder.equals("HASH")) {
-        assertTrue("Expect no pushdown for BETWEEN condition on HASH",
-                   explainOutput.contains("Filter: ((b >= 1) AND (b <= 3))"));
-        assertTrue("Expect YSQL-level filtering for HASH",
-                    explainOutput.contains("Rows Removed by Filter: 2"));
+        assertTrue("Expect SeqScan on t1 when colOrder is HASH",
+                  explainOutput.contains("Seq Scan on t1"));
+        assertTrue("Expect filter pushdown to DocDB",
+                  explainOutput.contains("Remote Filter: ((b >= 1) AND (b <= 3))"));
       } else {
         assertTrue("Expect pushdown for BETWEEN condition on ASC/DESC",
                    explainOutput.contains("Index Cond: ((b >= 1) AND (b <= 3))"));
@@ -723,10 +729,8 @@ public class TestPgSelect extends BasePgSQLTest {
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
       assertTrue("Expect pushdown for IS NULL" + explainOutput,
-                 explainOutput.contains("Filter: ((vh1 IS NULL) AND (vr1 IS NULL) " +
+                 explainOutput.contains("Remote Filter: ((vh1 IS NULL) AND (vr1 IS NULL) " +
                                                 "AND (vr2 IS NULL))"));
-      assertTrue("Expect YSQL-layer filtering",
-                  explainOutput.contains("Rows Removed by Filter: 9"));
 
       // Test hash key + partly set range key (should push down).
       query = "SELECT * FROM test WHERE vh1 IS NULL AND vh2 IS NULL" +
@@ -945,6 +949,204 @@ public class TestPgSelect extends BasePgSQLTest {
         // AND r3 IN (2, 25, 8, 7, 23, 18)
         // We have 91 * 2 = 182 seeks
         assertEquals(182, metrics.seekCount);
+    }
+  }
+
+  @Test
+  public void testIndexDistinctRangeScan() throws Exception {
+    String query = "CREATE TABLE t(r1 INT, r2 INT, PRIMARY KEY(r1 ASC, r2 ASC))";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 1, i FROM GENERATE_SERIES(1, 10) AS i)";
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 2, i FROM GENERATE_SERIES(1, 10) AS i)";
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 3, i FROM GENERATE_SERIES(1, 10) AS i)";
+      statement.execute(query);
+
+      Set<Row> expectedRows = new HashSet<>();
+      expectedRows.add(new Row(1));
+      expectedRows.add(new Row(2));
+      expectedRows.add(new Row(3));
+      query = "SELECT DISTINCT r1 FROM t WHERE r1 <= 3";
+      assertRowSet(statement, query, expectedRows);
+
+      // With DISTINCT pushed down to DocDB, we only to scan three keys:
+      // 1. From kLowest, seek to 1.
+      // 2. From 1, seek to 2.
+      // 3. From 2, seek to 3.
+      // The constraint r1 <= 3 implies we are done after the third seek.
+      RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "t");
+      assertEquals(3, metrics.seekCount);
+    }
+  }
+
+  @Test
+  public void testIndexDistinctMulticolumnsScan() throws Exception {
+    String query = "CREATE TABLE t(r1 INT, r2 INT, r3 INT, PRIMARY KEY(r1 ASC, r2 ASC, r3 ASC))";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 1, 1, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 2, 2, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 3, 1, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 3, 2, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 3, 3, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      Set<Row> expectedRows = new HashSet<>();
+      expectedRows.add(new Row(1, 1));
+      expectedRows.add(new Row(2, 2));
+      expectedRows.add(new Row(3, 1));
+      expectedRows.add(new Row(3, 2));
+      expectedRows.add(new Row(3, 3));
+      query = "SELECT DISTINCT r1, r2 FROM t WHERE r1 <= 3";
+      assertRowSet(statement, query, expectedRows);
+
+      // We need to do 6 seeks here:
+      // 1. Seek from (kLowest, kLowest), found (1, 1).
+      // 2. Seek from (1, 1), found (2, 2).
+      // 3. Seek from (2, 2), found (3, 1).
+      // 4. Seek from (3, 1), found (3, 2).
+      // 5. Seek from (3, 2), found (3, 3).
+      // 6. Seek from (3, 3), found no more key.
+      // Note that we need the last seek, since under the condition r1 <= 3, we don't know whether
+      // there are more items to be scanned.
+      RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "t");
+      assertEquals(6, metrics.seekCount);
+    }
+  }
+
+  @Test
+  public void testIndexDistinctSkipColumnScan() throws Exception {
+    String query = "CREATE TABLE t(r1 INT, r2 INT, r3 INT, r4 INT, " +
+                    " PRIMARY KEY(r1 ASC, r2 ASC, r3 ASC, r4 ASC))";
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 1, 1, 1, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 2, 2, 2, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 3, 3, 3, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      Set<Row> expectedRows = new HashSet<>();
+      expectedRows.add(new Row(1, 1));
+      expectedRows.add(new Row(2, 2));
+      expectedRows.add(new Row(3, 3));
+      query = "SELECT DISTINCT r1, r3 FROM t WHERE r3 <= 3";
+      assertRowSet(statement, query, expectedRows);
+
+      RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "t");
+      assertEquals(1, metrics.seekCount);
+    }
+  }
+
+  @Test
+  public void testDistinctScanHashColumn() throws Exception {
+    String query = "CREATE TABLE t(r1 INT, r2 INT, r3 INT, PRIMARY KEY(r1 HASH, r2 ASC, r3 ASC))";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT i, i, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      {
+        Set<Row> expectedRows = new HashSet<>();
+        for (int i = 1; i <= 100; i++) {
+          expectedRows.add(new Row(i));
+        }
+
+        query = "SELECT DISTINCT r1 FROM t WHERE r1 <= 100";
+        assertRowSet(statement, query, expectedRows);
+
+        // Here we do a sequential scan.
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "t");
+        assertEquals(3, metrics.seekCount);
+      }
+
+      {
+        Set<Row> expectedRows = new HashSet<>();
+        expectedRows.add(new Row(100));
+
+        query = "SELECT DISTINCT r1 FROM t WHERE r1 = 100";
+        assertRowSet(statement, query, expectedRows);
+
+        // Here we do an index scan.
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "t");
+        assertEquals(1, metrics.seekCount);
+      }
+    }
+  }
+
+  @Test
+  public void testDistinctMultiHashColumns() throws Exception {
+    String query = "CREATE TABLE t(h1 INT, h2 INT, r INT, PRIMARY KEY((h1, h2) HASH, r ASC))";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT i, i, i FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      {
+        Set<Row> expectedRows = new HashSet<>();
+        expectedRows.add(new Row(1, 1));
+
+        query = "SELECT DISTINCT h1, h2 FROM t WHERE h1 = 1 AND h2 = 1";
+        assertRowSet(statement, query, expectedRows);
+
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "t");
+        assertEquals(1, metrics.seekCount);
+      }
+    }
+  }
+
+  @Test
+  public void testDistinctOnNonPrefixScan() throws Exception {
+    String query = "CREATE TABLE t(r1 INT, r2 INT, r3 INT)";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      query = "CREATE INDEX idx on t(r3 ASC)";
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT i, 1, 1 FROM GENERATE_SERIES(1, 100) AS i)";
+      statement.execute(query);
+
+      {
+        Set<Row> expectedRows = new HashSet<>();
+        expectedRows.add(new Row(1));
+
+        query = "SELECT DISTINCT r3 FROM t WHERE r3 <= 10";
+        assertRowSet(statement, query, expectedRows);
+
+        // Here we perform the seek on the index table with two seeks:
+        // 1. From kLowest, we seek to 1.
+        // 2. From 1, we seek to the next key, which is not found.
+        // Note that we need to seek on the index table. The main table will result
+        // in zero seeks.
+
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "t");
+        assertEquals(0, metrics.seekCount);
+
+        metrics = assertFullDocDBFilter(statement, query, "idx");
+        assertEquals(2, metrics.seekCount);
+      }
     }
   }
 

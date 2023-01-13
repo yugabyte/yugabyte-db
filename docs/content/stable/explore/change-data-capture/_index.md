@@ -94,10 +94,6 @@ The Debezium connector for YugabyteDB pulls data from YugabyteDB and publishes i
 
 See [Debezium connector for YugabyteDB](./debezium-connector-yugabytedb/) to learn more, and [Running Debezium with YugabyteDB](../../integrations/cdc/debezium/) to get started with the Debezium connector for YugabyteDB.
 
-## Java CDC console client
-
-The [Java console client](./cdc-java-console-client/) for CDC is strictly for testing purposes only. It can help in building an understanding what change records are emitted by YugabyteDB.
-
 ## TServer configuration
 
 There are several GFlags you can use to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the yb-tserver reference page.

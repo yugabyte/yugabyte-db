@@ -34,14 +34,6 @@
 // NOTE that if FLAGS_test_batches_snapshots is set, the test will have
 // different behavior. See comment of the flag for details.
 
-#ifndef GFLAGS
-#include <cstdio>
-int main() {
-  fprintf(stderr, "Please install gflags to run rocksdb tools\n");
-  return 1;
-}
-#else
-
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
@@ -54,19 +46,15 @@ int main() {
 #include <exception>
 #include <thread>
 
-#include <gflags/gflags.h>
-
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/hdfs/env_hdfs.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
@@ -78,11 +66,13 @@ int main() {
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/slice.h"
 #include "yb/util/string_util.h"
 
+using std::unique_ptr;
+
 using GFLAGS::ParseCommandLineFlags;
-using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;
 
 static const int64_t KB = 1024;
@@ -98,17 +88,16 @@ static bool ValidateUint32Range(const char* flagname, uint64_t value) {
   return true;
 }
 
-DEFINE_uint64(seed, 2341234, "Seed for PRNG");
-static const bool FLAGS_seed_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_seed, &ValidateUint32Range);
+DEFINE_UNKNOWN_uint64(seed, 2341234, "Seed for PRNG");
+DEFINE_validator(seed, &ValidateUint32Range);
 
-DEFINE_int64(max_key, 1 * KB* KB,
+DEFINE_UNKNOWN_int64(max_key, 1 * KB* KB,
              "Max number of key/values to place in database");
 
-DEFINE_int32(column_families, 10, "Number of column families");
+DEFINE_UNKNOWN_int32(column_families, 10, "Number of column families");
 
 // TODO(noetzli) Add support for single deletes
-DEFINE_bool(test_batches_snapshots, false,
+DEFINE_UNKNOWN_bool(test_batches_snapshots, false,
             "If set, the test uses MultiGet(), MultiPut() and MultiDelete()"
             " which read/write/delete multiple keys in a batch. In this mode,"
             " we do not verify db content by comparing the content with the "
@@ -120,41 +109,36 @@ DEFINE_bool(test_batches_snapshots, false,
             "\t(b) No long validation at the end (more speed up)\n"
             "\t(c) Test snapshot and atomicity of batch writes");
 
-DEFINE_int32(threads, 32, "Number of concurrent threads to run.");
+DEFINE_UNKNOWN_int32(threads, 32, "Number of concurrent threads to run.");
 
-DEFINE_int32(ttl, -1,
-             "Opens the db with this ttl value if this is not -1. "
-             "Carefully specify a large value such that verifications on "
-             "deleted values don't fail");
-
-DEFINE_int32(value_size_mult, 8,
+DEFINE_UNKNOWN_int32(value_size_mult, 8,
              "Size of value will be this number times rand_int(1,3) bytes");
 
-DEFINE_bool(verify_before_write, false, "Verify before write");
+DEFINE_UNKNOWN_bool(verify_before_write, false, "Verify before write");
 
-DEFINE_bool(histogram, false, "Print histogram of operation timings");
+DEFINE_UNKNOWN_bool(histogram, false, "Print histogram of operation timings");
 
-DEFINE_bool(destroy_db_initially, true,
+DEFINE_UNKNOWN_bool(destroy_db_initially, true,
             "Destroys the database dir before start if this is true");
 
-DEFINE_bool(verbose, false, "Verbose");
+DEFINE_UNKNOWN_bool(verbose, false, "Verbose");
 
-DEFINE_bool(progress_reports, true,
+DEFINE_UNKNOWN_bool(progress_reports, true,
             "If true, db_stress will report number of finished operations");
 
-DEFINE_uint64(db_write_buffer_size, rocksdb::Options().db_write_buffer_size,
+DEFINE_UNKNOWN_uint64(db_write_buffer_size, rocksdb::Options().db_write_buffer_size,
               "Number of bytes to buffer in all memtables before compacting");
 
-DEFINE_int32(write_buffer_size,
+DEFINE_UNKNOWN_int32(write_buffer_size,
              static_cast<int32_t>(rocksdb::Options().write_buffer_size),
              "Number of bytes to buffer in memtable before compacting");
 
-DEFINE_int32(max_write_buffer_number,
+DEFINE_UNKNOWN_int32(max_write_buffer_number,
              rocksdb::Options().max_write_buffer_number,
              "The number of in-memory memtables. "
              "Each memtable is of size FLAGS_write_buffer_size.");
 
-DEFINE_int32(min_write_buffer_number_to_merge,
+DEFINE_UNKNOWN_int32(min_write_buffer_number_to_merge,
              rocksdb::Options().min_write_buffer_number_to_merge,
              "The minimum number of write buffers that will be merged together "
              "before writing to storage. This is cheap because it is an "
@@ -165,7 +149,7 @@ DEFINE_int32(min_write_buffer_number_to_merge,
              "writing less data to storage if there are duplicate records in"
              " each of these individual write buffers.");
 
-DEFINE_int32(max_write_buffer_number_to_maintain,
+DEFINE_UNKNOWN_int32(max_write_buffer_number_to_maintain,
              rocksdb::Options().max_write_buffer_number_to_maintain,
              "The total maximum number of write buffers to maintain in memory "
              "including copies of buffers that have already been flushed. "
@@ -179,87 +163,86 @@ DEFINE_int32(max_write_buffer_number_to_maintain,
              "after they are flushed.  If this value is set to -1, "
              "'max_write_buffer_number' will be used.");
 
-DEFINE_int32(open_files, rocksdb::Options().max_open_files,
+DEFINE_UNKNOWN_int32(open_files, rocksdb::Options().max_open_files,
              "Maximum number of files to keep open at the same time "
              "(use default if == 0)");
 
-DEFINE_int64(compressed_cache_size, -1,
+DEFINE_UNKNOWN_int64(compressed_cache_size, -1,
              "Number of bytes to use as a cache of compressed data."
              " Negative means use default settings.");
 
-DEFINE_int32(compaction_style, rocksdb::Options().compaction_style, "");
+DEFINE_UNKNOWN_int32(compaction_style, rocksdb::Options().compaction_style, "");
 
-DEFINE_int32(level0_file_num_compaction_trigger,
+DEFINE_UNKNOWN_int32(level0_file_num_compaction_trigger,
              rocksdb::Options().level0_file_num_compaction_trigger,
              "Level0 compaction start trigger");
 
-DEFINE_int32(level0_slowdown_writes_trigger,
+DEFINE_UNKNOWN_int32(level0_slowdown_writes_trigger,
              rocksdb::Options().level0_slowdown_writes_trigger,
              "Number of files in level-0 that will slow down writes");
 
-DEFINE_int32(level0_stop_writes_trigger,
+DEFINE_UNKNOWN_int32(level0_stop_writes_trigger,
              rocksdb::Options().level0_stop_writes_trigger,
              "Number of files in level-0 that will trigger put stop.");
 
-DEFINE_int32(block_size,
+DEFINE_UNKNOWN_int32(block_size,
              static_cast<int32_t>(rocksdb::BlockBasedTableOptions().block_size),
              "Number of bytes in a block.");
 
-DEFINE_int32(max_background_compactions,
+DEFINE_UNKNOWN_int32(max_background_compactions,
              rocksdb::Options().max_background_compactions,
              "The maximum number of concurrent background compactions "
              "that can occur in parallel.");
 
-DEFINE_int32(compaction_thread_pool_adjust_interval, 0,
+DEFINE_UNKNOWN_int32(compaction_thread_pool_adjust_interval, 0,
              "The interval (in milliseconds) to adjust compaction thread pool "
              "size. Don't change it periodically if the value is 0.");
 
-DEFINE_int32(compaction_thread_pool_variations, 2,
+DEFINE_UNKNOWN_int32(compaction_thread_pool_variations, 2,
              "Range of background thread pool size variations when adjusted "
              "periodically.");
 
-DEFINE_int32(max_background_flushes, rocksdb::Options().max_background_flushes,
+DEFINE_UNKNOWN_int32(max_background_flushes, rocksdb::Options().max_background_flushes,
              "The maximum number of concurrent background flushes "
              "that can occur in parallel.");
 
-DEFINE_int32(universal_size_ratio, 0, "The ratio of file sizes that trigger"
+DEFINE_UNKNOWN_int32(universal_size_ratio, 0, "The ratio of file sizes that trigger"
              " compaction in universal style");
 
-DEFINE_int32(universal_min_merge_width, 0, "The minimum number of files to "
+DEFINE_UNKNOWN_int32(universal_min_merge_width, 0, "The minimum number of files to "
              "compact in universal style compaction");
 
-DEFINE_int32(universal_max_merge_width, 0, "The max number of files to compact"
+DEFINE_UNKNOWN_int32(universal_max_merge_width, 0, "The max number of files to compact"
              " in universal style compaction");
 
-DEFINE_int32(universal_max_size_amplification_percent, 0,
+DEFINE_UNKNOWN_int32(universal_max_size_amplification_percent, 0,
              "The max size amplification for universal style compaction");
 
-DEFINE_int32(clear_column_family_one_in, 1000000,
+DEFINE_UNKNOWN_int32(clear_column_family_one_in, 1000000,
              "With a chance of 1/N, delete a column family and then recreate "
              "it again. If N == 0, never drop/create column families. "
              "When test_batches_snapshots is true, this flag has no effect");
 
-DEFINE_int32(set_options_one_in, 0,
+DEFINE_UNKNOWN_int32(set_options_one_in, 0,
              "With a chance of 1/N, change some random options");
 
-DEFINE_int32(set_in_place_one_in, 0,
+DEFINE_UNKNOWN_int32(set_in_place_one_in, 0,
              "With a chance of 1/N, toggle in place support option");
 
-DEFINE_int64(cache_size, 2LL * KB * KB * KB,
+DEFINE_UNKNOWN_int64(cache_size, 2LL * KB * KB * KB,
              "Number of bytes to use as a cache of uncompressed data.");
 
-DEFINE_uint64(subcompactions, 1,
+DEFINE_UNKNOWN_uint64(subcompactions, 1,
              "Maximum number of subcompactions to divide L0-L1 compactions "
              "into.");
 
-DEFINE_bool(allow_concurrent_memtable_write, true,
+DEFINE_UNKNOWN_bool(allow_concurrent_memtable_write, true,
             "Allow multi-writers to update mem tables in parallel.");
 
-DEFINE_bool(enable_write_thread_adaptive_yield, true,
+DEFINE_UNKNOWN_bool(enable_write_thread_adaptive_yield, true,
             "Use a yielding spin loop for brief writer thread waits.");
 
-static const bool FLAGS_subcompactions_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_subcompactions, &ValidateUint32Range);
+DEFINE_validator(subcompactions, &ValidateUint32Range);
 
 static bool ValidateInt32Positive(const char* flagname, int32_t value) {
   if (value < 0) {
@@ -269,58 +252,56 @@ static bool ValidateInt32Positive(const char* flagname, int32_t value) {
   }
   return true;
 }
-DEFINE_int32(reopen, 10, "Number of times database reopens");
-static const bool FLAGS_reopen_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_reopen, &ValidateInt32Positive);
+DEFINE_UNKNOWN_int32(reopen, 10, "Number of times database reopens");
+DEFINE_validator(reopen, &ValidateInt32Positive);
 
-DEFINE_int32(bloom_bits, 10, "Bloom filter bits per key. "
+DEFINE_UNKNOWN_int32(bloom_bits, 10, "Bloom filter bits per key. "
              "Negative means use default settings.");
 
-DEFINE_bool(use_block_based_filter, false, "use block based filter"
+DEFINE_UNKNOWN_bool(use_block_based_filter, false, "use block based filter"
               "instead of full filter for block based table");
 
-DEFINE_string(db, "", "Use the db with the following name.");
+DEFINE_UNKNOWN_string(db, "", "Use the db with the following name.");
 
-DEFINE_bool(verify_checksum, false,
+DEFINE_UNKNOWN_bool(verify_checksum, false,
             "Verify checksum for every block read from storage");
 
-DEFINE_bool(mmap_read, rocksdb::EnvOptions().use_mmap_reads,
+DEFINE_UNKNOWN_bool(mmap_read, rocksdb::EnvOptions().use_mmap_reads,
             "Allow reads to occur via mmap-ing files");
 
 // Database statistics
 static std::shared_ptr<rocksdb::Statistics> dbstats;
-DEFINE_bool(statistics, false, "Create database statistics");
+DEFINE_UNKNOWN_bool(statistics, false, "Create database statistics");
 
-DEFINE_bool(sync, false, "Sync all writes to disk");
+DEFINE_UNKNOWN_bool(sync, false, "Sync all writes to disk");
 
-DEFINE_bool(disable_data_sync, false,
+DEFINE_UNKNOWN_bool(disable_data_sync, false,
             "If true, do not wait until data is synced to disk.");
 
-DEFINE_bool(use_fsync, false, "If true, issue fsync instead of fdatasync");
+DEFINE_UNKNOWN_bool(use_fsync, false, "If true, issue fsync instead of fdatasync");
 
-DEFINE_int32(kill_random_test, 0,
+DEFINE_UNKNOWN_int32(kill_random_test, 0,
              "If non-zero, kill at various points in source code with "
              "probability 1/this");
-static const bool FLAGS_kill_random_test_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_kill_random_test, &ValidateInt32Positive);
+DEFINE_validator(kill_random_test, &ValidateInt32Positive);
 extern int test_kill_odds;
 
-DEFINE_string(kill_prefix_blacklist, "",
+DEFINE_UNKNOWN_string(kill_prefix_blacklist, "",
               "If non-empty, kill points with prefix in the list given will be"
               " skipped. Items are comma-separated.");
 extern std::vector<std::string> test_kill_prefix_blacklist;
 
-DEFINE_bool(disable_wal, false, "If true, do not write WAL for write.");
+DEFINE_UNKNOWN_bool(disable_wal, false, "If true, do not write WAL for write.");
 
-DEFINE_int32(target_file_size_base, 64 * KB,
+DEFINE_UNKNOWN_int32(target_file_size_base, 64 * KB,
              "Target level-1 file size for compaction");
 
-DEFINE_int32(target_file_size_multiplier, 1,
+DEFINE_UNKNOWN_int32(target_file_size_multiplier, 1,
              "A multiplier to compute target level-N file size (N >= 2)");
 
-DEFINE_uint64(max_bytes_for_level_base, 256 * KB, "Max bytes for level-1");
+DEFINE_UNKNOWN_uint64(max_bytes_for_level_base, 256 * KB, "Max bytes for level-1");
 
-DEFINE_int32(max_bytes_for_level_multiplier, 2,
+DEFINE_UNKNOWN_int32(max_bytes_for_level_multiplier, 2,
              "A multiplier to compute max bytes for level-N (N >= 2)");
 
 static bool ValidateInt32Percent(const char* flagname, int32_t value) {
@@ -331,41 +312,34 @@ static bool ValidateInt32Percent(const char* flagname, int32_t value) {
   }
   return true;
 }
-DEFINE_int32(readpercent, 10,
+DEFINE_UNKNOWN_int32(readpercent, 10,
              "Ratio of reads to total workload (expressed as a percentage)");
-static const bool FLAGS_readpercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_readpercent, &ValidateInt32Percent);
+DEFINE_validator(readpercent, &ValidateInt32Percent);
 
-DEFINE_int32(prefixpercent, 20,
+DEFINE_UNKNOWN_int32(prefixpercent, 20,
              "Ratio of prefix iterators to total workload (expressed as a"
              " percentage)");
-static const bool FLAGS_prefixpercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_prefixpercent, &ValidateInt32Percent);
+DEFINE_validator(prefixpercent, &ValidateInt32Percent);
 
-DEFINE_int32(writepercent, 45,
+DEFINE_UNKNOWN_int32(writepercent, 45,
              "Ratio of writes to total workload (expressed as a percentage)");
-static const bool FLAGS_writepercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_writepercent, &ValidateInt32Percent);
+DEFINE_validator(writepercent, &ValidateInt32Percent);
 
-DEFINE_int32(delpercent, 15,
+DEFINE_UNKNOWN_int32(delpercent, 15,
              "Ratio of deletes to total workload (expressed as a percentage)");
-static const bool FLAGS_delpercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_delpercent, &ValidateInt32Percent);
+DEFINE_validator(delpercent, &ValidateInt32Percent);
 
-DEFINE_int32(nooverwritepercent, 60,
+DEFINE_UNKNOWN_int32(nooverwritepercent, 60,
              "Ratio of keys without overwrite to total workload (expressed as "
              " a percentage)");
-static const bool FLAGS_nooverwritepercent_dummy __attribute__((__unused__)) =
-    RegisterFlagValidator(&FLAGS_nooverwritepercent, &ValidateInt32Percent);
+DEFINE_validator(nooverwritepercent, &ValidateInt32Percent);
 
-DEFINE_int32(iterpercent, 10, "Ratio of iterations to total workload"
+DEFINE_UNKNOWN_int32(iterpercent, 10, "Ratio of iterations to total workload"
              " (expressed as a percentage)");
-static const bool FLAGS_iterpercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_iterpercent, &ValidateInt32Percent);
+DEFINE_validator(iterpercent, &ValidateInt32Percent);
 
-DEFINE_uint64(num_iterations, 10, "Number of iterations per MultiIterate run");
-static const bool FLAGS_num_iterations_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_num_iterations, &ValidateUint32Range);
+DEFINE_UNKNOWN_uint64(num_iterations, 10, "Number of iterations per MultiIterate run");
+DEFINE_validator(num_iterations, &ValidateUint32Range);
 
 namespace {
 enum rocksdb::CompressionType StringToCompressionType(const char* ctype) {
@@ -406,27 +380,25 @@ std::vector<std::string> SplitString(std::string src) {
 }
 }  // namespace
 
-DEFINE_string(compression_type, "snappy",
+DEFINE_UNKNOWN_string(compression_type, "snappy",
               "Algorithm to use to compress the database");
 static enum rocksdb::CompressionType FLAGS_compression_type_e =
     rocksdb::kSnappyCompression;
 
-DEFINE_string(hdfs, "", "Name of hdfs environment");
+DEFINE_UNKNOWN_string(hdfs, "", "Name of hdfs environment");
 // posix or hdfs environment
 static rocksdb::Env* FLAGS_env = rocksdb::Env::Default();
 
-DEFINE_uint64(ops_per_thread, 1200000, "Number of operations per thread.");
-static const bool FLAGS_ops_per_thread_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_ops_per_thread, &ValidateUint32Range);
+DEFINE_UNKNOWN_uint64(ops_per_thread, 1200000, "Number of operations per thread.");
+DEFINE_validator(ops_per_thread, &ValidateUint32Range);
 
-DEFINE_uint64(log2_keys_per_lock, 2, "Log2 of number of keys per lock");
-static const bool FLAGS_log2_keys_per_lock_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_log2_keys_per_lock, &ValidateUint32Range);
+DEFINE_UNKNOWN_uint64(log2_keys_per_lock, 2, "Log2 of number of keys per lock");
+DEFINE_validator(log2_keys_per_lock, &ValidateUint32Range);
 
-DEFINE_bool(filter_deletes, false, "On true, deletes use KeyMayExist to drop"
+DEFINE_UNKNOWN_bool(filter_deletes, false, "On true, deletes use KeyMayExist to drop"
             " the delete if key not present");
 
-DEFINE_bool(in_place_update, false, "On true, does inplace update in memtable");
+DEFINE_UNKNOWN_bool(in_place_update, false, "On true, does inplace update in memtable");
 
 enum RepFactory {
   kSkipList,
@@ -451,7 +423,7 @@ enum RepFactory StringToRepFactory(const char* ctype) {
 }  // namespace
 
 static enum RepFactory FLAGS_rep_factory;
-DEFINE_string(memtablerep, "prefix_hash", "");
+DEFINE_UNKNOWN_string(memtablerep, "prefix_hash", "");
 
 static bool ValidatePrefixSize(const char* flagname, int32_t value) {
   if (value < 0 || value > 8) {
@@ -461,11 +433,10 @@ static bool ValidatePrefixSize(const char* flagname, int32_t value) {
   }
   return true;
 }
-DEFINE_int32(prefix_size, 7, "Control the prefix size for HashSkipListRep");
-static const bool FLAGS_prefix_size_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_prefix_size, &ValidatePrefixSize);
+DEFINE_UNKNOWN_int32(prefix_size, 7, "Control the prefix size for HashSkipListRep");
+DEFINE_validator(prefix_size, &ValidatePrefixSize);
 
-DEFINE_bool(use_merge, false, "On true, replaces all writes with a Merge "
+DEFINE_UNKNOWN_bool(use_merge, false, "On true, replaces all writes with a Merge "
             "that behaves like a Put");
 
 
@@ -887,7 +858,6 @@ class DbStressListener : public EventListener {
       db_paths_(db_paths),
       rand_(301) {}
   virtual ~DbStressListener() {}
-#ifndef ROCKSDB_LITE
   virtual void OnFlushCompleted(
       DB* db, const FlushJobInfo& info) override {
     assert(db);
@@ -979,7 +949,6 @@ class DbStressListener : public EventListener {
     }
 #endif  // !NDEBUG
   }
-#endif  // !ROCKSDB_LITE
 
  private:
   std::string db_name_;
@@ -1917,9 +1886,6 @@ class StressTest {
     fprintf(stdout, "Number of threads         : %d\n", FLAGS_threads);
     fprintf(stdout, "Ops per thread            : %" PRIu64 "\n", FLAGS_ops_per_thread);
     std::string ttl_state("unused");
-    if (FLAGS_ttl > 0) {
-      ttl_state = NumberToString(FLAGS_ttl);
-    }
     fprintf(stdout, "Time to live(sec)         : %s\n", ttl_state.c_str());
     fprintf(stdout, "Read percentage           : %d%%\n", FLAGS_readpercent);
     fprintf(stdout, "Prefix percentage         : %d%%\n", FLAGS_prefixpercent);
@@ -2035,19 +2001,12 @@ class StressTest {
       case kSkipList:
         // no need to do anything
         break;
-#ifndef ROCKSDB_LITE
       case kHashSkipList:
         options_.memtable_factory.reset(NewHashSkipListRepFactory(10000));
         break;
       case kVectorRep:
         options_.memtable_factory.reset(new VectorRepFactory());
         break;
-#else
-      default:
-        fprintf(stderr,
-                "RocksdbLite only supports skip list mem table. Skip "
-                "--rep_factory\n");
-#endif  // ROCKSDB_LITE
     }
 
     if (FLAGS_use_merge) {
@@ -2075,72 +2034,62 @@ class StressTest {
     fprintf(stdout, "DB path: [%s]\n", FLAGS_db.c_str());
 
     Status s;
-    if (FLAGS_ttl == -1) {
-      std::vector<std::string> existing_column_families;
-      s = DB::ListColumnFamilies(DBOptions(options_), FLAGS_db,
-                                 &existing_column_families);  // ignore errors
-      if (!s.ok()) {
-        // DB doesn't exist
-        assert(existing_column_families.empty());
-        assert(column_family_names_.empty());
-        column_family_names_.push_back(kDefaultColumnFamilyName);
-      } else if (column_family_names_.empty()) {
-        // this is the first call to the function Open()
-        column_family_names_ = existing_column_families;
-      } else {
-        // this is a reopen. just assert that existing column_family_names are
-        // equivalent to what we remember
-        auto sorted_cfn = column_family_names_;
-        sort(sorted_cfn.begin(), sorted_cfn.end());
-        sort(existing_column_families.begin(), existing_column_families.end());
-        if (sorted_cfn != existing_column_families) {
-          fprintf(stderr,
-                  "Expected column families differ from the existing:\n");
-          printf("Expected: {");
-          for (auto cf : sorted_cfn) {
-            printf("%s ", cf.c_str());
-          }
-          printf("}\n");
-          printf("Existing: {");
-          for (auto cf : existing_column_families) {
-            printf("%s ", cf.c_str());
-          }
-          printf("}\n");
-        }
-        assert(sorted_cfn == existing_column_families);
-      }
-      std::vector<ColumnFamilyDescriptor> cf_descriptors;
-      for (auto name : column_family_names_) {
-        if (name != kDefaultColumnFamilyName) {
-          new_column_family_name_ =
-              std::max(new_column_family_name_.load(), std::stoi(name) + 1);
-        }
-        cf_descriptors.emplace_back(name, ColumnFamilyOptions(options_));
-      }
-      while (cf_descriptors.size() < (size_t)FLAGS_column_families) {
-        std::string name = ToString(new_column_family_name_.load());
-        new_column_family_name_++;
-        cf_descriptors.emplace_back(name, ColumnFamilyOptions(options_));
-        column_family_names_.push_back(name);
-      }
-      options_.listeners.clear();
-      options_.listeners.emplace_back(
-          new DbStressListener(FLAGS_db, options_.db_paths));
-      options_.create_missing_column_families = true;
-      s = DB::Open(DBOptions(options_), FLAGS_db, cf_descriptors,
-                   &column_families_, &db_);
-      assert(!s.ok() || column_families_.size() ==
-                            static_cast<size_t>(FLAGS_column_families));
+
+    std::vector<std::string> existing_column_families;
+    s = DB::ListColumnFamilies(DBOptions(options_), FLAGS_db,
+                                &existing_column_families);  // ignore errors
+    if (!s.ok()) {
+      // DB doesn't exist
+      assert(existing_column_families.empty());
+      assert(column_family_names_.empty());
+      column_family_names_.push_back(kDefaultColumnFamilyName);
+    } else if (column_family_names_.empty()) {
+      // this is the first call to the function Open()
+      column_family_names_ = existing_column_families;
     } else {
-#ifndef ROCKSDB_LITE
-      DBWithTTL* db_with_ttl;
-      s = DBWithTTL::Open(options_, FLAGS_db, &db_with_ttl, FLAGS_ttl);
-      db_ = db_with_ttl;
-#else
-      fprintf(stderr, "TTL is not supported in RocksDBLite\n");
-      exit(1);
-#endif
+      // this is a reopen. just assert that existing column_family_names are
+      // equivalent to what we remember
+      auto sorted_cfn = column_family_names_;
+      sort(sorted_cfn.begin(), sorted_cfn.end());
+      sort(existing_column_families.begin(), existing_column_families.end());
+      if (sorted_cfn != existing_column_families) {
+        fprintf(stderr,
+                "Expected column families differ from the existing:\n");
+        printf("Expected: {");
+        for (auto cf : sorted_cfn) {
+          printf("%s ", cf.c_str());
+        }
+        printf("}\n");
+        printf("Existing: {");
+        for (auto cf : existing_column_families) {
+          printf("%s ", cf.c_str());
+        }
+        printf("}\n");
+      }
+      assert(sorted_cfn == existing_column_families);
     }
+    std::vector<ColumnFamilyDescriptor> cf_descriptors;
+    for (auto name : column_family_names_) {
+      if (name != kDefaultColumnFamilyName) {
+        new_column_family_name_ =
+            std::max(new_column_family_name_.load(), std::stoi(name) + 1);
+      }
+      cf_descriptors.emplace_back(name, ColumnFamilyOptions(options_));
+    }
+    while (cf_descriptors.size() < (size_t)FLAGS_column_families) {
+      std::string name = ToString(new_column_family_name_.load());
+      new_column_family_name_++;
+      cf_descriptors.emplace_back(name, ColumnFamilyOptions(options_));
+      column_family_names_.push_back(name);
+    }
+    options_.listeners.clear();
+    options_.listeners.emplace_back(
+        new DbStressListener(FLAGS_db, options_.db_paths));
+    options_.create_missing_column_families = true;
+    s = DB::Open(DBOptions(options_), FLAGS_db, cf_descriptors,
+                  &column_families_, &db_);
+    assert(!s.ok() || column_families_.size() ==
+                          static_cast<size_t>(FLAGS_column_families));
     if (!s.ok()) {
       fprintf(stderr, "open error: %s\n", s.ToString().c_str());
       exit(1);
@@ -2195,9 +2144,6 @@ int main(int argc, char** argv) {
   }
   FLAGS_compression_type_e =
     StringToCompressionType(FLAGS_compression_type.c_str());
-  if (!FLAGS_hdfs.empty()) {
-    FLAGS_env  = new rocksdb::HdfsEnv(FLAGS_hdfs);
-  }
   FLAGS_rep_factory = StringToRepFactory(FLAGS_memtablerep.c_str());
 
   // The number of background threads should be at least as much the
@@ -2253,5 +2199,3 @@ int main(int argc, char** argv) {
     return 1;
   }
 }
-
-#endif  // GFLAGS

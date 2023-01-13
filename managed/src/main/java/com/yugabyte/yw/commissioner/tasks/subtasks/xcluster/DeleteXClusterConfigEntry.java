@@ -2,7 +2,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.XClusterConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +17,8 @@ public class DeleteXClusterConfigEntry extends XClusterConfigTaskBase {
 
   @Override
   public String getName() {
-    return String.format("%s(xClusterConfig=%s)", super.getName(), taskParams().xClusterConfig);
+    return String.format(
+        "%s(xClusterConfig=%s)", super.getName(), taskParams().getXClusterConfig());
   }
 
   @Override

@@ -479,6 +479,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             () ->
                 performNodeAction(
                     customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REBOOT, false));
+    assertBadRequest(
+        invalidReboot,
+        "Cannot REBOOT "
+            + curNode.nodeName
+            + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
 
     // Changing to another node as n1 is in progress by previous operations.
     NodeDetails nodeToDelete = u.getNode("host-n3");
@@ -496,9 +501,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
     Universe.saveDetails(
         u.getUniverseUUID(),
-        univ -> {
-          univ.getNode(nodeToDelete.nodeName).state = NodeState.Decommissioned;
-        });
+        univ -> univ.getNode(nodeToDelete.nodeName).state = NodeState.Decommissioned);
 
     invalidDelete =
         assertPlatformException(

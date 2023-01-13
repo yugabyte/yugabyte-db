@@ -1,12 +1,12 @@
 ---
-title: Distributed Transactions
-headerTitle: Distributed Transactions
-linkTitle: Distributed Transactions
-description: Distributed Transactions in YugabyteDB.
-headcontent: Distributed Transactions in YugabyteDB.
+title: Distributed transactions
+headerTitle: Distributed transactions
+linkTitle: Distributed transactions
+description: Distributed transactions in YugabyteDB.
+headcontent: Learn how a distributed transaction works in YugabyteDB
 menu:
   stable:
-    name: Distributed Transactions
+    name: Distributed transactions
     identifier: explore-transactions-distributed-transactions-2-ycql
     parent: explore-transactions
     weight: 230
@@ -31,15 +31,19 @@ type: docs
 
 </ul>
 
-## Creating the table
+This example shows how a distributed transaction works in YugabyteDB.
 
-Create a keyspace.
+{{% explore-setup-single %}}
+
+## Create a table
+
+Create a keyspace as follows:
 
 ```sql
 ycqlsh> CREATE KEYSPACE banking;
 ```
 
-The YCQL table should be created with the `transactions` property enabled. The statement should look something as follows.
+The YCQL table should be created with the `transactions` property enabled. The statement should be similar to the following:
 
 ```sql
 ycqlsh> CREATE TABLE banking.accounts (
@@ -50,14 +54,14 @@ ycqlsh> CREATE TABLE banking.accounts (
 ) with transactions = { 'enabled' : true };
 ```
 
-You can verify that this table has transactions enabled on it by running the following query.
+You can verify that this table has transactions enabled by running the following query:
 
 ```sql
 ycqlsh> select keyspace_name, table_name, transactions from system_schema.tables
 where keyspace_name='banking' AND table_name = 'accounts';
 ```
 
-```
+```output
  keyspace_name | table_name | transactions
 ---------------+------------+---------------------
        banking |   accounts | {'enabled': 'true'}
@@ -67,7 +71,7 @@ where keyspace_name='banking' AND table_name = 'accounts';
 
 ## Insert sample data
 
-Let us seed this table with some sample data.
+Seed the table with some sample data as follows:
 
 ```sql
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('John', 'savings', 1000);
@@ -82,7 +86,7 @@ Here are the balances for John and Smith.
 ycqlsh> select * from banking.accounts;
 ```
 
-```
+```output
  account_name | account_type | balance
 --------------+--------------+---------
          John |     checking |     100
@@ -91,25 +95,25 @@ ycqlsh> select * from banking.accounts;
         Smith |      savings |    2000
 ```
 
-Check John's balance.
+Check John's balance as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 
-```
+```output
  johns_balance
 ---------------
           1100
 ```
 
-Check Smith's balance.
+Check Smith's balance as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
 ```
 
-```
+```output
  smiths_balance
 ----------------
            2050
@@ -118,9 +122,7 @@ ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE accoun
 
 ## Execute a transaction
 
-Here are a couple of examples of executing transactions.
-
-Let us say John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows.
+Suppose John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows:
 
 ```sql
 BEGIN TRANSACTION
@@ -129,26 +131,26 @@ BEGIN TRANSACTION
 END TRANSACTION;
 ```
 
-If you now selected the value of John's account, you should see the amounts reflected. The total balance should be the same $1100 as before.
+If you now select the value of John's account, you should see the amounts reflected. The total balance should be the same $1100 as before.
 
 ```sql
 ycqlsh> select * from banking.accounts where account_name='John';
 ```
 
-```
+```output
  account_name | account_type | balance
 --------------+--------------+---------
          John |     checking |     300
          John |      savings |     800
 ```
 
-Check John's balance.
+Check John's balance as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 
-```
+```output
  johns_balance
 ---------------
           1100
@@ -161,14 +163,14 @@ ycqlsh> select account_name, account_type, balance, writetime(balance)
 from banking.accounts where account_name='John';
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     300 |   1517898028890171
          John |      savings |     800 |   1517898028890171
 ```
 
-Now let us say John transfers the $200 from his checking account to Smith's checking account. We can accomplish that with the following transaction.
+Now suppose John transfers the $200 from his checking account to Smith's checking account. Run the following transaction:
 
 ```sql
 BEGIN TRANSACTION
@@ -179,13 +181,13 @@ END TRANSACTION;
 
 ## Verify
 
-We can verify the transfer was made as we intended, and also verify that the time at which the two accounts were updated are identical by performing the following query.
+Verify that the transfer was made as intended, and that the time at which the two accounts were updated are identical by performing the following query:
 
 ```sql
 ycqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     100 |   1517898167629366
@@ -200,19 +202,19 @@ The net balance for John should have decreased by $200 which that of Smith shoul
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 
-```
+```output
  johns_balance
 ---------------
            900
 ```
 
-Check Smith's balance.
+Check Smith's balance as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
 ```
 
-```
+```output
  smiths_balance
 ----------------
            2250

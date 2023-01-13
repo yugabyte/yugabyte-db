@@ -157,7 +157,7 @@ TEST_F(SnapshotScheduleTest, GC) {
     auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
     peers.push_back(master_leader->tablet_peer());
     for (const auto& peer : peers) {
-      if (peer->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      if (peer->TEST_table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
         continue;
       }
       auto dir = ASSERT_RESULT(peer->tablet_metadata()->TopSnapshotsDir());

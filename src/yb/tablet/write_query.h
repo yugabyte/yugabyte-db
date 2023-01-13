@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_WRITE_QUERY_H
-#define YB_TABLET_WRITE_QUERY_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -20,6 +19,8 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/lock_batch.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -35,7 +36,8 @@ class WriteQuery {
   WriteQuery(int64_t term,
              CoarseTimePoint deadline,
              WriteQueryContext* context,
-             Tablet* tablet,
+             TabletPtr tablet,
+             rpc::RpcContext* rpc_context,
              tserver::WriteResponsePB *response = nullptr,
              docdb::OperationKind kind = docdb::OperationKind::kWrite);
 
@@ -45,7 +47,7 @@ class WriteQuery {
     return *operation_;
   }
 
-  WritePB& request();
+  LWWritePB& request();
 
   // Returns the prepared response to the client that will be sent when this
   // transaction is completed, if this transaction was started by a client.
@@ -174,7 +176,7 @@ class WriteQuery {
   bool CqlCheckSchemaVersion();
   bool PgsqlCheckSchemaVersion();
 
-  Tablet& tablet() const;
+  Result<TabletPtr> tablet_safe() const;
 
   std::unique_ptr<WriteOperation> operation_;
 
@@ -198,6 +200,7 @@ class WriteQuery {
   ScopedRWOperation submit_token_;
   const CoarseTimePoint deadline_;
   WriteQueryContext* const context_;
+  rpc::RpcContext* const rpc_context_;
 
   // Pointers to the rpc context, request and response, lifecycle
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
@@ -229,5 +232,3 @@ class WriteQuery {
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif  // YB_TABLET_WRITE_QUERY_H

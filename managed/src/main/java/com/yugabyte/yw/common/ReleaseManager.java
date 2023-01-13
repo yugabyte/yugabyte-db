@@ -5,16 +5,24 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -50,6 +58,8 @@ public class ReleaseManager {
 
   @Inject GFlagsValidation gFlagsValidation;
 
+  @Inject Commissioner commissioner;
+
   public enum ReleaseState {
     ACTIVE,
     DISABLED,
@@ -57,6 +67,9 @@ public class ReleaseManager {
   }
 
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
+
+  private static final String ybPackageRegex =
+      "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
 
   @ApiModel(description = "Yugabyte release metadata")
   public static class ReleaseMetadata {
@@ -256,8 +269,7 @@ public class ReleaseManager {
   // This regex needs to support old style packages with -ee as well as new style packages without.
   // There are previously existing YW deployments that will have the old packages and users will
   // need to still be able to use said universes and their existing YB releases.
-  static final Pattern ybPackagePattern =
-      Pattern.compile("yugabyte-(?:ee-)?(.*)-(alma|centos)(.*).tar.gz");
+  static final Pattern ybPackagePattern = Pattern.compile(ybPackageRegex);
 
   final Pattern ybHelmChartPattern = Pattern.compile("yugabyte-(.*)-helm.tar.gz");
 
@@ -513,26 +525,16 @@ public class ReleaseManager {
 
   public synchronized void removeRelease(String version) {
     Map<String, Object> currentReleases = getReleaseMetadata();
-    boolean isPresentLocally = false;
     String ybReleasesPath = appConfig.getString("yb.releases.path");
     if (currentReleases.containsKey(version)) {
-      if (getReleaseByVersion(version).filePath.startsWith(ybReleasesPath)) {
-        isPresentLocally = true;
-      }
       LOG.info("Removing release version {}", version);
       currentReleases.remove(version);
       configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
     }
 
-    if (isPresentLocally) {
-      // delete specific release's directory recursively.
-      File releaseDirectory = new File(ybReleasesPath, version);
-      if (!FileUtils.deleteDirectory(releaseDirectory)) {
-        String errorMsg =
-            "Failed to delete release directory: " + releaseDirectory.getAbsolutePath();
-        throw new RuntimeException(errorMsg);
-      }
-    }
+    // delete specific release's directory recursively.
+    File releaseDirectory = new File(ybReleasesPath, version);
+    FileUtils.deleteDirectory(releaseDirectory);
   }
 
   public synchronized void importLocalReleases() {
@@ -544,8 +546,7 @@ public class ReleaseManager {
 
       // Local copy pattern to account for the presence of characters prior to the file name itself.
       // (ensures that all local releases get imported prior to version checking).
-      Pattern ybPackagePatternCopy =
-          Pattern.compile("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos)(.*).tar.gz");
+      Pattern ybPackagePatternCopy = Pattern.compile("[^.]+" + ybPackageRegex);
 
       Pattern ybHelmChartPatternCopy = Pattern.compile("[^.]+yugabyte-(.*)-helm.tar.gz");
 
@@ -651,6 +652,8 @@ public class ReleaseManager {
                       + "name matches the DB version in the folder name.");
             }
           }
+          // Add gFlag metadata for newly added release.
+          addGFlagsMetadataFiles(version, localReleases.get(version));
         }
         LOG.info("Importing local releases: [ {} ]", Json.toJson(localReleases));
         localReleases.forEach(currentReleases::put);
@@ -709,7 +712,7 @@ public class ReleaseManager {
             if (fp != null) {
               for (Architecture arch : Architecture.values()) {
                 if (getPathMatcher(arch.getDBGlob()).matches(fp)) {
-                  rm.packages = new ArrayList<>();
+                  rm.packages = (rm.packages == null) ? new ArrayList<>() : rm.packages;
                   rm = rm.withPackage(rm.filePath, arch);
                 }
               }
@@ -719,42 +722,64 @@ public class ReleaseManager {
                   "Could not match any available architectures to existing release {}", version);
             }
           }
-          // Add GFlags file if not present already for active and local releases.
-          if (rm.state.equals(ReleaseState.ACTIVE) && isLocalRelease(rm)) {
-            addGFlagsMetadataFiles(version, rm);
-          }
           updatedReleases.put(version, rm);
         });
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, updatedReleases);
   }
 
   public void addGFlagsMetadataFiles(String version, ReleaseMetadata releaseMetadata) {
-    List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
-    if (missingGFlagsFilesList.size() != 0) {
-      // fetch db tar package location.
-      String dbTarPackagePath = getDBTarPackagePath(releaseMetadata);
-      if (!StringUtils.isEmpty(dbTarPackagePath) && Files.exists(Paths.get(dbTarPackagePath))) {
-        gFlagsValidation.fetchGFlagsFromDBPackage(
-            dbTarPackagePath, version, missingGFlagsFilesList);
+    try {
+      List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
+      if (missingGFlagsFilesList.size() != 0) {
+        String releasesPath = appConfig.getString("yb.releases.path");
+        if (isLocalRelease(releaseMetadata)) {
+          try (InputStream inputStream = getTarGZipDBPackageInputStream(version, releaseMetadata)) {
+            gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
+                inputStream, version, missingGFlagsFilesList, releasesPath);
+          }
+          LOG.info("Successfully added gFlags metadata for version: {}", version);
+        } else {
+          AddGFlagMetadata.Params taskParams = new AddGFlagMetadata.Params();
+          taskParams.version = version;
+          taskParams.releaseMetadata = releaseMetadata;
+          taskParams.requiredGFlagsFileList = missingGFlagsFilesList;
+          taskParams.releasesPath = releasesPath;
+          commissioner.submit(TaskType.AddGFlagMetadata, taskParams);
+        }
+
       } else {
-        LOG.error(
-            "Could not add gFlags metadata as DB tar package is missing for the version: {}.",
-            version);
+        LOG.warn("Skipping gFlags metadata addition as all files are already present");
       }
+    } catch (Exception e) {
+      LOG.error("Could not add GFlags metadata as it errored out with: {}", e);
     }
   }
 
-  private String getDBTarPackagePath(ReleaseMetadata rm) {
-    if (rm.s3 != null) {
-      // TODO(@vipul-yb): download the package in tmp diretory and delete it after it's use
-    } else if (rm.gcs != null) {
-      // TODO(@vipul-yb): download the package in tmp diretory and delete it after it's use
-    } else if (rm.http != null) {
-      // TODO(@vipul-yb): download the package in tmp diretory and delete it after it's use
+  public synchronized InputStream getTarGZipDBPackageInputStream(
+      String version, ReleaseMetadata releaseMetadata) throws Exception {
+    if (releaseMetadata.s3 != null) {
+      CustomerConfigStorageS3Data configData = new CustomerConfigStorageS3Data();
+      configData.awsAccessKeyId = releaseMetadata.s3.getAccessKeyId();
+      configData.awsSecretAccessKey = releaseMetadata.s3.secretAccessKey;
+      return CloudUtil.getCloudUtil(Util.S3)
+          .getCloudFileInputStream(configData, releaseMetadata.s3.paths.getX86_64());
+    } else if (releaseMetadata.gcs != null) {
+      CustomerConfigStorageGCSData configData = new CustomerConfigStorageGCSData();
+      configData.gcsCredentialsJson = releaseMetadata.gcs.credentialsJson;
+      return CloudUtil.getCloudUtil(Util.GCS)
+          .getCloudFileInputStream(configData, releaseMetadata.gcs.paths.getX86_64());
+    } else if (releaseMetadata.http != null) {
+      return new URL(releaseMetadata.http.getPaths().getX86_64()).openStream();
     } else {
-      return rm.filePath;
+      if (!Files.exists(Paths.get(releaseMetadata.filePath))) {
+        throw new RuntimeException(
+            "Cannot add gFlags metadata for version: "
+                + version
+                + " as no file was present at location: "
+                + releaseMetadata.filePath);
+      }
+      return new FileInputStream(releaseMetadata.filePath);
     }
-    return StringUtils.EMPTY;
   }
 
   public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {

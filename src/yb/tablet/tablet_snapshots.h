@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_SNAPSHOTS_H
-#define YB_TABLET_TABLET_SNAPSHOTS_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -40,6 +39,8 @@ class RWOperationCounter;
 class rw_semaphore;
 
 namespace tablet {
+
+class TabletRestorePatch;
 
 YB_DEFINE_ENUM(CreateIntentsCheckpointIn, (kSubDir)(kUseIntentsDbSuffix));
 
@@ -101,7 +102,7 @@ class TabletSnapshots : public TabletComponent {
   // Only used when table_type_ == YQL_TABLE_TYPE.
   Status RestoreCheckpoint(
       const std::string& dir, HybridTime restore_at, const RestoreMetadata& metadata,
-      const docdb::ConsensusFrontier& frontier);
+      const docdb::ConsensusFrontier& frontier, bool is_pitr_restore);
 
   // Applies specified snapshot operation.
   Status Apply(SnapshotOperation* operation);
@@ -110,6 +111,9 @@ class TabletSnapshots : public TabletComponent {
   Env& env();
 
   Status RestorePartialRows(SnapshotOperation* operation);
+
+  Result<TabletRestorePatch> GenerateRestoreWriteBatch(
+      const tserver::TabletSnapshotOpRequestPB& request, docdb::DocWriteBatch* write_batch);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
 };
@@ -130,5 +134,3 @@ class TabletRestorePatch : public RestorePatch {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TABLET_SNAPSHOTS_H

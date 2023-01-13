@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_HARNESS_H
-#define YB_TABLET_TABLET_HARNESS_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -49,8 +48,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 
-using std::string;
-using std::vector;
 
 namespace yb {
 namespace tablet {
@@ -66,7 +63,7 @@ std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schem
 class TabletHarness {
  public:
   struct Options {
-    explicit Options(string root_dir)
+    explicit Options(std::string root_dir)
         : env(Env::Default()),
           tablet_id("test_tablet_id"),
           root_dir(std::move(root_dir)),
@@ -74,8 +71,8 @@ class TabletHarness {
           enable_metrics(true) {}
 
     Env* env;
-    string tablet_id;
-    string root_dir;
+    std::string tablet_id;
+    std::string root_dir;
     TableType table_type;
     bool enable_metrics;
   };
@@ -124,4 +121,3 @@ class TabletHarness {
 
 } // namespace tablet
 } // namespace yb
-#endif // YB_TABLET_TABLET_HARNESS_H

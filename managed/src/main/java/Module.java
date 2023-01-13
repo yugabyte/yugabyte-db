@@ -11,8 +11,10 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RefreshKmsService;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
@@ -40,6 +42,10 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -54,14 +60,19 @@ import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
+import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.helpers.TaskTypesModule;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
+import io.prometheus.client.CollectorRegistry;
 import java.security.Security;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.validator.routines.DomainValidator;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
 import org.pac4j.core.http.url.DefaultUrlResolver;
@@ -70,6 +81,8 @@ import org.pac4j.oidc.config.OidcConfiguration;
 import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+import org.yb.perf_advisor.module.PerfAdvisor;
+import org.yb.perf_advisor.query.NodeManagerInterface;
 import play.Configuration;
 import play.Environment;
 
@@ -83,6 +96,7 @@ public class Module extends AbstractModule {
 
   private final Environment environment;
   private final Configuration config;
+  private final String[] TLD_OVERRIDE = {"local"};
 
   public Module(Environment environment, Configuration config) {
     this.environment = environment;
@@ -91,16 +105,30 @@ public class Module extends AbstractModule {
 
   @Override
   public void configure() {
+
     if (!config.getBoolean("play.evolutions.enabled")) {
       // We want to init flyway only when evolutions are not enabled
       bind(YBFlywayInit.class).asEagerSingleton();
     } else {
       log.info("Using Evolutions. Not using flyway migrations.");
     }
+    install(new TaskTypesModule());
 
     Security.addProvider(new PemKeyStoreProvider());
+    Security.addProvider(new BouncyCastleProvider());
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
+    install(new CustomerConfKeys());
+    install(new ProviderConfKeys());
+    install(new GlobalConfKeys());
+    install(new UniverseConfKeys());
+
     install(new CloudModules());
+    CollectorRegistry.defaultRegistry.clear();
+    try {
+      DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
+    } catch (Exception domainValidatorException) {
+      log.info("Skipping Initialization of domain validator for dev env's");
+    }
 
     // Bind Application Initializer
     bind(AppInit.class).asEagerSingleton();
@@ -113,6 +141,7 @@ public class Module extends AbstractModule {
 
     // We only needed to bind below ones for Platform mode.
     if (config.getString("yb.mode", "PLATFORM").equals("PLATFORM")) {
+      bind(PerfAdvisor.class).asEagerSingleton();
       bind(SwamperHelper.class).asEagerSingleton();
       bind(NodeManager.class).asEagerSingleton();
       bind(MetricQueryHelper.class).asEagerSingleton();
@@ -134,6 +163,7 @@ public class Module extends AbstractModule {
       bind(EncryptionAtRestManager.class).asEagerSingleton();
       bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
       bind(SetUniverseKey.class).asEagerSingleton();
+      bind(RefreshKmsService.class).asEagerSingleton();
       bind(CustomerTaskManager.class).asEagerSingleton();
       bind(YamlWrapper.class).asEagerSingleton();
       bind(AlertManager.class).asEagerSingleton();
@@ -155,6 +185,8 @@ public class Module extends AbstractModule {
       bind(AccessKeyRotationUtil.class).asEagerSingleton();
       bind(GcpEARServiceUtil.class).asEagerSingleton();
       bind(YbcUpgrade.class).asEagerSingleton();
+      bind(NodeManagerInterface.class).to(PerfAdvisorNodeManager.class);
+      bind(PerfAdvisorScheduler.class).asEagerSingleton();
     }
   }
 

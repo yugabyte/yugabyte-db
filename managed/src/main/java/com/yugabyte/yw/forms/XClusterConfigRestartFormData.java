@@ -13,7 +13,7 @@ import play.data.validation.Constraints;
 public class XClusterConfigRestartFormData {
 
   @ApiModelProperty(
-      value = "Source Universe table IDs; if not specified, the whole config will restart",
+      value = "Source Universe table IDs; if empty, the whole config will restart",
       example = "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]",
       required = true)
   public Set<String> tables;
@@ -21,13 +21,16 @@ public class XClusterConfigRestartFormData {
   @Valid
   @Constraints.Required
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
-  public BootstrapParams bootstrapParams;
+  public RestartBootstrapParams bootstrapParams;
+
+  @ApiModelProperty("Run the pre-checks without actually running the subtasks")
+  public boolean dryRun = false;
 
   @ApiModel(description = "Bootstrap parameters for restarting")
   @ToString
-  public static class BootstrapParams {
+  public static class RestartBootstrapParams {
     @Constraints.Required
     @ApiModelProperty(value = "Parameters used to do Backup/restore", required = true)
-    public BackupRequestParams backupRequestParams;
+    public XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams backupRequestParams;
   }
 }

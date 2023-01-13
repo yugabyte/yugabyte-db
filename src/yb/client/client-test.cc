@@ -37,7 +37,6 @@
 #include <thread>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/async_initializer.h"
@@ -85,6 +84,7 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -95,6 +95,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"
@@ -119,13 +120,10 @@ DECLARE_int32(log_inject_latency_ms_mean);
 DECLARE_int32(log_inject_latency_ms_stddev);
 DECLARE_int32(master_inject_latency_on_tablet_lookups_ms);
 DECLARE_int32(max_create_tablets_per_ts);
-DECLARE_int32(TEST_scanner_inject_latency_on_each_batch_ms);
-DECLARE_int32(scanner_max_batch_size_bytes);
-DECLARE_int32(scanner_ttl_ms);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int32(replication_factor);
 
-DEFINE_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
+DEFINE_UNKNOWN_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
 DECLARE_bool(TEST_force_master_lookup_all_tablets);
@@ -454,8 +452,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
                                const string& start_key, const string& end_key) {
     auto start_idx = FindPartitionStartIndex(sorted_partitions, start_key);
     auto end_idx = FindPartitionStartIndexExclusiveBound(sorted_partitions, end_key);
-    auto filtered_tablets =
-        ASSERT_RESULT(FilterTabletsByHashPartitionKeyRange(tablets, start_key, end_key));
+    auto filtered_tablets = FilterTabletsByKeyRange(tablets, start_key, end_key);
     std::vector<string> filtered_partitions;
     std::transform(filtered_tablets.begin(), filtered_tablets.end(),
                    std::back_inserter(filtered_partitions),
@@ -641,8 +638,7 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
       table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs)).get());
   // First, verify, that using empty bounds on both sides returns all tablets.
-  auto filtered_tablets =
-      ASSERT_RESULT(FilterTabletsByHashPartitionKeyRange(tablets, std::string(), std::string()));
+  auto filtered_tablets = FilterTabletsByKeyRange(tablets, std::string(), std::string());
   ASSERT_EQ(kNumTabletsPerTable, filtered_tablets.size());
 
   std::vector<std::string> partition_starts;
@@ -660,7 +656,8 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   ASSERT_NO_FATALS(VerifyKeyRangeFiltering(partition_starts, tablets, start_key, end_key));
 
   auto fixed_key = PartitionSchema::EncodeMultiColumnHashValue(10);
-  ASSERT_NOK(FilterTabletsByHashPartitionKeyRange(tablets, fixed_key, fixed_key));
+  filtered_tablets = FilterTabletsByKeyRange(tablets, fixed_key, fixed_key);
+  ASSERT_EQ(1, filtered_tablets.size());
 
   for (int i = 0; i < kNumIterations; i++) {
     auto start_idx = RandomUniformInt(0, PartitionSchema::kMaxPartitionKey - 1);
@@ -669,6 +666,92 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
                      PartitionSchema::EncodeMultiColumnHashValue(start_idx),
                      PartitionSchema::EncodeMultiColumnHashValue(end_idx)));
   }
+}
+
+TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
+  ASSERT_NO_FATALS(CreateTable(kTable3Name, 8, &client_table3_));
+
+  std::shared_ptr<YBTable> table;
+  ASSERT_OK(client_->OpenTable(kTable3Name, &table));
+
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
+            WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
+      table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(kLookupWaitTimeSecs)).get());
+
+  std::vector<std::string> partitions;
+  partitions.reserve(tablets.size());
+  for (const auto& tablet : tablets) {
+    partitions.push_back(tablet->partition().partition_key_start());
+  }
+  std::sort(partitions.begin(), partitions.end());
+
+  // Special case: upper bound is not set, means upper bound is +Inf.
+  PgsqlReadRequestPB req;
+  auto wrapper = ASSERT_RESULT(TEST_FindPartitionKeyByUpperBound(partitions, req));
+  ASSERT_EQ(wrapper.get(), partitions.back());
+
+  // General cases.
+  for (bool is_inclusive : { true, false }) {
+    for (size_t idx = 0; idx < partitions.size(); ++idx) {
+      // Special case, tested seprately at the end.
+      if (idx == 0 && !is_inclusive) {
+        continue;
+      }
+
+      auto check_key = [&partitions, &req, idx, is_inclusive](const std::string& key) -> Status {
+        SCHECK_FORMAT((idx > 0 || is_inclusive), IllegalState, "", "");
+        req.clear_upper_bound();
+        req.mutable_upper_bound()->set_key(key);
+        req.mutable_upper_bound()->set_is_inclusive(is_inclusive);
+        auto* expected = is_inclusive ? &partitions[idx] : &partitions[idx - 1];
+        auto result = VERIFY_RESULT_REF(TEST_FindPartitionKeyByUpperBound(partitions, req));
+        SCHECK_EQ(*expected, result, IllegalState, Format(
+            "idx = $0, is_inclusive = $1, upper_bound = \"$2\"",
+            idx, is_inclusive, FormatBytesAsStr(req.upper_bound().key())));
+        return Status::OK();
+      };
+
+      // Get key and calculate bounds.
+      const auto& key = partitions[idx];
+      const uint16_t start = key.empty() ? 0 : PartitionSchema::DecodeMultiColumnHashValue(key);
+      const uint16_t last  = (idx < partitions.size() - 1 ?
+          PartitionSchema::DecodeMultiColumnHashValue(partitions[idx + 1]) :
+          std::numeric_limits<decltype(start)>::max()) - 1;
+
+      // 0. Special case: upper bound is empty means upper bound matches first partition start.
+      if (key.empty()) {
+        ASSERT_EQ(idx, 0);
+        ASSERT_OK(check_key(key));
+      }
+
+      // 1. Upper bound matches partition start.
+      ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(start)));
+
+      // 2. Upper bound matches partition last key.
+      ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(last)));
+
+      // 3. Upper bound matches some middle key from partition.
+      const auto middle = start + ((last - start) / 2);
+      ASSERT_OK(check_key(PartitionSchema::EncodeMultiColumnHashValue(middle)));
+    }
+  }
+
+  // Special case: upper_bound is exclusive and points to the first partition.
+  // Generates crash in DEBUG and returns InvalidArgument for release builds.
+  req.clear_upper_bound();
+  req.mutable_upper_bound()->set_key(partitions.front());
+  req.mutable_upper_bound()->set_is_inclusive(false);
+#ifndef NDEBUG
+  ASSERT_DEATH({
+#endif
+  auto result = TEST_FindPartitionKeyByUpperBound(partitions, req);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsInvalidArgument());
+#ifndef NDEBUG
+  }, ".*Upped bound must not be exclusive when points to the first partition.*");
+#endif
 }
 
 TEST_F(ClientTest, TestListTables) {
@@ -2122,10 +2205,6 @@ TEST_F(ClientTest, DISABLED_TestCreateTableWithTooManyReplicas) {
 TEST_F(ClientTest, TestServerTooBusyRetry) {
   ASSERT_NO_FATALS(InsertTestRows(client_table_, FLAGS_test_scan_num_rows));
 
-  // Introduce latency in each scan to increase the likelihood of
-  // ERROR_SERVER_TOO_BUSY.
-  FLAGS_TEST_scanner_inject_latency_on_each_batch_ms = 10 * kTimeMultiplier;
-
   // Reduce the service queue length of each tablet server in order to increase
   // the likelihood of ERROR_SERVER_TOO_BUSY.
   FLAGS_tablet_server_svc_queue_length = 1;
@@ -2264,8 +2343,8 @@ TEST_F(ClientTest, TestReadFromFollower) {
       EXPECT_TRUE(ql_resp.has_rows_data_sidecar());
 
       EXPECT_TRUE(controller.finished());
-      Slice rows_data = EXPECT_RESULT(controller.GetSidecar(ql_resp.rows_data_sidecar()));
-      ql::RowsResult rows_result(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
+      auto rows_data = EXPECT_RESULT(controller.ExtractSidecar(ql_resp.rows_data_sidecar()));
+      ql::RowsResult rows_result(kReadFromFollowerTable, selected_cols, rows_data);
       row_block = rows_result.GetRowBlock();
       return implicit_cast<size_t>(FLAGS_test_scan_num_rows) == row_block->row_count();
     }, MonoDelta::FromSeconds(30), "Waiting for replication to followers"));
@@ -2338,7 +2417,8 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the PGSQL table.
   shared_ptr<YBTable> pgsq_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
-  std::shared_ptr<YBPgsqlWriteOp> pgsql_write_op(client::YBPgsqlWriteOp::NewInsert(pgsq_table));
+  rpc::Sidecars sidecars;
+  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, &sidecars);
   PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
 
   psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");

@@ -39,7 +39,7 @@ Each of these is in the group [functions that return the current date-time momen
 
 All of the other _date-time_ functions that this page lists must be written with trailing parentheses—conforming to the norm for function invocation. (Without trailing parentheses, it is taken as a name for a column in a user-created table or for a variable in PL/pgSQL.
 
-You should regard the exceptional status of the _current_date_, _current_time_, _current_timestamp_, _localtime_, and _localtimestamp_ _date-time_ functions simply as a quirk. There are other such quirky functions. See this note in the section <a href="https://www.postgresql.org/docs/11/functions-info.html" target="_blank">9.25. System Information Functions <i class="fas fa-external-link-alt"></i></a> in the PostgreSQL documentation:
+You should regard the exceptional status of the _current_date_, _current_time_, _current_timestamp_, _localtime_, and _localtimestamp_ _date-time_ functions simply as a quirk. There are other such quirky functions. See this note in the section <a href="https://www.postgresql.org/docs/11/functions-info.html" target="_blank">9.25. System Information Functions <i class="fa-solid fa-up-right-from-square"></i></a> in the PostgreSQL documentation:
 
 > _current_catalog_, _current_role_, _current_schema_, _current_user_, _session_user_, and _user_ have special syntactic status [in the SQL Standard]: they must be called without trailing parentheses. In PostgreSQL, parentheses can optionally be used with _current_schema_, but not with the others.
 {{< /note >}}

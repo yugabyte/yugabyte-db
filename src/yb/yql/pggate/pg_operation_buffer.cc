@@ -75,9 +75,10 @@ std::vector<docdb::KeyEntryValue> InitKeyColumnPrimitiveValues(
       // require a read from a table.
       //
       // Use regular executor for now.
+      LOG(FATAL) << "Expression instead of value";
       QLExprExecutor executor;
-      LWExprResult expr_result(&column_value.arena());
-      auto s = executor.EvalExpr(column_value, nullptr, expr_result.Writer());
+      QLExprResult expr_result;
+      auto s = executor.EvalExpr(column_value.ToGoogleProtobuf(), nullptr, expr_result.Writer());
 
       result.push_back(docdb::KeyEntryValue::FromQLValuePB(expr_result.Value(), sorting_type));
     }
@@ -241,6 +242,13 @@ class PgOperationBuffer::Impl {
     in_flight_ops_.clear();
   }
 
+  void GetAndResetRpcStats(uint64_t* count, uint64_t* wait_time) {
+    *count = rpc_count_;
+    rpc_count_ = 0;
+    *wait_time = rpc_wait_time_.ToNanoseconds();
+    rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
+  }
+
  private:
   template<class Res>
   Res ClearOnError(Res res) {
@@ -317,8 +325,9 @@ class PgOperationBuffer::Impl {
 
   Status EnsureCompleted(size_t count) {
     for(; count && !in_flight_ops_.empty(); --count) {
-      RETURN_NOT_OK(in_flight_ops_.front().future.Get());
+      RETURN_NOT_OK(in_flight_ops_.front().future.Get(&rpc_wait_time_));
       in_flight_ops_.pop_front();
+      ++rpc_count_;
     }
     return Status::OK();
   }
@@ -404,6 +413,8 @@ class PgOperationBuffer::Impl {
   BufferableOperations txn_ops_;
   RowKeys keys_;
   InFlightOps in_flight_ops_;
+  uint64_t rpc_count_ = 0;
+  MonoDelta rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
 };
 
 PgOperationBuffer::PgOperationBuffer(const Flusher& flusher,
@@ -432,6 +443,11 @@ size_t PgOperationBuffer::Size() const {
 
 void PgOperationBuffer::Clear() {
     impl_->Clear();
+}
+
+void PgOperationBuffer::GetAndResetRpcStats(uint64_t* count,
+                                            uint64_t* wait_time) {
+  impl_->GetAndResetRpcStats(count, wait_time);
 }
 
 } // namespace pggate

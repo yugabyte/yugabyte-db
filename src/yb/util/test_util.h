@@ -30,8 +30,7 @@
 // under the License.
 //
 // Base test class, with various utility functions.
-#ifndef YB_UTIL_TEST_UTIL_H
-#define YB_UTIL_TEST_UTIL_H
+#pragma once
 
 #include <dirent.h>
 
@@ -104,7 +103,7 @@ bool AllowSlowTests();
 void OverrideFlagForSlowTests(const std::string& flag_name,
                               const std::string& new_value);
 
-void EnableVerboseLoggingForModule(const std::string& module, int level);
+Status EnableVerboseLoggingForModule(const std::string& module, int level);
 
 // Call srand() with a random seed based on the current time, reporting
 // that seed to the logs. The time-based seed may be overridden by passing
@@ -153,14 +152,14 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
     }
 
     for (auto i = smaller_vector->size();
-         i < min(smaller_vector->size() + 16, bigger_vector->size());
+         i < std::min(smaller_vector->size() + 16, bigger_vector->size());
          ++i) {
       LOG(WARNING) << bigger_vector_desc << "[" << i << "]: " << (*bigger_vector)[i];
     }
   }
   int num_differences_logged = 0;
   size_t num_differences_left = 0;
-  size_t min_size = min(expected.size(), actual.size());
+  size_t min_size = std::min(expected.size(), actual.size());
   for (size_t i = 0; i < min_size; ++i) {
     if (expected[i] != actual[i]) {
       if (num_differences_logged < 16) {
@@ -192,6 +191,8 @@ inline std::string GetToolPath(const std::string& tool_name) {
 inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
+
+std::string GetCertsDir();
 
 int CalcNumTablets(size_t num_tablet_servers);
 
@@ -241,5 +242,3 @@ class StopOnFailure {
 #define TEST_F_EX(test_case_name, test_name, parent_class) \
   GTEST_TEST_(test_case_name, test_name, parent_class, \
               ::testing::internal::GetTypeId<test_case_name>())
-
-#endif  // YB_UTIL_TEST_UTIL_H

@@ -24,6 +24,7 @@
 
 using std::string;
 using std::vector;
+using std::ostream;
 
 namespace yb {
 namespace util {

@@ -9,54 +9,50 @@ export const MetricTypes = {
   YCQL_OPS: 'ycql_ops',
   YEDIS_OPS: 'yedis_ops',
   SERVER: 'server',
-  REDIS: 'redis',
   TSERVER: 'tserver',
   MASTER: 'master',
   MASTER_ADVANCED: 'master_advanced',
   LSMDB: 'lsmdb',
   CONTAINER: 'container',
-  SQL: 'sql',
-  CQL: 'cql',
   TSERVER_TABLE: 'tserver_table',
-  LSMDB_TABLE: 'lsmdb_table'
+  LSMDB_TABLE: 'lsmdb_table',
+  OUTLIER_TABLES: 'outlier_tables'
 } as const;
 
 export const MetricTypesWithOperations = {
   ysql_ops: {
-    title: 'YSQL Ops',
+    title: 'YSQL',
     metrics: [
       'ysql_server_rpc_per_second',
       'ysql_sql_latency',
-      'ysql_connections'
+      'ysql_connections',
+      'ysql_server_advanced_rpc_per_second',
+      'ysql_sql_advanced_latency'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
       // "ysql_server_rpc_p99"
     ]
   },
   ycql_ops: {
-    title: 'YCQL Ops',
-    metrics: ['cql_server_rpc_per_second', 'cql_sql_latency', 'cql_server_rpc_p99']
-  },
-  yedis_ops: {
-    title: 'YEDIS Ops',
-    metrics: ['redis_rpcs_per_sec_all', 'redis_ops_latency_all', 'redis_server_rpc_p99']
-  },
-  server: {
-    title: 'Resource',
+    title: 'YCQL',
     metrics: [
-      'cpu_usage',
-      'memory_usage',
-      'disk_iops',
-      'disk_bytes_per_second_per_node',
-      'network_packets',
-      'network_bytes',
-      'network_errors',
-      'system_load_over_time',
-      'node_clock_skew'
+      'cql_server_rpc_per_second',
+      'cql_sql_latency', 'cql_server_rpc_p99',
+      'cql_sql_latency_breakdown',
+      'cql_yb_local_vs_remote',
+      'cql_yb_latency',
+      'cql_reactor_latency',
+      'tserver_rpc_queue_size_cql',
+      'response_sizes',
+      'cql_yb_transaction',
+      'cql_yb_rpc_connections'
     ]
   },
-  redis: {
-    title: 'YEDIS Advanced',
+  yedis_ops: {
+    title: 'YEDIS',
     metrics: [
+      'redis_rpcs_per_sec_all',
+      'redis_ops_latency_all',
+      'redis_server_rpc_p99',
       'redis_yb_local_vs_remote_ops',
       'tserver_rpc_queue_size_redis',
       'redis_yb_local_vs_remote_latency',
@@ -74,6 +70,22 @@ export const MetricTypesWithOperations = {
       'redis_rpcs_per_sec_local',
       'redis_ops_latency_local',
       'redis_yb_rpc_connections'
+    ]
+  },
+  server: {
+    title: 'Resource',
+    metrics: [
+      'cpu_usage',
+      'memory_usage',
+      'disk_iops',
+      'disk_usage_percent',
+      'disk_used_size_total',
+      'disk_bytes_per_second_per_node',
+      'network_packets',
+      'network_bytes',
+      'network_errors',
+      'system_load_over_time',
+      'node_clock_skew'
     ]
   },
   tserver: {
@@ -95,6 +107,7 @@ export const MetricTypesWithOperations = {
       'tserver_log_bytes_written',
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
+      'tserver_write_lock_latency',
       'tserver_tc_malloc_stats',
       'tserver_log_stats',
       'tserver_cache_reader_num_ops',
@@ -134,7 +147,7 @@ export const MetricTypesWithOperations = {
       'master_log_bytes_read',
       'master_tc_malloc_stats',
       'master_glog_info_messages',
-      'master_lsm_rocksdb_num_seek_or_next',
+      'master_lsm_rocksdb_seek_next_prev',
       'master_lsm_rocksdb_num_seeks_per_node',
       'master_lsm_rocksdb_total_sst_per_node',
       'master_lsm_rocksdb_avg_num_sst_per_node',
@@ -148,10 +161,9 @@ export const MetricTypesWithOperations = {
     ]
   },
   lsmdb: {
-    title: 'Docs DB',
+    title: 'DocDB',
     metrics: [
-      'lsm_rocksdb_num_seek_or_next',
-      'lsm_rocksdb_num_seeks_per_node',
+      'lsm_rocksdb_seek_next_prev',
       'lsm_rocksdb_total_sst_per_node',
       'lsm_rocksdb_avg_num_sst_per_node',
       'lsm_rocksdb_latencies_get',
@@ -163,34 +175,25 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_blooms_checked_and_useful',
       'lsm_rocksdb_stalls',
       'lsm_rocksdb_write_rejections',
+      'lsm_rocksdb_memory_rejections',
       'lsm_rocksdb_flush_size',
       'lsm_rocksdb_compaction',
+      'lsm_rocksdb_compaction_tasks',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
       'docdb_transaction_pool_cache',
+      'tablet_splitting_stats',
+      'automatic_split_manager_time'
     ]
   },
   container: {
     title: 'Container',
-    metrics: ['container_cpu_usage', 'container_memory_usage', 'container_volume_stats']
-  },
-  sql: {
-    title: 'YSQL Advanced',
-    metrics: ['ysql_server_advanced_rpc_per_second', 'ysql_sql_advanced_latency']
-  },
-  cql: {
-    title: 'YCQL Advanced',
     metrics: [
-      'cql_sql_latency_breakdown',
-      'cql_yb_local_vs_remote',
-      'cql_yb_latency',
-      'cql_reactor_latency',
-      'tserver_rpc_queue_size_cql',
-      'response_sizes',
-      'cql_yb_transaction',
-      'cql_yb_rpc_connections'
-    ]
+      'container_cpu_usage',
+      'container_memory_usage',
+      'container_volume_stats',
+      'container_volume_usage_percent']
   },
   tserver_table: {
     title: 'Tablet Server',
@@ -200,14 +203,14 @@ export const MetricTypesWithOperations = {
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
       'tserver_log_stats',
+      'tserver_write_lock_latency',
       'tserver_cache_reader_num_ops'
     ]
   },
   lsmdb_table: {
     title: 'DocDB',
     metrics: [
-      'lsm_rocksdb_num_seek_or_next',
-      'lsm_rocksdb_num_seeks_per_node',
+      'lsm_rocksdb_seek_next_prev',
       'lsm_rocksdb_total_sst_per_node',
       'lsm_rocksdb_avg_num_sst_per_node',
       'lsm_rocksdb_latencies_get',
@@ -222,10 +225,29 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction'
     ]
+  },
+  outlier_tables: {
+    title: 'Outlier Tables',
+    metrics: [
+      'table_read_latency',
+      'table_read_rps',
+      'table_write_latency',
+      'table_write_rps',
+      'table_log_latency',
+      'table_log_ops_second',
+      'table_log_bytes_written',
+      'table_write_lock_latency',
+      'table_seek_next_prev',
+      'table_ops_in_flight',
+      'table_write_rejections',
+      'table_memory_rejections',
+      'table_compaction',
+      'table_block_cache_hit_miss'
+    ]
   }
 } as const;
 
-export const MetricTypesByOrigin= {
+export const MetricTypesByOrigin = {
   universe: {
     data: [
       'ysql_ops',
@@ -233,15 +255,12 @@ export const MetricTypesByOrigin= {
       'yedis_ops',
       'container',
       'server',
-      'sql',
-      'cql',
-      'redis',
       'tserver',
       'master',
       'master_advanced',
-      'lsmdb'
-    ],
-    isOpen: [true, true, false, false, false, false, false, false, false, false]
+      'lsmdb',
+      'outlier_tables'
+    ]
   },
   customer: {
     data: [
@@ -250,18 +269,15 @@ export const MetricTypesByOrigin= {
       'yedis_ops',
       'container',
       'server',
-      'cql',
-      'redis',
       'tserver',
       'master',
       'master_advanced',
-      'lsmdb'
-    ],
-    isOpen: [true, true, false, false, false, false, false, false, false, false]
+      'lsmdb',
+      'outlier_tables'
+    ]
   },
   table: {
-    data: ['lsmdb_table', 'tserver_table'],
-    isOpen: [true, true]
+    data: ['lsmdb_table', 'tserver_table']
   }
 } as const;
 
@@ -281,7 +297,7 @@ export const APIMetricToNodeFlag = {
 } as const;
 
 export const MetricConsts = {
-  CLUSTER_AVERAGE: 'Cluster average',
+  NODE_AVERAGE: 'Selected Nodes Average',
   ALL: 'all',
   TOP: 'top',
   PRIMARY: 'PRIMARY'
@@ -289,9 +305,16 @@ export const MetricConsts = {
 
 export enum MetricMeasure {
   OVERALL = 'Overall',
-  OUTLIER = 'Outlier'
-};
+  OUTLIER = 'Outlier',
+  OUTLIER_TABLES = "Outlier_Tables"
+}
+
+export enum SplitType {
+  NODE = 'NODE',
+  TABLE = 'TABLE'
+}
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;
 export const MIN_OUTLIER_NUM_NODES = 1;
 export const MAX_OUTLIER_NUM_NODES = 5;
+export const MAX_OUTLIER_NUM_TABLES = 7;

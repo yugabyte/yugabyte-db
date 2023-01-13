@@ -47,6 +47,9 @@
 #include "yb/util/test_util.h"
 #include "yb/fs/fs.pb.h"
 
+using std::string;
+using std::vector;
+
 DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
 DECLARE_bool(TEST_fail_write_pb_container);

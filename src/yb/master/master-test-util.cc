@@ -31,6 +31,8 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 
+using std::string;
+
 DECLARE_int32(yb_num_shards_per_tserver);
 
 namespace yb {

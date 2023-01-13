@@ -312,3 +312,4 @@ You can destroy and remove the "Data Center - West" as follows:
 ```sh
 ./bin/yugabyted destroy --base_dir=datacenter-west
 ```
+

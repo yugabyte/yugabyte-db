@@ -112,6 +112,7 @@ Citrix
 Citus
 clonable
 Cloudwatch
+CMake
 Cobertura
 Codepen
 Cognito
@@ -124,7 +125,9 @@ Conda
 Consul
 Contentful
 Corosync
+Couchbase
 Coursier
+CPUs
 cron
 cronjob
 cronjobs
@@ -265,6 +268,7 @@ hardcode
 hardcoded
 hardcodes
 Hashicorp
+Hasura
 Haswell
 heatmap
 heatmaps
@@ -619,6 +623,8 @@ sparklines
 spidering
 Splunk
 SpotBugs
+SQLAlchemy
+SSDs
 Stackdriver
 Stackprof
 starrer
@@ -722,6 +728,7 @@ Twilio
 Twitter
 TypeScript
 Ubuntu
+UDTs
 ulimit
 unapplied
 unapprove
@@ -828,12 +835,16 @@ UUIDs
 Vagrantfile
 validator
 validators
+vCPU
+vCPUs
 vendored
 versionless
 viewport
 viewports
 virtualized
 virtualizing
+Vitess
+VPCs
 Vue
 Vuex
 walkthrough
@@ -859,6 +870,7 @@ Worldline
 xCluster
 Xcode
 Xeon
+YBase
 ycqlsh
 YouTrack
 ysqlsh

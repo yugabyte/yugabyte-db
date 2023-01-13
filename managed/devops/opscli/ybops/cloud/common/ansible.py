@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 import ybops.utils as ybutils
@@ -39,7 +40,8 @@ class AnsibleProcess(object):
         self.can_ssh = True
         self.connection_type = self.DEFAULT_SSH_CONNECTION_TYPE
         self.connection_target = "localhost"
-        self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY"]
+        self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY",
+                                        "RPC_AUTH_TOKEN"]
 
     def set_connection_params(self, conn_type, target):
         self.connection_type = conn_type
@@ -59,6 +61,24 @@ class AnsibleProcess(object):
             if self.is_sensitive(key.upper()):
                 playbook_args[key] = self.REDACT_STRING
         return playbook_args
+
+    def get_python_executable(self):
+        if "PYTHON_EXECUTABLE" in os.environ:
+            return os.environ["PYTHON_EXECUTABLE"]
+        raise YBOpsRuntimeError("Could not find python path in environment.")
+
+    def get_pex_path(self):
+        """
+        Method used to determine the pex path if script is being called with a PEX environment.
+        Returns path to env if available, False otherwise
+        """
+        if "PEX" in os.environ:
+            return os.environ.get("PEX")
+        return False
+
+    # Finds ansible playbook path. Only necessary in PEX environments.
+    def get_ansible_playbook_path(self):
+        return [x for x in sys.path if x.find('ansible-') >= 0][0]
 
     def run(self, filename, extra_vars=None, host_info=None, print_output=True):
         """Method used to call out to the respective Ansible playbooks.
@@ -86,6 +106,11 @@ class AnsibleProcess(object):
         sudo_pass_file = vars.pop("sudo_pass_file", None)
         ssh_key_file = vars.pop("private_key_file", None)
         ssh2_enabled = vars.pop("ssh2_enabled", False) and check_ssh2_bin_present()
+        connection_type = vars.pop("connection_type", None)
+        node_agent_ip = vars.pop("node_agent_ip", None)
+        node_agent_port = vars.pop("node_agent_port", None)
+        node_agent_cert_path = vars.pop("node_agent_cert_path", None)
+        node_agent_auth_token = vars.pop("node_agent_auth_token", None)
         ssh_key_type = parse_private_key(ssh_key_file)
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
@@ -100,10 +125,19 @@ class AnsibleProcess(object):
                 "ssh_version": SSH if ssh_key_type == SSH else SSH2
             })
 
+        process_args = ["ansible-playbook"]
+
+        # Determine PEX and override ansible-playbook path.
+        pex_path = self.get_pex_path()
+        if pex_path:
+            python = self.get_python_executable()
+            ansible_playbook = self.get_ansible_playbook_path()
+            process_args = [python, pex_path, ansible_playbook + "/.prefix/bin/ansible-playbook"]
+
         if ssh2_enabled:
             # Will be moved as part of task of license upload api.
-            configure_ssh2_args = [
-                "ansible-playbook", os.path.join(ybutils.YB_DEVOPS_HOME, "configure_ssh2.yml")
+            configure_ssh2_args = process_args + [
+                os.path.join(ybutils.YB_DEVOPS_HOME, "configure_ssh2.yml")
             ]
             p = subprocess.Popen(configure_ssh2_args,
                                  stdout=subprocess.PIPE,
@@ -113,11 +147,8 @@ class AnsibleProcess(object):
             if p.returncode != 0:
                 raise YBOpsRuntimeError("Failed to configure ssh2 on the platform")
 
+        process_args.extend([os.path.join(ybutils.YB_DEVOPS_HOME, filename)])
         playbook_args["yb_home_dir"] = ybutils.YB_HOME_DIR
-
-        process_args = [
-            "ansible-playbook", os.path.join(ybutils.YB_DEVOPS_HOME, filename)
-        ]
 
         if vault_password_file is not None:
             process_args.extend(["--vault-password-file", vault_password_file])
@@ -135,7 +166,22 @@ class AnsibleProcess(object):
             "--user", ssh_user
         ])
 
-        if ssh_port is None or ssh_host is None:
+        if connection_type is not None and connection_type == 'node_agent_rpc':
+            playbook_args.update({
+                "node_agent_user": ssh_user,
+                "node_agent_ip": node_agent_ip,
+                "node_agent_port": node_agent_port,
+                "node_agent_cert_path": node_agent_cert_path,
+                "node_agent_auth_token": node_agent_auth_token,
+                # Below args are used in the playbooks.
+                # E.g ssh_user as home_dir.
+                "ansible_port": node_agent_port,
+                "yb_ansible_host": node_agent_ip,
+                "ssh_user": ssh_user,
+                "yb_server_ssh_user": ssh_user
+            })
+            inventory_target = self.build_connection_target(node_agent_ip)
+        elif ssh_port is None or ssh_host is None:
             connection_type = "local"
             inventory_target = "localhost,"
         elif self.can_ssh:

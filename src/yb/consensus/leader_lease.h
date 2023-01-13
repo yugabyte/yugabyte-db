@@ -1,9 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_CONSENSUS_LEADER_LEASE_H
-#define YB_CONSENSUS_LEADER_LEASE_H
+#pragma once
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
@@ -78,5 +77,3 @@ typedef LeaseData<MicrosTime> PhysicalComponentLease;
 
 } // namespace consensus
 } // namespace yb
-
-#endif // YB_CONSENSUS_LEADER_LEASE_H

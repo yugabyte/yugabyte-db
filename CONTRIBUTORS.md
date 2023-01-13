@@ -155,3 +155,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [AntonRybochkin](https://github.com/arybochkin)
 * [joe-maley](https://github.com/joe-maley)
 * [msun07](https://github.com/msun07)
+* [dr0pdb][https://github.com/dr0pdb]

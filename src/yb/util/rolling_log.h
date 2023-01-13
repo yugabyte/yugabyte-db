@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_ROLLING_LOG_H
-#define YB_UTIL_ROLLING_LOG_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -119,4 +118,3 @@ class RollingLog {
 };
 
 } // namespace yb
-#endif /* YB_UTIL_ROLLING_LOG_H */

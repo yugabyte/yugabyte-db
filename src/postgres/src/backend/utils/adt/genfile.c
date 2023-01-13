@@ -58,6 +58,8 @@ convert_and_check_filename(text *arg)
 {
 	char	   *filename;
 
+	YBCheckServerAccessIsAllowed();
+
 	filename = text_to_cstring(arg);
 	canonicalize_path(filename);	/* filename can change length here */
 
@@ -525,6 +527,8 @@ pg_ls_dir_files(FunctionCallInfo fcinfo, const char *dir)
 	FuncCallContext *funcctx;
 	struct dirent *de;
 	directory_fctx *fctx;
+
+	YBCheckServerAccessIsAllowed();
 
 	if (SRF_IS_FIRSTCALL())
 	{

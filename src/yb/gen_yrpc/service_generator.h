@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_GEN_YRPC_SERVICE_GENERATOR_H
-#define YB_GEN_YRPC_SERVICE_GENERATOR_H
+#pragma once
 
 #include "yb/gen_yrpc/metric_descriptor.h"
 
@@ -35,5 +34,3 @@ class ServiceGenerator {
 
 } // namespace gen_yrpc
 } // namespace yb
-
-#endif // YB_GEN_YRPC_SERVICE_GENERATOR_H

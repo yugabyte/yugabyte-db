@@ -20,20 +20,17 @@ import type { AxiosInstance } from 'axios';
 // @ts-ignore
 import type {
   ApiError,
-  ClusterInstantMetricsListResponse,
   ClusterNodesResponse,
   ClusterTableListResponse,
-  ClusterTablespacesListResponse,
+  ClusterTabletListResponse,
+  HealthCheckResponse,
+  IsLoadBalancerIdle,
   LiveQueryResponseSchema,
   MetricResponse,
   SlowQueryResponseSchema,
+  VersionInfo,
 } from '../models';
 
-export interface GetBulkClusterMetricsForQuery {
-  accountId: string;
-  projectId: string;
-  cluster_ids: Set<string>;
-}
 export interface GetClusterMetricForQuery {
   metrics: string;
   node_name?: string;
@@ -44,62 +41,52 @@ export interface GetClusterMetricForQuery {
 export interface GetClusterTablesForQuery {
   api?: GetClusterTablesApiEnum;
 }
-export interface GetClusterTablespacesForQuery {
-  accountId: string;
-  projectId: string;
-  clusterId: string;
-}
 export interface GetLiveQueriesForQuery {
   api?: GetLiveQueriesApiEnum;
 }
 
 /**
- * Get bulk cluster metrics
- * Get bulk cluster metrics
+ * Get health information about the cluster
+ * Get health information about the cluster
  */
 
-export const getBulkClusterMetricsAxiosRequest = (
-  requestParameters: GetBulkClusterMetricsForQuery,
+export const getClusterHealthCheckAxiosRequest = (
   customAxiosInstance?: AxiosInstance
 ) => {
-  return Axios<ClusterInstantMetricsListResponse>(
+  return Axios<HealthCheckResponse>(
     {
-      url: '/public/accounts/{accountId}/projects/{projectId}/cluster_metrics'.replace(`{${'accountId'}}`, encodeURIComponent(String(requestParameters.accountId))).replace(`{${'projectId'}}`, encodeURIComponent(String(requestParameters.projectId))),
+      url: '/health-check',
       method: 'GET',
       params: {
-        cluster_ids: requestParameters['cluster_ids'],
       }
     },
     customAxiosInstance
   );
 };
 
-export const getBulkClusterMetricsQueryKey = (
-  requestParametersQuery: GetBulkClusterMetricsForQuery,
+export const getClusterHealthCheckQueryKey = (
   pageParam = -1,
   version = 1,
 ) => [
-  `/v${version}/public/accounts/{accountId}/projects/{projectId}/cluster_metrics`,
+  `/v${version}/health-check`,
   pageParam,
-  ...(requestParametersQuery ? [requestParametersQuery] : [])
 ];
 
 
-export const useGetBulkClusterMetricsInfiniteQuery = <T = ClusterInstantMetricsListResponse, Error = ApiError>(
-  params: GetBulkClusterMetricsForQuery,
+export const useGetClusterHealthCheckInfiniteQuery = <T = HealthCheckResponse, Error = ApiError>(
   options?: {
-    query?: UseInfiniteQueryOptions<ClusterInstantMetricsListResponse, Error, T>;
+    query?: UseInfiniteQueryOptions<HealthCheckResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   pageParam = -1,
   version = 1,
 ) => {
-  const queryKey = getBulkClusterMetricsQueryKey(params, pageParam, version);
+  const queryKey = getClusterHealthCheckQueryKey(pageParam, version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useInfiniteQuery<ClusterInstantMetricsListResponse, Error, T>(
+  const query = useInfiniteQuery<HealthCheckResponse, Error, T>(
     queryKey,
-    () => getBulkClusterMetricsAxiosRequest(params, customAxiosInstance),
+    () => getClusterHealthCheckAxiosRequest(customAxiosInstance),
     queryOptions
   );
 
@@ -109,20 +96,19 @@ export const useGetBulkClusterMetricsInfiniteQuery = <T = ClusterInstantMetricsL
   };
 };
 
-export const useGetBulkClusterMetricsQuery = <T = ClusterInstantMetricsListResponse, Error = ApiError>(
-  params: GetBulkClusterMetricsForQuery,
+export const useGetClusterHealthCheckQuery = <T = HealthCheckResponse, Error = ApiError>(
   options?: {
-    query?: UseQueryOptions<ClusterInstantMetricsListResponse, Error, T>;
+    query?: UseQueryOptions<HealthCheckResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   version = 1,
 ) => {
-  const queryKey = getBulkClusterMetricsQueryKey(params,  version);
+  const queryKey = getClusterHealthCheckQueryKey(version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useQuery<ClusterInstantMetricsListResponse, Error, T>(
+  const query = useQuery<HealthCheckResponse, Error, T>(
     queryKey,
-    () => getBulkClusterMetricsAxiosRequest(params, customAxiosInstance),
+    () => getClusterHealthCheckAxiosRequest(customAxiosInstance),
     queryOptions
   );
 
@@ -376,17 +362,16 @@ export const useGetClusterTablesQuery = <T = ClusterTableListResponse, Error = A
 
 
 /**
- * Get list of tablespaces for YSQL
- * Get list of DB tables for YSQL
+ * Get list of tablets
+ * Get list of tablets
  */
 
-export const getClusterTablespacesAxiosRequest = (
-  requestParameters: GetClusterTablespacesForQuery,
+export const getClusterTabletsAxiosRequest = (
   customAxiosInstance?: AxiosInstance
 ) => {
-  return Axios<ClusterTablespacesListResponse>(
+  return Axios<ClusterTabletListResponse>(
     {
-      url: '/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tablespaces'.replace(`{${'accountId'}}`, encodeURIComponent(String(requestParameters.accountId))).replace(`{${'projectId'}}`, encodeURIComponent(String(requestParameters.projectId))).replace(`{${'clusterId'}}`, encodeURIComponent(String(requestParameters.clusterId))),
+      url: '/tablets',
       method: 'GET',
       params: {
       }
@@ -395,32 +380,29 @@ export const getClusterTablespacesAxiosRequest = (
   );
 };
 
-export const getClusterTablespacesQueryKey = (
-  requestParametersQuery: GetClusterTablespacesForQuery,
+export const getClusterTabletsQueryKey = (
   pageParam = -1,
   version = 1,
 ) => [
-  `/v${version}/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tablespaces`,
+  `/v${version}/tablets`,
   pageParam,
-  ...(requestParametersQuery ? [requestParametersQuery] : [])
 ];
 
 
-export const useGetClusterTablespacesInfiniteQuery = <T = ClusterTablespacesListResponse, Error = ApiError>(
-  params: GetClusterTablespacesForQuery,
+export const useGetClusterTabletsInfiniteQuery = <T = ClusterTabletListResponse, Error = ApiError>(
   options?: {
-    query?: UseInfiniteQueryOptions<ClusterTablespacesListResponse, Error, T>;
+    query?: UseInfiniteQueryOptions<ClusterTabletListResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   pageParam = -1,
   version = 1,
 ) => {
-  const queryKey = getClusterTablespacesQueryKey(params, pageParam, version);
+  const queryKey = getClusterTabletsQueryKey(pageParam, version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useInfiniteQuery<ClusterTablespacesListResponse, Error, T>(
+  const query = useInfiniteQuery<ClusterTabletListResponse, Error, T>(
     queryKey,
-    () => getClusterTablespacesAxiosRequest(params, customAxiosInstance),
+    () => getClusterTabletsAxiosRequest(customAxiosInstance),
     queryOptions
   );
 
@@ -430,20 +412,94 @@ export const useGetClusterTablespacesInfiniteQuery = <T = ClusterTablespacesList
   };
 };
 
-export const useGetClusterTablespacesQuery = <T = ClusterTablespacesListResponse, Error = ApiError>(
-  params: GetClusterTablespacesForQuery,
+export const useGetClusterTabletsQuery = <T = ClusterTabletListResponse, Error = ApiError>(
   options?: {
-    query?: UseQueryOptions<ClusterTablespacesListResponse, Error, T>;
+    query?: UseQueryOptions<ClusterTabletListResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   version = 1,
 ) => {
-  const queryKey = getClusterTablespacesQueryKey(params,  version);
+  const queryKey = getClusterTabletsQueryKey(version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
-  const query = useQuery<ClusterTablespacesListResponse, Error, T>(
+  const query = useQuery<ClusterTabletListResponse, Error, T>(
     queryKey,
-    () => getClusterTablespacesAxiosRequest(params, customAxiosInstance),
+    () => getClusterTabletsAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Check if cluster load balancer is idle
+ * Check if cluster load balancer is idle
+ */
+
+export const getIsLoadBalancerIdleAxiosRequest = (
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<IsLoadBalancerIdle>(
+    {
+      url: '/is_load_balancer_idle',
+      method: 'GET',
+      params: {
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getIsLoadBalancerIdleQueryKey = (
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/is_load_balancer_idle`,
+  pageParam,
+];
+
+
+export const useGetIsLoadBalancerIdleInfiniteQuery = <T = IsLoadBalancerIdle, Error = ApiError>(
+  options?: {
+    query?: UseInfiniteQueryOptions<IsLoadBalancerIdle, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getIsLoadBalancerIdleQueryKey(pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<IsLoadBalancerIdle, Error, T>(
+    queryKey,
+    () => getIsLoadBalancerIdleAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetIsLoadBalancerIdleQuery = <T = IsLoadBalancerIdle, Error = ApiError>(
+  options?: {
+    query?: UseQueryOptions<IsLoadBalancerIdle, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getIsLoadBalancerIdleQueryKey(version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<IsLoadBalancerIdle, Error, T>(
+    queryKey,
+    () => getIsLoadBalancerIdleAxiosRequest(customAxiosInstance),
     queryOptions
   );
 
@@ -600,6 +656,81 @@ export const useGetSlowQueriesQuery = <T = SlowQueryResponseSchema, Error = ApiE
   const query = useQuery<SlowQueryResponseSchema, Error, T>(
     queryKey,
     () => getSlowQueriesAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Get YugabyteDB version
+ * Get YugabyteDB version
+ */
+
+export const getVersionAxiosRequest = (
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<VersionInfo>(
+    {
+      url: '/version',
+      method: 'GET',
+      params: {
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getVersionQueryKey = (
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/version`,
+  pageParam,
+];
+
+
+export const useGetVersionInfiniteQuery = <T = VersionInfo, Error = ApiError>(
+  options?: {
+    query?: UseInfiniteQueryOptions<VersionInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getVersionQueryKey(pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<VersionInfo, Error, T>(
+    queryKey,
+    () => getVersionAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetVersionQuery = <T = VersionInfo, Error = ApiError>(
+  options?: {
+    query?: UseQueryOptions<VersionInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getVersionQueryKey(version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<VersionInfo, Error, T>(
+    queryKey,
+    () => getVersionAxiosRequest(customAxiosInstance),
     queryOptions
   );
 

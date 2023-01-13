@@ -32,7 +32,8 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tserver/tserver_service.pb.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -42,14 +43,13 @@
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
-DEFINE_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
-              "If greater than zero, indicates the maximum amount of time to wait to lock keys "
-              "needed by a newly unblocked transaction. Otherwise, a default value of 1s is used.");
+DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
+    "If greater than zero, indicates the maximum amount of time to wait to lock keys "
+    "needed by a newly unblocked transaction. Otherwise, a default value of 1s is used.");
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, advanced);
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, hidden);
-TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, runtime);
 
-DEFINE_uint64(force_single_shard_waiter_retry_ms, 30000,
+DEFINE_UNKNOWN_uint64(force_single_shard_waiter_retry_ms, 30000,
               "The amount of time to wait before sending the client of a single shard transaction "
               "a retryable error. Such clients are periodically sent a retryable error to ensure "
               "we don't maintain waiters in the wait queue for unresponsive or disconnected "
@@ -186,11 +186,12 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     }
     finished_waiting_latency_->Increment(GetMillis(CoarseMonoClock::Now() - created_at));
     if (!status.ok()) {
+      unlocked_ = std::nullopt;
       callback(status);
       return;
     }
     *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
-    unlocked_ = std::nullopt;;
+    unlocked_ = std::nullopt;
     callback(locks->status());
   }
 
@@ -267,6 +268,10 @@ using WaiterDataPtr = std::shared_ptr<WaiterData>;
 class BlockerData {
  public:
   std::vector<WaiterDataPtr> Signal(Result<TransactionStatusResult>&& txn_status_response) {
+    VLOG(4) << "Signaling waiters "
+            << (txn_status_response.ok() ?
+                txn_status_response->ToString() :
+                txn_status_response.status().ToString());
     auto txn_status = UnwrapResult(txn_status_response);
     bool is_txn_pending = txn_status.ok() && *txn_status == ResolutionStatus::kPending;
     bool should_signal = !is_txn_pending;
@@ -277,7 +282,7 @@ class BlockerData {
     txn_status_ = txn_status;
     if (txn_status_response.ok()) {
       if (aborted_subtransactions_ != txn_status_response->aborted_subtxn_set) {
-        // TODO(pessimistic): Avoid copying the subtransaction set. See:
+        // TODO(wait-queues): Avoid copying the subtransaction set. See:
         // https://github.com/yugabyte/yugabyte-db/issues/13823
         aborted_subtransactions_ = std::move(txn_status_response->aborted_subtxn_set);
         should_signal = true;
@@ -358,9 +363,11 @@ class WaitQueue::Impl {
   Impl(TransactionStatusManager* txn_status_manager, const std::string& permanent_uuid,
        WaitingTxnRegistry* waiting_txn_registry,
        const std::shared_future<client::YBClient*>& client_future,
-       const server::ClockPtr& clock, const MetricEntityPtr& metrics)
+       const server::ClockPtr& clock, const MetricEntityPtr& metrics,
+       std::unique_ptr<ThreadPoolToken> thread_pool_token)
       : txn_status_manager_(txn_status_manager), permanent_uuid_(permanent_uuid),
         waiting_txn_registry_(waiting_txn_registry), client_future_(client_future), clock_(clock),
+        thread_pool_token_(std::move(thread_pool_token)),
         pending_time_waiting_(METRIC_wait_queue_pending_time_waiting.Instantiate(metrics)),
         finished_waiting_latency_(METRIC_wait_queue_finished_waiting_latency.Instantiate(metrics)),
         blockers_per_waiter_(METRIC_wait_queue_blockers_per_waiter.Instantiate(metrics)),
@@ -385,7 +392,7 @@ class WaitQueue::Impl {
                                  << " blockers=" << ToString(blockers)
                                  << " status_tablet_id=" << status_tablet_id;
 
-    // TODO(pessimistic): We can detect tablet-local deadlocks here.
+    // TODO(wait-queues): We can detect tablet-local deadlocks here.
     // See https://github.com/yugabyte/yugabyte-db/issues/13586
     std::vector<BlockerDataAndSubtxnInfo> blocker_datas;
     WaiterDataPtr waiter_data = nullptr;
@@ -412,7 +419,7 @@ class WaitQueue::Impl {
             VLOG_WITH_PREFIX_AND_FUNC(4) << "Re-using blocker " << blocker.id;
             blocker_data = placed_blocker_node;
           } else {
-            // TODO(pessimistic): We should only ever hit this case if a blocker was resolved and
+            // TODO(wait-queues): We should only ever hit this case if a blocker was resolved and
             // all references to it in old waiters were destructed. Perhaps we can remove this
             // dangling reference from blocker_status_ and return Status indicating that conflict
             // resolution should be retried since the status of its blockers may have changed, in
@@ -426,7 +433,7 @@ class WaitQueue::Impl {
         blocker_datas.emplace_back(blocker_data, blocker.subtransactions);
       }
 
-      // TODO(pessimistic): similar to pg, we can wait 1s or so before beginning deadlock detection.
+      // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
       // See https://github.com/yugabyte/yugabyte-db/issues/13576
       auto scoped_reporter = waiting_txn_registry_->Create();
       if (!waiter_txn_id.IsNil()) {
@@ -451,18 +458,20 @@ class WaitQueue::Impl {
       } else {
         waiter_status_[waiter_txn_id] = waiter_data;
       }
-    }
 
-    DCHECK(waiter_data);
-    for (auto [blocker, _] : waiter_data->blockers) {
-      blocker->AddWaiter(waiter_data);
+      // We must add waiters to blockers while holding the wait queue mutex. Otherwise, we may
+      // end up removing blockers from blocker_status_ during Poll() after we've already added them
+      // to waiter_data.
+      for (auto [blocker, _] : waiter_data->blockers) {
+        blocker->AddWaiter(waiter_data);
+      }
     }
 
     return Status::OK();
   }
 
   void Poll(HybridTime now) EXCLUDES(mutex_) {
-    // TODO(pessimistic): Rely on signaling from the RunningTransaction instance of the blocker
+    // TODO(wait-queues): Rely on signaling from the RunningTransaction instance of the blocker
     // rather than this polling-based mechanism. We should also signal from the RunningTransaction
     // instance of the waiting transaction in case the waiter is aborted by deadlock or otherwise.
     // See https://github.com/yugabyte/yugabyte-db/issues/13578
@@ -572,6 +581,8 @@ class WaitQueue::Impl {
       single_shard_waiters_copy.swap(single_shard_waiters_);
       blocker_status_.clear();
     }
+
+    thread_pool_token_->Shutdown();
 
     for (const auto& [_, waiter_data] : waiter_status_copy) {
       waiter_data->ShutdownStatusRequest();
@@ -712,8 +723,20 @@ class WaitQueue::Impl {
     }
 
     for (const auto& waiter : resolved_blocker->Signal(std::move(res))) {
-      // TODO(pessimistic): Resolve these waiters in parallel.
-      SignalWaiter(waiter);
+      WARN_NOT_OK(thread_pool_token_->SubmitFunc([weak_waiter = std::weak_ptr(waiter), this]() {
+        {
+          SharedLock<decltype(mutex_)> l(mutex_);
+          if (shutting_down_) {
+            VLOG(4) << "Skipping waiter signal - shutting down";
+            return;
+          }
+        }
+        if (auto waiter = weak_waiter.lock()) {
+          this->SignalWaiter(waiter);
+        } else {
+          LOG(INFO) << "Failed to lock weak_ptr to waiter to signal. Skipping.";
+        }
+      }), "Failed to submit waiter resumption");
     }
   }
 
@@ -724,22 +747,29 @@ class WaitQueue::Impl {
       return;
     }
 
-    auto res = 0ul;
-
+    // We cannot use the passed in waiter_data here as it may have been replaced in waiter_status_
+    // by a new WaiterData instance for the same transaction. Such a situation would indicate that
+    // the previous request had returned to the caller and a new request for the same transaction
+    // was now waiting. In this situation, we would want to signal the new waiter.
+    WaiterDataPtr found_waiter = nullptr;
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
-      res = waiter_status_.erase(waiter_data->id);
+      auto it = waiter_status_.find(waiter_data->id);
+      if (it != waiter_status_.end()) {
+        found_waiter = it->second;
+        waiter_status_.erase(it);
+      }
     }
 
-    LOG_IF(WARNING, res != 1)
+    LOG_IF(WARNING, !found_waiter)
       << "Tried to invoke callback on waiter which has already been removed. "
       << "This should be rare but is not an error otherwise.";
 
     // Note -- it's important that we remove the waiter from waiter_status_ before invoking it's
     // callback. Otherwise, the callback will re-run conflict resolution, end up back in the wait
     // queue, and attempt to reuse the WaiterData still present in waiter_status_.
-    if (res == 1) {
-      waiter_data->InvokeCallback(status);
+    if (found_waiter) {
+      found_waiter->InvokeCallback(status);
     }
   }
 
@@ -761,7 +791,7 @@ class WaitQueue::Impl {
     }
 
     if (waiter_data->blockers.size() == num_resolved_blockers || !status.ok()) {
-      // TODO(pessimistic): Abort transactions without re-invoking conflict resolution when
+      // TODO(wait-queues): Abort transactions without re-invoking conflict resolution when
       // possible, e.g. if the blocking transaction was not a lock-only conflict and was commited.
       // See https://github.com/yugabyte/yugabyte-db/issues/13577
       InvokeWaiterCallback(status, waiter_data);
@@ -801,6 +831,7 @@ class WaitQueue::Impl {
   WaitingTxnRegistry* const waiting_txn_registry_;
   const std::shared_future<client::YBClient*>& client_future_;
   const server::ClockPtr& clock_;
+  std::unique_ptr<ThreadPoolToken> thread_pool_token_;
   scoped_refptr<Histogram> pending_time_waiting_;
   scoped_refptr<Histogram> finished_waiting_latency_;
   scoped_refptr<Histogram> blockers_per_waiter_;
@@ -815,9 +846,10 @@ WaitQueue::WaitQueue(
     WaitingTxnRegistry* waiting_txn_registry,
     const std::shared_future<client::YBClient*>& client_future,
     const server::ClockPtr& clock,
-    const MetricEntityPtr& metrics):
+    const MetricEntityPtr& metrics,
+    std::unique_ptr<ThreadPoolToken> thread_pool_token):
   impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock,
-                 metrics)) {}
+                 metrics, std::move(thread_pool_token))) {}
 
 WaitQueue::~WaitQueue() = default;
 

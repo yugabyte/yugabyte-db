@@ -41,11 +41,9 @@ The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and a
 
 The driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
 
-## CRUD operations
+## Fundamentals
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../../develop/build-apps/go/ysql-pgx).
-
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
+Learn how to perform common tasks required for Go application development using the PGX driver.
 
 ### Import the driver package
 
@@ -227,6 +225,10 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ### SSL modes
 
+Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. YugabyteDB Managed clusters are always SSL/TLS enabled.
+
+The following table summarizes the SSL modes and their support in the driver:
+
 | SSL Mode | Client Driver Behavior | YugabyteDB Support |
 | :------- | :--------------------- | ------------------ |
 | disable  | SSL Disabled | Supported
@@ -235,6 +237,8 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | require | SSL enabled for data encryption and Server identity is not verified | Supported
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
+
+YugabyteDB Managed requires SSL/TLS, and connections using SSL mode `disable` will fail.
 
 ## Transaction and isolation levels
 

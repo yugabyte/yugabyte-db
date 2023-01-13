@@ -94,7 +94,6 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           }
 
           String newVersion = taskParams().ybSoftwareVersion;
-          createPackageInstallTasks(allNodes);
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
@@ -142,21 +141,6 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     }
     downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
     getRunnableTask().addSubTaskGroup(downloadTaskGroup);
-  }
-
-  private void createPackageInstallTasks(Collection<NodeDetails> nodes) {
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.UpdatePackage, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
-    for (NodeDetails node : nodes) {
-      subTaskGroup.addSubTask(
-          getAnsibleConfigureServerTask(
-              node, ServerType.TSERVER, UpgradeTaskSubType.PackageReInstall, null));
-    }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatePackage);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createXClusterSourceRootCertDirPathGFlagTasks() {

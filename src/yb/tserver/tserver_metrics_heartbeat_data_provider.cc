@@ -31,15 +31,16 @@
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(tserver_heartbeat_metrics_interval_ms, 5000,
+DEFINE_UNKNOWN_int32(tserver_heartbeat_metrics_interval_ms, 5000,
              "Interval (in milliseconds) at which tserver sends its metrics in a heartbeat to "
              "master.");
 
-DEFINE_bool(tserver_heartbeat_metrics_add_drive_data, true,
+DEFINE_UNKNOWN_bool(tserver_heartbeat_metrics_add_drive_data, true,
             "Add drive data to metrics which tserver sends to master");
 
-DEFINE_bool(tserver_heartbeat_metrics_add_replication_status, true,
+DEFINE_UNKNOWN_bool(tserver_heartbeat_metrics_add_replication_status, true,
             "Add replication status to metrics tserver sends to master");
 
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);

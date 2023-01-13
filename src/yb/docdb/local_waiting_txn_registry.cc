@@ -272,7 +272,7 @@ class LocalWaitingTxnRegistry::Impl {
     });
 
     // Immediately trigger an update for this status tablet.
-    // TODO(pessimistic): We probably don't need to send this immediately, vs. allowing this waiter
+    // TODO(wait-queues): We probably don't need to send this immediately, vs. allowing this waiter
     // to be sent with the next full update. This also aligns with postgres' approach of only
     // starting deadlock detection after 1s.
     // See: https://github.com/yugabyte/yugabyte-db/issues/13576

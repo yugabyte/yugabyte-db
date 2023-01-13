@@ -22,9 +22,10 @@ Use the `DROP TYPE` statement to remove an existing user-defined data type.
 
 ### Grammar
 
-```
+```ebnf
 drop_type ::= DROP TYPE [ IF EXISTS ] type_name;
 ```
+
 Where
 
 - `type_name` is an identifier (possibly qualified with a keyspace name).

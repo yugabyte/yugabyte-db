@@ -34,6 +34,9 @@
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;
 
 namespace yb {

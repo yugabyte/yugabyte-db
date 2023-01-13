@@ -40,7 +40,7 @@ int main() {
 #include <type_traits>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -57,10 +57,9 @@ int main() {
 #include "yb/rocksdb/util/testutil.h"
 
 using GFLAGS::ParseCommandLineFlags;
-using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;
 
-DEFINE_string(benchmarks, "fillrandom",
+DEFINE_UNKNOWN_string(benchmarks, "fillrandom",
               "Comma-separated list of benchmarks to run. Options:\n"
               "\tfillrandom             -- write N random values\n"
               "\tfillseq                -- write N values in sequential order\n"
@@ -72,7 +71,7 @@ DEFINE_string(benchmarks, "fillrandom",
               "\tseqreadwrite           -- 1 thread writes while N - 1 threads "
               "do scans\n");
 
-DEFINE_string(memtablerep, "skiplist",
+DEFINE_UNKNOWN_string(memtablerep, "skiplist",
               "Which implementation of memtablerep to use. See "
               "include/memtablerep.h for\n"
               "  more details. Options:\n"
@@ -81,57 +80,57 @@ DEFINE_string(memtablerep, "skiplist",
               "\thashskiplist        -- backed by a hash skip list\n"
               "\thashlinklist        -- backed by a hash linked list\n");
 
-DEFINE_int64(bucket_count, 1000000,
+DEFINE_UNKNOWN_int64(bucket_count, 1000000,
              "bucket_count parameter to pass into NewHashSkiplistRepFactory or "
              "NewHashLinkListRepFactory");
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     hashskiplist_height, 4,
     "skiplist_height parameter to pass into NewHashSkiplistRepFactory");
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     hashskiplist_branching_factor, 4,
     "branching_factor parameter to pass into NewHashSkiplistRepFactory");
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     huge_page_tlb_size, 0,
     "huge_page_tlb_size parameter to pass into NewHashLinkListRepFactory");
 
-DEFINE_int32(bucket_entries_logging_threshold, 4096,
+DEFINE_UNKNOWN_int32(bucket_entries_logging_threshold, 4096,
              "bucket_entries_logging_threshold parameter to pass into "
              "NewHashLinkListRepFactory");
 
-DEFINE_bool(if_log_bucket_dist_when_flash, true,
+DEFINE_UNKNOWN_bool(if_log_bucket_dist_when_flash, true,
             "if_log_bucket_dist_when_flash parameter to pass into "
             "NewHashLinkListRepFactory");
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     threshold_use_skiplist, 256,
     "threshold_use_skiplist parameter to pass into NewHashLinkListRepFactory");
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     num_threads, 1,
     "Number of concurrent threads to run. If the benchmark includes writes,\n"
     "then at most one thread will be a writer");
 
-DEFINE_int32(num_operations, 1000000,
+DEFINE_UNKNOWN_int32(num_operations, 1000000,
              "Number of operations to do for write and random read benchmarks");
 
-DEFINE_int32(num_scans, 10,
+DEFINE_UNKNOWN_int32(num_scans, 10,
              "Number of times for each thread to scan the memtablerep for "
              "sequential read "
              "benchmarks");
 
-DEFINE_int32(item_size, 100, "Number of bytes each item should be");
+DEFINE_UNKNOWN_int32(item_size, 100, "Number of bytes each item should be");
 
-DEFINE_int32(prefix_length, 8,
+DEFINE_UNKNOWN_int32(prefix_length, 8,
              "Prefix length to pass into NewFixedPrefixTransform");
 
 /* VectorRep settings */
-DEFINE_int64(vectorrep_count, 0,
+DEFINE_UNKNOWN_int64(vectorrep_count, 0,
              "Number of entries to reserve on VectorRep initialization");
 
-DEFINE_int64(seed, 0,
+DEFINE_UNKNOWN_int64(seed, 0,
              "Seed base for random number generators. "
              "When 0 it is deterministic.");
 

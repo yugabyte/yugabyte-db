@@ -483,8 +483,5 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 void
 ybcinendscan(IndexScanDesc scan)
 {
-	YbScanDesc ybscan = (YbScanDesc)scan->opaque;
-	Assert(PointerIsValid(ybscan));
-	YBCPgDeleteStatement(ybscan->handle);
-	pfree(ybscan);
+	ybc_free_ybscan((YbScanDesc)scan->opaque);
 }

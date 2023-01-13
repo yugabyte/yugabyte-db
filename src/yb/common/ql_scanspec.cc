@@ -20,8 +20,6 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-DECLARE_bool(disable_hybrid_scan);
-
 namespace yb {
 
 using std::vector;
@@ -82,6 +80,7 @@ auto GetColumnValue(const Col& col) {
   }
   if (it->expr_case() == decltype(it->expr_case())::kTuple) {
     std::vector<ColumnId> column_ids;
+    column_ids.reserve(it->tuple().elems().size());
     for (const auto& elem : it->tuple().elems()) {
       DCHECK(elem.has_column_id());
       column_ids.emplace_back(ColumnId(elem.column_id()));
@@ -121,11 +120,13 @@ void QLScanRange::Init(const Cond& condition) {
   const auto& operands = condition.operands();
   bool has_range_column = false;
   using ExprCase = decltype(operands.begin()->expr_case());
+  std::vector<int> column_ids;
   for (const auto& operand : operands) {
-    std::vector<int> column_ids;
+    column_ids.clear();
     if (operand.expr_case() == ExprCase::kColumnId) {
       column_ids.push_back(operand.column_id());
     } else if (operand.expr_case() == ExprCase::kTuple) {
+      column_ids.reserve(operand.tuple().elems().size());
       for (auto const& elem : operand.tuple().elems()) {
         DCHECK(elem.has_column_id());
         column_ids.push_back(elem.column_id());
@@ -177,7 +178,7 @@ void QLScanRange::Init(const Cond& condition) {
     }
     case QL_OP_LESS_THAN:
       // We can only process strict inequalities if we're using hybridscan
-      is_inclusive = FLAGS_disable_hybrid_scan;
+      is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_LESS_THAN_EQUAL: {
       if (has_range_column) {
@@ -198,7 +199,7 @@ void QLScanRange::Init(const Cond& condition) {
     }
     case QL_OP_GREATER_THAN:
       // We can only process strict inequalities if we're using hybridscan
-      is_inclusive = FLAGS_disable_hybrid_scan;
+      is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: {
       if (has_range_column) {
@@ -241,7 +242,7 @@ void QLScanRange::Init(const Cond& condition) {
           }
 
           // We can only process strict inequalities if we're using hybridscan
-          if (operands.size() == 5 && !FLAGS_disable_hybrid_scan) {
+          if (operands.size() == 5) {
             ++it;
             if (it->expr_case() == ExprCase::kValue) {
               lower_bound_inclusive = it->value().bool_value();
@@ -288,35 +289,47 @@ void QLScanRange::Init(const Cond& condition) {
               size_t num_cols = col_ids.size();
               auto options_itr = options.begin();
 
-              auto lower = *options.begin();
-              auto upper = *options.begin();
+              std::vector<decltype(&*options.begin())> lower;
+              std::vector<decltype(&*options.begin())> upper;
+              // We are just setting default values for the upper and lower
+              // bounds on the first iteration to populate the lower and upper
+              // vectors.
+              bool is_init_iteration = true;
 
               while(options_itr != options.end()) {
                 DCHECK(options_itr->has_tuple_value());
                 DCHECK_EQ(num_cols, options_itr->tuple_value().elems().size());
                 auto tuple_itr = options_itr->tuple_value().elems().begin();
-                auto l_itr = lower.mutable_tuple_value()->mutable_elems()->begin();
-                auto u_itr = upper.mutable_tuple_value()->mutable_elems()->begin();
+                auto l_itr = lower.begin();
+                auto u_itr = upper.begin();
                 while(tuple_itr != options_itr->tuple_value().elems().end()) {
-                  if (*l_itr > *tuple_itr) {
-                    *l_itr = *tuple_itr;
+                  if (PREDICT_FALSE(is_init_iteration)) {
+                    lower.push_back(&*tuple_itr);
+                    upper.push_back(&*tuple_itr);
+                    ++tuple_itr;
+                    continue;
                   }
-                  if (*u_itr < *tuple_itr) {
-                    *u_itr = *tuple_itr;
+
+                  if (**l_itr > *tuple_itr) {
+                    *l_itr = &*tuple_itr;
+                  }
+                  if (**u_itr < *tuple_itr) {
+                    *u_itr = &*tuple_itr;
                   }
                   ++tuple_itr;
                   ++l_itr;
                   ++u_itr;
                 }
+                is_init_iteration = false;
                 ++options_itr;
               }
 
-              auto l_itr = lower.tuple_value().elems().begin();
-              auto u_itr = upper.tuple_value().elems().begin();
+              auto l_itr = lower.begin();
+              auto u_itr = upper.begin();
               for (size_t i = 0; i < col_ids.size(); ++i, ++l_itr, ++u_itr) {
                 auto& range = ranges_[col_ids[i]];
-                range.min_bound = QLLowerBound(*l_itr, true);
-                range.max_bound = QLUpperBound(*u_itr, true);
+                range.min_bound = QLLowerBound(**l_itr, true);
+                range.max_bound = QLUpperBound(**u_itr, true);
               }
             }
           }

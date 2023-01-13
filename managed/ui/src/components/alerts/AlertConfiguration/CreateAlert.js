@@ -51,8 +51,8 @@ const CreateAlert = (props) => {
   useEffect(() => {
     alertDestinations().then((res) => {
       const defaultDestination = res.find((destination) => destination.defaultDestination);
-      res = res.map((destination, index) => (
-        <option key={index} value={destination.uuid}>
+      res = res.map((destination) => (
+        <option key={destination.uuid} value={destination.uuid}>
           {destination.name}
         </option>
       ));
@@ -85,6 +85,7 @@ const CreateAlert = (props) => {
     </option>,
     ...metricsData.map((metric, i) => {
       return (
+        // eslint-disable-next-line react/no-array-index-key
         <option key={i} value={metric.template}>
           {metric.name}
         </option>
@@ -161,9 +162,9 @@ const CreateAlert = (props) => {
       targetType: !enablePlatformAlert ? 'UNIVERSE' : 'PLATFORM',
       target: !enablePlatformAlert
         ? {
-            all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
-            uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
-          }
+          all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
+          uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
+        }
         : { all: true },
       thresholds: '',
       thresholdUnit: currentMetric.thresholdUnit,

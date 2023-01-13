@@ -253,12 +253,13 @@ export default class AZSelectorTable extends Component {
             cluster.userIntent.numNodes = totalNodesInConfig;
           }
         });
+        if (currentProvider.code === 'onprem')
+          newTaskParams.currentClusterType = clusterType.toUpperCase();
       }
       if (isEmptyObject(currentUniverse.data)) {
         newTaskParams.currentClusterType = clusterType.toUpperCase();
         newTaskParams.clusterOperation = 'CREATE';
         newTaskParams.resetAZConfig = false;
-        newTaskParams.regionsChanged = false;
         this.props.submitConfigureUniverse(newTaskParams);
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
@@ -267,7 +268,6 @@ export default class AZSelectorTable extends Component {
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
         newTaskParams.userAZSelected = true;
         newTaskParams.resetAZConfig = false;
-        newTaskParams.regionsChanged = false;
         if (
           isNonEmptyObject(
             getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType)
@@ -367,7 +367,7 @@ export default class AZSelectorTable extends Component {
                 count: configArrayItem.count,
                 isAffinitized: azItem.isAffinitized === undefined ? true : azItem.isAffinitized
               });
-              if (uniqueRegions.indexOf(regionItem.uuid) === -1) {
+              if (!uniqueRegions.includes(regionItem.uuid)) {
                 uniqueRegions.push(regionItem.uuid);
               }
             }
@@ -683,19 +683,19 @@ export default class AZSelectorTable extends Component {
           {azList}
           {isNonEmptyArray(azListForSelectedRegions) &&
             azList.length <
-            (enableGeoPartitioning ? currentCluster.userIntent.numNodes : replicationFactor) &&
+              (enableGeoPartitioning ? currentCluster.userIntent.numNodes : replicationFactor) &&
             azList.length < azListForSelectedRegions.length && (
-              <Row>
-                <Col xs={4}>
-                  <YBButton
-                    btnText="Add Zone"
-                    btnIcon="fa fa-plus"
-                    btnClass={'btn btn-orange universe-form-add-az-btn'}
-                    onClick={addNewAZField}
-                  />
-                </Col>
-              </Row>
-            )}
+            <Row>
+              <Col xs={4}>
+                <YBButton
+                  btnText="Add Zone"
+                  btnIcon="fa fa-plus"
+                  btnClass={'btn btn-orange universe-form-add-az-btn'}
+                  onClick={addNewAZField}
+                />
+              </Col>
+            </Row>
+          )}
         </div>
       );
     }

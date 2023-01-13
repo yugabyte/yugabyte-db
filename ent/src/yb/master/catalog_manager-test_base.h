@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_MASTER_CATALOG_MANAGER_TEST_BASE_H
-#define ENT_SRC_YB_MASTER_CATALOG_MANAGER_TEST_BASE_H
+#pragma once
 
 #include "../../src/yb/master/catalog_manager-test_base.h"
 #include "yb/util/status_log.h"
@@ -20,12 +19,11 @@ namespace yb {
 namespace master {
 namespace enterprise {
 
-using std::shared_ptr;
 
-const string read_only_placement_uuid = "read_only";
+const std::string read_only_placement_uuid = "read_only";
 
 std::shared_ptr<TSDescriptor> SetupTSEnt(
-    const string& uuid, const string& az, const string& placement_uuid) {
+    const std::string& uuid, const std::string& az, const std::string& placement_uuid) {
   NodeInstancePB node;
   node.set_permanent_uuid(uuid);
 
@@ -48,14 +46,14 @@ std::shared_ptr<TSDescriptor> SetupTSEnt(
 }
 
 void SetupClusterConfigEnt(
-    const vector<string>& az_list,
-    const vector<string>& read_only_list,
-    const vector<vector<string>>& affinitized_leader_list,
+    const std::vector<std::string>& az_list,
+    const std::vector<std::string>& read_only_list,
+    const std::vector<std::vector<std::string>>& affinitized_leader_list,
     ReplicationInfoPB* replication_info) {
   PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
   placement_info->set_num_replicas(kDefaultNumReplicas);
 
-  for (const string& az : az_list) {
+  for (const std::string& az : az_list) {
     auto pb = placement_info->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
     pb->mutable_cloud_info()->set_placement_region(default_region);
@@ -68,7 +66,7 @@ void SetupClusterConfigEnt(
     placement_info->set_num_replicas(1);
   }
 
-  for (const string& read_only_az : read_only_list) {
+  for (const std::string& read_only_az : read_only_list) {
     auto pb = placement_info->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
     pb->mutable_cloud_info()->set_placement_region(default_region);
@@ -79,7 +77,7 @@ void SetupClusterConfigEnt(
 
   for (const auto& az_set : affinitized_leader_list) {
     auto new_zone_Set = replication_info->add_multi_affinitized_leaders();
-    for (const string& affinitized_az : az_set) {
+    for (const std::string& affinitized_az : az_set) {
       CloudInfoPB* ci = new_zone_Set->add_zones();
       ci->set_placement_cloud(default_cloud);
       ci->set_placement_region(default_region);
@@ -90,5 +88,3 @@ void SetupClusterConfigEnt(
 }  // namespace enterprise
 }  // namespace master
 }  // namespace yb
-
-#endif  // ENT_SRC_YB_MASTER_CATALOG_MANAGER_TEST_BASE_H

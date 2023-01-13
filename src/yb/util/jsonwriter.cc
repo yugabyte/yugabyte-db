@@ -49,6 +49,40 @@ using std::vector;
 
 namespace yb {
 
+void JsonEscape(GStringPiece s, string* out) {
+  out->reserve(out->size() + s.size() * 2);
+  const char* p_end = s.data() + s.size();
+  for (const char* p = s.data(); p != p_end; p++) {
+    // Only the following characters need to be escaped, according to json.org.
+    // In particular, it's illegal to escape the single-quote character, and
+    // JSON does not support the "\x" escape sequence like C/Java.
+    switch (*p) {
+      case '"':
+      case '\\':
+        out->push_back('\\');
+        out->push_back(*p);
+        break;
+      case '\b':
+        out->append("\\b");
+        break;
+      case '\f':
+        out->append("\\f");
+        break;
+      case '\n':
+        out->append("\\n");
+        break;
+      case '\r':
+        out->append("\\r");
+        break;
+      case '\t':
+        out->append("\\t");
+        break;
+      default:
+        out->push_back(*p);
+    }
+  }
+}
+
 // Adapter to allow RapidJSON to write directly to a stringstream.
 // Since Squeasel exposes a stringstream as its interface, this is needed to avoid overcopying.
 class UTF8StringStreamBuffer {

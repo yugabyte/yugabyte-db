@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
-#define ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
+#pragma once
 
 #include <condition_variable>
 #include <unordered_map>
@@ -27,6 +26,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/tablet/tablet_types.pb.h"
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
@@ -64,6 +64,8 @@ struct CDCClient {
   ~CDCClient();
   void Shutdown();
 };
+
+typedef std::pair<SchemaVersion, SchemaVersion> SchemaVersionMapping;
 
 class CDCConsumer {
  public:
@@ -132,9 +134,12 @@ class CDCConsumer {
   // polled for.
   void TriggerPollForNewTablets();
 
+  // Loop through pollers and check if they should still be polling, if not, shut them down.
+  void TriggerDeletionOfOldPollers();
+
   bool ShouldContinuePolling(
       const cdc::ProducerTabletInfo producer_tablet_info,
-      const cdc::ConsumerTabletInfo consumer_tablet_info) EXCLUDES(should_run_mutex_);
+      const cdc::ConsumerTabletInfo consumer_tablet_info) REQUIRES_SHARED(master_data_mutex_);
 
   void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
 
@@ -175,7 +180,7 @@ class CDCConsumer {
 
   std::unordered_set<std::string> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
-  std::unordered_map<std::string, uint32_t> stream_to_schema_version_
+  std::unordered_map<std::string, SchemaVersionMapping> stream_to_schema_version_
       GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
@@ -198,13 +203,14 @@ class CDCConsumer {
   std::unordered_set<std::string> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
 
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
+  std::atomic<cdc::XClusterRole> consumer_role_ = cdc::XClusterRole::ACTIVE;
 
   std::atomic<uint32_t> TEST_num_successful_write_rpcs {0};
 
   std::mutex safe_time_update_mutex_;
   MonoTime last_safe_time_published_at_ GUARDED_BY(safe_time_update_mutex_);
 
-  bool xcluster_safe_time_table_ready_ GUARDED_BY(safe_time_update_mutex_);
+  bool xcluster_safe_time_table_ready_ GUARDED_BY(safe_time_update_mutex_) = false;
   std::unique_ptr<client::TableHandle> safe_time_table_ GUARDED_BY(safe_time_update_mutex_);
 
   client::TransactionManager* transaction_manager_;
@@ -221,5 +227,3 @@ class CDCConsumer {
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
-
-#endif // ENT_SRC_YB_TSERVER_CDC_CONSUMER_H

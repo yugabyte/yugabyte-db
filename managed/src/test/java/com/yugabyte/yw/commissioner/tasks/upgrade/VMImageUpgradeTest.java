@@ -127,6 +127,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             node.cloudInfo.private_ip = "10.0.0." + idx;
             node.cloudInfo.az = az4.code;
             node.azUuid = az4.uuid;
+            node.state = NodeDetails.NodeState.Live;
             universeDetails.nodeDetailsSet.add(node);
           }
 
@@ -239,6 +240,9 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
       }
     }
 
+    // Last task is DeleteRootVolumes.
+    assertEquals(
+        TaskType.DeleteRootVolumes, subTasksByPosition.get(position++).get(0).getTaskType());
     assertEquals(createVolumeOutput.keySet(), replaceRootVolumeParams.keySet());
     createVolumeOutput.forEach(
         (key, value) -> assertEquals(value.size(), (int) replaceRootVolumeParams.get(key)));

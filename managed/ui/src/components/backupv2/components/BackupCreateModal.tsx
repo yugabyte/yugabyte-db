@@ -18,6 +18,7 @@ import {
   YBCheckBox,
   YBFormInput,
   YBFormSelect,
+  YBFormToggle,
   YBNumericInput
 } from '../../common/forms/fields';
 import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from '../common/IBackup';
@@ -51,6 +52,7 @@ interface BackupCreateModalProps {
   isScheduledBackup?: boolean;
   isEditMode?: boolean;
   editValues?: Record<string, any>;
+  isIncrementalBackup?: boolean;
 }
 
 type ToogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>;
@@ -88,6 +90,13 @@ const SCHEDULE_DURATION_OPTIONS = ['Minutes', 'Hours', ...DURATIONS].map((t: str
   };
 });
 
+const INCREMENTAL_BACKUP_DURATION_OPTIONS = ['Hours', 'Days', 'Months'].map((t: string) => {
+  return {
+    value: t,
+    label: t
+  };
+});
+
 const TABLE_BACKUP_OPTIONS = [
   { label: 'Select all tables in this Keyspace', value: Backup_Options_Type.ALL },
   { label: 'Select a subset of tables', value: Backup_Options_Type.CUSTOM }
@@ -95,10 +104,15 @@ const TABLE_BACKUP_OPTIONS = [
 
 const STEPS = [
   {
-    title: (isScheduledBackup: boolean, isEditMode: boolean) =>
-      isScheduledBackup
-        ? `${isEditMode ? 'Edit' : 'Create'} scheduled backup policy`
-        : 'Backup Now',
+    title: (isScheduledBackup: boolean, isEditMode: boolean, isIncrementalBackup = false) => {
+      if (isScheduledBackup) {
+        return `${isEditMode ? 'Edit' : 'Create'} scheduled backup policy`;
+      }
+      if (isIncrementalBackup) {
+        return 'Create Incremental Backup';
+      }
+      return 'Backup Now';
+    },
     submitLabel: (isScheduledBackup: boolean, isEditMode: boolean) =>
       isScheduledBackup ? (isEditMode ? 'Apply Changes' : 'Create') : 'Backup',
     component: BackupConfigurationForm,
@@ -120,7 +134,10 @@ const initialValues = {
   keep_indefinitely: false,
   search_text: '',
   parallel_threads: PARALLEL_THREADS_RANGE.MIN,
-  storage_config: null as any
+  storage_config: null as any,
+  is_incremental_backup_enabled: false,
+  incremental_backup_frequency: 1,
+  incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[0]
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -129,7 +146,8 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   currentUniverseUUID,
   isScheduledBackup = false,
   isEditMode = false,
-  editValues = {}
+  editValues = {},
+  isIncrementalBackup = false
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -169,10 +187,10 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       if (isYbcEnabledinCurrentUniverse) {
         values = omit(values, 'parallel_threads');
       }
-      return createBackup(values);
+      return createBackup(values, isIncrementalBackup);
     },
     {
-      onSuccess: (resp) => {
+      onSuccess: (resp, values) => {
         toast.success(
           <span>
             Backup is in progress. Click &nbsp;
@@ -183,6 +201,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
           </span>
         );
         queryClient.invalidateQueries(['backups']);
+        queryClient.invalidateQueries(['incremental_backups', values['baseBackupUUID']]);
         onHide();
       },
       onError: (err: any) => {
@@ -300,13 +319,31 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
           PARALLEL_THREADS_RANGE.MAX,
           `Parallel threads should be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`
         )
+    }),
+    incremental_backup_frequency: Yup.number().test({
+      message: 'Incremental backup interval must be less than full backup',
+      test: function (value) {
+        if (
+          !isScheduledBackup ||
+          !this.parent.is_incremental_backup_enabled ||
+          this.parent.use_cron_expression
+        )
+          return true;
+
+        return (
+          value *
+            MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
+          this.parent.policy_interval *
+            MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()]
+        );
+      }
     })
   });
 
   return (
     <YBModalForm
       size="large"
-      title={STEPS[currentStep].title(isScheduledBackup, isEditMode)}
+      title={STEPS[currentStep].title(isScheduledBackup, isEditMode, isIncrementalBackup)}
       className="backup-modal"
       visible={visible}
       validationSchema={validationSchema}
@@ -323,15 +360,29 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
         if (isScheduledBackup) {
           if (isEditMode) {
-            doEditBackupSchedule.mutateAsync({
+            const editPayloadValues = {
               scheduleUUID: values.scheduleObj.scheduleUUID,
-              frequency:
+              status: values.scheduleObj.status
+            };
+            if (values.use_cron_expression) {
+              editPayloadValues['cronExpression'] = values.cron_expression;
+            } else {
+              editPayloadValues['frequency'] =
                 values['policy_interval'] *
-                MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()],
-              cronExpression: values.cronExpression,
-              status: values.scheduleObj.status,
-              frequencyTimeUnit: values['policy_interval_type'].value.toUpperCase()
-            });
+                MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()];
+              editPayloadValues['frequencyTimeUnit'] = values[
+                'policy_interval_type'
+              ].value.toUpperCase();
+            }
+            if (values['is_incremental_backup_enabled']) {
+              editPayloadValues['incrementalBackupFrequency'] =
+                values['incremental_backup_frequency'] *
+                MILLISECONDS_IN[values['incremental_backup_frequency_type'].value.toUpperCase()];
+              editPayloadValues['incrementalBackupFrequencyTimeUnit'] = values[
+                'incremental_backup_frequency_type'
+              ].value.toUpperCase();
+            }
+            doEditBackupSchedule.mutateAsync(editPayloadValues);
           } else {
             doCreateBackupSchedule.mutateAsync({
               ...values,
@@ -369,7 +420,8 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
               tablesInUniverse: tablesInUniverse?.data,
               isEditMode,
               nodesInRegionsList,
-              isYbcEnabledinCurrentUniverse
+              isYbcEnabledinCurrentUniverse,
+              isIncrementalBackup
             })}
           </>
         )
@@ -388,7 +440,8 @@ function BackupConfigurationForm({
   isScheduledBackup,
   isEditMode,
   nodesInRegionsList,
-  isYbcEnabledinCurrentUniverse
+  isYbcEnabledinCurrentUniverse,
+  isIncrementalBackup
 }: {
   kmsConfigList: any;
   setFieldValue: Function;
@@ -406,6 +459,7 @@ function BackupConfigurationForm({
   isEditMode: boolean;
   nodesInRegionsList: string[];
   isYbcEnabledinCurrentUniverse: boolean;
+  isIncrementalBackup: boolean;
 }) {
   const ALL_DB_OPTION = {
     label: `All ${values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Databases' : 'Keyspaces'}`,
@@ -433,7 +487,6 @@ function BackupConfigurationForm({
       find(values['storage_config'].regions, { REGION: e })
     );
   }
-
   return (
     <div className="backup-configuration-form">
       {isScheduledBackup && (
@@ -446,63 +499,6 @@ function BackupConfigurationForm({
               disabled={isEditMode}
             />
           </Col>
-        </Row>
-      )}
-
-      {isScheduledBackup && (
-        <Row>
-          <div>Set backup intervals</div>
-          <Col lg={12} className="no-padding">
-            <Row className="duration-options">
-              {values['use_cron_expression'] ? (
-                <Col lg={4} className="no-padding">
-                  <Field name="cron_expression" component={YBFormInput} />
-                </Col>
-              ) : (
-                <>
-                  <Col lg={1} className="no-padding">
-                    <Field
-                      name="policy_interval"
-                      component={YBNumericInput}
-                      input={{
-                        onChange: (val: number) => setFieldValue('policy_interval', val),
-                        value: values['policy_interval']
-                      }}
-                      minVal={0}
-                      readOnly={values['use_cron_expression']}
-                    />
-                  </Col>
-                  <Col lg={3}>
-                    <Field
-                      name="policy_interval_type"
-                      component={YBFormSelect}
-                      options={SCHEDULE_DURATION_OPTIONS}
-                      isDisabled={values['use_cron_expression']}
-                    />
-                  </Col>
-                </>
-              )}
-
-              <Col lg={4}>
-                <Field
-                  name="use_cron_expression"
-                  component={YBCheckBox}
-                  checkState={values['use_cron_expression']}
-                />
-                Use cron expression (UTC)
-              </Col>
-            </Row>
-            {errors['policy_interval'] && (
-              <Col lg={12} className="no-padding help-block standard-error">
-                {errors['policy_interval']}
-              </Col>
-            )}
-          </Col>
-          {errors['retention_interval'] && (
-            <Col lg={12} className="no-padding help-block standard-error">
-              {errors['retention_interval']}
-            </Col>
-          )}
         </Row>
       )}
 
@@ -521,7 +517,7 @@ function BackupConfigurationForm({
               setFieldValue('backup_tables', Backup_Options_Type.ALL);
               setFieldValue('selected_ycql_tables', []);
             }}
-            isDisabled={isEditMode}
+            isDisabled={isEditMode || isIncrementalBackup}
           />
         </Col>
         <Col lg={12} className="no-padding">
@@ -536,12 +532,14 @@ function BackupConfigurationForm({
             label="Select the storage config you want to use for your backup"
             options={storageConfigs}
             components={{
+              // eslint-disable-next-line react/display-name
               SingleValue: ({ data }: { data: any }) => (
                 <>
                   <span className="storage-cfg-name">{data.label}</span>
                   <StatusBadge statusType={Badge_Types.DELETED} customLabel={data.name} />
                 </>
               ),
+              // eslint-disable-next-line react/display-name
               Option: (props: any) => {
                 return (
                   <components.Option {...props}>
@@ -562,7 +560,7 @@ function BackupConfigurationForm({
               }
             }}
             isClearable
-            isDisabled={isEditMode}
+            isDisabled={isEditMode || isIncrementalBackup}
           />
           {!regions_satisfied_by_config && CONFIG_DOESNT_SATISFY_NODES_MSG()}
         </Col>
@@ -587,7 +585,7 @@ function BackupConfigurationForm({
                 }
               }
             }}
-            isDisabled={isEditMode}
+            isDisabled={isEditMode || isIncrementalBackup}
           />
         </Col>
       </Row>
@@ -605,7 +603,8 @@ function BackupConfigurationForm({
                     disabled={
                       values['db_to_backup'] === null ||
                       values['db_to_backup']?.value === null ||
-                      isEditMode
+                      isEditMode ||
+                      isIncrementalBackup
                     }
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setFieldValue('backup_tables', e.target.value, false);
@@ -631,7 +630,9 @@ function BackupConfigurationForm({
                             setFieldValue('show_select_ycql_table', true);
                           }}
                         >
-                          <i className="fa fa-pencil" /> Edit selection
+                          <i className="fa fa-pencil" />
+                          &nbsp;
+                          {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
                         </span>
                       </span>
                     )}
@@ -684,6 +685,119 @@ function BackupConfigurationForm({
           </Col>
         )}
       </Row>
+      {isScheduledBackup && (
+        <Row>
+          <div>Set backup intervals</div>
+          <Col lg={12} className="no-padding">
+            <Row className="duration-options">
+              {values['use_cron_expression'] ? (
+                <Col lg={4} className="no-padding">
+                  <Field name="cron_expression" component={YBFormInput} />
+                </Col>
+              ) : (
+                <>
+                  <Col lg={1} className="no-padding">
+                    <Field
+                      name="policy_interval"
+                      component={YBNumericInput}
+                      input={{
+                        onChange: (val: number) => setFieldValue('policy_interval', val),
+                        value: values['policy_interval']
+                      }}
+                      minVal={0}
+                      readOnly={values['use_cron_expression']}
+                    />
+                  </Col>
+                  <Col lg={3}>
+                    <Field
+                      name="policy_interval_type"
+                      component={YBFormSelect}
+                      options={SCHEDULE_DURATION_OPTIONS}
+                      value={values['policy_interval_type']}
+                      isDisabled={values['use_cron_expression']}
+                    />
+                  </Col>
+                </>
+              )}
+
+              <Col lg={4}>
+                <Field
+                  name="use_cron_expression"
+                  component={YBCheckBox}
+                  checkState={values['use_cron_expression']}
+                />
+                Use cron expression (UTC)
+              </Col>
+            </Row>
+            {errors['policy_interval'] && (
+              <Col lg={12} className="no-padding help-block standard-error">
+                {errors['policy_interval']}
+              </Col>
+            )}
+          </Col>
+          {errors['retention_interval'] && (
+            <Col lg={12} className="no-padding help-block standard-error">
+              {errors['retention_interval']}
+            </Col>
+          )}
+        </Row>
+      )}
+      {isScheduledBackup && (
+        <Row>
+          <Col lg={8} className="incremental-backups">
+            <div className="toggle-incremental-status">
+              <Field
+                name="is_incremental_backup_enabled"
+                component={YBFormToggle}
+                isReadOnly={isEditMode}
+              />
+              <span>Take incremental backups within full backup intervals</span>
+            </div>
+            {values.is_incremental_backup_enabled && (
+              <>
+                {!isEditMode && (
+                  <Col lg={12} className="no-padding incremental-interval-info">
+                    Interval must be less than &nbsp;
+                    <b>
+                      {values.policy_interval}&nbsp;{values.policy_interval_type.value}
+                    </b>
+                  </Col>
+                )}
+
+                <Col lg={12} className="no-padding">
+                  <div>Set incremental backup intervals</div>
+                  <div className="incremental-interval-ctrls">
+                    <Col lg={2} className="no-padding">
+                      <Field
+                        name="incremental_backup_frequency"
+                        component={YBNumericInput}
+                        input={{
+                          onChange: (val: number) =>
+                            setFieldValue('incremental_backup_frequency', val),
+                          value: values['incremental_backup_frequency']
+                        }}
+                        minVal={0}
+                      />
+                    </Col>
+                    <Col lg={4}>
+                      <Field
+                        name="incremental_backup_frequency_type"
+                        component={YBFormSelect}
+                        options={INCREMENTAL_BACKUP_DURATION_OPTIONS}
+                      />
+                    </Col>
+                  </div>
+                </Col>
+              </>
+            )}
+            {errors['incremental_backup_frequency'] && (
+              <Col lg={12} className="no-padding help-block standard-error">
+                {errors['incremental_backup_frequency']}
+              </Col>
+            )}
+          </Col>
+        </Row>
+      )}
       {!isYbcEnabledinCurrentUniverse && (
         <Row>
           <Col lg={6} className="no-padding">
@@ -696,7 +810,7 @@ function BackupConfigurationForm({
               }}
               minVal={1}
               label="Parallel threads (Optional)"
-              readOnly={isEditMode}
+              readOnly={isEditMode || isIncrementalBackup}
             />
             {errors['parallel_threads'] && (
               <span className="standard-error">{errors['parallel_threads']}</span>
@@ -715,7 +829,7 @@ function BackupConfigurationForm({
         }}
         setFieldValue={setFieldValue}
         values={values}
-        isEditMode={isEditMode}
+        isEditMode={isEditMode || isIncrementalBackup}
       />
     </div>
   );
@@ -792,9 +906,11 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
             <Col lg={12} className="no-padding table-list">
               {tablesInKeyspaces
                 ?.filter(
+                  // eslint-disable-next-line @typescript-eslint/prefer-includes
                   (t) => t.tableName.toLowerCase().indexOf(values['search_text'].toLowerCase()) > -1
                 )
                 .filter((t) => !find(values['selected_ycql_tables'], { tableName: t.tableName }))
+                // eslint-disable-next-line react/display-name
                 .map((t) => {
                   return (
                     <div className="table-item" key={t.tableUUID}>

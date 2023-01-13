@@ -13,8 +13,7 @@
 //
 // This file contains the classes that represent a QL row and a row block.
 
-#ifndef YB_COMMON_QL_ROWBLOCK_H
-#define YB_COMMON_QL_ROWBLOCK_H
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -22,12 +21,13 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
 
 class Slice;
-class faststring;
+class WriteBuffer;
 
 //------------------------------------------ QL row ----------------------------------------
 // A QL row. It uses QLValue to store the column values.
@@ -68,7 +68,7 @@ class QLRow {
   //----------------------------- serializer / deserializer ---------------------------------
   // Note: QLRow's serialize / deserialize methods are private because we expect QL rows
   // to be serialized / deserialized as part of a row block. See QLRowBlock.
-  void Serialize(QLClient client, faststring* buffer) const;
+  void Serialize(QLClient client, WriteBuffer* buffer) const;
   Status Deserialize(QLClient client, Slice* data);
 
   std::shared_ptr<const Schema> schema_;
@@ -116,18 +116,20 @@ class QLRowBlock {
   std::string ToString() const;
 
   //----------------------------- serializer / deserializer ---------------------------------
-  void Serialize(QLClient client, faststring* buffer) const;
+  void Serialize(QLClient client, WriteBuffer* buffer) const;
+  std::string SerializeToString() const;
+  RefCntSlice SerializeToRefCntSlice() const;
   Status Deserialize(QLClient client, Slice* data);
 
   //-------------------------- utility functions for rows data ------------------------------
   // Return row count.
-  static Result<size_t> GetRowCount(QLClient client, const std::string& data);
+  static Result<size_t> GetRowCount(QLClient client, const std::string_view& data);
 
   // Append rows data. Caller should ensure the column schemas are the same.
-  static Status AppendRowsData(QLClient client, const std::string& src, std::string* dst);
+  static Status AppendRowsData(QLClient client, const RefCntSlice& src, RefCntSlice* dst);
 
   // Return rows data of 0 (empty) rows.
-  static std::string ZeroRowsData(QLClient client);
+  static RefCntBuffer ZeroRowsData(QLClient client);
 
  private:
   // Schema of the selected columns. (Note: this schema has no key column definitions)
@@ -137,5 +139,3 @@ class QLRowBlock {
 };
 
 } // namespace yb
-
-#endif // YB_COMMON_QL_ROWBLOCK_H

@@ -44,6 +44,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_util.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
@@ -63,13 +64,14 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
 using std::pair;
+using std::string;
 
 using yb::consensus::Consensus;
 using yb::consensus::ConsensusOptions;
@@ -229,10 +231,11 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
     return Status::OK();
   }
   return ForAllTablets(this, [mode, flags](TabletPeer* tablet_peer) -> Status {
-    if (!tablet_peer->tablet()) {
+    auto tablet = tablet_peer->shared_tablet();
+    if (!tablet) {
       return Status::OK();
     }
-    return tablet_peer->tablet()->Flush(mode, flags);
+    return tablet->Flush(mode, flags);
   });
 }
 
@@ -241,16 +244,21 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     return Status::OK();
   }
   return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) {
-    if (tablet_peer->tablet()) {
-      tablet_peer->tablet()->TEST_ForceRocksDBCompact(skip_flush);
+    auto tablet = tablet_peer->shared_tablet();
+    if (tablet) {
+      tablet->TEST_ForceRocksDBCompact(skip_flush);
     }
     return Status::OK();
   });
 }
 
 Status MiniTabletServer::SwitchMemtables() {
-  return ForAllTablets(this, [](TabletPeer* tablet_peer) {
-    return tablet_peer->tablet()->TEST_SwitchMemtable();
+  return ForAllTablets(this, [](TabletPeer* tablet_peer) -> Status {
+    auto tablet = tablet_peer->shared_tablet();
+    if (!tablet) {
+      return Status::OK();
+    }
+    return tablet->TEST_SwitchMemtable();
   });
 }
 
@@ -306,7 +314,8 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
   pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(schema_with_ids);
 
   auto table_info = std::make_shared<tablet::TableInfo>(
-      tablet::Primary::kTrue, table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
+      consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()), tablet::Primary::kTrue,
+      table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
       boost::none /* index_info */, 0 /* schema_version */, partition.first);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(

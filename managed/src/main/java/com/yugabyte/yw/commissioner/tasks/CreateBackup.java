@@ -24,7 +24,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -41,6 +40,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -84,9 +84,6 @@ public class CreateBackup extends UniverseTaskBase {
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
       isUniverseLocked = true;
-      // Update universe 'backupInProgress' flag to true or throw an exception if universe is
-      // already having a backup in progress.
-      lockedUpdateBackupState(true);
       try {
         // Check if the storage config is in active state or not.
         CustomerConfig customerConfig =
@@ -121,10 +118,22 @@ public class CreateBackup extends UniverseTaskBase {
 
         taskInfo = String.join(",", tablesToBackup);
 
+        getRunnableTask().runSubTasks();
         unlockUniverseForUpdate();
         isUniverseLocked = false;
-        getRunnableTask().runSubTasks();
 
+        Backup currentBackup = Backup.getOrBadRequest(params().customerUUID, backup.backupUUID);
+        if (ybcBackup) {
+          if (!currentBackup.baseBackupUUID.equals(currentBackup.backupUUID)) {
+            Backup baseBackup =
+                Backup.getOrBadRequest(params().customerUUID, currentBackup.baseBackupUUID);
+            baseBackup.onIncrementCompletion(currentBackup.getCreateTime());
+            // Unset expiry time for increment, only the base backup's expiry is what we need.
+            currentBackup.onCompletion();
+          } else {
+            currentBackup.onCompletion();
+          }
+        }
         BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
@@ -132,7 +141,14 @@ public class CreateBackup extends UniverseTaskBase {
       } catch (CancellationException ce) {
         log.error("Aborting backups for task: {}", userTaskUUID);
         Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
-            .forEach(backup -> backup.transitionState(BackupState.Stopped));
+            .forEach(
+                backup -> {
+                  backup.transitionState(BackupState.Stopped);
+                  backup.setCompletionTime(new Date());
+                  backup.save();
+                });
+        unlockUniverseForUpdate(false);
+        isUniverseLocked = false;
         throw ce;
       } catch (Throwable t) {
         if (params().alterLoadBalancer) {
@@ -145,8 +161,6 @@ public class CreateBackup extends UniverseTaskBase {
           getRunnableTask().runSubTasks();
         }
         throw t;
-      } finally {
-        lockedUpdateBackupState(false);
       }
     } catch (Throwable t) {
       try {
@@ -157,6 +171,8 @@ public class CreateBackup extends UniverseTaskBase {
                 backup -> {
                   if (backup.state.equals(BackupState.InProgress)) {
                     backup.transitionState(BackupState.Failed);
+                    backup.setCompletionTime(new Date());
+                    backup.save();
                   }
                 });
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
@@ -199,12 +215,13 @@ public class CreateBackup extends UniverseTaskBase {
     boolean shouldTakeBackup =
         !universe.getUniverseDetails().universePaused
             && config.get(Universe.TAKE_BACKUPS).equals("true");
-    if (alreadyRunning
-        || !shouldTakeBackup
-        || universe.getUniverseDetails().backupInProgress
-        || universe.getUniverseDetails().updateInProgress) {
+    if (alreadyRunning || !shouldTakeBackup || universe.getUniverseDetails().updateInProgress) {
       if (shouldTakeBackup) {
-        schedule.updateBacklogStatus(true);
+        if (baseBackupUUID == null) {
+          // Update backlog status only for full backup as we don't store expected task time
+          // for incremental backups and check its requirement in every 2 minutes.
+          schedule.updateBacklogStatus(true);
+        }
         log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(

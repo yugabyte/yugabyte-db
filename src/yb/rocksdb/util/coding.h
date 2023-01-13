@@ -25,8 +25,6 @@
 // * Fixed-length numbers are encoded with least-significant byte first
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
-#ifndef YB_ROCKSDB_UTIL_CODING_H
-#define YB_ROCKSDB_UTIL_CODING_H
 
 #pragma once
 
@@ -40,6 +38,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/slice_parts.h"
 
 namespace rocksdb {
 
@@ -346,5 +345,3 @@ inline Slice GetSliceUntil(Slice* slice, char delimiter) {
 }
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_UTIL_CODING_H

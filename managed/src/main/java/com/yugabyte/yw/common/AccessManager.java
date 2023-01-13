@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,16 +12,20 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.AccessKeyFormData;
-import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.annotation.Transactional;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,17 +45,26 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
 public class AccessManager extends DevopsBase {
 
-  @Inject play.Configuration appConfig;
-  @Inject Commissioner commissioner;
+  private final play.Configuration appConfig;
+  private final Commissioner commissioner;
 
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
-  private static final String PEM_PERMISSIONS = "r--------";
-  private static final String PUB_PERMISSIONS = "rw-r--r--";
+  public static final String PEM_PERMISSIONS = "r--------";
+  public static final String PUB_PERMISSIONS = "rw-r--r--";
+  private static final String KUBECONFIG_PERMISSIONS = "rw-------";
+  public static final String STORAGE_PATH = "yb.storage.path";
+
+  @Inject
+  public AccessManager(play.Configuration appConfig, Commissioner commissioner) {
+    this.appConfig = appConfig;
+    this.commissioner = commissioner;
+  }
 
   @Override
   protected String getCommandType() {
@@ -74,8 +87,20 @@ public class AccessManager extends DevopsBase {
     }
   }
 
-  private String getOrCreateKeyFilePath(UUID providerUUID) {
-    File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
+  @Transactional
+  private void writeKeyFileData(AccessKey.KeyInfo keyInfo) {
+    FileData.writeFileToDB(keyInfo.vaultFile);
+    FileData.writeFileToDB(keyInfo.vaultPasswordFile);
+    if (keyInfo.privateKey != null) {
+      FileData.writeFileToDB(keyInfo.privateKey);
+    }
+    if (keyInfo.publicKey != null) {
+      FileData.writeFileToDB(keyInfo.publicKey);
+    }
+  }
+
+  public String getOrCreateKeyFilePath(UUID providerUUID) {
+    File keyBasePathName = new File(appConfig.getString(STORAGE_PATH), "/keys");
     // Protect against multi-threaded access and validate that we only error out if mkdirs fails
     // correctly, by NOT creating the final dir path.
     synchronized (this) {
@@ -94,7 +119,7 @@ public class AccessManager extends DevopsBase {
   }
 
   private String getOrCreateKeyFilePath(String path) {
-    File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
+    File keyBasePathName = new File(appConfig.getString(STORAGE_PATH), "/keys");
     // Protect against multi-threaded access and validate that we only error out if mkdirs fails
     // correctly, by NOT creating the final dir path.
     synchronized (this) {
@@ -194,14 +219,21 @@ public class AccessManager extends DevopsBase {
     }
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
-    keyInfo.sshUser = sshUser;
-    keyInfo.sshPort = sshPort;
-    keyInfo.airGapInstall = airGapInstall;
-    keyInfo.skipProvisioning = skipProvisioning;
-    keyInfo.ntpServers = ntpServers;
-    keyInfo.setUpChrony = setUpChrony;
-    keyInfo.showSetUpChrony = showSetUpChrony;
     keyInfo.deleteRemote = deleteRemote;
+
+    // TODO: Move this code for ProviderDetails update elsewhere
+    ProviderDetails details = region.provider.details;
+    details.sshUser = sshUser;
+    details.sshPort = sshPort;
+    details.airGapInstall = airGapInstall;
+    details.skipProvisioning = skipProvisioning;
+    details.ntpServers = ntpServers;
+    details.setUpChrony = setUpChrony;
+    details.showSetUpChrony = showSetUpChrony;
+    region.provider.save();
+
+    writeKeyFileData(keyInfo);
+
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
@@ -217,7 +249,7 @@ public class AccessManager extends DevopsBase {
       boolean setUpChrony,
       List<String> ntpServers,
       boolean showSetUpChrony,
-      boolean overrideKeyValidate) {
+      boolean skipKeyPairValidate) {
     AccessKey key = null;
     Path tempFile = null;
 
@@ -243,7 +275,7 @@ public class AccessManager extends DevopsBase {
 
       File pemFile = new File(key.getKeyInfo().privateKey);
       // Delete is always false and we don't even try to make AWS calls.
-      if (!overrideKeyValidate) {
+      if (!skipKeyPairValidate) {
         key =
             addKey(
                 regionUUID,
@@ -343,6 +375,7 @@ public class AccessManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
+
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
 
     commandArgs.add("--key_pair_name");
@@ -382,7 +415,7 @@ public class AccessManager extends DevopsBase {
       keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
       if (sshUser != null) {
-        keyInfo.sshUser = sshUser;
+        region.provider.details.sshUser = sshUser;
       } else {
         switch (Common.CloudType.valueOf(region.provider.code)) {
           case aws:
@@ -390,17 +423,19 @@ public class AccessManager extends DevopsBase {
           case gcp:
             String defaultSshUser = Common.CloudType.valueOf(region.provider.code).getSshUser();
             if (defaultSshUser != null && !defaultSshUser.isEmpty()) {
-              keyInfo.sshUser = defaultSshUser;
+              region.provider.details.sshUser = defaultSshUser;
             }
         }
       }
-      keyInfo.sshPort = sshPort;
-      keyInfo.airGapInstall = airGapInstall;
-      keyInfo.skipProvisioning = skipProvisioning;
-      keyInfo.setUpChrony = setUpChrony;
-      keyInfo.ntpServers = ntpServers;
-      keyInfo.showSetUpChrony = showSetupChrony;
+      region.provider.details.sshPort = sshPort;
+      region.provider.details.airGapInstall = airGapInstall;
+      region.provider.details.skipProvisioning = skipProvisioning;
+      region.provider.details.setUpChrony = setUpChrony;
+      region.provider.details.ntpServers = ntpServers;
+      region.provider.details.showSetUpChrony = showSetupChrony;
+      writeKeyFileData(keyInfo);
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
+      region.provider.save();
     }
 
     // Save if key needs to be deleted
@@ -495,6 +530,7 @@ public class AccessManager extends DevopsBase {
       ObjectMapper mapper = new ObjectMapper();
       String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
       mapper.writeValue(new File(credentialsFilePath), credentials);
+      FileData.writeFileToDB(credentialsFilePath);
       return credentialsFilePath;
     } catch (Exception e) {
       throw new RuntimeException("Failed to create credentials file", e);
@@ -531,8 +567,12 @@ public class AccessManager extends DevopsBase {
     if (!edit && Files.exists(configFile)) {
       throw new RuntimeException("File " + configFile.getFileName() + " already exists.");
     }
+
+    Set<PosixFilePermission> ownerRW = PosixFilePermissions.fromString(KUBECONFIG_PERMISSIONS);
     try {
       Files.write(configFile, configFileContent.getBytes());
+      Files.setPosixFilePermissions(configFile, ownerRW);
+      FileData.writeFileToDB(configFile.toAbsolutePath().toString());
       return configFile.toAbsolutePath().toString();
     } catch (Exception e) {
       throw new RuntimeException("Failed to create kubernetes config", e);
@@ -557,6 +597,7 @@ public class AccessManager extends DevopsBase {
     }
     try {
       Files.write(pullSecretFile, pullSecretFileContent.getBytes());
+      FileData.writeFileToDB(pullSecretFile.toAbsolutePath().toString());
       return pullSecretFile.toAbsolutePath().toString();
     } catch (Exception e) {
       throw new RuntimeException("Failed to create pull secret", e);
@@ -606,20 +647,25 @@ public class AccessManager extends DevopsBase {
     }
     // fill missing access key params using latest created key
     AccessKey latestAccessKey = AccessKey.getLatestKey(providerUUID);
-    AccessKey.KeyInfo keyInfo = latestAccessKey.getKeyInfo();
+    final Provider provider = Provider.getOrBadRequest(providerUUID);
+    AccessKey.MigratedKeyInfoFields keyInfo = provider.details;
     formData.sshUser = setOrValidate(formData.sshUser, keyInfo.sshUser, "sshUser");
     formData.sshPort = setOrValidate(formData.sshPort, keyInfo.sshPort, "sshPort");
     formData.nodeExporterUser =
         setOrValidate(formData.nodeExporterUser, keyInfo.nodeExporterUser, "nodeExporterUser");
     formData.nodeExporterPort =
         setOrValidate(formData.nodeExporterPort, keyInfo.nodeExporterPort, "nodeExporterPort");
-    checkEqual(formData.airGapInstall, keyInfo.airGapInstall, "airGapInstall");
-    checkEqual(formData.skipProvisioning, keyInfo.skipProvisioning, "skipProvisioning");
-    checkEqual(formData.setUpChrony, keyInfo.setUpChrony, "setUpChrony");
-    checkEqual(formData.showSetUpChrony, keyInfo.showSetUpChrony, "showSetUpChrony");
-    checkEqual(
-        formData.passwordlessSudoAccess, keyInfo.passwordlessSudoAccess, "passwordlessSudoAccess");
-    checkEqual(formData.installNodeExporter, keyInfo.installNodeExporter, "installNodeExporter");
+
+    // These fields are not required during creating a new access key. This information
+    // will be missing during rotation. Therefore, copying the information present in the latest
+    // access key(for the first access key creation information will be populated during provider
+    // creation, which will be passed on during subsequent creation).
+    formData.airGapInstall = keyInfo.airGapInstall;
+    formData.skipProvisioning = keyInfo.skipProvisioning;
+    formData.setUpChrony = keyInfo.setUpChrony;
+    formData.showSetUpChrony = keyInfo.showSetUpChrony;
+    formData.passwordlessSudoAccess = keyInfo.passwordlessSudoAccess;
+    formData.installNodeExporter = keyInfo.installNodeExporter;
     return formData;
   }
 
@@ -648,5 +694,42 @@ public class AccessManager extends DevopsBase {
     if (formParam != providerKeyParam) {
       failAccessKeyRequest(param);
     }
+  }
+
+  /**
+   * Checks whether the private access keys have the valid permission.
+   *
+   * @param universe
+   * @param allAccessKeyMap
+   * @return true if access keys permission is unchanged.
+   */
+  public boolean checkAccessKeyPermissionsValidity(
+      Universe universe, Map<AccessKeyId, AccessKey> allAccessKeysMap) {
+    return !universe
+        .getUniverseDetails()
+        .clusters
+        .stream()
+        .anyMatch(
+            cluster -> {
+              String keyCode = cluster.userIntent.accessKeyCode;
+              UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+              if (!StringUtils.isEmpty(keyCode)) {
+                AccessKeyId id = AccessKeyId.create(providerUUID, keyCode);
+                AccessKey accessKey = allAccessKeysMap.get(id);
+                String keyFilePath = accessKey.getKeyInfo().privateKey;
+                try {
+                  String permissions =
+                      PosixFilePermissions.toString(
+                          Files.getPosixFilePermissions(Paths.get(keyFilePath)));
+                  if (!permissions.equals(PEM_PERMISSIONS)) {
+                    return true;
+                  }
+                } catch (IOException e) {
+                  log.error("Error while fetching permissions of access key: {}", e);
+                  return true;
+                }
+              }
+              return false;
+            });
   }
 }

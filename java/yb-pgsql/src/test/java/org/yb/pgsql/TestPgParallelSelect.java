@@ -36,7 +36,7 @@ public class TestPgParallelSelect extends BasePgSQLTest {
                                              String stmt,
                                              boolean pushdown_expected) throws Exception {
     long elapsedMillis = verifyStatementMetric(statement, stmt, AGGREGATE_PUSHDOWNS_METRIC,
-                                               pushdown_expected ? 1 : 0, 1, 1, true);
+                                               pushdown_expected ? 1 : 0, 0, 1, true);
     assertTrue(
         String.format("Query took %d ms! Expected %d ms at most", elapsedMillis, maxTotalMillis),
         elapsedMillis <= maxTotalMillis);

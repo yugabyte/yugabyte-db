@@ -21,8 +21,7 @@
 // The implementation for these should typically call (and/or extend) either the PG/YSQL C API
 // from pgapi.h or  directly the pggate C++ API.
 
-#ifndef YB_DOCDB_DOCDB_PGAPI_H_
-#define YB_DOCDB_DOCDB_PGAPI_H_
+#pragma once
 
 #include <map>
 #include <unordered_map>
@@ -30,6 +29,8 @@
 
 #include "yb/common/column_id.h"
 #include "yb/common/common_fwd.h"
+
+#include "yb/master/master_replication.pb.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/decimal.h"
@@ -66,6 +67,8 @@ struct DocPgVarRef {
 
 const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type);
 
+Status DocPgInit();
+
 //-----------------------------------------------------------------------------
 // Expressions/Values
 //-----------------------------------------------------------------------------
@@ -97,18 +100,19 @@ Status DocPgEvalExpr(YbgPreparedExpr expr,
 // array, and store the individual elements in 'ql_value_vec';
 Result<std::vector<std::string>> ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value);
 
-Status SetValueFromQLBinary(const QLValuePB ql_value,
-                            const int pg_data_type,
-                            const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
-                            DatumMessagePB* cdc_datum_message = NULL);
+Status SetValueFromQLBinary(
+    const QLValuePB ql_value,
+    const int pg_data_type,
+    const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>> &composite_atts_map,
+    DatumMessagePB *cdc_datum_message = NULL);
 
 Status SetValueFromQLBinaryHelper(
     const QLValuePB ql_value,
     const int elem_type,
     const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>> &composite_atts_map,
     DatumMessagePB *cdc_datum_message = NULL);
 
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_DOCDB_PGAPI_H_

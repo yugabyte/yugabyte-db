@@ -24,7 +24,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
         <div class="title">Back up and restore YugabyteDB Anywhere</div>
       </div>
       <div class="body">
-        Back up and restore YugabyteDB Anywhere server.
+        Back up and restore the YugabyteDB Anywhere server.
       </div>
     </a>
   </div>

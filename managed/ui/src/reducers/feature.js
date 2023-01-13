@@ -16,16 +16,15 @@ const initialStateFeatureInTest = {
   enableOIDC: true,
   supportBundle: false,
   enableThirdpartyUpgrade: false,
-  topNodeMetrics: false,
-  enableYbc: false,
+  enableYbc: true,
   enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
-  allowOptionalAuth: false,
-  enableTopKMetrics: false,
-  enablePITR: false,
+  enableRunTimeConfig: false,
+  enablePITR: true,
   enableDedicatedNodes: false,
-  enableNotificationTemplates: false
+  enableNotificationTemplates: false,
+  enablePrefillKubeConfig: false,
 };
 
 const initialStateFeatureReleased = {
@@ -44,16 +43,15 @@ const initialStateFeatureReleased = {
   enableOIDC: true,
   supportBundle: true,
   enableThirdpartyUpgrade: false,
-  topNodeMetrics: false,
-  enableYbc: false,
+  enableYbc: true,
   enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
-  enableTopKMetrics: false,
-  allowOptionalAuth: false,
-  enablePITR: false,
+  enableRunTimeConfig: false,
+  enablePITR: true,
   enableDedicatedNodes: false,
-  enableNotificationTemplates: false
+  enableNotificationTemplates: false,
+  enablePrefillKubeConfig: false
 };
 
 export const FeatureFlag = (

@@ -1,5 +1,6 @@
 autorepr
 boto
+botocore
 codecheck
 compiledb
 distro

@@ -85,7 +85,7 @@ void PTAlterTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
 }
 
 Status PTAlterTable::AppendModColumn(SemContext *sem_context,
-                                             PTAlterColumnDefinition *column) {
+                                     PTAlterColumnDefinition *column) {
   // Make sure column already exists and isn't key column.
   if (column->old_name() != nullptr) {
     const ColumnDesc* desc = sem_context->GetColumnDesc(column->old_name()->last_name());

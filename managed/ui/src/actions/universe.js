@@ -865,7 +865,7 @@ export async function fetchParticularFlag(dbVersion, params) {
 
 export async function validateGFlags(dbVersion, payload) {
   try {
-    const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
+    const apiToken = Cookies.get('apiToken') ?? localStorage.getItem('apiToken');
     if (apiToken && apiToken !== '') {
       axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
     }
@@ -888,4 +888,12 @@ export async function fetchSupportedReleases(pUUID) {
   } catch (e) {
     throw e.response.data;
   }
+}
+
+export function validateHelmYAML(UniverseConfigureTaskParams) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/validate_kubernetes_overrides`, {
+    ...UniverseConfigureTaskParams
+  });
+
 }

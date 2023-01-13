@@ -37,6 +37,8 @@
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
+using std::string;
+
 namespace yb {
 
 TEST(TestPathUtil, BaseNameTest) {

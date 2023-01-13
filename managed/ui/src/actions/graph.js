@@ -10,6 +10,7 @@ export const QUERY_METRICS = 'QUERY_METRICS';
 export const QUERY_METRICS_SUCCESS = 'QUERY_METRICS_SUCCESS';
 export const QUERY_METRICS_FAILURE = 'QUERY_METRICS_FAILURE';
 export const RESET_METRICS = 'RESET_METRICS';
+export const SELECTED_METRIC_TYPE_TAB = 'SELECTED_METRIC_TYPE_TAB';
 
 export const TOGGLE_PROMETHEUS_QUERY = 'TOGGLE_PROMETHEUS_QUERY';
 
@@ -55,6 +56,13 @@ export function queryMetricsFailure(error, panelType) {
     type: QUERY_METRICS_FAILURE,
     payload: error,
     panelType: panelType
+  };
+}
+
+export function currentTabSelected(tabName) {
+  return {
+    type: SELECTED_METRIC_TYPE_TAB,
+    tabName: tabName
   };
 }
 

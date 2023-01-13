@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ENCRYPTION_HEADER_MANAGER_MOCK_IMPL_H
-#define YB_ENCRYPTION_HEADER_MANAGER_MOCK_IMPL_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -28,7 +27,7 @@ class HeaderManagerMockImpl : public HeaderManager {
   HeaderManagerMockImpl();
   void SetFileEncryption(bool file_encrypted);
 
-  Result<string> SerializeEncryptionParams(
+  Result<std::string> SerializeEncryptionParams(
       const EncryptionParams& encryption_info) override;
 
   Result<EncryptionParamsPtr> DecodeEncryptionParamsFromEncryptionMetadata(
@@ -47,5 +46,3 @@ std::unique_ptr<HeaderManager> GetMockHeaderManager();
 
 } // namespace encryption
 } // namespace yb
-
-#endif // YB_ENCRYPTION_HEADER_MANAGER_MOCK_IMPL_H

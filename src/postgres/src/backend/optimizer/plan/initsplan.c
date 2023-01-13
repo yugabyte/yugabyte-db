@@ -2691,8 +2691,18 @@ check_batchable(RestrictInfo *restrictinfo)
 	Node *outer = leftarg;
 	Node *inner = rightarg;
 
-	if (!IsA(outer, Var) || !IsA(inner, Var))
+	if (!IsA(inner, Var) && !IsA(outer, Var))
 		return;
+
+	int num_batched_rinfos = 2;
+
+	if (!IsA(inner, Var))
+	{
+		outer = rightarg;
+		inner = leftarg;
+		num_batched_rinfos = 1;
+	}
+
 	if (bms_overlap(restrictinfo->left_relids, restrictinfo->right_relids))
 		return;
 
@@ -2701,8 +2711,6 @@ check_batchable(RestrictInfo *restrictinfo)
 	Oid innerType = exprType(inner);
 	int innerTypMod = exprTypmod(inner);
 	Oid opno = opexpr->opno;
-
-	int num_batched_rinfos = 2;
 
 	if (outerType != innerType)
 	{
@@ -2730,6 +2738,12 @@ check_batchable(RestrictInfo *restrictinfo)
 		}
 		
 		/* Casted operand needs to always be on the outer side for now. */
+		/* 
+		 * If we can't swap outer and inner and outer isn't the correct one,
+		 * we can't batch. Bail.
+		 */
+		if (num_batched_rinfos == 1 && outer != coerced)
+			return;
 		outer = coerced;
 
 		char *opname = get_opname(opno);

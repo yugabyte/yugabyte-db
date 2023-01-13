@@ -8,7 +8,8 @@ import { CONST_VAR } from '../helpers/const';
 import { CpuMeasureRecommendation } from '../../../redesign/helpers/dtos';
 import './styles.scss';
 
-var Plotly = require('plotly.js/lib/index-basic.js');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Plotly = require('plotly.js/lib/index-basic.js');
 
 export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
   const { t } = useTranslation();
@@ -39,7 +40,7 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
       !_.isEqual(previousData, data)
     ) {
       const chartData = [avgNodeConnections, maxNodeConnections];
-      var layout = {
+      const layout = {
         showlegend: false,
         autosize: true,
         height: 170,
@@ -72,5 +73,5 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
       <div id="connectionsSkewGraph" >
       </div>
     </div>
-  )
-}
+  );
+};

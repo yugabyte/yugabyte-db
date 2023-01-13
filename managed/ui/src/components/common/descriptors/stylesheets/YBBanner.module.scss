@@ -1,0 +1,43 @@
+@import '../../../../_style/colors.scss';
+
+.bannerContainer {
+  display: flex;
+
+  padding: 15px 18px;
+
+  border: 1px solid $YB_GRAY_BORDER;
+  border-radius: 4px;
+  font-size: 14px;
+
+  .icon {
+    align-self: center;
+
+    height: fit-content;
+  }
+
+  .childrenContainer {
+    width: 100%;
+
+    &:not(:first-child) {
+      margin-left: 10px;
+    }
+  }
+
+  &.warning {
+    background: $YB_BANNER_WARNING_BACKGROUND;
+    border: 1px solid $YB_BANNER_WARNING_BORDER;
+
+    .icon {
+      color: $YB_WARNING_ICON_COLOR;
+    }
+  }
+
+  &.danger {
+    background: $YB_BANNER_ERROR_BACKGROUND;
+    border: 1px solid $YB_BANNER_ERROR_BORDER;
+
+    .icon {
+      color: $YB_ERROR_ICON_COLOR;
+    }
+  }
+}

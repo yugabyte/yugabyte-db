@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_CQL_TEST_UTIL_H
-#define YB_INTEGRATION_TESTS_CQL_TEST_UTIL_H
+#pragma once
 
 #include <cassandra.h>
 
@@ -134,6 +133,8 @@ class CassandraResult {
 
   std::string RenderToString(const std::string& line_separator = ";",
                              const std::string& value_separator = ",") const;
+
+  bool HasMorePages() const;
 
   const CassResult* get() const { return cass_result_.get(); }
 
@@ -316,6 +317,7 @@ class CppCassandraDriver {
   Result<CassandraSession> CreateSession();
 
   void EnableTLS(const std::vector<std::string>& ca_certs);
+  void SetCredentials(const std::string& username, const std::string& password);
 
  private:
   CassCluster* cass_cluster_ = nullptr;
@@ -350,5 +352,3 @@ extern const std::string kCqlTestKeyspace;
 Result<CassandraSession> EstablishSession(CppCassandraDriver* driver);
 
 } // namespace yb
-
-#endif // YB_INTEGRATION_TESTS_CQL_TEST_UTIL_H

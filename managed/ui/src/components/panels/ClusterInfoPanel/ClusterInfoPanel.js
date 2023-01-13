@@ -34,9 +34,9 @@ export default class ClusterInfoPanel extends Component {
     } else if (type === 'read-replica') {
       cluster = getReadOnlyCluster(clusters);
     }
-    const userIntent = cluster && cluster.userIntent;
+    const userIntent = cluster?.userIntent;
     const connectStringPanelItemsShrink = [
-      !insecure && { name: 'Instance Type', data: userIntent && userIntent.instanceType },
+      !insecure && { name: 'Instance Type', data: userIntent?.instanceType },
       { name: 'Replication Factor', data: userIntent.replicationFactor }
     ];
 

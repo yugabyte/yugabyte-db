@@ -18,11 +18,8 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TOOLS_SST_DUMP_TOOL_IMP_H
-#define YB_ROCKSDB_TOOLS_SST_DUMP_TOOL_IMP_H
 
 #pragma once
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/sst_dump_tool.h"
 
@@ -74,7 +71,7 @@ class SstFileReader {
                         const EnvOptions& soptions,
                         const InternalKeyComparator& internal_comparator,
                         uint64_t file_size,
-                        unique_ptr<TableReader>* table_reader);
+                        std::unique_ptr<TableReader>* table_reader);
 
   std::string file_name_;
   uint64_t read_num_;
@@ -84,18 +81,14 @@ class SstFileReader {
   EnvOptions soptions_;
 
   Status init_result_;
-  unique_ptr<TableReader> table_reader_;
-  unique_ptr<RandomAccessFileReader> file_;
+  std::unique_ptr<TableReader> table_reader_;
+  std::unique_ptr<RandomAccessFileReader> file_;
   // options_ and internal_comparator_ will also be used in
   // ReadSequential internally (specifically, seek-related operations)
   Options options_;
   const ImmutableCFOptions ioptions_;
   std::shared_ptr<InternalKeyComparator> internal_comparator_;
-  unique_ptr<TableProperties> table_properties_;
+  std::unique_ptr<TableProperties> table_properties_;
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE
-
-#endif // YB_ROCKSDB_TOOLS_SST_DUMP_TOOL_IMP_H

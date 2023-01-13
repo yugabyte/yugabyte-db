@@ -51,6 +51,9 @@
 
 #include "yb/util/result.h"
 
+using std::unique_ptr;
+using std::shared_ptr;
+
 namespace rocksdb {
 
 class TableFactory;

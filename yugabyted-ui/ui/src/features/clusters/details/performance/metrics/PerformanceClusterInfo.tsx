@@ -2,7 +2,7 @@ import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Grid, makeStyles, Paper, Typography } from '@material-ui/core';
 
-import type { ClusterData, RegionListResponseDataItem } from '@app/api/src';
+import type { ClusterData } from '@app/api/src';
 import { convertMBtoGB, getFaultTolerance } from '@app/helpers';
 
 const useStyles = makeStyles((theme) => ({
@@ -41,7 +41,6 @@ const useStyles = makeStyles((theme) => ({
 interface ClusterInfoProps {
   cluster?: ClusterData;
   region?: string;
-  availableRegions: RegionListResponseDataItem[];
 }
 
 export const PerformanceClusterInfo: FC<ClusterInfoProps> = ({ cluster, region }) => {

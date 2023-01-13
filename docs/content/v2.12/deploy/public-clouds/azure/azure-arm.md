@@ -20,7 +20,7 @@ type: docs
   </li>
   <li >
     <a href="../aks" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Azure Kubernetes Service (AKS)
     </a>
   </li>

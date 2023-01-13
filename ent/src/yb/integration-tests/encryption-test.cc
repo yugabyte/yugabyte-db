@@ -32,6 +32,8 @@
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 
+using std::string;
+
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);

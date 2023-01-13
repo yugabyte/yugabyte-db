@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -42,6 +43,7 @@ public class PriceComponent extends Model {
     return idKey;
   }
 
+  @JsonIgnore
   public Provider getProvider() {
     if (this.provider == null) {
       setProviderUuid(this.idKey.providerUuid);
@@ -49,15 +51,18 @@ public class PriceComponent extends Model {
     return this.provider;
   }
 
+  @JsonIgnore
   public void setProvider(Provider aProvider) {
     provider = aProvider;
     idKey.providerUuid = aProvider.uuid;
   }
 
+  @JsonIgnore
   public UUID getProviderUuid() {
     return this.idKey.providerUuid;
   }
 
+  @JsonIgnore
   public void setProviderUuid(UUID providerUuid) {
     Provider provider = Provider.get(providerUuid);
     if (provider != null) {
@@ -67,6 +72,7 @@ public class PriceComponent extends Model {
     }
   }
 
+  @JsonIgnore
   public String getProviderCode() {
     Provider provider = getProvider();
     return provider != null ? provider.code : null;
@@ -85,7 +91,6 @@ public class PriceComponent extends Model {
 
   public void setPriceDetails(PriceDetails details) {
     this.priceDetailsJson = Json.stringify(Json.toJson(details));
-    this.save();
   }
 
   public PriceDetails priceDetails = new PriceDetails();
@@ -175,6 +180,7 @@ public class PriceComponent extends Model {
     }
     PriceDetails details = priceDetails == null ? new PriceDetails() : priceDetails;
     component.setPriceDetails(details);
+    component.save();
     return component;
   }
 

@@ -24,6 +24,7 @@ namespace yb {
 namespace master {
 
 using std::string;
+using std::vector;
 using tserver::TabletServerErrorPB;
 
 ////////////////////////////////////////////////////////////

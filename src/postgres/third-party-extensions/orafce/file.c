@@ -31,6 +31,8 @@
 #include "utils/memutils.h"
 #include "orafce.h"
 #include "builtins.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+#include "pg_yb_utils.h"
 
 #ifndef ERRCODE_NO_DATA_FOUND
 #define ERRCODE_NO_DATA_FOUND				MAKE_SQLSTATE('P','0', '0','0','2')
@@ -212,6 +214,8 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	char	   *fullname;
 	int			d;
 
+	YBCheckServerAccessIsAllowed();
+
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
 	NOT_NULL_ARG(2);
@@ -292,6 +296,8 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 Datum
 utl_file_is_open(PG_FUNCTION_ARGS)
 {
+	YBCheckServerAccessIsAllowed();
+
 	if (!PG_ARGISNULL(0))
 	{
 		int	i;
@@ -408,6 +414,8 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 	text   *result;
 	bool	iseof;
 
+	YBCheckServerAccessIsAllowed();
+
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
 
@@ -449,6 +457,8 @@ utl_file_get_nextline(PG_FUNCTION_ARGS)
 	FILE   *f;
 	text   *result;
 	bool	iseof;
+
+	YBCheckServerAccessIsAllowed();
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
@@ -549,6 +559,8 @@ do_put(PG_FUNCTION_ARGS)
 Datum
 utl_file_put(PG_FUNCTION_ARGS)
 {
+	YBCheckServerAccessIsAllowed();
+
 	do_put(fcinfo);
 	PG_RETURN_BOOL(true);
 }
@@ -575,6 +587,8 @@ utl_file_put_line(PG_FUNCTION_ARGS)
 	FILE   *f;
 	bool	autoflush;
 
+	YBCheckServerAccessIsAllowed();
+
 	f = do_put(fcinfo);
 
 	autoflush = PG_GETARG_IF_EXISTS(2, BOOL, false);
@@ -592,6 +606,8 @@ utl_file_new_line(PG_FUNCTION_ARGS)
 {
 	FILE   *f;
 	int		lines;
+
+	YBCheckServerAccessIsAllowed();
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), NULL, NULL);
@@ -628,6 +644,8 @@ utl_file_putf(PG_FUNCTION_ARGS)
 	char   *fpt;
 	int		cur_par = 0;
 	size_t	cur_len = 0;
+
+	YBCheckServerAccessIsAllowed();
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
@@ -693,6 +711,8 @@ utl_file_fflush(PG_FUNCTION_ARGS)
 {
 	FILE *f;
 
+	YBCheckServerAccessIsAllowed();
+
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), NULL, NULL);
 	do_flush(f);
@@ -718,6 +738,8 @@ utl_file_fclose(PG_FUNCTION_ARGS)
 {
 	int i;
 	int	d = PG_GETARG_INT32(0);
+
+	YBCheckServerAccessIsAllowed();
 
 	for (i = 0; i < MAX_SLOTS; i++)
 	{
@@ -753,6 +775,8 @@ Datum
 utl_file_fclose_all(PG_FUNCTION_ARGS)
 {
 	int i;
+
+	YBCheckServerAccessIsAllowed();
 
 	for (i = 0; i < MAX_SLOTS; i++)
 	{
@@ -956,6 +980,8 @@ utl_file_fremove(PG_FUNCTION_ARGS)
 {
 	char	   *fullname;
 
+	YBCheckServerAccessIsAllowed();
+
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
 
@@ -981,6 +1007,8 @@ utl_file_frename(PG_FUNCTION_ARGS)
 	char	   *srcpath;
 	char	   *dstpath;
 	bool		overwrite;
+
+	YBCheckServerAccessIsAllowed();
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -1025,6 +1053,8 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 	int			end_line;
 	FILE	   *srcfile;
 	FILE	   *dstfile;
+
+	YBCheckServerAccessIsAllowed();
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -1135,6 +1165,8 @@ utl_file_fgetattr(PG_FUNCTION_ARGS)
 	Datum		values[3];
 	bool		nulls[3] = { 0 };
 
+	YBCheckServerAccessIsAllowed();
+
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
 
@@ -1170,6 +1202,8 @@ utl_file_fgetattr(PG_FUNCTION_ARGS)
 Datum
 utl_file_tmpdir(PG_FUNCTION_ARGS)
 {
+	YBCheckServerAccessIsAllowed();
+
 #ifndef WIN32
 	const char *tmpdir = getenv("TMPDIR");
 

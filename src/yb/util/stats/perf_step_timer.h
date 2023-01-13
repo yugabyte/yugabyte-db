@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STATS_PERF_STEP_TIMER_H
-#define YB_UTIL_STATS_PERF_STEP_TIMER_H
+#pragma once
 
 #include "yb/util/env.h"
 #include "yb/util/stats/perf_level_imp.h"
@@ -68,5 +67,3 @@ class PerfStepTimer {
 };
 
 }  // namespace yb
-
-#endif // YB_UTIL_STATS_PERF_STEP_TIMER_H

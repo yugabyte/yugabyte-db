@@ -31,16 +31,17 @@
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_int32(stream_compression_algo, 0, "Algorithm used for stream compression. "
+DEFINE_UNKNOWN_int32(stream_compression_algo, 0, "Algorithm used for stream compression. "
                                          "0 - no compression, 1 - gzip, 2 - snappy, 3 - lz4.");
 
 namespace yb {
 namespace rpc {
 
-using SmallRefCntBuffers = boost::container::small_vector_base<RefCntBuffer>;
+using SmallRefCntBuffers = ByteBlocks;
 
 namespace {
 
@@ -64,7 +65,7 @@ class Compressor {
   virtual ~Compressor() = default;
 };
 
-size_t EntrySize(const RefCntBuffer& buffer) {
+size_t EntrySize(const RefCntSlice& buffer) {
   return buffer.size();
 }
 
@@ -72,11 +73,11 @@ size_t EntrySize(const iovec& iov) {
   return iov.iov_len;
 }
 
-char* EntryData(const RefCntBuffer& buffer) {
+const char* EntryData(const RefCntSlice& buffer) {
   return buffer.data();
 }
 
-char* EntryData(const iovec& iov) {
+const char* EntryData(const iovec& iov) {
   return static_cast<char*>(iov.iov_base);
 }
 
@@ -791,7 +792,7 @@ class CompressedRefiner : public StreamRefiner {
   }
 
   Status Send(OutboundDataPtr data) override {
-    boost::container::small_vector<RefCntBuffer, 10> input;
+    boost::container::small_vector<RefCntSlice, 10> input;
     data->Serialize(&input);
     return compressor_->Compress(input, stream_, std::move(data));
   }

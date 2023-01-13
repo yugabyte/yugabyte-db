@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_PEER_MM_OPS_H_
-#define YB_TABLET_TABLET_PEER_MM_OPS_H_
+#pragma once
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_peer.h"
@@ -51,7 +50,7 @@ namespace tablet {
 // Only one LogGC op can run at a time.
 class LogGCOp : public MaintenanceOp {
  public:
-  explicit LogGCOp(TabletPeer* tablet_peer);
+  explicit LogGCOp(TabletPeer* tablet_peer, const TabletPtr& tablet);
 
   virtual void UpdateStats(MaintenanceOpStats* stats) override;
 
@@ -64,6 +63,7 @@ class LogGCOp : public MaintenanceOp {
   virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
 
  private:
+  TabletPtr tablet_;
   TabletPeer *const tablet_peer_;
   scoped_refptr<Histogram> log_gc_duration_;
   scoped_refptr<AtomicGauge<uint32_t> > log_gc_running_;
@@ -72,5 +72,3 @@ class LogGCOp : public MaintenanceOp {
 
 } // namespace tablet
 } // namespace yb
-
-#endif /* YB_TABLET_TABLET_PEER_MM_OPS_H_ */

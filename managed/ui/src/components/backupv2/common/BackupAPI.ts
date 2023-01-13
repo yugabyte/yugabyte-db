@@ -15,6 +15,7 @@ import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 import {
   BACKUP_API_TYPES,
   Backup_Options_Type,
+  ICommonBackupInfo,
   IStorageConfig,
   ITable,
   ThrottleParameters
@@ -73,13 +74,18 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
   const cUUID = localStorage.getItem('customerId');
   const backupStorageInfoList = values['keyspaces'].map(
     (keyspace: Keyspace_Table, index: number) => {
-      return {
+      const infoList = {
         backupType: backup.backupType,
-        keyspace: keyspace || backup.responseList[index].keyspace,
-        sse: backup.sse,
+        keyspace: keyspace || backup.commonBackupInfo.responseList[index].keyspace,
+        sse: backup.commonBackupInfo.sse,
         storageLocation:
-          backup.responseList[index].storageLocation ?? backup.responseList[index].defaultLocation
+          backup.commonBackupInfo.responseList[index].storageLocation ??
+          backup.commonBackupInfo.responseList[index].defaultLocation
       };
+      if (values.allow_YCQL_conflict_keyspace) {
+        infoList['tableNameList'] = backup.commonBackupInfo.responseList[index].tablesList;
+      }
+      return infoList;
     }
   );
   const payload = {
@@ -87,7 +93,7 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
     backupStorageInfoList: backupStorageInfoList,
     customerUUID: cUUID,
     universeUUID: values['targetUniverseUUID'].value,
-    storageConfigUUID: backup.storageConfigUUID,
+    storageConfigUUID: backup.commonBackupInfo.storageConfigUUID,
     parallelism: values['parallelThreads']
   };
   if (values['kmsConfigUUID']) {
@@ -100,8 +106,8 @@ export function deleteBackup(backupList: IBackup[]) {
   const cUUID = localStorage.getItem('customerId');
   const backup_data = backupList.map((b) => {
     return {
-      backupUUID: b.backupUUID,
-      storageConfigUUID: b.storageConfigUUID
+      backupUUID: b.commonBackupInfo.backupUUID,
+      storageConfigUUID: b.commonBackupInfo.storageConfigUUID
     };
   });
   return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/delete`, {
@@ -111,7 +117,9 @@ export function deleteBackup(backupList: IBackup[]) {
 
 export function cancelBackup(backup: IBackup) {
   const cUUID = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/${backup.backupUUID}/stop`);
+  return axios.post(
+    `${ROOT_URL}/customers/${cUUID}/tasks/${backup.commonBackupInfo.taskUUID}/abort`
+  );
 }
 
 export function getKMSConfigs() {
@@ -120,11 +128,15 @@ export function getKMSConfigs() {
   return axios.get(requestUrl).then((resp) => resp.data);
 }
 
-export function createBackup(values: Record<string, any>) {
+export function createBackup(values: Record<string, any>, isIncrementalBackup = false) {
   const cUUID = localStorage.getItem('customerId');
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups`;
 
   const payload = prepareBackupCreationPayload(values, cUUID);
+
+  if (isIncrementalBackup) {
+    payload['baseBackupUUID'] = values['baseBackupUUID'];
+  }
 
   return axios.post(requestUrl, payload);
 }
@@ -193,7 +205,7 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
 
 export const assignStorageConfig = (backup: IBackup, storageConfig: IStorageConfig) => {
   const cUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backup.backupUUID}`;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backup.commonBackupInfo.backupUUID}`;
   return axios.put(requestUrl, {
     storageConfigUUID: storageConfig.configUUID
   });
@@ -207,8 +219,14 @@ export const fetchThrottleParameters = (universeUUID: string) => {
 
 export const setThrottleParameters = (universeUUID: string, values: ThrottleParameters) => {
   const cUUID = localStorage.getItem('customerId');
+  const payload = {
+    maxConcurrentUploads: values.max_concurrent_uploads,
+    perUploadNumObjects: values.per_upload_num_objects,
+    maxConcurrentDownloads: values.max_concurrent_downloads,
+    perDownloadNumObjects: values.per_download_num_objects
+  };
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
-  return axios.post<ThrottleParameters>(requestUrl, values);
+  return axios.post<ThrottleParameters>(requestUrl, payload);
 };
 
 export const resetThrottleParameterToDefaults = (universeUUID: string) => {
@@ -218,3 +236,39 @@ export const resetThrottleParameterToDefaults = (universeUUID: string) => {
     resetDefaults: true
   });
 };
+
+export const fetchIncrementalBackup = (backupUUID: string) => {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backupUUID}/list_increments`;
+  return axios.get<ICommonBackupInfo[]>(requestUrl);
+};
+
+export const addIncrementalBackup = (backup: IBackup) => {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups`;
+
+  const payload = {
+    backupType: backup.backupType,
+    customerUUID: cUUID,
+    parallelism: backup.commonBackupInfo.parallelism,
+    sse: backup.commonBackupInfo.sse,
+    storageConfigUUID: backup.commonBackupInfo.storageConfigUUID,
+    universeUUID: backup.universeUUID,
+    baseBackupUUID: backup.commonBackupInfo.baseBackupUUID,
+    keyspaceTableList: backup.commonBackupInfo.responseList
+  };
+
+  return axios.post(requestUrl, payload);
+};
+
+export function deleteIncrementalBackup(incrementalBackup: ICommonBackupInfo) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/delete`, {
+    deleteBackupInfos: [
+      {
+        backupUUID: incrementalBackup.backupUUID,
+        storageConfigUUID: incrementalBackup.storageConfigUUID
+      }
+    ]
+  });
+}

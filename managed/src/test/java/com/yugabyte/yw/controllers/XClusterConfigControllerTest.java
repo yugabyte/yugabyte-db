@@ -1,5 +1,7 @@
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AlertTemplate.MEMORY_CONSUMPTION;
+import static com.yugabyte.yw.common.AlertTemplate.REPLICATION_LAG;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -19,6 +21,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -30,11 +33,14 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
@@ -44,21 +50,31 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
 import org.junit.Test;
+import org.yb.CommonTypes;
+import org.yb.Schema;
 import org.yb.cdc.CdcConsumer.ConsumerRegistryPB;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.cdc.CdcConsumer.StreamEntryPB;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -73,10 +89,14 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private String targetUniverseName;
   private UUID targetUniverseUUID;
   private Universe targetUniverse;
+  private String namespace1Name;
+  private String namespace1Id;
   private String exampleTableID1;
   private String exampleStreamID1;
+  private String exampleTable1Name;
   private String exampleTableID2;
   private String exampleStreamID2;
+  private String exampleTable2Name;
   private Set<String> exampleTables;
   private HashMap<String, String> exampleTablesAndStreamIDs;
   private ObjectNode createRequest;
@@ -106,10 +126,14 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             .put("sourceUniverseUUID", sourceUniverseUUID.toString())
             .put("targetUniverseUUID", targetUniverseUUID.toString());
 
+    namespace1Name = "ycql-namespace1";
+    namespace1Id = UUID.randomUUID().toString();
     exampleTableID1 = "000030af000030008000000000004000";
     exampleStreamID1 = "ec10532900ef42a29a6899c82dd7404f";
+    exampleTable1Name = "exampleTable1";
     exampleTableID2 = "000030af000030008000000000004001";
     exampleStreamID2 = "fea203ffca1f48349901e0de2b52c416";
+    exampleTable2Name = "exampleTable2";
 
     exampleTables = new HashSet<>();
     exampleTables.add(exampleTableID1);
@@ -134,6 +158,40 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     when(mockService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate))
         .thenReturn(mockClient);
 
+    GetTableSchemaResponse mockTableSchemaResponseTable1 =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            "exampleTableID1",
+            exampleTableID1,
+            null,
+            true,
+            CommonTypes.TableType.YQL_TABLE_TYPE,
+            Collections.emptyList());
+    GetTableSchemaResponse mockTableSchemaResponseTable2 =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            "exampleTableID2",
+            exampleTableID2,
+            null,
+            true,
+            CommonTypes.TableType.YQL_TABLE_TYPE,
+            Collections.emptyList());
+    try {
+      lenient()
+          .when(mockClient.getTableSchemaByUUID(exampleTableID1))
+          .thenReturn(mockTableSchemaResponseTable1);
+      lenient()
+          .when(mockClient.getTableSchemaByUUID(exampleTableID2))
+          .thenReturn(mockTableSchemaResponseTable2);
+    } catch (Exception ignored) {
+    }
+
     apiEndpoint = "/api/customers/" + customer.uuid + "/xcluster_configs";
 
     createFormData = new XClusterConfigCreateFormData();
@@ -141,6 +199,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     createFormData.sourceUniverseUUID = sourceUniverseUUID;
     createFormData.targetUniverseUUID = targetUniverseUUID;
     createFormData.tables = exampleTables;
+
+    setupMetricValues();
   }
 
   private void setupMockClusterConfigWithXCluster(XClusterConfig xClusterConfig) {
@@ -177,6 +237,61 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     doReturn(fakeMetricResponse)
         .when(mockMetricQueryHelper)
         .query(anyList(), anyMap(), anyMap(), anyBoolean());
+  }
+
+  public void setupMetricValues() {
+    ArrayList<MetricQueryResponse.Entry> metricValues = new ArrayList<>();
+    MetricQueryResponse.Entry entryExampleTableID1 = new MetricQueryResponse.Entry();
+    entryExampleTableID1.labels = new HashMap<>();
+    entryExampleTableID1.labels.put("table_id", exampleTableID1);
+    entryExampleTableID1.values = new ArrayList<>();
+    entryExampleTableID1.values.add(ImmutablePair.of(10.0, 0.0));
+    metricValues.add(entryExampleTableID1);
+
+    MetricQueryResponse.Entry entryExampleTableID2 = new MetricQueryResponse.Entry();
+    entryExampleTableID2.labels = new HashMap<>();
+    entryExampleTableID2.labels.put("table_id", exampleTableID2);
+    entryExampleTableID2.values = new ArrayList<>();
+    entryExampleTableID2.values.add(ImmutablePair.of(10.0, 0.0));
+    metricValues.add(entryExampleTableID2);
+
+    doReturn(metricValues).when(mockMetricQueryHelper).queryDirect(any());
+  }
+
+  public void initClientGetTablesList() {
+    ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
+    // Adding table 1.
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
+    table1TableInfoBuilder.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    table1TableInfoBuilder.setId(ByteString.copyFromUtf8(exampleTableID1));
+    table1TableInfoBuilder.setName(exampleTable1Name);
+    table1TableInfoBuilder.setNamespace(
+        MasterTypes.NamespaceIdentifierPB.newBuilder()
+            .setName(namespace1Name)
+            .setId(ByteString.copyFromUtf8(namespace1Id))
+            .build());
+    tableInfoList.add(table1TableInfoBuilder.build());
+    // Adding table 2.
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table2TableInfoBuilder =
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
+    table2TableInfoBuilder.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    table2TableInfoBuilder.setId(ByteString.copyFromUtf8(exampleTableID2));
+    table2TableInfoBuilder.setName(exampleTable2Name);
+    table2TableInfoBuilder.setNamespace(
+        MasterTypes.NamespaceIdentifierPB.newBuilder()
+            .setName(namespace1Name)
+            .setId(ByteString.copyFromUtf8(namespace1Id))
+            .build());
+    tableInfoList.add(table2TableInfoBuilder.build());
+
+    try {
+      when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+      when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
   }
 
   private void validateGetXClusterResponse(
@@ -239,6 +354,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
+
+    initClientGetTablesList();
+
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", apiEndpoint, user.createAuthToken(), createRequest);
@@ -594,6 +712,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
+    initClientGetTablesList();
+
     String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.uuid;
 
     ArrayNode modifiedTables = Json.newArray();
@@ -774,7 +894,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", editAPIEndpoint, user.createAuthToken(), editStatusRequest));
     assertEquals(contentAsString(result), BAD_REQUEST, result.status());
-    assertResponseError("{\"status\":[\"error.pattern\"]}", result);
+    assertResponseError(
+        "{\"status\":[\"status can be set either to `Running` or `Paused`\"]}", result);
     assertNoTasksCreated();
     assertAuditEntry(0, customer.uuid);
 

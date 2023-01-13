@@ -43,6 +43,7 @@
 
 using std::shared_ptr;
 using std::unordered_map;
+using std::string;
 
 namespace yb {
 

@@ -82,12 +82,12 @@ export const OIDCAuth = (props) => {
         promiseArr.push(
           formValues[key] !== ''
             ? setRunTimeConfig({
-                key: `${OIDC_PATH}.${key}`,
-                value: formValues[key]
-              })
+              key: `${OIDC_PATH}.${key}`,
+              value: formValues[key]
+            })
             : deleteRunTimeConfig({
-                key: `${OIDC_PATH}.${key}`
-              })
+              key: `${OIDC_PATH}.${key}`
+            })
         );
       }
 
@@ -168,8 +168,8 @@ export const OIDCAuth = (props) => {
             <WarningIcon />
           </div>
           <div className="oidc-modal-c-content">
-            <b>Note!</b> By disabling OIDC users won't be able to login with your current
-            authentication provider. Are you sure?
+            <b>Note!</b> {"By disabling OIDC users won't be able to login with your current\
+            authentication provider. Are you sure"}
           </div>
         </div>
       </YBModal>

@@ -11,13 +11,12 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_INTENT_H_
-#define YB_DOCDB_INTENT_H_
+#pragma once
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 namespace yb {
 namespace docdb {
@@ -126,5 +125,3 @@ bool IntentValueType(char ch);
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_INTENT_H_

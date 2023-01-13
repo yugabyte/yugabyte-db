@@ -169,7 +169,8 @@ public class BackupUtilTest extends FakeDBApplication {
       String defaultBackupLocationPrefix, String defaultBackupLocationSuffix, boolean expectedNfs) {
     String defaultBackupLocation =
         defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
-    String actualIdentifier = BackupUtil.getBackupIdentifier(defaultBackupLocation, false);
+    String actualIdentifier =
+        BackupUtil.getBackupIdentifier(defaultBackupLocation, false, "yugabyte_backup");
     if (expectedNfs) {
       assertTrue(
           actualIdentifier.startsWith(
@@ -209,7 +210,7 @@ public class BackupUtilTest extends FakeDBApplication {
     String backupLocation =
         defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
     String actualRegionLocation =
-        BackupUtil.getExactRegionLocation(backupLocation, configRegionLocation);
+        BackupUtil.getExactRegionLocation(backupLocation, configRegionLocation, "yugabyte_backup");
     String expectedRegionLocation =
         expectedRegionLocationPrefix + DEFAULT_UNIVERSE_UUID + expectedRegionLocationSuffix;
     assertEquals(expectedRegionLocation, actualRegionLocation);

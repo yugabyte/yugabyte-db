@@ -27,6 +27,8 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+using std::vector;
+
 namespace yb {
 namespace pggate {
 
@@ -161,6 +163,23 @@ Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, LWPgsqlExpress
   return const_cast<const PgColumn&>(col);
 }
 
+Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, LWQLExpressionPB *target_pb) {
+  // Find column from targeted table.
+  PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
+
+  // Prepare protobuf to send to DocDB.
+  if (target_pb) {
+    target_pb->set_column_id(col.id());
+  }
+
+  // Mark non-virtual column reference for DocDB.
+  if (!col.is_virtual_column()) {
+    col.set_read_requested(true);
+  }
+
+  return const_cast<const PgColumn&>(col);
+}
+
 Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, LWPgsqlExpressionPB *assign_pb) {
   // Prepare protobuf to send to DocDB.
   assign_pb->set_column_id(pg_col->id());
@@ -216,8 +235,9 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   PgColumn& column = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
 
   // Check datatype.
-  if (attr_value->internal_type() != InternalType::kGinNullValue) {
-    SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
+  const auto attr_internal_type = attr_value->internal_type();
+  if (attr_internal_type != InternalType::kGinNullValue) {
+    SCHECK_EQ(column.internal_type(), attr_internal_type, Corruption,
               "Attribute value type does not match column type");
   }
 
@@ -478,6 +498,24 @@ Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
     return secondary_index_query_->GetColumnInfo(attr_num);
   }
   return bind_->GetColumnInfo(attr_num);
+}
+
+void PgDml::GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait) {
+  if (doc_op_) {
+    doc_op_->GetAndResetReadRpcStats(reads, read_wait);
+  }
+}
+
+void PgDml::GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait,
+                                    uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
+  if (secondary_index_query_) {
+    secondary_index_query_->GetAndResetReadRpcStats(reads, read_wait);
+    if (doc_op_) {
+      doc_op_->GetAndResetReadRpcStats(tbl_reads, tbl_read_wait);
+    }
+  } else if (doc_op_) {
+    doc_op_->GetAndResetReadRpcStats(reads, read_wait);
+  }
 }
 
 }  // namespace pggate

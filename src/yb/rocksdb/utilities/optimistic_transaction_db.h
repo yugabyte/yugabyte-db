@@ -19,7 +19,6 @@
 //
 
 #pragma once
-#ifndef ROCKSDB_LITE
 
 #include <string>
 #include <vector>
@@ -87,5 +86,3 @@ class OptimisticTransactionDB {
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

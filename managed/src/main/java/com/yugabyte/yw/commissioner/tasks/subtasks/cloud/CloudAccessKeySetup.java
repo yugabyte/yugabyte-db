@@ -16,7 +16,6 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
 import javax.inject.Inject;
 import play.api.Play;
@@ -64,12 +63,12 @@ public class CloudAccessKeySetup extends CloudTaskBase {
           taskParams().setUpChrony,
           taskParams().ntpServers,
           taskParams().showSetUpChrony,
-          taskParams().overrideKeyValidate);
+          taskParams().skipKeyPairValidate);
     } else {
-      // For add region, we should verify if the overrideKeyValidate is set, so that we don't
+      // For add region, we should verify if the skipKeyPairValidate is set, so that we don't
       // try to add the key unnecessarily. It is false by default, so unless someone explicitly
       // sets it, the key will be added.
-      if (!taskParams().overrideKeyValidate) {
+      if (!taskParams().skipKeyPairValidate) {
         accessManager.addKey(
             region.uuid,
             accessKeyCode,

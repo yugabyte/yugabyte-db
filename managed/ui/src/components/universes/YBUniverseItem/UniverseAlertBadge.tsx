@@ -55,6 +55,7 @@ const AlertPopover = (universeUUID: string, isPopoverShown: boolean, limit: numb
       ) : (
         <>
           <h3 className="alert-count">{alertList?.data.entities.length} alerts</h3>
+          {/* eslint-disable-next-line react/display-name */}
           {alertList?.data.entities.map((entity) => (
             <Row key={entity.uuid} className="alert-entity">
               <div

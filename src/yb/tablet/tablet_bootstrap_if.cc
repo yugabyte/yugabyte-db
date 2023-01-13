@@ -54,6 +54,8 @@
 
 #include "yb/util/debug/trace_event.h"
 
+using std::string;
+
 namespace yb {
 namespace tablet {
 

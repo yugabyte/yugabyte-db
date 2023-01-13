@@ -52,7 +52,7 @@ class TabletSplitTest : public YBTabletTest {
     FLAGS_db_write_buffer_size = 1_MB;
     FLAGS_rocksdb_level0_file_num_compaction_trigger = -1;
     YBTabletTest::SetUp();
-    writer_.reset(new LocalTabletWriter(tablet().get()));
+    writer_.reset(new LocalTabletWriter(tablet()));
   }
 
  protected:
@@ -71,12 +71,13 @@ class TabletSplitTest : public YBTabletTest {
     QLReadRequestPB req;
     QLAddColumns(schema_, {}, &req);
     QLReadRequestResult result;
+    WriteBuffer rows_data(1024);
     EXPECT_OK(tablet->HandleQLReadRequest(
-        CoarseTimePoint::max(), read_time, req, TransactionMetadataPB(), &result));
+        CoarseTimePoint::max(), read_time, req, TransactionMetadataPB(), &result, &rows_data));
 
     EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 
-    return CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, result.rows_data)->rows();
+    return CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer())->rows();
   }
 
   docdb::DocKeyHash GetRowHashCode(const QLRow& row) {

@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.filters.MetricFilter.MetricFilterBuilder;
@@ -33,6 +34,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.yb.client.SnapshotInfo;
 
 @Singleton
 @Slf4j

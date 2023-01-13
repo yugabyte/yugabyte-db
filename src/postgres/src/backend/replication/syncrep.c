@@ -358,12 +358,12 @@ SyncRepCancelWait(void)
 }
 
 void
-SyncRepCleanupAtProcExit(void)
+SyncRepCleanupAtProcExit(PGPROC *proc)
 {
-	if (!SHMQueueIsDetached(&(MyProc->syncRepLinks)))
+	if (!SHMQueueIsDetached(&(proc->syncRepLinks)))
 	{
 		LWLockAcquire(SyncRepLock, LW_EXCLUSIVE);
-		SHMQueueDelete(&(MyProc->syncRepLinks));
+		SHMQueueDelete(&(proc->syncRepLinks));
 		LWLockRelease(SyncRepLock);
 	}
 }

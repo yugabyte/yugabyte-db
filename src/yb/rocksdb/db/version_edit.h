@@ -21,8 +21,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_VERSION_EDIT_H
-#define YB_ROCKSDB_DB_VERSION_EDIT_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -296,5 +295,3 @@ class VersionEdit {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_VERSION_EDIT_H

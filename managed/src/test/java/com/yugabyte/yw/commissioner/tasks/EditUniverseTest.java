@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -75,7 +76,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.WaitForLoadBalance,
+          TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
@@ -85,7 +86,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
-          TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -111,7 +111,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.WaitForLoadBalance,
+          TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
@@ -121,7 +121,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
-          TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -165,12 +164,12 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
     } catch (Exception e) {
       fail();
     }
     mockWaits(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
   }
@@ -291,7 +290,16 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testExpandOnPremFailNoNodes() {
     Universe universe = onPremUniverse;
+    AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
+    List<NodeInstance> added = new ArrayList<>();
+    added.add(createOnpremInstance(zone));
+    added.add(createOnpremInstance(zone));
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    added.forEach(
+        nodeInstance -> {
+          nodeInstance.setInUse(true);
+          nodeInstance.save();
+        });
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
   }

@@ -17,19 +17,25 @@ public class AvailabilityZoneFormData {
   @ApiModelProperty(value = "List of availability zones", required = true)
   public List<AvailabilityZoneData> availabilityZones;
 
+  @ApiModel(description = "Model used to edit an availability zone")
+  public static class AvailabilityZoneEditData {
+    @ApiModelProperty(value = "AZ subnet")
+    public String subnet;
+
+    @ApiModelProperty(value = "AZ subnet")
+    public String secondarySubnet;
+  }
+
   @ApiModel(
       description =
           "Details of an availability zone, used by the API and UI to validate data against input constraints")
-  public static class AvailabilityZoneData {
-    @Constraints.Required()
-    @ApiModelProperty(value = "AZ code", required = true)
-    public String code;
-
+  public static class AvailabilityZoneData extends AvailabilityZoneEditData {
     @Constraints.Required()
     @ApiModelProperty(value = "AZ name", required = true)
     public String name;
 
-    @ApiModelProperty(value = "AZ subnet")
-    public String subnet;
+    @Constraints.Required()
+    @ApiModelProperty(value = "AZ code", required = true)
+    public String code;
   }
 }

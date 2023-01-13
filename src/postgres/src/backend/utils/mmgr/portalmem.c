@@ -207,7 +207,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	portal->portalContext = AllocSetContextCreate(TopPortalContext,
 												  "PortalContext",
 												  ALLOCSET_SMALL_SIZES);
-	portal->ybRunContext = AllocSetContextCreate(portal->portalContext,
+	portal->ybRunContext = AllocSetContextCreate(TopPortalContext,
 												 "PortalRunContext",
 												 ALLOCSET_SMALL_SIZES);
 
@@ -594,6 +594,9 @@ PortalDrop(Portal portal, bool isTopCommit)
 	/* delete tuplestore storage, if any */
 	if (portal->holdContext)
 		MemoryContextDelete(portal->holdContext);
+
+	/* delete the portal run context */
+	MemoryContextDelete(portal->ybRunContext);
 
 	/* release subsidiary storage */
 	MemoryContextDelete(portal->portalContext);

@@ -27,6 +27,7 @@
 #include "utils/builtins.h"
 #include "utils/datetime.h"
 
+#include "yb/yql/pggate/ybc_pggate.h"
 
 #ifdef WIN32
 
@@ -74,6 +75,8 @@ static char *
 convert_and_check_filename(text *arg, bool logAllowed)
 {
 	char	   *filename = text_to_cstring(arg);
+
+	YBCheckServerAccessIsAllowed();
 
 	canonicalize_path(filename);	/* filename can change length here */
 
@@ -486,6 +489,8 @@ pg_logdir_ls_internal(FunctionCallInfo fcinfo)
 	FuncCallContext *funcctx;
 	struct dirent *de;
 	directory_fctx *fctx;
+
+	YBCheckServerAccessIsAllowed();
 
 	if (strcmp(Log_filename, "postgresql-%Y-%m-%d_%H%M%S.log") != 0)
 		ereport(ERROR,

@@ -20,6 +20,9 @@
 #include "yb/util/logging.h"
 #include "yb/util/string_case.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 namespace ql {
 

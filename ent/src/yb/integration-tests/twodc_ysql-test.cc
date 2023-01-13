@@ -17,7 +17,7 @@
 #include <utility>
 #include <chrono>
 #include <boost/assign.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/common.pb.h"
@@ -81,8 +81,11 @@
 #include "yb/util/result.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+
+using std::string;
 
 DECLARE_int32(replication_factor);
 DECLARE_int32(cdc_max_apply_batch_num_records);
@@ -103,6 +106,14 @@ DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(xcluster_wait_on_ddl_alter);
+DECLARE_bool(enable_replicate_transaction_status_table);
+DECLARE_bool(TEST_disable_apply_committed_transactions);
+DECLARE_uint64(ysql_session_max_batch_size);
+DECLARE_bool(use_libbacktrace);
+DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_bool(TEST_xcluster_disable_replication_transaction_status_table);
+DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 
 namespace yb {
 
@@ -126,6 +137,7 @@ using tserver::enterprise::CDCConsumer;
 
 using pgwrapper::ToString;
 using pgwrapper::GetInt32;
+using pgwrapper::GetValue;
 using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
 using pgwrapper::PgSupervisor;
@@ -151,8 +163,17 @@ class TwoDCYsqlTest : public TwoDCTestBase
                                       bool enable_cdc_sdk_in_producer = false,
                                       bool do_explict_transaction = false);
 
-  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
-    FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
+  void ValidateSimpleReplicationWithPackedRowsUpgrade(
+      std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
+      uint32_t num_tablet_servers = 1, bool range_partitioned = false);
+
+  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1,
+                    boost::optional<uint32_t> batch_size = boost::none) {
+    if (batch_size) {
+      FLAGS_cdc_max_apply_batch_num_records = *batch_size;
+    } else {
+      FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
+    }
 
     // In this test, the tservers in each cluster share the same postgres proxy. As each tserver
     // initializes, it will overwrite the auth key for the "postgres" user. Force an identical key
@@ -168,14 +189,16 @@ class TwoDCYsqlTest : public TwoDCTestBase
     return Status::OK();
   }
 
-  Result<std::vector<std::shared_ptr<client::YBTable>>>
-      SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
-                      std::vector<uint32_t> num_producer_tablets,
-                      uint32_t replication_factor,
-                      uint32_t num_masters = 1,
-                      bool colocated = false,
-                      boost::optional<std::string> tablegroup_name = boost::none) {
-    RETURN_NOT_OK(Initialize(replication_factor, num_masters));
+  Result<std::vector<std::shared_ptr<client::YBTable>>> SetUpWithParams(
+      std::vector<uint32_t> num_consumer_tablets,
+      std::vector<uint32_t> num_producer_tablets,
+      uint32_t replication_factor,
+      uint32_t num_masters = 1,
+      bool colocated = false,
+      boost::optional<std::string> tablegroup_name = boost::none,
+      const bool ranged_partitioned = false,
+      boost::optional<uint32_t> batch_size = boost::none) {
+    RETURN_NOT_OK(Initialize(replication_factor, num_masters, batch_size));
 
     if (num_consumer_tablets.size() != num_producer_tablets.size()) {
       return STATUS(IllegalState,
@@ -195,14 +218,16 @@ class TwoDCYsqlTest : public TwoDCTestBase
     std::vector<YBTableName> tables;
     std::vector<std::shared_ptr<client::YBTable>> yb_tables;
     for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
-      RETURN_NOT_OK(CreateYsqlTable(i, num_producer_tablets[i], &producer_cluster_,
-                                &tables, tablegroup_name, colocated));
+      RETURN_NOT_OK(CreateYsqlTable(
+          i, num_producer_tablets[i], &producer_cluster_, &tables, tablegroup_name, colocated,
+          ranged_partitioned));
       std::shared_ptr<client::YBTable> producer_table;
       RETURN_NOT_OK(producer_client()->OpenTable(tables[i * 2], &producer_table));
       yb_tables.push_back(producer_table);
 
-      RETURN_NOT_OK(CreateYsqlTable(i, num_consumer_tablets[i], &consumer_cluster_,
-                                &tables, tablegroup_name, colocated));
+      RETURN_NOT_OK(CreateYsqlTable(
+          i, num_consumer_tablets[i], &consumer_cluster_, &tables, tablegroup_name, colocated,
+          ranged_partitioned));
       std::shared_ptr<client::YBTable> consumer_table;
       RETURN_NOT_OK(consumer_client()->OpenTable(tables[(i * 2) + 1], &consumer_table));
       yb_tables.push_back(consumer_table);
@@ -248,18 +273,19 @@ class TwoDCYsqlTest : public TwoDCTestBase
    * TODO (#11597): Given one is not able to get tablegroup ID by name, currently this works by
    * getting the first available tablegroup appearing in the namespace.
    */
-  Result<TablegroupId> GetTablegroup(Cluster* cluster, const std::string& namespace_name) {
+  Result<TableId> GetTablegroupParentTable(Cluster* cluster, const std::string& namespace_name) {
     // Lookup the namespace id from the namespace name.
     std::string namespace_id;
+    // Whether the database named namespace_name is a colocated database.
+    bool colocated_database;
+    master::MasterDdlProxy master_proxy(
+        &cluster->client_->proxy_cache(),
+        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
     {
       master::ListNamespacesRequestPB req;
       master::ListNamespacesResponsePB resp;
-      master::MasterDdlProxy master_proxy(
-          &cluster->client_->proxy_cache(),
-          VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
-
-      rpc::RpcController rpc;
-      rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
       RETURN_NOT_OK(master_proxy.ListNamespaces(req, &resp, &rpc));
       if (resp.has_error()) {
@@ -281,17 +307,25 @@ class TwoDCYsqlTest : public TwoDCTestBase
       }
     }
 
+    {
+      master::GetNamespaceInfoRequestPB req;
+      master::GetNamespaceInfoResponsePB resp;
+
+      req.mutable_namespace_()->set_id(namespace_id);
+
+      rpc.Reset();
+      RETURN_NOT_OK(master_proxy.GetNamespaceInfo(req, &resp, &rpc));
+      if (resp.has_error()) {
+        return STATUS(IllegalState, "Failed to get namespace info");
+      }
+      colocated_database = resp.colocated();
+    }
+
     master::ListTablegroupsRequestPB req;
     master::ListTablegroupsResponsePB resp;
-    master::MasterDdlProxy master_proxy(
-        &cluster->client_->proxy_cache(),
-        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
     req.set_namespace_id(namespace_id);
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-
+    rpc.Reset();
     RETURN_NOT_OK(master_proxy.ListTablegroups(req, &resp, &rpc));
     if (resp.has_error()) {
       return STATUS(IllegalState, "Failed listing tablegroups");
@@ -303,6 +337,8 @@ class TwoDCYsqlTest : public TwoDCTestBase
                     Format("Unable to find tablegroup in namespace $0", namespace_name));
     }
 
+    if (colocated_database)
+      return master::GetColocationParentTableId(resp.tablegroups()[0].id());
     return master::GetTablegroupParentTableId(resp.tablegroups()[0].id());
   }
 
@@ -341,7 +377,7 @@ class TwoDCYsqlTest : public TwoDCTestBase
   }
 
   void WriteTransactionalWorkload(uint32_t start, uint32_t end, Cluster* cluster,
-                                  const YBTableName& table) {
+                                  const YBTableName& table, bool commit_transaction = true) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
     std::string table_name_str = GetCompleteTableName(table);
     EXPECT_OK(conn.Execute("BEGIN"));
@@ -349,7 +385,11 @@ class TwoDCYsqlTest : public TwoDCTestBase
       EXPECT_OK(conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2) ON CONFLICT DO NOTHING",
                                    table_name_str, kKeyColumnName, i));
     }
-    EXPECT_OK(conn.Execute("COMMIT"));
+    if (commit_transaction) {
+      EXPECT_OK(conn.Execute("COMMIT"));
+    } else {
+      EXPECT_OK(conn.Execute("ABORT"));
+    }
   }
 
   void DeleteWorkload(uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table) {
@@ -435,6 +475,490 @@ TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeries) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
+constexpr int kTransactionalConsistencyTestDurationSecs = 30;
+
+class TwoDCYSqlTestConsistentTransactionsTest : public TwoDCYsqlTest {
+ public:
+  void MultiTransactionConsistencyTest(
+      uint32_t transaction_size, uint32_t num_transactions, const YBTableName& producer_table,
+      const YBTableName& consumer_table, bool commit_all_transactions) {
+    // Have one writer thread and one reader thread. For each read, assert
+    // - atomicity: that the total number of records read mod the transaction size is 0 to ensure
+    // that we have no half transactional cuts.
+    // - ordering: that the records returned are always [0, num_records_reads] to ensure that no
+    // later transaction is readable before an earlier one.
+    auto total_intent_records = transaction_size * num_transactions;
+    auto total_committed_records =
+        commit_all_transactions ? total_intent_records : total_intent_records / 2;
+    auto test_thread_holder = TestThreadHolder();
+    test_thread_holder.AddThread([&]() {
+      auto commit_transaction = true;
+      for (uint32_t i = 0; i < total_intent_records; i += transaction_size) {
+        ASSERT_NO_FATALS(WriteTransactionalWorkload(
+            i, i + transaction_size, &producer_cluster_, producer_table,
+            commit_all_transactions || commit_transaction));
+        commit_transaction = !commit_transaction;
+        LOG(INFO) << "Wrote records: " << i + transaction_size;
+      }
+    });
+
+    test_thread_holder.AddThread([&]() {
+      uint32_t num_read_records = 0;
+      while (num_read_records < total_committed_records) {
+        auto consumer_results = ScanToStrings(consumer_table, &consumer_cluster_);
+        num_read_records = PQntuples(consumer_results.get());
+        ASSERT_EQ(num_read_records % transaction_size, 0);
+        LOG(INFO) << "Read records: " << num_read_records;
+        if (commit_all_transactions) {
+          for (uint32_t i = 0; i < num_read_records; ++i) {
+            auto val = ASSERT_RESULT(GetInt32(consumer_results.get(), i, 0));
+            ASSERT_EQ(val, i);
+          }
+        }
+      }
+      ASSERT_EQ(num_read_records, total_committed_records);
+    });
+
+    test_thread_holder.JoinAll();
+  }
+
+  void AsyncTransactionConsistencyTest(const YBTableName& producer_table,
+                                       const YBTableName& consumer_table,
+                                       TestThreadHolder* test_thread_holder,
+                                       MonoDelta duration) {
+    // Create a writer thread for transactions of size 10 and and read thread to validate
+    // transactional atomicity. Run both threads for duration.
+    const auto transaction_size = 10;
+    test_thread_holder->AddThread([this, &producer_table, duration]() {
+      int32_t key = 0;
+      auto producer_conn =  ASSERT_RESULT(
+          producer_cluster_.ConnectToDB(producer_table.namespace_name()));
+      auto now = CoarseMonoClock::Now();
+      while (CoarseMonoClock::Now() < now + duration) {
+        ASSERT_OK(producer_conn.ExecuteFormat(
+            "insert into $0 values(generate_series($1, $2))",
+            GetCompleteTableName(producer_table), key, key + transaction_size - 1));
+        key += transaction_size;
+      }
+      // Assert at least 100 transactions were written.
+      ASSERT_GE(key, transaction_size * 100);
+    });
+
+    test_thread_holder->AddThread([this, &consumer_table, duration]() {
+      auto consumer_conn = ASSERT_RESULT(
+          consumer_cluster_.ConnectToDB(consumer_table.namespace_name()));
+      auto now = CoarseMonoClock::Now();
+      while (CoarseMonoClock::Now() < now + duration) {
+        auto result = ASSERT_RESULT(consumer_conn.FetchFormat(
+            "select count(*) from $0", GetCompleteTableName(consumer_table)));
+        auto count = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+        ASSERT_EQ(count % transaction_size , 0);
+      }
+    });
+  }
+
+  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateTableAndSetupReplication(
+      int num_masters = 3) {
+    FLAGS_enable_replicate_transaction_status_table = true;
+    auto tables = VERIFY_RESULT(SetUpWithParams(
+        {4}, {4}, 3, num_masters, false /* colocated */, boost::none /* tablegroup_name */,
+        false /* ranged_partitioned */, 0 /* batch_size */));
+    auto producer_table = tables[0];
+    auto consumer_table = tables[1];
+    RETURN_NOT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
+    // Verify that universe was setup on consumer.
+    master::GetUniverseReplicationResponsePB resp;
+    RETURN_NOT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+    RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+    RETURN_NOT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table->name().namespace_id()));
+
+    return std::make_pair(producer_table, consumer_table);
+  }
+
+  Status WaitForIntentsCleanedUpOnConsumer() {
+    return WaitFor([&]() {
+      return CountIntents(consumer_cluster()) == 0;
+    }, MonoDelta::FromSeconds(30), "Intents cleaned up");
+  }
+};
+
+constexpr uint32_t kTransactionSize = 50;
+constexpr uint32_t kNumTransactions = 100;
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ConsistentTransactionsWithApplyDisabled) {
+  FLAGS_TEST_disable_apply_committed_transactions = true;
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, LargeTransaction) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      10000, 1, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ManySmallTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      2, 500, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, UncommittedTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
+      false /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, NonTransactionalWorkload) {
+  // Write 10000 rows non-transactionally to ensure there's no regression for non-transactional
+  // workloads.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(WriteWorkload(0, 10000, &producer_cluster_, tables_pair.first->name()));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBatches) {
+  // Write a large transaction spanning multiple write batches and then delete all rows on both
+  // producer and consumer and ensure we still maintain read consistency and can properly apply
+  // intents.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name_str = GetCompleteTableName(producer_table->name());
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(generate_series(0, 20000))", table_name_str));
+  auto tablet_peer_leaders = ListTabletPeers(producer_cluster(), ListPeersFilter::kLeaders);
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  ASSERT_OK(conn.ExecuteFormat("delete from $0", table_name_str));
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
+  // Write a transactional workload of updates with valdation for 30s and ensure there are no
+  // FATALs and that we maintain consistent reads.
+  FLAGS_enable_replicate_transaction_status_table = true;
+  const auto namespace_name = "demo";
+  const auto table_name = "account_balance";
+
+  ASSERT_OK(Initialize(3 /* replication_factor */, 1 /* num_masters */, 0 /* batch_size */));
+
+  ASSERT_OK(RunOnBothClusters(
+      [&](Cluster* cluster) { return CreateDatabase(cluster, namespace_name); }));
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    return conn.ExecuteFormat("create table $0(id int, name text, salary int);", table_name);
+  }));
+
+  auto table_name_with_id_list = ASSERT_RESULT(producer_client()->ListTables(table_name));
+  ASSERT_EQ(table_name_with_id_list.size(), 1);
+  auto table_name_with_id = table_name_with_id_list[0];
+  ASSERT_TRUE(table_name_with_id.has_table_id());
+  auto yb_table = ASSERT_RESULT(producer_client()->OpenTable(table_name_with_id.table_id()));
+
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {yb_table}));
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+  ASSERT_OK(WaitForValidSafeTimeOnAllTServers(table_name_with_id.namespace_id()));
+
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+
+  static const int num_users = 3;
+  for (int i = 0; i < num_users; i++) {
+    ASSERT_OK(producer_conn.ExecuteFormat(
+        "INSERT INTO account_balance VALUES($0, 'user$0', 1000000)", i));
+  }
+
+  auto result = ASSERT_RESULT(producer_conn.FetchFormat("select sum(salary) from account_balance"));
+  ASSERT_EQ(PQntuples(result.get()), 1);
+  auto total_salary = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
+
+  // Transactional workload
+  auto test_thread_holder = TestThreadHolder();
+  test_thread_holder.AddThread([this, namespace_name]() {
+    std::string update_query;
+    for (int i = 0; i < num_users - 1; i++) {
+      update_query += Format(
+          "UPDATE account_balance SET salary = salary - 500 WHERE name = 'user$0';", i);
+    }
+    update_query += Format(
+        "UPDATE account_balance SET salary = salary + $0 WHERE name = 'user$1';",
+        500 * (num_users - 1), num_users - 1);
+    auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    auto now = CoarseMonoClock::Now();
+    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+      ASSERT_OK(producer_conn.ExecuteFormat("BEGIN TRANSACTION; $0; COMMIT;", update_query));
+    }
+  });
+
+
+  // Read validate workload.
+  test_thread_holder.AddThread([this, namespace_name, total_salary]() {
+    auto now = CoarseMonoClock::Now();
+    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+      auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+      auto result = ASSERT_RESULT(consumer_conn.FetchFormat(
+          "select sum(salary) from account_balance"));
+      ASSERT_EQ(PQntuples(result.get()), 1);
+      Result<int64_t> current_salary_result = GetValue<int64_t>(result.get(), 0, 0);
+      if (!current_salary_result.ok()) {
+        continue;
+      }
+      ASSERT_EQ(total_salary, *current_salary_result);
+    }
+  });
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, AddServerBetweenTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  // Sleep for half duration to ensure that the workloads AsyncTransactionConsistencyTest are
+  // running.
+  SleepFor(duration/2);
+  ASSERT_OK(consumer_cluster()->AddTabletServer());
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+
+  test_thread_holder.JoinAll();
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, AddServerIntraTransaction) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name_str = GetCompleteTableName(producer_table->name());
+
+  auto test_thread_holder = TestThreadHolder();
+  test_thread_holder.AddThread([&conn, &table_name_str] {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    int32_t key = 0;
+    int32_t step = 10;
+    auto now = CoarseMonoClock::Now();
+    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "insert into $0 values(generate_series($1, $2))", table_name_str, key, key + step - 1));
+      key += step;
+    }
+    ASSERT_OK(conn.Execute("COMMIT"));
+  });
+
+  // Sleep for half the duration of the workload (30s) to ensure that the workload is running before
+  // adding a server.
+  SleepFor(MonoDelta::FromSeconds(15));
+  ASSERT_OK(consumer_cluster()->AddTabletServer());
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, RefreshCheckpointAfterRestart) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  FLAGS_TEST_force_get_checkpoint_from_cdc_state = true;
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name_str = GetCompleteTableName(producer_table->name());
+
+  auto test_thread_holder = TestThreadHolder();
+  test_thread_holder.AddThread([&conn, &table_name_str] {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    int32_t key = 0;
+    int32_t step = 10;
+    auto now = CoarseMonoClock::Now();
+    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "insert into $0 values(generate_series($1, $2))", table_name_str, key, key + step - 1));
+      key += step;
+    }
+    ASSERT_OK(conn.Execute("COMMIT"));
+  });
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+  ASSERT_OK(consumer_cluster()->AddTabletServer());
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, RestartServer) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  // Sleep for half duration to ensure that the workloads AsyncTransactionConsistencyTest are
+  // running.
+  SleepFor(duration/2);
+  auto restart_idx = consumer_cluster_.pg_ts_idx_ == 0 ? 1 : 0;
+  consumer_cluster()->mini_tablet_server(restart_idx)->Shutdown();
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, MasterLeaderRestart) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication(3 /* num_masters */));
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  // Sleep for half duration to ensure that the workloads AsyncTransactionConsistencyTest are
+  // running.
+  SleepFor(duration/2);
+  auto* mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+  mini_master->Shutdown();
+  ASSERT_OK(
+      consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+  test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsSpanningConsensusMaxBatchSize) {
+  FLAGS_consensus_max_batch_size_bytes = 8_KB;
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  for (int i = 0; i < 6; i++) {
+    SleepFor(duration/6);
+    ASSERT_OK(conn.ExecuteFormat("delete from $0", GetCompleteTableName(producer_table->name())));
+  }
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ReplicationPause) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
+  auto test_thread_holder = TestThreadHolder();
+  ASSERT_NO_FATALS(AsyncTransactionConsistencyTest(
+      producer_table->name(), consumer_table->name(), &test_thread_holder, duration));
+  SleepFor(duration/2);
+  // Pause replication here for half the duration of the workload.
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  SleepFor(duration/2);
+  // Resume replication.
+  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
+  // This test ensures that the compactions flow does not cleanup external intents from transactions
+  // thought to be aborted. In the xcluster case, it is possible that a transaction is thought to
+  // be aborted when the consumer has just yet to replicate the CREATE + COMMIT records for this
+  // transaction.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  FLAGS_TEST_xcluster_disable_replication_transaction_status_table = true;
+  FLAGS_aborted_intent_cleanup_ms = 0;
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+  ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
+  master::WaitForReplicationDrainRequestPB req;
+  PopulateWaitForReplicationDrainRequest({tables_pair.first}, &req);
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_NO_FATALS(WriteGenerateSeries(51, 100 , &producer_cluster_, producer_table->name()));
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  // 2. Trigger a compaction on the consumer cluster.
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+  // 3. Enable replication of txn status table.
+  FLAGS_TEST_xcluster_disable_replication_transaction_status_table = false;
+  // 4. Ensure records match.
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
 TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
   // Use a 4 -> 1 mapping to ensure that multiple transactions are processed by the same tablet.
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {4}, 3, 1));
@@ -455,6 +979,40 @@ TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table->id());
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+}
+
+TEST_P(TwoDCYsqlTestToggleBatching, ChangeRole) {
+  // 1. Test that an existing universe without replication of txn status table cannot become a
+  // STANDBY.
+  FLAGS_enable_replicate_transaction_status_table = false;
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 3, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  auto producer_table = tables[0];
+  auto consumer_table = tables[1];
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
+
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+
+  ASSERT_NOK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  // 2. Test that a universe cannot change a role to its same role.
+  FLAGS_enable_replicate_transaction_status_table = true;
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
+
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+
+  ASSERT_NOK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
+
+  // 3. Test that a change role to STANDBY mode succeeds.
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+
+  // 4. Test that a change of role back to ACTIVE mode succeeds.
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
@@ -490,13 +1048,15 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(TwoDCYsqlTest, SimpleReplication) {
+void TwoDCYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
+    std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
+    uint32_t num_tablet_servers, bool range_partitioned) {
   FLAGS_ysql_enable_packed_row = false;
 
   constexpr auto kNumRecords = 1000;
-  constexpr int kNTabletsPerTable = 1;
-  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  auto tables = ASSERT_RESULT(SetUpWithParams(
+      consumer_tablet_counts, producer_tablet_counts, num_tablet_servers, 1, false, boost::none,
+      range_partitioned));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // tables contains both producer and consumer universe tables (alternately).
@@ -536,8 +1096,11 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   // 3. Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
   ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
-  ASSERT_OK(CorrectlyPollingAllTablets(
-      consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
+  uint32_t num_producer_tablets = 0;
+  for (const auto count : producer_tablet_counts) {
+    num_producer_tablets += count;
+  }
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), num_producer_tablets));
 
   auto data_replicated_correctly = [&](int num_results) -> Result<bool> {
     for (const auto& consumer_table : consumer_tables) {
@@ -586,7 +1149,7 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   // 7. Disable packing and resume replication
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
-  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), num_producer_tablets));
   ASSERT_OK(WaitFor(
       [&]() { return data_replicated_correctly(kNumRecords + 10); }, MonoDelta::FromSeconds(20),
       "IsDataReplicatedCorrectly"));
@@ -600,10 +1163,55 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   ASSERT_OK(WaitFor(
       [&]() { return data_replicated_correctly(kNumRecords + 15); }, MonoDelta::FromSeconds(20),
       "IsDataReplicatedCorrectly"));
+
+  // 10. Re-enable Packed Columns and add a column and drop it so that schema stays the same but the
+  // schema_version is different on the Producer and Consumer
+  FLAGS_ysql_enable_packed_row = true;
+  {
+    string new_col = "dummy";
+    auto tbl = consumer_tables[0]->name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tbl.table_name(), new_col));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tbl.table_name(), new_col));
+  }
+
+  // 11. Write some packed rows on producer and verify that those can be read from consumer
+  for (const auto& producer_table : producer_tables) {
+    WriteWorkload(kNumRecords + 15, kNumRecords + 20, &producer_cluster_, producer_table->name());
+  }
+
+  // 12. Verify that all the data can be read now.
+  ASSERT_OK(WaitFor(
+      [&]() { return data_replicated_correctly(kNumRecords + 20); }, MonoDelta::FromSeconds(20),
+      "IsDataReplicatedCorrectly"));
+}
+
+TEST_P(TwoDCYsqlTest, SimpleReplication) {
+  ValidateSimpleReplicationWithPackedRowsUpgrade(
+      /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1});
+}
+
+TEST_P(TwoDCYsqlTest, SimpleReplicationWithUnevenTabletCounts) {
+  ValidateSimpleReplicationWithPackedRowsUpgrade(
+      /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
+      /* num_tablet_servers */ 3);
+}
+
+TEST_P(TwoDCYsqlTest, SimpleReplicationWithRangedPartitions) {
+  ValidateSimpleReplicationWithPackedRowsUpgrade(
+      /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1},
+      /* num_tablet_servers */ 1, /* range_partitioned */ true);
+}
+
+TEST_P(TwoDCYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCounts) {
+  ValidateSimpleReplicationWithPackedRowsUpgrade(
+      /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
+      /* num_tablet_servers */ 3, /* range_partitioned */ true);
 }
 
 TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
+  FLAGS_ysql_enable_packed_row = true;
   string new_column = "contact_name";
 
   constexpr auto kRecordBatch = 5;
@@ -691,25 +1299,25 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  auto is_consumer_halted_on_ddl = [&]() -> Status {
-    return WaitFor(
-        [&]() -> Result<bool> {
-          master::SysClusterConfigEntryPB cluster_info;
-          auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-          RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
-          auto& producer_map = cluster_info.consumer_registry().producer_map();
-          auto producer_entry = FindOrNull(producer_map, kUniverseId);
-          if (producer_entry) {
-            CHECK_EQ(producer_entry->stream_map().size(), 1);
-            auto& stream_entry = producer_entry->stream_map().begin()->second;
-            return stream_entry.has_producer_schema() &&
-                   stream_entry.producer_schema().has_pending_schema();
-          }
-          return false;
-        },
-        MonoDelta::FromSeconds(20), "IsConsumerHaltedOnDDL");
+  auto is_consumer_halted_on_ddl = [&]() -> Result<bool> {
+    master::SysClusterConfigEntryPB cluster_info;
+    auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
+    RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
+    auto& producer_map = cluster_info.consumer_registry().producer_map();
+    auto producer_entry = FindOrNull(producer_map, kUniverseId);
+    if (producer_entry) {
+      CHECK_EQ(producer_entry->stream_map().size(), 1);
+      auto& stream_entry = producer_entry->stream_map().begin()->second;
+      return stream_entry.has_producer_schema() &&
+          stream_entry.producer_schema().has_pending_schema();
+    }
+    return false;
   };
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  auto wait_for_consumer_halted_on_ddl = [&]() -> Status {
+    return WaitFor(is_consumer_halted_on_ddl, MonoDelta::FromSeconds(20),
+                   "IsConsumerHaltedOnDDL");
+  };
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
 
   // We read the first batch of writes with the old schema, but not the new schema writes.
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
@@ -739,7 +1347,6 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   /***************************/
   /****** RENAME COLUMN ******/
   /***************************/
-
   // 1. ALTER Table to Remove the Column on Producer.
   {
     auto tbl = producer_table->name();
@@ -752,7 +1359,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
 
@@ -791,7 +1398,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
 
@@ -801,15 +1408,17 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
     auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
     // Out-of-order Schema Application in comparison to producer should fail.
     ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
-    // Matching subset of producer should succeed, but not be sufficient to resume replication.
-    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
-                                                "ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
-    // TODO: Remove below line when we add atomic DDL apply between XClusters, currently race-y.
-    ASSERT_OK(is_consumer_halted_on_ddl());
+    // Matching subset of producer should fail, insufficient to resume replication.
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
+                                                 "ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
     // Mismatching schema to producer should fail.
-    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_N VARCHAR", tbl.table_name()));
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
+                                                 "ADD COLUMN BATCH_2 VARCHAR, "
+                                                 "ADD COLUMN BATCH_3 VARCHAR", tbl.table_name()));
     // Subsequent Matching schema to producer should succeed.
-    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_3 INT", tbl.table_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
+                                                "ADD COLUMN BATCH_2 VARCHAR, "
+                                                "ADD COLUMN BATCH_3 INT", tbl.table_name()));
   }
 
   // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
@@ -820,8 +1429,6 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   /***************************/
   /**** DROP/RE-ADD COLUMN ***/
   /***************************/
-  // Test Details:
-
   //  1. Run on Producer: DROP NewCol, Add Data,
   //                      ADD NewCol again (New ID), Add Data.
   {
@@ -838,7 +1445,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   //  2. Expectations: Replication should add Data 1x, then block because IDs don't match.
   //                   DROP is non-blocking,
   //                   re-ADD blocks until IDs match even though the  Name & Type match.
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
   {
@@ -852,6 +1459,40 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   count += kRecordBatch;
   ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
             MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  /***************************/
+  /****** REVERSE ORDER ******/
+  /***************************/
+  auto new_int_col = "age";
+
+  //  1. Run on Producer: DROP NewCol, ADD NewInt
+  //                      Add Data.
+  {
+    auto tbl = producer_table->name();
+    auto tname = tbl.table_name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tname, new_column));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tname, new_int_col));
+    WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+  }
+
+  //  2. Run on Consumer: ADD NewInt, DROP NewCol
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
+  {
+    auto tbl = consumer_table->name();
+    auto tname = tbl.table_name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    // Reverse Order should fail.
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tname, new_int_col));
+    // But subsequently running the same order should pass.
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tname, new_column));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tname, new_int_col));
+  }
+
+  //  3. Expectations: Replication should not block & add Data.
+  count += kRecordBatch;
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
+      MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 
   /***************************/
   /****** FORCE RESUME *******/
@@ -868,7 +1509,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   // 2. Write more data so we have some entries with the new schema.
   WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
   // 4. Force Resume on the Consumer.
@@ -1024,9 +1665,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // 2 tables with 8 tablets each.
   ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
-  int nrows = 0;
   for (const auto& row : client::TableRange(table)) {
-    nrows++;
     string stream_id = row.column(0).string_value();
     tablet_bootstraps[stream_id]++;
 
@@ -1374,8 +2013,9 @@ TEST_P(TwoDCYsqlTest, TablegroupReplication) {
   }
 
   // 2. Setup replication for the tablegroup.
-  auto tablegroup_id = ASSERT_RESULT(GetTablegroup(&producer_cluster_, kNamespaceName));
-  LOG(INFO) << "Tablegroup id to replicate: " << tablegroup_id;
+  auto tablegroup_parent_table_id = ASSERT_RESULT(GetTablegroupParentTable(&producer_cluster_,
+                                                                           kNamespaceName));
+  LOG(INFO) << "Tablegroup id to replicate: " << tablegroup_parent_table_id;
 
   rpc::RpcController rpc;
   master::SetupUniverseReplicationRequestPB setup_universe_req;
@@ -1385,7 +2025,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplication) {
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
   setup_universe_req.mutable_producer_table_ids()->Reserve(1);
-  setup_universe_req.add_producer_table_ids(tablegroup_id);
+  setup_universe_req.add_producer_table_ids(tablegroup_parent_table_id);
 
   auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -1531,7 +2171,8 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
                           &tables, tablegroup_name, false /* colocated */));
   }
 
-  auto tablegroup_id = ASSERT_RESULT(GetTablegroup(&producer_cluster_, kNamespaceName));
+  auto tablegroup_parent_table_id = ASSERT_RESULT(GetTablegroupParentTable(&producer_cluster_,
+                                                                           kNamespaceName));
 
   // Try to set up replication.
   rpc::RpcController rpc;
@@ -1542,7 +2183,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
   setup_universe_req.mutable_producer_table_ids()->Reserve(1);
-  setup_universe_req.add_producer_table_ids(tablegroup_id);
+  setup_universe_req.add_producer_table_ids(tablegroup_parent_table_id);
 
   auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -1741,7 +2382,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = true;
   ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
-  ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
+  ASSERT_OK(WaitForSetupUniverseReplication(consumer_cluster(), consumer_client(),
                                             kUniverseId, &is_resp));
   ASSERT_TRUE(is_resp.has_replication_error());
   ASSERT_TRUE(StatusFromPB(is_resp.replication_error()).IsIllegalState());
@@ -1981,13 +2622,100 @@ TEST_P(TwoDCYsqlTest, SetupReplicationWithMaterializedViews) {
   LOG(INFO) << "Setup replication completed.";
 
   master::IsSetupUniverseReplicationDoneResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
+  ASSERT_OK(WaitForSetupUniverseReplication(consumer_cluster(), consumer_client(),
                                             kUniverseId, &resp));
   ASSERT_TRUE(resp.has_replication_error());
   auto status = StatusFromPB(resp.replication_error());
   ASSERT_TRUE(status.IsNotSupported());
   ASSERT_STR_CONTAINS(status.ToString(), "Replication is not supported for materialized view");
   LOG(INFO) << "Replication verification failed : " << status.ToString();
+}
+
+TEST_P(TwoDCYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
+  YB_SKIP_TEST_IN_TSAN();
+  FLAGS_ysql_enable_packed_row = true;
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // 1. Setup Replication, write some records and validate
+  auto producer_table = tables[0];
+  auto consumer_table = tables[1];
+
+  // 2. Perform some ALTERs to bump up the schema versions and cause mismatch before setting up
+  // replication
+  {
+    auto tbl = consumer_table->name();
+    for (size_t i = 0; i < 4; i++) {
+      auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+      ASSERT_OK(c_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
+      if (i % 2 == 0) {
+        auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+        ASSERT_OK(p_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
+      }
+    }
+  }
+
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+
+  ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
+
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().tables_size(), 1);
+  ASSERT_EQ(resp.entry().tables(0), producer_table->id());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 3. Alter the table on the Consumer side by adding a column
+  {
+    string new_col = "new_column";
+    auto tbl = consumer_table->name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
+  }
+
+  // 4. Verify single value inserts are replicated correctly and can be read
+  ASSERT_NO_FATALS(WriteWorkload(51, 52, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 5. Verify batch inserts are replicated correctly and can be read
+  ASSERT_NO_FATALS(WriteGenerateSeries(52, 100, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 6. Verify transactional inserts are replicated correctly and can be read
+  WriteTransactionalWorkload(101, 150, &producer_cluster_, producer_table->name());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 7. Alter the table on the producer side by adding the same column and insert some rows
+  // and verify
+  {
+    string new_col = "new_column";
+    auto tbl = producer_table->name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
+  }
+
+  // 8. Verify single value inserts are replicated correctly and can be read
+  ASSERT_NO_FATALS(WriteWorkload(151, 152, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 9. Verify batch inserts are replicated correctly and can be read
+  ASSERT_NO_FATALS(WriteGenerateSeries(152, 200, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 10. Verify transactional inserts are replicated correctly and can be read
+  WriteTransactionalWorkload(201, 250, &producer_cluster_, producer_table->name());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  {
+    auto tbl = producer_table->name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(251,'Hello')", tbl.table_name()));
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  }
 }
 
 void PrepareChangeRequest(

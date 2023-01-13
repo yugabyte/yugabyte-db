@@ -33,12 +33,14 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
-DEFINE_bool(ycql_cache_login_info, false, "Use authentication information cached locally.");
-DEFINE_bool(ycql_require_drop_privs_for_truncate, false,
+DEFINE_UNKNOWN_bool(use_cassandra_authentication, false,
+    "If to require authentication on startup.");
+DEFINE_UNKNOWN_bool(ycql_cache_login_info, false, "Use authentication information cached locally.");
+DEFINE_UNKNOWN_bool(ycql_require_drop_privs_for_truncate, false,
             "Require DROP TABLE permission in order to truncate table");
-DEFINE_bool(ycql_use_local_transaction_tables, false,
+DEFINE_UNKNOWN_bool(ycql_use_local_transaction_tables, false,
             "Whether or not to use local transaction tables when possible for YCQL transactions.");
 
 namespace yb {
@@ -160,17 +162,16 @@ Result<SchemaVersion> QLEnv::GetUpToDateTableSchemaVersion(const YBTableName& ta
 }
 
 shared_ptr<QLType> QLEnv::GetUDType(const std::string& keyspace_name,
-                                      const std::string& type_name,
-                                      bool* cache_used) {
-  shared_ptr<QLType> ql_type = std::make_shared<QLType>(keyspace_name, type_name);
-  Status s = metadata_cache_->GetUDType(keyspace_name, type_name, &ql_type, cache_used);
+                                    const std::string& type_name,
+                                    bool* cache_used) {
+  auto result = metadata_cache_->GetUDType(keyspace_name, type_name);
 
-  if (!s.ok()) {
-    VLOG(3) << "GetTypeDesc: Server returned an error: " << s.ToString();
+  if (!result) {
+    VLOG(3) << "GetTypeDesc: Server returned an error: " << result.status().ToString();
     return nullptr;
   }
-
-  return ql_type;
+  *cache_used = result->second;
+  return std::move(result->first);
 }
 
 void QLEnv::RemoveCachedTableDesc(const YBTableName& table_name) {

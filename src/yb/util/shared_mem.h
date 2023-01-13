@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_SHARED_MEM_H
-#define YB_UTIL_SHARED_MEM_H
+#pragma once
 
 #include <sys/mman.h>
 
@@ -131,5 +130,3 @@ class SharedMemoryObject {
 };
 
 }  // namespace yb
-
-#endif // YB_UTIL_SHARED_MEM_H

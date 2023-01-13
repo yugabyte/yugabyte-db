@@ -15,6 +15,7 @@
 #define EXECUTOR_H
 
 #include "executor/execdesc.h"
+#include "executor/execPartition.h"
 #include "nodes/parsenodes.h"
 #include "utils/memutils.h"
 
@@ -121,6 +122,8 @@ extern void execTuplesHashPrepare(int numCols,
 					  Oid *eqOperators,
 					  Oid **eqFuncOids,
 					  FmgrInfo **hashFunctions);
+extern ExprState *ybPrepareOuterExprsEqualFn(List *outer_exprs,
+				Oid *eqOps, PlanState *parent);
 extern TupleHashTable BuildTupleHashTable(PlanState *parent,
 					TupleDesc inputDesc,
 					int numCols, AttrNumber *keyColIdx,
@@ -129,6 +132,18 @@ extern TupleHashTable BuildTupleHashTable(PlanState *parent,
 					long nbuckets, Size additionalsize,
 					MemoryContext tablecxt,
 					MemoryContext tempcxt, bool use_variable_hash_iv);
+extern TupleHashTable YbBuildTupleHashTableExt(PlanState *parent,
+						 TupleDesc inputDesc,
+						 int numCols, ExprState **keyColExprs,
+						 ExprState *eqExpr,
+						 Oid *eqfuncoids,
+						 FmgrInfo *hashfunctions,
+						 long nbuckets, Size additionalsize,
+						 MemoryContext metacxt,
+						 MemoryContext tablecxt,
+						 MemoryContext tempcxt,
+						 ExprContext *expr_cxt,
+						 bool use_variable_hash_iv);
 extern TupleHashTable BuildTupleHashTableExt(PlanState *parent,
 					TupleDesc inputDesc,
 					int numCols, AttrNumber *keyColIdx,
@@ -185,7 +200,7 @@ extern void CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation)
 extern void InitResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Relation resultRelationDesc,
 				  Index resultRelationIndex,
-				  Relation partition_root,
+				  ResultRelInfo *partition_root_rri,
 				  int instrument_options);
 extern ResultRelInfo *ExecGetTriggerResultRel(EState *estate, Oid relid);
 extern void ExecCleanUpTriggerState(EState *estate);
@@ -554,6 +569,9 @@ extern Datum GetAttributeByNum(HeapTupleHeader tuple, AttrNumber attrno,
 
 extern int	ExecTargetListLength(List *targetlist);
 extern int	ExecCleanTargetListLength(List *targetlist);
+
+extern Bitmapset *ExecGetInsertedCols(ResultRelInfo *relinfo, EState *estate);
+extern Bitmapset *ExecGetUpdatedCols(ResultRelInfo *relinfo, EState *estate);
 
 /*
  * prototypes from functions in execIndexing.c

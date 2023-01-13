@@ -64,6 +64,8 @@ For additional information, see [DROP INDEX YCQL API](../../../api/ycql/ddl_drop
 
 ## Example scenario using YSQL
 
+{{% explore-setup-single %}}
+
 Suppose you work with a database that includes the following table populated with data:
 
 ```sql
@@ -114,7 +116,7 @@ Index Cond: (department = 'Operations'::text)
 For additional information, see:
 
 - [CREATE INDEX YSQL API](../../../api/ysql/the-sql-language/statements/ddl_create_index/)
-- [CREATE INDEX YSQL API](../../../api/ycql/ddl_create_index/)
+- [CREATE INDEX YCQL API](../../../api/ycql/ddl_create_index/)
 
 The following example shows how to remove `index_employees_department` that was created in Create indexes:
 

@@ -238,9 +238,7 @@ public class TestSnapshot extends CDCBaseClass {
       int recordsAsserted = 0;
       ExpectedRecord3Proto[] postSnapshotRecords = {
         new ExpectedRecord3Proto(10000, 11, 12, Op.INSERT),
-        new ExpectedRecord3Proto(-1, -1, -1, Op.BEGIN),
         new ExpectedRecord3Proto(10000, 11, 22, Op.UPDATE),
-        new ExpectedRecord3Proto(-1, -1, -1, Op.COMMIT),
         new ExpectedRecord3Proto(-1, -1, -1, Op.BEGIN),
         new ExpectedRecord3Proto(10000, 0, 0, Op.DELETE),
         new ExpectedRecord3Proto(-1, -1, -1, Op.COMMIT) };

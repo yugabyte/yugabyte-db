@@ -11,10 +11,11 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_INTEGRATION_TESTS_TWODC_TEST_BASE_H
-#define ENT_SRC_YB_INTEGRATION_TESTS_TWODC_TEST_BASE_H
+#pragma once
 
 #include <string>
+
+#include "yb/cdc/cdc_consumer.pb.h"
 
 #include "yb/client/transaction_manager.h"
 
@@ -34,6 +35,7 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
 namespace yb {
 
@@ -45,6 +47,7 @@ constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kKeyColumnName = "key";
+static const uint32_t kRangePartitionInterval = 500;
 
 class TwoDCTestBase : public YBTest {
  public:
@@ -55,6 +58,7 @@ class TwoDCTestBase : public YBTest {
     std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
     HostPort pg_host_port_;
     boost::optional<client::TransactionManager> txn_mgr_;
+    size_t pg_ts_idx_;
 
     Result<pgwrapper::PGConn> Connect() {
       return ConnectToDB(std::string() /* dbname */);
@@ -78,6 +82,8 @@ class TwoDCTestBase : public YBTest {
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;
+    FLAGS_xcluster_safe_time_update_interval_secs = 1;
+    safe_time_propagation_timeout_ = MonoDelta::FromSeconds(30);
   }
 
   Status InitClusters(const MiniClusterOptions& opts, bool init_postgres = false);
@@ -104,12 +110,14 @@ class TwoDCTestBase : public YBTest {
       const boost::optional<std::string>& tablegroup_name,
       uint32_t num_tablets,
       bool colocated = false,
-      const ColocationId colocation_id = 0);
+      const ColocationId colocation_id = 0,
+      const bool ranged_partitioned = false);
 
   Status CreateYsqlTable(
       uint32_t idx, uint32_t num_tablets, Cluster* cluster,
       std::vector<client::YBTableName>* table_names,
-      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false);
+      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false,
+      const bool ranged_partitioned = false);
 
   Result<client::YBTableName> GetYsqlTable(
       Cluster* cluster,
@@ -120,7 +128,7 @@ class TwoDCTestBase : public YBTest {
       bool verify_schema_name = false,
       bool exclude_system_tables = true);
 
-  Status SetupUniverseReplication(
+  virtual Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);
 
   Status SetupUniverseReplication(
@@ -133,7 +141,7 @@ class TwoDCTestBase : public YBTest {
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
-      bool leader_only = true);
+      bool leader_only = true, const std::vector<std::string>& bootstrap_ids = {});
 
   Status SetupNSUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -154,6 +162,8 @@ class TwoDCTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, int num_expected_table);
 
+  Status ChangeXClusterRole(cdc::XClusterRole role);
+
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, bool is_enabled);
@@ -161,13 +171,10 @@ class TwoDCTestBase : public YBTest {
   Status VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
       YBClient* consumer_client, const std::string& universe_id, int timeout);
 
-  Status VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
-      YBClient* consumer_client, const std::string& producer_uuid,
+  // Wait for SetupUniverseReplication to complete. resp will contain the errors if any.
+  Status WaitForSetupUniverseReplication(
+      MiniCluster* consumer_cluster, YBClient* consumer_client, const std::string& universe_id,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
-
-  Status IsSetupUniverseReplicationDone(
-      MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const std::string& universe_id, master::IsSetupUniverseReplicationDoneResponsePB* resp);
 
   Status GetCDCStreamForTable(
       const std::string& table_id, master::ListCDCStreamsResponsePB* resp);
@@ -181,7 +188,21 @@ class TwoDCTestBase : public YBTest {
 
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
-  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
+  Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
+
+  Status WaitForValidSafeTimeOnAllTServers(const NamespaceId& namespace_id);
+
+  // Wait for replication drain on a list of tables.
+  Status WaitForReplicationDrain(
+      const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
+      const master::WaitForReplicationDrainRequestPB& req,
+      int expected_num_nondrained,
+      int timeout_secs = kRpcTimeout);
+
+  // Populate a WaitForReplicationDrainRequestPB request from a list of tables.
+  void PopulateWaitForReplicationDrainRequest(
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+      master::WaitForReplicationDrainRequestPB* req);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -232,14 +253,20 @@ class TwoDCTestBase : public YBTest {
  protected:
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
+  MonoDelta safe_time_propagation_timeout_;
 
  private:
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+
+  // Function that translates the api response from a WaitForReplicationDrainResponsePB call into
+  // a status.
+  Status SetupWaitForReplicationDrainStatus(
+      Status api_status,
+      const master::WaitForReplicationDrainResponsePB& api_resp,
+      int expected_num_nondrained);
 };
 
 } // namespace enterprise
 } // namespace yb
-
-#endif // ENT_SRC_YB_INTEGRATION_TESTS_TWODC_TEST_BASE_H

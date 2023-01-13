@@ -133,7 +133,7 @@ class Tunnel::Impl {
   }
 
   Status Start(const Endpoint& local, const Endpoint& remote,
-                       AddressChecker address_checker) {
+               AddressChecker address_checker) {
     auto acceptor = std::make_shared<boost::asio::ip::tcp::acceptor>(io_context_);
     boost::system::error_code ec;
 

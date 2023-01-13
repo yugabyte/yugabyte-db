@@ -38,7 +38,7 @@ Status Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb) {
 }
 
 Status Executor::PTJsonOperatorToPB(const PTJsonOperator::SharedPtr& json_pt,
-                                            QLJsonOperationPB *op_pb) {
+                                    QLJsonOperationPB *op_pb) {
   switch (json_pt->json_operator()) {
     case JsonOperator::JSON_TEXT:
       op_pb->set_json_operator(JsonOperatorPB::JSON_TEXT);

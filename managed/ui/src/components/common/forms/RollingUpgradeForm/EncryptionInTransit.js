@@ -106,7 +106,7 @@ function getEncryptionComponent(
           </Col>
         </Row>
       )}
-      {status && status[inputName] && (
+      {status?.[inputName] && (
         <Alert key={status[inputName]} variant="warning" bsStyle="warning">
           {status[inputName]}
         </Alert>
@@ -139,8 +139,8 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     clientRootCA: universeDetails.clientRootCA
       ? universeDetails.clientRootCA
       : universeDetails.rootAndClientRootCASame
-      ? universeDetails.rootCA
-      : CREATE_NEW_CERTIFICATE,
+        ? universeDetails.rootCA
+        : CREATE_NEW_CERTIFICATE,
     createNewRootCA: false,
     createNewClientRootCA: false,
     rootAndClientRootCASame: universeDetails.rootAndClientRootCASame,

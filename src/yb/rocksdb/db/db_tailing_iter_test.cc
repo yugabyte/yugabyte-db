@@ -24,7 +24,6 @@
 // Introduction of SyncPoint effectively disabled building and running this test
 // in Release build.
 // which is a pity, it is a good test
-#if !defined(ROCKSDB_LITE)
 
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/db/forward_iterator.h"
@@ -310,8 +309,6 @@ TEST_F(DBTestTailingIterator, TailingIteratorDeletes) {
 }
 
 TEST_F(DBTestTailingIterator, TailingIteratorPrefixSeek) {
-  XFUNC_TEST("", "dbtest_prefix", prefix_skip1, XFuncPoint::SetSkip,
-             kSkipNoPrefix);
   ReadOptions read_options;
   read_options.tailing = true;
 
@@ -341,7 +338,6 @@ TEST_F(DBTestTailingIterator, TailingIteratorPrefixSeek) {
 
   iter->Next();
   ASSERT_TRUE(!iter->Valid());
-  XFUNC_TEST("", "dbtest_prefix", prefix_skip1, XFuncPoint::SetSkip, 0);
 }
 
 TEST_F(DBTestTailingIterator, TailingIteratorIncomplete) {
@@ -576,8 +572,6 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorDeletes) {
 }
 
 TEST_F(DBTestTailingIterator, ManagedTailingIteratorPrefixSeek) {
-  XFUNC_TEST("", "dbtest_prefix", prefix_skip1, XFuncPoint::SetSkip,
-             kSkipNoPrefix);
   ReadOptions read_options;
   read_options.tailing = true;
   read_options.managed = true;
@@ -608,7 +602,6 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorPrefixSeek) {
 
   iter->Next();
   ASSERT_TRUE(!iter->Valid());
-  XFUNC_TEST("", "dbtest_prefix", prefix_skip1, XFuncPoint::SetSkip, 0);
 }
 
 TEST_F(DBTestTailingIterator, ManagedTailingIteratorIncomplete) {
@@ -717,14 +710,9 @@ TEST_F(DBTestTailingIterator, ForwardIteratorVersionProperty) {
 }
 }  // namespace rocksdb
 
-#endif  // !defined(ROCKSDB_LITE)
 
 int main(int argc, char** argv) {
-#if !defined(ROCKSDB_LITE)
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
-#else
-  return 0;
-#endif
 }

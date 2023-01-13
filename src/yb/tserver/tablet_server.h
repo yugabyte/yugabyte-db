@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TABLET_SERVER_H_
-#define YB_TSERVER_TABLET_SERVER_H_
+#pragma once
 
 #include <future>
 #include <memory>
@@ -110,6 +109,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   uint32_t GetAutoFlagConfigVersion() const override;
+  Status SetAutoFlagConfig(const AutoFlagsConfigPB new_config);
+
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
@@ -139,7 +140,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // If the update is from master leader, we use that list directly. If not, we
   // merge the existing in-memory master list with the provided config list.
   Status UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
-                                       bool is_master_leader);
+                               bool is_master_leader);
 
   server::Clock* Clock() override { return clock(); }
 
@@ -157,7 +158,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       std::vector<master::TSInformationPB> *live_tservers) const override;
 
   Status GetTabletStatus(const GetTabletStatusRequestPB* req,
-                                 GetTabletStatusResponsePB* resp) const override;
+                         GetTabletStatusResponsePB* resp) const override;
 
   bool LeaderAndReady(const TabletId& tablet_id, bool allow_stale = false) const override;
 
@@ -218,7 +219,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -260,6 +261,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
       const NamespaceId& namespace_id, HybridTime commit_ht) const;
+
+  Status ListMasterServers(const ListMasterServersRequestPB* req,
+                           ListMasterServersResponsePB* resp) const;
 
  protected:
   virtual Status RegisterServices();
@@ -360,4 +364,3 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
 } // namespace tserver
 } // namespace yb
-#endif // YB_TSERVER_TABLET_SERVER_H_

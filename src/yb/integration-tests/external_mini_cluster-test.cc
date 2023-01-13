@@ -40,6 +40,8 @@
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_gauge_uint64(threads_running);
 

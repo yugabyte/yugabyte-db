@@ -10,7 +10,139 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-# Various CMake functions. This should eventually be organized and refactored.
+# Various CMake macros and functions. This should eventually be organized and refactored.
+
+# -------------------------------------------------------------------------------------------------
+# Auxiliary macros for implementing other macros and functions.
+# -------------------------------------------------------------------------------------------------
+
+macro(set_in_current_and_parent_scope var_name var_value)
+  set(${var_name} "${var_value}")
+  if (NOT "${CMAKE_CURRENT_FUNCTION}" STREQUAL "")
+    set(${var_name} "${var_value}" PARENT_SCOPE)
+  endif()
+endmacro()
+
+macro(set_in_global_scope var_name var_value)
+  if("${CMAKE_CURRENT_FUNCTION}" STREQUAL "")
+    set(${var_name} "${var_value}")
+  else()
+    set(${var_name} "${var_value}" PARENT_SCOPE)
+  endif()
+endmacro()
+
+# See this on how to iterate macro arguments:
+# https://stackoverflow.com/questions/42682912/cmake-macro-how-to-iterate-over-arguments
+macro(assert_vars_defined)
+  foreach(_var_name_tmp IN ITEMS ${ARGN})
+    if(NOT DEFINED ${_var_name_tmp})
+      message(FATAL_ERROR "Variable ${_var_name_tmp} is not defined")
+    endif()
+  endforeach()
+  unset(_var_name_tmp)
+endmacro()
+
+# Puts the given list of variables as INTERNAL CACHE variables.
+# See for more details:
+# - https://cmake.org/cmake/help/book/mastering-cmake/chapter/CMake%20Cache.html
+# - https://cmake.org/cmake/help/latest/command/set.html
+macro(yb_put_vars_into_cache)
+  foreach(_var_name_tmp IN ITEMS ${ARGN})
+    if(NOT DEFINED ${_var_name_tmp})
+      message(FATAL_ERROR
+              "Variable ${_var_name_tmp} is not defined, cannot put it into CMake cache.")
+    endif()
+    set("${_var_name_tmp}" "${${_var_name_tmp}}" CACHE INTERNAL
+        "Internal variable ${_var_name_tmp} (from yb_put_vars_into_cache)")
+  endforeach()
+  unset(_var_name_tmp)
+endmacro()
+
+# -------------------------------------------------------------------------------------------------
+# Macros and functions for adding and manipulating compiler and linker flags.
+# -------------------------------------------------------------------------------------------------
+
+# This macro can be executed either from the top-level scope or from a function one level deep from
+# the top level scope.
+macro(ADD_CXX_FLAGS FLAGS)
+  if ($ENV{YB_VERBOSE})
+    message("Adding C++ flags: ${FLAGS}")
+  endif()
+  set_in_global_scope(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}")
+endmacro()
+
+# Linker flags applied to both executables and shared libraries. We append this both to
+# CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
+# These flags apply to both YB and RocksDB parts of the codebase.
+#
+# This is an internal macro that modifies variables at the parent scope, which is really the parent
+# scope of the functions calling it, i.e. function caller's scope.
+macro(_ADD_LINKER_FLAGS_MACRO FLAGS)
+  if ($ENV{YB_VERBOSE})
+    message("Adding to linker flags: ${FLAGS}")
+  endif()
+
+  # We must set these variables in both current and parent scope, because this macro can be called
+  # multiple times from the same function.
+  set_in_current_and_parent_scope(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}")
+  set_in_current_and_parent_scope(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}")
+endmacro()
+
+macro(ADD_EXE_LINKER_FLAGS FLAGS)
+  if ($ENV{YB_VERBOSE})
+    message("Adding executable linking flags: ${FLAGS}")
+  endif()
+  set_in_current_and_parent_scope(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}")
+endmacro()
+
+function(ADD_LINKER_FLAGS FLAGS)
+  _ADD_LINKER_FLAGS_MACRO("${FLAGS}")
+endfunction()
+
+function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
+  _CHECK_LIB_DIR("${RPATH_ENTRY}" "rpath entry")
+  message("Adding a global rpath entry: ${RPATH_ENTRY}")
+  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${RPATH_ENTRY}")
+endfunction()
+
+# This is similar to ADD_GLOBAL_RPATH_ENTRY but also adds an -L<dir> linker flag.
+function(ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR DIR_PATH)
+  _CHECK_LIB_DIR("${DIR_PATH}" "library directory and rpath entry")
+  message("Adding a library directory and global rpath entry: ${DIR_PATH}")
+  _ADD_LINKER_FLAGS_MACRO("-L${DIR_PATH}")
+  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${DIR_PATH}")
+endfunction()
+
+# Checks for redundant compiler or linker arguments in the given variable. Removes duplicate
+# arguments and stores the result back in the same variable. If the
+# YB_DEBUG_DUPLICATE_COMPILER_ARGS environment variable is set to 1, prints detailed debug output.
+function(yb_deduplicate_arguments args_var_name)
+  set(debug OFF)
+  if("$ENV{YB_DEBUG_DUPLICATE_COMPILER_ARGS}" STREQUAL "1")
+    set(debug ON)
+  endif()
+  separate_arguments(args_list UNIX_COMMAND "${${args_var_name}}")
+  if(debug)
+    message("Deduplicating ${args_var_name}:")
+  endif()
+  set(deduplicated_args "")
+  foreach(arg IN LISTS args_list)
+    if(arg IN_LIST deduplicated_args)
+      if(debug)
+        message("    DUPLICATE argument     : ${arg}")
+      endif()
+    else()
+      if(debug)
+        message("    Non-duplicate argument : ${arg}")
+      endif()
+      list(APPEND deduplicated_args "${arg}")
+    endif()
+  endforeach()
+  list(JOIN "${deduplicated_args}" " " joined_deduplicated_args)
+  set("${args_var_name}" PARENT_SCOPE "${joined_deduplicated_args}")
+endfunction()
+
+# -------------------------------------------------------------------------------------------------
 
 macro(yb_initialize_constants)
   set(BUILD_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build-support")
@@ -165,26 +297,6 @@ function(VALIDATE_COMPILER_TYPE)
   endif()
 endfunction()
 
-# Linker flags applied to both executables and shared libraries. We append this both to
-# CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
-# These flags apply to both YB and RocksDB parts of the codebase.
-#
-# This is an internal macro that modifies variables at the parent scope, which is really the parent
-# scope of the functions calling it, i.e. function caller's scope.
-macro(_ADD_LINKER_FLAGS_MACRO FLAGS)
-  if ($ENV{YB_VERBOSE})
-    message("Adding to linker flags: ${FLAGS}")
-  endif()
-
-  # We must set these variables in both current and parent scope, because this macro can be called
-  # multiple times from the same function.
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
-
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}")
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
-endmacro()
-
 # Check if the given directory is not an empty string and also warn if it does not exist.
 function(_CHECK_LIB_DIR DIR_PATH DESCRIPTION)
   if (DIR_PATH STREQUAL "")
@@ -196,24 +308,6 @@ function(_CHECK_LIB_DIR DIR_PATH DESCRIPTION)
       "Adding a non-existent ${DESCRIPTION} '${DIR_PATH}'. "
       "This might be OK in case the directory is created during the build.")
   endif()
-endfunction()
-
-function(ADD_LINKER_FLAGS FLAGS)
-  _ADD_LINKER_FLAGS_MACRO("${FLAGS}")
-endfunction()
-
-function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
-  _CHECK_LIB_DIR("${RPATH_ENTRY}" "rpath entry")
-  message("Adding a global rpath entry: ${RPATH_ENTRY}")
-  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${RPATH_ENTRY}")
-endfunction()
-
-# This is similar to ADD_GLOBAL_RPATH_ENTRY but also adds an -L<dir> linker flag.
-function(ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR DIR_PATH)
-  _CHECK_LIB_DIR("${DIR_PATH}" "library directory and rpath entry")
-  message("Adding a library directory and global rpath entry: ${DIR_PATH}")
-  _ADD_LINKER_FLAGS_MACRO("-L${DIR_PATH}")
-  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${DIR_PATH}")
 endfunction()
 
 # CXX_YB_COMMON_FLAGS are flags that are common across the 'src/yb' portion of the codebase (but do
@@ -232,20 +326,6 @@ endfunction()
 #     can result in subtle bad code generation.  This has a small perf hit but worth it to avoid
 #     hard to debug crashes.
 
-function(ADD_CXX_FLAGS FLAGS)
-  if ($ENV{YB_VERBOSE})
-    message("Adding C++ flags: ${FLAGS}")
-  endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}" PARENT_SCOPE)
-endfunction()
-
-function(ADD_EXE_LINKER_FLAGS FLAGS)
-  if ($ENV{YB_VERBOSE})
-    message("Adding executable linking flags: ${FLAGS}")
-  endif()
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
-endfunction()
-
 function(YB_INCLUDE_EXTENSIONS)
   file(RELATIVE_PATH CUR_REL_LIST_FILE "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
   get_filename_component(CUR_REL_LIST_NAME_NO_EXT "${CUR_REL_LIST_FILE}" NAME_WE)
@@ -260,6 +340,9 @@ function(YB_INCLUDE_EXTENSIONS)
 endfunction()
 
 function(yb_remember_dependency target)
+  if("${ARGN}" STREQUAL "")
+    message(FATAL_ERROR "yb_remember_dependency() called with no arguments")
+  endif()
   # We use \\n instead of a real newline as this is stored in the CMake cache, and some versions
   # of CMake can't parse their own cache in case some values have newlines.
   set(YB_ALL_DEPS "${YB_ALL_DEPS}\\n${target}: ${ARGN}" CACHE INTERNAL "All dependencies" FORCE)
@@ -320,6 +403,21 @@ function(add_executable name)
     add_dependencies(${name} latest_symlink)
   endif()
 
+  if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+    # Link every executable with the tcmalloc static library.
+    # If using Google TCMalloc, Abseil is also required, and will be linked by the libraries that
+    # need it.
+    # If using gperftools TCMalloc, libprofiler is also required, and will be linked by the
+    # libraries that need it.
+    #
+    # We need to ensure that all symbols from the tcmalloc library are retained. This is done
+    # differently depending on the OS.
+    target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
+    if("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
+      target_link_libraries(${name} absl)
+    endif()
+  endif()
+
   yb_process_pch(${name})
 endfunction()
 
@@ -335,22 +433,26 @@ macro(YB_SETUP_CLANG)
   # so that the annotations in the header actually take effect.
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
-  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
-  if(NOT EXISTS "${LIBCXX_DIR}")
-    message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
-  endif()
-  set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
-  if(NOT EXISTS "${LIBCXX_INCLUDE_DIR}")
-    message(FATAL_ERROR "libc++ include directory does not exist: '${LIBCXX_INCLUDE_DIR}'")
-  endif()
-  ADD_GLOBAL_RPATH_ENTRY("${LIBCXX_DIR}/lib")
-
-  # This needs to appear before adding third-party dependencies that have their headers in the
-  # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
-  # the Linuxbrew include directory too.
-  include_directories(SYSTEM "${LIBCXX_INCLUDE_DIR}")
-
   if(NOT APPLE)
+    set(LIBCXX_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
+    if(NOT EXISTS "${LIBCXX_DIR}")
+      message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
+    endif()
+    set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
+    if(NOT EXISTS "${LIBCXX_INCLUDE_DIR}")
+      message(FATAL_ERROR "libc++ include directory does not exist: '${LIBCXX_INCLUDE_DIR}'")
+    endif()
+    if(NOT EXISTS "${LIBCXX_DIR}/lib")
+      message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
+    endif()
+    ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
+    ADD_GLOBAL_RPATH_ENTRY("${LIBCXX_DIR}/lib")
+
+    # This needs to appear before adding third-party dependencies that have their headers in the
+    # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
+    # the Linuxbrew include directory too.
+    include_directories(SYSTEM "${LIBCXX_INCLUDE_DIR}")
+
     execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-search-dirs
                     OUTPUT_VARIABLE CLANG_PRINT_SEARCH_DIRS_OUTPUT)
 
@@ -358,7 +460,16 @@ macro(YB_SETUP_CLANG)
       # We get a directory like this:
       # .../yb-llvm-v12.0.1-yb-1-1639783720-bdb147e6-almalinux8-x86_64/lib/clang/12.0.1
       set(CLANG_LIB_DIR "${CMAKE_MATCH_1}")
-      set(CLANG_RUNTIME_LIB_DIR "${CMAKE_MATCH_1}/lib/linux")
+      set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/linux")
+      if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+        set(CLANG_RUNTIME_LIB_DIR
+            "${CLANG_LIB_DIR}/lib/${CMAKE_SYSTEM_PROCESSOR}-unknown-linux-gnu")
+        if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+          message(FATAL_ERROR
+                  "Failed to determine Clang runtime library directory inside of "
+                  "${CLANG_RUNTIME_LIB_DIR}/lib")
+        endif()
+      endif()
     else()
       message(FATAL_ERROR
               "Could not parse the output of 'clang -print-search-dirs': "
@@ -376,41 +487,22 @@ macro(YB_SETUP_CLANG)
       ADD_LINKER_FLAGS("-fuse-ld=lld")
       ADD_LINKER_FLAGS("-lunwind")
     endif()
-  endif()
 
-  ADD_CXX_FLAGS("-nostdinc++")
-  if(USING_LINUXBREW)
-    ADD_CXX_FLAGS("-nostdinc")
-  endif()
-  ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
-  if(NOT EXISTS "${LIBCXX_DIR}/lib")
-    message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
+    ADD_CXX_FLAGS("-nostdinc++")
+    if(USING_LINUXBREW)
+      ADD_CXX_FLAGS("-nostdinc")
+    endif()
   endif()
 endmacro()
 
 # This is a macro because we need to call functions that set flags on the parent scope.
 macro(YB_SETUP_SANITIZER)
-  if(NOT "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
-    message(
-      FATAL_ERROR
-      "YB_SETUP_SANITIZER can only be invoked for asan/tsan build types. "
-      "Build type: ${YB_BUILD_TYPE}.")
+  if(APPLE)
+    message(FATAL_ERROR "Sanitizers not supported on macOS")
   endif()
-
-  if(IS_CLANG)
-    message("Using instrumented libc++ (build type: ${YB_BUILD_TYPE})")
-    YB_SETUP_CLANG("${YB_BUILD_TYPE}")
-  else()
-    message("Not using ${SANITIZER}-instrumented standard C++ library for compiler family "
-            "${COMPILER_FAMILY} yet.")
-  endif()
-
   if("${YB_BUILD_TYPE}" STREQUAL "asan")
-    if(IS_CLANG AND
-       "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0" AND
-       NOT APPLE)
-      # TODO: see if we can use static libasan instead (requires third-party changes).
-      ADD_CXX_FLAGS("-shared-libasan")
+    if(IS_CLANG)
+      ADD_CXX_FLAGS("-mllvm -asan-use-private-alias=1")
       ADD_LINKER_FLAGS("-lunwind")
 
       # TODO: this is mostly needed because we depend on the ASAN runtime shared library and that
@@ -577,8 +669,9 @@ function(ADD_YB_LIBRARY LIB_NAME)
 
   add_library(${LIB_NAME} ${ARG_SRCS})
 
-  target_link_libraries(${LIB_NAME} ${ARG_DEPS})
-  yb_remember_dependency(${LIB_NAME} ${ARG_DEPS})
+  if(ARG_DEPS)
+    target_link_libraries(${LIB_NAME} ${ARG_DEPS})
+  endif()
   if(ARG_NONLINK_DEPS)
     add_dependencies(${LIB_NAME} ${ARG_NONLINK_DEPS})
   endif()
@@ -601,6 +694,25 @@ function(ADD_POSTGRES_SHARED_LIBRARY LIB_NAME SHARED_LIB_PATH)
   message("Added target ${LIB_NAME} for a shared library built as part of PostgreSQL code: "
           "${SHARED_LIB_PATH} (invoked from ${CMAKE_CURRENT_LIST_FILE})")
 endfunction()
+
+# To be invoked from functions that are themselves invoked from the global scope.
+macro(detect_lto_type_from_linking_type)
+  if("${CMAKE_CURRENT_FUNCTION}" STREQUAL "")
+    message(FATAL_ERROR "The detect_lto_type_from_linking_type must be invoked from a function")
+  endif()
+  if ("${YB_LINKING_TYPE}" STREQUAL "")
+    message(FATAL_ERROR "YB_LINKING_TYPE is not set")
+  endif()
+  # Set the YB_LTO_ENABLED variable in the parent scope of the calling function (this is a macro).
+  if("${YB_LINKING_TYPE}" MATCHES "^(.*)-lto$")
+    set(YB_LTO_ENABLED ON PARENT_SCOPE)
+    message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
+    set(YB_LTO_TYPE "${CMAKE_MATCH_1}" PARENT_SCOPE)
+  else()
+    set(YB_LTO_ENABLED OFF PARENT_SCOPE)
+    set(YB_LTO_TYPE "" PARENT_SCOPE)
+  endif()
+endmacro()
 
 function(parse_build_root_basename)
   if ("${BUILD_SUPPORT_DIR}" STREQUAL "")
@@ -678,6 +790,7 @@ function(parse_build_root_basename)
         "'${YB_LINKING_TYPE}'. Expected 'dynamic', 'thin-lto', or 'full-lto'.")
   endif()
   set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
+  detect_lto_type_from_linking_type()
 
   set(OPTIONAL_DASH_NINJA "${CMAKE_MATCH_8}")
   if(NOT "${OPTIONAL_DASH_NINJA}" STREQUAL "" AND
@@ -698,40 +811,10 @@ function(parse_build_root_basename)
 endfunction()
 
 macro(configure_macos_sdk)
-  if(APPLE AND "${YB_COMPILER_TYPE}" MATCHES "^clang[0-9]+$")
-    if(NOT "${MACOS_SDK_DIR}" STREQUAL "" AND
-       NOT "${MACOS_SDK_VERSION}" STREQUAL "")
-      message("Using cached macOS SDK directory ${MACOS_SDK_DIR}, version ${MACOS_SDK_VERSION}")
-    else()
-      set(MACOS_SDK_BASE_DIR "/Library/Developer/CommandLineTools/SDKs")
-
-      file(GLOB MACOS_SDK_DIRS "${MACOS_SDK_BASE_DIR}/*")
-      set(MACOS_SDK_DIR "")
-      set(MACOS_SDK_VERSION "")
-      foreach(MACOS_SDK_CANDIDATE_DIR ${MACOS_SDK_DIRS})
-        get_filename_component(
-          MACOS_SDK_CANDIDATE_DIR_NAME "${MACOS_SDK_CANDIDATE_DIR}" NAME)
-        if("${MACOS_SDK_CANDIDATE_DIR_NAME}" MATCHES "^MacOSX([0-9.]+)[.]sdk$")
-          set(MACOS_SDK_CANDIDATE_VERSION "${CMAKE_MATCH_1}")
-          if ("${MACOS_SDK_VERSION}" STREQUAL "" OR
-              "${MACOS_SDK_CANDIDATE_VERSION}" VERSION_GREATER "${MACOS_SDK_VERSION}")
-            set(MACOS_SDK_DIR "${MACOS_SDK_CANDIDATE_DIR}")
-            set(MACOS_SDK_VERSION "${MACOS_SDK_CANDIDATE_VERSION}")
-          endif()
-        endif()
-      endforeach()
-      if("${MACOS_SDK_VERSION}" STREQUAL "")
-        message(FATAL_ERROR "Did not find a macOS SDK at ${MACOS_SDK_BASE_DIR}")
-      endif()
-      message("Using macOS SDK version ${MACOS_SDK_VERSION} at ${MACOS_SDK_DIR}")
-      # CMake's INTERNAL type of cache variables implies FORCE, overwriting existing entries.
-      # https://cmake.org/cmake/help/latest/command/set.html
-      set(MACOS_SDK_DIR "${MACOS_SDK_DIR}" CACHE INTERNAL "macOS SDK directory")
-      set(MACOS_SDK_VERSION "${MACOS_SDK_VERSION}" CACHE INTERNAL "macOS SDK version")
-    endif()
-    set(MACOS_SDK_INCLUDE_DIR "${MACOS_SDK_DIR}/usr/include")
-    INCLUDE_DIRECTORIES(SYSTEM "${MACOS_SDK_INCLUDE_DIR}")
-    ADD_LINKER_FLAGS("-L${MACOS_SDK_DIR}/usr/lib")
+  # If the build type is e.g. "clang15", we consider this not to be Apple Clang but custom-built
+  # LLVM on macOS.
+  if(APPLE AND NOT IS_APPLE_CLANG)
+    ADD_LINKER_FLAGS("-L${CMAKE_OSX_SYSROOT}/usr/lib")
   endif()
 endmacro()
 
@@ -764,7 +847,7 @@ endfunction()
 # LTO support
 # -------------------------------------------------------------------------------------------------
 
-macro(enable_lto_if_needed)
+function(enable_lto_if_needed)
   if(NOT DEFINED COMPILER_FAMILY)
     message(FATAL_ERROR "COMPILER_FAMILY not defined")
   endif()
@@ -775,13 +858,12 @@ macro(enable_lto_if_needed)
     message(FATAL_ERROR "YB_BUILD_TYPE not defined")
   endif()
 
-  set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic")
-  if("${YB_LINKING_TYPE}" MATCHES "^([a-z]+)-lto$")
-    message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
-    ADD_CXX_FLAGS("-flto=${CMAKE_MATCH_1} -fuse-ld=lld")
+  detect_lto_type_from_linking_type()
+  if(YB_LTO_ENABLED)
+    ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
     # In LTO mode, yb-master / yb-tserver executables are generated with LTO, but we first generate
     # yb-master-dynamic and yb-tserver-dynamic binaries that are dynamically linked.
-    set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic")
+    set_in_current_and_parent_scope(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic" PARENT_SCOPE)
   else()
     message("Not enabling LTO: "
             "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
@@ -791,47 +873,60 @@ macro(enable_lto_if_needed)
             "APPLE=${APPLE}")
     # In non-LTO builds, yb-master / yb-tserver executables themselves are dynamically linked to
     # other YB libraries.
-    set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "")
+    set_in_current_and_parent_scope(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "")
   endif()
-  set(YB_MASTER_DYNAMIC_EXE_NAME "yb-master${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
-  set(YB_TSERVER_DYNAMIC_EXE_NAME "yb-tserver${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
-endmacro()
 
-function(yb_add_lto_target exe_name)
-  if("${YB_LINKING_TYPE}" STREQUAL "")
-    message(FATAL_ERROR "YB_LINKING_TYPE is not set")
-  endif()
-  if("${YB_LINKING_TYPE}" STREQUAL "dynamic")
+  # Only set these in parent scope.
+  set(YB_MASTER_DYNAMIC_EXE_NAME "yb-master${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" PARENT_SCOPE)
+  set(YB_TSERVER_DYNAMIC_EXE_NAME "yb-tserver${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" PARENT_SCOPE)
+endfunction()
+
+function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
+  assert_vars_defined(YB_LTO_ENABLED YB_DYNAMICALLY_LINKED_EXE_SUFFIX)
+  if(NOT YB_LTO_ENABLED)
     return()
   endif()
 
   if("$ENV{YB_SKIP_FINAL_LTO_LINK}" STREQUAL "1")
-    message("Skipping adding LTO target ${exe_name} because YB_SKIP_FINAL_LTO_LINK is set to 1")
+    message("Skipping adding LTO target ${output_exe_name} because the YB_SKIP_FINAL_LTO_LINK"
+            "environment variable is set to 1")
     return()
   endif()
-  set(dynamic_exe_name "${exe_name}${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
-  message("Adding LTO target: ${exe_name} "
-          "(the dynamically linked equivalent is ${dynamic_exe_name})")
-  set(output_executable_path "${EXECUTABLE_OUTPUT_PATH}/${exe_name}")
+
+  set(dynamic_exe_name "${original_exe_name}${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+  message("Adding LTO target: ${output_exe_name} "
+          "(LTO equivalent of ${dynamic_exe_name})")
+  set(output_executable_path "${EXECUTABLE_OUTPUT_PATH}/${output_exe_name}")
+
+  set(cmd_args
+      "${BUILD_SUPPORT_DIR}/dependency_graph"
+      "--build-root=${YB_BUILD_ROOT}"
+      # Use $$ to escape $.
+      "--file-regex=^.*/${dynamic_exe_name}$$"
+      # Allow LTO linking in parallel with the rest of the build.
+      --incomplete-build
+      "--lto-output-path=${output_executable_path}"
+      "--never-run-build")
+
+  foreach(symlink_name IN LISTS symlink_as_names)
+    list(APPEND cmd_args "--symlink-as=${symlink_name}")
+  endforeach()
+  list(APPEND cmd_args "link-whole-program")
+
+  message("Command for generating LTO target ${output_exe_name}: ${cmd_args}")
   add_custom_command(
     OUTPUT "${output_executable_path}"
-    COMMAND "${BUILD_SUPPORT_DIR}/dependency_graph"
-            "--build-root=${YB_BUILD_ROOT}"
-            # Use $$ to escape $.
-            "--file-regex=^.*/${dynamic_exe_name}$$"
-            # Allow LTO linking in parallel with the rest of the build.
-            --incomplete-build
-            "--lto-output-path=${output_executable_path}"
-            "--never-run-build"
-            link-whole-program
-    DEPENDS "${exe_name}"
+    COMMAND ${cmd_args}
+    DEPENDS "${dynamic_exe_name}"
   )
 
-  add_custom_target("${exe_name}" ALL DEPENDS "${output_executable_path}")
+  add_custom_target("${output_exe_name}" ALL DEPENDS "${output_executable_path}")
+  foreach(symlink_name IN LISTS symlink_as_names)
+    # For each symlinked executable name (yb-master, yb-tserver) create an alias target that will
+    # cause the LTO executable to be built.
+    add_custom_target("${symlink_name}" DEPENDS "${output_executable_path}")
+  endforeach()
 
-  if("${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
-    message(FATAL_ERROR "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} is not set")
-  endif()
-  # We need to build the corresponding non-LTO executable, such as yb-master or yb-tserver, first.
-  add_dependencies("${exe_name}" "${dynamic_exe_name}")
+  # We need to build the corresponding non-LTO executable first, such as yb-master or yb-tserver.
+  add_dependencies("${output_exe_name}" "${dynamic_exe_name}")
 endfunction()

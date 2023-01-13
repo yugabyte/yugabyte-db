@@ -73,7 +73,6 @@ export const convertScheduleToFormValues = (
     scheduleObj: schedule
   };
 
-
   if (schedule.backupInfo?.fullBackup) {
     formValues['db_to_backup'] = {
       value: null,
@@ -113,6 +112,18 @@ export const convertScheduleToFormValues = (
       schedule.frequency / MILLISECONDS_IN[schedule.frequencyTimeUnit];
     const interval_type = capitalize(lowerCase(schedule.frequencyTimeUnit));
     formValues['policy_interval_type'] = { value: interval_type, label: interval_type };
+  }
+
+  if (schedule.incrementalBackupFrequency > 0) {
+    formValues['is_incremental_backup_enabled'] = true;
+    formValues['incremental_backup_frequency'] =
+      schedule.incrementalBackupFrequency /
+      MILLISECONDS_IN[schedule.incrementalBackupFrequencyTimeUnit];
+    const interval_type = capitalize(lowerCase(schedule.incrementalBackupFrequencyTimeUnit));
+    formValues['incremental_backup_frequency_type'] = {
+      value: interval_type,
+      label: interval_type
+    };
   }
 
   const s_config = storage_configs.find(

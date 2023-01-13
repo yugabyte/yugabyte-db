@@ -11,11 +11,11 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_TABLET_SPLIT_MANAGER_H
-#define YB_MASTER_TABLET_SPLIT_MANAGER_H
+#pragma once
 
 #include <unordered_set>
 
+#include "yb/master/cdc_split_driver.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/util/metrics.h"
@@ -33,7 +33,7 @@ class TabletSplitManager {
  public:
   TabletSplitManager(TabletSplitCandidateFilterIf* filter,
                      TabletSplitDriverIf* driver,
-                     XClusterSplitDriverIf* xcluster_split_driver,
+                     CDCSplitDriverIf* cdcsdk_split_driver,
                      const scoped_refptr<MetricEntity>& metric_entity);
 
   // Temporarily disable splitting for the specified amount of time.
@@ -48,7 +48,8 @@ class TabletSplitManager {
   bool IsTabletSplittingComplete(const TableInfo& table, bool wait_for_parent_deletion);
 
   // Perform one round of tablet splitting. This method is not thread-safe.
-  void MaybeDoSplitting(const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map);
+  void MaybeDoSplitting(
+      const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map);
 
   Status ProcessSplitTabletResult(
       const TableId& split_table_id, const SplitTabletIds& split_tablet_ids);
@@ -83,7 +84,7 @@ class TabletSplitManager {
  private:
   void ScheduleSplits(const std::unordered_set<TabletId>& splits_to_schedule);
 
-  void DoSplitting(const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map);
+  void DoSplitting(const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map);
 
   Status ValidateTableAgainstDisabledLists(const TableId& table_id);
   Status ValidateTabletAgainstDisabledList(const TabletId& tablet_id);
@@ -91,7 +92,7 @@ class TabletSplitManager {
 
   TabletSplitCandidateFilterIf* filter_;
   TabletSplitDriverIf* driver_;
-  XClusterSplitDriverIf* xcluster_split_driver_;
+  CDCSplitDriverIf* cdc_split_driver_;
 
   // Used to signal (e.g. to IsTabletSplittingComplete) that the tablet split manager is not
   // running, and hence it is safe to assume that no more splitting will occur if splitting was
@@ -119,4 +120,3 @@ class TabletSplitManager {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_TABLET_SPLIT_MANAGER_H

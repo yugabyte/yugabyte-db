@@ -59,7 +59,7 @@ export class UniverseTaskList extends Component {
         })
         .filter(Boolean);
     }
-    if (isNonEmptyArray(universeTaskHistoryArray)) {
+    if (isNonEmptyArray(customerTaskList)) {
       const errorPlatformMessage = (
         <div className="oss-unavailable-warning">Only available on {YUGABYTE_TITLE}.</div>
       );

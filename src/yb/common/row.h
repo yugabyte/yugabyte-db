@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_ROW_H
-#define YB_COMMON_ROW_H
+#pragma once
 
 #include <string>
 #include <utility>
@@ -188,12 +187,12 @@ class RowProjector {
 
   // Returns the mapping between base schema and projection schema columns
   // first: is the projection column index, second: is the base_schema  index
-  const vector<ProjectionIdxMapping>& base_cols_mapping() const { return base_cols_mapping_; }
+  const std::vector<ProjectionIdxMapping>& base_cols_mapping() const { return base_cols_mapping_; }
 
   // Returns the mapping between base schema and projection schema columns
   // that requires a type adapter.
   // first: is the projection column index, second: is the base_schema  index
-  const vector<ProjectionIdxMapping>& adapter_cols_mapping() const { return adapter_cols_mapping_; }
+  const std::vector<ProjectionIdxMapping>& adapter_cols_mapping() const { return adapter_cols_mapping_; }
 
  private:
   friend class Schema;
@@ -233,8 +232,8 @@ class RowProjector {
   }
 
  private:
-  vector<ProjectionIdxMapping> base_cols_mapping_;
-  vector<ProjectionIdxMapping> adapter_cols_mapping_;
+  std::vector<ProjectionIdxMapping> base_cols_mapping_;
+  std::vector<ProjectionIdxMapping> adapter_cols_mapping_;
 
   const Schema* base_schema_;
   const Schema* projection_;
@@ -464,5 +463,3 @@ template<>
 void ContiguousRowCell<ConstContiguousRow>::set_null(bool null) const;
 
 } // namespace yb
-
-#endif // YB_COMMON_ROW_H

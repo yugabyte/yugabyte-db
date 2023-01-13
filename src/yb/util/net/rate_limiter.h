@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_NET_RATE_LIMITER_H
-#define YB_UTIL_NET_RATE_LIMITER_H
+#pragma once
 
 #include <functional>
 #include <vector>
@@ -44,7 +43,7 @@ class RateLimiter {
   // function might sleep before returning to keep the transmission rate as close as possible to the
   // desired target.
   Status SendOrReceiveData(std::function<Status()> send_rcv_func,
-                                   std::function<uint64_t()> reply_size_func);
+                           std::function<uint64_t()> reply_size_func);
 
   // Calculates the size for the next transmission so that the transmission rate remains as close
   // as possible to the target rate.
@@ -131,5 +130,3 @@ class RateLimiter {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_NET_RATE_LIMITER_H

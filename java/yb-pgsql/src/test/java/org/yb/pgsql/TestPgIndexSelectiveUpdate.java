@@ -161,7 +161,7 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
       // Hence the number of transactions remains unchanged.
       stmt.execute("UPDATE orders SET v2 = 4 where k = 1;");
       long newTxnValue = getMetricCounter(SINGLE_SHARD_TRANSACTIONS_METRIC);
-      assertEquals(oldTxnValue, newTxnValue);
+      assertEquals(oldTxnValue+1, newTxnValue);
     }
   }
 }

@@ -14,6 +14,8 @@
 #include "yb/util/test_util.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
+using std::string;
+
 namespace yb {
 namespace master {
 
@@ -22,7 +24,7 @@ using OK = Status::OK;
 class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
  public:
   XClusterSafeTimeServiceMocked()
-      : XClusterSafeTimeService(nullptr, nullptr), create_table_if_not_found_(false) {}
+      : XClusterSafeTimeService(nullptr, nullptr, nullptr), create_table_if_not_found_(false) {}
 
   ~XClusterSafeTimeServiceMocked() {}
 
@@ -46,8 +48,9 @@ class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
   }
 
   Status SetXClusterSafeTime(
-      const int64_t leader_term, XClusterNamespaceToSafeTimeMap new_safe_time_map_pb) override {
-    safe_time_map_ = std::move(new_safe_time_map_pb);
+      const int64_t leader_term,
+      const XClusterNamespaceToSafeTimeMap& new_safe_time_map_pb) override {
+    safe_time_map_ = new_safe_time_map_pb;
     return OK();
   }
 

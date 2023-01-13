@@ -13,11 +13,10 @@
 
 // Utilities for encoding and decoding key/value pairs that are used in the DocDB code.
 
-#ifndef YB_DOCDB_DOC_SCANSPEC_UTIL_H_
-#define YB_DOCDB_DOC_SCANSPEC_UTIL_H_
+#pragma once
 
 #include "yb/common/ql_scanspec.h"
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -51,5 +50,3 @@ bool GetQLRangeBoundIsInclusive(
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_DOC_SCANSPEC_UTIL_H_

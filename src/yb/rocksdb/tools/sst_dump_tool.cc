@@ -17,7 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/tools/sst_dump_tool_imp.h"
 
@@ -61,6 +60,8 @@ using yb::docdb::StorageDbType;
 namespace rocksdb {
 
 using std::dynamic_pointer_cast;
+using std::unique_ptr;
+using std::shared_ptr;
 
 std::string DocDBKVFormatter::Format(
     const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const {
@@ -603,5 +604,3 @@ int SSTDumpTool::Run(int argc, char** argv) {
   return 0;
 }
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

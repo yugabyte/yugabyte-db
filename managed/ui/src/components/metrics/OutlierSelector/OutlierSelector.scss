@@ -9,19 +9,20 @@
     margin-right: 8px;
   }
 
-  button:first-child,
-  button:last-child {
+  .btn {
     border: 1px solid #E5E5E9;
     padding: 8px 12px;
   }
 
-  button:first-child {
-    border-radius: 0px;
-    margin-right: 1px;
-  }
+  .outlier-button {
+    &__top {
+      border-radius: 0px;
+      margin-right: 1px;
+    }
 
-  button:last-child {
-    border-radius: 0 8px 8px 0;
+    &__bottom {
+      border-radius: 0 8px 8px 0;
+    }
   }
 
   .outlier-num-nodes,

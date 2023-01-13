@@ -117,6 +117,14 @@ Status PrometheusWriter::WriteSingleEntry(
     AddAggregatedEntry("", new_attr, name, value, aggregation_function);
     break;
   }
+  case AggregationMetricLevel::kStream:
+  {
+    MetricEntity::AttributeMap new_attr = attr;
+    new_attr.erase("table_id");
+    new_attr.erase("table_name");
+    AddAggregatedEntry(attr.find("stream_id")->second, new_attr, name, value, aggregation_function);
+    break;
+  }
   case AggregationMetricLevel::kTable:
     AddAggregatedEntry(it->second, attr, name, value, aggregation_function);
     break;

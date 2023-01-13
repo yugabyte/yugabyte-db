@@ -308,7 +308,6 @@ export const mockProps = {
         ],
         airGapInstall: false,
         sshPort: 54422,
-        customHostCidrs: []
       },
       {
         uuid: '61dce469-e2fb-4cd7-921f-d622a14a823f',

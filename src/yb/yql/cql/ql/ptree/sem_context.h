@@ -15,8 +15,7 @@
 // Entry point for the semantic analytical process.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_SEM_CONTEXT_H_
-#define YB_YQL_CQL_QL_PTREE_SEM_CONTEXT_H_
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -92,12 +91,12 @@ class SemContext : public ProcessContext {
   //------------------------------------------------------------------------------------------------
   // Load table schema into symbol table.
   Status LookupTable(const client::YBTableName& name,
-                             const YBLocation& loc,
-                             bool write_table,
-                             const PermissionType permission_type,
-                             std::shared_ptr<client::YBTable>* table,
-                             bool* is_system,
-                             MCVector<ColumnDesc>* col_descs = nullptr);
+                     const YBLocation& loc,
+                     bool write_table,
+                     const PermissionType permission_type,
+                     std::shared_ptr<client::YBTable>* table,
+                     bool* is_system,
+                     MCVector<ColumnDesc>* col_descs = nullptr);
 
   //------------------------------------------------------------------------------------------------
   // Access functions to current processing table and column.
@@ -206,6 +205,8 @@ class SemContext : public ProcessContext {
 
   const MCSharedPtr<MCString>& bindvar_name() const;
 
+  const MCSharedPtr<MCVector<MCSharedPtr<MCString>>> &alternative_bindvar_names() const;
+
   const ColumnDesc *hash_col() const;
 
   const ColumnDesc *lhs_col() const;
@@ -236,39 +237,39 @@ class SemContext : public ProcessContext {
   void set_void_primary_key_condition(bool val);
 
   Status HasKeyspacePermission(const PermissionType permission,
-                                       const NamespaceName& keyspace_name);
+                               const NamespaceName& keyspace_name);
 
   // Check whether the current role has the specified permission on the keyspace. Returns an
   // UNAUTHORIZED error message if not found.
   Status CheckHasKeyspacePermission(const YBLocation& loc,
-                                            const PermissionType permission,
-                                            const NamespaceName& keyspace_name);
+                                    const PermissionType permission,
+                                    const NamespaceName& keyspace_name);
 
   // Check whether the current role has the specified permission on the keyspace or table. Returns
   // an UNAUTHORIZED error message if not found.
   Status CheckHasTablePermission(const YBLocation& loc,
-                                         const PermissionType permission,
-                                         const NamespaceName& keyspace_name,
-                                         const TableName& table_name);
+                                 const PermissionType permission,
+                                 const NamespaceName& keyspace_name,
+                                 const TableName& table_name);
 
   // Convenience method.
   Status CheckHasTablePermission(const YBLocation& loc,
-                                         const PermissionType permission,
-                                         client::YBTableName table_name);
+                                 const PermissionType permission,
+                                 client::YBTableName table_name);
 
   // Check whether the current role has the specified permission on the role. Returns an
   // UNAUTHORIZED error message if not found.
   Status CheckHasRolePermission(const YBLocation& loc,
-                                        const PermissionType permission,
-                                        const RoleName& role_name);
+                                const PermissionType permission,
+                                const RoleName& role_name);
 
   // Check whether the current role has the specified permission on 'ALL KEYSPACES'.
   Status CheckHasAllKeyspacesPermission(const YBLocation& loc,
-                                                const PermissionType permission);
+                                        const PermissionType permission);
 
   // Check whether the current role has the specified permission on 'ALL ROLES'.
   Status CheckHasAllRolesPermission(const YBLocation& loc,
-                                            const PermissionType permission);
+                                    const PermissionType permission);
 
   bool IsUncoveredIndexSelect() const;
 
@@ -276,7 +277,7 @@ class SemContext : public ProcessContext {
 
  private:
   Status LoadSchema(const std::shared_ptr<client::YBTable>& table,
-                            MCVector<ColumnDesc>* col_descs = nullptr);
+                    MCVector<ColumnDesc>* col_descs = nullptr);
 
   // Find symbol.
   const SymbolEntry *SeekSymbol(const MCString& name) const;
@@ -300,4 +301,3 @@ class SemContext : public ProcessContext {
 
 }  // namespace ql
 }  // namespace yb
-#endif  // YB_YQL_CQL_QL_PTREE_SEM_CONTEXT_H_

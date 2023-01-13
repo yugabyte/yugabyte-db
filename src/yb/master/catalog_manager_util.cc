@@ -18,11 +18,14 @@
 #include "yb/master/catalog_entity_info.h"
 
 #include "yb/master/master_cluster.pb.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
 
-DEFINE_double(balancer_load_max_standard_deviation, 2.0,
+using std::string;
+using std::vector;
+
+DEFINE_UNKNOWN_double(balancer_load_max_standard_deviation, 2.0,
     "The standard deviation among the tserver load, above which that distribution "
     "is considered not balanced.");
 TAG_FLAG(balancer_load_max_standard_deviation, advanced);

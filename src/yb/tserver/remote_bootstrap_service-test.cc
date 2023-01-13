@@ -32,7 +32,7 @@
 
 #include <limits>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/wire_protocol.h"
 
@@ -56,6 +56,9 @@
 #include "yb/util/monotime.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+
+using std::string;
+using std::vector;
 
 #define ASSERT_REMOTE_ERROR(status, err, code, str) \
     ASSERT_NO_FATALS(AssertRemoteError(status, err, code, str))

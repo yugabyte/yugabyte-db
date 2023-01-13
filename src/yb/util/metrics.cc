@@ -45,11 +45,12 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(expose_metric_histogram_percentiles, true,
+DEFINE_UNKNOWN_bool(expose_metric_histogram_percentiles, true,
             "Should we expose the percentiles information for metrics histograms.");
 
-DEFINE_int32(max_tables_metrics_breakdowns, INT32_MAX,
+DEFINE_UNKNOWN_int32(max_tables_metrics_breakdowns, INT32_MAX,
              "The maxmimum number of tables to retrieve metrics for");
 
 // Process/server-wide metrics should go into the 'server' entity.
@@ -235,6 +236,17 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
   entities.clear(); // necessary to deref metrics we just dumped before doing retirement scan.
   const_cast<MetricRegistry*>(this)->RetireOldMetrics();
   return Status::OK();
+}
+
+void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const {
+  EntityMap entities;
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    entities = entities_;
+  }
+  for (const EntityMap::value_type& e : entities) {
+    prototypes.insert(e.second->prototype().name());
+  }
 }
 
 void MetricRegistry::RetireOldMetrics() {
@@ -574,9 +586,12 @@ Status Histogram::WriteForPrometheus(
   HdrHistogram snapshot(*histogram_);
   // HdrHistogram reports percentiles based on all the data points from the
   // begining of time. We are interested in the percentiles based on just
-  // the "newly-arrived" data. So, we will reset the histogram's percentiles
-  // between each invocation.
-  histogram_->ResetPercentiles();
+  // the "newly-arrived" data. So, in the defualt setting, we will reset
+  // the histogram's percentiles between each invocation. User also has the
+  // option to set the url parameter reset_histograms=false
+  if (opts.reset_histograms) {
+    histogram_->ResetPercentiles();
+  }
 
   // Representing the sum and count require suffixed names.
   std::string hist_name = prototype_->name();
@@ -619,9 +634,12 @@ Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_p
   HdrHistogram snapshot(*histogram_);
   // HdrHistogram reports percentiles based on all the data points from the
   // begining of time. We are interested in the percentiles based on just
-  // the "newly-arrived" data. So, we will reset the histogram's percentiles
-  // between each invocation.
-  histogram_->ResetPercentiles();
+  // the "newly-arrived" data. So, in the defualt setting, we will reset
+  // the histogram's percentiles between each invocation. User also has the
+  // option to set the url parameter reset_histograms=false
+  if (opts.reset_histograms) {
+    histogram_->ResetPercentiles();
+  }
 
   snapshot_pb->set_name(prototype_->name());
   if (opts.include_schema_info) {

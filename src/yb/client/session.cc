@@ -31,11 +31,13 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(client_read_write_timeout_ms, 60000, "Timeout for client read and write operations.");
+DEFINE_UNKNOWN_int32(client_read_write_timeout_ms, 60000,
+    "Timeout for client read and write operations.");
 
 namespace yb {
 namespace client {
@@ -187,6 +189,11 @@ void BatcherFlushDone(
                       << " due to: " << error->status();
     const auto op = error->shared_failed_op();
     op->ResetTablet();
+    // Transmit failed request id to retry_batcher.
+    if (op->request_id().has_value()) {
+      done_batcher->RemoveRequest(op->request_id().value());
+      retry_batcher->RegisterRequest(op->request_id().value());
+    }
     retry_batcher->Add(op);
   }
   FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
@@ -299,6 +306,7 @@ internal::Batcher& YBSession::Batcher() {
 }
 
 void YBSession::Apply(YBOperationPtr yb_op) {
+  VLOG(5) << "YBSession Apply yb_op: " << yb_op->ToString();
   Batcher().Add(yb_op);
 }
 

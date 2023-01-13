@@ -45,8 +45,7 @@
 
 #include <stdint.h>
 
-#ifndef YB_GUTIL_SYSINFO_H
-#define YB_GUTIL_SYSINFO_H
+#pragma once
 
 namespace base {
 
@@ -73,4 +72,3 @@ void SleepForMilliseconds(int64_t milliseconds);
 extern double CyclesPerSecond(void);
 
 } // namespace base
-#endif   /* YB_GUTIL_SYSINFO_H */

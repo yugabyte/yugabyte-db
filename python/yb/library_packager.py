@@ -36,9 +36,14 @@ import shutil
 import subprocess
 
 from functools import total_ordering
+from queue import Queue
 
 from yb.command_util import run_program, mkdir_p, copy_deep
-from yb.common_util import get_thirdparty_dir, YB_SRC_ROOT, sorted_grouped_by
+from yb.common_util import (
+    get_thirdparty_dir,
+    sorted_grouped_by,
+    YB_SRC_ROOT,
+)
 from yb.rpath import set_rpath, remove_rpath
 from yb.linuxbrew import get_linuxbrew_home, using_linuxbrew, LinuxbrewHome
 
@@ -361,29 +366,69 @@ class LibraryPackager:
         main_elf_names_to_patch = []
         postgres_elf_names_to_patch = []
 
+        glob_results_seen: Set[str] = set()
+        processing_queue: Queue[str] = Queue()
+
+        def add_glob_result(glob_result: str) -> None:
+            abs_glob_result = os.path.abspath(glob_result)
+            if abs_glob_result not in glob_results_seen:
+                glob_results_seen.add(glob_result)
+                processing_queue.put(abs_glob_result)
+
         for seed_executable_glob in self.seed_executable_patterns:
             glob_results = glob.glob(seed_executable_glob)
             if not glob_results:
                 raise RuntimeError("No files found matching the pattern '{}'".format(
                     seed_executable_glob))
-            for executable in glob_results:
-                dest_bin_dir = self.get_dest_bin_dir_for_executable(executable)
-                if 'gobin' in seed_executable_glob:
-                    # This is a statically linked go binary
-                    shutil.copy(executable, dest_bin_dir)
-                    continue
-                deps = self.find_elf_dependencies(executable)
-                all_deps += deps
-                if deps:
-                    self.install_dyn_linked_binary(executable, dest_bin_dir)
-                    executable_basename = os.path.basename(executable)
-                    if self.is_postgres_binary(executable):
-                        postgres_elf_names_to_patch.append(executable_basename)
-                    else:
-                        main_elf_names_to_patch.append(executable_basename)
+            for glob_result in glob_results:
+                add_glob_result(glob_result)
+
+        while not processing_queue.empty():
+            executable = processing_queue.get()
+
+            dest_bin_dir = self.get_dest_bin_dir_for_executable(executable)
+            if os.path.islink(executable):
+                link_target = os.readlink(executable)
+                link_target_path = os.path.join(os.path.dirname(executable), link_target)
+                abs_link_target = os.path.abspath(link_target_path)
+
+                is_valid_link_target_basename = '/' not in link_target and '..' not in link_target
+                link_target_exists = os.path.exists(abs_link_target)
+                link_target_is_file = os.path.isfile(abs_link_target)
+                if (not is_valid_link_target_basename or
+                        not link_target_exists or
+                        not link_target_is_file):
+                    raise ValueError(
+                        f"Invalid symlink target {link_target} of symlink {executable}: "
+                        "only symlinks to existing files in same directory are allowed. "
+                        f"Symlink target path: {link_target_path}. "
+                        f"abs_link_target: {abs_link_target}. "
+                        f"is_valid_link_target_basename: {is_valid_link_target_basename}. "
+                        f"link_target_exists: {link_target_exists}. "
+                        f"link_target_is_file: {link_target_is_file}.")
+
+                symlink(link_target,
+                        os.path.join(dest_bin_dir, os.path.basename(executable)))
+                add_glob_result(link_target_path)
+                continue
+
+            if os.path.basename(os.path.dirname(os.path.abspath(executable))) == 'gobin':
+                # This is a statically linked go binary
+                shutil.copy(executable, dest_bin_dir)
+                continue
+
+            deps = self.find_elf_dependencies(executable)
+            all_deps += deps
+            if deps:
+                self.install_dyn_linked_binary(executable, dest_bin_dir)
+                executable_basename = os.path.basename(executable)
+                if self.is_postgres_binary(executable):
+                    postgres_elf_names_to_patch.append(executable_basename)
                 else:
-                    # This is probably a script.
-                    shutil.copy(executable, dest_bin_dir)
+                    main_elf_names_to_patch.append(executable_basename)
+            else:
+                # This is probably a script.
+                shutil.copy(executable, dest_bin_dir)
 
         if using_linuxbrew():
             # Not using the install_dyn_linked_binary method for copying patchelf and ld.so as we

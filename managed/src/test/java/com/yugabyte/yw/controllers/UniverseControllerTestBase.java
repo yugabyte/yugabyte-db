@@ -26,7 +26,10 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -34,6 +37,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -71,14 +75,14 @@ import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
-import play.test.WithApplication;
 
-public class UniverseControllerTestBase extends WithApplication {
+public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest {
   protected static Commissioner mockCommissioner;
   protected static MetricQueryHelper mockMetricQueryHelper;
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
   @Mock protected play.Configuration mockAppConfig;
 
   private HealthChecker healthChecker;
@@ -101,6 +105,7 @@ public class UniverseControllerTestBase extends WithApplication {
   protected Config mockRuntimeConfig;
   protected QueryHelper mockQueryHelper;
   protected ReleaseManager mockReleaseManager;
+  protected RuntimeConfigFactory runtimeConfigFactory;
 
   @Override
   protected Application provideApplication() {
@@ -124,6 +129,10 @@ public class UniverseControllerTestBase extends WithApplication {
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
+    when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
+    when(mockRuntimeConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
+    when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
 
     return new GuiceApplicationBuilder()
         .disable(GuiceModule.class)
@@ -147,6 +156,8 @@ public class UniverseControllerTestBase extends WithApplication {
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .overrides(bind(QueryHelper.class).toInstance(mockQueryHelper))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 
@@ -217,6 +228,7 @@ public class UniverseControllerTestBase extends WithApplication {
             .put("api_key", "some_api_token");
     kmsConfig = ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", kmsConfigReq);
     authToken = user.createAuthToken();
+    runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
 
     when(mockAppConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());

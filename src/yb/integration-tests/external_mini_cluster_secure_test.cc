@@ -42,8 +42,7 @@ class ExternalMiniClusterSecureTest :
     FLAGS_use_node_to_node_encryption = true;
     FLAGS_use_client_to_server_encryption = true;
     FLAGS_allow_insecure_connections = false;
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    FLAGS_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    FLAGS_certs_dir = GetCertsDir();
 
     SetUpFlags();
 
@@ -78,7 +77,7 @@ class ExternalMiniClusterSecureTest :
   }
 
   Status CallYBTSCli(const std::string& client_node, const std::string& what,
-                             const HostPort& server) {
+                     const HostPort& server) {
     auto command = yb::ToStringVector(
         GetToolPath("yb-ts-cli"), "-server_address", server,
         "-certs_dir_name", ToolCertDirectory(),
@@ -194,8 +193,7 @@ class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest
   void SetUpFlags() override {
     FLAGS_certs_dir = JoinPathSegments(GetTestDataDirectory(), "certs");
 
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    const auto src_certs_dir = GetCertsDir();
     ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
                             UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
 
@@ -203,24 +201,19 @@ class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest
   }
 
   void SetupCql() {
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
-    auto session = ASSERT_RESULT(EstablishCqlSession({JoinPathSegments(src_certs_dir, "ca.crt")}));
+    auto session = ASSERT_RESULT(EstablishCqlSession({JoinPathSegments(GetCertsDir(), "ca.crt")}));
     ASSERT_OK(session.ExecuteQuery("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
     ASSERT_OK(session.ExecuteQuery("INSERT INTO t (k, v) VALUES (1, 2)"));
   }
 
   void TestCql(const std::string& ca_file) {
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
-    auto session = ASSERT_RESULT(EstablishCqlSession({JoinPathSegments(src_certs_dir, ca_file)}));
+    auto session = ASSERT_RESULT(EstablishCqlSession({JoinPathSegments(GetCertsDir(), ca_file)}));
     auto content = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
     ASSERT_EQ(content, "1,2");
   }
 
   virtual std::string ToolCertDirectory() override {
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    const auto src_certs_dir = GetCertsDir();
     if (!use_ca2_) {
       return src_certs_dir;
     } else {
@@ -229,8 +222,7 @@ class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest
   }
 
   void ReplaceYBCertificates() {
-    const auto sub_dir = JoinPathSegments("ent", "test_certs", "CA2");
-    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    const auto src_certs_dir = JoinPathSegments(GetCertsDir(), "CA2");
     ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
                             UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
     LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;

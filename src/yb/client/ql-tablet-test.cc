@@ -77,6 +77,9 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::vector;
+using std::string;
+
 using namespace std::literals; // NOLINT
 
 DECLARE_uint64(initial_seqno);
@@ -330,8 +333,9 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
           std::shared_ptr<std::vector<ColumnSchema>> columns =
               std::make_shared<std::vector<ColumnSchema>>(YBSchema(projection).columns());
 
-          Slice data = VERIFY_RESULT(controller.GetSidecar(ql_batch.rows_data_sidecar()));
-          yb::ql::RowsResult result(table->name(), columns, data.ToBuffer());
+          ql::RowsResult result(
+              table->name(), columns,
+              VERIFY_RESULT(controller.ExtractSidecar(ql_batch.rows_data_sidecar())));
           auto row_block = result.GetRowBlock();
           if (row_block->row_count() == 1) {
             if (found) {
@@ -1678,7 +1682,7 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
 
     auto get_tablet_size = [](tablet::Tablet* tablet) -> Result<size_t> {
       RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
-      RETURN_NOT_OK(tablet->ForceFullRocksDBCompact());
+      RETURN_NOT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction));
       return tablet->GetCurrentVersionSstFilesSize();
     };
 
@@ -1737,6 +1741,41 @@ TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
 
   LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
   ASSERT_LE(new_files_size * 2, files_size);
+}
+
+TEST_F_EX(QLTabletTest, ShortPKCompactionTime, QLTabletRf1Test) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  ActivateCompactionTimeLogging(cluster_.get());
+
+  constexpr int kKeys = RegularBuildVsDebugVsSanitizers(100, 10, 1) * 1000;
+  constexpr int kFiles = 4;
+  constexpr int kTabletFlushStep = kKeys / kFiles;
+
+  YBSchemaBuilder builder;
+  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
+  TableHandle table;
+  ASSERT_OK(table.Create(kTable1Name, 1, client_.get(), &builder));
+  auto session = CreateSession();
+  int next_tablet_flush = kTabletFlushStep;
+  for (int key : Range(kKeys)) {
+    const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, key);
+    table.AddInt32ColumnValue(req, kValueColumn, -key);
+    session->Apply(op);
+    if ((key & 1023) == 0) {
+      ASSERT_OK(session->TEST_Flush());
+      if (key >= next_tablet_flush) {
+        ASSERT_OK(cluster_->FlushTablets());
+        next_tablet_flush = key + kTabletFlushStep;
+      }
+    }
+  }
+  ASSERT_OK(session->TEST_Flush());
+
+  ASSERT_OK(cluster_->CompactTablets());
 }
 
 } // namespace client

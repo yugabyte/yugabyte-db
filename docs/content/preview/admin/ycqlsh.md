@@ -11,7 +11,7 @@ menu:
   preview:
     identifier: ycqlsh
     parent: admin
-    weight: 2460
+    weight: 20
 type: docs
 ---
 

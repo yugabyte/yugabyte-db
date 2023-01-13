@@ -18,12 +18,10 @@
 // This file contains functions that remove a defined part from the string,
 // i.e., strip the string.
 
-#ifndef YB_GUTIL_STRINGS_STRIP_H
-#define YB_GUTIL_STRINGS_STRIP_H
+#pragma once
 
 #include <stddef.h>
 #include <string>
-using std::string;
 
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/stringpiece.h"
@@ -31,25 +29,25 @@ using std::string;
 // Given a string and a putative prefix, returns the string minus the
 // prefix string if the prefix matches, otherwise the original
 // string.
-string StripPrefixString(GStringPiece str, const GStringPiece& prefix);
+std::string StripPrefixString(GStringPiece str, const GStringPiece& prefix);
 
 // Like StripPrefixString, but return true if the prefix was
 // successfully matched.  Write the output to *result.
 // It is safe for result to point back to the input string.
 bool TryStripPrefixString(GStringPiece str, const GStringPiece& prefix,
-                          string* result);
+                          std::string* result);
 
 // Given a string and a putative suffix, returns the string minus the
 // suffix string if the suffix matches, otherwise the original
 // string.
-string StripSuffixString(GStringPiece str, const GStringPiece& suffix);
+std::string StripSuffixString(GStringPiece str, const GStringPiece& suffix);
 
 
 // Like StripSuffixString, but return true if the suffix was
 // successfully matched.  Write the output to *result.
 // It is safe for result to point back to the input string.
 bool TryStripSuffixString(GStringPiece str, const GStringPiece& suffix,
-                          string* result);
+                          std::string* result);
 
 // ----------------------------------------------------------------------
 // StripString
@@ -67,7 +65,7 @@ inline void StripString(char* str, char remove, char replacewith) {
 
 void StripString(char* str, GStringPiece remove, char replacewith);
 void StripString(char* str, int len, GStringPiece remove, char replacewith);
-void StripString(string* s, GStringPiece remove, char replacewith);
+void StripString(std::string* s, GStringPiece remove, char replacewith);
 
 // ----------------------------------------------------------------------
 // StripDupCharacters
@@ -76,7 +74,7 @@ void StripString(string* s, GStringPiece remove, char replacewith);
 //       StripDupCharacters("a//b/c//d", '/', 0) => "a/b/c/d"
 //    Return the number of characters removed
 // ----------------------------------------------------------------------
-int StripDupCharacters(string* s, char dup_char, int start_pos);
+int StripDupCharacters(std::string* s, char dup_char, int start_pos);
 
 // ----------------------------------------------------------------------
 // StripWhiteSpace
@@ -102,7 +100,7 @@ void StripWhiteSpace(const char** str, size_t* len);
 // StripTrailingWhitespace()
 //   Removes whitespace at the end of the string *s.
 //------------------------------------------------------------------------
-void StripTrailingWhitespace(string* s);
+void StripTrailingWhitespace(std::string* s);
 
 //------------------------------------------------------------------------
 // StripTrailingNewline(string*)
@@ -111,7 +109,7 @@ void StripTrailingWhitespace(string* s);
 //   input mode, which appends '\n' to each map input.  Returns true
 //   if a newline was stripped.
 //------------------------------------------------------------------------
-bool StripTrailingNewline(string* s);
+bool StripTrailingNewline(std::string* s);
 
 inline void StripWhiteSpace(char** str, size_t* len) {
   // The "real" type for StripWhiteSpace is ForAll char types C, take
@@ -128,7 +126,7 @@ inline void StripWhiteSpace(GStringPiece* str) {
   str->set(data, len);
 }
 
-void StripWhiteSpace(string* str);
+void StripWhiteSpace(std::string* str);
 
 namespace strings {
 
@@ -165,10 +163,10 @@ inline char* StripLeadingWhiteSpace(char* line) {
       StripLeadingWhiteSpace(const_cast<const char*>(line)));
 }
 
-void StripLeadingWhiteSpace(string* str);
+void StripLeadingWhiteSpace(std::string* str);
 
 // Remove leading, trailing, and duplicate internal whitespace.
-void RemoveExtraWhitespace(string* s);
+void RemoveExtraWhitespace(std::string* s);
 
 
 // ----------------------------------------------------------------------
@@ -198,8 +196,8 @@ inline char* SkipLeadingWhiteSpace(char* str) {
 //    left and right bracket characters, such as '(' and ')'.
 // ----------------------------------------------------------------------
 
-void StripCurlyBraces(string* s);
-void StripBrackets(char left, char right, string* s);
+void StripCurlyBraces(std::string* s);
+void StripBrackets(char left, char right, std::string* s);
 
 
 // ----------------------------------------------------------------------
@@ -219,29 +217,29 @@ void StripBrackets(char left, char right, string* s);
 //    See "perldoc -q html"
 // ----------------------------------------------------------------------
 
-void StripMarkupTags(string* s);
-string OutputWithMarkupTagsStripped(const string& s);
+void StripMarkupTags(std::string* s);
+std::string OutputWithMarkupTagsStripped(const std::string& s);
 
 // ----------------------------------------------------------------------
 // TrimStringLeft
 //    Removes any occurrences of the characters in 'remove' from the start
 //    of the string.  Returns the number of chars trimmed.
 // ----------------------------------------------------------------------
-size_t TrimStringLeft(string* s, const GStringPiece& remove);
+size_t TrimStringLeft(std::string* s, const GStringPiece& remove);
 
 // ----------------------------------------------------------------------
 // TrimStringRight
 //    Removes any occurrences of the characters in 'remove' from the end
 //    of the string.  Returns the number of chars trimmed.
 // ----------------------------------------------------------------------
-size_t TrimStringRight(string* s, const GStringPiece& remove);
+size_t TrimStringRight(std::string* s, const GStringPiece& remove);
 
 // ----------------------------------------------------------------------
 // TrimString
 //    Removes any occurrences of the characters in 'remove' from either
 //    end of the string.
 // ----------------------------------------------------------------------
-inline size_t TrimString(string* s, const GStringPiece& remove) {
+inline size_t TrimString(std::string* s, const GStringPiece& remove) {
   size_t right_trim = TrimStringRight(s, remove);
   return right_trim + TrimStringLeft(s, remove);
 }
@@ -258,13 +256,13 @@ inline size_t TrimString(string* s, const GStringPiece& remove) {
 //    "  a:(b):c  " -> "a b c"
 //    "first,last::(area)phone, ::zip" -> "first last area phone zip"
 // ----------------------------------------------------------------------
-void TrimRunsInString(string* s, GStringPiece remove);
+void TrimRunsInString(std::string* s, GStringPiece remove);
 
 // ----------------------------------------------------------------------
 // RemoveNullsInString
 //    Removes any internal \0 characters from the string.
 // ----------------------------------------------------------------------
-void RemoveNullsInString(string* s);
+void RemoveNullsInString(std::string* s);
 
 // ----------------------------------------------------------------------
 // strrm()
@@ -282,6 +280,4 @@ size_t memrm(char* str, size_t strlen, char c);
 //    Returns the new length.
 // ----------------------------------------------------------------------
 size_t strrmm(char* str, const char* chars);
-size_t strrmm(string* str, const string& chars);
-
-#endif  // YB_GUTIL_STRINGS_STRIP_H
+size_t strrmm(std::string* str, const std::string& chars);

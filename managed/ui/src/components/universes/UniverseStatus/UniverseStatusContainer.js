@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
+
 import UniverseStatus from './UniverseStatus';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
 

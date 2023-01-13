@@ -3193,6 +3193,12 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 	Relation	relation;
 	ListCell   *cell;
 
+	if (MyDatabaseColocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot set privileges of an implicit tablegroup "
+						"in a colocated database")));
+
 	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
 		istmt->privileges = ACL_ALL_RIGHTS_TABLEGROUP;
 
@@ -3798,6 +3804,9 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_TABLESPACE:
 						msg = gettext_noop("permission denied for tablespace %s");
 						break;
+					case OBJECT_YBPROFILE:
+						msg = gettext_noop("permission denied for profile %s");
+						break;
 					case OBJECT_TSCONFIGURATION:
 						msg = gettext_noop("permission denied for text search configuration %s");
 						break;
@@ -3962,6 +3971,7 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_DEFACL:
 					case OBJECT_DOMCONSTRAINT:
 					case OBJECT_PUBLICATION_REL:
+					case OBJECT_YBPROFILE:
 					case OBJECT_ROLE:
 					case OBJECT_TRANSFORM:
 					case OBJECT_TSPARSER:
@@ -4225,7 +4235,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	/*
 	 * Otherwise, superusers bypass all permission-checking.
 	 */
-	if (superuser_arg(roleid))
+	if (superuser_arg(roleid) || IsYbDbAdminUser(roleid))
 	{
 #ifdef ACLDEBUG
 		elog(DEBUG2, "OID %u is superuser, home free", roleid);

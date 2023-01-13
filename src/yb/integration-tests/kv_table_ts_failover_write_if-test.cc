@@ -45,6 +45,8 @@ using client::YBqlWriteOp;
 using itest::TServerDetails;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::vector;
+using std::string;
 
 using namespace std::literals;
 

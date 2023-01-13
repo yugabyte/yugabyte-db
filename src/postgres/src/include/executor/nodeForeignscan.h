@@ -31,4 +31,10 @@ extern void ExecForeignScanInitializeWorker(ForeignScanState *node,
 								ParallelWorkerContext *pwcxt);
 extern void ExecShutdownForeignScan(ForeignScanState *node);
 
+/*
+ * Update YugabyteDB specific run-time statistics
+ */
+extern void YbExecUpdateInstrumentForeignScan(ForeignScanState *node,
+											  Instrumentation *instr);
+
 #endif							/* NODEFOREIGNSCAN_H */

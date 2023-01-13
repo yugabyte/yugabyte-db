@@ -18,8 +18,7 @@
 // parser_gram.y will link the tree nodes together to form this parse tree.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_
-#define YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -133,8 +132,8 @@ class ParseTree {
   std::unordered_set<client::YBTableName, boost::hash<client::YBTableName>> analyzed_tables_;
 
   // Set of types used during semantic analysis.
-  std::unordered_set<std::pair<string, string>,
-                     boost::hash<std::pair<string, string>>> analyzed_types_;
+  std::unordered_set<std::pair<std::string, std::string>,
+                     boost::hash<std::pair<std::string, std::string>>> analyzed_types_;
 
   // Parse tree memory pool. This pool is used to allocate parse tree and its nodes. This pool
   // should be part of the generated parse tree that is stored within parse_context. Once the
@@ -160,5 +159,3 @@ class ParseTree {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_

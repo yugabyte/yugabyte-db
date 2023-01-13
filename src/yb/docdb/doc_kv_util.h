@@ -13,8 +13,7 @@
 
 // Utilities for encoding and decoding key/value pairs that are used in the DocDB code.
 
-#ifndef YB_DOCDB_DOC_KV_UTIL_H_
-#define YB_DOCDB_DOC_KV_UTIL_H_
+#pragma once
 
 #include <string>
 
@@ -37,14 +36,12 @@ constexpr int kEncodedKeyStrTerminatorSize = 2;
 // document key (a key that has already had zero characters escaped). This is done simply by
 // checking that the key starts with the encoded document key followed by two zero characters.
 // This is only used in unit tests as of 08/02/2016.
-bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const std::string &encoded_doc_key);
+bool KeyBelongsToDocKeyInTest(const Slice &key, const std::string &encoded_doc_key);
 
 // Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
 // last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
 // encoded DocHybridTime is ValueType::kHybridTime.
-Status CheckHybridTimeSizeAndValueType(
-    const rocksdb::Slice& key,
-    size_t* ht_byte_size_dest);
+Result<size_t> CheckHybridTimeSizeAndValueType(const Slice& key);
 
 template <class Buffer>
 void AppendUInt16ToKey(uint16_t val, Buffer* dest) {
@@ -147,5 +144,3 @@ Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer);
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_DOC_KV_UTIL_H_

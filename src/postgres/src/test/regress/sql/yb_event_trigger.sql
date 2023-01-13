@@ -81,4 +81,5 @@ ALTER EVENT TRIGGER admin_foo ENABLE ALWAYS;
 ALTER EVENT TRIGGER admin_foo RENAME TO admin_foo_new;
 ALTER EVENT TRIGGER admin_foo_new OWNER TO superuser_role;
 ALTER EVENT TRIGGER admin_foo_new OWNER TO non_superuser_role;
+ALTER EVENT TRIGGER admin_foo_new OWNER TO yb_db_admin;
 DROP EVENT TRIGGER admin_foo_new;

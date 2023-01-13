@@ -3,6 +3,7 @@
 package task
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -12,53 +13,174 @@ import (
 	"node-agent/util"
 	"os"
 	"os/exec"
+	"os/user"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
+	"syscall"
 
 	"github.com/olekukonko/tablewriter"
 	funk "github.com/thoas/go-funk"
 )
 
-type shellTask struct {
-	name string //Name of the task
+var (
+	envFiles     = []string{".bashrc", ".bash_profile"}
+	envRegex     = regexp.MustCompile("[A-Za-z_0-9]+=.*")
+	redactParams = map[string]bool{
+		"jwt":       true,
+		"api_token": true,
+		"password":  true,
+	}
+)
+
+// ShellTask handles command execution.
+type ShellTask struct {
+	// Name of the task.
+	name string
 	cmd  string
+	user string
 	args []string
 	done bool
 }
 
-func NewShellTask(name string, cmd string, args []string) *shellTask {
-	return &shellTask{name: name, cmd: cmd, args: args}
+// NewShellTask returns a shell task executor.
+func NewShellTask(name string, cmd string, args []string) *ShellTask {
+	return &ShellTask{name: name, cmd: cmd, args: args}
 }
-func (s shellTask) TaskName() string {
+
+// NewShellTaskWithUser returns a shell task executor.
+func NewShellTaskWithUser(name string, user string, cmd string, args []string) *ShellTask {
+	return &ShellTask{name: name, user: user, cmd: cmd, args: args}
+}
+
+// TaskName returns the name of the shell task.
+func (s *ShellTask) TaskName() string {
 	return s.name
 }
 
-// Runs the Shell Task.
-func (s *shellTask) Process(ctx context.Context) (string, error) {
-	util.FileLogger().Debugf("Starting the shell request - %s", s.name)
-	shellCmd := exec.Command(s.cmd, s.args...)
+func (s *ShellTask) redactCommandArgs(args ...string) []string {
+	redacted := []string{}
+	redactValue := false
+	for _, param := range args {
+		if strings.HasPrefix(param, "-") {
+			if _, ok := redactParams[strings.TrimLeft(param, "-")]; ok {
+				redactValue = true
+			} else {
+				redactValue = false
+			}
+			redacted = append(redacted, param)
+		} else if redactValue {
+			redacted = append(redacted, "REDACTED")
+		} else {
+			redacted = append(redacted, param)
+		}
+	}
+	return redacted
+}
+
+func (s *ShellTask) command(name string, arg ...string) (*exec.Cmd, error) {
+	cmd := exec.Command(name, arg...)
+	userAcc, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+	if s.user != "" && userAcc.Username != s.user {
+		var uid, gid uint32
+		userAcc, uid, gid, err = util.UserInfo(s.user)
+		if err != nil {
+			return nil, err
+		}
+		util.FileLogger().Infof("Using user: %s, uid: %d, gid: %d",
+			userAcc.Username, uid, gid)
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+		cmd.SysProcAttr.Credential = &syscall.Credential{
+			Uid: uint32(uid),
+			Gid: uint32(gid),
+		}
+	}
+	pwd := userAcc.HomeDir
+	if pwd == "" {
+		pwd = "/tmp"
+	}
+	os.Setenv("PWD", pwd)
+	os.Setenv("USER", userAcc.Username)
+	os.Setenv("HOME", pwd)
+	cmd.Dir = pwd
+	return cmd, nil
+}
+
+func (s *ShellTask) userEnv(homeDir string) []string {
+	var out bytes.Buffer
+	env := []string{}
+	bashArgs := []string{}
+	for _, envFile := range envFiles {
+		file := filepath.Join(homeDir, envFile)
+		bashArgs = append(bashArgs, fmt.Sprintf("source %s 2> /dev/null", file))
+	}
+	bashArgs = append(bashArgs, "env")
+	cmd, err := s.command("bash", "-c", strings.Join(bashArgs, ";"))
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		util.FileLogger().Warnf(
+			"Failed to source files %v in %s. Error: %s", envFiles, homeDir, err.Error())
+		return env
+	}
+	env = append(env, os.Environ()...)
+	scanner := bufio.NewScanner(bytes.NewReader(out.Bytes()))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if envRegex.MatchString(line) {
+			env = append(env, line)
+		}
+	}
+	return env
+}
+
+// Command returns a command with the environment set.
+func (s *ShellTask) Command(name string, arg ...string) (*exec.Cmd, error) {
+	cmd, err := s.command(name, arg...)
+	if err != nil {
+		util.FileLogger().Warnf("Failed to create command %s. Error: %s", name, err.Error())
+		return nil, err
+	}
+	cmd.Env = append(cmd.Env, s.userEnv(cmd.Dir)...)
+	return cmd, nil
+}
+
+// Process runs the the command Task.
+func (s *ShellTask) Process(ctx context.Context) (string, error) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	var output string
-	shellCmd.Stdout = &out
-	shellCmd.Stderr = &errOut
-	util.FileLogger().Infof("Running command %s with args %v", s.cmd, s.args)
-	err := shellCmd.Run()
+	util.FileLogger().Debugf("Starting the command - %s", s.name)
+	cmd, err := s.Command(s.cmd, s.args...)
 	if err != nil {
-		output = errOut.String()
-		util.FileLogger().Errorf("Shell Run - %s task failed - %s", s.name, err.Error())
-		util.FileLogger().Errorf("Shell command output %s", output)
+		util.FileLogger().Errorf("Command creation for %s failed - %s", s.name, err.Error())
+		return out.String(), err
+	}
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	redactedArgs := s.redactCommandArgs(s.args...)
+	util.FileLogger().Infof("Running command %s with args %v", s.cmd, redactedArgs)
+	err = cmd.Run()
+	if err != nil {
+		output = fmt.Sprintf("%s: %s", err.Error(), errOut.String())
+		util.FileLogger().Errorf("Command run - %s task failed - %s", s.name, err.Error())
+		util.FileLogger().Errorf("Command output for %s - %s", s.name, output)
 	} else {
 		output = out.String()
-		util.FileLogger().Debugf("Shell Run - %s task successful", s.name)
-		util.FileLogger().Debugf("Shell command output %s", output)
+		util.FileLogger().Debugf("Command Run - %s task successful", s.name)
+		util.FileLogger().Debugf("command output %s", output)
 	}
 	s.done = true
-
 	return output, err
 }
 
-func (s shellTask) Done() bool {
+// Done reports if the command execution is done.
+func (s *ShellTask) Done() bool {
 	return s.done
 }
 
@@ -110,25 +232,31 @@ func (handler *PreflightCheckHandler) Result() *map[string]model.PreflightCheckV
 
 // Returns options for the preflight checks.
 func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []string {
-	options := make([]string, 3)
-	options[0] = preflightScriptPath
-	options[1] = "-t"
-	options[2] = "provision"
 	provider := handler.provider
 	instanceType := handler.instanceType
 	accessKey := handler.accessKey
+	options := make([]string, 3)
+	options[0] = preflightScriptPath
+	options[1] = "-t"
+
+	if accessKey.KeyInfo.SkipProvisioning {
+		options[2] = "configure"
+	} else {
+		options[2] = "provision"
+	}
+
 	if provider.AirGapInstall {
 		options = append(options, "--airgap")
 	}
-	//To-do: Should the api return a string instead of a list?
-	if data := provider.CustomHostCidrs; len(data) > 0 {
-		options = append(options, "--yb_home_dir", data[0])
+
+	if homeDir, ok := provider.Config["YB_HOME_DIR"]; ok {
+		options = append(options, "--yb_home_dir", "'"+homeDir+"'")
 	} else {
 		options = append(options, "--yb_home_dir", util.NodeHomeDirectory)
 	}
 
 	if data := provider.SshPort; data != 0 {
-		options = append(options, "--ports_to_check", fmt.Sprint(data))
+		options = append(options, "--ssh_port", fmt.Sprint(data))
 	}
 
 	if data := instanceType.Details.VolumeDetailsList; len(data) > 0 {
@@ -148,46 +276,30 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 	if accessKey.KeyInfo.AirGapInstall {
 		options = append(options, "--airgap")
 	}
-	// TODO more options.
+
 	return options
 }
 
-func HandleUpgradeScript(config *util.Config, ctx context.Context, version string) error {
+func HandleUpgradeScript(ctx context.Context, config *util.Config) error {
 	util.FileLogger().Debug("Initializing the upgrade script")
 	upgradeScriptTask := NewShellTask(
 		"upgradeScript",
 		util.DefaultShell,
-		[]string{util.UpgradeScriptPath(), "upgrade", version},
+		[]string{
+			util.UpgradeScriptPath(),
+			"--type",
+			"upgrade",
+		},
 	)
 	errStr, err := upgradeScriptTask.Process(ctx)
 	if err != nil {
 		return errors.New(errStr)
 	}
-	return nil
-}
-
-// Shell task process for downloading the node-agent build package.
-func HandleDownloadPackageScript(config *util.Config, ctx context.Context) (string, error) {
-	util.FileLogger().Debug("Initializing the download package script")
-	jwtToken, err := util.GenerateJWT(config)
+	version, err := util.Version()
 	if err != nil {
-		util.FileLogger().Errorf("Failed to generate JWT during upgrade - %s", err.Error())
-		return "", err
+		return err
 	}
-	downloadPackageScript := NewShellTask(
-		"downloadPackageScript",
-		util.DefaultShell,
-		[]string{
-			util.InstallScriptPath(),
-			"--type",
-			"upgrade",
-			"--url",
-			config.String(util.PlatformUrlKey),
-			"--jwt",
-			jwtToken,
-		},
-	)
-	return downloadPackageScript.Process(ctx)
+	return config.Update(util.PlatformVersionUpdateKey, version)
 }
 
 func OutputPreflightCheck(responses map[string]model.NodeInstanceValidationResponse) bool {
@@ -221,7 +333,9 @@ func OutputPreflightCheck(responses map[string]model.NodeInstanceValidationRespo
 				},
 			)
 		} else {
-			allValid = false
+			if v.Required {
+				allValid = false
+			}
 			data := []string{k, v.Value, v.Description, strconv.FormatBool(v.Required), "Failed"}
 			table.Rich(data, []tablewriter.Colors{
 				tablewriter.Colors{tablewriter.FgRedColor},

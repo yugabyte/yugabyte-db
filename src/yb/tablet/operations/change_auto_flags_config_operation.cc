@@ -11,7 +11,7 @@
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 
 #include "yb/client/auto_flags_manager.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"
 
@@ -21,18 +21,18 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<AutoFlagsConfigPB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, AutoFlagsConfigPB* request) {
-  replicate->set_allocated_auto_flags_config(request);
+void RequestTraits<LWAutoFlagsConfigPB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, LWAutoFlagsConfigPB* request) {
+  replicate->ref_auto_flags_config(request);
 }
 
 template <>
-AutoFlagsConfigPB* RequestTraits<AutoFlagsConfigPB>::MutableRequest(
-    consensus::ReplicateMsg* replicate) {
+LWAutoFlagsConfigPB* RequestTraits<LWAutoFlagsConfigPB>::MutableRequest(
+    consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_auto_flags_config();
 }
 
-Status ChangeAutoFlagsConfigOperation::Prepare() {
+Status ChangeAutoFlagsConfigOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX_AND_FUNC(2);
   return Status::OK();
 }
@@ -45,11 +45,13 @@ Status ChangeAutoFlagsConfigOperation::DoAborted(const Status& status) {
 Status ChangeAutoFlagsConfigOperation::Apply() {
   VLOG_WITH_PREFIX_AND_FUNC(2) << "Started";
 
+  auto tablet = VERIFY_RESULT(tablet_safe());
+
   // Store the new AutoFlags config to disk and then applies it. Error Status is returned only for
   // critical failures like IO issues and invalid flags (indicating we are running an unsupported
   // code version). Execution must stop immediately to protect data correctness, so we return the
   // Status directly instead of setting complete_status.
-  RETURN_NOT_OK(tablet()->ApplyAutoFlagsConfig(*request()));
+  RETURN_NOT_OK(tablet->ApplyAutoFlagsConfig(request()->ToGoogleProtobuf()));
 
   VLOG_WITH_PREFIX_AND_FUNC(2) << "Completed";
 

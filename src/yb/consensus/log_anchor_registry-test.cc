@@ -37,6 +37,8 @@
 
 #include "yb/util/test_util.h"
 
+using std::string;
+
 using strings::Substitute;
 
 namespace yb {

@@ -48,6 +48,7 @@
 namespace yb {
 
 using std::unordered_map;
+using std::string;
 using strings::Substitute;
 
 const int64_t RandomizedFailureMonitor::kMinWakeUpTimeMillis = 10;

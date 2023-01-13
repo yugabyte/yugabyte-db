@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_TABLET_SPLIT_ITEST_BASE_H
-#define YB_INTEGRATION_TESTS_TABLET_SPLIT_ITEST_BASE_H
+#pragma once
 
 #include <chrono>
 
@@ -158,9 +157,6 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Result<TabletId> CreateSingleTabletAndSplit(uint32_t num_rows, bool wait_for_intents = true);
 
-  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
-  Result<master::SplitTabletResponsePB> SendMasterSplitTabletRpcSync(const std::string& tablet_id);
-
   Result<master::CatalogManagerIf*> catalog_manager() {
     return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
   }
@@ -175,9 +171,11 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
       size_t num_replicas_online = 0, const client::YBTableName& table = client::kTableName,
       bool core_dump_on_failure = true);
 
-  Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
+  Result<tserver::GetSplitKeyResponsePB> SendTServerRpcSyncGetSplitKey(const TabletId& tablet_id);
 
-  Result<master::SplitTabletResponsePB> SplitSingleTablet(const TabletId& tablet_id);
+  Result<master::SplitTabletResponsePB> SendMasterRpcSyncSplitTablet(const TabletId& tablet_id);
+
+  Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
 
   Result<TabletId> SplitTabletAndValidate(
       docdb::DocKeyHash split_hash_code,
@@ -238,9 +236,10 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Result<std::set<TabletId>> GetTestTableTabletIds();
 
-  Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(size_t tserver_idx);
+  Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(
+      size_t tserver_idx);
 
-  Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets();
+  Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets();
 
   Status WaitForTabletsExcept(
       size_t num_tablets, size_t tserver_idx, const TabletId& exclude_tablet);
@@ -255,7 +254,7 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
   Status WaitTServerToBeQuietOnTablet(
       itest::TServerDetails* ts_desc, const TabletId& tablet_id);
 
-  Status SplitTabletCrashMaster(bool change_split_boundary, string* split_partition_key);
+  Status SplitTabletCrashMaster(bool change_split_boundary, std::string* split_partition_key);
 
   Result<TabletId> GetOnlyTestTabletId(size_t tserver_idx);
 
@@ -265,5 +264,3 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 };
 
 }  // namespace yb
-
-#endif /* YB_INTEGRATION_TESTS_TABLET_SPLIT_ITEST_BASE_H */

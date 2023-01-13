@@ -92,7 +92,6 @@ public class AvailabilityZone extends Model {
     Map<String, String> config = getUnmaskedConfig();
     config.putAll(configMap);
     setConfig(config);
-    save();
   }
 
   @JsonIgnore
@@ -105,6 +104,16 @@ public class AvailabilityZone extends Model {
       new Finder<UUID, AvailabilityZone>(AvailabilityZone.class) {};
 
   public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZone.class);
+
+  @JsonIgnore
+  public long getNodeCount() {
+    return Customer.get(region.provider.customerUUID)
+        .getUniversesForProvider(region.provider.uuid)
+        .stream()
+        .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
+        .filter(nd -> nd.azUuid.equals(uuid))
+        .count();
+  }
 
   public static AvailabilityZone createOrThrow(
       Region region, String code, String name, String subnet) {

@@ -17,7 +17,17 @@
 
 import React, { FC, useState } from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
-import { getKMSConfigs, IBackup, ITable, IUniverse, Keyspace_Table, restoreEntireBackup } from '..';
+import {
+  getKMSConfigs,
+  IBackup,
+  ITable,
+  IUniverse,
+  Keyspace_Table,
+  restoreEntireBackup,
+  fetchIncrementalBackup,
+  Backup_States,
+  ICommonBackupInfo
+} from '..';
 import { YBModalForm } from '../../common/forms';
 import {
   FormatUnixTimeStampTimeToTimezone,
@@ -50,14 +60,16 @@ import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
-  backup_details: IBackup | null;
+  backup_details: IBackup;
   onHide: Function;
   visible: boolean;
+  isRestoreEntireBackup?: boolean;
 }
 
 const TEXT_RESTORE = 'Restore';
 const TEXT_RENAME_DATABASE = 'Next: Rename Databases/Keyspaces';
-
+const RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG =
+  'Cannot restore ybc backup to non-ybc universe';
 const STEPS = [
   {
     title: 'Restore Backup',
@@ -69,6 +81,7 @@ const STEPS = [
     title: 'Restore Backup',
     submitLabel: TEXT_RESTORE,
     component: RenameKeyspace,
+    // eslint-disable-next-line react/display-name
     footer: (onClick: Function) => (
       <YBButton
         btnClass={`btn btn-default pull-right restore-wth-rename-but`}
@@ -84,9 +97,21 @@ const isYBCEnabledInUniverse = (universeList: IUniverse[], currentUniverseUUID: 
   return isYbcEnabledUniverse(universe?.universeDetails);
 };
 
-export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHide, visible }) => {
+export const BackupRestoreModal: FC<RestoreModalProps> = ({
+  backup_details,
+  onHide,
+  visible,
+  isRestoreEntireBackup = false
+}) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isFetchingTables, setIsFetchingTables] = useState(false);
+  const { data: incrementalBackups, isLoading: isIncBackupLoading, isError } = useQuery(
+    ['incremental_backups', backup_details.commonBackupInfo.baseBackupUUID],
+    () => fetchIncrementalBackup(backup_details.commonBackupInfo.baseBackupUUID),
+    {
+      enabled: backup_details?.hasIncrementalBackups
+    }
+  );
 
   const [overrideSubmitLabel, setOverrideSubmitLabel] = useState(TEXT_RESTORE);
 
@@ -105,10 +130,30 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
 
   const restore = useMutation(
     ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) => {
-      if (isYBCEnabledInUniverse(universeList!, values['targetUniverseUUID'].value)) {
+      const isYBCEnabledinTargetUniverse = isYBCEnabledInUniverse(
+        universeList!,
+        values['targetUniverseUUID'].value
+      );
+      if (backup_details.category === 'YB_CONTROLLER' && !isYBCEnabledinTargetUniverse) {
+        toast.error(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
+        return Promise.reject(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
+      }
+
+      if (isYBCEnabledinTargetUniverse && backup_details.category === 'YB_CONTROLLER') {
         values = omit(values, 'parallelThreads');
       }
-      return restoreEntireBackup(backup_details, values);
+      if (
+        isRestoreEntireBackup &&
+        backup_details?.hasIncrementalBackups &&
+        incrementalBackups &&
+        !isError
+      ) {
+        //Backend is already sending reponse in sorted order
+        const recentBackup = incrementalBackups.data.filter(
+          (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
+        )[0];
+        return restoreEntireBackup({ ...backup_details, commonBackupInfo: recentBackup }, values);
+      } else return restoreEntireBackup(backup_details, values);
     },
     {
       onSuccess: (resp) => {
@@ -140,7 +185,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     }
   ];
 
-  if (isUniverseListLoading) {
+  if (isUniverseListLoading && isIncBackupLoading) {
     return <YBLoading />;
   }
 
@@ -148,10 +193,11 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     targetUniverseUUID: undefined,
     parallelThreads: 1,
     backup: backup_details,
-    keyspaces: Array(backup_details?.responseList.length).fill(''),
+    keyspaces: Array(backup_details?.commonBackupInfo.responseList.length).fill(''),
     kmsConfigUUID: null,
     should_rename_keyspace: false,
-    disable_keyspace_rename: false
+    disable_keyspace_rename: false,
+    allow_YCQL_conflict_keyspace: false
   };
 
   const validateTablesAndRestore = async (
@@ -169,6 +215,23 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
       if (options.doRestore) {
         restore.mutate({ backup_details: backup_details as IBackup, values });
       }
+      return;
+    }
+    // in YCQL, if we try to restore a single keyspace, while the keyspace already exists in the db, with no conflicting tables, we should allow it
+    // see https://yugabyte.atlassian.net/browse/PLAT-6460
+    if (!isRestoreEntireBackup && values['backup']['backupType'] === BACKUP_API_TYPES.YCQL) {
+      if (options.doRestore) {
+        restore.mutate({
+          backup_details,
+          values
+        });
+        return;
+      }
+
+      options.setFieldValue('allow_YCQL_conflict_keyspace', true, false);
+      options.setFieldValue('should_rename_keyspace', false, false);
+      options.setFieldValue('disable_keyspace_rename', false, false);
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
       return;
     }
 
@@ -200,7 +263,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     }
     setIsFetchingTables(false);
 
-    const keyspaceInForm = backup_details!.responseList.map(
+    const keyspaceInForm = backup_details!.commonBackupInfo.responseList.map(
       (k, i) => values['keyspaces'][i] || k.keyspace
     );
 
@@ -275,7 +338,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
         if (values['should_rename_keyspace'] && currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
           setOverrideSubmitLabel(TEXT_RESTORE);
-        } else if (currentStep === STEPS.length - 1) {
+        } else if (currentStep === STEPS.length - 1 || values['allow_YCQL_conflict_keyspace']) {
           await validateTablesAndRestore(values, {
             setFieldValue,
             setFieldError,
@@ -363,12 +426,17 @@ function RestoreChooseUniverseForm({
   }
 
   let isYbcEnabledinCurrentUniverse = false;
+  let showParallelThread = true;
 
   if (isDefinedNotNull(values['targetUniverseUUID']?.value)) {
     isYbcEnabledinCurrentUniverse = isYBCEnabledInUniverse(
       universeList,
       values['targetUniverseUUID']?.value
     );
+  }
+
+  if (isYbcEnabledinCurrentUniverse && backup_details.category === 'YB_CONTROLLER') {
+    showParallelThread = false;
   }
 
   return (
@@ -380,7 +448,9 @@ function RestoreChooseUniverseForm({
         </Col>
         <Col lg={6} className="no-padding align-right">
           <div className="title">Created at</div>
-          <FormatUnixTimeStampTimeToTimezone timestamp={backup_details.createTime} />
+          <FormatUnixTimeStampTimeToTimezone
+            timestamp={backup_details.commonBackupInfo.createTime}
+          />
         </Col>
       </Row>
       <Row>
@@ -388,6 +458,14 @@ function RestoreChooseUniverseForm({
           <h5>Restore to</h5>
         </Col>
       </Row>
+      {backup_details.category === 'YB_CONTROLLER' &&
+        isDefinedNotNull(values['targetUniverseUUID']?.value) &&
+        !isYbcEnabledinCurrentUniverse && (
+          <div>
+            <Alert bsStyle="danger">{RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG}</Alert>
+          </div>
+        )}
+
       <Row>
         <Col lg={8} className="no-padding">
           <Field
@@ -400,6 +478,7 @@ function RestoreChooseUniverseForm({
               };
             })}
             components={{
+              // eslint-disable-next-line react/display-name
               Option: (props: any) => {
                 if (props.data.value === backup_details.universeUUID) {
                   return (
@@ -497,7 +576,7 @@ function RestoreChooseUniverseForm({
           </Col>
         </Row>
       )}
-      {!isYbcEnabledinCurrentUniverse && (
+      {showParallelThread && (
         <Row>
           <Col lg={8} className="no-padding">
             <Field
@@ -522,7 +601,10 @@ export function RenameKeyspace({
   values,
   setFieldValue
 }: {
-  values: Record<string, any>;
+  values: {
+    backup: IBackup;
+    [key: string]: any;
+  };
   setFieldValue: Function;
 }) {
   return (
@@ -546,40 +628,42 @@ export function RenameKeyspace({
       <FieldArray
         name="keyspaces"
         render={({ form: { errors } }) =>
-          values.backup.responseList.map((keyspace: Keyspace_Table, index: number) =>
-            values['searchText'] &&
-            keyspace.keyspace &&
-            keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
-              <Row key={index}>
-                <Col lg={6} className="keyspaces-input no-padding">
-                  <Field
-                    name={`keyspaces[${index}]`}
-                    component={YBInputField}
-                    input={{
-                      disabled: true,
-                      value: keyspace.keyspace
-                    }}
-                  />
-                  {errors['keyspaces']?.[index] && !values['keyspaces']?.[index] && (
-                    <span className="err-msg">Name already exists. Rename to proceed</span>
-                  )}
-                </Col>
-                <Col lg={6}>
-                  <Field
-                    name={`keyspaces[${index}]`}
-                    component={YBInputField}
-                    input={{
-                      value: values['keyspaces'][`${index}`]
-                    }}
-                    onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
-                    placeHolder="Add new name"
-                  />
-                  {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (
-                    <span className="err-msg">{errors['keyspaces'][index]}</span>
-                  )}
-                </Col>
-              </Row>
-            )
+          values.backup.commonBackupInfo.responseList.map(
+            (keyspace: Keyspace_Table, index: number) =>
+              values['searchText'] &&
+              keyspace.keyspace &&
+              !keyspace.keyspace.includes(values['searchText']) ? null : (
+                // eslint-disable-next-line react/jsx-indent
+                <Row key={index}>
+                  <Col lg={6} className="keyspaces-input no-padding">
+                    <Field
+                      name={`keyspaces[${index}]`}
+                      component={YBInputField}
+                      input={{
+                        disabled: true,
+                        value: keyspace.keyspace
+                      }}
+                    />
+                    {errors['keyspaces']?.[index] && !values['keyspaces']?.[index] && (
+                      <span className="err-msg">Name already exists. Rename to proceed</span>
+                    )}
+                  </Col>
+                  <Col lg={6}>
+                    <Field
+                      name={`keyspaces[${index}]`}
+                      component={YBInputField}
+                      input={{
+                        value: values['keyspaces'][`${index}`]
+                      }}
+                      onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
+                      placeHolder="Add new name"
+                    />
+                    {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (
+                      <span className="err-msg">{errors['keyspaces'][index]}</span>
+                    )}
+                  </Col>
+                </Row>
+              )
           )
         }
       />

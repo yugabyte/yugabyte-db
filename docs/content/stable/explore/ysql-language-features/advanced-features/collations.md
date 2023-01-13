@@ -77,7 +77,7 @@ select count(collname) from pg_collation where collprovider = 'i';
 (1 row)
 ```
 
-## Collation Creation
+## Collation creation
 
 In addition to predefined collations, you can define new collations. For example,
 
@@ -137,7 +137,7 @@ select * from coll_tab4 order by name;
 (2 rows)
 ```
 
-## Index Collation
+## Index collation
 
 When a table column has an explicit collation, an index built on the column will be sorted according to the column collation. YSQL also allows the index to have its own explicit collation that is different from that of the table column. For example:
 
@@ -146,9 +146,9 @@ create table coll_tab5(name text collate "en-US-x-icu");
 create index name_idx on coll_tab5(name collate "C" asc);
 ```
 
-This can be useful to speed up queries that involve pattern matching operators such as LIKE because a regular index will be sorted according to collation "en-US-x-icu" and such an index cannot be used by pattern matching operators.
+This can speed up queries that involve pattern matching operators such as LIKE because a regular index will be sorted according to collation "en-US-x-icu" and such an index cannot be used by pattern matching operators.
 
-## Collation Strength
+## Collation strength
 
 YSQL uses the same rules as in PostgreSQL to determine which collation is used in sorting character strings. An explicitly specified collation has more _strength_ then a referenced column, which has more strength than a text expression without an explicit collation. For example:
 
@@ -253,7 +253,7 @@ There are a number of YSQL limitations on collation due to the internal implemen
     yugabyte=#
     ```
 
-* Libc collations are very limited:
+* libc collations are very limited:
 
     ```sql
     select collname from pg_collation where collprovider = 'c';

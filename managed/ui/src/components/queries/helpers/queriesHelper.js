@@ -127,7 +127,7 @@ const hasTokenMatch = (query, token, keyMap) => {
         if (lowerRange === '*' && !Number.isNaN(parseFloat(upperRange))) {
           return query[column.value] <= parseFloat(upperRange);
         } else if (upperRange === '*' && !Number.isNaN(parseFloat(lowerRange))) {
-          return query[column.value] <= parseFloat(upperRange);
+          return query[column.value] >= parseFloat(lowerRange);
         } else if (!Number.isNaN(parseFloat(lowerRange)) && !Number.isNaN(parseFloat(upperRange))) {
           return (
             query[column.value] >= parseFloat(lowerRange) &&

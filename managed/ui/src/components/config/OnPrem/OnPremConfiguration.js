@@ -81,10 +81,10 @@ export default class OnPremConfiguration extends Component {
     this.setState({ isEditingProvider: true });
   };
   toggleCreateProviderForm = (flag) => {
-    this.setState({isCreatingProvider: flag})
+    this.setState({isCreatingProvider: flag});
   }
   setSelectedProvider = (providerUUID) => {
-    this.setState({selectedProviderUUID: providerUUID})
+    this.setState({selectedProviderUUID: providerUUID});
   }
   UNSAFE_componentWillReceiveProps(nextProps) {
     const {
@@ -136,7 +136,7 @@ export default class OnPremConfiguration extends Component {
         return total + region.zones.length;
       }, 0);
       switch (type) {
-        case 'provider':
+        case 'provider': {
           // Launch configuration of instance types
           this.setState({
             regionsMap: {},
@@ -155,7 +155,8 @@ export default class OnPremConfiguration extends Component {
             isEditingProvider
           );
           break;
-        case 'instanceType':
+        }
+        case 'instanceType': {
           // Launch configuration of regions
           let numInstanceTypesConfigured = this.state.numInstanceTypesConfigured;
           numInstanceTypesConfigured++;
@@ -169,7 +170,8 @@ export default class OnPremConfiguration extends Component {
             }
           }
           break;
-        case 'region':
+        }
+        case 'region': {
           // Update regionsMap until done
           const regionsMap = this.state.regionsMap;
           regionsMap[response.code] = response.uuid;
@@ -185,7 +187,8 @@ export default class OnPremConfiguration extends Component {
             );
           }
           break;
-        case 'zones':
+        }
+        case 'zones': {
           // Update zonesMap until done
           const zonesMap = {};
           Object.keys(response).forEach(
@@ -205,7 +208,8 @@ export default class OnPremConfiguration extends Component {
             );
           }
           break;
-        case 'node':
+        }
+        case 'node': {
           // Update numNodesConfigured until done
           const numNodesConfigured = this.state.numNodesConfigured + Object.keys(response).length;
           this.setState({ numNodesConfigured: numNodesConfigured });
@@ -226,11 +230,13 @@ export default class OnPremConfiguration extends Component {
             }
           }
           break;
-        case 'accessKey':
+        }
+        case 'accessKey': {
           this.setState(_.clone(initialState, true));
           this.props.resetConfigForm();
           this.props.onPremConfigSuccess();
           break;
+        }
         default:
           break;
       }
@@ -363,8 +369,8 @@ export default class OnPremConfiguration extends Component {
             )}
             <OnPremSuccessContainer
               showEditProviderForm={this.showEditProviderForm}
-              setCreateProviderView={()=>{this.toggleCreateProviderForm(true)}}
-              selectedProviderUUID={selectedProviderUUID || providerFound.uuid}
+              setCreateProviderView={()=>{this.toggleCreateProviderForm(true);}}
+              selectedProviderUUID={selectedProviderUUID ?? providerFound.uuid}
               params={params}
               setSelectedProvider={this.setSelectedProvider}
             />

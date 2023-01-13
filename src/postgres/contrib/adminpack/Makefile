@@ -10,6 +10,8 @@ PGFILEDESC = "adminpack - support functions for pgAdmin"
 
 REGRESS = adminpack
 
+SHLIB_LINK = -L$(YB_BUILD_ROOT)/lib -lyb_pggate
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

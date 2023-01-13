@@ -17,7 +17,7 @@
 #include <utility>
 #include <chrono>
 #include <boost/assign.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/ql_value.h"
@@ -72,8 +72,11 @@
 #include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
+#include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+
+using std::string;
 
 using namespace std::literals;
 
@@ -114,6 +117,12 @@ DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(use_node_to_node_encryption);
+DECLARE_bool(use_client_to_server_encryption);
+DECLARE_bool(allow_insecure_connections);
+DECLARE_string(certs_dir);
+DECLARE_string(certs_for_cdc_dir);
+DECLARE_bool(TEST_fail_setup_system_universe_replication);
 
 namespace yb {
 
@@ -165,6 +174,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_tservers;
     opts.num_masters = num_masters;
+    opts.transaction_table_num_tablets = FLAGS_transaction_table_num_tablets;
     RETURN_NOT_OK(InitClusters(opts));
 
     RETURN_NOT_OK(clock_->Init());
@@ -464,6 +474,59 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     return stream_resp.streams(0).stream_id();
   }
 
+  YB_STRONGLY_TYPED_BOOL(EnableTLSEncryption);
+  Status TestSetupUniverseReplication(EnableTLSEncryption enable_tls_encryption) {
+    if (enable_tls_encryption) {
+      FLAGS_use_node_to_node_encryption = true;
+      FLAGS_use_client_to_server_encryption = true;
+      FLAGS_allow_insecure_connections = false;
+      FLAGS_certs_dir = GetCertsDir();
+      FLAGS_certs_for_cdc_dir = JoinPathSegments(FLAGS_certs_dir, "xCluster");
+      // TwoDCTestBase::SetupUniverseReplication will copying the certs to the sub directories.
+    }
+
+    auto tables = VERIFY_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
+
+    std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+    std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+    producer_tables.reserve(tables.size() / 2);
+    consumer_tables.reserve(tables.size() / 2);
+    // tables contains both producer and consumer universe tables (alternately).
+    for (size_t i = 0; i < tables.size(); i++) {
+      if (i % 2 == 0) {
+        producer_tables.push_back(tables[i]);
+      } else {
+        consumer_tables.push_back(tables[i]);
+      }
+    }
+    RETURN_NOT_OK(SetupUniverseReplication(producer_tables));
+
+    // Verify that universe was setup on consumer.
+    master::GetUniverseReplicationResponsePB resp;
+    RETURN_NOT_OK(VerifyUniverseReplication(&resp));
+    CHECK_EQ(resp.entry().producer_id(), kUniverseId);
+    CHECK_EQ(resp.entry().tables_size(), producer_tables.size());
+    for (uint32_t i = 0; i < producer_tables.size(); i++) {
+      CHECK_EQ(resp.entry().tables(i), producer_tables[i]->id());
+    }
+
+    // Verify that CDC streams were created on producer for all tables.
+    for (size_t i = 0; i < producer_tables.size(); i++) {
+      master::ListCDCStreamsResponsePB stream_resp;
+      RETURN_NOT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
+      CHECK_EQ(stream_resp.streams_size(), 1);
+      CHECK_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables[i]->id());
+    }
+
+    for (size_t i = 0; i < producer_tables.size(); i++) {
+      WriteWorkload(0, 5, producer_client(), producer_tables[i]->name());
+      RETURN_NOT_OK(VerifyWrittenRecords(producer_tables[i]->name(), consumer_tables[i]->name()));
+    }
+
+    RETURN_NOT_OK(DeleteUniverseReplication());
+    return Status::OK();
+  }
+
  private:
   server::ClockPtr clock_{new server::HybridClock()};
 
@@ -472,39 +535,16 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
 
 INSTANTIATE_TEST_CASE_P(
     TwoDCTestParams, TwoDCTest,
-    ::testing::Values(TwoDCTestParams(true /* transactional_table */),
-                      TwoDCTestParams(false /* transactional_table */)));
+    ::testing::Values(
+        TwoDCTestParams(true /* transactional_table */),
+        TwoDCTestParams(false /* transactional_table */)));
 
 TEST_P(TwoDCTest, SetupUniverseReplication) {
-  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
+  ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kFalse));
+}
 
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
-  // tables contains both producer and consumer universe tables (alternately).
-  // Pick out just the producer tables from the list.
-  producer_tables.reserve(tables.size() / 2);
-  for (size_t i = 0; i < tables.size(); i += 2) {
-    producer_tables.push_back(tables[i]);
-  }
-  ASSERT_OK(SetupUniverseReplication(producer_tables));
-
-  // Verify that universe was setup on consumer.
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
-  ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
-  for (uint32_t i = 0; i < producer_tables.size(); i++) {
-    ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
-  }
-
-  // Verify that CDC streams were created on producer for all tables.
-  for (size_t i = 0; i < producer_tables.size(); i++) {
-    master::ListCDCStreamsResponsePB stream_resp;
-    ASSERT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
-    ASSERT_EQ(stream_resp.streams_size(), 1);
-    ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables[i]->id());
-  }
-
-  ASSERT_OK(DeleteUniverseReplication());
+TEST_P(TwoDCTest, SetupUniverseReplicationWithTLSEncryption) {
+  ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kTrue));
 }
 
 TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
@@ -672,9 +712,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // 2 tables with 8 tablets each.
   ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
-  int nrows = 0;
   for (const auto& row : client::TableRange(table)) {
-    nrows++;
     string stream_id = row.column(0).string_value();
     tablet_bootstraps[stream_id]++;
 
@@ -1333,7 +1371,8 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
   auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
     cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
   std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-      cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id});
+      std::static_pointer_cast<cdc::CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+          {"", stream_id, tablet_id}));
 
   /***********************************
    * Setup Complete.  Starting test. *
@@ -1406,6 +1445,17 @@ class TwoDCTestTransactionalOnly : public TwoDCTest {};
 INSTANTIATE_TEST_CASE_P(
     TwoDCTestParams, TwoDCTestTransactionalOnly,
     ::testing::Values(TwoDCTestParams(true /* transactional_table */)));
+
+TEST_P(TwoDCTestTransactionalOnly, SetupUniverseReplicationWithTLSEncryption) {
+  FLAGS_enable_replicate_transaction_status_table = true;
+  ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kTrue));
+}
+
+TEST_P(TwoDCTestTransactionalOnly, FailedSetupSystemUniverseReplication) {
+  FLAGS_enable_replicate_transaction_status_table = true;
+  FLAGS_TEST_fail_setup_system_universe_replication = true;
+  ASSERT_NOK(TestSetupUniverseReplication(EnableTLSEncryption::kFalse));
+}
 
 TEST_P(TwoDCTestTransactionalOnly, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
@@ -1507,13 +1557,15 @@ TEST_P(TwoDCTestTransactionalOnly, OnlyApplyTransactionOnCaughtUpTablet) {
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
   master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
-                                      kUniverseId, &resp));
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
   auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
   WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
   ASSERT_OK(txn.second->CommitFuture().get());
   auto txn_id = txn.second->id();
   ASSERT_RESULT(GetCommitTimeOfTransaction(consumer_client(), txn_id));
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
   FLAGS_TEST_disable_apply_committed_transactions = false;
   ASSERT_OK(WaitForTransactionCleanedUp(consumer_client(), txn_id));
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
@@ -1530,6 +1582,10 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionsWithoutApply) {
   auto consumer_table = tables[1];
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+                                      kUniverseId, &resp));
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
   auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
   WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
   ASSERT_OK(txn.second->CommitFuture().get());
@@ -1747,6 +1803,118 @@ TEST_P(TwoDCTestTransactionalOnly, OneToManyTabletMapping) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name(), 60 /* timeout_secs */));
 }
 
+TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableMissingBootstrap) {
+  // Make sure that setup fails if we Bootstrap user tables without the transaction status table
+  // when enable_replicate_transaction_status_table is set.
+  FLAGS_enable_replicate_transaction_status_table = true;
+
+  constexpr int kNumTablets = 1;
+  auto tables =
+      ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, 1 /* replication_factor */));
+  auto& producer_table = tables[0];
+
+  cdc::BootstrapProducerRequestPB req;
+  cdc::BootstrapProducerResponsePB resp;
+  req.add_table_ids(producer_table->id());
+
+  rpc::RpcController rpc;
+  auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+      &producer_client()->proxy_cache(),
+      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+  ASSERT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error());
+
+  ASSERT_EQ(resp.cdc_bootstrap_ids().size(), 1);
+
+  std::vector<string> bootstrap_ids;
+  for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
+    bootstrap_ids.emplace_back(bootstrap_id);
+  }
+
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table},
+      true /* leader_only */, bootstrap_ids));
+  master::GetUniverseReplicationResponsePB verify_repl_resp;
+  ASSERT_NOK(VerifyUniverseReplication(kUniverseId, &verify_repl_resp));
+}
+
+TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableWithBootstrap) {
+  FLAGS_enable_replicate_transaction_status_table = true;
+
+  constexpr int kNumTablets = 1;
+  auto tables =
+      ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, 1 /* replication_factor */));
+  auto& producer_table = tables[0];
+  auto& consumer_table = tables[1];
+
+  std::shared_ptr<client::YBTable> producer_tran_table;
+  YBTableName producer_tran_table_name(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  ASSERT_OK(producer_client()->OpenTable(producer_tran_table_name, &producer_tran_table));
+  std::vector<TabletId> tran_tablet_uuids;
+  ASSERT_OK(producer_client()->GetTablets(
+      producer_tran_table_name, 0 /* max_tablets */, &tran_tablet_uuids, nullptr));
+
+  // 1. Write 10 rows transactionally.
+  WriteTransactionalWorkload(0, 10, producer_client(), producer_txn_mgr(), producer_table->name());
+
+  // 2. Bootstrap user tables and transaction status table.
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables = {
+      producer_table, producer_tran_table};
+
+  cdc::BootstrapProducerRequestPB req;
+  cdc::BootstrapProducerResponsePB resp;
+  for (const auto& producer_table : producer_tables) {
+    req.add_table_ids(producer_table->id());
+  }
+
+  rpc::RpcController rpc;
+  auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+      &producer_client()->proxy_cache(),
+      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+  ASSERT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error());
+
+  ASSERT_EQ(resp.cdc_bootstrap_ids().size(), producer_tables.size());
+
+  int table_idx = 0;
+  std::vector<string> bootstrap_ids;
+  for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
+    LOG(INFO) << "Got bootstrap id " << bootstrap_id << " for table "
+              << producer_tables[table_idx++]->name().table_name();
+    bootstrap_ids.emplace_back(bootstrap_id);
+  }
+
+  // 3. Write 10 more rows transactionally.
+  WriteTransactionalWorkload(10, 20, producer_client(), producer_txn_mgr(), producer_table->name());
+
+  // 4. Flush the table and run log GC.
+  ASSERT_OK(producer_client()->FlushTables(
+      {producer_table->id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 30, /* is_compaction = */ true));
+  for (size_t i = 0; i < producer_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& tablet_peer : producer_cluster()->GetTabletPeers(i)) {
+      ASSERT_OK(tablet_peer->RunLogGC());
+    }
+  }
+
+  // 5. Setup replication.
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables,
+      true /* leader_only */, bootstrap_ids));
+  master::GetUniverseReplicationResponsePB verify_repl_resp;
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &verify_repl_resp));
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+
+  // 6. Verify we got the rows from 3 but not 1.
+  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 10));
+  ASSERT_NOK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 7. Write some more rows and make sure they are replicated.
+  WriteTransactionalWorkload(20, 30, producer_client(), producer_txn_mgr(), producer_table->name());
+  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 20));
+}
+
 TEST_P(TwoDCTest, TestExternalWriteHybridTime) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
@@ -1807,19 +1975,8 @@ TEST_P(TwoDCTest, BiDirectionalWrites) {
   ASSERT_OK(VerifyNumRecords(tables[0]->name(), producer_client(), 10));
 
   // Write conflicting records on both clusters (1 clusters adds key, another deletes key).
-  std::vector<std::thread> threads;
-  for (int i = 0; i < 2; ++i) {
-    auto client = i == 0 ? producer_client() : consumer_client();
-    int index = i;
-    bool is_delete = i == 0;
-    threads.emplace_back([this, client, index, tables, is_delete] {
-      WriteWorkload(10, 20, client, tables[index]->name(), is_delete);
-    });
-  }
-
-  for (auto& thread : threads) {
-    thread.join();
-  }
+  WriteWorkload(0, 5, consumer_client(), tables[1]->name());
+  WriteWorkload(5, 10, producer_client(), tables[0]->name(), true /* is_delete */);
 
   // Ensure that same records exist on both universes.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
@@ -2906,7 +3063,8 @@ TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
   std::shared_ptr<cdc::CDCTabletMetrics> metrics;
   ASSERT_OK(WaitFor(
       [&]() {
-        metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
+        metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
+            cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id}));
         if (!metrics) {
           return false;
         }
@@ -3242,48 +3400,6 @@ class TwoDCTestWaitForReplicationDrain : public TwoDCTest {
     TwoDCTest::TearDown();
   }
 
-  void PopulateRequestStreamIds(
-      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
-      master::WaitForReplicationDrainRequestPB* req) {
-    for (const auto& producer_table : producer_tables) {
-      master::ListCDCStreamsResponsePB list_resp;
-      ASSERT_OK(GetCDCStreamForTable(producer_table->id(), &list_resp));
-      ASSERT_EQ(list_resp.streams_size(), 1);
-      ASSERT_EQ(list_resp.streams(0).table_id(0), producer_table->id());
-      req->add_stream_ids(list_resp.streams(0).stream_id());
-    }
-  }
-
-  Status SetupStatus(Status api_status,
-                     const master::WaitForReplicationDrainResponsePB& api_resp,
-                     int expected_num_nondrained) {
-    if (!api_status.ok()) {
-      return api_status;
-    }
-    if (api_resp.has_error()) {
-      return STATUS(IllegalState,
-          Format("WiatForReplicationDrain returned error: $0", api_resp.error().DebugString()));
-    }
-    if (api_resp.undrained_stream_info_size() != expected_num_nondrained) {
-      return STATUS(IllegalState,
-          Format("Mismatched number of non-drained streams. Expected $0, got $1.",
-                 expected_num_nondrained, api_resp.undrained_stream_info_size()));
-    }
-    return Status::OK();
-  }
-
-  Status WaitForReplicationDrain(
-    const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
-    const master::WaitForReplicationDrainRequestPB& req,
-    int expected_num_nondrained,
-    int timeout_secs = kRpcTimeout) {
-    master::WaitForReplicationDrainResponsePB resp;
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(timeout_secs));
-    auto s = master_proxy->WaitForReplicationDrain(req, &resp, &rpc);
-    return SetupStatus(s, resp, expected_num_nondrained);
-  }
-
   std::shared_ptr<std::promise<Status>> WaitForReplicationDrainAsync(
     const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
     const master::WaitForReplicationDrainRequestPB& req,
@@ -3317,7 +3433,7 @@ TEST_P(TwoDCTestWaitForReplicationDrain, TestBlockGetChanges) {
   master::WaitForReplicationDrainRequestPB req;
 
   SetUpTablesAndReplication(&producer_tables, &consumer_tables, kNumTables, kNumTablets);
-  PopulateRequestStreamIds(producer_tables, &req);
+  PopulateWaitForReplicationDrainRequest(producer_tables, &req);
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &producer_client()->proxy_cache(),
       ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
@@ -3354,7 +3470,7 @@ TEST_P(TwoDCTestWaitForReplicationDrain, TestWithTargetTime) {
   master::WaitForReplicationDrainRequestPB req;
 
   SetUpTablesAndReplication(&producer_tables, &consumer_tables, kNumTables, kNumTablets);
-  PopulateRequestStreamIds(producer_tables, &req);
+  PopulateWaitForReplicationDrainRequest(producer_tables, &req);
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &producer_client()->proxy_cache(),
       ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
@@ -3388,7 +3504,7 @@ TEST_P(TwoDCTestWaitForReplicationDrain, TestProducerChange) {
   master::WaitForReplicationDrainRequestPB req;
 
   SetUpTablesAndReplication(&producer_tables, &consumer_tables, kNumTables, kNumTablets);
-  PopulateRequestStreamIds(producer_tables, &req);
+  PopulateWaitForReplicationDrainRequest(producer_tables, &req);
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &producer_client()->proxy_cache(),
       ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());

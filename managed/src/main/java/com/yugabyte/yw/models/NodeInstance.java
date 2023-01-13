@@ -233,6 +233,10 @@ public class NodeInstance extends Model {
     return Optional.of(nodes.get(0));
   }
 
+  public static List<NodeInstance> getAll() {
+    return NodeInstance.find.all();
+  }
+
   public static NodeInstance create(UUID zoneUuid, NodeInstanceData formData) {
     NodeInstance node = new NodeInstance();
     node.zoneUuid = zoneUuid;

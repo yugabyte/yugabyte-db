@@ -61,6 +61,9 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/subprocess.h"
 
+using std::string;
+using std::vector;
+
 using boost::assign::list_of;
 using strings::Split;
 using strings::Substitute;

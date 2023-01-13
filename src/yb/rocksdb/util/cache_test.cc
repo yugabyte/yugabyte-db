@@ -34,6 +34,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
+using std::shared_ptr;
+
 DECLARE_double(cache_single_touch_ratio);
 
 namespace rocksdb {
@@ -667,8 +669,8 @@ void AssertCacheSizes(Cache *cache, size_t single_touch_count, size_t multi_touc
 }
 
 Status InsertIntoCache(const std::shared_ptr<Cache>& cache, int key, int value,
-                               int query_id = CacheTest::kTestQueryId, int charge = 1,
-                               Cache::Handle **handle = nullptr) {
+                       int query_id = CacheTest::kTestQueryId, int charge = 1,
+                       Cache::Handle **handle = nullptr) {
   return cache->Insert(ToString(key), query_id, new Value(value), charge, &deleter, handle);
 }
 

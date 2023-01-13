@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_REF_CNT_BUFFER_H
-#define YB_UTIL_REF_CNT_BUFFER_H
+#pragma once
 
 #include <stdlib.h>
 #include <string.h>
@@ -117,6 +116,10 @@ class RefCntBuffer {
     size_reference() = new_size;
   }
 
+  bool unique() const {
+    return counter_reference().load(std::memory_order_acquire) == 1;
+  }
+
  private:
   void DoReset(char* data);
 
@@ -212,6 +215,63 @@ struct RefCntPrefixHash {
   }
 };
 
-} // namespace yb
+class RefCntSlice {
+ public:
+  RefCntSlice() = default;
 
-#endif // YB_UTIL_REF_CNT_BUFFER_H
+  explicit RefCntSlice(RefCntBuffer holder)
+      : holder_(std::move(holder)), slice_(holder_.AsSlice()) {}
+
+  RefCntSlice(RefCntBuffer holder, const Slice& slice)
+      : holder_(std::move(holder)), slice_(slice) {}
+
+  explicit operator bool() const {
+    return static_cast<bool>(holder_);
+  }
+
+  Slice AsSlice() const {
+    return slice_;
+  }
+
+  bool empty() const {
+    return slice_.empty();
+  }
+
+  size_t size() const {
+    return slice_.size();
+  }
+
+  const uint8_t* udata() const {
+    return slice_.data();
+  }
+
+  const char* data() const {
+    return slice_.cdata();
+  }
+
+  uint8_t* data() {
+    return slice_.mutable_data();
+  }
+
+  uint8_t* end() {
+    return slice_.mutable_data() + slice_.size();
+  }
+
+  size_t SpaceAfterSlice() const {
+    return holder_.AsSlice().end() - slice_.end();
+  }
+
+  void Grow(size_t delta) {
+    slice_ = Slice(slice_.data(), slice_.end() + delta);
+  }
+
+  bool unique() const {
+    return holder_.unique();
+  }
+
+ private:
+  RefCntBuffer holder_;
+  Slice slice_;
+};
+
+} // namespace yb

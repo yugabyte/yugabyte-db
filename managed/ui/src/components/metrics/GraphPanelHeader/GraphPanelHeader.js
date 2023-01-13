@@ -1,10 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
-import { Link } from 'react-router';
+import { Link , withRouter, browserHistory } from 'react-router';
 import { Dropdown, MenuItem, FormControl } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
-import { withRouter, browserHistory } from 'react-router';
+
 import moment from 'moment';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
@@ -15,7 +15,9 @@ import {
   MetricOrigin,
   DEFAULT_OUTLIER_NUM_NODES,
   MIN_OUTLIER_NUM_NODES,
-  MAX_OUTLIER_NUM_NODES
+  MAX_OUTLIER_NUM_NODES,
+  MAX_OUTLIER_NUM_TABLES,
+  SplitType
 } from '../../metrics/constants';
 import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
@@ -59,8 +61,9 @@ const outlierTypes = [
 ];
 
 const metricMeasureTypes = [
-  { value: MetricMeasure.OVERALL, },
-  { value: MetricMeasure.OUTLIER },
+  { value: MetricMeasure.OVERALL, label: 'Overall' },
+  { value: MetricMeasure.OUTLIER, label: 'Outlier Nodes' },
+  { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' },
 ];
 
 const DEFAULT_FILTER_KEY = 0;
@@ -96,7 +99,7 @@ class GraphPanelHeader extends Component {
     const defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
     let currentUniverse = MetricConsts.ALL;
     let currentUniversePrefix = MetricConsts.ALL;
-    let currentRegion = MetricConsts.ALL;
+    const currentRegion = MetricConsts.ALL;
 
     if (this.props.origin === MetricOrigin.UNIVERSE) {
       currentUniverse = this.props.universe.currentUniverse.data;
@@ -127,8 +130,7 @@ class GraphPanelHeader extends Component {
       metricMeasure: metricMeasureTypes[DEFAULT_METRIC_MEASURE_KEY].value,
       outlierType: outlierTypes[DEFAULT_OUTLIER_TYPE].value,
       outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
-      isOneNodeInSelectedZone: false,
-      isOneNodeInSelectedRegion: false
+      isSingleNodeSelected: false
     };
 
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
@@ -203,7 +205,7 @@ class GraphPanelHeader extends Component {
         getPromiseState(universe.currentUniverse).isEmpty() ||
         getPromiseState(universe.currentUniverse).isInit()
       ) {
-        currentUniverse = universeList.data.find(function (item) {
+        currentUniverse = universeList?.data?.find(function (item) {
           return item.universeDetails.nodePrefix === nodePrefix;
         });
         if (!isNonEmptyObject(currentUniverse)) {
@@ -228,7 +230,8 @@ class GraphPanelHeader extends Component {
       !_.isEqual(nextState, this.state) ||
       !_.isEqual(nextProps.universe, this.props.universe) ||
       this.props.prometheusQueryEnabled !== nextProps.prometheusQueryEnabled ||
-      this.props.visibleModal !== nextProps.visibleModal
+      this.props.visibleModal !== nextProps.visibleModal ||
+      this.props.graph?.tabName !== nextProps.graph?.tabName
     );
   }
 
@@ -303,7 +306,7 @@ class GraphPanelHeader extends Component {
     const selectedUniverseUUID = universeUUID;
     const self = this;
     const newParams = this.state;
-    const matchedUniverse = universeList.data.find((u) => u.universeUUID === selectedUniverseUUID);
+    const matchedUniverse = universeList?.data?.find((u) => u.universeUUID === selectedUniverseUUID);
     if (matchedUniverse) {
       self.setState({
         currentSelectedUniverse: matchedUniverse,
@@ -314,8 +317,7 @@ class GraphPanelHeader extends Component {
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
         metricMeasure: metricMeasureTypes[0].value,
-        isOneNodeInSelectedZone: false,
-        isOneNodeInSelectedRegion: false
+        isSingleNodeSelected: false
       });
       newParams.nodePrefix = matchedUniverse.universeDetails.nodePrefix;
     } else {
@@ -327,8 +329,7 @@ class GraphPanelHeader extends Component {
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
         metricMeasure: metricMeasureTypes[0].value,
-        isOneNodeInSelectedZone: false,
-        isOneNodeInSelectedRegion: false
+        isSingleNodeSelected: false
       });
       newParams.nodePrefix = null;
     }
@@ -374,29 +375,25 @@ class GraphPanelHeader extends Component {
     this.updateUrlQueryParams(newParams);
   };
 
-  nodeItemChanged = (nodeName, nodeItems, selectedZoneName) => {
-    let nodesInSelectedZone = [];
-    if (selectedZoneName) {
-      nodesInSelectedZone = nodeItems.filter((nodeItem) => selectedZoneName === nodeItem.cloudInfo.az);
-    }
-
+  nodeItemChanged = (nodeName, selectedZoneName) => {
     const newParams = _.cloneDeep(this.state);
     newParams.nodeName = nodeName;
     newParams.selectedZoneName = selectedZoneName;
     this.setState({
       nodeName: nodeName,
       selectedZoneName: selectedZoneName,
-      isOneNodeInSelectedZone: false
+      isSingleNodeSelected: nodeName && nodeName !== MetricConsts.ALL
     });
 
-    // When number of nodes in a selected zone is 1, button focus should move to Overall
-    if (nodeName && (nodeName !== MetricConsts.ALL || nodesInSelectedZone?.length === 1)) {
+    // When a single node is selected, button focus should move to Overall 
+    // and Outlier Node should be disabled
+    if (this.state.metricMeasure === MetricMeasure.OUTLIER) {
       this.setState({
-        metricMeasure: MetricMeasure.OVERALL,
-        isOneNodeInSelectedZone: true
+        metricMeasure: MetricMeasure.OVERALL
       });
       newParams.metricMeasure = MetricMeasure.OVERALL;
     }
+
     this.updateUrlQueryParams(newParams);
   };
 
@@ -407,28 +404,11 @@ class GraphPanelHeader extends Component {
       selectedRegionClusterUUID: clusterId,
       selectedRegionCode: regionCode,
       nodeName: MetricConsts.ALL,
-      isOneNodeInSelectedZone: false,
-      isOneNodeInSelectedRegion: false,
+      isSingleNodeSelected: false,
       // Make sure zone and node dropdown resets everytime we change region and cluster dropdown
       selectedZoneName: null,
     });
 
-    const currentSelectedUniverse = this.state.currentSelectedUniverse;
-    const nodeDetailsSet = currentSelectedUniverse?.universeDetails?.nodeDetailsSet;
-    // When number of nodes in a selected region or cluster is 1, button focus should move to Overall
-    if (clusterId && nodeDetailsSet?.length) {
-      const nodesInSelectedRegion = nodeDetailsSet.filter(
-        (nodeDetail) => clusterId === nodeDetail.placementUuid);
-      if (nodesInSelectedRegion.length === 1) {
-        this.setState({
-          metricMeasure: MetricMeasure.OVERALL,
-          isOneNodeInSelectedRegion: true,
-          // If there is one node in selected region, then there cannot be more than one node in the zone
-          isOneNodeInSelectedZone: true,
-        });
-        newParams.metricMeasure = MetricMeasure.OVERALL;
-      }
-    }
     newParams.selectedZoneName = null;
     newParams.nodeName = MetricConsts.ALL;
     newParams.selectedRegionCode = regionCode;
@@ -437,16 +417,16 @@ class GraphPanelHeader extends Component {
     this.updateUrlQueryParams(newParams);
   }
 
+  // Go to Outlier, select YCQL OPs, last 6 hrs, select single region which has one node and then select TOP K TABLES 
   onMetricMeasureChanged = (selectedMetricMeasureValue) => {
     const newParams = _.cloneDeep(this.state);
-    if (this.state.nodeName &&
-      this.state.nodeName === MetricConsts.ALL) {
-      this.setState({
-        metricMeasure: selectedMetricMeasureValue
-      });
-      newParams.metricMeasure = selectedMetricMeasureValue;
-      this.updateUrlQueryParams(newParams);
-    }
+    this.setState({
+      metricMeasure: selectedMetricMeasureValue,
+      // Always have default number for outlier value when metric measure changes 
+      outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES
+    });
+    newParams.metricMeasure = selectedMetricMeasureValue;
+    this.updateUrlQueryParams(newParams);
   }
 
   onOutlierTypeChanged = (selectedOutlierType) => {
@@ -460,8 +440,11 @@ class GraphPanelHeader extends Component {
 
   setNumNodeValue = (outlierNumNodes) => {
     const newParams = _.cloneDeep(this.state);
+    const maxOutlierValue = this.state.metricMeasure === MetricMeasure.OUTLIER
+      ? MAX_OUTLIER_NUM_NODES
+      : MAX_OUTLIER_NUM_TABLES;
     if (typeof outlierNumNodes === 'number'
-      && outlierNumNodes >= MIN_OUTLIER_NUM_NODES && outlierNumNodes <= MAX_OUTLIER_NUM_NODES
+      && outlierNumNodes >= MIN_OUTLIER_NUM_NODES && outlierNumNodes <= maxOutlierValue
     ) {
       this.setState({
         outlierNumNodes
@@ -502,7 +485,7 @@ class GraphPanelHeader extends Component {
   updateUrlQueryParams = (filterParams) => {
     const location = Object.assign({}, browserHistory.getCurrentLocation());
     const queryParams = location.query;
-    const isEnabledTopKMetrics = this.props.enableTopKMetrics;
+    const isEnabledTopKMetrics = this.props.isTopKMetricsEnabled;
 
     // TODO: Needs to be removed once Top K metrics is tested and integrated fully
     if (isEnabledTopKMetrics) {
@@ -537,8 +520,7 @@ class GraphPanelHeader extends Component {
       closeModal,
       visibleModal,
       enableNodeComparisonModal,
-      enableTopNodes,
-      enableTopKMetrics
+      isTopKMetricsEnabled
     } = this.props;
     const {
       filterType,
@@ -599,12 +581,12 @@ class GraphPanelHeader extends Component {
 
     let universePicker = <span />;
     if (origin === MetricOrigin.CUSTOMER) {
-      if (enableTopKMetrics) {
-        universePicker = <UniversePicker
+      if (isTopKMetricsEnabled) {
+        universePicker = (<UniversePicker
           {...this.props}
           universeItemChanged={this.universeItemChanged}
           selectedUniverse={self.state.currentSelectedUniverse}
-        />
+        />);
       } else {
         // TODO: Needs to be removed once Top K metrics is tested and integrated fully
         universePicker = (
@@ -617,6 +599,8 @@ class GraphPanelHeader extends Component {
       }
     }
 
+    const splitType = this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES ?
+      SplitType.TABLE : SplitType.NODE;
     // TODO: Need to fix handling of query params on Metrics tab
     const liveQueriesLink =
       this.state.currentSelectedUniverse &&
@@ -637,7 +621,7 @@ class GraphPanelHeader extends Component {
                 <FlexGrow power={1}>
                   <div className="filter-container">
                     {universePicker}
-                    {enableTopKMetrics && this.props.origin !== MetricOrigin.TABLE &&
+                    {isTopKMetricsEnabled && this.props.origin !== MetricOrigin.TABLE &&
                       <RegionSelector
                         selectedUniverse={this.state.currentSelectedUniverse}
                         onRegionChanged={this.onRegionChanged}
@@ -651,17 +635,17 @@ class GraphPanelHeader extends Component {
                         nodeItemChangedOld={this.nodeItemChangedOld}
                         selectedUniverse={this.state.currentSelectedUniverse}
                         selectedNode={this.state.nodeName}
-                        topNodesSelection={enableTopNodes}
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                         selectedZoneName={this.state.selectedZoneName}
-                        enableTopKMetrics={enableTopKMetrics}
+                        isTopKMetricsEnabled={isTopKMetricsEnabled}
+                        selectedRegionCode={this.state.selectedRegionCode}
                       />}
-                    {liveQueriesLink && !universePaused && !enableTopKMetrics &&(
+                    {liveQueriesLink && !universePaused && !isTopKMetricsEnabled && (
                       <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>
                         <i className="fa fa-search" /> See Queries
                       </Link>
                     )}
-                    {liveQueriesLink && !universePaused && enableTopKMetrics && (
+                    {liveQueriesLink && !universePaused && isTopKMetricsEnabled && (
                       <span className="live-queries">
                         <Link to={liveQueriesLink}>
                           <span className="live-queries-label">See Queries</span>
@@ -739,6 +723,7 @@ class GraphPanelHeader extends Component {
                                 return null;
                               })
                               .then((blob) => {
+                                // eslint-disable-next-line eqeqeq
                                 if (blob != null) {
                                   const url = window.URL.createObjectURL(blob);
                                   const a = document.createElement('a');
@@ -750,7 +735,7 @@ class GraphPanelHeader extends Component {
                                   window.URL.revokeObjectURL(url);
                                   a.remove();
                                 }
-                              })
+                              });
                           }}>
                             {'Download Grafana JSON'}
                           </MenuItem>
@@ -762,15 +747,13 @@ class GraphPanelHeader extends Component {
               </FlexContainer>
               <FlexContainer>
                 <FlexGrow power={1}>
-                  {enableTopKMetrics && this.state.currentSelectedUniverse !== MetricConsts.ALL &&
+                  {isTopKMetricsEnabled && this.state.currentSelectedUniverse !== MetricConsts.ALL &&
                     this.props.origin !== MetricOrigin.TABLE &&
                     <MetricsMeasureSelector
                       metricMeasureTypes={metricMeasureTypes}
                       selectedMetricMeasureValue={this.state.metricMeasure}
                       onMetricMeasureChanged={this.onMetricMeasureChanged}
-                      selectedNode={this.state.nodeName}
-                      isOneNodeInSelectedZone={this.state.isOneNodeInSelectedZone}
-                      isOneNodeInSelectedRegion={this.state.isOneNodeInSelectedRegion}
+                      isSingleNodeSelected={this.state.isSingleNodeSelected}
                     />
                   }
                 </FlexGrow>
@@ -789,18 +772,24 @@ class GraphPanelHeader extends Component {
               </FlexContainer>
               <FlexContainer>
                 <FlexGrow power={1}>
-                  {enableTopKMetrics && this.state.metricMeasure === MetricMeasure.OUTLIER &&
-                    <OutlierSelector
-                      outlierTypes={outlierTypes}
-                      selectedOutlierType={this.state.outlierType}
-                      onOutlierTypeChanged={this.onOutlierTypeChanged}
-                      setNumNodeValue={this.setNumNodeValue}
-                      defaultOutlierNumNodes={this.state.outlierNumNodes}
-                    />}
+                  {/* Show Outlier Selector component if user has selected Outlier section
+                  or if user has selected TopTables tab in Overall section  */}
+                  {isTopKMetricsEnabled && currentSelectedUniverse !== MetricConsts.ALL &&
+                    ((this.state.metricMeasure === MetricMeasure.OUTLIER) ||
+                      this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) &&
+                      <OutlierSelector
+                        outlierTypes={outlierTypes}
+                        selectedOutlierType={this.state.outlierType}
+                        onOutlierTypeChanged={this.onOutlierTypeChanged}
+                        setNumNodeValue={this.setNumNodeValue}
+                        defaultOutlierNumNodes={this.state.outlierNumNodes}
+                        splitType={splitType}
+                      />}
                 </FlexGrow>
               </FlexContainer>
               {enableNodeComparisonModal ? (
                 <MetricsComparisonModal
+                  isTopKMetricsEnabled={isTopKMetricsEnabled}
                   visible={showModal && visibleModal === 'metricsComparisonModal'}
                   onHide={closeModal}
                   selectedUniverse={this.state.currentSelectedUniverse}
@@ -834,8 +823,7 @@ class UniversePicker extends Component {
       selectedUniverse
     } = this.props;
 
-    const universeItems = universeList.data
-      .sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+    let universeItems = universeList?.data?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
       .map(function (item, idx) {
         return (
           <MenuItem
@@ -843,7 +831,7 @@ class UniversePicker extends Component {
             key={idx}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click() }}
+            onClick={() => { document.body.click(); }}
             eventKey={item.universeUUID}
             active={item.universeUUID === selectedUniverse.universeUUID}
           >
@@ -860,7 +848,7 @@ class UniversePicker extends Component {
           // Added this line due to the issue that dropdown does not close
           // when a menu item is selected
           active={selectedUniverse === MetricConsts.ALL}
-          onClick={() => { document.body.click() }}
+          onClick={() => { document.body.click(); }}
           eventKey={MetricConsts.ALL}
         >
           {"All universes"}
@@ -873,11 +861,16 @@ class UniversePicker extends Component {
       currentUniverseValue = selectedUniverse.name;
     }
 
+    // If we fail to retrieve list of Universes, still display the Universe dropdown with "All" option
+    if (!universeItems) {
+      universeItems = [];
+    }
     universeItems.splice(0, 0, defaultMenuItem);
     return (
       <div className="universe-picker-container">
         <Dropdown
-          id="universe-filter-dropdown"
+          id="universeFilterDropdown"
+          className="universe-filter-dropdown"
         >
           <Dropdown.Toggle className="dropdown-toggle-button">
             <span className="default-universe-value">
@@ -902,8 +895,7 @@ class UniversePickerOld extends Component {
       selectedUniverse
     } = this.props;
 
-    const universeItems = universeList.data
-      .sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+    const universeItems = universeList.data?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
       .map(function (item, idx) {
         return (
           <option key={idx} value={item.universeUUID} name={item.name}>

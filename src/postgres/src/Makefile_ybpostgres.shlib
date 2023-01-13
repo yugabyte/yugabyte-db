@@ -43,9 +43,9 @@
 # must also be set.  It should be omitted when building a dynamically
 # loadable module.
 #
-# SO_MAJOR_VERSION      Major version number to use for shared library
-# SO_MINOR_VERSION      Minor version number to use for shared library
-# (If you want a patchlevel, include it in SO_MINOR_VERSION, e.g., "6.2".)
+# YB_SO_MAJOR_VERSION      Major version number to use for shared library
+# YB_SO_MINOR_VERSION      Minor version number to use for shared library
+# (If you want a patchlevel, include it in YB_SO_MINOR_VERSION, e.g., "6.2".)
 #
 # The module Makefile must also include
 # $(top_builddir)/src/Makefile.global before including this file.
@@ -82,10 +82,10 @@ LDFLAGS_INTERNAL += $(SHLIB_LINK_INTERNAL)
 
 
 
-ifdef SO_MAJOR_VERSION
+ifdef YB_SO_MAJOR_VERSION
 # Default library naming convention used by the majority of platforms
-shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)
-shlib_major	= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
+shlib		= lib$(NAME)$(DLSUFFIX).$(YB_SO_MAJOR_VERSION).$(YB_SO_MINOR_VERSION)
+shlib_major	= lib$(NAME)$(DLSUFFIX).$(YB_SO_MAJOR_VERSION)
 shlib_bare	= lib$(NAME)$(DLSUFFIX)
 # Testing the soname variable is a reliable way to determine whether a
 # linkable library is being built.
@@ -111,14 +111,14 @@ endif
 
 override CFLAGS += $(CFLAGS_SL)
 override CXXFLAGS += $(CFLAGS_SL)
-ifdef SO_MAJOR_VERSION
+ifdef YB_SO_MAJOR_VERSION
 # libraries ought to use this to refer to versioned gettext domain names
-override CPPFLAGS += -DSO_MAJOR_VERSION=$(SO_MAJOR_VERSION)
+override CPPFLAGS += -DYB_SO_MAJOR_VERSION=$(YB_SO_MAJOR_VERSION)
 endif
 
 ifeq ($(PORTNAME), aix)
-  ifdef SO_MAJOR_VERSION
-    shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
+  ifdef YB_SO_MAJOR_VERSION
+    shlib		= lib$(NAME)$(DLSUFFIX).$(YB_SO_MAJOR_VERSION)
   endif
   haslibarule   = yes
   # $(exports_file) is also usable as an import file
@@ -129,12 +129,12 @@ ifeq ($(PORTNAME), darwin)
   ifdef soname
     # linkable library
     DLSUFFIX		= .dylib
-    ifneq ($(SO_MAJOR_VERSION), 0)
-      version_link	= -compatibility_version $(SO_MAJOR_VERSION) -current_version $(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)
+    ifneq ($(YB_SO_MAJOR_VERSION), 0)
+      version_link	= -compatibility_version $(YB_SO_MAJOR_VERSION) -current_version $(YB_SO_MAJOR_VERSION).$(YB_SO_MINOR_VERSION)
     endif
-    LINK.shared		= $(COMPILER) -dynamiclib -install_name '$(libdir)/lib$(NAME).$(SO_MAJOR_VERSION)$(DLSUFFIX)' $(version_link) $(exported_symbols_list) -multiply_defined suppress
-    shlib		= lib$(NAME).$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)$(DLSUFFIX)
-    shlib_major		= lib$(NAME).$(SO_MAJOR_VERSION)$(DLSUFFIX)
+    LINK.shared		= $(COMPILER) -dynamiclib -install_name '$(libdir)/lib$(NAME).$(YB_SO_MAJOR_VERSION)$(DLSUFFIX)' $(version_link) $(exported_symbols_list) -multiply_defined suppress
+    shlib		= lib$(NAME).$(YB_SO_MAJOR_VERSION).$(YB_SO_MINOR_VERSION)$(DLSUFFIX)
+    shlib_major		= lib$(NAME).$(YB_SO_MAJOR_VERSION)$(DLSUFFIX)
   else
     # loadable module
     DLSUFFIX		= .so
@@ -166,8 +166,8 @@ endif
 
 ifeq ($(PORTNAME), freebsd)
   ifdef ELF_SYSTEM
-    ifdef SO_MAJOR_VERSION
-      shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
+    ifdef YB_SO_MAJOR_VERSION
+      shlib		= lib$(NAME)$(DLSUFFIX).$(YB_SO_MAJOR_VERSION)
     endif
     LINK.shared		= $(COMPILER) -shared
     ifdef soname
@@ -179,8 +179,8 @@ ifeq ($(PORTNAME), freebsd)
       LINK.shared	+= -Wl,--version-script=$(exports_file)
     endif
   else
-    ifdef SO_MAJOR_VERSION
-      shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)
+    ifdef YB_SO_MAJOR_VERSION
+      shlib		= lib$(NAME)$(DLSUFFIX).$(YB_SO_MAJOR_VERSION).$(YB_SO_MINOR_VERSION)
     endif
     LINK.shared		= $(LD) -x -Bshareable -Bforcearchive
   endif
@@ -203,8 +203,8 @@ ifeq ($(PORTNAME), netbsd)
 endif
 
 ifeq ($(PORTNAME), hpux)
-  ifdef SO_MAJOR_VERSION
-    shlib			= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
+  ifdef YB_SO_MAJOR_VERSION
+    shlib			= lib$(NAME)$(DLSUFFIX).$(YB_SO_MAJOR_VERSION)
   endif
   ifeq ($(with_gnu_ld), yes)
     LINK.shared		= $(CC) -shared -Wl,-Bsymbolic
@@ -264,14 +264,14 @@ endif
 
 ifeq ($(PORTNAME), cygwin)
   LINK.shared		= $(CC) -shared
-  ifdef SO_MAJOR_VERSION
+  ifdef YB_SO_MAJOR_VERSION
     shlib		= cyg$(NAME)$(DLSUFFIX)
   endif
   haslibarule   = yes
 endif
 
 ifeq ($(PORTNAME), win32)
-  ifdef SO_MAJOR_VERSION
+  ifdef YB_SO_MAJOR_VERSION
     shlib		= lib$(NAME)$(DLSUFFIX)
   endif
   haslibarule   = yes
@@ -397,8 +397,11 @@ $(shlib): $(call expand_subsys,$(OBJS)) | $(SHLIB_PREREQS)
 else
 DLL_DEFFILE = lib$(NAME)dll.def
 
+# It is important to not include $(LIBS) here, because it may contain libtcmalloc.a, which we are
+# not allowed to link into a shared library. All other libraries should already be included in
+# $(SHLIB_LINK).
 $(shlib): $(call expand_subsys,$(OBJS)) $(DLL_DEFFILE) | $(SHLIB_PREREQS)
-	$(CC) $(CFLAGS)  -shared -static-libgcc -o $@  $(call expand_subsys,$(OBJS)) $(DLL_DEFFILE) $(LDFLAGS) $(LDFLAGS_SL) $(SHLIB_LINK) $(LIBS) -Wl,--out-implib=$(stlib)
+	$(CC) $(CFLAGS)  -shared -static-libgcc -o $@  $(call expand_subsys,$(OBJS)) $(DLL_DEFFILE) $(LDFLAGS) $(LDFLAGS_SL) $(SHLIB_LINK) -Wl,--out-implib=$(stlib)
 endif
 
 endif # PORTNAME == cygwin

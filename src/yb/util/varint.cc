@@ -21,6 +21,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+using std::ostream;
+
 namespace yb {
 namespace util {
 

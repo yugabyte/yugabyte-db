@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-ts-cli
     parent: admin
-    weight: 2466
+    weight: 50
 type: docs
 ---
 

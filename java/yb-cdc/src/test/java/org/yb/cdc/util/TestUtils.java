@@ -16,6 +16,7 @@ package org.yb.cdc.util;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.apache.ibatis.jdbc.ScriptRunner;
+import org.awaitility.Awaitility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CDCConsoleSubscriber;
@@ -28,6 +29,7 @@ import java.net.URLDecoder;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
+import java.time.Duration;
 import java.util.List;
 
 public class TestUtils {
@@ -211,5 +213,16 @@ public class TestUtils {
       LOG.error("Exception caught while stopping yugabyted", e);
       System.exit(0);
     }
+  }
+
+  /**
+   * Helper function to wait for a specified duration
+   * @param seconds the amount of seconds to wait
+   */
+  public static void waitFor(long seconds) {
+    Awaitility.await()
+      .pollDelay(Duration.ofSeconds(seconds))
+      .atMost(Duration.ofSeconds(seconds + 1))
+      .until(() -> { return true; });
   }
 }

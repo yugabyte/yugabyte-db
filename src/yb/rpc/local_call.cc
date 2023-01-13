@@ -47,7 +47,7 @@ Status LocalOutboundCall::SetRequestParam(
   return Status::OK();
 }
 
-void LocalOutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void LocalOutboundCall::Serialize(ByteBlocks* output) {
   LOG(FATAL) << "Local call should not require serialization";
 }
 
@@ -62,18 +62,12 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
   return inbound_call_;
 }
 
-Result<Slice> LocalOutboundCall::GetSidecar(size_t idx) const {
-  if (idx >= inbound_call_->sidecars_.size()) {
-    return STATUS_FORMAT(InvalidArgument, "Index $0 does not reference a valid sidecar", idx);
-  }
-  return inbound_call_->sidecars_[idx].AsSlice();
+Result<RefCntSlice> LocalOutboundCall::ExtractSidecar(size_t idx) const {
+  return inbound_call_->sidecars().Extract(narrow_cast<int>(idx));
 }
 
-Result<SidecarHolder> LocalOutboundCall::GetSidecarHolder(size_t idx) const {
-  if (idx >= inbound_call_->sidecars_.size()) {
-    return STATUS_FORMAT(InvalidArgument, "Index $0 does not reference a valid sidecar", idx);
-  }
-  return SidecarHolder(inbound_call_->sidecars_[idx], inbound_call_->sidecars_[idx].AsSlice());
+size_t LocalOutboundCall::TransferSidecars(Sidecars* dest) {
+  return inbound_call_->sidecars().Transfer(dest);
 }
 
 LocalYBInboundCall::LocalYBInboundCall(
@@ -123,7 +117,7 @@ Status LocalYBInboundCall::ParseParam(RpcCallParams* params) {
   LOG(FATAL) << "local call should not require parsing";
 }
 
-Result<size_t> LocalYBInboundCall::ParseRequest(Slice param) {
+Result<size_t> LocalYBInboundCall::ParseRequest(Slice param, const RefCntBuffer& buffer) {
   return STATUS(InternalError, "ParseRequest called for local call");
 }
 

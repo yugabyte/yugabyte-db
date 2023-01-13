@@ -12,7 +12,7 @@ menu:
     weight: 631
 type: indexpage
 ---
-YugabyteDB is a geo-distributed SQL database that can be easily deployed across multiple data centers (DCs) or cloud regions. There are two primary configurations for such multi-DC deployments.
+YugabyteDB is a geo-distributed SQL database that can be deployed across multiple data centers (DCs) or cloud regions. There are two primary configurations for such multi-DC deployments.
 
 The first configuration uses a single cluster stretched across 3 or more data centers with data getting automatically sharded across all data centers. This configuration is default for [Spanner-inspired databases](../../architecture/docdb/) like YugabyteDB. Data replication across data centers is synchronous and is based on the Raft consensus protocol. This means writes are globally consistent and reads are either globally consistent or timeline consistent (when application clients use follower reads). Additionally, resilience against data center failures is fully automatic. This configuration has the potential to incur Wide Area Network (WAN) latency in the write path if the data centers are geographically located far apart from each other and are connected through the shared/unreliable Internet.
 

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_BINARY_CALL_PARSER_H
-#define YB_RPC_BINARY_CALL_PARSER_H
+#pragma once
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/net/socket.h"
@@ -68,5 +67,3 @@ bool ShouldThrottleRpc(
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_BINARY_CALL_PARSER_H

@@ -1,6 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks.params;
 
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 
 public class ServerSubTaskParams extends UniverseTaskParams {

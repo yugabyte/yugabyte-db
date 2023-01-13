@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STATUS_FWD_H
-#define YB_UTIL_STATUS_FWD_H
+#pragma once
 
 #include "yb/gutil/port.h"
 
@@ -26,5 +25,3 @@ template<class TValue>
 class NODISCARD_CLASS Result;
 
 }  // namespace yb
-
-#endif  // YB_UTIL_STATUS_FWD_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_FILE_DOWNLOADER_H
-#define YB_TSERVER_REMOTE_BOOTSTRAP_FILE_DOWNLOADER_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -88,5 +87,3 @@ Status UnwindRemoteError(const Status& status, const rpc::RpcController& control
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_REMOTE_BOOTSTRAP_FILE_DOWNLOADER_H

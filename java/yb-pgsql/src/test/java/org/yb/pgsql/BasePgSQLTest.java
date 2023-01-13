@@ -23,8 +23,6 @@ import static org.yb.AssertionWrappers.fail;
 import static org.yb.util.BuildTypeUtil.isASAN;
 import static org.yb.util.BuildTypeUtil.isTSAN;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.io.File;
 import java.net.InetSocketAddress;
 import java.net.URL;
@@ -73,10 +71,16 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.minicluster.YsqlSnapshotVersion;
-import org.yb.util.*;
+import org.yb.util.BuildTypeUtil;
+import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.MiscUtil.ThrowingCallable;
+import org.yb.util.SystemUtil;
+import org.yb.util.ThrowingRunnable;
+import org.yb.util.YBBackupException;
+import org.yb.util.YBBackupUtil;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -91,7 +95,7 @@ import com.yugabyte.util.PSQLException;
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
 
-  /** Corresponds to the original value of YB_MIN_UNUSED_OID. */
+  /** Corresponds to the first OID used for YB system catalog objects. */
   protected final long FIRST_YB_OID = 8000;
 
   /** Matches Postgres' FirstBootstrapObjectId */
@@ -105,6 +109,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String DEFAULT_PG_USER = "yugabyte";
   protected static final String DEFAULT_PG_PASS = "yugabyte";
   protected static final String TEST_PG_USER = "yugabyte_test";
+  protected static final String TEST_PG_PASS = "pass";
 
   // Non-standard PSQL states defined in yb_pg_errcodes.h
   protected static final String SERIALIZATION_FAILURE_PSQL_STATE = "40001";
@@ -317,15 +322,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection = null;
     }
 
-    // Create test role.
-    try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER).connect();
-         Statement statement = initialConnection.createStatement()) {
+    connection = createTestRole();
+    pgInitialized = true;
+  }
+
+  protected Connection createTestRole() throws Exception {
+    try (Connection initialConnection = getConnectionBuilder()
+          .withUser(DEFAULT_PG_USER)
+          .connect();
+      Statement statement = initialConnection.createStatement()) {
       statement.execute(
-          "CREATE ROLE " + TEST_PG_USER + " SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN");
+        String.format("CREATE ROLE %s SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN ",
+                      TEST_PG_USER));
     }
 
-    connection = getConnectionBuilder().connect();
-    pgInitialized = true;
+    return getConnectionBuilder().connect();
   }
 
   public void restartClusterWithFlags(
@@ -334,6 +345,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     destroyMiniCluster();
 
     createMiniCluster(additionalMasterFlags, additionalTserverFlags);
+    pgInitialized = false;
+    initPostgresBefore();
+  }
+
+  public void restartClusterWithFlagsAndEnv(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags,
+      Map<String, String> additionalEnvironmentVars) throws Exception {
+    destroyMiniCluster();
+
+    createMiniCluster(additionalMasterFlags, additionalTserverFlags, additionalEnvironmentVars);
     pgInitialized = false;
     initPostgresBefore();
   }
@@ -1057,6 +1079,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     String getString(int index) {
       return (String) elems.get(index);
+    }
+
+    Float getFloat(int index) {
+      return (Float) elems.get(index);
     }
 
     public boolean elementEquals(int idx, Object value) {
@@ -2338,5 +2364,50 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     public void setLoadBalance(boolean lb) {
       loadBalance = lb;
     }
+  }
+
+  protected static void withRoles(Statement statement, RoleSet roles,
+                                  ThrowingRunnable runnable) throws Exception {
+    for (String role : roles.roleSet) {
+      withRole(statement, role, runnable);
+    }
+  }
+
+  protected static void withRole(Statement statement, String role,
+                                 ThrowingRunnable runnable) throws Exception {
+    String sessionUser = getSessionUser(statement);
+    try {
+      statement.execute(String.format("SET SESSION AUTHORIZATION %s", role));
+      runnable.run();
+    } finally {
+      statement.execute(String.format("SET SESSION AUTHORIZATION %s", sessionUser));
+    }
+  }
+
+  protected static class RoleSet {
+    private HashSet<String> roleSet;
+
+    RoleSet(String... roles) {
+      this.roleSet = new HashSet<String>();
+      this.roleSet.addAll(Lists.newArrayList(roles));
+    }
+
+    RoleSet excluding(String... roles) {
+      RoleSet newSet = new RoleSet(roles);
+      newSet.roleSet.removeAll(Lists.newArrayList(roles));
+      return newSet;
+    }
+  }
+
+  protected static String getSessionUser(Statement statement) throws Exception {
+    ResultSet resultSet = statement.executeQuery("SELECT SESSION_USER");
+    resultSet.next();
+    return resultSet.getString(1);
+  }
+
+  protected static String getCurrentUser(Statement statement) throws Exception {
+    ResultSet resultSet = statement.executeQuery("SELECT CURRENT_USER");
+    resultSet.next();
+    return resultSet.getString(1);
   }
 }

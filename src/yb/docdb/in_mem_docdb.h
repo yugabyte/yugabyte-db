@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_IN_MEM_DOCDB_H_
-#define YB_DOCDB_IN_MEM_DOCDB_H_
+#pragma once
 
 #include <map>
 
@@ -20,6 +19,7 @@
 
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/value.h"
 #include "yb/util/status_fwd.h"
 
@@ -72,5 +72,3 @@ class InMemDocDbState {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_IN_MEM_DOCDB_H_

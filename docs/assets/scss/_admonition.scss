@@ -1,75 +1,167 @@
-.admonition-title,
-.admonition .title {
-  &::before {
-    position: relative;
-    top: -4px;
-  }
-}
+main {
+  .td-content {
+    blockquote {
+      border: 1px solid #d7dee4;
+      border-radius: 8px;
+      margin: 30px 0;
+      position: relative;
+      padding: 16px 30px 16px 56px;
+      color: #25323d;
+      background: #fff;
 
-main .td-content .admonition {
-  margin: 20px 0 0 0;
-  padding: 25px 32px 30px;
-  border-radius: 7px;
-  background: $YB_LIGHT_GRAY_2;
-  position: relative;
-  overflow: hidden;
-  color: inherit;
-  margin-bottom: 30px;
+      >p {
+        font-family: 'inter';
+        font-style: normal;
+        font-weight: 400;
+        font-size: 13px;
+        line-height: 22px;
+        color: inherit;
+        margin: 1em 0;
 
-  &::before {
-    content: "";
-    top: 0;
-    left: 0;
-    position: absolute;
-    width: 5px;
-    height: 100%;
-  }
+        &:first-child {
+          margin: 0;
+        }
 
-  .admonition-title,
-  .title {
-    margin: 0 0 10px 0;
-    color: $YB_DARK_BLUE;
-    padding: 0;
-    font-family: "Rubik", sans-serif;
-    font-weight: 500;
-    display: block;
-    font-size: 20px;
+        &:nth-child(2) {
+          margin-top: 0;
+        }
 
-    &::before {
-      content: none;
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+
+      strong {
+        font-weight: 600;
+        color: inherit;
+      }
+
+      &::before {
+        content: "";
+        position: absolute;
+        width: 13px;
+        height: 10px;
+        top: 22px;
+        left: 24px;
+        background-image: url(/icons/admonition-quote.svg);
+        background-repeat: no-repeat;
+      }
+
+      &::after {
+        position: absolute;
+        width: 3px;
+        background-color: #4e5f6d;
+        left: 25px;
+        top: 45px;
+        bottom: 22px;
+      }
     }
-  }
 
-  &.note {
-    background: #f0f9ff;
+    .admonition {
+      background: rgba(229, 237, 255, 0.5);
+      border: 1px solid rgba(203, 219, 255, 0.8);
+      border-radius: 8px;
+      padding: 13px 16px 16px 50px;
+      font-family: 'inter';
+      font-style: normal;
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 22px;
+      color: #25323d;
+      position: relative;
+      margin: 1em 0;
 
-    &::before {
-      background-color: #35a3ff;
+      &::before {
+        content: "";
+        width: 18px;
+        height: 18px;
+        background-image: url(/icons/admonition-note.svg);
+        background-repeat: no-repeat;
+        background-size: 19px 20px;
+        position: absolute;
+        top: 16px;
+        left: 16px;
+      }
+
+      >*:not(code) {
+        margin: 1em 0;
+
+        &:first-child:not(code) {
+          margin: 0 !important;
+        }
+
+        &:nth-child(2):not(code) {
+          margin-top: 0 !important;
+        }
+
+        &:last-child:not(code) {
+          margin-bottom: 0 !important;
+        }
+      }
+
+      >ul {
+        &:last-child {
+          li {
+            &:last-child {
+              margin-bottom: 0 !important;
+            }
+          }
+        }
+      }
+
+      >ol {
+        &:last-child {
+          li {
+            &:last-child {
+              margin-bottom: 0 !important;
+            }
+          }
+        }
+      }
+
+      .admonition-title {
+        font-weight: 600;
+        margin: 0;
+
+        &::first-letter {
+          text-transform: uppercase;
+        }
+      }
     }
-  }
 
-  &.tip {
-    background: #f4ffed;
+    .admonition.note {
+      &::before {
+        background-size: 19px 20px;
+      }
 
-    &::before {
-      background-color: #59ac39;
+      p {
+        >code {
+          box-shadow: 0 0 1px 0 #cbdbff;
+        }
+      }
     }
-  }
 
-  &.warning {
-    background: #fff7f0;
+    .admonition.warning {
+      background: rgba(255, 238, 200, 0.6);
+      border: 1px solid rgba(255, 211, 131, 0.5);
 
-    &::before {
-      background-color: #f74020;
+      &::before {
+        width: 24px;
+        height: 24px;
+        background-image: url(/icons/admonition-warning.svg);
+      }
     }
-  }
 
-  &.hero {
-    background: $YB_LIGHT_GRAY_BACK;
-    box-shadow: 0 1px 2px rgba($YB_DARK, 0.1);
+    .admonition.tip {
+      background: rgba(205, 239, 225, 0.4);
+      border: 1px solid #cdefe1;
 
-    &::before {
-      content: none;
+      &::before {
+        width: 23px;
+        height: 24px;
+        left: 17px;
+        background-image: url(/icons/admonition-tip.svg);
+      }
     }
   }
 }

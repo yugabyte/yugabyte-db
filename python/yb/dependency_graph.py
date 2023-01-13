@@ -19,17 +19,17 @@ tests that might be affected by changes to the given set of source files.
 """
 
 import argparse
-import fnmatch
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 import unittest
 import pipes
-import platform
 import time
+import shutil
+import random
+import string
 
 from datetime import datetime
 from enum import Enum
@@ -37,33 +37,28 @@ from typing import Optional, List, Dict, TypeVar, Set, Any, Iterable, cast
 from pathlib import Path
 
 from yb.common_util import (
-        group_by,
-        make_set,
-        get_build_type_from_build_root,
-        ensure_yb_src_root_from_build_root,
-        convert_to_non_ninja_build_root,
-        get_bool_env_var,
-        is_ninja_build_root,
-        shlex_join,
-        read_file,
         arg_str_to_bool,
+        get_bool_env_var,
+        group_by,
         is_lto_build_root,
+        make_set,
+        shlex_join,
 )
 from yb.command_util import mkdir_p
 from yb.source_files import (
-    SourceFileCategory,
-    get_file_category,
     CATEGORIES_NOT_CAUSING_RERUN_OF_ALL_TESTS,
+    get_file_category,
+    SourceFileCategory,
 )
 from yb.dep_graph_common import (
-    DepGraphConf,
-    NodeType,
-    Node,
-    DependencyGraph,
     CMakeDepGraph,
+    DependencyGraph,
+    DepGraphConf,
+    DYLIB_SUFFIX,
     is_object_file,
     is_shared_library,
-    DYLIB_SUFFIX,
+    Node,
+    NodeType,
 )
 from yugabyte_pycommon import WorkDirContext  # type: ignore
 from yb.lto import link_whole_program
@@ -441,6 +436,7 @@ class DependencyGraphBuilder:
         self.dep_graph.validate_node_existence()
 
         self.load_cmake_deps()
+        self.dep_graph.cmake_dep_graph = self.cmake_dep_graph
         self.match_cmake_targets_with_files()
         self.dep_graph._add_proto_generation_deps()
 
@@ -448,16 +444,34 @@ class DependencyGraphBuilder:
 
 
 class DependencyGraphTest(unittest.TestCase):
+    # This is a static field because we need to set it without a concrete test object.
     dep_graph: Optional[DependencyGraph] = None
 
     # Basename -> basenames affected by it.
     affected_basenames_cache: Dict[str, Set[str]] = {}
 
+    @classmethod
+    def set_dep_graph(self, dep_graph: DependencyGraph) -> None:
+        DependencyGraphTest.dep_graph = dep_graph
+
+    def get_dep_graph(self) -> DependencyGraph:
+        dep_graph = DependencyGraphTest.dep_graph
+        assert dep_graph is not None
+        return dep_graph
+
+    def get_build_root(self) -> str:
+        return self.get_dep_graph().conf.build_root
+
+    def is_lto(self) -> bool:
+        return is_lto_build_root(self.get_build_root())
+
     def get_dynamic_exe_suffix(self) -> str:
-        assert self.dep_graph is not None
-        if is_lto_build_root(self.dep_graph.conf.build_root):
+        if self.is_lto():
             return '-dynamic'
         return ''
+
+    def cxx_tests_are_being_built(self) -> bool:
+        return self.get_dep_graph().cxx_tests_are_being_built()
 
     def get_yb_master_target(self) -> str:
         return 'yb-master' + self.get_dynamic_exe_suffix()
@@ -471,18 +485,17 @@ class DependencyGraphTest(unittest.TestCase):
         if affected_basenames_from_cache is not None:
             return affected_basenames_from_cache
 
-        assert self.dep_graph
+        dep_graph = self.get_dep_graph()
         affected_basenames_for_test: Set[str] = \
-            self.dep_graph.affected_basenames_by_basename_for_test(initial_basename)
+            dep_graph.affected_basenames_by_basename_for_test(initial_basename)
         self.affected_basenames_cache[initial_basename] = affected_basenames_for_test
-        assert self.dep_graph is not None
-        if self.dep_graph.conf.verbose:
+        if dep_graph.conf.verbose:
             # This is useful to get inspiration for new tests.
             logging.info("Files affected by {}:\n    {}".format(
                 initial_basename, "\n    ".join(sorted(affected_basenames_for_test))))
         return affected_basenames_for_test
 
-    def assert_affected_by(
+    def assert_all_affected_by(
             self,
             expected_affected_basenames: List[str],
             initial_basename: str) -> None:
@@ -498,7 +511,7 @@ class DependencyGraphTest(unittest.TestCase):
                     sorted(remaining_basenames),
                     initial_basename))
 
-    def assert_unaffected_by(
+    def assert_all_unaffected_by(
             self,
             unaffected_basenames: List[str],
             initial_basename: str) -> None:
@@ -515,7 +528,7 @@ class DependencyGraphTest(unittest.TestCase):
                          initial_basename,
                          sorted(affected_basenames - incorrectly_affected)))
 
-    def assert_affected_exactly_by(
+    def assert_exact_set_affected_by(
             self,
             expected_affected_basenames: List[str],
             initial_basename: str) -> None:
@@ -526,59 +539,65 @@ class DependencyGraphTest(unittest.TestCase):
         self.assertEqual(make_set(expected_affected_basenames), affected_basenames)
 
     def test_master_main(self) -> None:
-        self.assert_affected_by([
+        self.assert_all_affected_by([
                 'libintegration-tests' + DYLIB_SUFFIX,
                 self.get_yb_master_target()
             ], 'master_main.cc')
 
-        self.assert_unaffected_by(['yb-tserver'], 'master_main.cc')
+        self.assert_all_unaffected_by(['yb-tserver'], 'master_main.cc')
 
     def test_tablet_server_main(self) -> None:
-        self.assert_affected_by([
-                'libintegration-tests' + DYLIB_SUFFIX,
-                'linked_list-test'
-            ], 'tablet_server_main.cc')
+        should_be_affected = [
+            'libintegration-tests' + DYLIB_SUFFIX,
+        ]
+        if self.cxx_tests_are_being_built():
+            should_be_affected.append('linked_list-test')
+        self.assert_all_affected_by(should_be_affected, 'tablet_server_main.cc')
 
         yb_master = self.get_yb_master_target()
-        self.assert_unaffected_by([yb_master], 'tablet_server_main.cc')
+        self.assert_all_unaffected_by([yb_master], 'tablet_server_main.cc')
 
     def test_call_home(self) -> None:
         yb_master = self.get_yb_master_target()
         yb_tserver = self.get_yb_tserver_target()
-        self.assert_affected_by([yb_master], 'master_call_home.cc')
-        self.assert_unaffected_by([yb_tserver], 'master_call_home.cc')
-        self.assert_affected_by([yb_tserver], 'tserver_call_home.cc')
-        self.assert_unaffected_by([yb_master], 'tserver_call_home.cc')
+        self.assert_all_affected_by([yb_master], 'master_call_home.cc')
+        self.assert_all_unaffected_by([yb_tserver], 'master_call_home.cc')
+        self.assert_all_affected_by([yb_tserver], 'tserver_call_home.cc')
+        if not self.is_lto():
+            # This is only true in non-LTO mode. In LTO, yb-master and yb-tserver are the same
+            # executable.
+            self.assert_all_unaffected_by([yb_master], 'tserver_call_home.cc')
 
     def test_catalog_manager(self) -> None:
         yb_master = self.get_yb_master_target()
         yb_tserver = self.get_yb_tserver_target()
-        self.assert_affected_by([yb_master], 'catalog_manager.cc')
-        self.assert_unaffected_by([yb_tserver], 'catalog_manager.cc')
+        self.assert_all_affected_by([yb_master], 'catalog_manager.cc')
+        self.assert_all_unaffected_by([yb_tserver], 'catalog_manager.cc')
 
     def test_bulk_load_tool(self) -> None:
-        self.assert_affected_exactly_by([
-                'yb-bulk_load',
-                'yb-bulk_load-test',
-                'yb-bulk_load.cc.o'
-            ], 'yb-bulk_load.cc')
+        exact_affected_set = [
+            'yb-bulk_load',
+            'yb-bulk_load.cc.o'
+        ]
+        if self.cxx_tests_are_being_built():
+            exact_affected_set.append('yb-bulk_load-test')
+        self.assert_exact_set_affected_by(exact_affected_set, 'yb-bulk_load.cc')
 
     def test_flex_bison(self) -> None:
-        self.assert_affected_by([
+        self.assert_all_affected_by([
                 'scanner_lex.l.cc'
             ], 'scanner_lex.l')
-        self.assert_affected_by([
+        self.assert_all_affected_by([
                 'parser_gram.y.cc'
             ], 'parser_gram.y')
 
     def test_proto_deps_validity(self) -> None:
-        assert self.dep_graph is not None
-        self.dep_graph.validate_proto_deps()
+        self.get_dep_graph().validate_proto_deps()
 
 
 def run_self_test(dep_graph: DependencyGraph) -> None:
     logging.info("Running a self-test of the {} tool".format(os.path.basename(__file__)))
-    DependencyGraphTest.dep_graph = dep_graph
+    DependencyGraphTest.set_dep_graph(dep_graph)
     suite = unittest.TestLoader().loadTestsFromTestCase(DependencyGraphTest)
     runner = unittest.TextTestRunner()
     result = runner.run(suite)
@@ -616,7 +635,7 @@ def main() -> None:
                              'branch) and uses the set of files from that commit.')
     parser.add_argument('--build-root',
                         required=True,
-                        help='E.g. <some_root>/build/debug-gcc-dynamic-community')
+                        help='E.g. <some_root>/build/debug-clang14-dynamic-ninja')
     parser.add_argument('command',
                         type=Command,
                         choices=list(Command),
@@ -654,6 +673,11 @@ def main() -> None:
              'debugging, combined with --link-cmd-out-file.',
         type=arg_str_to_bool,
         default=True)
+    parser.add_argument(
+        '--symlink-as',
+        help='Create a symlink with the given name pointing to the LTO output file, in the same '
+             'directory as the output file. This option can be specified multiple times.',
+        action='append')
 
     args = parser.parse_args()
 
@@ -777,7 +801,8 @@ def main() -> None:
             run_linker=args.run_linker,
             lto_output_suffix=args.lto_output_suffix,
             lto_output_path=args.lto_output_path,
-            lto_type=args.lto_type)
+            lto_type=args.lto_type,
+            symlink_as=args.symlink_as)
         return
 
     file_changes_by_category: Dict[SourceFileCategory, List[str]] = group_by(

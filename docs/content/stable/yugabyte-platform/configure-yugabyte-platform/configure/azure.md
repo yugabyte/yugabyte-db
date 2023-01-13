@@ -1,10 +1,10 @@
 ---
-title: Configure Azure
+title: Configure YugabyteDB Overview
 headerTitle: Overview
 linkTitle: Overview
-description: Configuring YugabyteDB Anywhere on Azure
+description: Configure YugabyteDB Anywhere on Azure
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Configuring YugabyteDB Anywhere on Azure
+headcontent: Configure YugabyteDB Anywhere on Azure
 menu:
   stable_yugabyte-platform:
     identifier: configure-3-azure
@@ -19,44 +19,42 @@ For overview of how to configure database nodes, select one of the following clo
 
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
     <a href="../azure/" class="nav-link active">
-      <i class="fab fa-windows" aria-hidden="true"></i>
+      <i class="fa-brands fa-windows" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="../onprem/" class="nav-link">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
 
 </ul>
 
-<br>
-
-Click elements of the following chart to access detailed steps:
+<br>Click elements of the following chart to access detailed steps:
 
 <div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-azure.png" usemap="#image-map">

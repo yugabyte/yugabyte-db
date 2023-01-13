@@ -14,15 +14,19 @@
 //
 #include "yb/common/transaction.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common.messages.h"
 
 #include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
              "Timeout used by transaction related RPCs in milliseconds.");
+
+DEFINE_RUNTIME_int64(external_transaction_rpc_timeout_ms, 30000,
+                     "Timeout for external transactions in milliseconds.");
 
 namespace yb {
 
@@ -43,14 +47,39 @@ TransactionStatusResult::TransactionStatusResult(
       << "Status: " << status << ", status_time: " << status_time;
 }
 
-Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadataPB& source) {
+namespace {
+
+void DupStatusTablet(const TabletId& tablet_id, TransactionMetadataPB* out) {
+  out->set_status_tablet(tablet_id);
+}
+
+void DupStatusTablet(const TabletId& tablet_id, LWTransactionMetadataPB* out) {
+  out->dup_status_tablet(tablet_id);
+}
+
+template <class PB>
+void DoToPB(const TransactionMetadata& source, PB* dest) {
+  source.TransactionIdToPB(dest);
+  dest->set_isolation(source.isolation);
+  DupStatusTablet(source.status_tablet, dest);
+  dest->set_priority(source.priority);
+  dest->set_start_hybrid_time(source.start_time.ToUint64());
+  dest->set_locality(source.locality);
+  dest->set_external_transaction(source.external_transaction);
+}
+
+} // namespace
+
+template <class PB>
+Result<TransactionMetadata> TransactionMetadata::DoFromPB(const PB& source) {
   TransactionMetadata result;
   auto id = FullyDecodeTransactionId(source.transaction_id());
   RETURN_NOT_OK(id);
   result.transaction_id = *id;
   if (source.has_isolation()) {
     result.isolation = source.isolation();
-    result.status_tablet = source.status_tablet();
+    std::string_view string_view(source.status_tablet());
+    result.status_tablet.assign(string_view.data(), string_view.size());
     result.priority = source.priority();
     result.start_time = HybridTime(source.start_hybrid_time());
   }
@@ -60,15 +89,32 @@ Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadat
   } else {
     result.locality = TransactionLocality::GLOBAL;
   }
+  result.external_transaction = IsExternalTransaction(source.external_transaction());
 
   return result;
 }
 
+Result<TransactionMetadata> TransactionMetadata::FromPB(const LWTransactionMetadataPB& source) {
+  return DoFromPB(source);
+}
+
+Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadataPB& source) {
+  return DoFromPB(source);
+}
+
 void TransactionMetadata::ToPB(TransactionMetadataPB* dest) const {
-  if (isolation != IsolationLevel::NON_TRANSACTIONAL) {
-    ForceToPB(dest);
-  } else {
+  if (isolation == IsolationLevel::NON_TRANSACTIONAL) {
     TransactionIdToPB(dest);
+  } else {
+    DoToPB(*this, dest);
+  }
+}
+
+void TransactionMetadata::ToPB(LWTransactionMetadataPB* dest) const {
+  if (isolation == IsolationLevel::NON_TRANSACTIONAL) {
+    TransactionIdToPB(dest);
+  } else {
+    DoToPB(*this, dest);
   }
 }
 
@@ -76,13 +122,8 @@ void TransactionMetadata::TransactionIdToPB(TransactionMetadataPB* dest) const {
   dest->set_transaction_id(transaction_id.data(), transaction_id.size());
 }
 
-void TransactionMetadata::ForceToPB(TransactionMetadataPB* dest) const {
-  TransactionIdToPB(dest);
-  dest->set_isolation(isolation);
-  dest->set_status_tablet(status_tablet);
-  dest->set_priority(priority);
-  dest->set_start_hybrid_time(start_time.ToUint64());
-  dest->set_locality(locality);
+void TransactionMetadata::TransactionIdToPB(LWTransactionMetadataPB* dest) const {
+  dest->dup_transaction_id(transaction_id.AsSlice());
 }
 
 bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {
@@ -129,6 +170,14 @@ MonoDelta TransactionRpcTimeout() {
 // TODO(dtxn) correct deadline should be calculated and propagated.
 CoarseTimePoint TransactionRpcDeadline() {
   return CoarseMonoClock::Now() + TransactionRpcTimeout();
+}
+
+MonoDelta ExternalTransactionRpcTimeout() {
+  return FLAGS_external_transaction_rpc_timeout_ms * 1ms * kTimeMultiplier;
+}
+
+CoarseTimePoint ExternalTransactionRpcDeadline() {
+  return CoarseMonoClock::Now() + ExternalTransactionRpcTimeout();
 }
 
 TransactionOperationContext::TransactionOperationContext()

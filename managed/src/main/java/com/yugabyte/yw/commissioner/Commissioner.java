@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -63,15 +64,19 @@ public class Commissioner {
   // A map of task UUIDs to latches for currently paused tasks.
   private final Map<UUID, CountDownLatch> pauseLatches = new ConcurrentHashMap<>();
 
+  private final ProviderEditRestrictionManager providerEditRestrictionManager;
+
   @Inject
   public Commissioner(
       ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
-      TaskExecutor taskExecutor) {
+      TaskExecutor taskExecutor,
+      ProviderEditRestrictionManager providerEditRestrictionManager) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
+    this.providerEditRestrictionManager = providerEditRestrictionManager;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
@@ -84,8 +89,8 @@ public class Commissioner {
    * @param taskType the task type.
    * @return true if abortable.
    */
-  public static boolean isTaskAbortable(TaskType taskType) {
-    return TaskExecutor.isTaskAbortable(TaskExecutor.getTaskClass(taskType));
+  public boolean isTaskAbortable(TaskType taskType) {
+    return TaskExecutor.isTaskAbortable(taskType.getTaskClass());
   }
 
   /**
@@ -94,8 +99,8 @@ public class Commissioner {
    * @param taskType the task type.
    * @return true if retryable.
    */
-  public static boolean isTaskRetryable(TaskType taskType) {
-    return TaskExecutor.isTaskRetryable(TaskExecutor.getTaskClass(taskType));
+  public boolean isTaskRetryable(TaskType taskType) {
+    return TaskExecutor.isTaskRetryable(taskType.getTaskClass());
   }
 
   /**
@@ -103,7 +108,6 @@ public class Commissioner {
    *
    * @param taskType the task type.
    * @param taskParams the task parameters.
-   * @return
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     RunnableTask taskRunnable = null;
@@ -112,6 +116,7 @@ public class Commissioner {
       taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
       // Add the consumer to handle before task if available.
       taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
+      onTaskCreated(taskRunnable, taskParams);
       UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
       // Add this task to our queue.
       runningTasks.put(taskUUID, taskRunnable);
@@ -120,11 +125,24 @@ public class Commissioner {
       if (taskRunnable != null) {
         // Destroy the task initialization in case of failure.
         taskRunnable.task.terminate();
+        TaskInfo taskInfo = taskRunnable.taskInfo;
+        if (taskInfo.getTaskState() != TaskInfo.State.Failure) {
+          taskInfo.setTaskState(TaskInfo.State.Failure);
+          taskInfo.save();
+        }
       }
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
       LOG.error(msg, t);
+      if (t instanceof PlatformServiceException) {
+        throw t;
+      }
       throw new RuntimeException(msg, t);
     }
+  }
+
+  private void onTaskCreated(RunnableTask taskRunnable, ITaskParams taskParams) {
+    providerEditRestrictionManager.onTaskCreated(
+        taskRunnable.getTaskUUID(), taskRunnable.task, taskParams);
   }
 
   /**
@@ -201,26 +219,36 @@ public class Commissioner {
     responseJson.put("status", taskInfo.getTaskState().toString());
     // Get the percentage of subtasks that ran and completed
     responseJson.put("percent", taskInfo.getPercentCompleted());
-    // Get subtask groups
-    UserTaskDetails userTaskDetails = taskInfo.getUserTaskDetails();
+    String correlationId = task.getCorrelationId();
+    if (!Strings.isNullOrEmpty(correlationId)) responseJson.put("correlationId", correlationId);
+
+    // Get subtask groups and add other details to it if applicable.
+    UserTaskDetails userTaskDetails;
+    RunnableTask runnable = runningTasks.get(taskInfo.getTaskUUID());
+    if (runnable != null) {
+      userTaskDetails = taskInfo.getUserTaskDetails(runnable.getTaskCache());
+    } else {
+      userTaskDetails = taskInfo.getUserTaskDetails();
+    }
     responseJson.set("details", Json.toJson(userTaskDetails));
+
     // Set abortable if eligible.
     responseJson.put("abortable", false);
     if (taskExecutor.isTaskRunning(task.getTaskUUID())) {
       // Task is abortable only when it is running.
       responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
     }
+
     // Set retryable if eligible.
     responseJson.put("retryable", false);
     if (isTaskRetryable(taskInfo.getTaskType())
-        && task.getTarget().isUniverseTarget()
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-      // Retryable depends on the updating task UUID in the Universe.
+      // Retryable depends on the updating Task UUID in the Universe.
       Universe.getUniverseDetailsField(String.class, task.getTargetUUID(), "updatingTaskUUID")
           .ifPresent(
-              updatingTaskUUID -> {
+              updatingTask -> {
                 responseJson.put(
-                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTaskUUID)));
+                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTask)));
               });
     }
     if (pauseLatches.containsKey(taskInfo.getTaskUUID())) {
@@ -256,7 +284,7 @@ public class Commissioner {
 
   private int getSubTaskPositionFromContext(String property) {
     int position = -1;
-    String value = (String) MDC.get(property);
+    String value = MDC.get(property);
     if (!Strings.isNullOrEmpty(value)) {
       try {
         position = Integer.parseInt(value);
@@ -270,23 +298,23 @@ public class Commissioner {
 
   // Returns the TaskExecutionListener instance.
   private TaskExecutionListener getTaskExecutionListener() {
-    TaskExecutionListener listener = null;
-    Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
-    if (beforeTaskConsumer != null) {
-      listener =
-          new TaskExecutionListener() {
-            @Override
-            public void beforeTask(TaskInfo taskInfo) {
-              LOG.info("About to execute task {}", taskInfo);
+    final Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
+    TaskExecutionListener listener =
+        new TaskExecutionListener() {
+          @Override
+          public void beforeTask(TaskInfo taskInfo) {
+            LOG.info("About to execute task {}", taskInfo);
+            if (beforeTaskConsumer != null) {
               beforeTaskConsumer.accept(taskInfo);
             }
+          }
 
-            @Override
-            public void afterTask(TaskInfo taskInfo, Throwable t) {
-              LOG.info("Task {} is completed", taskInfo);
-            }
-          };
-    }
+          @Override
+          public void afterTask(TaskInfo taskInfo, Throwable t) {
+            LOG.info("Task {} is completed", taskInfo);
+            providerEditRestrictionManager.onTaskFinished(taskInfo.getTaskUUID());
+          }
+        };
     return listener;
   }
 
@@ -297,14 +325,13 @@ public class Commissioner {
     final int subTaskPausePosition = getSubTaskPositionFromContext(SUBTASK_PAUSE_POSITION_PROPERTY);
     if (subTaskAbortPosition >= 0) {
       // Handle abort of subtask.
-      Consumer<TaskInfo> abortConsumer =
+      consumer =
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskAbortPosition) {
               LOG.debug("Aborting task {} at position {}", taskInfo, taskInfo.getPosition());
               throw new CancellationException("Subtask cancelled");
             }
           };
-      consumer = abortConsumer;
     }
     if (subTaskPausePosition >= 0) {
       // Handle pause of subtask.
@@ -359,9 +386,7 @@ public class Commissioner {
             getClass().getSimpleName(),
             Duration.ZERO, // InitialDelay
             checkInterval,
-            () -> {
-              scheduleRunner(runningTasks);
-            });
+            () -> scheduleRunner(runningTasks));
       }
     }
 

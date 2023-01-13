@@ -42,7 +42,7 @@ public class RunExternalScriptTest extends FakeDBApplication {
   private final String PLATFORM_URL = "";
   private final String TIME_LIMIT_MINS = "5";
 
-  static String TMP_DEVOPS_HOME = "/tmp/yugaware_tests";
+  static String TMP_DEVOPS_HOME = "/tmp/yugaware_tests/RunExternalScriptTest";
 
   private SettableRuntimeConfigFactory settableRuntimeConfigFactory;
 

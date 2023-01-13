@@ -543,6 +543,14 @@ public class CDCBaseClass extends BaseMiniClusterTest {
       value);
   }
 
+  protected void splitTablet(String masterAddresses, String tabletId) throws Exception {
+    runProcess(TestUtils.findBinary("yb-admin"),
+      "--master_addresses",
+      masterAddresses,
+      "split_tablet",
+      tabletId);
+  }
+
   /**
    * Create a DB Stream ID using yb-admin tool
    * @param masterAddresses

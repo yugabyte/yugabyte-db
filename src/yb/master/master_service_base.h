@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_SERVICE_BASE_H
-#define YB_MASTER_MASTER_SERVICE_BASE_H
+#pragma once
 
 #include "yb/gutil/macros.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -109,5 +108,3 @@ class MasterServiceBase {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_SERVICE_BASE_H

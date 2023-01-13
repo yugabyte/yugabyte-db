@@ -34,6 +34,7 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -81,17 +82,16 @@ static bool validate_tables(const char* flagname, const std::string& value) {
   return false;
 }
 
-DEFINE_int32(cql_update_system_query_cache_msecs, 0,
+DEFINE_UNKNOWN_int32(cql_update_system_query_cache_msecs, 0,
              "How often the system query cache should be updated. <= 0 disables caching.");
-DEFINE_int32(cql_system_query_cache_stale_msecs, 60000,
+DEFINE_UNKNOWN_int32(cql_system_query_cache_stale_msecs, 60000,
              "Maximum permitted staleness for the system query cache. "
              "<= 0 permits infinite staleness.");
-DEFINE_string(cql_system_query_cache_tables, "",
+DEFINE_UNKNOWN_string(cql_system_query_cache_tables, "",
     "Tables to cache connection data for. Entries are semicolon-delimited, in the "
     "format <keyspace>.<table>.");
-__attribute__((unused))
 DEFINE_validator(cql_system_query_cache_tables, &validate_tables);
-DEFINE_bool(cql_system_query_cache_empty_responses, true,
+DEFINE_UNKNOWN_bool(cql_system_query_cache_empty_responses, true,
             "Whether to cache empty responses from the master.");
 
 namespace yb {

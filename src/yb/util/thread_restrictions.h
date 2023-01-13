@@ -30,8 +30,7 @@
 // under the License.
 //
 // Some portions: Copyright (c) 2012, The Chromium Authors.
-#ifndef YB_UTIL_THREAD_RESTRICTIONS_H
-#define YB_UTIL_THREAD_RESTRICTIONS_H
+#pragma once
 
 #include "yb/gutil/macros.h"
 
@@ -134,5 +133,3 @@ class ThreadRestrictions {
 };
 
 } // namespace yb
-
-#endif /* YB_UTIL_THREAD_RESTRICTIONS_H */

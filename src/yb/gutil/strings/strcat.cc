@@ -25,6 +25,8 @@
 #include <glog/logging.h>
 #include "yb/gutil/stl_util.h"
 
+using std::string;
+
 AlphaNum gEmptyAlphaNum("");
 
 // ----------------------------------------------------------------------

@@ -39,6 +39,8 @@ DECLARE_bool(enable_ysql);
 
 using std::unique_ptr;
 using std::shared_ptr;
+using std::vector;
+using std::string;
 
 namespace yb {
 

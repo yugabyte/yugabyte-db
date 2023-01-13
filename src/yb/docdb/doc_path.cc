@@ -15,6 +15,8 @@
 
 #include "yb/docdb/doc_key.h"
 
+using std::string;
+
 namespace yb {
 namespace docdb {
 

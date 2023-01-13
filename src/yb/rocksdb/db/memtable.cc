@@ -323,6 +323,34 @@ class MemTableIterator : public InternalIterator {
     return true;
   }
 
+  bool ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
+    LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
+
+    do {
+      const auto user_key = ExtractUserKey(key());
+      if (!upperbound.empty() && user_key_comparator->Compare(user_key, upperbound) >= 0) {
+        break;
+      }
+
+      bool skip = false;
+      if (key_filter_callback) {
+        auto kf_result =
+            (*key_filter_callback)(/*prefixed_key=*/ Slice(), /*shared_bytes=*/ 0, user_key);
+        skip = kf_result.skip_key;
+      }
+
+      if (!skip && !(*scan_callback)(user_key, value())) {
+        return false;
+      }
+
+      Next();
+    } while (Valid());
+
+    return true;
+  }
+
  private:
   DynamicBloom* bloom_;
   const SliceTransform* const prefix_extractor_;
@@ -413,12 +441,16 @@ KeyHandle MemTable::PrepareAdd(SequenceNumber s, ValueType type,
   KeyHandle handle = table_->Allocate(encoded_len, &buf);
 
   char* p = EncodeVarint32(buf, internal_key_size);
+  auto* begin = p;
   p = key.CopyAllTo(p);
+  prepared_add->last_key = Slice(begin, p);
   uint64_t packed = PackSequenceAndType(s, type);
   EncodeFixed64(p, packed);
   p += 8;
   p = EncodeVarint32(p, val_size);
+  begin = p;
   p = value.CopyAllTo(p);
+  prepared_add->last_value = Slice(begin, p);
   assert((unsigned)(p - buf) == (unsigned)encoded_len);
 
   if (prefix_bloom_) {

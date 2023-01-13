@@ -105,8 +105,8 @@ TEST_F(DebugUtilTest, TestGetStackTrace) {
   std::stringstream ss(stack_trace);
   std::smatch match;
 
-  int with_file_line = 0;
-  int without_file_line = 0;
+  int with_file_line __attribute__((unused)) = 0;
+  int without_file_line  __attribute__((unused)) = 0;
   int unmatched = 0;
   int num_lines = 0;
   std::ostringstream debug_info;

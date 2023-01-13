@@ -37,13 +37,13 @@ The following three diagrams, [`select_start`](../../../syntax_resources/grammar
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -67,13 +67,13 @@ A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-defin
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -93,13 +93,13 @@ A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-defin
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -122,7 +122,7 @@ A window function can be invoked only at the syntax spot in a subquery that the 
 
 The number, data types, and meanings of a window function's formal parameters are function-specific. The eleven window functions are classified into functional groups, and summarized, in the two tables at the end of the section [Signature and purpose of each window function](../function-syntax-semantics/). Each entry links to the formal account of the function which also provides runnable code examples.
 
-Notice that, among the dedicated window functions (as opposed to aggreagte functions that may be invoked as window functions), only [`ntile()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile) takes an argument. Every other dedicated window function is invoked with an empty parentheses pair. Some aggregate functions (like, for example, [`jsonb_object_agg()`](../../aggregate_functions/function-syntax-semantics/array-string-jsonb-jsonb-object-agg/#jsonb-object-agg)) take more than one argument. When an aggregate function is invoke as a window function, the keyword `DISTINCT` is not allowed within the parenthesized list of arguments. The attempt causes this error:
+Notice that, among the dedicated window functions (as opposed to aggregate functions that may be invoked as window functions), only [`ntile()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile) takes an argument. Every other dedicated window function is invoked with an empty parentheses pair. Some aggregate functions (like, for example, [`jsonb_object_agg()`](../../aggregate_functions/function-syntax-semantics/array-string-jsonb-jsonb-object-agg/#jsonb-object-agg)) take more than one argument. When an aggregate function is invoke as a window function, the keyword `DISTINCT` is not allowed within the parenthesized list of arguments. The attempt causes this error:
 
 ```
 0A000: DISTINCT is not implemented for window functions

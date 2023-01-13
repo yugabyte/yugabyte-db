@@ -9,21 +9,26 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
+import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.InetAddress;
@@ -32,9 +37,12 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
@@ -47,10 +55,18 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
 import lombok.Getter;
 import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -89,12 +105,33 @@ public class Util {
 
   public static final double EPSILON = 0.000001d;
 
-  public static final String YBC_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
+  public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
   public static final String YB_RELEASES_PATH = "yb.releases.path";
 
+  public static final String YB_NODE_UI_WS_KEY = "yb.node_ui.ws";
+
+  public static final String K8S_POD_FQDN_TEMPLATE =
+      "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
+
+  public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
+
+  private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
+      ImmutableMap.<String, Long>builder()
+          .put("s", TimeUnit.SECONDS.toNanos(1))
+          .put("m", TimeUnit.MINUTES.toNanos(1))
+          .put("h", TimeUnit.HOURS.toNanos(1))
+          .put("d", TimeUnit.DAYS.toNanos(1))
+          .put("ms", TimeUnit.MILLISECONDS.toNanos(1))
+          .put("us", TimeUnit.MICROSECONDS.toNanos(1))
+          .put("\u00b5s", TimeUnit.MICROSECONDS.toNanos(1))
+          .put("ns", 1L)
+          .build();
+
+  private static final Pattern GO_DURATION_REGEX =
+      Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -405,7 +442,7 @@ public class Util {
   // positive integer if v1 is newer than v2, a negative integer if v1
   // is older than v2.
   public static int compareYbVersions(String v1, String v2, boolean suppressFormatError) {
-    Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
+    Pattern versionPattern = Pattern.compile(YBA_VERSION_REGEX);
     Matcher v1Matcher = versionPattern.matcher(v1);
     Matcher v2Matcher = versionPattern.matcher(v2);
 
@@ -567,11 +604,23 @@ public class Util {
     return Hex.encodeHexString(bytes);
   }
 
-  // TODO(bhavin192): Helm allows the release name to be 53 characters
-  // long, and with new naming style this becomes 43 for our case.
-  // Sanitize helm release name.
-  public static String sanitizeHelmReleaseName(String name) {
-    return sanitizeKubernetesNamespace(name, 0);
+  // Converts input string to base36 string of length 4.
+  // return string will contain characters a-z, 0-9.
+  public static String base36hash(String inputStr) {
+    int hashCode = inputStr.hashCode();
+    byte[] bytes = new byte[4];
+    char[] chars = new char[4];
+    for (int i = 0; i < bytes.length; i++) {
+      // 1 byte.
+      int val = hashCode & 0xFF;
+      if (val >= 0 && val <= 9) {
+        chars[i] = (char) ('0' + val);
+      } else {
+        chars[i] = (char) ('a' + (val - 10) % 26);
+      }
+      hashCode >>= 8;
+    }
+    return new String(chars);
   }
 
   // Sanitize kubernetes namespace name. Additional suffix length can be reserved.
@@ -636,17 +685,8 @@ public class Util {
   public static boolean isOnPremManualProvisioning(Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
-      boolean manualProvisioning = false;
-      try {
-        AccessKey accessKey =
-            AccessKey.getOrBadRequest(
-                UUID.fromString(userIntent.provider), userIntent.accessKeyCode);
-        AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-        manualProvisioning = keyInfo.skipProvisioning;
-      } catch (PlatformServiceException ex) {
-        // no access code
-      }
-      return manualProvisioning;
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      return provider.details.skipProvisioning;
     }
     return false;
   }
@@ -660,8 +700,7 @@ public class Util {
     String archType = null;
     if (ybServerPackage.contains(Architecture.x86_64.name().toLowerCase())) {
       archType = Architecture.x86_64.name();
-    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())
-        || ybServerPackage.contains(Architecture.arm64.name().toLowerCase())) {
+    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())) {
       archType = Architecture.aarch64.name();
     } else {
       throw new RuntimeException(
@@ -682,5 +721,125 @@ public class Util {
    */
   public static boolean isValidDNSAddress(String dns) {
     return dns.matches("^((?!-)[A-Za-z0-9-]+(?<!-)\\.)+[A-Za-z]+$");
+  }
+
+  public static Duration goDurationToJava(String goDuration) {
+    if (StringUtils.isEmpty(goDuration)) {
+      throw new IllegalArgumentException("Duration string can't be empty");
+    }
+    Matcher m = GO_DURATION_REGEX.matcher(goDuration);
+    boolean found = false;
+    long nanos = 0;
+    while (m.find()) {
+      found = true;
+      long amount = Long.parseLong(m.group(1));
+      String unit = m.group(2);
+      long multiplier = GO_DURATION_UNITS_TO_NANOS.get(unit);
+      nanos += amount * multiplier;
+    }
+    if (!found) {
+      throw new IllegalArgumentException("Duration string " + goDuration + " is invalid");
+    }
+    return Duration.ofNanos(nanos);
+  }
+
+  /**
+   * Adds the file/directory from filePath to the archive tarArchive starting at the parent location
+   * in the archive
+   *
+   * @param filePath the directory/file we want to add to the archive.
+   * @param parent the location where we are storing the directory/file in the archive, "" is the
+   *     root of the archive
+   * @param tarArchive the archive we want the directory/file be added to.
+   */
+  public static void addFilesToTarGZ(
+      String filePath, String parent, TarArchiveOutputStream tarArchive) throws IOException {
+    File file = new File(filePath);
+    String entryName = parent + file.getName();
+    tarArchive.putArchiveEntry(new TarArchiveEntry(file, entryName));
+    if (file.isFile()) {
+      try (FileInputStream fis = new FileInputStream(file);
+          BufferedInputStream bis = new BufferedInputStream(fis)) {
+        IOUtils.copy(bis, tarArchive);
+        tarArchive.closeArchiveEntry();
+      }
+    } else if (file.isDirectory()) {
+      // no content to copy so close archive entry
+      tarArchive.closeArchiveEntry();
+      for (File f : file.listFiles()) {
+        addFilesToTarGZ(f.getAbsolutePath(), entryName + File.separator, tarArchive);
+      }
+    }
+  }
+
+  /**
+   * Adds the the file archive tarArchive in fileName
+   *
+   * @param file the file we want to add to the archive
+   * @param fileName the location we want the file to be saved in the archive
+   * @param tarArchive the archive we want the file be added to.
+   */
+  public static void copyFileToTarGZ(File file, String fileName, TarArchiveOutputStream tarArchive)
+      throws IOException {
+    tarArchive.putArchiveEntry(tarArchive.createArchiveEntry(file, fileName));
+    try (FileInputStream fis = new FileInputStream(file);
+        BufferedInputStream bis = new BufferedInputStream(fis)) {
+      IOUtils.copy(bis, tarArchive);
+      tarArchive.closeArchiveEntry();
+    }
+  }
+
+  /**
+   * Extracts the archive tarFile and untars to into folderPath directory
+   *
+   * @param tarFile the archive we want to sasve to folderPath
+   * @param folderPath the directory where we want to extract the archive to
+   */
+  public static void extractFilesFromTarGZ(File tarFile, String folderPath) throws IOException {
+    TarArchiveEntry currentEntry;
+    Files.createDirectories(Paths.get(folderPath));
+
+    try (FileInputStream fis = new FileInputStream(tarFile);
+        GZIPInputStream gis = new GZIPInputStream(new BufferedInputStream(fis));
+        TarArchiveInputStream tis = new TarArchiveInputStream(gis)) {
+      while ((currentEntry = tis.getNextTarEntry()) != null) {
+        File destPath = new File(folderPath, currentEntry.getName());
+        if (currentEntry.isDirectory()) {
+          destPath.mkdirs();
+        } else {
+          destPath.createNewFile();
+          try (FileOutputStream fos = new FileOutputStream(destPath)) {
+            IOUtils.copy(tis, fos);
+          }
+        }
+      }
+    }
+  }
+
+  public static boolean isKubernetesBasedUniverse(Universe universe) {
+    boolean isKubernetesUniverse =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(CloudType.kubernetes);
+    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+      isKubernetesUniverse =
+          isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
+    }
+    return isKubernetesUniverse;
+  }
+
+  public static String getYbcNodeIp(Universe universe) {
+    HostAndPort hostPort = universe.getMasterLeader();
+    String nodeIp = hostPort.getHost();
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes) {
+      List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+      if (CollectionUtils.isNotEmpty(nodeList)) {
+        nodeIp = nodeList.get(0).cloudInfo.private_ip;
+      }
+    }
+    return nodeIp;
   }
 }

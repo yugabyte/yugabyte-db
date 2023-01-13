@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.typesafe.config.Config;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.utils.NaturalOrderComparator;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -38,9 +38,9 @@ public class HookInserter {
       AbstractTaskBase task,
       UniverseTaskParams universeParams,
       Collection<NodeDetails> nodes) {
-    if (!task.config.getBoolean(ENABLE_CUSTOM_HOOKS_PATH)) return;
+    if (!task.runtimeConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH)) return;
     List<Pair<Hook, Collection<NodeDetails>>> executionPlan =
-        getExecutionPlan(trigger, universeParams, task.config, nodes);
+        getExecutionPlan(trigger, universeParams, task.runtimeConfigFactory, nodes);
 
     for (Pair<Hook, Collection<NodeDetails>> singleHookPlan : executionPlan) {
       Hook hook = singleHookPlan.getFirst();
@@ -74,9 +74,9 @@ public class HookInserter {
   private static List<Pair<Hook, Collection<NodeDetails>>> getExecutionPlan(
       TriggerType trigger,
       UniverseTaskParams universeParams,
-      Config config,
+      RuntimeConfigFactory rConfig,
       Collection<NodeDetails> nodes) {
-    boolean isSudoEnabled = config.getBoolean(ENABLE_SUDO_PATH);
+    boolean isSudoEnabled = rConfig.globalRuntimeConf().getBoolean(ENABLE_SUDO_PATH);
     List<Pair<Hook, Collection<NodeDetails>>> executionPlan =
         new ArrayList<Pair<Hook, Collection<NodeDetails>>>();
     UUID universeUUID = universeParams.universeUUID;
@@ -84,7 +84,7 @@ public class HookInserter {
     UUID customerUUID = Customer.get(universe.customerId).uuid;
 
     // Get global hooks
-    HookScope globalScope = HookScope.getByTriggerScopeId(customerUUID, trigger, null, null);
+    HookScope globalScope = HookScope.getByTriggerScopeId(customerUUID, trigger, null, null, null);
     addHooksToExecutionPlan(executionPlan, globalScope, nodes, isSudoEnabled);
 
     // Get provider hooks
@@ -101,14 +101,28 @@ public class HookInserter {
       UUID providerUUID = entry.getKey();
       List<NodeDetails> providerNodes = entry.getValue();
       HookScope providerScope =
-          HookScope.getByTriggerScopeId(customerUUID, trigger, null, providerUUID);
+          HookScope.getByTriggerScopeId(customerUUID, trigger, null, providerUUID, null);
       addHooksToExecutionPlan(executionPlan, providerScope, providerNodes, isSudoEnabled);
     }
 
     // Get universe hooks
     HookScope universeScope =
-        HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null);
+        HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null, null);
     addHooksToExecutionPlan(executionPlan, universeScope, nodes, isSudoEnabled);
+
+    // Get the cluster hooks
+    Map<UUID, List<NodeDetails>> nodeClusterMap = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+      nodeClusterMap.computeIfAbsent(cluster.uuid, k -> new ArrayList<>()).add(node);
+    }
+    for (Map.Entry<UUID, List<NodeDetails>> entry : nodeClusterMap.entrySet()) {
+      UUID clusterUUID = entry.getKey();
+      List<NodeDetails> clusterNodes = entry.getValue();
+      HookScope clusterScope =
+          HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null, clusterUUID);
+      addHooksToExecutionPlan(executionPlan, clusterScope, clusterNodes, isSudoEnabled);
+    }
 
     // Sort in natural order
     NaturalOrderComparator comparator = new NaturalOrderComparator();

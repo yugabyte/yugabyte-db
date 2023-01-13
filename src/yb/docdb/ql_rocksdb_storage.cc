@@ -24,6 +24,8 @@
 
 #include "yb/util/result.h"
 
+using std::vector;
+
 namespace yb {
 namespace docdb {
 
@@ -183,7 +185,8 @@ Status QLRocksDBStorage::GetIterator(
                                         request.max_hash_code())
                                     : boost::none,
         start_doc_key,
-        request.is_forward_scan())));
+        request.is_forward_scan(),
+        request.prefix_length())));
   } else {
     // Construct the scan spec basing on the HASH condition.
 
@@ -228,7 +231,8 @@ Status QLRocksDBStorage::GetIterator(
         start_doc_key,
         request.is_forward_scan(),
         lower_doc_key,
-        upper_doc_key)));
+        upper_doc_key,
+        request.prefix_length())));
   }
 
   *iter = std::move(doc_iter);

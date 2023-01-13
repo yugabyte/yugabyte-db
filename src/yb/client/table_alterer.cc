@@ -21,6 +21,8 @@
 
 #include "yb/master/master_ddl.pb.h"
 
+using std::string;
+
 namespace yb {
 namespace client {
 

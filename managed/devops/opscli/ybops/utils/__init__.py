@@ -20,17 +20,15 @@ import random
 import re
 import socket
 import string
-import stat
 import subprocess
 import sys
-import time
 
 from enum import Enum
 
 from ybops.common.colors import Colors
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils.remote_shell import RemoteShell
-from ybops.utils.ssh import SSH_RETRY_DELAY, SSHClient
+from ybops.utils.ssh import SSHClient
 
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
@@ -38,8 +36,8 @@ YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
 
 RELEASE_VERSION_FILENAME = "version.txt"
 RELEASE_VERSION_PATTERN = "\d+.\d+.\d+.\d+"
-RELEASE_REPOS = set(["devops", "yugaware", "yugabyte", "yugabundle_support",
-                    "yba_installer", "node_agent"])
+RELEASE_REPOS = {"devops", "yugaware", "yugabyte", "yugabundle_support", "yba_installer",
+                 "node_agent"}
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
@@ -424,9 +422,10 @@ def validate_instance(host_name, port, username, ssh_key_file, mount_paths, **kw
     Returns:
         (dict): return success/failure code and corresponding message (0 = success, 1-3 = failure)
     """
+    ssh2_enabled = kwargs.get('ssh2_enabled', False)
+    ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
+
     try:
-        ssh2_enabled = kwargs.get('ssh2_enabled', False)
-        ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
         ssh_client.connect(host_name, username, ssh_key_file, port)
         for path in [mount_path.strip() for mount_path in mount_paths]:
             path = '"' + re.sub('[`"]', '', path) + '"'
@@ -442,7 +441,7 @@ def validate_instance(host_name, port, username, ssh_key_file, mount_paths, **kw
         # If we get this far, then we succeeded
         return ValidationResult.VALID
     except YBOpsRuntimeError as ex:
-        logging.error("[app] lol in validation Failed to execute remote command: {}".format(ex))
+        logging.error("[app] Failed to execute remote command: {}".format(ex))
         return ValidationResult.UNREACHABLE
     finally:
         ssh_client.close_connection()
@@ -460,9 +459,10 @@ def validate_cron_status(host_name, port, username, ssh_key_file, **kwargs):
     Returns:
         bool: true if all cronjobs are present, false otherwise (or if errored)
     """
+    ssh2_enabled = kwargs.get('ssh2_enabled', False)
+    ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
+
     try:
-        ssh2_enabled = kwargs.get('ssh2_enabled', False)
-        ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
         ssh_client.connect(host_name, username, ssh_key_file, port)
         stdout = ssh_client.exec_command("crontab -l", output_only=True)
         cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
@@ -474,8 +474,7 @@ def validate_cron_status(host_name, port, username, ssh_key_file, **kwargs):
         ssh_client.close_connection()
 
 
-def remote_exec_command(host_name, port, username, ssh_key_file, cmd,
-                        retries_on_failure=3, retry_delay=SSH_RETRY_DELAY, **kwargs):
+def remote_exec_command(host_name, port, username, ssh_key_file, cmd, **kwargs):
     """This method will execute the given cmd on remote host and return the output.
     Args:
         host_name (str): SSH host IP address
@@ -484,32 +483,24 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd,
         ssh_key_file (str): SSH key file
         cmd (str): Command to run
         timeout (int): Time in seconds to wait before aborting
-        retries_on_failure (int): Number of times to retry
         retry_delay (int): Time in seconds to wait between subsequent retries
     Returns:
         rc (int): returncode
         stdout (str): output log
         stderr (str): error logs
     """
-    attempts = retries_on_failure + 1
+    ssh2_enabled = kwargs.get('ssh2_enabled', False)
+    ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
 
-    while retries_on_failure >= 0:
-        logging.info("[app] Attempt #{} to execute remote command..."
-                     .format(attempts - retries_on_failure))
-        try:
-            ssh2_enabled = kwargs.get('ssh2_enabled', False)
-            ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
-            ssh_client.connect(host_name, username, ssh_key_file, port)
-            rc, stdout, stderr = ssh_client.exec_command(cmd)
-            return rc, stdout, stderr
-        except YBOpsRuntimeError as e:
-            logging.error("Failed to execute remote command: {}".format(e))
-            retries_on_failure -= 1
-            time.sleep(retry_delay)
-        finally:
-            ssh_client.close_connection()
-
-    return 1, None, None  # treat this as a non-zero return code
+    try:
+        ssh_client.connect(host_name, username, ssh_key_file, port)
+        rc, stdout, stderr = ssh_client.exec_command(cmd)
+        return rc, stdout, stderr
+    except YBOpsRuntimeError as e:
+        logging.error("Failed to execute remote command: {}".format(e))
+        return 1, None, None  # treat this as a non-zero return code
+    finally:
+        ssh_client.close_connection()
 
 
 def get_or_create(getter):

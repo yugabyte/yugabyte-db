@@ -28,14 +28,14 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<consensus::HistoryCutoffPB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, consensus::HistoryCutoffPB* request) {
-  replicate->set_allocated_history_cutoff(request);
+void RequestTraits<consensus::LWHistoryCutoffPB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, consensus::LWHistoryCutoffPB* request) {
+  replicate->ref_history_cutoff(request);
 }
 
 template <>
-consensus::HistoryCutoffPB* RequestTraits<consensus::HistoryCutoffPB>::MutableRequest(
-    consensus::ReplicateMsg* replicate) {
+consensus::LWHistoryCutoffPB* RequestTraits<consensus::LWHistoryCutoffPB>::MutableRequest(
+    consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_history_cutoff();
 }
 
@@ -44,8 +44,9 @@ Status HistoryCutoffOperation::Apply(int64_t leader_term) {
 
   VLOG_WITH_PREFIX(2) << "History cutoff replicated " << op_id() << ": " << history_cutoff;
 
-  history_cutoff = tablet()->RetentionPolicy()->UpdateCommittedHistoryCutoff(history_cutoff);
-  auto regular_db = tablet()->doc_db().regular;
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  history_cutoff = tablet->RetentionPolicy()->UpdateCommittedHistoryCutoff(history_cutoff);
+  auto regular_db = tablet->doc_db().regular;
   if (regular_db) {
     rocksdb::WriteBatch batch;
     docdb::ConsensusFrontiers frontiers;
@@ -57,7 +58,7 @@ Status HistoryCutoffOperation::Apply(int64_t leader_term) {
   return Status::OK();
 }
 
-Status HistoryCutoffOperation::Prepare() {
+Status HistoryCutoffOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX(2) << "Prepare";
   return Status::OK();
 }

@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_FWD_H
-#define YB_YQL_REDIS_REDISSERVER_REDIS_FWD_H
+#pragma once
 
 #include <boost/container/container_fwd.hpp>
 
@@ -32,5 +31,3 @@ class RedisInboundCall;
 
 } // namespace redisserver
 } // namespace yb
-
-#endif // YB_YQL_REDIS_REDISSERVER_REDIS_FWD_H

@@ -53,8 +53,7 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 		"Starting Node Agent registration (Version: %s)", version)
 	util.FileLogger().Info("Starting RPC server...")
 	// Start server to verify host.
-	// TODO let platform verify the connection.
-	server, err := NewRPCServer(ctx, host, port, false)
+	server, err := NewRPCServer(ctx, fmt.Sprintf("%s:%s", host, port), false)
 	if err != nil {
 		util.FileLogger().Errorf("Failed to start RPC server - %s", err.Error())
 		return err
@@ -83,8 +82,8 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 		UnregisterNodeAgent(ctx, apiToken)
 		return err
 	}
-	util.FileLogger().Info("Setting node agent state to LIVE.")
-	agentStateHandler := task.NewPutAgentStateHandler(model.Live, version)
+	util.FileLogger().Info("Setting node agent state to Ready.")
+	agentStateHandler := task.NewPutAgentStateHandler(model.Ready, version)
 	// TODO add generic retry for HTTP calls.
 	err = executor.GetInstance(ctx).ExecuteTask(
 		ctx,

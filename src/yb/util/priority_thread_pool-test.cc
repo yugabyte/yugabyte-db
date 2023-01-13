@@ -132,7 +132,7 @@ class Task : public PriorityThreadPoolTask {
     return YB_CLASS_TO_STRING(index);
   }
 
-  void UpdateStatsStateChangedTo(PriorityThreadPoolTaskState state) const override {
+  void UpdateStatsStateChangedTo(PriorityThreadPoolTaskState state) override {
     if (!metrics_) {
       return;
     }
@@ -150,7 +150,7 @@ class Task : public PriorityThreadPoolTask {
     FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
   }
 
-  void UpdateStatsStateChangedFrom(PriorityThreadPoolTaskState state) const override {
+  void UpdateStatsStateChangedFrom(PriorityThreadPoolTaskState state) override {
     if (!metrics_) {
       return;
     }

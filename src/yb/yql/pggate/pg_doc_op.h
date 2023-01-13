@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DOC_OP_H_
-#define YB_YQL_PGGATE_PG_DOC_OP_H_
+#pragma once
 
 #include <list>
 #include <memory>
@@ -69,7 +68,7 @@ class PgDocResult {
 
   // Access function to ybctids value in this batch.
   // Sys columns must be processed before this function is called.
-  const vector<Slice>& ybctids() const {
+  const std::vector<Slice>& ybctids() const {
     DCHECK(syscol_processed_) << "System columns are not yet setup";
     return ybctids_;
   }
@@ -234,7 +233,7 @@ class PgDocResponse {
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
-  Result<Data> Get();
+  Result<Data> Get(MonoDelta* wait_time);
 
  private:
   struct PerformInfo {
@@ -249,7 +248,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   using SharedPtr = std::shared_ptr<PgDocOp>;
 
   using Sender = std::function<Result<PgDocResponse>(
-      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, bool)>;
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, ForceNonBufferable)>;
 
   struct OperationRowOrder {
     OperationRowOrder(const PgsqlOpPtr& operation_, int64_t order_)
@@ -269,7 +268,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   const PgExecParameters& ExecParameters() const;
 
   // Execute the op. Return true if the request has been sent and is awaiting the result.
-  virtual Result<RequestSent> Execute(bool force_non_bufferable = false);
+  virtual Result<RequestSent> Execute(
+      ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
   // Instruct this doc_op to abandon execution and querying data by setting end_of_data_ to 'true'.
   // - This op will not send request to tablet server.
@@ -317,6 +317,14 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   Status CreateRequests();
 
   const PgTable& table() const { return table_; }
+
+  // RPC stats for EXPLAIN ANALYZE
+  void GetAndResetReadRpcStats(uint64_t* read_rpc_count, uint64_t* read_rpc_wait_time) {
+    *read_rpc_count = read_rpc_count_;
+    read_rpc_count_ = 0;
+    *read_rpc_wait_time = read_rpc_wait_time_.ToNanoseconds();
+    read_rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
+  }
 
  protected:
   PgDocOp(
@@ -428,10 +436,14 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Output parameter of the execution.
   std::string out_param_backfill_spec_;
 
- private:
-  Status SendRequest(bool force_non_bufferable);
+  // Read RPC stats for EXPLAIN ANALYZE.
+  uint64_t read_rpc_count_ = 0;
+  MonoDelta read_rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
 
-  Status SendRequestImpl(bool force_non_bufferable);
+ private:
+  Status SendRequest(ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
+
+  Status SendRequestImpl(ForceNonBufferable force_non_bufferable);
 
   Result<std::list<PgDocResult>> ProcessResponse(const Result<PgDocResponse::Data>& data);
 
@@ -445,7 +457,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   static Result<PgDocResponse> DefaultSender(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, bool force_non_bufferable);
+      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable);
 
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
@@ -497,6 +509,17 @@ class PgDocReadOp : public PgDocOp {
   bool PopulateNextHashPermutationOps();
   void InitializeHashPermutationStates();
 
+  // Helper functions for PopulateNextHashPermutationOps
+  // Prepares a new read request from the pool of inactive operators.
+  LWPgsqlReadRequestPB *PrepareReadReq();
+  // True if the next call to GetNextPermutation will not fail.
+  bool HasNextPermutation();
+  // Gets the next possible permutation of partition_exprs.
+  bool GetNextPermutation(std::vector<const LWPgsqlExpressionPB *> *exprs);
+  // Binds a given permutation of partition expressions to the given read request.
+  void BindPermutation(const std::vector<const LWPgsqlExpressionPB *> &exprs,
+                       LWPgsqlReadRequestPB *read_op);
+
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
   Result<bool> PopulateParallelSelectOps();
@@ -526,6 +549,8 @@ class PgDocReadOp : public PgDocOp {
 
   // Set the read_time for our backfill's read request based on our exec control parameter.
   void SetReadTimeForBackfill();
+
+  void SetDistinctScan();
 
   Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
 
@@ -582,6 +607,8 @@ class PgDocReadOp : public PgDocOp {
   // Example:
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
+  // For a query clause "(h1,h3) IN ((1,5),(2,3)) AND h2 IN (2,4)"
+  // the will be initialized to [[(1,5), (2,3)], [(2,4)], []]
   std::vector<std::vector<const LWPgsqlExpressionPB*>> partition_exprs_;
 };
 
@@ -627,5 +654,3 @@ PgDocOp::SharedPtr MakeDocReadOpWithData(
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_DOC_OP_H_

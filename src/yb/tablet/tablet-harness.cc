@@ -25,6 +25,8 @@
 
 #include "yb/util/result.h"
 
+using std::vector;
+
 namespace yb {
 namespace tablet {
 
@@ -51,8 +53,8 @@ Status TabletHarness::Create(bool first_time) {
   RETURN_NOT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
   auto table_info = std::make_shared<TableInfo>(
-      Primary::kTrue, "YBTableTest", "test", "YBTableTest", options_.table_type, schema_,
-      IndexMap(), boost::none, 0 /* schema_version */, partition.first);
+      "test-tablet", Primary::kTrue, "YBTableTest", "test", "YBTableTest", options_.table_type,
+      schema_, IndexMap(), boost::none, 0 /* schema_version */, partition.first);
   auto metadata = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
     .fs_manager = fs_manager_.get(),
     .table_info = table_info,
@@ -105,7 +107,7 @@ TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& met
     .tablet_splitter = nullptr,
     .allowed_history_cutoff_provider = {},
     .transaction_manager_provider = nullptr,
-    .post_split_compaction_pool = nullptr,
+    .full_compaction_pool = nullptr,
     .post_split_compaction_added = nullptr
   };
 }

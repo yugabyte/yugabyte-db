@@ -13,18 +13,17 @@
 //
 //
 
-#ifndef YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
-#define YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
+#pragma once
 
 #include "yb/tablet/operations/operation.h"
 
-#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/operations.messages.h"
 
 namespace yb {
 namespace tablet {
 
 class UpdateTxnOperation
-    : public OperationBase<OperationType::kUpdateTransaction, TransactionStatePB> {
+    : public OperationBase<OperationType::kUpdateTransaction, LWTransactionStatePB> {
  public:
   template <class... Args>
   explicit UpdateTxnOperation(Args&&... args)
@@ -35,13 +34,11 @@ class UpdateTxnOperation
   }
 
  private:
-  TransactionCoordinator& transaction_coordinator() const;
-  Status Prepare() override;
+  Result<TransactionCoordinator*> transaction_coordinator() const;
+  Status Prepare(IsLeaderSide is_leader_side) override;
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;
   Status DoAborted(const Status& status) override;
 };
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H

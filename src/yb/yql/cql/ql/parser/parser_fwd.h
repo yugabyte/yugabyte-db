@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_PARSER_PARSER_FWD_H
-#define YB_YQL_CQL_QL_PARSER_PARSER_FWD_H
+#pragma once
 
 namespace yb {
 namespace ql {
@@ -21,5 +20,3 @@ class Parser;
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PARSER_PARSER_FWD_H

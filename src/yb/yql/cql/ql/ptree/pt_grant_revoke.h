@@ -15,8 +15,7 @@
 // Tree node definitions for GRANT statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
-#define YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
+#pragma once
 
 #include <inttypes.h>
 #include <stddef.h>
@@ -170,14 +169,14 @@ class PTGrantRevokePermission : public TreeNode {
     return permission_;
   }
 
-  const string canonical_resource() const  {
+  const std::string canonical_resource() const  {
     std::string prefix = "";
     std::string suffix = "";
     if (complete_resource_name_ != nullptr) {
       if (resource_type_ == ResourceType::TABLE) {
-        suffix = "/" + string(namespace_name());
+        suffix = "/" + std::string(namespace_name());
       }
-      suffix = suffix + "/" + string(resource_name());
+      suffix = suffix + "/" + std::string(resource_name());
     }
 
     if (resource_type_ == ResourceType::ALL_ROLES || resource_type_ == ResourceType::ROLE) {
@@ -202,5 +201,3 @@ class PTGrantRevokePermission : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_

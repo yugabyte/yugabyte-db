@@ -21,6 +21,7 @@
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <compare>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>

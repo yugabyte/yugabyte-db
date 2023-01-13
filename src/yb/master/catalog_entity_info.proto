@@ -163,9 +163,6 @@ message SysTablesEntryPB {
   repeated IndexInfoPB fully_applied_indexes = 26;
   optional IndexInfoPB fully_applied_index_info = 27;
 
-  // Optional: Table dependent upon transaction success (abort removes table). Used by YSQL.
-  optional TransactionMetadataPB transaction = 29;
-
   // During an alter table, which involves no schema change but only updating
   // a permission, is it sometimes acceptable for a client's request (which is
   // prepared with the current schema) to be accepted by a tserver which is
@@ -185,6 +182,24 @@ message SysTablesEntryPB {
   optional bytes transaction_table_tablespace_id = 34;
   // Time when the table was hidden.
   optional fixed64 hide_hybrid_time = 35;
+
+  message YsqlDdlTxnVerifierState {
+    optional bool contains_create_table_op = 1;
+    optional bool contains_alter_table_op = 2;
+    optional bool contains_drop_table_op = 3;
+
+    optional SchemaPB previous_schema = 4;
+    optional string previous_table_name = 5;
+  }
+
+  // State that indicates that this table is being changed by a YSQL transaction.
+  // This repeated field contains only a single element as of now. When we support DDL + Savepoints,
+  // we will have one element for every savepoint modifying this table in this field.
+  repeated YsqlDdlTxnVerifierState ysql_ddl_txn_verifier_state = 38;
+
+  // YSQL transaction that is currently modifying this table state. The changes being performed by
+  // it are detailed in 'ysql_ddl_txn_state' above.
+  optional TransactionMetadataPB transaction = 29;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -534,6 +549,6 @@ message SysUniverseReplicationEntryPB {
 }
 
 message XClusterSafeTimePB {
-  // Map[Local NamespaceId]: xCluester safe read HybridTime
+  // Map[Local NamespaceId]: xCluster safe read HybridTime
   map<string, fixed64> safe_time_map = 1;
 }

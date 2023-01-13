@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_APPLY_INTENTS_TASK_H
-#define YB_TABLET_APPLY_INTENTS_TASK_H
+#pragma once
 
 #include "yb/rpc/strand.h"
 
@@ -54,5 +53,3 @@ class ApplyIntentsTask : public rpc::StrandTask {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_APPLY_INTENTS_TASK_H

@@ -19,6 +19,8 @@
 #include "yb/util/cast.h"
 #include "yb/util/result.h"
 
+using std::string;
+
 using boost::uuids::uuid;
 
 namespace yb {

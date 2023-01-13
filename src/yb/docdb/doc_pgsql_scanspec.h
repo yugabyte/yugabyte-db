@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_PGSQL_SCANSPEC_H
-#define YB_DOCDB_DOC_PGSQL_SCANSPEC_H
+#pragma once
 
 #include <functional>
 
@@ -38,7 +37,8 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
                    const boost::optional<int32_t> hash_code = boost::none,
                    const boost::optional<int32_t> max_hash_code = boost::none,
                    const DocKey& start_doc_key = DefaultStartDocKey(),
-                   bool is_forward_scan = true);
+                   bool is_forward_scan = true,
+                   const size_t prefix_length = 0);
 
   // Scan for the given hash key, a condition, and optional doc_key.
   //
@@ -57,7 +57,8 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
                    const DocKey& start_doc_key = DefaultStartDocKey(),
                    bool is_forward_scan = true,
                    const DocKey& lower_doc_key = DefaultStartDocKey(),
-                   const DocKey& upper_doc_key = DefaultStartDocKey());
+                   const DocKey& upper_doc_key = DefaultStartDocKey(),
+                   const size_t prefix_length = 0);
 
   //------------------------------------------------------------------------------------------------
   // Access funtions.
@@ -67,6 +68,10 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
 
   bool is_forward_scan() const {
     return is_forward_scan_;
+  }
+
+  const size_t prefix_length() const {
+    return prefix_length_;
   }
 
   //------------------------------------------------------------------------------------------------
@@ -96,8 +101,8 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
     return range_bounds_indexes_;
   }
 
-  const std::vector<size_t> range_options_num_cols() const {
-    return range_options_num_cols_;
+  const ColGroupHolder range_options_groups() const {
+    return range_options_groups_;
   }
 
  private:
@@ -126,11 +131,6 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   // Ids of columns that have range option filters such as c2 IN (1, 5, 6, 9).
   std::vector<ColumnId> range_options_indexes_;
 
-  // Stores the number of columns involved in a range option filter.
-  // For filter: A in (..) AND (C, D) in (...) AND E in (...) where A, B, C, D, E are
-  // range columns, range_options_num_cols_ will contain [1, 0, 2, 2, 1]
-  std::vector<size_t> range_options_num_cols_;
-
   // Schema of the columns to scan.
   const Schema& schema_;
 
@@ -141,6 +141,13 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   const std::vector<KeyEntryValue> *hashed_components_;
   // The range_components are owned by the caller of QLScanSpec.
   const std::vector<KeyEntryValue> *range_components_;
+
+  // Groups of range column indexes found from the filters.
+  // Eg: If we had an incoming filter of the form (r1, r3, r4) IN ((1,2,5), (5,4,3), ...)
+  // AND r2 <= 5
+  // where (r1,r2,r3,r4) is the primary key of this table, then
+  // range_options_groups_ would contain the groups {0,2,3} and {1}.
+  ColGroupHolder range_options_groups_;
 
   // Hash code is used if hashed_components_ vector is empty.
   // hash values are positive int16_t.
@@ -160,10 +167,10 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   // Scan behavior.
   bool is_forward_scan_;
 
+  size_t prefix_length_ = 0;
+
   DISALLOW_COPY_AND_ASSIGN(DocPgsqlScanSpec);
 };
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_DOC_PGSQL_SCANSPEC_H

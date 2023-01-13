@@ -45,7 +45,7 @@ class DocPgExprExecutor::Private {
 
   // Process a column reference
   Status AddColumnRef(const PgsqlColRefPB& column_ref,
-                              const Schema *schema) {
+                      const Schema *schema) {
     DCHECK(expr_ctx_ == nullptr);
     // Get DocDB column identifier
     ColumnId col_id = ColumnId(column_ref.column_id());
@@ -73,7 +73,7 @@ class DocPgExprExecutor::Private {
 
   // Process a where clause expression
   Status PreparePgWhereExpr(const PgsqlExpressionPB& ql_expr,
-                                    const Schema *schema) {
+                            const Schema *schema) {
     YbgPreparedExpr expr;
     // Deserialize Postgres expression. Expression type is known to be boolean
     RETURN_NOT_OK(prepare_pg_expr_call(ql_expr, schema, &expr, nullptr));
@@ -85,7 +85,7 @@ class DocPgExprExecutor::Private {
 
   // Process a target expression
   Status PreparePgTargetExpr(const PgsqlExpressionPB& ql_expr,
-                                     const Schema *schema) {
+                             const Schema *schema) {
     YbgPreparedExpr expr;
     DocPgVarRef expr_type;
     // Deserialize Postgres expression. Get type information to convert evaluation results to
@@ -99,9 +99,9 @@ class DocPgExprExecutor::Private {
 
   // Deserialize a Postgres expression and optionally determine its result data type info
   Status prepare_pg_expr_call(const PgsqlExpressionPB& ql_expr,
-                                      const Schema *schema,
-                                      YbgPreparedExpr *expr,
-                                      DocPgVarRef *expr_type) {
+                              const Schema *schema,
+                              YbgPreparedExpr *expr,
+                              DocPgVarRef *expr_type) {
     YbgMemoryContext old;
     // Presence of row_ctx_ indicates that execution was started we do not allow to modify
     // the executor dynamically.

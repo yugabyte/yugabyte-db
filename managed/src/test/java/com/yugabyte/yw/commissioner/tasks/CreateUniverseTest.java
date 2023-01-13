@@ -16,6 +16,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -23,11 +24,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
@@ -255,12 +257,10 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
-    Map<UniverseDefinitionTaskBase.ServerType, List<NodeDetails>> byDedicatedType =
+    Map<UniverseTaskBase.ServerType, List<NodeDetails>> byDedicatedType =
         defaultUniverse.getNodes().stream().collect(Collectors.groupingBy(n -> n.dedicatedTo));
-    List<NodeDetails> masterNodes =
-        byDedicatedType.get(UniverseDefinitionTaskBase.ServerType.MASTER);
-    List<NodeDetails> tserverNodes =
-        byDedicatedType.get(UniverseDefinitionTaskBase.ServerType.TSERVER);
+    List<NodeDetails> masterNodes = byDedicatedType.get(UniverseTaskBase.ServerType.MASTER);
+    List<NodeDetails> tserverNodes = byDedicatedType.get(UniverseTaskBase.ServerType.TSERVER);
     assertEquals(
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor,
         masterNodes.size());
@@ -275,5 +275,45 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
       assertFalse(tserverNode.isMaster);
       assertTrue(tserverNode.isTserver);
     }
+  }
+
+  @Test
+  public void testCreateUniverseWithReadReplicaSuccess() {
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    UniverseDefinitionTaskParams.UserIntent intent =
+        taskParams.getPrimaryCluster().userIntent.clone();
+    intent.replicationFactor = 1;
+    intent.numNodes = 1;
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            UniverseDefinitionTaskParams.ClusterType.ASYNC,
+            intent,
+            1,
+            null,
+            Collections.emptyList());
+    Universe updated =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            ApiUtils.mockUniverseUpdaterWithReadReplica(intent, placementInfo));
+    taskParams.clusters.add(updated.getUniverseDetails().getReadOnlyClusters().get(0));
+    taskParams.nodeDetailsSet = updated.getUniverseDetails().nodeDetailsSet;
+    taskParams.nodeDetailsSet.forEach(
+        node -> {
+          node.nodeName = null;
+          node.state = NodeDetails.NodeState.ToBeAdded;
+        });
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    int tserversStarted =
+        (int)
+            taskInfo
+                .getSubTasks()
+                .stream()
+                .filter(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl)
+                .map(t -> t.getTaskDetails())
+                .filter(t -> t.has("process") && t.get("process").asText().equals("tserver"))
+                .filter(t -> t.has("command") && t.get("command").asText().equals("start"))
+                .count();
+    assertEquals(taskParams.getPrimaryCluster().userIntent.numNodes + 1, tserversStarted);
   }
 }

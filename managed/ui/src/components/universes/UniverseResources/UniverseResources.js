@@ -32,21 +32,21 @@ export default class UniverseResources extends Component {
       const pricePerHour = resources.pricePerHour;
       empty = false;
       renderCosts = Number(pricePerHour) > 0;
-      costPerDay = <YBCost
+      costPerDay = (<YBCost
         value={pricePerHour}
         multiplier={'day'}
         isPricingKnown={isPricingKnown}
-      />;
-      costPerMonth = <YBCost
+      />);
+      costPerMonth = (<YBCost
         value={pricePerHour}
         multiplier={'month'}
         isPricingKnown={isPricingKnown}
-      />;
+      />);
       numCores = resources.numCores;
       memSizeGB = resources.memSizeGB ? resources.memSizeGB : 0;
       volumeSizeGB = resources.volumeSizeGB ? resources.volumeSizeGB : 0;
       volumeCount = resources.volumeCount;
-      if (resources && resources.numNodes && renderType === 'Display') {
+      if (resources?.numNodes && renderType === 'Display') {
         universeNodes = (
           <YBResourceCount size={resources.numNodes || 0} kind="Node" pluralizeKind />
         );

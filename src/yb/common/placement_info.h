@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_PLACEMENT_INFO_H
-#define YB_COMMON_PLACEMENT_INFO_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -34,9 +33,9 @@ YB_DEFINE_ENUM(LocalityLevel, (kNone)(kRegion)(kZone));
 class PlacementInfoConverter {
  public:
   struct PlacementInfo {
-    string cloud = "";
-    string region = "";
-    string zone = "";
+    std::string cloud = "";
+    std::string region = "";
+    std::string zone = "";
     int min_num_replicas = 0;
     int leader_preference = 0;
   };
@@ -60,5 +59,3 @@ class PlacementInfoConverter {
 };
 
 } // namespace yb
-
-#endif // YB_COMMON_PLACEMENT_INFO_H

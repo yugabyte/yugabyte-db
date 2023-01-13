@@ -34,7 +34,7 @@
 #include <string>
 #include <utility>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
@@ -117,6 +117,8 @@ using master::MiniMaster;
 using std::map;
 using std::pair;
 using std::vector;
+using std::string;
+using std::max;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 

@@ -53,6 +53,7 @@
 using std::string;
 using std::unordered_set;
 using std::vector;
+using std::pair;
 
 DECLARE_int32(metrics_retirement_age_ms);
 
@@ -522,6 +523,58 @@ TEST_F(MetricsTest, PrometheusWriter) {
 
   attr["table_id"] = "table_1";
   ASSERT_NOK(writer.WriteSingleEntryNonTable(attr, TEST_METRIC_NAME, 1u));
+}
+
+// A test to verify Stream Level Aggregation
+TEST_F(MetricsTest, TestStreamLevelAggregation) {
+  static const auto LABLE_1 = "lable1";
+  static const auto LABLE_1_VAL = "lable1_value";
+
+  static const auto TEST_METRIC_NAME_1 = "test_metric_name_1";
+  static const auto TEST_METRIC_NAME_2 = "test_metric_name_2";
+  static const int TWO = 2;
+
+  std::stringstream output;
+  PrometheusWriter writer(&output, AggregationMetricLevel::kStream);
+
+  MetricEntity::AttributeMap attr;
+  attr[LABLE_1] = LABLE_1_VAL;
+  attr["stream_id"] = "stream_1";
+  attr["table_id"] = "table_1";
+
+  ASSERT_OK(writer.WriteSingleEntry(attr, TEST_METRIC_NAME_1, 1u, AggregationFunction::kMax));
+  ASSERT_OK(writer.WriteSingleEntry(attr, TEST_METRIC_NAME_1, 2u, AggregationFunction::kMax));
+  ASSERT_OK(writer.FlushAggregatedValues(1, TEST_METRIC_NAME_1));
+  std::ostringstream expected_1;
+  std::ostringstream expected_2;
+
+  expected_1 << TEST_METRIC_NAME_1
+           << "{stream_id=\"stream_1\"," << LABLE_1 << "=\"" << LABLE_1_VAL
+                                                            << "\"} " << TWO;
+  expected_2 << TEST_METRIC_NAME_1
+             << "{" << LABLE_1 << "=\"" << LABLE_1_VAL <<"\",stream_id=\"stream_1\"} " << TWO;
+  auto pw_output = dumpPrometheusWriterOutput(writer);
+  ASSERT_TRUE(
+      (pw_output.find(expected_1.str()) != string::npos) ||
+      (pw_output.find(expected_2.str()) != string::npos));
+
+  std::stringstream output_2;
+  PrometheusWriter writer_2(&output_2, AggregationMetricLevel::kStream);
+
+  ASSERT_OK(writer_2.WriteSingleEntry(attr, TEST_METRIC_NAME_2, 1u, AggregationFunction::kSum));
+  ASSERT_OK(writer_2.WriteSingleEntry(attr, TEST_METRIC_NAME_2, 1u, AggregationFunction::kSum));
+  ASSERT_OK(writer_2.FlushAggregatedValues(1, TEST_METRIC_NAME_2));
+  expected_1.str(std::string());
+  expected_2.str(std::string());
+
+  expected_1 << TEST_METRIC_NAME_2 << "{stream_id=\"stream_1\"," << LABLE_1 << "=\"" << LABLE_1_VAL
+           << "\"} " << TWO;
+  expected_2 << TEST_METRIC_NAME_2 << "{" << LABLE_1 << "=\"" << LABLE_1_VAL << "\","
+             << "stream_id=\"stream_1\"} " << TWO;
+  pw_output = dumpPrometheusWriterOutput(writer_2);
+  ASSERT_TRUE(
+      (pw_output.find(expected_1.str()) != string::npos) ||
+      (pw_output.find(expected_2.str()) != string::npos));
 }
 
 } // namespace yb

@@ -17,7 +17,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/table/plain_table_reader.h"
 
@@ -47,6 +46,9 @@
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/string_util.h"
+
+using std::unique_ptr;
+using std::vector;
 
 namespace rocksdb {
 
@@ -735,4 +737,3 @@ Status PlainTableIterator::status() const {
 }
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

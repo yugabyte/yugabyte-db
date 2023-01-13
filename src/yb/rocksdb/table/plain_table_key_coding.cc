@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/table/plain_table_key_coding.h"
 
 #include <algorithm>
@@ -506,4 +505,3 @@ Status PlainTableKeyDecoder::NextKeyNoValue(uint32_t start_offset,
 }
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LIT

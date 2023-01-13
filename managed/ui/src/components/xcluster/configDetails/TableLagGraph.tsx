@@ -4,6 +4,7 @@ import React, { FC, useState } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+
 import { getAlertConfigurations } from '../../../actions/universe';
 import { queryLagMetricsForTable } from '../../../actions/xClusterReplication';
 import { YBButtonLink } from '../../common/forms/fields';
@@ -12,24 +13,25 @@ import { MetricsPanelOld } from '../../metrics';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import {
   DEFAULT_METRIC_TIME_RANGE_OPTION,
-  MetricNames,
+  MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   REPLICATION_LAG_ALERT_NAME,
   TABLE_LAG_GRAPH_EMPTY_METRIC,
   TIME_RANGE_TYPE
 } from '../constants';
+
 import {
   MetricTimeRange,
   MetricTimeRangeOption,
-  YBTable,
   StandardMetricTimeRangeOption,
   Metrics
 } from '../XClusterTypes';
+import { YBTable } from '../../../redesign/helpers/dtos';
 
 import styles from './TableLagGraph.module.scss';
+import { getMaxNodeLagMetric } from '../ReplicationUtils';
 
-const METRIC_TRACE_NAME = 'Committed Lag (Milliseconds)';
-const TABLE_LAG_METRICS_REFETCH_INTERVAL = 60000;
+const TABLE_LAG_METRICS_REFETCH_INTERVAL = 60_000;
 const GRAPH_WIDTH = 850;
 const GRAPH_HEIGHT = 600;
 
@@ -50,7 +52,6 @@ interface Props {
 
 export const TableLagGraph: FC<Props> = ({
   tableDetails: { tableName, tableUUID },
-  replicationUUID,
   universeUUID,
   queryEnabled,
   nodePrefix
@@ -70,7 +71,7 @@ export const TableLagGraph: FC<Props> = ({
   );
 
   const tableMetricsQuery = useQuery(
-    ['xClusterMetric', replicationUUID, nodePrefix, tableUUID, selectedTimeRangeOption],
+    ['xClusterMetric', nodePrefix, tableUUID, selectedTimeRangeOption],
     () => {
       if (selectedTimeRangeOption.type === TIME_RANGE_TYPE.CUSTOM) {
         return queryLagMetricsForTable(
@@ -101,10 +102,14 @@ export const TableLagGraph: FC<Props> = ({
     targetUuid: universeUUID
   };
 
-  const alertConfigQuery = useQuery(['getConfiguredThreshold', { configurationFilter }], () =>
+  const alertConfigQuery = useQuery(['alert', 'configurations', configurationFilter], () =>
     getAlertConfigurations(configurationFilter)
   );
-  const maxAcceptableLag = alertConfigQuery.data?.[0]?.thresholds?.SEVERE.threshold;
+  const maxAcceptableLag = Math.min(
+    ...alertConfigQuery.data.map(
+      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
+    )
+  );
 
   if (tableMetricsQuery.isError) {
     return <YBErrorIndicator />;
@@ -118,31 +123,30 @@ export const TableLagGraph: FC<Props> = ({
   };
 
   /**
-   * Look for the trace that we are plotting ({@link METRIC_TRACE_NAME}).
-   * If found, then we try to add a trace for the max acceptable lag.
+   * Look for the traces that we are plotting ({@link METRIC_TRACE_NAME}).
+   * If found, then we also try to add a trace for the max acceptable lag.
    * If not found, then we just show no data.
    */
   const setTracesToPlot = (graphMetric: Metrics<'tserver_async_replication_lag_micros'>) => {
-    const committedLagData = graphMetric.tserver_async_replication_lag_micros.data.find(
-      (trace) => trace.name === METRIC_TRACE_NAME
-    );
-    if (typeof maxAcceptableLag === 'number' && committedLagData) {
+    const trace = getMaxNodeLagMetric(graphMetric);
+
+    if (typeof maxAcceptableLag === 'number' && trace) {
       graphMetric.tserver_async_replication_lag_micros.data = [
-        committedLagData,
+        trace,
         {
-          name: 'Max Acceptable Lag (Milliseconds)',
-          instanceName: committedLagData.instanceName,
+          name: 'Max Acceptable Lag',
+          instanceName: trace.instanceName,
           type: 'scatter',
           line: {
             dash: 'dot',
             width: 4
           },
-          x: committedLagData.x,
-          y: Array(committedLagData.y.length).fill(maxAcceptableLag)
+          x: trace.x,
+          y: Array(trace.y.length).fill(maxAcceptableLag)
         }
       ];
-    } else if (committedLagData) {
-      graphMetric.tserver_async_replication_lag_micros.data = [committedLagData];
+    } else if (trace) {
+      graphMetric.tserver_async_replication_lag_micros.data = [trace];
     } else {
       graphMetric.tserver_async_replication_lag_micros.data = [];
     }
@@ -165,7 +169,7 @@ export const TableLagGraph: FC<Props> = ({
     );
   });
 
-  const graphMetric = _.cloneDeep(tableMetricsQuery.data?.data ?? TABLE_LAG_GRAPH_EMPTY_METRIC);
+  const graphMetric = _.cloneDeep(tableMetricsQuery.data ?? TABLE_LAG_GRAPH_EMPTY_METRIC);
   setTracesToPlot(graphMetric);
 
   return (
@@ -198,7 +202,7 @@ export const TableLagGraph: FC<Props> = ({
       <MetricsPanelOld
         className={styles.graphContainer}
         currentUser={currentUser}
-        metricKey={`${MetricNames.TSERVER_ASYNC_REPLICATION_LAG_METRIC}_${tableName}`}
+        metricKey={`${MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC}_${tableName}`}
         metric={_.cloneDeep(graphMetric.tserver_async_replication_lag_micros)}
         width={GRAPH_WIDTH}
         height={GRAPH_HEIGHT}

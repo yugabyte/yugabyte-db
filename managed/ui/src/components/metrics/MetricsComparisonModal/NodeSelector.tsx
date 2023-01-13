@@ -10,10 +10,10 @@ interface NodeSelectorData {
   nodeItemChangedOld: any;
   selectedNode: string;
   otherSelectedNode?: string | null;
-  topNodesSelection?: string | null;
   selectedRegionClusterUUID: string | null;
   selectedZoneName: string | null;
-  enableTopKMetrics: boolean
+  isTopKMetricsEnabled: boolean;
+  selectedRegionCode: string;
 }
 
 export const NodeSelector: FC<NodeSelectorData> = ({
@@ -22,17 +22,17 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   nodeItemChangedOld,
   selectedNode,
   otherSelectedNode,
-  topNodesSelection,
   selectedRegionClusterUUID,
   selectedZoneName,
-  enableTopKMetrics
+  isTopKMetricsEnabled,
+  selectedRegionCode
 }) => {
   let nodeItems: any[] = [];
   let nodeItemsElement: any = [];
   let zone = '';
   let renderItem = null;
   let nodeData = null;
-  let isDisabled = (selectedUniverse === MetricConsts.ALL);
+  const isDisabled = (selectedUniverse === MetricConsts.ALL);
 
   if (
     isNonEmptyObject(selectedUniverse) &&
@@ -40,22 +40,24 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     selectedUniverse.universeDetails.nodeDetailsSet
   ) {
     nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a: any, b: any) => {
-      if (a.nodeName === null) {
+      if (a.cloudInfo.az === null) {
         return -1;
-      } else if (b.nodeName === null) {
+      } else if (b.cloudInfo.az === null) {
         return 1;
       } else {
-        return a.nodeName.toLowerCase() < b.nodeName.toLowerCase() ? -1 : 1;
+        return a.cloudInfo.az.toLowerCase() < b.cloudInfo.az.toLowerCase() ? -1 : 1;
       }
     });
   }
 
-  if (enableTopKMetrics) {
+  if (isTopKMetricsEnabled) {
     // Show nodes based on the region selected (we filter this by cluster id)
     if (selectedRegionClusterUUID) {
-      nodeItems = nodeItems.filter((nodeItem: any) => selectedRegionClusterUUID === nodeItem.placementUuid);
+      nodeItems = nodeItems.filter((nodeItem: any) => selectedRegionCode ? selectedRegionClusterUUID === nodeItem.placementUuid
+        && nodeItem.cloudInfo?.region === selectedRegionCode : selectedRegionClusterUUID === nodeItem.placementUuid);
     }
 
+    // eslint-disable-next-line react/display-name
     nodeItemsElement = nodeItems?.map((nodeItem: any, nodeIdx: number) => {
       let zoneNameElement = null;
       let zoneDividerElement = null;
@@ -67,11 +69,11 @@ export const NodeSelector: FC<NodeSelectorData> = ({
         zoneDividerElement = isNonEmptyString(zone) ? (<div id="zone-divider" className="divider" />) : null;
         zoneNameElement = (
           <MenuItem
-            onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItems, nodeItem.cloudInfo.az)}
+            onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItem.cloudInfo.az)}
             key={zoneKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click() }}
+            onClick={() => { document.body.click(); }}
             eventKey={nodeItem.cloudInfo.az}
             active={selectedZoneName === nodeItem.cloudInfo.az}
           >
@@ -83,15 +85,16 @@ export const NodeSelector: FC<NodeSelectorData> = ({
       }
 
       return (
+        // eslint-disable-next-line react/jsx-key
         <Fragment>
           {zoneNameElement}
           {nodeItems.length > 1 && isZoneDivider ? zoneDividerElement : null}
           <MenuItem
-            onSelect={() => nodeItemChanged(nodeItem.nodeName, nodeItems, null)}
+            onSelect={() => nodeItemChanged(nodeItem.nodeName, null)}
             key={nodeKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click() }}
+            onClick={() => { document.body.click(); }}
             eventKey={nodeIdx}
             active={selectedNode === nodeItem.nodeName}
           >
@@ -105,35 +108,23 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             {nodeItem.nodeName === otherSelectedNode ? 'Already selected' : ''}
           </MenuItem>
         </Fragment>
-      )
+      );
     });
 
     // By default we need to have 'All nodes' populated
     const defaultMenuItem = (
       <Fragment>
         <MenuItem
-          onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItems, null)}
+          onSelect={() => nodeItemChanged(MetricConsts.ALL, null)}
           key={MetricConsts.ALL}
           // Added this line due to the issue that dropdown does not close
           // when a menu item is selected
           active={selectedNode === MetricConsts.ALL && !selectedZoneName}
-          onClick={() => { document.body.click() }}
+          onClick={() => { document.body.click(); }}
           eventKey={MetricConsts.ALL}
         >
           {'All AZs & nodes'}
         </MenuItem>
-        {topNodesSelection &&
-          <MenuItem
-            onSelect={() => nodeItemChanged(MetricConsts.TOP, nodeItems, null)}
-            key={MetricConsts.TOP}
-            // Added this line due to the issue that dropdown does not close
-            // when a menu item is selected
-            onClick={() => { document.body.click() }}
-            eventKey={MetricConsts.TOP}
-          >
-            {'Top'}
-          </MenuItem>
-        }
       </Fragment>
     );
     nodeItemsElement.splice(0, 0, defaultMenuItem);
@@ -149,7 +140,8 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     nodeData = (
       <div className="node-picker">
         <Dropdown
-          id="node-filter-dropdown"
+          id="nodeFilterDropdown"
+          className="node-filter-dropdown"
           disabled={isDisabled}
           title={isDisabled ? "Select a specific universe to view the zones and nodes" : ""}
         >
@@ -173,11 +165,6 @@ export const NodeSelector: FC<NodeSelectorData> = ({
           <option key={-2} value="all">
             All
           </option>
-          {topNodesSelection && (
-            <option key={-1} value="top">
-              Top
-            </option>
-          )}
           {nodeItems.map((nodeItem, nodeIdx) => (
             <option
               key={nodeIdx}

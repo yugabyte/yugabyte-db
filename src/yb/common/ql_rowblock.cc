@@ -53,7 +53,7 @@ const std::shared_ptr<QLType>& QLRow::column_type(const size_t col_idx) const {
   return schema_->column(col_idx).type();
 }
 
-void QLRow::Serialize(const QLClient client, faststring* buffer) const {
+void QLRow::Serialize(const QLClient client, WriteBuffer* buffer) const {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
     SerializeValue(column_type(col_idx), client, values_[col_idx].value(), buffer);
   }
@@ -144,12 +144,24 @@ string QLRowBlock::ToString() const {
   return s;
 }
 
-void QLRowBlock::Serialize(const QLClient client, faststring* buffer) const {
+void QLRowBlock::Serialize(const QLClient client, WriteBuffer* buffer) const {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   CQLEncodeLength(rows_.size(), buffer);
   for (const auto& row : rows_) {
     row.Serialize(client, buffer);
   }
+}
+
+std::string QLRowBlock::SerializeToString() const {
+  WriteBuffer row_data(1024);
+  Serialize(YQL_CLIENT_CQL, &row_data);
+  return row_data.ToBuffer();
+}
+
+RefCntSlice QLRowBlock::SerializeToRefCntSlice() const {
+  WriteBuffer row_data(1024);
+  Serialize(YQL_CLIENT_CQL, &row_data);
+  return row_data.ExtractContinuousBlock(0, row_data.size());
 }
 
 Status QLRowBlock::Deserialize(const QLClient client, Slice* data) {
@@ -166,33 +178,43 @@ Status QLRowBlock::Deserialize(const QLClient client, Slice* data) {
   return Status::OK();
 }
 
-Result<size_t> QLRowBlock::GetRowCount(const QLClient client, const string& data) {
+Result<size_t> QLRowBlock::GetRowCount(const QLClient client, const std::string_view& data) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   Slice slice(data);
   return VERIFY_RESULT(CQLDecodeLength(&slice));
 }
 
-Status QLRowBlock::AppendRowsData(const QLClient client, const string& src, string* dst) {
+Status QLRowBlock::AppendRowsData(
+    const QLClient client, const RefCntSlice& src, RefCntSlice* dst) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
-  Slice src_slice(src);
+  auto src_slice = src.AsSlice();
   const int32_t src_cnt = VERIFY_RESULT(CQLDecodeLength(&src_slice));
   if (src_cnt > 0) {
-    Slice dst_slice(*dst);
+    auto dst_slice = dst->AsSlice();
     int32_t dst_cnt = VERIFY_RESULT(CQLDecodeLength(&dst_slice));
     if (dst_cnt == 0) {
       *dst = src;
     } else {
-      dst->append(src_slice.cdata(), src_slice.size());
+      if (dst->unique() && dst->SpaceAfterSlice() >= src_slice.size()) {
+        memcpy(dst->end(), src_slice.data(), src_slice.size());
+        dst->Grow(src_slice.size());
+      } else {
+        RefCntBuffer buffer(dst->size() + src_slice.size());
+        memcpy(buffer.data(), dst->data(), dst->size());
+        memcpy(buffer.data() + dst->size(), src_slice.data(), src_slice.size());
+        *dst = RefCntSlice(std::move(buffer));
+      }
       dst_cnt += src_cnt;
-      CQLEncodeLength(dst_cnt, &(*dst)[0]);
+      CQLEncodeLength(dst_cnt, dst->data());
     }
   }
   return Status::OK();
 }
 
-string QLRowBlock::ZeroRowsData(const QLClient client) {
+RefCntBuffer QLRowBlock::ZeroRowsData(QLClient client) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
-  return string(sizeof(int32_t), 0); // Encode 32-bit 0 length.
+  int32_t zero = 0;
+  return RefCntBuffer(pointer_cast<char*>(&zero), sizeof(zero)); // Encode 32-bit 0 length.
 }
 
 } // namespace yb

@@ -1,13 +1,10 @@
 ---
-title: Object-Level Audit Logging in YSQL
-headerTitle: Object-Level Audit Logging in YSQL
-linkTitle: Object-Level Audit Logging in YSQL
-description: Object-Level Audit Logging in YSQL.
-headcontent: Object-Level Audit Logging in YSQL.
-image: /images/section_icons/secure/authentication.png
+title: Object-level audit logging in YSQL
+headerTitle: Object-level audit logging in YSQL
+linkTitle: Object-level audit logging
+description: Object-level audit logging in YSQL.
 menu:
   preview:
-    name: Object-Level Audit Logging
     identifier: object-audit-logging-1-ysql
     parent: audit-logging
     weight: 765

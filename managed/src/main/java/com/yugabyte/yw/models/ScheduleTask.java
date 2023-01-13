@@ -103,4 +103,10 @@ public class ScheduleTask extends Model {
     this.completedTime = new Date();
     save();
   }
+
+  public void markAsCompleted() {
+    if (this.completedTime == null) {
+      setCompletedTime();
+    }
+  }
 }

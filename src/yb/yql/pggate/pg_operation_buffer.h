@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_OPERATION_BUFFER_H_
-#define YB_YQL_PGGATE_PG_OPERATION_BUFFER_H_
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -58,6 +57,7 @@ class PgOperationBuffer {
       const PgTableDesc& table, const PgsqlOp& op, bool transactional);
   size_t Size() const;
   void Clear();
+  void GetAndResetRpcStats(uint64_t* count, uint64_t* wait_time);
 
  private:
   class Impl;
@@ -66,5 +66,3 @@ class PgOperationBuffer {
 
 } // namespace pggate
 } // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_OPERATION_BUFFER_H_

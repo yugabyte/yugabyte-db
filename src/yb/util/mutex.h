@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_MUTEX_H
-#define YB_UTIL_MUTEX_H
+#pragma once
 
 #include <pthread.h>
 #include <sys/types.h>
@@ -152,4 +151,3 @@ class MutexLock {
 };
 
 } // namespace yb
-#endif /* YB_UTIL_MUTEX_H */

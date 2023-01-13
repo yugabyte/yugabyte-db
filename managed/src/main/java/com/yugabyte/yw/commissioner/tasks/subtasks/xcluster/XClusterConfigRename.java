@@ -3,9 +3,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
-import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import javax.inject.Inject;
@@ -37,7 +35,7 @@ public class XClusterConfigRename extends XClusterConfigTaskBase {
   public String getName() {
     return String.format(
         "%s(xClusterConfig=%s,newName=%s)",
-        super.getName(), taskParams().xClusterConfig, taskParams().newName);
+        super.getName(), taskParams().getXClusterConfig(), taskParams().newName);
   }
 
   @Override
@@ -45,7 +43,7 @@ public class XClusterConfigRename extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     // Each xCluster config rename task must belong to a parent xCluster config.
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = taskParams().getXClusterConfig();
     if (xClusterConfig == null) {
       throw new RuntimeException(
           "taskParams().xClusterConfig is null. Each xCluster config rename subtask must belong "

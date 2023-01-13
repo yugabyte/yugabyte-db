@@ -1,10 +1,10 @@
 ---
-title: Building Applications with Hasura
-linkTitle: Application Development
-description: Building Applications with Hasura
+title: Building applications with Hasura
+linkTitle: Application development
+description: Building applications with Hasura
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: hasura-1
     parent: hasura
     weight: 580
@@ -29,23 +29,24 @@ Before using Hasura with YugabyteDB, perform the following:
     -e HASURA_GRAPHQL_ENABLE_CONSOLE=true \
     hasura/graphql-engine:v1.3.3
   ```
-  <br>In the preceding command, `v1.3.3` refers to the version of `hasura/graphql-engine` you are using; you can change it to a different version as per your needs. `@host.docker.internal:5433` is a directive to Hasura to connect to the 5433 port of the host that is running the Hasura container.
 
-  <br><br>Alternatively, you can connect YugabyteDB to [Hasura Cloud](https://cloud.hasura.io/). For more information, see [Getting Started with Hasura Cloud](https://hasura.io/docs/latest/graphql/cloud/getting-started/index.html).
+  In the preceding command, `v1.3.3` refers to the version of `hasura/graphql-engine` you are using; you can change it to a different version as per your needs. `@host.docker.internal:5433` is a directive to Hasura to connect to the 5433 port of the host that is running the Hasura container.
 
-  <br>Example provided in this document are based on a local installation of Hasura.
+  Alternatively, you can connect YugabyteDB to [Hasura Cloud](https://cloud.hasura.io/). For more information, see [Getting Started with Hasura Cloud](https://hasura.io/docs/latest/graphql/cloud/getting-started/index.html).
 
-## Creating Tables
+  Examples provided in this document are based on a local installation of Hasura.
+
+## Creating tables
 
 You can add tables to the database that you specified in the `HASURA_GRAPHQL_DATABASE_URL` setting in your Hasura installation. You can also create relationships between these tables. To do this, open Hasura on http://localhost:8080 and perform the following:
 
 1. Select **DATA** and click **Create Table**, as per the following illustration:
 
-   ![DATA tab in Hasura UI](/images/develop/graphql/hasura/data-tab.png)
+    ![DATA tab in Hasura UI](/images/develop/graphql/hasura/data-tab.png)
 
 2. Create a table called `author` that has two columns (`id` and `name`) by completing the fields shown in the following illustration:
 
-   ![author table form](/images/develop/graphql/hasura/author-table.png)
+    ![author table form](/images/develop/graphql/hasura/author-table.png)
 
 3. Click **Add Table**.
 
@@ -53,11 +54,11 @@ You can add tables to the database that you specified in the `HASURA_GRAPHQL_DAT
 
 5. Create a table called `article` that has five columns (`id` , `title`, `content`, `rating`, `author_id`) with a foreign key reference to the `author` table, by completing the fields shown in the following illustration:
 
-   ![article table form](/images/develop/graphql/hasura/article-table.png)
+    ![article table form](/images/develop/graphql/hasura/article-table.png)
 
 6. In the **Foreign Keys** section, click **Add a foreign key** and complete the fields shown in the following illustration:
 
-   ![foreign keys form](/images/develop/graphql/hasura/foreign-keys.png)
+    ![foreign keys form](/images/develop/graphql/hasura/foreign-keys.png)
 
 7. Click **Save** on the foreign key configuration.
 
@@ -99,7 +100,7 @@ Finally, load sample data, as follows:
   SELECT * FROM article ORDER BY id;
   ```
 
-## Running GraphQL Queries
+## Running GraphQL queries
 
 To run GraphQL queries, return to Hasura and click **GRAPHIQL**.
 
@@ -137,19 +138,19 @@ You can also query the database using the array relationship. The following exam
 
 ![query array relationship](/images/develop/graphql/hasura/query-relationship-array.png)
 
-## Performing Clean-up
+## Clean-up
 
 Optionally, you can stop YugabyteDB and Hasura, as follows:
 
-- Stop the YugabyteDB cluster by executing the following `yb-ctl stop` command:
+- Stop the YugabyteDB cluster by executing the following command:
 
   ```sh
-  ./bin/yb-ctl stop
+  ./bin/yugabyted stop
   ```
 
 - Stop the Hasura container by executing the following command:
 
-  ```
+  ```sh
   docker stop <container-id>
   ```
 

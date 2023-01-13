@@ -813,10 +813,8 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 	Oid			relid;
 	RawStmt    *query = NULL;
 
-	/*
-	 * Disallow COPY to/from file or program except to users with the
-	 * appropriate role.
-	 */
+	YBCheckServerAccessIsAllowed();
+
 	if (!pipe)
 	{
 		if (stmt->is_program)
@@ -2660,6 +2658,7 @@ CopyFrom(CopyState cstate)
 	mtstate->ps.state = estate;
 	mtstate->operation = CMD_INSERT;
 	mtstate->resultRelInfo = estate->es_result_relations;
+	mtstate->rootResultRelInfo = estate->es_result_relations;
 
 	if (resultRelInfo->ri_FdwRoutine != NULL &&
 		resultRelInfo->ri_FdwRoutine->BeginForeignInsert != NULL)
@@ -2687,7 +2686,7 @@ CopyFrom(CopyState cstate)
 		PartitionTupleRouting *proute;
 
 		proute = cstate->partition_tuple_routing =
-			ExecSetupPartitionTupleRouting(NULL, cstate->rel);
+			ExecSetupPartitionTupleRouting(NULL, resultRelInfo);
 
 		/*
 		 * If we are capturing transition tuples, they may need to be

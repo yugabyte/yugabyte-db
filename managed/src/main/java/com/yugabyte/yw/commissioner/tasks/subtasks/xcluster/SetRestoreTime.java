@@ -4,10 +4,15 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Restore;
 import java.util.Date;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 
 @Slf4j
 public class SetRestoreTime extends XClusterConfigTaskBase {
@@ -35,7 +40,7 @@ public class SetRestoreTime extends XClusterConfigTaskBase {
         "%s (sourceUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
         taskParams().universeUUID,
-        taskParams().xClusterConfig.uuid,
+        taskParams().getXClusterConfig().uuid,
         taskParams().tableIds);
   }
 
@@ -44,7 +49,7 @@ public class SetRestoreTime extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     // The restore must belong to a parent xCluster config.
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = taskParams().getXClusterConfig();
     if (xClusterConfig == null) {
       throw new RuntimeException(
           "taskParams().xClusterConfig is null. Each SetRestoreTime subtask must belong to an "
@@ -53,7 +58,7 @@ public class SetRestoreTime extends XClusterConfigTaskBase {
 
     // Update the DB.
     Date now = new Date();
-    xClusterConfig.setRestoreTimeForTables(taskParams().tableIds, now);
+    xClusterConfig.setRestoreTimeForTables(taskParams().tableIds, now, taskUUID);
     log.info("Restore time for tables {} set to {}", taskParams().tableIds, now);
 
     log.info("Completed {}", getName());

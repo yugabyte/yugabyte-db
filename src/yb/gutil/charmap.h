@@ -28,8 +28,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_GUTIL_CHARMAP_H
-#define YB_GUTIL_CHARMAP_H
+#pragma once
 
 #include <string.h>
 
@@ -98,5 +97,3 @@ class Charmap {
   }
 };
 DECLARE_POD(Charmap);
-
-#endif  // YB_GUTIL_CHARMAP_H

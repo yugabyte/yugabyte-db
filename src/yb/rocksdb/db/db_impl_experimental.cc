@@ -37,7 +37,6 @@
 
 namespace rocksdb {
 
-#ifndef ROCKSDB_LITE
 Status DBImpl::SuggestCompactRange(ColumnFamilyHandle* column_family,
                                    const Slice* begin, const Slice* end) {
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
@@ -157,6 +156,5 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
 
   return status;
 }
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb

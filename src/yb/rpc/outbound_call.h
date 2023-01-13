@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_OUTBOUND_CALL_H_
-#define YB_RPC_OUTBOUND_CALL_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -44,7 +43,7 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/integral_types.h"
@@ -168,8 +167,14 @@ class CallResponse {
     return serialized_response_;
   }
 
-  Result<Slice> GetSidecar(size_t idx) const;
   Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
+
+  // Extract sidecar with specified index to out.
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+
+  // Transfer all sidecars to specified context, returning the first transferred sidecar index in
+  // the context.
+  size_t TransferSidecars(Sidecars* dest);
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_) +
@@ -245,7 +250,7 @@ class OutboundCall : public RpcCall {
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void Serialize(ByteBlocks* output) override;
 
   // Sets thread pool to be used by `InvokeCallback` for callback execution.
   void SetCallbackThreadPool(ThreadPool* callback_thread_pool) {
@@ -336,8 +341,9 @@ class OutboundCall : public RpcCall {
  protected:
   friend class RpcController;
 
-  virtual Result<Slice> GetSidecar(size_t idx) const;
-  virtual Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
+  // See appropriate comments in CallResponse.
+  virtual Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+  virtual size_t TransferSidecars(Sidecars* dest);
 
   ConnectionId conn_id_;
   const std::string* hostname_;
@@ -432,5 +438,3 @@ typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_OUTBOUND_CALL_H_

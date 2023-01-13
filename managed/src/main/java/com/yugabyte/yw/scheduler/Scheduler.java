@@ -11,6 +11,8 @@
 
 package com.yugabyte.yw.scheduler;
 
+import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
@@ -21,16 +23,14 @@ import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
 import com.yugabyte.yw.commissioner.tasks.CreateBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
-import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -41,14 +41,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -58,6 +54,7 @@ import play.libs.Json;
 public class Scheduler {
 
   private static final int YB_SCHEDULER_INTERVAL = Util.YB_SCHEDULER_INTERVAL;
+  private static final long RETRY_INTERVAL_SECONDS = 30;
 
   private final PlatformScheduler platformScheduler;
 
@@ -65,16 +62,10 @@ public class Scheduler {
 
   @Inject AccessKeyRotationUtil accessKeyRotationUtil;
 
-  private final TaskInfoManager taskInfoManager;
-
   @Inject
-  Scheduler(
-      PlatformScheduler platformScheduler,
-      Commissioner commissioner,
-      TaskInfoManager taskInfoManager) {
+  Scheduler(PlatformScheduler platformScheduler, Commissioner commissioner) {
     this.platformScheduler = platformScheduler;
     this.commissioner = commissioner;
-    this.taskInfoManager = taskInfoManager;
   }
 
   public void init() {
@@ -112,7 +103,8 @@ public class Scheduler {
         .forEach(
             (schedule) -> {
               if (schedule.getStatus().equals(Schedule.State.Active)
-                  && Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
+                  && (schedule.getNextScheduleTaskTime() == null
+                      || Util.isTimeExpired(schedule.getNextScheduleTaskTime()))) {
                 schedule.updateNextScheduleTaskTime(Schedule.nextExpectedTaskTime(null, schedule));
               }
             });
@@ -197,39 +189,38 @@ public class Scheduler {
                 break;
             }
           }
+        } catch (PlatformServiceException pe) {
+          log.error("Error running schedule {} ", schedule.scheduleUUID, pe);
+          if (pe.getHttpStatus() == SERVICE_UNAVAILABLE) {
+            Date retryDate =
+                new Date(
+                    System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(RETRY_INTERVAL_SECONDS));
+            Date nextScheduleTime = schedule.getNextScheduleTaskTime();
+            if (nextScheduleTime.after(retryDate)) {
+              log.debug("Received 503, will retry at {}", retryDate);
+              schedule.updateNextScheduleTaskTime(retryDate);
+            }
+          }
         } catch (Exception e) {
           log.error("Error running schedule {} ", schedule.scheduleUUID, e);
         } finally {
           schedule.setRunningState(false);
         }
       }
-      Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
-      expiredBackups.forEach(
-          (customer, backups) -> {
-            deleteExpiredBackupsForCustomer(customer, backups);
-          });
     } catch (Exception e) {
       log.error("Error Running scheduler thread", e);
     }
   }
 
   private UUID fetchBaseBackupUUIDIfIncrementalBackupRequired(Schedule schedule) {
-    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
-    long incrementalBackupFrequency = params.incrementalBackupFrequency;
-    ScheduleTask scheduleTask =
-        ScheduleTask.getLastSuccessfulTask(schedule.getScheduleUUID()).orElse(null);
-    if (scheduleTask == null) {
-      return null;
-    }
     Backup backup =
-        Backup.fetchAllBackupsByTaskUUID(scheduleTask.getTaskUUID())
-            .stream()
-            .filter(bkp -> bkp.state.equals(BackupState.Completed))
-            .findFirst()
-            .orElse(null);
+        ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
+            schedule.getCustomerUUID(), schedule.getScheduleUUID());
     if (backup == null) {
       return null;
     }
+    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    long incrementalBackupFrequency = params.incrementalBackupFrequency;
     Date todaysDate = new Date();
     Date expectedTaskExecutionTime =
         new Date(backup.getCreateTime().getTime() + incrementalBackupFrequency);
@@ -237,58 +228,6 @@ public class Scheduler {
       return backup.baseBackupUUID;
     }
     return null;
-  }
-
-  private void deleteExpiredBackupsForCustomer(Customer customer, List<Backup> expiredBackups) {
-    Map<UUID, List<Backup>> expiredBackupsPerSchedule = new HashMap<>();
-    List<Backup> backupsToDelete = new ArrayList<>();
-    expiredBackups.forEach(
-        backup -> {
-          UUID scheduleUUID = backup.getScheduleUUID();
-          if (scheduleUUID == null) {
-            backupsToDelete.add(backup);
-          } else {
-            if (!expiredBackupsPerSchedule.containsKey(scheduleUUID)) {
-              expiredBackupsPerSchedule.put(scheduleUUID, new ArrayList<>());
-            }
-            expiredBackupsPerSchedule.get(scheduleUUID).add(backup);
-          }
-        });
-    for (UUID scheduleUUID : expiredBackupsPerSchedule.keySet()) {
-      backupsToDelete.addAll(
-          getBackupsToDeleteForSchedule(
-              customer.getUuid(), scheduleUUID, expiredBackupsPerSchedule.get(scheduleUUID)));
-    }
-
-    for (Backup backup : backupsToDelete) {
-      this.runDeleteBackupTask(customer, backup);
-    }
-  }
-
-  private List<Backup> getBackupsToDeleteForSchedule(
-      UUID customerUUID, UUID scheduleUUID, List<Backup> expiredBackups) {
-    List<Backup> backupsToDelete = new ArrayList<Backup>();
-    int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN,
-        totalBackupsCount = Backup.fetchAllBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
-    if (schedule.getTaskParams().has("minNumBackupsToRetain")) {
-      minNumBackupsToRetain = schedule.getTaskParams().get("minNumBackupsToRetain").intValue();
-    }
-
-    int numBackupsToDelete =
-        Math.min(expiredBackups.size(), Math.max(0, totalBackupsCount - minNumBackupsToRetain));
-    Collections.sort(
-        expiredBackups,
-        new Comparator<Backup>() {
-          @Override
-          public int compare(Backup b1, Backup b2) {
-            return b1.getCreateTime().compareTo(b2.getCreateTime());
-          }
-        });
-    for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
-      backupsToDelete.add(expiredBackups.get(i));
-    }
-    return backupsToDelete;
   }
 
   private void runBackupTask(Schedule schedule, boolean alreadyRunning) {
@@ -304,30 +243,6 @@ public class Scheduler {
   private void runCreateBackupTask(Schedule schedule, boolean alreadyRunning, UUID baseBackupUUID) {
     CreateBackup createBackup = AbstractTaskBase.createTask(CreateBackup.class);
     createBackup.runScheduledBackup(schedule, commissioner, alreadyRunning, baseBackupUUID);
-  }
-
-  private void runDeleteBackupTask(Customer customer, Backup backup) {
-    if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
-      log.warn("Cannot delete backup {} since it is in a progress state", backup.backupUUID);
-      return;
-    } else if (taskInfoManager.isDeleteBackupTaskAlreadyPresent(customer.uuid, backup.backupUUID)) {
-      log.warn(
-          "Cannot delete backup {} since a delete backup task is already present",
-          backup.backupUUID);
-      return;
-    }
-    DeleteBackupYb.Params taskParams = new DeleteBackupYb.Params();
-    taskParams.customerUUID = customer.getUuid();
-    taskParams.backupUUID = backup.backupUUID;
-    UUID taskUUID = commissioner.submit(TaskType.DeleteBackupYb, taskParams);
-    log.info("Submitted task to delete backup {}, task uuid = {}.", backup.backupUUID, taskUUID);
-    CustomerTask.create(
-        customer,
-        backup.backupUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Delete,
-        "Backup");
   }
 
   private void runExternalScriptTask(Schedule schedule, boolean alreadyRunning) {
@@ -428,7 +343,7 @@ public class Scheduler {
         CustomerTask.TaskType.CreateAndRotateAccessKey,
         provider.name);
     log.info(
-        "Submitted create and rotate accesss key task with task uuid = {} "
+        "Submitted create and rotate access key task with task uuid = {} "
             + "for provider uuid = {}.",
         taskUUID,
         providerUUID);

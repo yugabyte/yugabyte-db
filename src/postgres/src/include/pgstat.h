@@ -600,7 +600,7 @@ typedef struct PgStat_YBStatQueryEntry
 	Oid query_oid;
 
 	/*
-	 * We need to store the owner ID of the database for 
+	 * We need to store the owner ID of the database for
 	 * security validation when the queries are fetched by the user.
 	 */
 	Oid st_userid;
@@ -610,7 +610,7 @@ typedef struct PgStat_YBStatQueryEntry
 	TimestampTz activity_end_timestamp;
 
 	/*
-	 * query_string_size: records the length of the string 
+	 * query_string_size: records the length of the string
 	 * so that when writing this string to file, we only write
 	 * that many characters.
 	 */
@@ -618,7 +618,7 @@ typedef struct PgStat_YBStatQueryEntry
 	char query_string[QUERY_TEXT_SIZE];
 
 	/*
-	 * termination_reason_size: records the length of the string 
+	 * termination_reason_size: records the length of the string
 	 * so that when writing this string to file, we only write
 	 * that many characters.
 	 */
@@ -903,7 +903,8 @@ typedef enum
 {
 	WAIT_EVENT_BASE_BACKUP_THROTTLE = PG_WAIT_TIMEOUT,
 	WAIT_EVENT_PG_SLEEP,
-	WAIT_EVENT_RECOVERY_APPLY_DELAY
+	WAIT_EVENT_RECOVERY_APPLY_DELAY,
+	WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF
 } WaitEventTimeout;
 
 /* ----------
@@ -1103,6 +1104,12 @@ typedef struct PgBackendStatus
 	ProgressCommandType st_progress_command;
 	Oid			st_progress_command_target;
 	int64		st_progress_param[PGSTAT_NUM_PROGRESS_PARAM];
+
+	/*
+	 * Memory usage of backend from TCMalloc, including PostgreSQL memory usage
+	 * + pggate memory usage + cached memory - memory that was freed but not recycled
+	 */
+	int64_t yb_st_allocated_mem_bytes;
 } PgBackendStatus;
 
 /*
@@ -1202,6 +1209,9 @@ typedef struct LocalPgBackendStatus
 	 * not.
 	 */
 	TransactionId backend_xmin;
+
+	/* Backend's RSS memory usage */
+	int64_t yb_backend_rss_mem_bytes;
 } LocalPgBackendStatus;
 
 /*
@@ -1295,7 +1305,7 @@ extern void yb_pgstat_clear_entry_pid(int pid);
 extern void pgstat_report_activity(BackendState state, const char *cmd_str);
 extern void pgstat_report_tempfile(size_t filesize);
 extern void pgstat_report_query_termination(const char *termination_reason,
-						Oid db_oid, int32 backend_pid, int backend_id);
+						int32 backend_pid);
 extern void pgstat_report_appname(const char *appname);
 extern void pgstat_report_xact_timestamp(TimestampTz tstamp);
 extern const char *pgstat_get_wait_event(uint32 wait_event_info);
@@ -1350,6 +1360,29 @@ pgstat_report_wait_start(uint32 wait_event_info)
 }
 
 /* ----------
+ * pgstat_report_wait_end_for_proc(PGPROC *proc) -
+ *
+ *	Called to report end of a wait for a specific process.
+ *
+ * NB: this *must* be able to survive being called before MyProc has been
+ * initialized.
+ * ----------
+ */
+static inline void
+pgstat_report_wait_end_for_proc(volatile PGPROC *proc)
+{
+	if (!pgstat_track_activities || !proc)
+		return;
+
+	/*
+	 * Since this is a four-byte field which is always read and written as
+	 * four-bytes, updates are atomic.
+	 */
+	proc->wait_event_info = 0;
+}
+
+
+/* ----------
  * pgstat_report_wait_end() -
  *
  *	Called to report end of a wait.
@@ -1361,16 +1394,7 @@ pgstat_report_wait_start(uint32 wait_event_info)
 static inline void
 pgstat_report_wait_end(void)
 {
-	volatile PGPROC *proc = MyProc;
-
-	if (!pgstat_track_activities || !proc)
-		return;
-
-	/*
-	 * Since this is a four-byte field which is always read and written as
-	 * four-bytes, updates are atomic.
-	 */
-	proc->wait_event_info = 0;
+	return pgstat_report_wait_end_for_proc(MyProc);
 }
 
 /* nontransactional event counts are simple enough to inline */
@@ -1456,4 +1480,9 @@ extern PgStat_ArchiverStats *pgstat_fetch_stat_archiver(void);
 extern PgStat_GlobalStats *pgstat_fetch_global(void);
 extern PgBackendStatus **getBackendStatusArrayPointer(void);
 
+/* ----------
+ * YB functions called from backends
+ * ----------
+ */
+extern void yb_pgstat_report_allocated_mem_bytes(void);
 #endif							/* PGSTAT_H */

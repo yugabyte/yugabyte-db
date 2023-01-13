@@ -53,7 +53,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         "%s (targetUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
         taskParams().universeUUID,
-        taskParams().xClusterConfig.uuid,
+        taskParams().getXClusterConfig().uuid,
         taskParams().tableIds);
   }
 
@@ -133,6 +133,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
       // Persist that replicationSetupDone is true for the tables in taskParams. We have checked
       // that taskParams().tableIds exist in the xCluster config, so it will not throw an exception.
       xClusterConfig.setReplicationSetupDone(taskParams().tableIds);
+      xClusterConfig.setStatusForTables(taskParams().tableIds, XClusterTableConfig.Status.Running);
 
       // Get the stream ids from the target universe and put it in the Platform DB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
@@ -152,6 +153,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
+      xClusterConfig.setStatusForTables(taskParams().tableIds, XClusterTableConfig.Status.Failed);
       throw new RuntimeException(e);
     } finally {
       ybService.closeClient(client, targetUniverseMasterAddresses);

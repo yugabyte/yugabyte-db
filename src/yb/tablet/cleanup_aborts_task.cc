@@ -63,12 +63,11 @@ void CleanupAbortsTask::Run() {
   const MonoDelta kMaxTotalSleep = 10s;
   VLOG_WITH_PREFIX(1) << "CleanupAbortsTask waiting for applier safe time to reach " << now;
   auto safetime = applier_->ApplierSafeTime(now, CoarseMonoClock::now() + kMaxTotalSleep);
-  if (!safetime.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Tablet application did not catch up in " << kMaxTotalSleep << ": "
-                             << safetime.status();
+  if (!safetime) {
+    LOG_WITH_PREFIX(WARNING) << "Tablet application did not catch up in " << kMaxTotalSleep;
     return;
   }
-  VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: applier safe time reached " << *safetime
+  VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: applier safe time reached " << safetime
                       << " (was waiting for " << now << ")";
 
   for (const TransactionId& transaction_id : transactions_to_cleanup_) {
@@ -87,7 +86,8 @@ void CleanupAbortsTask::Run() {
     LOG_WITH_PREFIX(INFO) << "Failed to get last replicated data: " << status;
     return;
   }
-  WARN_NOT_OK(applier_->RemoveIntents(data, transactions_to_cleanup_),
+  WARN_NOT_OK(applier_->RemoveIntents(
+                  data, RemoveReason::kCleanupAborts, transactions_to_cleanup_),
               "RemoveIntents for transaction cleanup in compaction failed.");
   LOG_WITH_PREFIX(INFO)
       << "Number of aborted transactions cleaned up: " << transactions_to_cleanup_.size()

@@ -1,0 +1,204 @@
+{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "creationTimestamp": "2022-10-03T22:35:20Z",
+        "generateName": "hello-world-1664836520-d959fb998-",
+        "labels": {
+            "app.kubernetes.io/instance": "hello-world-1664836520",
+            "app.kubernetes.io/name": "hello-world",
+            "pod-template-hash": "d959fb998"
+        },
+        "name": "hello-world-1664836520-d959fb998-f24c7",
+        "namespace": "default",
+        "ownerReferences": [
+            {
+                "apiVersion": "apps/v1",
+                "blockOwnerDeletion": true,
+                "controller": true,
+                "kind": "ReplicaSet",
+                "name": "hello-world-1664836520-d959fb998",
+                "uid": "2c3424f6-23b9-4cce-af1a-641476c88bd6"
+            }
+        ],
+        "resourceVersion": "289346",
+        "uid": "594743fc-e078-4551-9ea7-7ebfb8dc1bdf"
+    },
+    "spec": {
+        "containers": [
+            {
+                "image": "nginx:1.16.0",
+                "imagePullPolicy": "IfNotPresent",
+                "livenessProbe": {
+                    "failureThreshold": 3,
+                    "httpGet": {
+                        "path": "/",
+                        "port": "http",
+                        "scheme": "HTTP"
+                    },
+                    "periodSeconds": 10,
+                    "successThreshold": 1,
+                    "timeoutSeconds": 1
+                },
+                "name": "hello-world",
+                "ports": [
+                    {
+                        "containerPort": 80,
+                        "name": "http",
+                        "protocol": "TCP"
+                    }
+                ],
+                "readinessProbe": {
+                    "failureThreshold": 3,
+                    "httpGet": {
+                        "path": "/",
+                        "port": "http",
+                        "scheme": "HTTP"
+                    },
+                    "periodSeconds": 10,
+                    "successThreshold": 1,
+                    "timeoutSeconds": 1
+                },
+                "resources": {},
+                "securityContext": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                    {
+                        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                        "name": "kube-api-access-lvw4v",
+                        "readOnly": true
+                    }
+                ]
+            }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": true,
+        "nodeName": "minikube",
+        "preemptionPolicy": "PreemptLowerPriority",
+        "priority": 0,
+        "restartPolicy": "Always",
+        "schedulerName": "default-scheduler",
+        "securityContext": {},
+        "serviceAccount": "hello-world-1664836520",
+        "serviceAccountName": "hello-world-1664836520",
+        "terminationGracePeriodSeconds": 30,
+        "tolerations": [
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/not-ready",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            },
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/unreachable",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            }
+        ],
+        "volumes": [
+            {
+                "name": "kube-api-access-lvw4v",
+                "projected": {
+                    "defaultMode": 420,
+                    "sources": [
+                        {
+                            "serviceAccountToken": {
+                                "expirationSeconds": 3607,
+                                "path": "token"
+                            }
+                        },
+                        {
+                            "configMap": {
+                                "items": [
+                                    {
+                                        "key": "ca.crt",
+                                        "path": "ca.crt"
+                                    }
+                                ],
+                                "name": "kube-root-ca.crt"
+                            }
+                        },
+                        {
+                            "downwardAPI": {
+                                "items": [
+                                    {
+                                        "fieldRef": {
+                                            "apiVersion": "v1",
+                                            "fieldPath": "metadata.namespace"
+                                        },
+                                        "path": "namespace"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "status": {
+        "conditions": [
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2022-10-03T22:35:20Z",
+                "status": "True",
+                "type": "Initialized"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2022-11-01T19:45:15Z",
+                "status": "True",
+                "type": "Ready"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2022-11-01T19:45:15Z",
+                "status": "True",
+                "type": "ContainersReady"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2022-10-03T22:35:20Z",
+                "status": "True",
+                "type": "PodScheduled"
+            }
+        ],
+        "containerStatuses": [
+            {
+                "containerID": "docker://b72e47919efd91e39204b62e75bb20309a0f68ed3dd9987b41772269",
+                "image": "nginx:1.16.0",
+                "imageID": "docker-pullable://nginx@sha256:3e373fd5b8d41baeddc24be311c5c6929425c0",
+                "lastState": {
+                    "terminated": {
+                        "containerID": "docker://26179dbf7918930c722ec149098b5550adf1dc5a3c5bf129",
+                        "exitCode": 0,
+                        "finishedAt": "2022-11-01T04:16:11Z",
+                        "reason": "Completed",
+                        "startedAt": "2022-11-01T04:11:43Z"
+                    }
+                },
+                "name": "hello-world",
+                "ready": true,
+                "restartCount": 13,
+                "started": true,
+                "state": {
+                    "running": {
+                        "startedAt": "2022-11-01T19:45:11Z"
+                    }
+                }
+            }
+        ],
+        "hostIP": "192.168.49.2",
+        "phase": "Running",
+        "podIP": "172.17.0.9",
+        "podIPs": [
+            {
+                "ip": "172.17.0.9"
+            }
+        ],
+        "qosClass": "BestEffort",
+        "startTime": "2022-10-03T22:35:20Z"
+    }
+}

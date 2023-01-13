@@ -37,6 +37,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 // TODO(icanadi) Mock out everything else:

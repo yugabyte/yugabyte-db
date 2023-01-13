@@ -9,6 +9,11 @@
     color: #2B59C3;
   }
 
+  .btn {
+    border: 1px solid #E5E5E9;
+    padding: 8px 12px;
+  }
+
   .metrics-measure-label {
     width: 124px;
     color: #67666C;
@@ -20,20 +25,21 @@
     border-radius: 8px 8px 8px 8px;
   }
 
-  button:first-child,
-  button:last-child {
-    width: 72px;
-    border: 1px solid #E5E5E9;
-    padding: 8px 12px;
-  }
+  .metrics-measure-button {
+    &__overall {
+      width: 80px;
+      border-radius: 0px;
+      margin-right: 1px;
+    }
 
-  button:first-child {
-    border-radius: 0px;
-    margin-right: 1px;
-  }
+    &__outlier {
+      width: 120px;
+    }
 
-  button:last-child {
-    border-radius: 0 8px 8px 0;
+    &__outlier_tables {
+      width: 120px;
+      border-radius: 0 8px 8px 0;
+    }
   }
 
   .metric-measure-button-title,

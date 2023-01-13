@@ -30,18 +30,20 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import play.libs.Json;
 import play.mvc.Result;
+
+import java.util.UUID;
+
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -131,17 +133,21 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
             .put("provider", p.uuid.toString())
             .put("ycqlPassword", "@123Byte")
             .put("enableYSQL", "false")
-            .put("accessKeyCode", accessKeyCode);
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
-    ArrayNode clustersJsonArray =
-        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    UUID clusterUUID = UUID.randomUUID();
+    JsonNode clusterJson =
+        Json.newObject().put("uuid", clusterUUID.toString()).set("userIntent", userIntentJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     ObjectNode cloudInfo = Json.newObject();
     cloudInfo.put("region", "region1");
     ObjectNode nodeDetails = Json.newObject();
     nodeDetails.put("nodeName", "testing-1");
+    nodeDetails.put("placementUuid", clusterUUID.toString());
     nodeDetails.set("cloudInfo", cloudInfo);
     ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     createBodyJson.set("clusters", clustersJsonArray);

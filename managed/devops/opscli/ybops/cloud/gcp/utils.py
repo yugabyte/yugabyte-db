@@ -113,13 +113,21 @@ class GcpMetadata():
         try:
             url = "{}/{}".format(GcpMetadata.METADATA_URL_BASE, endpoint)
             req = requests.get(url, headers=GcpMetadata.CUSTOM_HEADERS, timeout=2)
-            return req.content.decode('utf-8') if req.status_code == requests.codes.ok else None
+
+            if req.status_code != requests.codes.ok:
+                logging.warning("Request {} returned http error code {}".format(
+                    url, req.status_code))
+                return None
+
+            return req.content.decode('utf-8')
+
         except requests.exceptions.ConnectionError as e:
+            logging.warning("Request {} had a connection error {}".format(url, str(e)))
             return None
 
     @staticmethod
     def project():
-        return GcpMetadata._query_endpoint("/project/project-id")
+        return GcpMetadata._query_endpoint("project/project-id")
 
     @staticmethod
     def host_project():
@@ -143,6 +151,22 @@ class Waiter():
     def __init__(self, project, compute):
         self.project = project
         self.compute = compute
+
+    def get_in_progress_operation(self, zone, instance, operation_type):
+        target_link = \
+            RESOURCE_BASE_URL + "{}/zones/{}/instances/{}".format(self.project, zone, instance)
+        cmd = self.compute.zoneOperations().list(
+            project=self.project,
+            zone=zone,
+            filter='targetLink = "{}" AND status != "DONE" AND '
+                   'operationType = "{}"'.format(target_link, operation_type),
+            maxResults=1)
+        result = cmd.execute()
+        if 'error' in result:
+            raise RuntimeError(result['error'])
+        if 'items' not in result or len(result['items']) == 0:
+            return None
+        return result['items'][0]['id']
 
     def wait(self, operation, region=None, zone=None):
         # This allows easier chaining of waits on functions that are NOOPs if items already exist.
@@ -563,7 +587,7 @@ class GoogleCloudAdmin():
                                                 body=body).execute()
         return self.waiter.wait(operation, zone=zone)
 
-    def delete_disks(self, zone, tags):
+    def delete_disks(self, zone, tags, filter_disk_names=None):
         if not tags:
             raise YBOpsRuntimeError('Tags must be specified')
         universe_uuid = tags.get('universe-uuid')
@@ -594,7 +618,10 @@ class GoogleCloudAdmin():
                 users = disk.get('users', [])
                 # API returns READY for used disks as it is the creation state.
                 # Users refer to the users (instance).
+                logging.info('[app] Disk {} is in state {}'.format(disk_name, status))
                 if status.lower() != 'ready' or users:
+                    continue
+                if filter_disk_names and disk_name not in filter_disk_names:
                     continue
                 tag_match_count = 0
                 # Extra caution to make sure tags are present.
@@ -635,23 +662,30 @@ class GoogleCloudAdmin():
         body = {
             "sizeGb": args.volume_size
         }
-        print("Got instance info: " + str(instance_info))
         for disk in instance_info['disks']:
+            # The source is the complete URL of the disk, with the last
+            # component being the name.
+            disk_name = self.get_disk_name(disk)
             # Bootdisk should be ignored.
-            if disk['index'] != 0:
-                # The source is the complete URL of the disk, with the last
-                # component being the name.
-                disk_name = self.get_disk_name(disk)
-                print("Updating disk " + disk_name)
+            # GCP does not allow disk resize to same volume size.
+            if disk['index'] != 0 and int(disk["diskSizeGb"]) != args.volume_size:
+                logging.info(
+                    "Instance %s's volume %s changed to %s",
+                    instance, disk_name, args.volume_size)
                 operation = self.compute.disks().resize(project=self.project,
                                                         zone=zone,
                                                         disk=disk_name,
                                                         body=body).execute()
                 self.waiter.wait(operation, zone=zone)
+            elif disk['index'] != 0:
+                logging.info(
+                    "Instance %s's volume %s has not changed from %s",
+                    instance, disk["deviceName"], disk["diskSizeGb"])
 
     def change_instance_type(self, zone, instance_name, newInstanceType):
+        new_machine_type = f"zones/{zone}/machineTypes/{newInstanceType}"
         body = {
-            "machineType": "zones/" + zone + "/machineTypes/" + newInstanceType
+            "machineType": new_machine_type
         }
         operation = self.compute.instances().setMachineType(project=self.project,
                                                             zone=zone,
@@ -678,11 +712,24 @@ class GoogleCloudAdmin():
                                                   instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)
 
+    def wait_for_operation(self, zone, instance, operation_type):
+        operation = self.waiter.get_in_progress_operation(zone=zone,
+                                                          instance=instance,
+                                                          operation_type=operation_type)
+        if operation:
+            self.waiter.wait(operation=operation, zone=zone)
+
     def start_instance(self, zone, instance_name):
         operation = self.compute.instances().start(project=self.project,
                                                    zone=zone,
                                                    instance=instance_name).execute()
         return self.waiter.wait(operation, zone=zone)
+
+    def reboot_instance(self, zone, instance_name):
+        operation = self.compute.instances().reset(project=self.project,
+                                                   zone=zone,
+                                                   instance=instance_name).execute()
+        self.waiter.wait(operation, zone=zone)
 
     def query_vpc(self, region):
         """
@@ -761,7 +808,7 @@ class GoogleCloudAdmin():
         for data in instances:
             metadata = data.get("metadata", {}).get("items", {})
             disks = data.get("disks", [])
-            root_vol = next(disk for disk in disks if disk.get("boot", False))
+            root_vol = next((disk for disk in disks if disk.get("boot", False)), None)
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
             node_uuid_tags = [i["value"] for i in metadata if i["key"] == "node-uuid"]
             universe_uuid_tags = [i["value"] for i in metadata if i["key"] == "universe-uuid"]
@@ -807,8 +854,8 @@ class GoogleCloudAdmin():
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 launched_by=None,
                 launch_time=data.get("creationTimestamp"),
-                root_volume=root_vol["source"],
-                root_volume_device_name=root_vol["deviceName"],
+                root_volume=root_vol.get("source") if root_vol else None,
+                root_volume_device_name=root_vol.get("deviceName") if root_vol else None,
                 instance_state=instance_state,
                 is_running=True if instance_state == "RUNNING" else False
             )

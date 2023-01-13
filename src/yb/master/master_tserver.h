@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_TSERVER_H
-#define YB_MASTER_MASTER_TSERVER_H
+#pragma once
 
 #include <future>
 
@@ -61,7 +60,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
                                    uint64_t* last_breaking_version) const override;
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
+      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
 
   client::TransactionPool& TransactionPool() override;
 
@@ -85,4 +84,3 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_MASTER_TSERVER_H

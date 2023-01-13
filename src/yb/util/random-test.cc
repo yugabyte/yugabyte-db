@@ -36,6 +36,8 @@
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
 
+using std::vector;
+
 namespace yb {
 
 class RandomTest : public YBTest {

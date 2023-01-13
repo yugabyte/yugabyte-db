@@ -8,17 +8,18 @@ menu:
   preview:
     identifier: rust-drivers
     parent: drivers-orms
-    weight: 570
+    weight: 580
 type: indexpage
+showRightNav: true
 ---
-
-The following projects are recommended for implementing Rust applications using the YugabyteDB YSQL API.
 
 ## Supported projects
 
+The following project is recommended for implementing Rust applications using the YugabyteDB YSQL API.
+
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
-| Diesel | [Documentation](diesel/) | [Hello World](../../develop/build-apps/rust/ysql-diesel/) |
+| Diesel | [Documentation](diesel/) <br/> [Hello World](../orms/rust/ysql-diesel/) | [Diesel app](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/rust/diesel)
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
@@ -49,6 +50,6 @@ To develop Rust applications for YugabyteDB, you need the following:
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
-## Next steps
+## Next step
 
-- Learn how to use [Diesel](diesel/) with YugabyteDB.
+- [Use an ORM](diesel/)

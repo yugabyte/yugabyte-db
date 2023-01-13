@@ -24,13 +24,13 @@ export default class CpuUsagePanel extends Component {
           );
         } else {
           usage.system = parseFloat(
-            metric.data.find((item) => item.name === 'system').y.slice(-1)[0]
+            metric.data.find((item) => item.name === 'System').y.slice(-1)[0]
           );
-          usage.user = parseFloat(metric.data.find((item) => item.name === 'user').y.slice(-1)[0]);
+          usage.user = parseFloat(metric.data.find((item) => item.name === 'User').y.slice(-1)[0]);
         }
       }
     } catch (err) {
-      console.log('CPU metric processing failed with: ' + err);
+      console.error('CPU metric processing failed with: ' + err);
     }
     const value = usage.system
       ? Math.round((usage.system + (usage.user !== undefined ? usage.user : 0)) * 10) / 1000

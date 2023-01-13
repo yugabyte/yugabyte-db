@@ -18,7 +18,7 @@
 namespace yb {
 namespace docdb {
 
-Status YQLRowwiseIteratorIf::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {
+Status YQLRowwiseIteratorIf::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
   return Status::OK();
 }
 
@@ -35,7 +35,11 @@ Status YQLRowwiseIteratorIf::NextRow(const Schema& projection, QLTableRow* table
 }
 
 Status YQLRowwiseIteratorIf::NextRow(QLTableRow* table_row) {
-  return DoNextRow(schema(), table_row);
+  return DoNextRow(boost::none, table_row);
+}
+
+Status YQLRowwiseIteratorIf::Iterate(const YQLScanCallback& callback) {
+  return STATUS(NotSupported, "This iterator does not support iterate with callback.");
 }
 
 }  // namespace docdb

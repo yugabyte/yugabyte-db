@@ -29,11 +29,11 @@ namespace master {
 // CDCStreamInfo
 // ================================================================================================
 
-const google::protobuf::RepeatedPtrField<std::string>& CDCStreamInfo::table_id() const {
+const google::protobuf::RepeatedPtrField<std::string> CDCStreamInfo::table_id() const {
   return LockForRead()->pb.table_id();
 }
 
-const NamespaceId& CDCStreamInfo::namespace_id() const {
+const NamespaceId CDCStreamInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
 }
 
@@ -60,19 +60,16 @@ Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcT
   if (cdc_rpc_tasks_ != nullptr) {
     // Master Addresses changed, update YBClient with new retry logic.
     if (master_addrs_ != master_addrs) {
-      if (cdc_rpc_tasks_->UpdateMasters(master_addrs).ok()) {
-        master_addrs_ = master_addrs;
-      }
+      RETURN_NOT_OK(cdc_rpc_tasks_->UpdateMasters(master_addrs));
+      master_addrs_ = master_addrs;
     }
     return cdc_rpc_tasks_;
   }
 
-  auto result = CDCRpcTasks::CreateWithMasterAddrs(producer_id_, master_addrs);
-  if (result.ok()) {
-    cdc_rpc_tasks_ = *result;
-    master_addrs_ = master_addrs;
-  }
-  return result;
+  auto rpc_task = VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(producer_id_, master_addrs));
+  cdc_rpc_tasks_ = rpc_task;
+  master_addrs_ = master_addrs;
+  return rpc_task;
 }
 
 std::string UniverseReplicationInfo::ToString() const {
@@ -138,7 +135,7 @@ SysSnapshotEntryPB::State SnapshotInfo::state() const {
   return LockForRead()->state();
 }
 
-const std::string& SnapshotInfo::state_name() const {
+const std::string SnapshotInfo::state_name() const {
   return LockForRead()->state_name();
 }
 

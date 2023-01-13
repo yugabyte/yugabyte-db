@@ -77,6 +77,9 @@
 
 #include "yb/util/file_system_posix.h"
 
+using std::unique_ptr;
+using std::shared_ptr;
+
 #define STATUS_IO_ERROR(context, err_number) STATUS(IOError, (context), strerror(err_number))
 
 namespace rocksdb {

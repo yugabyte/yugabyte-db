@@ -114,9 +114,9 @@ Index Cond: (department = 'Operations'::text)
 For additional information, see:
 
 - [CREATE INDEX YSQL API](../../../api/ysql/the-sql-language/statements/ddl_create_index/)
-- [CREATE INDEX YSQL API](../../../api/ycql/ddl_create_index/)
+- [CREATE INDEX YCQL API](../../../api/ycql/ddl_create_index/)
 
-The following example shows how to remove index_employees_department that was created in Create indexes:
+The following example shows how to remove `index_employees_department` that was created in Create indexes:
 
 ```sql
 DROP INDEX index_employees_department;

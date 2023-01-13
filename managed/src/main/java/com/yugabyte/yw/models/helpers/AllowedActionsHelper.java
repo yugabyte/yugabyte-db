@@ -68,6 +68,9 @@ public class AllowedActionsHelper {
    * @return error string if the node is not allowed to perform the action otherwise null.
    */
   private String nodeActionErrOrNull(NodeActionType action) {
+    // Temporarily no validation for Hard Reboot task to unblock cloud.
+    // Starting a discussion on desired impl of removeMasterErrOrNull and
+    // removeSingleNodeErrOrNull. We will add validation after.
     if (action == NodeActionType.STOP
         || action == NodeActionType.REMOVE
         || action == NodeActionType.REBOOT) {
@@ -97,7 +100,9 @@ public class AllowedActionsHelper {
       // TODO: Clean this up as this null is probably test artifact
       return errorMsg(action, "It is in null state");
     }
-    if (!node.state.allowedActions().contains(action)) {
+    try {
+      node.validateActionOnState(action);
+    } catch (RuntimeException ex) {
       return errorMsg(action, "It is in " + node.state + " state");
     }
     return null;

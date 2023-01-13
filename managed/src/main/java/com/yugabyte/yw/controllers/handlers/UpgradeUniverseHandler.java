@@ -17,7 +17,7 @@ import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -48,7 +48,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YbcManager;
 
 @Slf4j
@@ -78,16 +77,6 @@ public class UpgradeUniverseHandler {
       RestartTaskParams requestParams, Customer customer, Universe universe) {
     // Verify request params
     requestParams.verifyParams(universe);
-    // Update request params with additional metadata for upgrade task
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
-
-    if (universe.isYbcEnabled()) {
-      requestParams.installYbc = true;
-      requestParams.enableYbc = true;
-      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
-      requestParams.ybcInstalled = true;
-    }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return submitUpgradeTask(
@@ -102,54 +91,15 @@ public class UpgradeUniverseHandler {
 
   public UUID upgradeSoftware(
       SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-
-    // Defaults to false, but we need to extract the variable in case the user wishes to perform
-    // a downgrade with a runtime configuration override. We perform this check before verifying the
-    // general
-    // SoftwareUpgradeParams to avoid introducing an API parameter.
-    boolean isUniverseDowngradeAllowed =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.upgrade.allow_downgrades");
-
-    String currentVersion = userIntent.ybSoftwareVersion;
-
-    String desiredUpgradeVersion = requestParams.ybSoftwareVersion;
-
-    if (currentVersion != null) {
-
-      if (Util.compareYbVersions(currentVersion, desiredUpgradeVersion, true) > 0) {
-
-        if (!isUniverseDowngradeAllowed) {
-
-          String msg =
-              String.format(
-                  "DB version downgrades are not recommended,"
-                      + " %s"
-                      + " would downgrade from"
-                      + " %s"
-                      + ". Aborting."
-                      + " To override this check and force a downgrade, please set the runtime"
-                      + " config yb.upgrade.allow_downgrades"
-                      + " to true"
-                      + " (using the script set-runtime-config.sh if necessary).",
-                  desiredUpgradeVersion, currentVersion);
-
-          throw new PlatformServiceException(Status.BAD_REQUEST, msg);
-        }
-      }
-    }
-
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
     if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
         && requestParams.getReadOnlyClusters().size() == 0) {
       requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
     }
-
     // Verify request params
     requestParams.verifyParams(universe);
-    // Update request params with additional metadata for upgrade task
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
+
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
     if (userIntent.providerType.equals(CloudType.kubernetes)) {
       checkHelmChartExists(requestParams.ybSoftwareVersion);
@@ -204,9 +154,6 @@ public class UpgradeUniverseHandler {
     }
     // Verify request params
     requestParams.verifyParams(universe);
-    // Update request params with additional metadata for upgrade task
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
 
     if (userIntent.providerType.equals(CloudType.kubernetes)) {
       // Gflags upgrade does not change universe version. Check for current version of helm chart.
@@ -305,7 +252,6 @@ public class UpgradeUniverseHandler {
     log.debug(
         "rotateCerts called with rootCA: {}",
         (requestParams.rootCA != null) ? requestParams.rootCA.toString() : "NULL");
-
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
     if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
         && requestParams.getReadOnlyClusters().size() == 0) {
@@ -313,16 +259,6 @@ public class UpgradeUniverseHandler {
     }
     // Verify request params
     requestParams.verifyParams(universe);
-    // Update request params with additional metadata for upgrade task
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
-    if (universe.isYbcEnabled()) {
-      requestParams.installYbc = true;
-      requestParams.enableYbc = true;
-      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
-      requestParams.ybcInstalled = true;
-    }
-
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
     // This is there only for legacy support, no need if rootCA and clientRootCA are different.
@@ -351,53 +287,25 @@ public class UpgradeUniverseHandler {
         universe);
   }
 
-  void mergeResizeNodeParamsWithIntent(ResizeNodeParams requestParams, Universe universe) {
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
-    requestParams.rootCA = universeDetails.rootCA;
-    requestParams.clientRootCA = universeDetails.clientRootCA;
-    // Merging existent intent with that of from request.
-    for (UniverseDefinitionTaskParams.Cluster requestCluster : requestParams.clusters) {
-      UniverseDefinitionTaskParams.Cluster cluster =
-          universeDetails.getClusterByUuid(requestCluster.uuid);
-      UserIntent requestIntent = requestCluster.userIntent;
-      requestCluster.userIntent = cluster.userIntent;
-      if (requestIntent.instanceType != null) {
-        requestCluster.userIntent.instanceType = requestIntent.instanceType;
-      }
-      if (requestIntent.deviceInfo != null && requestIntent.deviceInfo.volumeSize != null) {
-        requestCluster.userIntent.deviceInfo.volumeSize = requestIntent.deviceInfo.volumeSize;
-      }
-      if (requestIntent.masterInstanceType != null) {
-        requestCluster.userIntent.masterInstanceType = requestIntent.masterInstanceType;
-      }
-      if (requestIntent.masterDeviceInfo != null
-          && requestIntent.masterDeviceInfo.volumeSize != null) {
-        requestCluster.userIntent.masterDeviceInfo.volumeSize =
-            requestIntent.masterDeviceInfo.volumeSize;
-      }
-    }
-  }
-
   public UUID resizeNode(ResizeNodeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
     requestParams.verifyParams(universe);
-    // Update request params with additional metadata for upgrade task
-    mergeResizeNodeParamsWithIntent(requestParams, universe);
 
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return submitUpgradeTask(
-        TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.UpdateKubernetesDiskSize
+            : TaskType.ResizeNode,
+        CustomerTask.TaskType.ResizeNode,
+        requestParams,
+        customer,
+        universe);
   }
 
   public UUID thirdpartySoftwareUpgrade(
       ThirdpartySoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
     requestParams.verifyParams(universe);
-    // Update request params with additional metadata for upgrade task
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
-
     return submitUpgradeTask(
         TaskType.ThirdpartySoftwareUpgrade,
         CustomerTask.TaskType.ThirdpartySoftwareUpgrade,
@@ -413,18 +321,6 @@ public class UpgradeUniverseHandler {
 
     // Verify request params
     requestParams.verifyParams(universe);
-    // Update request params with additional metadata for upgrade task
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
-    if (universe.isYbcEnabled()) {
-      requestParams.installYbc = true;
-      requestParams.enableYbc = true;
-      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
-      requestParams.ybcInstalled = true;
-    }
-    if (requestParams.rootAndClientRootCASame == null) {
-      requestParams.rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
-    }
     requestParams.allowInsecure =
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
 
@@ -451,30 +347,30 @@ public class UpgradeUniverseHandler {
       // Setting the ClientRootCA to the already existing clientRootCA as we do not
       // support root certificate rotation through TLS upgrade.
       // There is a check for different new and existing root cert already.
-      if (universeDetails.clientRootCA == null) {
-        if (requestParams.clientRootCA == null) {
+      if (universeDetails.getClientRootCA() == null) {
+        if (requestParams.getClientRootCA() == null) {
           if (requestParams.rootCA != null && requestParams.rootAndClientRootCASame) {
             // Setting ClientRootCA to RootCA in case rootAndClientRootCA is true
-            requestParams.clientRootCA = requestParams.rootCA;
+            requestParams.setClientRootCA(requestParams.rootCA);
           } else {
             // Create self-signed clientRootCA in case it is not provided by the user
             // and rootCA and clientRootCA needs to be different
-            requestParams.clientRootCA =
+            requestParams.setClientRootCA(
                 CertificateHelper.createClientRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid);
+                    customer.uuid));
           }
         }
       } else {
-        requestParams.clientRootCA = universeDetails.clientRootCA;
+        requestParams.setClientRootCA(universeDetails.getClientRootCA());
       }
 
       // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
       // This is necessary to set to ensure backward compatibility as existing parts of
       // codebase uses rootCA for Client to Node Encryption
       if (requestParams.rootCA == null && requestParams.rootAndClientRootCASame) {
-        requestParams.rootCA = requestParams.clientRootCA;
+        requestParams.rootCA = requestParams.getClientRootCA();
       }
 
       // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
@@ -504,10 +400,6 @@ public class UpgradeUniverseHandler {
       VMImageUpgradeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
     requestParams.verifyParams(universe);
-    // Update request params with additional metadata for upgrade task
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
-
     return submitUpgradeTask(
         TaskType.VMImageUpgrade,
         CustomerTask.TaskType.VMImageUpgrade,
@@ -518,17 +410,8 @@ public class UpgradeUniverseHandler {
 
   public UUID upgradeSystemd(
       SystemdUpgradeParams requestParams, Customer customer, Universe universe) {
-
+    // Verify request params
     requestParams.verifyParams(universe);
-    // Update request params with additional metadata for upgrade task
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
-    if (universe.isYbcEnabled()) {
-      requestParams.installYbc = true;
-      requestParams.enableYbc = true;
-      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
-      requestParams.ybcInstalled = true;
-    }
 
     return submitUpgradeTask(
         TaskType.SystemdUpgrade,
@@ -540,16 +423,8 @@ public class UpgradeUniverseHandler {
 
   public UUID rebootUniverse(
       UpgradeTaskParams requestParams, Customer customer, Universe universe) {
+    // Verify request params
     requestParams.verifyParams(universe);
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
-
-    if (universe.isYbcEnabled()) {
-      requestParams.installYbc = true;
-      requestParams.enableYbc = true;
-      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
-      requestParams.ybcInstalled = true;
-    }
 
     return submitUpgradeTask(
         TaskType.RebootUniverse,

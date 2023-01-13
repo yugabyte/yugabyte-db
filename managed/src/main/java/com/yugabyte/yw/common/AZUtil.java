@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.http.rest.PagedResponse;
 import com.azure.storage.blob.BlobClient;
@@ -10,27 +12,21 @@ import com.azure.storage.blob.BlobContainerClientBuilder;
 import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.models.ListBlobsOptions;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
-import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.StringJoiner;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
-
-import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 @Singleton
 @Slf4j
@@ -249,5 +245,11 @@ public class AZUtil implements CloudUtil {
       azData.regionLocations.stream().forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
     return regionLocationsMap;
+  }
+
+  @Override
+  public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
+      throws Exception {
+    throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "This method is not implemented yet");
   }
 }

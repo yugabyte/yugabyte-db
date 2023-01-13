@@ -24,6 +24,8 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/strip.h"
 
+using std::string;
+
 namespace {
 
 template <typename T>

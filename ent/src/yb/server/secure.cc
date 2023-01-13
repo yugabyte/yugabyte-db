@@ -25,39 +25,43 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(use_node_to_node_encryption, false, "Use node to node encryption.");
+using std::string;
 
-DEFINE_bool(node_to_node_encryption_use_client_certificates, false,
+DEFINE_UNKNOWN_bool(use_node_to_node_encryption, false, "Use node to node encryption.");
+
+DEFINE_UNKNOWN_bool(node_to_node_encryption_use_client_certificates, false,
             "Should client certificates be sent and verified for encrypted node to node "
             "communication.");
 
-DEFINE_string(node_to_node_encryption_required_uid, "",
+DEFINE_UNKNOWN_string(node_to_node_encryption_required_uid, "",
               "Allow only certificates with specified uid. Empty to allow any.");
 
-DEFINE_string(certs_dir, "",
+DEFINE_UNKNOWN_string(certs_dir, "",
               "Directory that contains certificate authority, private key and certificates for "
               "this server. By default 'certs' subdir in data folder is used.");
 
-DEFINE_bool(use_client_to_server_encryption, false, "Use client to server encryption");
+DEFINE_UNKNOWN_bool(use_client_to_server_encryption, false, "Use client to server encryption");
 
-DEFINE_string(certs_for_client_dir, "",
+DEFINE_UNKNOWN_string(certs_for_client_dir, "",
               "Directory that contains certificate authority, private key and certificates for "
               "this server that should be used for client to server communications. "
               "When empty, the same dir as for server to server communications is used.");
 
-DEFINE_string(cert_node_filename, "",
+DEFINE_UNKNOWN_string(cert_node_filename, "",
               "The file name that will be used in the names of the node "
               "certificates and keys. These files will be named : "
               "'node.{cert_node_filename}.{key|crt}'. "
               "If this flag is not set, then --server_broadcast_addresses will be "
               "used if it is set, and if not, --rpc_bind_addresses will be used.");
 
-DEFINE_string(key_file_pattern, "node.$0.key", "Pattern used for key file");
+DEFINE_UNKNOWN_string(key_file_pattern, "node.$0.key", "Pattern used for key file");
 
-DEFINE_string(cert_file_pattern, "node.$0.crt", "Pattern used for certificate file");
+DEFINE_UNKNOWN_string(cert_file_pattern, "node.$0.crt", "Pattern used for certificate file");
 
-DEFINE_bool(enable_stream_compression, true, "Whether it is allowed to use stream compression.");
+DEFINE_UNKNOWN_bool(enable_stream_compression, true,
+    "Whether it is allowed to use stream compression.");
 
 namespace yb {
 namespace server {

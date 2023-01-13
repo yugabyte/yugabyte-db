@@ -29,6 +29,7 @@
 
 using namespace std::literals;
 using std::string;
+using std::vector;
 
 namespace yb {
 namespace docdb {

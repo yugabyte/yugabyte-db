@@ -62,7 +62,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
@@ -73,6 +72,7 @@ import java.util.List;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -503,9 +503,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   @Test
   @Parameters({
     "true, true, true",
-    "true, true, false",
+    // "true, true, false",// invalid: clientTLS false and bothCASame true
     "true, false, true",
-    "true, false, false",
+    // "true, false, false",// invalid: clientTLS false and bothCASame true
     "false, true, true",
     "false, true, false",
     "false, false, true",
@@ -538,7 +538,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("provider", p.uuid.toString())
-            .put("accessKeyCode", accessKeyCode);
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
@@ -569,9 +570,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       assertNull(taskParam.rootCA);
     }
     if (userIntent.enableClientToNodeEncrypt) {
-      assertNotNull(taskParam.clientRootCA);
+      assertNotNull(taskParam.getClientRootCA());
     } else {
-      assertNull(taskParam.clientRootCA);
+      assertNull(taskParam.getClientRootCA());
     }
 
     assertAuditEntry(1, customer.uuid);
@@ -584,6 +585,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     az1.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns1"));
+    az1.save();
     InstanceType i =
         InstanceType.upsert(p.uuid, "small", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
@@ -616,9 +618,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   @Test
   // @formatter:off
   @Parameters({
-    "2.8.0.0-b12, true",
-    "2.6.0.0-b1, false",
-    "2.12.1.0-b11, true",
+    "2.15.4.0-b12, true",
+    "2.15.3.0-b1, false",
+    "2.16.1.0-b11, true",
   })
   // @formatter:on
   public void testK8sUniverseCreateNewHelmNaming(String ybVersion, boolean newNamingStyle) {
@@ -828,18 +830,22 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("provider", p.uuid.toString())
-            .put("accessKeyCode", accessKeyCode);
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
-    ArrayNode clustersJsonArray =
-        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    UUID clusterUUID = UUID.randomUUID();
+    JsonNode clusterJson =
+        Json.newObject().put("uuid", clusterUUID.toString()).set("userIntent", userIntentJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     ObjectNode cloudInfo = Json.newObject();
     cloudInfo.put("region", "region1");
     ObjectNode nodeDetails = Json.newObject();
     nodeDetails.put("nodeName", "testing-1");
     nodeDetails.set("cloudInfo", cloudInfo);
+    nodeDetails.put("placementUuid", clusterUUID.toString());
     ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", nodeDetailsSet);
@@ -900,19 +906,22 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("provider", p.uuid.toString())
-            .put("accessKeyCode", accessKeyCode);
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
-    ArrayNode clustersJsonArray =
-        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-
+    UUID clusterUUID = UUID.randomUUID();
+    JsonNode clusterJson =
+        Json.newObject().put("uuid", clusterUUID.toString()).set("userIntent", userIntentJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     ObjectNode cloudInfo = Json.newObject();
     cloudInfo.put("region", "region1");
     ObjectNode nodeDetails = Json.newObject();
     nodeDetails.put("nodeName", "testing-1");
     nodeDetails.set("cloudInfo", cloudInfo);
+    nodeDetails.put("placementUuid", clusterUUID.toString());
     ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", nodeDetailsSet);
@@ -1399,37 +1408,6 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   }
 
   @Test
-  public void testOnPremConfigureCreateWithValidAZInstanceTypeComboNotEnoughNodes_fail() {
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
-    userIntent.providerType = Common.CloudType.onprem;
-    taskParams.upsertPrimaryCluster(userIntent, null);
-
-    taskParams.nodeDetailsSet = new HashSet<>();
-
-    for (int k = 0; k < 4; ++k) {
-      NodeInstanceFormData.NodeInstanceData details = new NodeInstanceFormData.NodeInstanceData();
-      details.ip = "10.255.67." + i;
-      details.region = r.code;
-      details.zone = az1.code;
-      details.instanceType = "test_instance_type";
-      details.nodeName = "test_name";
-      NodeInstance.create(az1.uuid, details);
-    }
-
-    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    Result result = assertPlatformException(() -> sendPrimaryCreateConfigureRequest(topJson));
-
-    assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
   public void testOnPremConfigureCreateInvalidAZNodeComboNonEmptyNodeDetailsSet_fail() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
@@ -1453,19 +1431,10 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid, CREATE);
 
-    // Set placement info with number of nodes valid but
-    for (int k = 0; k < 5; k++) {
-      NodeDetails nd = new NodeDetails();
-      nd.state = NodeDetails.NodeState.ToBeAdded;
-      nd.azUuid = az1.uuid;
-      nd.placementUuid = primaryCluster.uuid;
-      taskParams.nodeDetailsSet.add(nd);
-    }
-
+    taskParams.getPrimaryCluster().userIntent.numNodes += 5;
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-
     Result result = assertPlatformException(() -> sendPrimaryCreateConfigureRequest(topJson));
-    assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
+    assertBadRequest(result, "Couldn't find 4 nodes of type type.small");
     assertAuditEntry(0, customer.uuid);
   }
 

@@ -57,7 +57,7 @@
 #include <boost/algorithm/string.hpp>
 #include "yb/util/string_case.h"
 
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
 #endif
 
@@ -72,7 +72,7 @@
 #include "yb/server/server_base.h"
 #include "yb/server/secure.h"
 #include "yb/server/webserver.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/logging.h"
@@ -85,12 +85,11 @@
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
-DEFINE_uint64(web_log_bytes, 1024 * 1024,
+DEFINE_RUNTIME_uint64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
-DECLARE_int32(max_tables_metrics_breakdowns);
 TAG_FLAG(web_log_bytes, advanced);
-TAG_FLAG(web_log_bytes, runtime);
 
+DECLARE_int32(max_tables_metrics_breakdowns);
 DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
@@ -101,6 +100,8 @@ using std::ifstream;
 using std::string;
 using std::endl;
 using std::shared_ptr;
+using std::map;
+using std::vector;
 using strings::Substitute;
 
 using namespace std::placeholders;
@@ -350,7 +351,7 @@ static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResp
   Tags tags(as_text);
 
   (*output) << tags.pre_tag;
-#ifndef TCMALLOC_ENABLED
+#ifndef YB_TCMALLOC_ENABLED
   (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
 #else
   auto tmp = TcMallocStats();
@@ -476,11 +477,17 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
     arg = FindWithDefault(req.parsed_args, "include_schema", "false");
     json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
 
+    arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
+    json_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
+
     arg = FindWithDefault(req.parsed_args, "level", "debug");
     SetParsedValue(&json_opts->level, MetricLevelFromName(arg));
   }
 
   if (promethus_opts) {
+    arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
+    promethus_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
+
     SetParsedValue(&promethus_opts->level,
                    MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
     promethus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
@@ -517,10 +524,21 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
   MeticEntitiesOptions entities_opts;
   ParseRequestOptions(req, &entities_opts, &opts);
 
-  std::stringstream *output = &resp->output;
+  std::stringstream* output = &resp->output;
+
+  std::set<std::string> prototypes;
+  metrics->get_all_prototypes(prototypes);
+
   if (entities_opts.empty()) {
+    if (prototypes.find("cdcsdk") != prototypes.end()) {
+      entities_opts[AggregationMetricLevel::kStream].metrics.push_back("cdcsdk");
+      prototypes.erase("cdcsdk");
+    }
+
     entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
+    entities_opts[AggregationMetricLevel::kTable].exclude_metrics.push_back("cdcsdk");
   }
+
   for (const auto& entity_options : entities_opts) {
     PrometheusWriter writer(output, entity_options.first);
     WARN_NOT_OK(metrics->WriteForPrometheus(&writer, entity_options.second, opts),

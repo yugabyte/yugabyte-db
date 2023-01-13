@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_WRITE_BATCH_H
-#define YB_DOCDB_DOC_WRITE_BATCH_H
+#pragma once
 
 #include "yb/bfql/tserver_opcodes.h"
 
@@ -231,7 +230,7 @@ class DocWriteBatch {
       const rocksdb::QueryId query_id,
       const Direction dir = Direction::kForward,
       const int64_t start_index = 0,
-      std::vector<string>* results = nullptr,
+      std::vector<std::string>* results = nullptr,
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 
@@ -261,11 +260,11 @@ class DocWriteBatch {
     return put_batch_;
   }
 
-  void MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb);
+  void MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb);
 
   // This method has worse performance comparing to MoveToWriteBatchPB and intented to be used in
   // testing. Consider using MoveToWriteBatchPB in production code.
-  void TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const;
+  void TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const;
 
   // This is used in tests when measuring the number of seeks that a given update to this batch
   // performs. The internal seek count is reset.
@@ -353,6 +352,23 @@ class DocWriteBatch {
   MonoDelta ttl_;
 };
 
+// A helper handler for converting a RocksDB write batch to a string.
+class DocWriteBatchFormatter : public WriteBatchFormatter {
+ public:
+  DocWriteBatchFormatter(
+      StorageDbType storage_db_type,
+      BinaryOutputFormat binary_output_format,
+      WriteBatchOutputFormat batch_output_format,
+      std::string line_prefix);
+ protected:
+  std::string FormatKey(const Slice& key) override;
+
+  std::string FormatValue(const Slice& key, const Slice& value) override;
+
+ private:
+  StorageDbType storage_db_type_;
+};
+
 // Converts a RocksDB WriteBatch to a string.
 // line_prefix is the prefix to be added to each line of the result. Could be used for indentation.
 Result<std::string> WriteBatchToString(
@@ -364,5 +380,3 @@ Result<std::string> WriteBatchToString(
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_DOC_WRITE_BATCH_H

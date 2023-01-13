@@ -47,6 +47,8 @@
 using std::ifstream;
 using std::istreambuf_iterator;
 using std::stringstream;
+using std::string;
+using std::vector;
 using strings::Split;
 using strings::Substitute;
 

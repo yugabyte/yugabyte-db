@@ -152,4 +152,3 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_BadColumnName) {
 
 } // namespace client
 } // namespace yb
-

@@ -70,8 +70,8 @@ $ kubectl get svc -n yw-test
 ```
 
 ```
-NAME                         TYPE                CLUSTER-IP    EXTERNAL-IP   PORT(S)                                       AGE
-yw-test-yugaware-ui   LoadBalancer   10.103.85.235   10.103.85.235   80:30265/TCP,9090:30661/TCP   18m
+NAME                  TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)                       AGE
+yw-test-yugaware-ui   LoadBalancer   10.103.85.235   10.103.85.235  80:30265/TCP,9090:30661/TCP   18m
 ```
 
 Also, because the `Release.Service` for Helm 3 is`Helm`, and Helm 2 had it as `Tiller`, any deployments done with Helm 2 will have the `heritage` field set to `Tiller`.  To explicitly set the heritage value to `Tiller`, you can set the `helm2Legacy` variable to  `true`.

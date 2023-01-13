@@ -12,6 +12,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -33,13 +34,23 @@ import play.api.Play;
 public class ResizeNodeParams extends UpgradeTaskParams {
 
   private static final Set<Common.CloudType> SUPPORTED_CLOUD_TYPES =
-      EnumSet.of(Common.CloudType.gcp, Common.CloudType.aws);
+      EnumSet.of(Common.CloudType.gcp, Common.CloudType.aws, Common.CloudType.kubernetes);
 
   private boolean forceResizeNode;
 
   @Override
+  public boolean isKubernetesUpgradeSupported() {
+    return true;
+  }
+
+  @Override
   public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+    verifyParams(universe, null);
+  }
+
+  @Override
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState) {
+    super.verifyParams(universe, nodeState); // we call verifyParams which will fail
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
       throw new IllegalArgumentException(
@@ -49,10 +60,14 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     RuntimeConfigFactory runtimeConfigFactory =
         Play.current().injector().instanceOf(RuntimeConfigFactory.class);
 
+    boolean hasClustersToResize = false;
     for (Cluster cluster : clusters) {
       UserIntent newUserIntent = cluster.userIntent;
       UserIntent currentUserIntent =
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
+      if (!hasResizeChanges(currentUserIntent, newUserIntent)) {
+        continue;
+      }
 
       String errorStr =
           getResizeIsPossibleError(
@@ -60,7 +75,21 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       if (errorStr != null) {
         throw new IllegalArgumentException(errorStr);
       }
+      hasClustersToResize = true;
     }
+    if (!hasClustersToResize && !forceResizeNode) {
+      throw new IllegalArgumentException("No changes!");
+    }
+  }
+
+  private boolean hasResizeChanges(UserIntent currentUserIntent, UserIntent newUserIntent) {
+    if (currentUserIntent == null || newUserIntent == null) {
+      return false;
+    }
+    return !(Objects.equals(currentUserIntent.instanceType, newUserIntent.instanceType)
+        && Objects.equals(currentUserIntent.masterInstanceType, newUserIntent.masterInstanceType)
+        && Objects.equals(currentUserIntent.deviceInfo, newUserIntent.deviceInfo)
+        && Objects.equals(currentUserIntent.masterDeviceInfo, newUserIntent.masterDeviceInfo));
   }
 
   /**
@@ -135,7 +164,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     }
     // Check valid provider.
     if (!SUPPORTED_CLOUD_TYPES.contains(currentUserIntent.providerType)) {
-      return "Smart resizing is only supported for AWS / GCP, It is: "
+      return "Smart resizing is only supported for AWS / GCP / K8S, It is: "
           + currentUserIntent.providerType.toString();
     }
     if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {
@@ -224,15 +253,10 @@ public class ResizeNodeParams extends UpgradeTaskParams {
                 + " got "
                 + newDeviceInfo.volumeSize);
       }
-      // If numVolumes is specified in the newUserIntent,
-      // make sure it is the same as the current value.
-      if (newDeviceInfo.numVolumes != null
-          && !newDeviceInfo.numVolumes.equals(currentDeviceInfo.numVolumes)) {
-        errorConsumer.accept(
-            "Number of volumes cannot be changed. It was "
-                + currentDeviceInfo.numVolumes
-                + " got "
-                + newDeviceInfo.numVolumes);
+      DeviceInfo newDeviceInfoCloned = newDeviceInfo.clone();
+      newDeviceInfoCloned.volumeSize = currDiskSize;
+      if (!newDeviceInfoCloned.equals(currentDeviceInfo)) {
+        errorConsumer.accept("Only volume size should be changed to do smart resize");
       }
       return !Objects.equals(currDiskSize, newDeviceInfo.volumeSize);
     }

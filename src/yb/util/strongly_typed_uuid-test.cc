@@ -66,4 +66,3 @@ TEST(TestStronglyTypedUuid, TestBasic) {
 
 } // namespace util
 } // namespace yb
-

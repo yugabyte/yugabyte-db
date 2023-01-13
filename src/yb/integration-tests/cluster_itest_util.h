@@ -38,8 +38,7 @@
 // belonging in the MiniCluster / ExternalMiniCluster classes themselves. But
 // consider just putting stuff like that in those classes.
 
-#ifndef YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
-#define YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
+#pragma once
 
 #include <inttypes.h>
 
@@ -172,8 +171,9 @@ Result<OpId> GetLastOpIdForReplica(
     const MonoDelta& timeout);
 
 // Creates server vector from map.
-vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
-vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
+std::vector<TServerDetails*> TServerDetailsVector(const TabletReplicaMap& tablet_servers);
+std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
+std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
 
 // Creates copy of tablet server map, which does n  ot own TServerDetails.
 TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers,
@@ -511,6 +511,10 @@ Status WaitUntilTabletRunning(TServerDetails* ts,
                               const TabletId& tablet_id,
                               const MonoDelta& timeout);
 
+Status WaitUntilAllTabletReplicasRunning(const std::vector<TServerDetails*>& tservers,
+                                         const std::string& tablet_id,
+                                         const MonoDelta& timeout);
+
 // Send a DeleteTablet() to the server at 'ts' of the specified 'delete_type'.
 Status DeleteTablet(const TServerDetails* ts,
                     const TabletId& tablet_id,
@@ -538,7 +542,8 @@ Status GetLastOpIdForMasterReplica(
     const MonoDelta& timeout,
     OpIdPB* op_id);
 
+Status WaitForTabletIsDeletedOrHidden(
+    master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout);
+
 } // namespace itest
 } // namespace yb
-
-#endif // YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_

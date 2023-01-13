@@ -17,6 +17,8 @@ namespace yb {
 namespace master {
 namespace enterprise {
 using std::make_shared;
+using std::string;
+using std::vector;
 
 class TestLoadBalancerPreferredLeader : public TestLoadBalancerBase<ClusterLoadBalancerMocked> {
  public:

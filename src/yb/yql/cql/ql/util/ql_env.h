@@ -18,8 +18,7 @@
 // should be an abstract interface and let the server (such as proxy server) defines the content.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_UTIL_QL_ENV_H_
-#define YB_YQL_CQL_QL_UTIL_QL_ENV_H_
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -148,7 +147,7 @@ class QLEnv {
   // canonical resource.
   // keyspace and table are only used to generate the error message.
   // If the permission is not found, the client will refresh the cache from the master once.
-  virtual Status HasResourcePermission(const string& canonical_name,
+  virtual Status HasResourcePermission(const std::string& canonical_name,
                                                const ql::ObjectType& object_type,
                                                const PermissionType permission,
                                                const NamespaceName& keyspace = "",
@@ -179,9 +178,9 @@ class QLEnv {
 
   // Create (user-defined) type with the given arguments.
   Status CreateUDType(const std::string& keyspace_name,
-                              const std::string& type_name,
-                              const std::vector<std::string>& field_names,
-                              const std::vector<std::shared_ptr<QLType>>& field_types);
+                      const std::string& type_name,
+                      const std::vector<std::string>& field_names,
+                      const std::vector<std::shared_ptr<QLType>>& field_types);
 
   // Delete (user-defined) type by name.
   virtual Status DeleteUDType(const std::string& keyspace_name,
@@ -235,5 +234,3 @@ class QLEnv {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_UTIL_QL_ENV_H_

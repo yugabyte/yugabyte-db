@@ -16,6 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
@@ -200,6 +203,40 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
   }) {
     EncodeAndDecode(primitive_value);
   }
+}
+
+void TestRoundTrip(const PrimitiveValue& primitive_value, DataType data_type) {
+  QLValuePB ql_value;
+  auto ql_type = QLType::Create(data_type);
+  primitive_value.ToQLValuePB(ql_type, &ql_value);
+  ValueBuffer buffer;
+  docdb::AppendEncodedValue(ql_value, &buffer);
+
+  QLValuePB decoded_ql_value;
+  ASSERT_OK(PrimitiveValue::DecodeToQLValuePB(buffer.AsSlice(), ql_type, &decoded_ql_value));
+
+  ASSERT_EQ(QLValue(ql_value), QLValue(decoded_ql_value))
+      << Format("{ expected: $0, actual: $1 }", ql_value, decoded_ql_value);
+}
+
+TEST(PrimitiveValueTest, PrimitiveValueRoundTrip) {
+  TestRoundTrip(PrimitiveValue("foo"), DataType::STRING);
+  TestRoundTrip(PrimitiveValue::Int64(123456789000l), DataType::INT64);
+  TestRoundTrip(PrimitiveValue::Int64(-123456789000l), DataType::INT64);
+  TestRoundTrip(PrimitiveValue::Int64(numeric_limits<int64_t>::max()), DataType::INT64);
+  TestRoundTrip(PrimitiveValue::Int64(numeric_limits<int64_t>::min()), DataType::INT64);
+  TestRoundTrip(PrimitiveValue::Int32(123456789), DataType::INT32);
+  TestRoundTrip(PrimitiveValue::Int32(-123456789), DataType::INT32);
+  TestRoundTrip(PrimitiveValue::Int32(numeric_limits<int32_t>::max()), DataType::INT32);
+  TestRoundTrip(PrimitiveValue::Int32(numeric_limits<int32_t>::min()), DataType::INT32);
+  TestRoundTrip(PrimitiveValue::UInt64(numeric_limits<uint64_t>::min()), DataType::UINT64);
+  TestRoundTrip(PrimitiveValue::UInt64(numeric_limits<uint64_t>::max()), DataType::UINT64);
+  TestRoundTrip(PrimitiveValue::Double(3.1415), DataType::DOUBLE);
+  TestRoundTrip(PrimitiveValue::Double(100.0), DataType::DOUBLE);
+  TestRoundTrip(PrimitiveValue::Double(1e-100), DataType::DOUBLE);
+  TestRoundTrip(PrimitiveValue::Float(3.1415), DataType::FLOAT);
+  TestRoundTrip(PrimitiveValue::Float(100.0), DataType::FLOAT);
+  TestRoundTrip(PrimitiveValue::Float(1e-37), DataType::FLOAT);
 }
 
 TEST(PrimitiveValueTest, TestEncoding) {
