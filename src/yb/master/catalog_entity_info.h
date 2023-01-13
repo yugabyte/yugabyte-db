@@ -536,15 +536,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
                      DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // This only returns tablets which are in RUNNING state.
-  void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
-  void GetTabletsInRange(
+  TabletInfos GetTabletsInRange(const GetTableLocationsRequestPB* req) const;
+  TabletInfos GetTabletsInRange(
       const std::string& partition_key_start, const std::string& partition_key_end,
-      TabletInfos* ret,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
   // Iterates through tablets_ and not partitions_, so there may be duplicates of key ranges.
-  void GetInactiveTabletsInRange(
+  TabletInfos GetInactiveTabletsInRange(
       const std::string& partition_key_start, const std::string& partition_key_end,
-      TabletInfos* ret,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
 
   std::size_t NumPartitions() const;
