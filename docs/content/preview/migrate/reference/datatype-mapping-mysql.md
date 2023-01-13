@@ -18,15 +18,15 @@ type: docs
   </li>
   <li>
     <a href="../datatype-mapping-oracle/" class="nav-link">
-      Oracle to yugabyteDB
+      Oracle to YugabyteDB
     </a>
   </li>
 </ul>
 
-The following table includes a list of supported data type mappings from MySQL to YugabyteDB using YugabyteDB Voyager:
+The following table includes a list of supported data type mappings for migrating data from MySQL to YugabyteDB using YugabyteDB Voyager:
 
-| MySQL data type | Data type mapped to YugabyeDB | Description |
-| :-------------- | :---------------------------- | :---------- |
+| MySQL data type | Maps to YugabyeDB as | Description |
+| :-------------- | :------------------- | :---------- |
 | BINARY | BYTEA |
 | VARBINARY | BYTEA |
 | BIT | BIT |

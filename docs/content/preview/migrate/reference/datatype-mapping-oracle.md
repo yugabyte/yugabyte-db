@@ -18,15 +18,15 @@ type: docs
   </li>
   <li class="active">
     <a href="../datatype-mapping-oracle/" class="nav-link">
-      Oracle to yugabyteDB
+      Oracle to YugabyteDB
     </a>
   </li>
 </ul>
 
-The following table includes a list of supported data type mappings from Oracle to YugabyteDB using YugabyteDB Voyager:
+The following table includes a list of supported data type mappings for migrating data from Oracle to YugabyteDB using YugabyteDB Voyager:
 
-| Oracle data type | Data type mapped to YugabyeDB | Comments |
-| :--------------- | :---------------------------- | :------- |
+| Oracle data type | Maps to YugabyeDB as | Comments |
+| :--------------- | :------------------- | :------- |
 | CHAR | char |
 | NCHAR | char |
 | VARCHAR2 | varchar |
@@ -64,8 +64,8 @@ The following table includes a list of supported data type mappings from Oracle 
 
 The following table list the ANSI supported data types that can be mapped to YugabyteDB:
 
-| ANSI supported data type | Data type mapped to YugabyeDB |
-| :----------------------- | :---------------------------- |
+| ANSI supported data type | Maps to YugabyeDB as |
+| :----------------------- | :------------------- |
 | CHARACTER(n) | CHAR(n) |
 | CHAR(n) | CHAR(n) |
 | CHARACTER VARYING(n) | VARCHAR(n) |

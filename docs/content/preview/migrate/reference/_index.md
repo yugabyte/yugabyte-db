@@ -10,6 +10,7 @@ menu:
   preview:
     identifier: reference-voyager
     parent: voyager
+    weight: 104
 ---
 
 <div class="row">
@@ -21,7 +22,7 @@ menu:
         <div class="title">yb-voyager CLI</div>
       </div>
       <div class="body">
-        Learn about the CLI arguments and SSL connectivity for different phases of migration.
+        yb-voyager CLI commands, arguments, and SSL connectivity.
       </div>
     </a>
   </div>
@@ -33,7 +34,7 @@ menu:
         <div class="title">Data modeling</div>
       </div>
       <div class="body">
-        Learn about the sharding strategies supported and recommended for migration using YugabyteDB Voyager.
+        Learn about the sharding strategies to use when migrating using YugabyteDB Voyager.
       </div>
     </a>
   </div>
@@ -45,7 +46,7 @@ menu:
         <div class="title">Datatype mapping</div>
       </div>
       <div class="body">
-       Learn about the list of supported data type mappings from different source databases to YugabyteDB.
+       Data type mapping from different source databases to YugabyteDB.
       </div>
     </a>
   </div>
