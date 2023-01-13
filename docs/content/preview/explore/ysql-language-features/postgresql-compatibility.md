@@ -47,4 +47,3 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | transaction ids (xid) | [15638](https://github.com/yugabyte/yugabyte-db/issues/15638)|
 | DDL operations within transaction| [1404](https://github.com/yugabyte/yugabyte-db/issues/1404)|
 | Track ALTER TABLE variants| [1124](https://github.com/yugabyte/yugabyte-db/issues/1124)|
-
