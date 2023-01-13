@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -19,8 +19,8 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -66,6 +66,9 @@ public class AvailabilityZone extends Model {
   }
 
   public void setActiveFlag(Boolean active) {
+    if (active && !this.active) {
+      throw new IllegalArgumentException("Cannot activate already inactive zone");
+    }
     this.active = active;
   }
 
@@ -130,6 +133,13 @@ public class AvailabilityZone extends Model {
       details = new AvailabilityZoneDetails();
     }
     return details;
+  }
+
+  @JsonIgnore
+  public boolean shouldBeUpdated(AvailabilityZone zone) {
+    return !Objects.equals(this.subnet, zone.subnet)
+        || !Objects.equals(this.secondarySubnet, zone.secondarySubnet)
+        || !Objects.equals(this.getAvailabilityZoneDetails(), zone.getAvailabilityZoneDetails());
   }
 
   /** Query Helper for Availability Zone with primary key */
@@ -207,11 +217,15 @@ public class AvailabilityZone extends Model {
   }
 
   public static List<AvailabilityZone> getAZsForRegion(UUID regionUUID) {
-    return find.query().where().eq("region_uuid", regionUUID).findList();
+    return getAZsForRegion(regionUUID, true);
   }
 
-  public static Set<AvailabilityZone> getAllByCode(String code) {
-    return find.query().where().eq("code", code).findSet();
+  public static List<AvailabilityZone> getAZsForRegion(UUID regionUUID, boolean onlyActive) {
+    ExpressionList<AvailabilityZone> expr = find.query().where().eq("region_uuid", regionUUID);
+    if (onlyActive) {
+      expr.eq("active", true);
+    }
+    return expr.findList();
   }
 
   public static AvailabilityZone getByRegionOrBadRequest(UUID azUUID, UUID regionUUID) {
@@ -224,7 +238,11 @@ public class AvailabilityZone extends Model {
   }
 
   public static AvailabilityZone getByCode(Provider provider, String code) {
-    return maybeGetByCode(provider, code)
+    return getByCode(provider, code, true);
+  }
+
+  public static AvailabilityZone getByCode(Provider provider, String code, boolean onlyActive) {
+    return maybeGetByCode(provider, code, onlyActive)
         .orElseThrow(
             () ->
                 new RuntimeException(
@@ -232,9 +250,18 @@ public class AvailabilityZone extends Model {
   }
 
   public static Optional<AvailabilityZone> maybeGetByCode(Provider provider, String code) {
-    return getAllByCode(code)
+    return maybeGetByCode(provider, code, true);
+  }
+
+  public static Optional<AvailabilityZone> maybeGetByCode(
+      Provider provider, String code, boolean onlyActive) {
+    return find.query()
+        .where()
+        .eq("code", code)
+        .findSet()
         .stream()
         .filter(az -> az.getProvider().uuid.equals(provider.uuid))
+        .filter(az -> !onlyActive || az.active)
         .findFirst();
   }
 
