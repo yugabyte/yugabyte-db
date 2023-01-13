@@ -707,8 +707,13 @@ void TwoDCOutputClient::DoWriteCDCRecordDone(
 }
 
 void TwoDCOutputClient::HandleError(const Status& s) {
-  LOG(ERROR) << "Error while applying replicated record: " << s
-             << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+  if (s.IsTryAgain()) {
+    LOG(WARNING) << "Retrying applying replicated record for consumer tablet: "
+                 << consumer_tablet_info_.tablet_id << ", reason: " << s;
+  } else {
+    LOG(ERROR) << "Error while applying replicated record: " << s
+               << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+  }
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     error_status_ = s;
