@@ -45,5 +45,5 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Index on citext column | [9698](https://github.com/yugabyte/yugabyte-db/issues/9698)|
 | ABSTIME type | [15637](https://github.com/yugabyte/yugabyte-db/issues/15637)|
 | transaction ids (xid) | [15638](https://github.com/yugabyte/yugabyte-db/issues/15638)|
-
+| DDL operations within transaction| [1404](https://github.com/yugabyte/yugabyte-db/issues/1404)|
 
