@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -157,15 +158,35 @@ func (dm directoryManager) ActiveSymlink() string {
 }
 
 func GetPostgresPackagePath() string {
-	return GetFileMatchingGlob(PostgresPackageGlob)
+	return GetFileMatchingGlobOrFatal(PostgresPackageGlob)
 }
 
 func GetJavaPackagePath() string {
-	return GetFileMatchingGlob(javaBinaryGlob)
+	return GetFileMatchingGlobOrFatal(javaBinaryGlob)
 }
 
 func GetTemplatesDir() string {
-	return GetFileMatchingGlob(filepath.Join(GetBinaryDir(), TemplateDirGlob))
+	// if we are being run from the installed dir, templates
+	// is in the same dir as the binary
+	installedPath := filepath.Join(GetBinaryDir(), ConfigDir)
+	if _, err := os.Stat(installedPath); err == nil {
+		return installedPath
+	}
+
+	// if we are being run from the .tar.gz before install
+	return GetFileMatchingGlobOrFatal(filepath.Join(GetBinaryDir(), tarTemplateDirGlob))
+}
+
+func GetCronDir() string {
+	// if we are being run from the installed dir, cron
+	// is in the same dir as the binary
+	installedPath := filepath.Join(GetBinaryDir(), CronDir)
+	if _, err := os.Stat(installedPath); err == nil {
+		return installedPath
+	}
+
+	// if we are being run from the .tar.gz before install
+	return GetFileMatchingGlobOrFatal(filepath.Join(GetBinaryDir(), tarCronDirGlob))
 }
 
 func GetYBAInstallerDataDir() string {

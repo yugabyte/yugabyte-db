@@ -67,19 +67,19 @@ public class RestoreBackup extends UniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
       unlockUniverseForUpdate();
-      restore.update(taskUUID, TaskInfo.State.Success);
+      restore.update(taskUUID, Restore.State.Completed);
     } catch (CancellationException ce) {
       unlockUniverseForUpdate(false);
       // Aborted
       if (restore != null) {
-        restore.update(taskUUID, TaskInfo.State.Aborted);
+        restore.update(taskUUID, Restore.State.Aborted);
         RestoreKeyspace.update(restore, TaskInfo.State.Aborted);
       }
       throw ce;
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       if (restore != null) {
-        restore.update(taskUUID, TaskInfo.State.Failure);
+        restore.update(taskUUID, Restore.State.Failed);
       }
       unlockUniverseForUpdate();
       throw t;

@@ -33,15 +33,17 @@ import (
 // Systemctl linux command.
 const Systemctl string = "systemctl"
 
-// InputFile where installer config settings are specified.
-const InputFile = "/opt/yba-ctl/yba-ctl.yml"
+// YBA-CTL specific files
+const (
+	// InputFile where installer config settings are specified.
+	InputFile      = "/opt/yba-ctl/yba-ctl.yml"
+	YbaCtlLogFile  = "/opt/yba-ctl/yba-ctl.log"
+	installingFile = "/opt/yba-ctl/.installing"
 
-const YbaCtlLogFile = "/opt/yba-ctl/yba-ctl.log"
-
-const installingFile = "/opt/yba-ctl/.installing"
-
-// InstalledFile is location of install completed marker file.
-const InstalledFile = "/opt/yba-ctl/.installed"
+	// InstalledFile is location of install completed marker file.
+	InstalledFile      = "/opt/yba-ctl/.installed"
+	LicenseFileInstall = "/opt/yba-ctl/yba.lic"
+)
 
 const PostgresPackageGlob = "yba_installer-*linux*/postgresql-*-linux-x64-binaries.tar.gz"
 
@@ -57,9 +59,9 @@ const versionMetadataJSON = "version_metadata.json"
 
 const javaBinaryGlob = "yba_installer-*linux*/OpenJDK8U-jdk_x64_linux_*.tar.gz"
 
-const TemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
+const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
 
-const cronDirGlob = "yba_installer-*linux*/" + CronDir
+const tarCronDirGlob = "yba_installer-*linux*/" + CronDir
 
 // DetectOS detects the operating system yba-installer is running on.
 func DetectOS() string {
@@ -89,8 +91,8 @@ func GetVersion() string {
 
 	versionNumber := fmt.Sprint(configViper.Get("version_number"))
 	buildNumber := fmt.Sprint(configViper.Get("build_number"))
-	if os.Getenv("YBA_MODE") == "dev" {
-		// in dev itest builds, build_number is set to PRE_RELEASE
+	if buildNumber == "PRE_RELEASE" && os.Getenv("YBA_MODE") == "dev" {
+		// hack to allow testing dev itest builds
 		buildNumber = fmt.Sprint(configViper.Get("build_id"))
 	}
 
@@ -519,12 +521,35 @@ func GuessPrimaryIP() string {
 	return localAddr.IP.String()
 }
 
-func GetFileMatchingGlob(glob string) string {
+func GetFileMatchingGlob(glob string) (string, error) {
 	matches, err := filepath.Glob(glob)
 	if err != nil || len(matches) != 1 {
-		log.Fatal(fmt.Sprintf(
+		return "", fmt.Errorf(
 			"Expect to find one match for glob %s (err %s, matches %v)",
-			glob, err, matches))
+			glob, err, matches)
 	}
-	return matches[0]
+	return matches[0], nil
+}
+
+func GetFileMatchingGlobOrFatal(glob string) string {
+	result, err := GetFileMatchingGlob(glob)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	return result
+}
+
+// given a path like /a/b/c/d that may not exist,
+// returns the first valid directory in the hierarchy
+// that actually exists
+func GetValidParent(dir string) (string, error) {
+	curDir := filepath.Clean(dir)
+	_, curError := os.Stat(curDir)
+	lastDir := ""
+	for curError != nil && lastDir != curDir {
+		lastDir = curDir
+		curDir = filepath.Dir(curDir)
+		_, curError = os.Stat(curDir)
+	}
+	return curDir, curError
 }

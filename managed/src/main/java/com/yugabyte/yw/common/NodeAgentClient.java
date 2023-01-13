@@ -55,6 +55,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -192,19 +193,19 @@ public class NodeAgentClient {
         return false;
       }
       ChannelConfig other = (ChannelConfig) obj;
-      if (!nodeAgent.uuid.equals(other.nodeAgent.uuid)) {
+      if (!Objects.equals(nodeAgent.uuid, other.nodeAgent.uuid)) {
         return false;
       }
       if (enableTls != other.enableTls) {
         return false;
       }
-      if (!certPath.equals(other.certPath)) {
+      if (!Objects.equals(certPath, other.certPath)) {
         return false;
       }
-      if (!connectTimeout.equals(other.connectTimeout)) {
+      if (!Objects.equals(connectTimeout, other.connectTimeout)) {
         return false;
       }
-      if (!idleTimeout.equals(other.idleTimeout)) {
+      if (!Objects.equals(idleTimeout, other.idleTimeout)) {
         return false;
       }
       return true;

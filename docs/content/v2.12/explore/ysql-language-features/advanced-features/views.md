@@ -209,6 +209,7 @@ employee_no | name
 1224        | John Zimmerman
 1221        | John Smith
 1222        | Bette Davis
+1225        | Jane Doe
 ```
 
 For detailed documentation on materialized views please refer to the following links:

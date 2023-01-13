@@ -68,7 +68,7 @@ The topology is shown in the following illustration:
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
-      <i class="icon-shell" aria-hidden="true"></i>
+      <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>

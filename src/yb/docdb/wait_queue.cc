@@ -458,11 +458,13 @@ class WaitQueue::Impl {
       } else {
         waiter_status_[waiter_txn_id] = waiter_data;
       }
-    }
 
-    DCHECK(waiter_data);
-    for (auto [blocker, _] : waiter_data->blockers) {
-      blocker->AddWaiter(waiter_data);
+      // We must add waiters to blockers while holding the wait queue mutex. Otherwise, we may
+      // end up removing blockers from blocker_status_ during Poll() after we've already added them
+      // to waiter_data.
+      for (auto [blocker, _] : waiter_data->blockers) {
+        blocker->AddWaiter(waiter_data);
+      }
     }
 
     return Status::OK();
@@ -745,22 +747,29 @@ class WaitQueue::Impl {
       return;
     }
 
-    auto res = 0ul;
-
+    // We cannot use the passed in waiter_data here as it may have been replaced in waiter_status_
+    // by a new WaiterData instance for the same transaction. Such a situation would indicate that
+    // the previous request had returned to the caller and a new request for the same transaction
+    // was now waiting. In this situation, we would want to signal the new waiter.
+    WaiterDataPtr found_waiter = nullptr;
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
-      res = waiter_status_.erase(waiter_data->id);
+      auto it = waiter_status_.find(waiter_data->id);
+      if (it != waiter_status_.end()) {
+        found_waiter = it->second;
+        waiter_status_.erase(it);
+      }
     }
 
-    LOG_IF(WARNING, res != 1)
+    LOG_IF(WARNING, !found_waiter)
       << "Tried to invoke callback on waiter which has already been removed. "
       << "This should be rare but is not an error otherwise.";
 
     // Note -- it's important that we remove the waiter from waiter_status_ before invoking it's
     // callback. Otherwise, the callback will re-run conflict resolution, end up back in the wait
     // queue, and attempt to reuse the WaiterData still present in waiter_status_.
-    if (res == 1) {
-      waiter_data->InvokeCallback(status);
+    if (found_waiter) {
+      found_waiter->InvokeCallback(status);
     }
   }
 
