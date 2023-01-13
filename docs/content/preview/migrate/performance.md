@@ -40,10 +40,10 @@ yb-voyager only disables all the constraints except check constraints on the col
 
 Use one or more of the following techniques to improve import performance:
 
-- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to the half of the total number of cores in the YugabyteDB cluster. Normally this is considered good default practice. However, if the target cluster runs on high resource machines with a large number of CPU cores, the default may result in underusing CPU resources.\
-\
-  Use the [-–parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set --parallel-jobs to a number higher than the number of available cores in the entire cluster.\
-\
+- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to the half of the total number of cores in the YugabyteDB cluster. Normally this is considered good default practice. However, if the target cluster runs on high resource machines with a large number of CPU cores, the default may result in underusing CPU resources.
+
+  Use the [-–parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set --parallel-jobs to a number higher than the default based on your cluster requirement.
+
   If CPU use is greater than 50-60%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
 
 - **Increase batch size**. If the [--batch-size](../yb-voyager-cli/#batch-size) (default is 100000) is too small, the import will run slower because the time spent importing data may be comparable or less than the time spent on other tasks, such as bookkeeping, setting up the client connection, and so on. Increasing the batch-size to a very high value is not recommended as the whole batch is executed in one transaction.
@@ -91,5 +91,5 @@ As more optimizations are introduced, average throughput increases. The followin
 | :-- | :-------------------- | :--------------- | :-------- | :----------------- |
 | 24 parallel jobs (default) | 3 node [RF](../../architecture/docdb-replication/replication/#replication-factor) 3 cluster, c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=24 | ~80% | 44014 rows/sec |
 | Increase jobs<br>(1 per core) | 3 node RF 3 cluster, c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~95% | 47696 rows/sec |
-| Add nodes | 6 Node RF 3 cluster, c5.4x large (16 cores 32GB) <br> 4 EBS Type gp3 disks per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~95% |
+| Add nodes | 6 Node RF 3 cluster, c5.4x large (16 cores 32GB) <br> 4 EBS Type gp3 disks per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~80% | 86547 rows/sec |
 | Enabling packed columns | 3 node RF 3 cluster, c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~95% | 134048 rows/sec |
