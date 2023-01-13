@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.google.inject.Inject;
+import com.yugabyte.yw.controllers.handlers.AvailabilityZoneHandler;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneData;
 import com.yugabyte.yw.forms.AvailabilityZoneEditData;
@@ -11,14 +11,12 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +34,8 @@ import play.mvc.Result;
 public class AvailabilityZoneController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZoneController.class);
+
+  @Inject private AvailabilityZoneHandler availabilityZoneHandler;
 
   /**
    * GET endpoint for listing availability zones
@@ -78,12 +78,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(AvailabilityZoneFormData.class);
 
     List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
-    Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
     List<String> createdAvailabilityZonesUUID = new ArrayList<>();
-    for (AvailabilityZoneData azData : azDataList) {
-      AvailabilityZone az =
-          AvailabilityZone.createOrThrow(
-              region, azData.code, azData.name, azData.subnet, azData.secondarySubnet);
+    Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
+    List<AvailabilityZone> createdZones = availabilityZoneHandler.createZones(region, azDataList);
+    for (AvailabilityZone az : createdZones) {
       availabilityZones.put(az.code, az);
       createdAvailabilityZonesUUID.add(az.uuid.toString());
     }
@@ -95,14 +93,6 @@ public class AvailabilityZoneController extends AuthenticatedController {
             Audit.ActionType.Create,
             Json.toJson(formData.rawData()));
     return PlatformResults.withData(availabilityZones);
-  }
-
-  private void failDueToAZInUse(long nodeCount, String action) {
-    throw new PlatformServiceException(
-        FORBIDDEN,
-        String.format(
-            "There %s %d node%s in this AZ, cannot %s",
-            nodeCount > 1 ? "are" : "is", nodeCount, nodeCount > 1 ? "s" : "", action));
   }
 
   /**
@@ -125,17 +115,15 @@ public class AvailabilityZoneController extends AuthenticatedController {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZoneEditData azData =
         formFactory.getFormDataOrBadRequest(AvailabilityZoneEditData.class).get();
-    AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
 
-    long nodeCount = az.getNodeCount();
-    if (nodeCount > 0) {
-      failDueToAZInUse(nodeCount, "modify");
-    }
-
-    az.subnet = azData.subnet;
-    az.secondarySubnet = azData.secondarySubnet;
-
-    az.update();
+    AvailabilityZone az =
+        availabilityZoneHandler.editZone(
+            zoneUUID,
+            regionUUID,
+            zone -> {
+              zone.subnet = azData.subnet;
+              zone.secondarySubnet = azData.secondarySubnet;
+            });
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -161,21 +149,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
       nickname = "deleteAZ")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-    AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);
-
-    if (Provider.getOrBadRequest(customerUUID, providerUUID).getCloudCode()
-        == Common.CloudType.onprem) {
-      az.setActiveFlag(false);
-      az.update();
-    } else {
-      long nodeCount = az.getNodeCount();
-      if (nodeCount > 0) {
-        failDueToAZInUse(nodeCount, "delete");
-      }
-
-      az.delete();
-    }
-
+    AvailabilityZone az = availabilityZoneHandler.deleteZone(azUUID, regionUUID);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(), Audit.TargetType.AvailabilityZone, az.uuid.toString(), Audit.ActionType.Delete);

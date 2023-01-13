@@ -49,6 +49,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.RegionEditFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -134,6 +135,8 @@ public class CloudProviderHandler {
   @Inject private AccessKeyRotationUtil accessKeyRotationUtil;
   @Inject private ProviderEditRestrictionManager providerEditRestrictionManager;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private AvailabilityZoneHandler availabilityZoneHandler;
+  @Inject private RegionHandler regionHandler;
 
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
@@ -753,6 +756,29 @@ public class CloudProviderHandler {
     return regionsToAdd;
   }
 
+  private boolean removeAndUpdateRegions(Provider editProviderReq, Provider provider) {
+    Map<String, Region> existingRegions =
+        provider.regions.stream().collect(Collectors.toMap(r -> r.code, r -> r));
+    boolean result = false;
+    for (Region region : editProviderReq.regions) {
+      Region oldRegion = existingRegions.get(region.code);
+      if (oldRegion != null && oldRegion.isUpdateNeeded(region)) {
+        LOG.debug("Editing region {}", region.code);
+        regionHandler.editRegion(
+            provider.customerUUID,
+            provider.uuid,
+            oldRegion.uuid,
+            RegionEditFormData.fromRegion(region));
+        result = true;
+      } else if (oldRegion != null && !region.isActive() && oldRegion.isActive()) {
+        LOG.debug("Deleting region {}", region.code);
+        regionHandler.deleteRegion(provider.customerUUID, provider.uuid, region.uuid);
+        result = true;
+      }
+    }
+    return result;
+  }
+
   public UUID editProvider(
       Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     return providerEditRestrictionManager.tryEditProvider(
@@ -774,8 +800,12 @@ public class CloudProviderHandler {
       // TODO: PLAT-7258 allow adding region for auto-creating VPC case
       taskUUID = addRegions(customer, provider, regionsToAdd, true);
     }
-    boolean providerDataUpdated = updateProviderData(customer, provider, editProviderReq, validate);
-    if (!providerDataUpdated && taskUUID == null) {
+    boolean providerModified =
+        addOrRemoveAZs(editProviderReq, provider)
+            | removeAndUpdateRegions(editProviderReq, provider)
+            | updateProviderData(customer, provider, editProviderReq, validate);
+
+    if (!providerModified && taskUUID == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "No changes to be made for provider type: " + provider.code);
     }
@@ -877,6 +907,49 @@ public class CloudProviderHandler {
         CustomerTask.TaskType.Update,
         provider.name);
     return taskUUID;
+  }
+
+  private boolean addOrRemoveAZs(Provider editProviderReq, Provider provider) {
+    boolean result = false;
+    Map<String, Region> currentRegionMap =
+        provider.regions.stream().collect(Collectors.toMap(r -> r.code, r -> r));
+
+    for (Region region : editProviderReq.regions) {
+      Region currentState = currentRegionMap.get(region.code);
+      if (currentState != null) {
+        Map<String, AvailabilityZone> currentAZs =
+            currentState.zones.stream().collect(Collectors.toMap(az -> az.code, az -> az));
+        for (AvailabilityZone zone : region.zones) {
+          AvailabilityZone currentAZ = currentAZs.get(zone.code);
+          if (currentAZ == null) {
+            if (!zone.isActive()) {
+              LOG.warn("Zone {} is added but not active - ignoring", zone.code);
+              continue;
+            }
+            result = true;
+            LOG.debug("Creating zone {} in region {}", zone.code, region.code);
+            AvailabilityZone.createOrThrow(
+                region, zone.code, zone.name, zone.subnet, zone.secondarySubnet);
+          } else if (!zone.isActive() && currentAZ.isActive()) {
+            LOG.debug("Deleting zone {} from region {}", zone.code, region.code);
+            availabilityZoneHandler.deleteZone(zone.uuid, region.uuid);
+            result = true;
+          } else if (currentAZ.shouldBeUpdated(zone)) {
+            LOG.debug("updating zone {}", zone.code);
+            availabilityZoneHandler.editZone(
+                zone.uuid,
+                region.uuid,
+                az -> {
+                  az.setAvailabilityZoneDetails(zone.getAvailabilityZoneDetails());
+                  az.secondarySubnet = zone.secondarySubnet;
+                  az.subnet = zone.subnet;
+                });
+            result = true;
+          }
+        }
+      }
+    }
+    return result;
   }
 
   private boolean maybeUpdateKubeConfig(Provider provider, Map<String, String> providerConfig) {

@@ -52,7 +52,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -62,6 +62,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -824,6 +825,71 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     p.refresh();
     assertEquals("1234", p.details.cloudInfo.aws.getAwsHostedZoneId());
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testEditProviderModifyAZs() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
+    ObjectNode regionNode = (ObjectNode) regions.get(0);
+    ArrayNode zones = (ArrayNode) regionNode.get("zones");
+    ((ObjectNode) zones.get(0)).put("active", false);
+    ((ObjectNode) zones.get(1)).put("subnet", "subnet-changed");
+    AvailabilityZone newZone = new AvailabilityZone();
+    newZone.name = "New zone";
+    newZone.code = "az-new";
+    newZone.subnet = "subnet-311";
+    newZone.secondarySubnet = "sec-sub111";
+    newZone.setAvailabilityZoneDetails(new AvailabilityZoneDetails());
+    newZone.region = r;
+    ObjectNode newZoneJson = (ObjectNode) Json.toJson(newZone);
+    zones.add(newZoneJson);
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    assertFalse(
+        "Zone is deleted", AvailabilityZone.maybeGetByCode(p, az1.code).isPresent()); // Deleted
+    AvailabilityZone az2changed = AvailabilityZone.getByCode(p, az2.code);
+    assertEquals("subnet-changed", az2changed.subnet);
+    AvailabilityZone azNew = AvailabilityZone.getByCode(p, newZone.code);
+    assertNotNull(azNew);
+    assertEquals(newZone.name, azNew.name);
+    assertEquals(newZone.subnet, azNew.subnet);
+    assertEquals(newZone.secondarySubnet, azNew.secondarySubnet);
+  }
+
+  @Test
+  public void testEditProviderDeleteRegion() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
+    ObjectNode regionNode = (ObjectNode) regions.get(0);
+    regionNode.put("active", false);
+    Result result = editProvider(bodyJson, p.uuid);
+    assertOk(result);
+    assertFalse("Region is deleted", Region.get(r.uuid).isActive());
+  }
+
+  @Test
+  public void testEditProviderTryUnDeleteRegion() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    r.setActiveFlag(false);
+    r.update();
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
+    ObjectNode regionNode = (ObjectNode) regions.get(0);
+    regionNode.put("active", true);
+    Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
+    assertBadRequest(result, "No changes to be made for provider type: aws");
   }
 
   @Test
