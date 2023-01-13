@@ -159,6 +159,9 @@ DEFINE_test_flag(bool, block_get_changes, false,
 DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");
 
+DEFINE_test_flag(bool, force_get_checkpoint_from_cdc_state, false,
+    "Always bypass the cache and fetch the checkpoint from the cdc state table");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -3593,9 +3596,11 @@ Result<int64_t> CDCServiceImpl::GetLastActiveTime(
 
 Result<OpId> CDCServiceImpl::GetLastCheckpoint(
     const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session) {
-  auto result = impl_->GetLastCheckpoint(producer_tablet);
-  if (result) {
-    return *result;
+  if (!PREDICT_FALSE(FLAGS_TEST_force_get_checkpoint_from_cdc_state)) {
+    auto result = impl_->GetLastCheckpoint(producer_tablet);
+    if (result) {
+      return *result;
+    }
   }
 
   auto cdc_state_table_result = GetCdcStateTable();
