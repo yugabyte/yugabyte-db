@@ -26,7 +26,7 @@ yb-voyager maximizes performance when migrating data into a newly created empty 
 
 - Creates secondary indexes after the data import is complete. During the [post-import data](../migrate-steps/#import-indexes-and-triggers) phase, yb-voyager creates the secondary indexes after it completes data loading on all the tables except the unique indexes which are created in the [import-schema](../migrate-steps/#import-schema) phase, only to avoid any foreign key dependencies on the index. Then, it uses [Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) to update indexes after data is loaded. This is much faster than online index maintenance.
 
-- Disables constraint checks except check constraints on the column.. It's safe to disable all the constraint checks provided the data is from a reliable source. For maximum throughput, it is also preferable to not follow any order when populating tables. During the data import phase, yb-voyager disables all constraints, except for primary key violation errors.
+- Disables constraint checks except check constraints on the column. It's safe to disable all the constraint checks provided the data is from a reliable source. For maximum throughput, it is also preferable to not follow any order when populating tables. During the data import phase, yb-voyager disables all constraints, except for primary key violation errors.
 
   {{< note title="Note" >}}
 
@@ -40,9 +40,9 @@ yb-voyager only disables all the constraints except check constraints on the col
 
 Use one or more of the following techniques to improve import performance:
 
-- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to the half of the total number of cores in the YugabyteDB cluster. Normally this is considered good default practice. However, if the target cluster runs on high resource machines with a large number of CPU cores, the default may result in underusing CPU resources.
+- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to half of the total number of cores in the YugabyteDB cluster. Normally this is considered good default practice. However, if the target cluster runs on high resource machines with a large number of CPU cores, the default may result in underusing CPU resources.
 
-  Use the [-–parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set --parallel-jobs to a number higher than the default based on your cluster requirement.
+  Use the [-–parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set `--parallel-jobs` to a number higher than the default based on your cluster requirement.
 
   If CPU use is greater than 50-60%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
 
