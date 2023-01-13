@@ -1,6 +1,6 @@
 ---
 title: Akka Persistence Cassandra
-linkTitle: Akka Persistence Cassandra
+linkTitle: Akka Persistence
 description: Use Akka Persistence Cassandra with YCQL API
 menu:
   preview_integrations:
