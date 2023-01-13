@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -54,6 +55,10 @@ public class QueryHelper {
       "yb.query_stats.slow_queries.set_batch_nested_loop";
 
   public static final String QUERY_STATS_TASK_QUEUE_SIZE_CONF_KEY = "yb.query_stats.queue_capacity";
+
+  public static final String LIST_USER_DATABASES_SQL =
+      "SELECT datname from pg_database where datname NOT IN "
+          + "('postgres', 'template1', 'template0', 'system_platform')";
 
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutorService threadPool;
@@ -336,6 +341,14 @@ public class QueryHelper {
     return String.format(
         "%s%s ORDER BY t.%s DESC LIMIT %d",
         setYbBnlBatchSizeStatementOptional, SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
+  }
+
+  public JsonNode listDatabaseNames(Universe universe) {
+    NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.query = LIST_USER_DATABASES_SQL;
+    ysqlQuery.db_name = "postgres";
+    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, randomTServer);
   }
 
   private boolean isExcluded(String queryStatement, Config config) {

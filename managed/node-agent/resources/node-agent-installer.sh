@@ -343,6 +343,7 @@ main() {
       echo "Node agent setup failed."
       exit 1
     fi
+    echo "Source ~/.bashrc to make node-agent available in the PATH."
   else
     err_msg "Invalid option: $TYPE. Must be one of ['install [--force] [--skip_verify_cert]', \
 'install_service'].\n"

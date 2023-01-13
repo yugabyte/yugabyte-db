@@ -942,7 +942,9 @@ public class Universe extends Model {
   }
 
   /**
-   * Fine the current master leader node
+   * Find the current master leader node. Can return null if master leader is missing. Note that the
+   * master leader node may be a standalone master without tserver, such as is the case for K8s
+   * universes.
    *
    * @return NodeDetails of the master leader
    */
