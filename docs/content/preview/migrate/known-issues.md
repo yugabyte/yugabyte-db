@@ -963,7 +963,7 @@ CREATE INDEX ON timestamp_demo (ts ASC);
 
 ---
 
-#### Exporting data with names for tables/functions/procedures using special characters fails
+#### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
 
 **GitHub links**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
 
@@ -973,7 +973,7 @@ CREATE INDEX ON timestamp_demo (ts ASC);
 
 **Example**
 
-An example schema on the source PostgreSQL database is as follows:
+An example schema on the source MySQL database is as follows:
 
 ```sql
 CREATE TABLE `xyz abc`(id int);
@@ -988,23 +988,11 @@ The exported schema is as follows:
 CREATE TABLE "xyz abc" (id bigint);
 ```
 
-The preceding example will result in an error as follows:
-
-```output
-2022-11-30 05:16:29 INFO logging.go:33 calculating approx num of rows to export for each table...
-2022-11-30 05:16:29 INFO mysql.go:59 Querying 'SELECT table_rows from information_schema.tables where table_name = 'xyz abc'' approx row count of table "xyz abc"
-2022-11-30 05:16:29 INFO mysql.go:65 Table "xyz abc" has approx {3 true} rows.
-2022-11-30 05:16:29 INFO source.go:237 Source DSN used for export: dbi:mysql:host=localhost;database=automation;port=3306;mysql_ssl_optional=1
-2022-11-30 05:16:29 INFO ora2pg_export_data.go:76 Executing command: ora2pg -q -t COPY -P 4 -o data.sql -b /home/centos/export-dir/data -c /home/centos/export-dir/temp/.ora2pg.conf --no_header
-2022-11-30 05:16:29 INFO common.go:79 After updating data file paths, TablesProgressMetadata:&{TableSchema:automation TableName:xyz abc FullTableName:automation.xyz abc InProgressFilePath:/home/centos/export-dir/data/tmp_xyz abc_data.sql FinalFilePath:/home/centos/export-dir/data/xyz abc_data.sql Status:0 CountLiveRows:0 CountTotalRows:3 FileOffsetToContinue:0 IsPartition:false ParentTable:}
-
-2022-11-30 05:16:30 INFO ora2pg_export_data.go:92 ora2pg STDOUT: ""
-2022-11-30 05:16:30 ERROR ora2pg_export_data.go:93 ora2pg STDERR: ""
-```
+The preceding example may hang or result in an error.
 
 ---
 
-#### Import issue with case-senstivie schema names
+#### Import issue with case-sensitive schema names
 
 **GitHub links**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
 
