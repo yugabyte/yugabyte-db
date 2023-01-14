@@ -10,9 +10,8 @@
 
 package com.yugabyte.yw.common.config;
 
-import java.time.Duration;
-
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import java.time.Duration;
 
 public class GlobalConfKeys extends RuntimeConfigKeysModule {
 
@@ -98,7 +97,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.use_kubectl",
           ScopeType.GLOBAL,
           "Use Kubectl",
-          "TODO - Leave this for feature owners to fill ",
+          "Use java library instead of spinning up kubectl process.",
           ConfDataType.BooleanType);
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<Boolean> useNewHelmNaming =
@@ -318,13 +317,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Output logs for shell commands are written to tmp folder."
               + "This setting defines rotation policy based on directory size.",
           ConfDataType.BytesType);
-  // TODO(Shashank): Add correct metadata
   public static final ConfKeyInfo<Long> logsMaxMsgSize =
       new ConfKeyInfo<>(
           "yb.logs.max_msg_size",
           ScopeType.GLOBAL,
-          "Max Log Message Size",
-          "TODO",
+          "Max Size of each log message",
+          "We limit the length of each log line as sometimes we dump entire output"
+              + " of script. If you want to debug something specific and the script output is"
+              + "getting truncated in application log then increase this limit",
           ConfDataType.BytesType);
   public static final ConfKeyInfo<Duration> kmsRefreshInterval =
       new ConfKeyInfo<>(

@@ -21,6 +21,6 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "yb.taskGC.task_retention_duration",
           ScopeType.CUSTOMER,
           "Task Garbage Collection Retention Duration",
-          "TODO - Leave this for feature owners to fill in",
+          "We garbage collect stale tasks after this duration",
           ConfDataType.DurationType);
 }
