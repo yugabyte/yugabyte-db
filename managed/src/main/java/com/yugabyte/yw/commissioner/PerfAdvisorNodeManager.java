@@ -67,7 +67,7 @@ public class PerfAdvisorNodeManager implements NodeManagerInterface {
                       universeConfig.getNodeDetails(),
                       universe,
                       tempPath.toString(),
-                      fileUpload.getDestFilePath,
+                      fileUpload.getDestFilePath(),
                       fileUpload.getFilePermissions(),
                       universeConfig.getShellProcessContext())
                   .processErrors();
