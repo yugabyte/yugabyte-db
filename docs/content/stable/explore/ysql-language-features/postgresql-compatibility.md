@@ -4,7 +4,7 @@ linkTitle: PostgreSQL compatibility
 description: Summary of YugabyteDB's PostgreSQL compatibility
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: explore-ysql-postgresql-compatibility
     parent: explore-ysql-language-features
     weight: 70
