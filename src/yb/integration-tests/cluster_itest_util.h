@@ -504,6 +504,9 @@ Status GetLastOpIdForMasterReplica(
     const MonoDelta& timeout,
     OpIdPB* op_id);
 
+Status WaitForTabletIsDeletedOrHidden(
+    master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout);
+
 } // namespace itest
 } // namespace yb
 

@@ -17,6 +17,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -57,7 +58,7 @@ void PgMiniTestBase::SetUp() {
 
 
   master::SetDefaultInitialSysCatalogSnapshotFlags();
-  YBMiniClusterTestBase::SetUp();
+  MiniClusterTestWithClient::SetUp();
 
   MiniClusterOptions mini_cluster_opt = MiniClusterOptions {
       .num_masters = NumMasters(),
@@ -85,19 +86,24 @@ void PgMiniTestBase::SetUp() {
   ASSERT_OK(pg_supervisor_->Start());
 
   DontVerifyClusterBeforeNextTearDown();
+
+  ASSERT_OK(MiniClusterTestWithClient<MiniCluster>::CreateClient());
 }
 
 Result<TableId> PgMiniTestBase::GetTableIDFromTableName(const std::string table_name) {
   // Get YBClient handler and tablet ID. Using this we can get the number of tablets before starting
   // the test and before the test ends. With this we can ensure that tablet splitting has occurred.
-  auto client = VERIFY_RESULT(cluster_->CreateClient());
-  const auto tables = VERIFY_RESULT(client->ListTables());
+  const auto tables = VERIFY_RESULT(client_->ListTables());
   for (const auto& table : tables) {
     if (table.has_table() && table.table_name() == table_name) {
       return table.table_id();
     }
   }
   return STATUS_FORMAT(NotFound, "Didn't find table with name: $0.", table_name);
+}
+
+Result<master::CatalogManagerIf*> PgMiniTestBase::catalog_manager() const {
+  return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
 }
 
 Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port) {

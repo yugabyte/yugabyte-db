@@ -883,7 +883,6 @@ Status PgDocReadOp::CompleteProcessResponse() {
 
   for (size_t op_index = 0; op_index < send_count; op_index++) {
     auto& read_op = down_cast<PgsqlReadOp&>(*pgsql_ops_[op_index]);
-    RETURN_NOT_OK(ReviewResponsePagingState(*table_, &read_op));
 
     // Check for completion.
     bool has_more_arg = false;
@@ -893,7 +892,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
     // Save the backfill_spec if tablet server wants to return it.
     if (res.is_backfill_batch_done()) {
       out_param_backfill_spec_ = res.backfill_spec().ToBuffer();
-    } else if (PrepareNextRequest(&read_op)) {
+    } else if (VERIFY_RESULT(PrepareNextRequest(*table_, &read_op))) {
       has_more_arg = true;
     }
 

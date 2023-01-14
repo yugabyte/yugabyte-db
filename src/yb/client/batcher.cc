@@ -262,7 +262,6 @@ void Batcher::FlushAsync(
     }
   }
 
-  auto shared_this = shared_from_this();
   for (auto& op : ops_queue_) {
     VLOG_WITH_PREFIX(4) << "Looking up tablet for " << op.ToString()
                         << " partition key: " << Slice(op.partition_key).ToDebugHexString();
@@ -270,9 +269,7 @@ void Batcher::FlushAsync(
     if (op.yb_op->tablet()) {
       TabletLookupFinished(&op, op.yb_op->tablet());
     } else {
-      client_->data_->meta_cache_->LookupTabletByKey(
-          op.yb_op->mutable_table(), op.partition_key, deadline_,
-          std::bind(&Batcher::TabletLookupFinished, shared_this, &op, _1));
+      LookupTabletFor(&op);
     }
   }
 }
@@ -316,6 +313,16 @@ void Batcher::CombineError(const InFlightOp& in_flight_op) {
   }
 }
 
+void Batcher::LookupTabletFor(InFlightOp* op) {
+  auto shared_this = shared_from_this();
+  client_->data_->meta_cache_->LookupTabletByKey(
+      op->yb_op->mutable_table(), op->partition_key, deadline_,
+      [shared_this, op](const auto& lookup_result) {
+        shared_this->TabletLookupFinished(op, lookup_result);
+      },
+      FailOnPartitionListRefreshed::kTrue);
+}
+
 void Batcher::TabletLookupFinished(
     InFlightOp* op, Result<internal::RemoteTabletPtr> lookup_result) {
   VLOG_WITH_PREFIX_AND_FUNC(lookup_result.ok() ? 4 : 3)
@@ -324,7 +331,17 @@ void Batcher::TabletLookupFinished(
   if (lookup_result.ok()) {
     op->tablet = *lookup_result;
   } else {
-    op->error = lookup_result.status();
+    auto status = lookup_result.status();
+    if (ClientError(status) == ClientErrorCode::kTablePartitionListRefreshed) {
+      status = client::IsTolerantToPartitionsChange(*op->yb_op) ?
+          Status::OK() :
+          op->yb_op->GetPartitionKey(&op->partition_key);
+      if (status.ok()) {
+        LookupTabletFor(op);
+        return;
+      }
+    }
+    op->error = std::move(status);
   }
   if (--outstanding_lookups_ == 0) {
     AllLookupsDone();
