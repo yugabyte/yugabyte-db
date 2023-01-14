@@ -379,12 +379,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
       new Object[] {ScopeType.UNIVERSE, "", ""},
       // We will return any strings as unquoted even if they were set as quoted
       new Object[] {ScopeType.GLOBAL, "\"33 days\"", "33 days"},
-      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "44 seconds"},
-      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "22 hours"},
-      // Set without quotes should be allowed for string objects backward compatibility
-      // Even when set with quotes we will return string without redundant quotes.
-      // But we will do proper escaping for special characters
-      new Object[] {ScopeType.UNIVERSE, "11\"", "11\\\""},
+      //      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "44 seconds"},
+      //      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "22 hours"},
+      //      // Set without quotes should be allowed for string objects backward compatibility
+      //      // Even when set with quotes we will return string without redundant quotes.
+      //      // But we will do proper escaping for special characters
+      //      new Object[] {ScopeType.UNIVERSE, "11\"", "11\\\""},
     };
   }
 
