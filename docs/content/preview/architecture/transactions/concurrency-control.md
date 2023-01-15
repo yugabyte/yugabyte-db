@@ -15,7 +15,7 @@ type: docs
 
 YugabyteDB provides two policies to handle conflicts between concurrent transactions as described in the following sections.
 
-For information on how row-level explicit locking clauses behave with these concurrency control policies, refer to [Row-level explicit locking clauses](#row-level-explicit-locking-clauses) .
+For information on how row-level explicit locking clauses behave with these concurrency control policies, refer to [Row-level explicit locking clauses](#row-level-explicit-locking-clauses).
 
 ## Fail-on-Conflict
 
@@ -27,7 +27,7 @@ If a conflict occurs, a transaction with the lower priority is aborted. There ar
    - **Wound:** If T1 has a higher priority than all the other conflicting transactions, T1 will abort them and make progress.
    - **Die:** If any other conflicting transaction has an equal or higher priority than T1, T1 will abort itself.
 
-Suppose you have a table with some data in it, the following examples describe the wound and die approaches when a conflict occurs.
+Suppose you have a table with some data in it. The following examples describe the wound and die approaches when a conflict occurs.
 
 ```sql
 create table test (k int primary key, v int);
@@ -287,7 +287,7 @@ commit;
 
 Note that we see the error message `All transparent retries exhausted` in the preceding example because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `ysql_max_write_restart_attempts` YB-TServer gflag and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
 
-Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur (if an earlier conflicting transaction T2 has committed with a commit time before the read time of the new snapshot, the conflicts with T2 would essentially be voided since T1 and T2 would no longer be "concurrent").
+Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided since T1 and T2 would no longer be "concurrent".
 
 Note that the retries will not be performed in case the amount of data to be sent from YSQL to the client proxy exceeds the TServer gflag `ysql_output_buffer_size`.
 
@@ -300,16 +300,14 @@ In this mode, transactions are not assigned priorities. If a conflict occurs whe
 1. make progress if the conflicting transactions didn’t commit any permanent modifications that conflict with T1.
 2. abort otherwise.
 
-By default, transactions operate in the priority based `Fail-on-Conflict` mode. This mode can be enabled by setting the YB-TServer gflag `enable_wait_queues=true`, which will enable use of in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. A rolling restart is needed for the gflag to take effect.
+`Wait-on-Conflict` behavior can be enabled by setting the YB-TServer gflag `enable_wait_queues=true`, which will enable use of in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. A rolling restart is needed for the gflag to take effect. Without this flag set, transactions operate in the priority based `Fail-on-Conflict` mode by default.
 
 Since T1 can make progress only if the conflicting transactions didn’t commit any conflicting permanent modifications, there are some intricacies in the behaviour. The list of exhaustive cases possible are detailed below in the Examples section.
 
 {{< note >}}
 
-Semantics of [Read Committed](../read-committed/) isolation make sense only with the Wait-on-Conflict behaviour. So, transactions in Read Committed isolation follow `Wait-on-Conflict` policy even without wait queues i.e., even when `enable_wait_queues=false`. This is done by relying on a indefinite retry-backoff mechanism with exponential delays when conflicts are detected. However, when `Read Committed` isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist -
-   1. there might be a need to manually tune the exponential backoff parameters for performance as explained [here](../read-committed/#performance-tuning).
-   1. the app will have to [rely on statement timeouts to avoid deadlocks](../read-committed/#avoid-deadlocks-in-read-committed-transactions).
-   1. there can be unfairness and high P99 latencies during contention due to the retry-backoff mechanism.
+Semantics of [Read Committed](../read-committed/) isolation make sense only with the Wait-on-Conflict behaviour. Refer [this](../read-committed/#interaction-with-concurrency-control) for more information.
+
 {{</note >}}
 
 {{< note title="Best-effort internal retries also apply to Wait-on-Conflict policy" >}}
@@ -324,7 +322,10 @@ After a transaction T1 (that was waiting for other transactions) unblocks, it co
 
 The following examples describe different use cases detailing the Wait-on-Conflict behavior.
 
-Note that the examples require you to set the YB-TServer gflag `enable_wait_queues=true`. Also, set the YB-TServer gflag `ysql_max_write_restart_attempts=0` to disable internal query layer retries on-conflict. A restart is necessary for these flags to take effect.
+1. Note that the examples require you to set the YB-TServer gflag `enable_wait_queues=true`.
+1. Also, set the YB-TServer gflag `ysql_max_write_restart_attempts=0` to disable internal query layer retries on conflict. This is only done to easily illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production.
+
+A restart is necessary for these flags to take effect.
 
 Start by setting up the table you'll use in all of the examples in this section.
 
@@ -967,6 +968,7 @@ commit;
 
 #### Rollback of sub-transaction with conflicting write
 
+Suppose a transaction T1 is blocked on some operation of another transaction T2. If that blocking operation was part of a subtransaction which is later rolled back, then T1 may proceed:
 
 <table class="no-alter-colors">
 <thead>

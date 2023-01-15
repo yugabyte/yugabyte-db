@@ -23,7 +23,7 @@ type: docs
 
 </ul>
 
-YugabyteDB's YSQL supports explicit row-level locking, similar to PostgreSQL. Explicit row-locks ensure that two transactions can never hold conflicting locks on the same row. When two transactions try to acquire conflicting lock modes, the semantics are dictated by the [Concurrency Control](../../../architecture/transactions/concurrency-control/) policies that YugabyteDB supports.
+YugabyteDB's YSQL supports explicit row-level locking, similar to PostgreSQL. Explicit row-locks ensure that two transactions can never hold conflicting locks on the same row. When two transactions try to acquire conflicting lock modes, the semantics are dictated by YugabyteDB's [Concurrency Control](../../../architecture/transactions/concurrency-control/) policies.
 
 The types of row locks currently supported are:
 
