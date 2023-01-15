@@ -224,7 +224,7 @@ For example:
 
 ### Tablet splitting
 
-YugabyteDB also supports [tablet splitting](../../architecture/docdb-sharding/tablet-splitting). While streaming changes, if the YugabyteDB source connector detectes that a tablet has been split, it will gracefully handle the splitting and will start polling for the children tablets.
+YugabyteDB also supports [tablet splitting](../../../architecture/docdb-sharding/tablet-splitting). While streaming changes, if the YugabyteDB source connector detectes that a tablet has been split, it will gracefully handle the splitting and will start polling for the children tablets.
 
 ### Dynamic addition of new tables
 
@@ -912,7 +912,7 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 ## Deploy a Debezium connector {#deployment}
 
-To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](../../../integrations/cdc/debezium/).
+To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](preview/integrations/cdc/debezium).
 
 ### Connector configuration example
 
@@ -1080,8 +1080,8 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 If you have a YugabyteDB cluster with SSL enabled, need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
 
 * [Local deployments](../../../secure/tls-encryption/)
-* [YB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
-* [YB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+* [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [YugabyteDB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 

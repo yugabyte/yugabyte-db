@@ -79,7 +79,7 @@ To facilitate the streaming of data, you have to create a DB Stream. This stream
 
 ### Stream expiry
 
-When a client reads the changes from WAL (Write-ahead Log) /IntentDB, the intents are retained and the retention time is controlled by the gflag [cdc_intent_retention_ms](https://github.com/yugabyte/yugabyte-db/reference/configuration/yb-tserver/#cdc-intent-retention-ms).
+When a client reads the changes from WAL (Write-ahead Log) /IntentDB, the intents are retained and the retention time is controlled by the gflag [cdc_intent_retention_ms](../../reference/configuration/yb-tserver/#cdc-intent-retention-ms).
 
 When you create a stream, the checkpoint for a tablet is set as soon as the client requests changes. If the client doesn't request changes within `cdc_intent_retention_ms` milliseconds, the CDC service considers the `tablet_id, stream_id` combination to be expired, and allows those intents to be removed by the garbage collection process.
 
@@ -147,7 +147,7 @@ You can't take another snapshot of the table using an existing stream ID. In oth
 
 Before image refers to the state of the row before the change event occurred. This state is populated during UPDATE and DELETE events as in case of INSERT and READ (Snapshot) events, the change is for the creation of new content.
 
-At any moment, YugabyteDB not only stores the latest state of the data, but also the recent history of changes. By default, the history retention period is controlled by the [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp_history_retention_interval_sec), applied cluster-wide to every YSQL database.
+At any moment, YugabyteDB not only stores the latest state of the data, but also the recent history of changes. By default, the history retention period is controlled by the [history retention interval flag](../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec), applied cluster-wide to every YSQL database.
 
 However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream. When a CDC active stream's lag increases, the amount of space required for the database grows as more data is retained.
 
