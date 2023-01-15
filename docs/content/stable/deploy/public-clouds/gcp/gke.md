@@ -22,7 +22,7 @@ type: docs
 
   <li>
     <a href="../gke/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Google Kubernetes Engine (GKE)
     </a>
   </li>

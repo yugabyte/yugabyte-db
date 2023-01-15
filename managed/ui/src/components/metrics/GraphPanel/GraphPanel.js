@@ -106,6 +106,7 @@ export const panelTypes = {
       'tserver_log_bytes_written',
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
+      'tserver_write_lock_latency',
       'tserver_tc_malloc_stats',
       'tserver_log_stats',
       'tserver_cache_reader_num_ops',
@@ -253,6 +254,7 @@ export const panelTypes = {
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
       'tserver_log_stats',
+      'tserver_write_lock_latency',
       'tserver_cache_reader_num_ops'
     ]
   },
@@ -408,7 +410,7 @@ class GraphPanel extends Component {
 
       if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
         //Hide master related panels for tserver pods.
-        if (nodeName.match('yb-tserver-') != null) {
+        if (nodeName.match('yb-tserver-') !== null) {
           if (
             panelTypes[type].title === 'Master Server' ||
             panelTypes[type].title === 'Master Server Advanced'
@@ -417,7 +419,7 @@ class GraphPanel extends Component {
           }
         }
         //Hide empty panels for master pods.
-        if (nodeName.match('yb-master-') != null) {
+        if (nodeName.match('yb-master-') !== null) {
           const skipList = [
             'Tablet Server',
             'YSQL Ops and Latency',

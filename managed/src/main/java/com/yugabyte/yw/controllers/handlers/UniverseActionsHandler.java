@@ -35,15 +35,16 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Http;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 public class UniverseActionsHandler {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseActionsHandler.class);
@@ -233,24 +234,24 @@ public class UniverseActionsHandler {
       // Setting the ClientRootCA to the already existing clientRootCA as we do not
       // support root certificate rotation through ToggleTLS.
       // There is a check for different new and existing root cert already.
-      taskParams.clientRootCA = universeDetails.clientRootCA;
-      if (taskParams.clientRootCA == null) {
+      taskParams.setClientRootCA(universeDetails.getClientRootCA());
+      if (taskParams.getClientRootCA() == null) {
         if (requestParams.clientRootCA == null) {
           if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
             // Setting ClientRootCA to RootCA incase rootAndClientRootCA is true
-            taskParams.clientRootCA = taskParams.rootCA;
+            taskParams.setClientRootCA(taskParams.rootCA);
           } else {
             // create self signed clientRootCA in case it is not provided by the user
             // and rootCA and clientRootCA needs to be different
-            taskParams.clientRootCA =
+            taskParams.setClientRootCA(
                 CertificateHelper.createClientRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid);
+                    customer.uuid));
           }
         } else {
           // Set the ClientRootCA to the user provided ClientRootCA if it exists
-          taskParams.clientRootCA = requestParams.clientRootCA;
+          taskParams.setClientRootCA(requestParams.clientRootCA);
         }
       }
 
@@ -258,7 +259,7 @@ public class UniverseActionsHandler {
       // This is necessary to set to ensure backward compatibity as existing parts of
       // codebase uses rootCA for Client to Node Encryption
       if (taskParams.rootCA == null && taskParams.rootAndClientRootCASame) {
-        taskParams.rootCA = taskParams.clientRootCA;
+        taskParams.rootCA = taskParams.getClientRootCA();
       }
 
       // If client encryption is enabled, generate the client cert file for each node.
@@ -267,7 +268,9 @@ public class UniverseActionsHandler {
         if (cert.certType == CertConfigType.SelfSigned
             || cert.certType == CertConfigType.HashicorpVault) {
           CertificateHelper.createClientCertificate(
-              runtimeConfigFactory.staticApplicationConf(), customer.uuid, taskParams.clientRootCA);
+              runtimeConfigFactory.staticApplicationConf(),
+              customer.uuid,
+              taskParams.getClientRootCA());
         }
       }
     }
@@ -410,6 +413,36 @@ public class UniverseActionsHandler {
         universe.name);
 
     LOG.info("Resumed universe " + universe.universeUUID + " for customer [" + customer.name + "]");
+    return taskUUID;
+  }
+
+  public UUID updateLoadBalancerConfig(
+      Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
+    LOG.info(
+        "Update load balancer config, universe: {} [ {} ] ", universe.name, universe.universeUUID);
+    // Set existing LB config
+    taskParams.setExistingLBs(universe.getUniverseDetails().clusters);
+    // Task to update LB config
+    TaskType taskType = TaskType.UpdateLoadBalancerConfig;
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
+    LOG.info(
+        "Submitted update load balancer config for {} : {}, task uuid = {}.",
+        universe.universeUUID,
+        universe.name,
+        taskUUID);
+
+    CustomerTask.create(
+        customer,
+        universe.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.UpdateLoadBalancerConfig,
+        universe.name);
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        universe.universeUUID,
+        universe.name);
     return taskUUID;
   }
 }

@@ -219,7 +219,7 @@ class TransactionParticipant::Impl
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
     if (metadata.external_transaction && metadata.status_tablet.empty()) {
       return STATUS(InvalidArgument, Format("For external transaction $0, status tablet is empty",
-                                            metadata.transaction_id));
+                                             metadata.transaction_id));
     }
     transactions_.insert(std::make_shared<RunningTransaction>(
         metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this));
@@ -1106,6 +1106,16 @@ class TransactionParticipant::Impl
     return metadata;
   }
 
+  Result<bool> IsExternalTransaction(const TransactionId& transaction_id) {
+    auto lock_and_iterator = LockAndFind(transaction_id,
+                                         "is external transaction"s,
+                                         TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+    if (!lock_and_iterator.found()) {
+      return STATUS(NotFound, Format("Unknown transaction $0", transaction_id));
+    }
+    return lock_and_iterator.transaction().external_transaction();
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
@@ -1517,7 +1527,11 @@ class TransactionParticipant::Impl
       operation->CompleteWithStatus(Status::OK());
       return;
     }
-    participant_context_.SubmitUpdateTransaction(std::move(operation), term);
+    Status submit_status = participant_context_.SubmitUpdateTransaction(std::move(operation), term);
+    if (!submit_status.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << "Could not submit transaction status update operation: "
+                              << operation->ToString() << ", status: " << submit_status;
+    }
   }
 
   void HandleCleanup(
@@ -1840,6 +1854,10 @@ void TransactionParticipant::Handle(
 
 void TransactionParticipant::Cleanup(TransactionIdSet&& set) {
   return impl_->Cleanup(std::move(set), this);
+}
+
+Result<bool> TransactionParticipant::IsExternalTransaction(const TransactionId& transaction_id) {
+  return impl_->IsExternalTransaction(transaction_id);
 }
 
 Status TransactionParticipant::ProcessReplicated(const ReplicatedData& data) {

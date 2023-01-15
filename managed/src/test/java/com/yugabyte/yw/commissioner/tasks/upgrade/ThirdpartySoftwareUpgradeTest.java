@@ -110,8 +110,8 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testOnpremManualProvisionException() {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-    keyInfo.skipProvisioning = true;
-    AccessKey.create(onPremProvider.uuid, ApiUtils.DEFAULT_ACCESS_KEY_CODE, keyInfo);
+    onPremProvider.details.skipProvisioning = true;
+    onPremProvider.save();
     Universe.saveDetails(
         defaultUniverse.universeUUID,
         details -> {

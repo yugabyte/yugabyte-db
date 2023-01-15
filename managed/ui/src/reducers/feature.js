@@ -21,9 +21,10 @@ const initialStateFeatureInTest = {
   enableGcpKMS: true,
   enableAzuKMS: true,
   enableRunTimeConfig: false,
-  enablePITR: false,
+  enablePITR: true,
   enableDedicatedNodes: false,
-  enableNotificationTemplates: false
+  enableNotificationTemplates: false,
+  enablePrefillKubeConfig: false,
 };
 
 const initialStateFeatureReleased = {
@@ -47,9 +48,10 @@ const initialStateFeatureReleased = {
   enableGcpKMS: true,
   enableAzuKMS: true,
   enableRunTimeConfig: false,
-  enablePITR: false,
+  enablePITR: true,
   enableDedicatedNodes: false,
-  enableNotificationTemplates: false
+  enableNotificationTemplates: false,
+  enablePrefillKubeConfig: false
 };
 
 export const FeatureFlag = (

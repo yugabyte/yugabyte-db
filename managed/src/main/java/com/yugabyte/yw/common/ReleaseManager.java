@@ -68,6 +68,9 @@ public class ReleaseManager {
 
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
 
+  private static final String ybPackageRegex =
+      "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
+
   @ApiModel(description = "Yugabyte release metadata")
   public static class ReleaseMetadata {
 
@@ -266,8 +269,7 @@ public class ReleaseManager {
   // This regex needs to support old style packages with -ee as well as new style packages without.
   // There are previously existing YW deployments that will have the old packages and users will
   // need to still be able to use said universes and their existing YB releases.
-  static final Pattern ybPackagePattern =
-      Pattern.compile("yugabyte-(?:ee-)?(.*)-(alma|centos)(.*).tar.gz");
+  static final Pattern ybPackagePattern = Pattern.compile(ybPackageRegex);
 
   final Pattern ybHelmChartPattern = Pattern.compile("yugabyte-(.*)-helm.tar.gz");
 
@@ -544,8 +546,7 @@ public class ReleaseManager {
 
       // Local copy pattern to account for the presence of characters prior to the file name itself.
       // (ensures that all local releases get imported prior to version checking).
-      Pattern ybPackagePatternCopy =
-          Pattern.compile("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos)(.*).tar.gz");
+      Pattern ybPackagePatternCopy = Pattern.compile("[^.]+" + ybPackageRegex);
 
       Pattern ybHelmChartPatternCopy = Pattern.compile("[^.]+yugabyte-(.*)-helm.tar.gz");
 

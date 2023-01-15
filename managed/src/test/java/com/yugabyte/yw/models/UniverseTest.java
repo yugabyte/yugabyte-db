@@ -723,24 +723,37 @@ public class UniverseTest extends FakeDBApplication {
         Set<NodeActionType> allowedActions = new AllowedActionsHelper(u, nd).listAllowedActions();
 
         if (nodeState == NodeDetails.NodeState.ToBeAdded) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE, NodeActionType.ADD), allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Adding) {
-          assertEquals(
-              ImmutableSet.of(NodeActionType.DELETE, NodeActionType.RELEASE), allowedActions);
+          if (numNodes == 4) {
+            assertEquals(
+                ImmutableSet.of(
+                    NodeActionType.DELETE,
+                    NodeActionType.RELEASE,
+                    NodeActionType.ADD,
+                    NodeActionType.REMOVE),
+                allowedActions);
+          } else {
+            assertEquals(
+                ImmutableSet.of(NodeActionType.DELETE, NodeActionType.RELEASE, NodeActionType.ADD),
+                allowedActions);
+          }
         } else if (nodeState == NodeDetails.NodeState.InstanceCreated) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE, NodeActionType.ADD), allowedActions);
         } else if (nodeState == NodeDetails.NodeState.ServerSetup) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE, NodeActionType.ADD), allowedActions);
         } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
           if (nd.isMaster) {
             // Cannot REMOVE master node: As it will under replicate the masters.
-            assertEquals(ImmutableSet.of(), allowedActions);
+            assertEquals(ImmutableSet.of(NodeActionType.ADD), allowedActions);
           } else {
-            assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
+            assertEquals(
+                ImmutableSet.of(NodeActionType.REMOVE, NodeActionType.ADD), allowedActions);
           }
         } else if (nodeState == NodeDetails.NodeState.SoftwareInstalled) {
           assertEquals(
-              ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE), allowedActions);
+              ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE, NodeActionType.ADD),
+              allowedActions);
         } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
           if (nd.isMaster) {
             // Cannot REMOVE master node: As it will under replicate the masters.
@@ -779,9 +792,9 @@ public class UniverseTest extends FakeDBApplication {
                 ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
           }
         } else if (nodeState == NodeDetails.NodeState.Provisioned) {
-          assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+          assertEquals(ImmutableSet.of(NodeActionType.DELETE, NodeActionType.ADD), allowedActions);
         } else if (nodeState == NodeDetails.NodeState.BeingDecommissioned) {
-          assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE), allowedActions);
+          assertEquals(ImmutableSet.of(NodeActionType.RELEASE), allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Starting) {
           if (nd.isMaster) {
             // Cannot REMOVE master node: As it will under replicate the masters.

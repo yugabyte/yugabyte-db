@@ -304,6 +304,9 @@ class ClusterAdminClient {
 
   Status GetWalRetentionSecs(const client::YBTableName& table_name);
 
+  Status PromoteAutoFlags(
+      const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const TabletId& tablet_id,

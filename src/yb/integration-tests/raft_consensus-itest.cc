@@ -217,9 +217,8 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
     Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
     QLRowBlock result(schema);
-    std::string data_str;
-    ASSERT_OK(rpc.AssignSidecarTo(0, &data_str));
-    Slice data(data_str);
+    auto data_buffer = ASSERT_RESULT(rpc.ExtractSidecar(0));
+    auto data = data_buffer.AsSlice();
     if (!data.empty()) {
       ASSERT_OK(result.Deserialize(QLClient::YQL_CLIENT_CQL, &data));
     }
@@ -1873,7 +1872,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   ConsensusServiceProxy* c_proxy = CHECK_NOTNULL(replica_ts->consensus_proxy.get());
 
-  Arena arena;
+  ThreadSafeArena arena;
   consensus::LWConsensusRequestPB req(&arena);
   consensus::LWConsensusResponsePB resp(&arena);
   RpcController rpc;
@@ -2154,8 +2153,12 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
                                   MonoDelta::FromMilliseconds(100));
     ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
 
-    // Step down.
-    ASSERT_OK(LeaderStepDown(initial_leader, tablet_id_, nullptr, MonoDelta::FromSeconds(10)));
+    // Step down. Disable graceful transition to avoid other voters are elected as leader.
+    ASSERT_OK(LeaderStepDown(initial_leader,
+                             tablet_id_,
+                             nullptr,
+                             MonoDelta::FromSeconds(10),
+                             /* disable_graceful_transition = */ true));
 
     // Assert that elections time out without a live majority.
     // We specify a very short timeout here to keep the tests fast.
@@ -3200,7 +3203,7 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
                 "TEST_follower_fail_all_prepare", "true"));
 
   // Pretend to be the leader and send a request that should return an error.
-  Arena arena;
+  ThreadSafeArena arena;
   consensus::LWConsensusRequestPB req(&arena);
   consensus::LWConsensusResponsePB resp(&arena);
   RpcController rpc;

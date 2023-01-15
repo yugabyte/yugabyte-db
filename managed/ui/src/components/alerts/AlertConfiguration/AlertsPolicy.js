@@ -82,6 +82,7 @@ export class AlertsPolicy extends Component {
           <Col lg={5}>Threshold</Col>
         </Row>
         {fields.map((instanceTypeItem, instanceTypeIdx) => (
+          // eslint-disable-next-line react/no-array-index-key
           <Row key={instanceTypeIdx}>
             <Col lg={2}>
               <Field

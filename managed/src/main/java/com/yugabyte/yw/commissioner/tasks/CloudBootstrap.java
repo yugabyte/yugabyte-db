@@ -46,7 +46,6 @@ public class CloudBootstrap extends CloudTaskBase {
       taskParams.hostVpcRegion = provider.hostVpcRegion;
       taskParams.keyPairName = provider.keyPairName;
       taskParams.providerUUID = provider.uuid;
-      taskParams.overrideKeyValidate = provider.overrideKeyValidate;
       taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
       taskParams.sshPort = provider.details.sshPort;
       taskParams.sshUser = provider.details.sshUser;
@@ -160,7 +159,7 @@ public class CloudBootstrap extends CloudTaskBase {
 
     // Whether provider should validate a custom KeyPair
     // Default: false.
-    public boolean overrideKeyValidate = false;
+    public boolean skipKeyPairValidate = false;
 
     public String hostVpcId = null;
     public String hostVpcRegion = null;
@@ -259,7 +258,7 @@ public class CloudBootstrap extends CloudTaskBase {
     params.regionCode = regionCode;
     params.keyPairName = taskParams().keyPairName;
     params.sshPrivateKeyContent = taskParams().sshPrivateKeyContent;
-    params.overrideKeyValidate = taskParams().overrideKeyValidate;
+    params.skipKeyPairValidate = taskParams().skipKeyPairValidate;
     params.sshUser = taskParams().sshUser;
     params.sshPort = taskParams().sshPort;
     params.airGapInstall = taskParams().airGapInstall;

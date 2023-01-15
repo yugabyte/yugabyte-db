@@ -334,7 +334,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                       ClusterType.PRIMARY,
                       cluster.userIntent,
                       cluster.userIntent.replicationFactor,
-                      region.uuid);
+                      region.uuid,
+                      Collections.emptyList());
               if (isDefaultRegion) {
                 cluster.placementInfo.cloudList.get(0).defaultRegion = region.uuid;
               }

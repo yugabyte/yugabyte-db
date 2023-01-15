@@ -177,7 +177,7 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-function mapStateToProps(state, ownProps) {
+function mapStateToProps(state) {
   // Detect if software update is available for this universe
   const isUpdateAvailable = (state) => {
     const isFirstVersionOlder = (first, second) => {
@@ -223,7 +223,7 @@ function mapStateToProps(state, ownProps) {
       }
       return false;
     } catch (err) {
-      console.log('Versions comparison failed with: ' + err);
+      console.error('Versions comparison failed with: ' + err);
       return false;
     }
   };

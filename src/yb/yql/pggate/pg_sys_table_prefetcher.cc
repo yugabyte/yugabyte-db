@@ -291,7 +291,7 @@ class Loader {
  public:
   Loader(PgSession* session, size_t estimated_size, uint64_t latest_known_ysql_catalog_version)
       : session_(session),
-        arena_(std::make_shared<Arena>()),
+        arena_(SharedArena()),
         latest_known_ysql_catalog_version_(latest_known_ysql_catalog_version) {
     op_info_.reserve(estimated_size);
   }
@@ -354,7 +354,7 @@ class Loader {
                        op_info.index ? op_info.index->id() : PgObjectId(),
                        &op_info.index_targets,
                        std::move(sidecar));
-            return !PrepareNextRequest(op_info.operation.get());
+            return !VERIFY_RESULT(PrepareNextRequest(*op_info.table, op_info.operation.get()));
           }, true /* bad_status_value */);
       op_info_.erase(
           std::remove_if(op_info_.begin(), op_info_.end(), remove_predicate), op_info_.end());
@@ -366,7 +366,7 @@ class Loader {
  private:
   PgSession* session_;
   std::vector<OperationInfo> op_info_;
-  std::shared_ptr<Arena> arena_;
+  std::shared_ptr<ThreadSafeArena> arena_;
   const uint64_t latest_known_ysql_catalog_version_;
 };
 

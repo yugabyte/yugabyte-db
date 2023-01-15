@@ -306,4 +306,8 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
       EncryptionAtRestUtil.addKeyRef(universeUUID, configUUID, keyRef);
     }
   }
+
+  public void refreshService(UUID configUUID) {
+    // Do Nothing - optionally override sub classes when required.
+  }
 }

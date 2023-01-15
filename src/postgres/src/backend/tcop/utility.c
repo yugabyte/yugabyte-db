@@ -75,6 +75,7 @@
 
 #include "pg_yb_utils.h"
 #include "commands/ybccmds.h"
+#include "commands/yb_profile.h"
 
 static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
                                         const char *queryString,
@@ -238,6 +239,8 @@ check_xact_readonly(Node *parsetree)
 		case T_CreateSubscriptionStmt:
 		case T_AlterSubscriptionStmt:
 		case T_DropSubscriptionStmt:
+		case T_YbCreateProfileStmt:
+		case T_YbDropProfileStmt:
 			PreventCommandIfReadOnly(CreateCommandTag(parsetree));
 			PreventCommandIfParallelMode(CreateCommandTag(parsetree));
 			break;
@@ -957,6 +960,17 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 					ExecSecLabelStmt(stmt);
 				break;
 			}
+
+		case T_YbCreateProfileStmt:
+			PreventInTransactionBlock(isTopLevel, "CREATE PROFILE");
+			YbCreateProfile((YbCreateProfileStmt *) parsetree);
+			break;
+
+		case T_YbDropProfileStmt:
+			/* no event triggers for global objects */
+			PreventInTransactionBlock(isTopLevel, "DROP PROFILE");
+			YbDropProfile((YbDropProfileStmt *) parsetree);
+			break;
 
 		default:
 			/* All other statement types have event trigger support */
@@ -2467,6 +2481,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_YBTABLEGROUP:
 					tag = "DROP TABLEGROUP";
 					break;
+				case OBJECT_YBPROFILE:
+					tag = "DROP PROFILE";
+					break;
 				default:
 					tag = "???";
 			}
@@ -3026,6 +3043,14 @@ CreateCommandTag(Node *parsetree)
 						break;
 				}
 			}
+			break;
+
+		case T_YbCreateProfileStmt:
+			tag = "CREATE PROFILE";
+			break;
+
+		case T_YbDropProfileStmt:
+			tag = "DROP PROFILE";
 			break;
 
 		default:

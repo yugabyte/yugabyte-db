@@ -38,10 +38,12 @@ func (p portCheck) Execute() Result {
 		Status: StatusPassed,
 	}
 	var ports []int = []int{
-		viper.GetInt("prometheus.externalPort"),
-		viper.GetInt("platform.externalPort"), //This is currently the same port as postgres.
-		viper.GetInt("platform.containerExposedPort"),
-		viper.GetInt("postgres.port"),
+		viper.GetInt("prometheus.port"),
+		viper.GetInt("platform.port"),
+	}
+
+	if viper.GetBool("postgres.install.enabled") {
+		ports = append(ports, viper.GetInt("postgres.install.port"))
 	}
 
 	usedPorts := make([]int, 0, len(ports))

@@ -333,9 +333,9 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
           std::shared_ptr<std::vector<ColumnSchema>> columns =
               std::make_shared<std::vector<ColumnSchema>>(YBSchema(projection).columns());
 
-          std::string data;
-          RETURN_NOT_OK(controller.AssignSidecarTo(ql_batch.rows_data_sidecar(), &data));
-          ql::RowsResult result(table->name(), columns, data);
+          ql::RowsResult result(
+              table->name(), columns,
+              VERIFY_RESULT(controller.ExtractSidecar(ql_batch.rows_data_sidecar())));
           auto row_block = result.GetRowBlock();
           if (row_block->row_count() == 1) {
             if (found) {

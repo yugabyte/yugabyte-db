@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import java.io.File;
@@ -58,17 +59,18 @@ public class TemplateManagerTest extends FakeDBApplication {
   @InjectMocks TemplateManager templateManager;
 
   private AccessKey setupTestAccessKey() {
+    testProvider.details.sshUser = "centos";
+    testProvider.details.sshPort = 3333;
+    testProvider.save();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = "/path/to/pk.pem";
-    keyInfo.sshUser = "centos";
-    keyInfo.sshPort = 3333;
     keyInfo.vaultFile = "/path/to/vault";
     keyInfo.vaultPasswordFile = "/path/to/vaultpassword";
     keyInfo.privateKey = "/path/to/pemfile";
     return AccessKey.create(testProvider.uuid, KEY_CODE, keyInfo);
   }
 
-  private List<String> getExpectedCommmand(AccessKey.KeyInfo keyInfo) {
+  private List<String> getExpectedCommmand(KeyInfo keyInfo) {
     List<String> cmd = new LinkedList<>();
     cmd.add(YBCLOUD_SCRIPT);
     cmd.add(onprem.name());
@@ -79,7 +81,7 @@ public class TemplateManagerTest extends FakeDBApplication {
     cmd.add("--destination");
     cmd.add(YB_STORAGE_PATH_VALUE + "/provision/" + testProvider.uuid);
     cmd.add("--ssh_user");
-    cmd.add(keyInfo.sshUser);
+    cmd.add(testProvider.details.sshUser);
     cmd.add("--vars_file");
     cmd.add(keyInfo.vaultFile);
     cmd.add("--vault_password_file");
@@ -89,7 +91,7 @@ public class TemplateManagerTest extends FakeDBApplication {
     cmd.add("--local_package_path");
     cmd.add(YB_THIRDPARTY_VALUE);
     cmd.add("--custom_ssh_port");
-    cmd.add(keyInfo.sshPort.toString());
+    cmd.add(testProvider.details.sshPort.toString());
     return cmd;
   }
 
@@ -115,18 +117,19 @@ public class TemplateManagerTest extends FakeDBApplication {
       boolean passwordlessSudo,
       boolean installNodeExporter,
       boolean setUpChrony) {
-    assertEquals(airGapInstall, accessKey.getKeyInfo().airGapInstall);
-    assertEquals(passwordlessSudo, accessKey.getKeyInfo().passwordlessSudoAccess);
-    assertEquals(installNodeExporter, accessKey.getKeyInfo().installNodeExporter);
-    assertEquals(setUpChrony, accessKey.getKeyInfo().setUpChrony);
+    testProvider.refresh();
+    assertEquals(airGapInstall, testProvider.details.airGapInstall);
+    assertEquals(passwordlessSudo, testProvider.details.passwordlessSudoAccess);
+    assertEquals(installNodeExporter, testProvider.details.installNodeExporter);
+    assertEquals(setUpChrony, testProvider.details.setUpChrony);
     if (airGapInstall || passwordlessSudo) {
       String expectedProvisionScript =
           String.format(
               "%s/provision/%s/%s",
               YB_STORAGE_PATH_VALUE, accessKey.getProviderUUID(), PROVISION_SCRIPT);
-      assertEquals(expectedProvisionScript, accessKey.getKeyInfo().provisionInstanceScript);
+      assertEquals(expectedProvisionScript, testProvider.details.provisionInstanceScript);
     } else {
-      assertNull(accessKey.getKeyInfo().provisionInstanceScript);
+      assertNull(testProvider.details.provisionInstanceScript);
     }
   }
 

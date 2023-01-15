@@ -25,6 +25,7 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/expiration.h"
 
 #include "yb/gutil/thread_annotations.h"

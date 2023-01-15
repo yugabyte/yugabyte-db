@@ -81,6 +81,7 @@ const STEPS = [
     title: 'Restore Backup',
     submitLabel: TEXT_RESTORE,
     component: RenameKeyspace,
+    // eslint-disable-next-line react/display-name
     footer: (onClick: Function) => (
       <YBButton
         btnClass={`btn btn-default pull-right restore-wth-rename-but`}
@@ -195,7 +196,8 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
     keyspaces: Array(backup_details?.commonBackupInfo.responseList.length).fill(''),
     kmsConfigUUID: null,
     should_rename_keyspace: false,
-    disable_keyspace_rename: false
+    disable_keyspace_rename: false,
+    allow_YCQL_conflict_keyspace: false
   };
 
   const validateTablesAndRestore = async (
@@ -213,6 +215,23 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       if (options.doRestore) {
         restore.mutate({ backup_details: backup_details as IBackup, values });
       }
+      return;
+    }
+    // in YCQL, if we try to restore a single keyspace, while the keyspace already exists in the db, with no conflicting tables, we should allow it
+    // see https://yugabyte.atlassian.net/browse/PLAT-6460
+    if (!isRestoreEntireBackup && values['backup']['backupType'] === BACKUP_API_TYPES.YCQL) {
+      if (options.doRestore) {
+        restore.mutate({
+          backup_details,
+          values
+        });
+        return;
+      }
+
+      options.setFieldValue('allow_YCQL_conflict_keyspace', true, false);
+      options.setFieldValue('should_rename_keyspace', false, false);
+      options.setFieldValue('disable_keyspace_rename', false, false);
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
       return;
     }
 
@@ -319,7 +338,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
         if (values['should_rename_keyspace'] && currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
           setOverrideSubmitLabel(TEXT_RESTORE);
-        } else if (currentStep === STEPS.length - 1) {
+        } else if (currentStep === STEPS.length - 1 || values['allow_YCQL_conflict_keyspace']) {
           await validateTablesAndRestore(values, {
             setFieldValue,
             setFieldError,
@@ -459,6 +478,7 @@ function RestoreChooseUniverseForm({
               };
             })}
             components={{
+              // eslint-disable-next-line react/display-name
               Option: (props: any) => {
                 if (props.data.value === backup_details.universeUUID) {
                   return (
@@ -612,7 +632,7 @@ export function RenameKeyspace({
             (keyspace: Keyspace_Table, index: number) =>
               values['searchText'] &&
               keyspace.keyspace &&
-              keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
+              !keyspace.keyspace.includes(values['searchText']) ? null : (
                 // eslint-disable-next-line react/jsx-indent
                 <Row key={index}>
                   <Col lg={6} className="keyspaces-input no-padding">

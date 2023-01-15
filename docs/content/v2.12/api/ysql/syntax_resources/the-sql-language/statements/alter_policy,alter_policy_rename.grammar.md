@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 alter_policy ::= ALTER POLICY name ON table_name 
                  [ TO { role_name
                         | PUBLIC

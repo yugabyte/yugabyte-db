@@ -2,7 +2,6 @@
 title: Smart driver FAQ
 linkTitle: Smart driver FAQ
 description: YugabyteDB smart drivers frequently asked questions
-headcontent: Frequently asked questions about YugabyteDB smart drivers
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /preview/drivers-orms/smart-drivers-faq/
@@ -10,13 +9,25 @@ menu:
   preview_faq:
     identifier: smart-drivers-faq
     parent: faq
-    weight: 2725
+    weight: 40
 type: docs
+showRightNav: false
 ---
+
+### Contents
+
+- [What is a smart driver?](#what-is-a-smart-driver)
+- [Why do I need connection load balancing?](#why-do-i-need-connection-load-balancing)
+- [When should I use a smart driver?](#when-should-i-use-a-smart-driver)
+- [How hard is it to port an application to use a smart driver?](#how-hard-is-it-to-port-an-application-to-use-a-smart-driver)
+- [How does the smart driver determine if a node is unhealthy, or the cluster configuration has changed?](#how-does-the-smart-driver-determine-if-a-node-is-unhealthy-or-the-cluster-configuration-has-changed)
+- [Do smart drivers know when a region fails?](#do-smart-drivers-know-when-a-region-fails)
+- [Do smart drivers provide metrics that can be monitored via JMX?](#do-smart-drivers-provide-metrics-that-can-be-monitored-via-jmx)
+- [Are there recommended settings for the maximum lifetime of a connection?](#are-there-recommended-settings-for-the-maximum-lifetime-of-a-connection)
 
 ### What is a smart driver?
 
-Think of smart drivers as PostgreSQL drivers with the addition of "smart" features that take advantage of the distributed nature of YugabyteDB. Depending on how it is configured, a smart driver intelligently distributes application connections across the nodes and regions of a YugabyteDB cluster, providing lower latencies and preventing hot nodes. For more information, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
+Think of smart drivers as PostgreSQL drivers with the addition of "smart" features that take advantage of the distributed nature of YugabyteDB. A smart driver intelligently distributes application connections across the nodes and regions of a YugabyteDB cluster, without the need for external load balancers. Balanced connections provide lower latencies and prevent hot nodes. For more information, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
 
 ### Why do I need connection load balancing?
 
@@ -39,7 +50,7 @@ Different language drivers initialize connections in different ways, but in all 
 For example, In JDBC, you change the URL to use the load balance property:
 
 ```java
-string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true"
+string yburl = "jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true"
 DriverManager.getConnection(yburl);
 ```
 

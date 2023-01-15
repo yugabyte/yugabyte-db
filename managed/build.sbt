@@ -164,7 +164,6 @@ libraryDependencies ++= Seq(
   "org.pac4j" % "pac4j-oauth" % "3.7.0" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "3.7.0" exclude("commons-io" , "commons-io"),
   "com.typesafe.play" %% "play-json" % "2.6.14",
-  "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
   "org.apache.velocity" % "velocity" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
@@ -192,6 +191,9 @@ libraryDependencies ++= Seq(
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
   "io.swagger" % "swagger-annotations" % "1.5.22", // needed for annotations in prod code
   "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
+  // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
+  // Remove once YBM starts using real PG DB.
+  "org.hsqldb" % "hsqldb" % "2.3.4",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
@@ -204,7 +206,8 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
-  "io.grpc" % "grpc-testing" % "1.48.0" % Test
+  "io.grpc" % "grpc-testing" % "1.48.0" % Test,
+  "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
 )
 // Clear default resolvers.
 appResolvers := None
@@ -425,9 +428,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b11"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b13"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.37-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b12"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b14"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

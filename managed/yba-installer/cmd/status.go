@@ -6,6 +6,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 )
@@ -26,21 +28,17 @@ var statusCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		// Print status for given service.
 		if len(args) == 1 {
-			var status common.Status
-			switch args[0] {
-			case "yb-platform":
-				status = services["yb-platform"].Status()
-			case "postgres":
-				status = services["postgres"].Status()
-			case "prometheus":
-				status = services["postgres"].Status()
+			service, exists := services[args[0]]
+			if !exists {
+				fmt.Printf("Service %s was not installed\n", args[0])
+				return
 			}
-			common.PrintStatus(status)
-			// Print status for all services.
+			common.PrintStatus(service.Status())
 		} else {
+			// Print status for all services.
 			var statuses []common.Status
-			for _, name := range serviceOrder {
-				statuses = append(statuses, services[name].Status())
+			for _, service := range services {
+				statuses = append(statuses, service.Status())
 			}
 			common.PrintStatus(statuses...)
 		}

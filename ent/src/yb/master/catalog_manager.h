@@ -464,7 +464,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   const docdb::DocReadContext& doc_read_context();
 
-  void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
+  Status Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) override;
 
   AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(
       const TabletInfoPtr& tablet, const std::string& snapshot_id,
@@ -550,8 +550,18 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::shared_ptr<client::YBTableInfo>& info,
       const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
       GetTableSchemaResponsePB* resp);
-  // Adds a validated table to the sys catalog table map for the given universe, and if all tables
-  // have been validated, creates a CDC stream for each table.
+
+  // Adds a validated table to the sys catalog table map for the given universe
+  Status AddValidatedTableToUniverseReplication(
+      scoped_refptr<UniverseReplicationInfo> universe,
+      const TableId& producer_table,
+      const TableId& consumer_table);
+
+  // If all tables have been validated, creates a CDC stream for each table.
+  Status CreateCdcStreamsIfReplicationValidated(
+      scoped_refptr<UniverseReplicationInfo> universe,
+      const std::unordered_map<TableId, std::string>& table_bootstrap_ids);
+
   Status AddValidatedTableAndCreateCdcStreams(
       scoped_refptr<UniverseReplicationInfo> universe,
       const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
@@ -559,8 +569,14 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const TableId& consumer_table);
 
   void GetTableSchemaCallback(
-      const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& info,
+      const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,
       const std::unordered_map<TableId, std::string>& producer_bootstrap_ids, const Status& s);
+
+  Status ValidateTableAndCreateCdcStreams(
+      scoped_refptr<UniverseReplicationInfo> universe,
+      const std::shared_ptr<client::YBTableInfo>& producer_info,
+      const std::unordered_map<TableId, std::string>& producer_bootstrap_ids);
+
   void GetTablegroupSchemaCallback(
       const std::string& universe_id, const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
       const TablegroupId& producer_tablegroup_id,
@@ -714,6 +730,15 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     const std::string& consumer_table_id,
     const std::string& stream_id,
     const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
+
+  // Update the UniverseReplicationInfo object when toggling replication.
+  Status SetUniverseReplicationInfoEnabled(const std::string& producer_id,
+                                           bool is_enabled) EXCLUDES(mutex_);
+
+  // Update the cluster config and consumer registry objects when toggling replication.
+  Status SetConsumerRegistryEnabled(const std::string& producer_id,
+                                    bool is_enabled,
+                                    ClusterConfigInfo::WriteLock* l);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;

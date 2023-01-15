@@ -67,9 +67,9 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const std::vector<std::string>& GetPartitions() const;
 
-  const std::string& LastPartition() const;
-
   size_t GetPartitionCount() const;
+
+  client::PartitionListVersion GetPartitionListVersion() const;
 
   // When reading a row given its associated ybctid, the ybctid value is decoded to the row.
   Result<std::string> DecodeYbctid(const Slice& ybctid) const;

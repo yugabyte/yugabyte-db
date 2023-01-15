@@ -28,7 +28,7 @@ namespace pggate {
 namespace {
 
 ColumnSchema kColumnYBctid(
-    "ybctid", QLType::CreatePrimitiveType<DataType::BINARY>(),
+    "ybctid", QLType::Create(DataType::BINARY),
     false, false, false, false, to_underlying(PgSystemAttrNum::kYBTupleId));
 
 }

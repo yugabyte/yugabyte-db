@@ -93,11 +93,11 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
     showOrRedirect(currentCustomer.data.features, 'main.logs');
 
     const params = new URLSearchParams(window.location.search);
-    const regexFromParam = params.get('queryRegex') || undefined;
-    const maxLinesFromParam = params.get('maxLines') || DEFAULT_MAX_LINES;
-    const universeFromParam = params.get('universeName') || undefined;
-    const startDateFromParam = params.get('startDate') || convertDateToStr(getDefaultStartTime());
-    const endDateFromParam = params.get('endDate') || convertDateToStr(getDefaultEndTime());
+    const regexFromParam = params.get('queryRegex') ?? undefined;
+    const maxLinesFromParam = params.get('maxLines') ?? DEFAULT_MAX_LINES;
+    const universeFromParam = params.get('universeName') ?? undefined;
+    const startDateFromParam = params.get('startDate') ?? convertDateToStr(getDefaultStartTime());
+    const endDateFromParam = params.get('endDate') ?? convertDateToStr(getDefaultEndTime());
 
     setRegex(regexFromParam);
     setMaxLines(maxLinesFromParam);

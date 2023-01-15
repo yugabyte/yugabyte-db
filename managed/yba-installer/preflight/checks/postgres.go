@@ -5,20 +5,29 @@
 package checks
 
 import (
+	"database/sql"
 	"fmt"
+	"strconv"
+	"strings"
 
+	_ "github.com/lib/pq"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"golang.org/x/exp/slices"
 )
 
-// Postgres checks if we can connect to postgres
-var Postgres = &postgresCheck{"postgres", true}
+var Postgres = &postgresCheck{
+	"postgres",
+	true,
+	[]int{10, 14}, // supportedMajorVersions
+}
 
 type postgresCheck struct {
-	name        string
-	skipAllowed bool
+	name                   string
+	skipAllowed            bool
+	supportedMajorVersions []int
 }
 
 // Name gets the name of the check
@@ -37,28 +46,100 @@ func (p postgresCheck) Execute() Result {
 		Check:  p.name,
 		Status: StatusPassed,
 	}
-	if !viper.GetBool("postgres.bringOwn") {
-		log.Debug("skipping " + p.name + " as user we will provide postgres")
+
+	useExisting := viper.GetBool("postgres.useExisting.enabled")
+	install := viper.GetBool("postgres.install.enabled")
+	if (useExisting && install) || (!useExisting && !install) {
+		res.Status = StatusCritical
+		res.Error = fmt.Errorf("Exactly one of postgres.useExisting.enabled and postgres.install.enabled should be set to true.")
 		return res
 	}
-	port := config.GetYamlPathData("postgres.port")
-	username := config.GetYamlPathData(".postgres.username")
-	password := config.GetYamlPathData(".postgres.password")
 
-	// Logging parsed user provided port, username, and password for
-	// debugging purposes.
-	log.Debug("User provided Postgres port: " + port)
+	if install {
+		return res
+	}
 
-	checkPostgresCommand := "PGPASSWORD= " + password +
-		" psql -p " + port + " -U " + username + " -d yugaware -c '\\d'"
-	command := "bash"
-	args := []string{"-c", checkPostgresCommand}
+	res = p.testExistingPostgres(
+		config.GetYamlPathData("postgres.useExisting.host"),
+		"yugaware",
+		config.GetYamlPathData("postgres.useExisting.username"),
+		config.GetYamlPathData("postgres.useExisting.password"),
+		config.GetYamlPathData("postgres.useExisting.port"),
+	)
+	if res.Status != StatusPassed {
+		return res
+	}
 
-	if _, err := common.ExecuteBashCommand(command, args); err != nil {
-		log.Info("User provided Postgres not initialized properly! See the" +
-			" above error message for more details.")
-		res.Error = fmt.Errorf("Could not connect to postgres")
+	_, err := common.RunBash("pg_dump", []string{"--help"})
+	if err != nil {
+		res.Error = fmt.Errorf("pg_dump has to be installed on the host (error %w)", err)
 		res.Status = StatusCritical
+		return res
+	}
+
+	return res
+}
+
+// If the user has specified their own postgres db endpoint, this method attempts to
+// validate it
+func (p postgresCheck) testExistingPostgres(host, dbname, username, password, port string) Result {
+
+	res := Result{
+		Check:  p.name,
+		Status: StatusPassed,
+	}
+
+	nonPwdConnStr := fmt.Sprintf(
+		"user='%s' host=%s port=%s dbname=%s sslmode=disable",
+		username,
+		host,
+		port,
+		dbname)
+	log.Debug(fmt.Sprintf("Attempting to connect to db with conn str %s", nonPwdConnStr))
+	// add pwd later so we don't log it above
+	connStr := nonPwdConnStr + fmt.Sprintf(" password='%s'", password)
+	db, err := sql.Open("postgres" /*driverName*/, connStr)
+	if err != nil {
+		res.Error = fmt.Errorf("Could not connect to db with connStr %s : error %s", nonPwdConnStr, err)
+		res.Status = StatusCritical
+		log.Info(res.Error.Error())
+		return res
+	}
+
+	log.Debug("Fetching server version")
+	rows, err := db.Query("SHOW server_version;")
+	if err != nil {
+		res.Error = fmt.Errorf("Could not connect to db with connStr %s : error %s", nonPwdConnStr, err)
+		res.Status = StatusCritical
+		log.Info(res.Error.Error())
+		return res
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		res.Error = fmt.Errorf("Could not query version from db %s", err)
+		res.Status = StatusCritical
+		log.Info(res.Error.Error())
+		return res
+	}
+
+	var pgVersion string
+	err = rows.Scan(&pgVersion)
+	if err != nil {
+		res.Error = fmt.Errorf("Could not read version from postgres %s", err)
+		res.Status = StatusCritical
+		log.Info(res.Error.Error())
+		return res
+	}
+	log.Debug(fmt.Sprintf("Postgres server version is %s", pgVersion))
+
+	pgMajorVersion := -1
+	pgMajorVersion, _ = strconv.Atoi(strings.Split(pgVersion, ".")[0])
+	if !slices.Contains(p.supportedMajorVersions, pgMajorVersion) {
+		res.Error = fmt.Errorf("Unsupported postgres major version %d", pgMajorVersion)
+		res.Status = StatusCritical
+		log.Info(res.Error.Error())
+		return res
 	}
 
 	return res

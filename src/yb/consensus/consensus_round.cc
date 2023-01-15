@@ -33,8 +33,8 @@ ConsensusRound::~ConsensusRound() {
       << replicate_msg_->ShortDebugString();
 }
 
-void ConsensusRound::NotifyAddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
-  callback_->AddedToLeader(op_id, committed_op_id);
+Status ConsensusRound::NotifyAddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
+  return callback_->AddedToLeader(op_id, committed_op_id);
 }
 
 void ConsensusRound::NotifyReplicationFinished(

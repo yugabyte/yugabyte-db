@@ -66,9 +66,8 @@ const (
 	NodeAzIdKey         = "node.azid"
 	NodeRegionKey       = "node.region"
 	NodeZoneKey         = "node.zone"
-	NodeInstanceNameKey = "node.instance_name"
-	NodePingIntervalKey = "node.ping_interval_sec"
 	NodeLoggerKey       = "node.log"
+	NodeAgentRestartKey = "node.restart"
 )
 
 var (
@@ -226,10 +225,6 @@ func LogsDir() string {
 // Returns path to the installer/upgrade script.
 func UpgradeScriptPath() string {
 	return MustGetHomeDirectory() + "/pkg/bin/" + UpgradeScript
-}
-
-func InstallScriptPath() string {
-	return MustGetHomeDirectory() + "/" + InstallScript
 }
 
 func VersionFile() string {

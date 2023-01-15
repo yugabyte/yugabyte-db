@@ -106,8 +106,7 @@ export default class RestoreBackup extends Component {
           return { value: universe.universeUUID, label: universe.name };
         });
       }
-    } else {
-      if (getPromiseState(currentUniverse).isSuccess() && isNonEmptyObject(currentUniverse.data)) {
+    } else if (getPromiseState(currentUniverse).isSuccess() && isNonEmptyObject(currentUniverse.data)) {
         universeOptions = [
           {
             value: currentUniverse.data.universeUUID,
@@ -115,7 +114,6 @@ export default class RestoreBackup extends Component {
           }
         ];
       }
-    }
 
     const kmsConfigList = cloud.authConfig.data.map((config) => {
       const labelName = config.metadata.provider + ' - ' + config.metadata.name;

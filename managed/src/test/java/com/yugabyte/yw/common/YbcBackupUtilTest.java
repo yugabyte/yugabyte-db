@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
@@ -14,8 +15,12 @@ import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
+
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -31,12 +36,18 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.Spy;
+import org.yb.CommonTypes.TableType;
+import org.yb.CommonTypes.YQLDatabase;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 import org.yb.ybc.BackupServiceTaskExtendedArgs;
 import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.TableBackupSpec;
 import play.libs.Json;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -45,6 +56,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
 @RunWith(JUnitParamsRunner.class)
@@ -56,12 +68,14 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   @Mock CustomerConfigService configService;
   @Mock EncryptionAtRestManager encryptionAtRestManager;
 
-  @InjectMocks YbcBackupUtil ybcBackupUtil;
+  @InjectMocks @Spy YbcBackupUtil ybcBackupUtil;
 
   private ResponseCloudStoreSpec withoutRegion;
   private ResponseCloudStoreSpec withRegions;
   private Customer testCustomer;
   private JsonNode s3FormData, s3FormData_regions, s3FormData_noRegions;
+
+  private final String objectID = "000033e1000030008000000000004010";
 
   @Before
   public void setup() {
@@ -133,30 +147,70 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   }
 
   @Test
-  @Parameters(method = "getBackupSuccessFileYbc")
-  public void testExtractSuccessFile(String dataFile, boolean regions) throws IOException {
+  @Parameters(value = {"backup/ybc_success_file_without_regions.json"})
+  public void testExtractSuccessFileWithoutRegion(String dataFile) throws IOException {
     String success = TestUtils.readResource(dataFile);
     YbcBackupResponse ybcBackupResponse = ybcBackupUtil.parseYbcBackupResponse(success);
-    if (!regions) {
-      assertNull(ybcBackupResponse.responseCloudStoreSpec.regionLocations);
-      assertTrue(
-          ybcBackupResponse.responseCloudStoreSpec.defaultLocation.bucket.equals(
-              withoutRegion.defaultLocation.bucket));
-      assertTrue(
-          ybcBackupResponse.responseCloudStoreSpec.defaultLocation.cloudDir.equals(
-              withoutRegion.defaultLocation.cloudDir));
-    } else {
-      assertNotNull(ybcBackupResponse.responseCloudStoreSpec.regionLocations);
-      assertTrue(
-          ybcBackupResponse.responseCloudStoreSpec.defaultLocation.bucket.equals(
-              withRegions.defaultLocation.bucket));
-      assertTrue(
-          ybcBackupResponse.responseCloudStoreSpec.defaultLocation.cloudDir.equals(
-              withRegions.defaultLocation.cloudDir));
-      assertEquals(
-          ybcBackupResponse.responseCloudStoreSpec.regionLocations.keySet(),
-          withRegions.regionLocations.keySet());
-    }
+    assertNull(ybcBackupResponse.responseCloudStoreSpec.regionLocations);
+    assertTrue(
+        ybcBackupResponse.responseCloudStoreSpec.defaultLocation.bucket.equals(
+            withoutRegion.defaultLocation.bucket));
+    assertTrue(
+        ybcBackupResponse.responseCloudStoreSpec.defaultLocation.cloudDir.equals(
+            withoutRegion.defaultLocation.cloudDir));
+    assertTrue(
+        ybcBackupResponse
+            .snapshotObjectDetails
+            .get(0)
+            .type
+            .equals(YbcBackupUtil.SnapshotObjectType.NAMESPACE));
+    assertTrue(
+        ybcBackupResponse
+            .snapshotObjectDetails
+            .get(1)
+            .type
+            .equals(YbcBackupUtil.SnapshotObjectType.TABLE));
+    assertTrue(
+        ybcBackupResponse.snapshotObjectDetails.get(0).data
+            instanceof YbcBackupResponse.SnapshotObjectDetails.NamespaceData);
+    assertTrue(
+        ybcBackupResponse.snapshotObjectDetails.get(1).data
+            instanceof YbcBackupResponse.SnapshotObjectDetails.TableData);
+  }
+
+  @Test
+  @Parameters(value = {"backup/ybc_success_file_with_regions.json"})
+  public void testExtractSuccessFileWithRegion(String dataFile) throws IOException {
+    String success = TestUtils.readResource(dataFile);
+    YbcBackupResponse ybcBackupResponse = ybcBackupUtil.parseYbcBackupResponse(success);
+    assertNotNull(ybcBackupResponse.responseCloudStoreSpec.regionLocations);
+    assertTrue(
+        ybcBackupResponse.responseCloudStoreSpec.defaultLocation.bucket.equals(
+            withRegions.defaultLocation.bucket));
+    assertTrue(
+        ybcBackupResponse.responseCloudStoreSpec.defaultLocation.cloudDir.equals(
+            withRegions.defaultLocation.cloudDir));
+    assertEquals(
+        ybcBackupResponse.responseCloudStoreSpec.regionLocations.keySet(),
+        withRegions.regionLocations.keySet());
+    assertTrue(
+        ybcBackupResponse
+            .snapshotObjectDetails
+            .get(0)
+            .type
+            .equals(YbcBackupUtil.SnapshotObjectType.NAMESPACE));
+    assertTrue(
+        ybcBackupResponse
+            .snapshotObjectDetails
+            .get(1)
+            .type
+            .equals(YbcBackupUtil.SnapshotObjectType.TABLE));
+    assertTrue(
+        ybcBackupResponse.snapshotObjectDetails.get(0).data
+            instanceof YbcBackupResponse.SnapshotObjectDetails.NamespaceData);
+    assertTrue(
+        ybcBackupResponse.snapshotObjectDetails.get(1).data
+            instanceof YbcBackupResponse.SnapshotObjectDetails.TableData);
   }
 
   @Test
@@ -335,7 +389,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testcreateBackupConfig() {
+  public void testCreateBackupConfig() {
     CustomerConfig storageConfig = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData);
     UUID uniUUID = UUID.randomUUID();
     String commonDir = "univ-" + uniUUID + "/backup-timestamp/keyspace-foo";
@@ -410,5 +464,91 @@ public class YbcBackupUtilTest extends FakeDBApplication {
               actualTBMap.put(tB.getTable(), tB.getKeyspace());
             });
     assertEquals(expectedTBMap, actualTBMap);
+  }
+
+  @Test
+  public void testValidateYCQLTableListOverwrites() {
+    Universe universe = ModelFactory.createUniverse();
+    String keyspace = "foo";
+    List<String> successMarkerTableList = new ArrayList<>();
+    successMarkerTableList.add("table1");
+    successMarkerTableList.add("table2");
+    List<TableInfo> ybClientTableList = new ArrayList<>();
+    TableInfo tableInfo1 =
+        TableInfo.newBuilder()
+            .setName("table3")
+            .setTableType(TableType.YQL_TABLE_TYPE)
+            .setId(ByteString.copyFromUtf8(objectID))
+            .setNamespace(
+                NamespaceIdentifierPB.newBuilder()
+                    .setId(ByteString.copyFromUtf8(objectID))
+                    .setDatabaseType(YQLDatabase.YQL_DATABASE_CQL)
+                    .setName(keyspace)
+                    .build())
+            .build();
+    TableInfo tableInfo2 =
+        TableInfo.newBuilder()
+            .setName("table4")
+            .setTableType(TableType.YQL_TABLE_TYPE)
+            .setId(ByteString.copyFromUtf8(objectID))
+            .setNamespace(
+                NamespaceIdentifierPB.newBuilder()
+                    .setId(ByteString.copyFromUtf8(objectID))
+                    .setDatabaseType(YQLDatabase.YQL_DATABASE_CQL)
+                    .setName(keyspace)
+                    .build())
+            .build();
+    ybClientTableList.add(tableInfo1);
+    ybClientTableList.add(tableInfo2);
+    YbcBackupResponse response = new YbcBackupResponse();
+    doReturn(successMarkerTableList)
+        .when(ybcBackupUtil)
+        .getTableListFromSuccessMarker(response, TableType.YQL_TABLE_TYPE);
+    when(backupUtil.getTableInfosOrEmpty(any())).thenReturn(ybClientTableList);
+    assertTrue(
+        ybcBackupUtil.validateYCQLTableListOverwrites(response, universe.universeUUID, keyspace));
+  }
+
+  @Test
+  public void testValidateYCQLTableListOverwritesFail() {
+    Universe universe = ModelFactory.createUniverse();
+    String keyspace = "foo";
+    List<String> successMarkerTableList = new ArrayList<>();
+    successMarkerTableList.add("table1");
+    successMarkerTableList.add("table2");
+    List<TableInfo> ybClientTableList = new ArrayList<>();
+    TableInfo tableInfo1 =
+        TableInfo.newBuilder()
+            .setName("table2")
+            .setTableType(TableType.YQL_TABLE_TYPE)
+            .setId(ByteString.copyFromUtf8(objectID))
+            .setNamespace(
+                NamespaceIdentifierPB.newBuilder()
+                    .setId(ByteString.copyFromUtf8(objectID))
+                    .setDatabaseType(YQLDatabase.YQL_DATABASE_CQL)
+                    .setName(keyspace)
+                    .build())
+            .build();
+    TableInfo tableInfo2 =
+        TableInfo.newBuilder()
+            .setName("table3")
+            .setTableType(TableType.YQL_TABLE_TYPE)
+            .setId(ByteString.copyFromUtf8(objectID))
+            .setNamespace(
+                NamespaceIdentifierPB.newBuilder()
+                    .setId(ByteString.copyFromUtf8(objectID))
+                    .setDatabaseType(YQLDatabase.YQL_DATABASE_CQL)
+                    .setName(keyspace)
+                    .build())
+            .build();
+    ybClientTableList.add(tableInfo1);
+    ybClientTableList.add(tableInfo2);
+    YbcBackupResponse response = new YbcBackupResponse();
+    doReturn(successMarkerTableList)
+        .when(ybcBackupUtil)
+        .getTableListFromSuccessMarker(response, TableType.YQL_TABLE_TYPE);
+    when(backupUtil.getTableInfosOrEmpty(any())).thenReturn(ybClientTableList);
+    assertFalse(
+        ybcBackupUtil.validateYCQLTableListOverwrites(response, universe.universeUUID, keyspace));
   }
 }

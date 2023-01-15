@@ -13,21 +13,25 @@ type: docs
 
 The YugabyteDB release that is powering a universe can be upgraded to get new features and fixes included in the release.
 
-Before you start the upgrade, you might want to import a specific YugabyteDB release into YugabyteDB Anywhere, as follows:
+Before starting the upgrade: 
 
-- Click the user profile icon and select **Releases**.
+- Ensure that the YB Controller port 18018 is open on all YugabyteDB nodes. 
 
-- Click **Import** to open the **Import Releases** dialog shown in the following illustration:<br>
+- Consider importing a specific YugabyteDB release into YugabyteDB Anywhere, as follows:
 
-  ![Import Releases](/images/yp/import-releases.png)<br>
+  - Click the user profile icon and select **Releases**.
 
-- Specify the release version to import.
+  - Click **Import** to open the **Import Releases** dialog shown in the following illustration:<br>
 
-- Select the storage or URL that contains the release. If the release is located on Amazon S3, you would need to provide the access information; if the release is located on Google Cloud Storage, you would need to copy and paste the contents of the JSON file with the access credentials; if the release is accessible via a HTTP, you would need to specify the checksum value of the download.
+    ![Import Releases](/images/yp/import-releases.png)<br>
 
-- Provide the path to the storage location.
+  - Specify the release version to import.
 
-- Click **OK**.
+  - Select the storage or URL that contains the release. If the release is located on Amazon S3, you would need to provide the access information; if the release is located on Google Cloud Storage, you would need to copy and paste the contents of the JSON file with the access credentials; if the release is accessible via a HTTP, you would need to specify the checksum value of the download.
+
+  - Provide the path to the storage location.
+
+  - Click **OK**.
 
 When imported, the release is added to the **Releases** list shown in the following illustration:
 

@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -57,16 +58,27 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       masters = isReadOnlyCluster ? new HashMap<>() : PlacementInfoUtil.getNumMasterPerAZ(pi);
       tservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
       // Mapping of the deployment zone and its corresponding Kubeconfig.
-      configs = PlacementInfoUtil.getConfigPerAZ(pi);
+      configs = KubernetesUtil.getConfigPerAZ(pi);
     }
   }
 
   public void createPodsTask(
-      KubernetesPlacement placement, String masterAddresses, boolean isReadOnlyCluster) {
-    createPodsTask(placement, masterAddresses, null, null, new PlacementInfo(), isReadOnlyCluster);
+      String universeName,
+      KubernetesPlacement placement,
+      String masterAddresses,
+      boolean isReadOnlyCluster) {
+    createPodsTask(
+        universeName,
+        placement,
+        masterAddresses,
+        null,
+        null,
+        new PlacementInfo(),
+        isReadOnlyCluster);
   }
 
   public void createPodsTask(
+      String universeName,
       KubernetesPlacement newPlacement,
       String masterAddresses,
       KubernetesPlacement currPlacement,
@@ -108,7 +120,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     Map<UUID, Map<String, String>> activeDeploymentConfigs =
-        PlacementInfoUtil.getConfigPerAZ(activeZones);
+        KubernetesUtil.getConfigPerAZ(activeZones);
     // Only used for new deployments, so maybe empty.
     SubTaskGroup createNamespaces =
         getTaskExecutor()
@@ -202,6 +214,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 : 0;
         helmInstalls.addSubTask(
             createKubernetesExecutorTaskForServerType(
+                universeName,
                 CommandType.HELM_UPGRADE,
                 tempPI,
                 azCode,
@@ -223,6 +236,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 : newNumMasters + newNumTservers;
         podsWait.addSubTask(
             createKubernetesCheckPodNumTask(
+                universeName,
                 KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS,
                 azCode,
                 config,
@@ -236,6 +250,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           // Create the namespaces of the deployment.
           createNamespaces.addSubTask(
               createKubernetesExecutorTask(
+                  universeName,
                   KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE,
                   azCode,
                   config,
@@ -245,6 +260,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         // Apply the necessary pull secret to each namespace.
         applySecrets.addSubTask(
             createKubernetesExecutorTask(
+                universeName,
                 KubernetesCommandExecutor.CommandType.APPLY_SECRET,
                 azCode,
                 config,
@@ -253,6 +269,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         // Create the helm deployments.
         helmInstalls.addSubTask(
             createKubernetesExecutorTask(
+                universeName,
                 KubernetesCommandExecutor.CommandType.HELM_INSTALL,
                 tempPI,
                 azCode,
@@ -279,6 +296,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   update the instance type.
   */
   public void upgradePodsTask(
+      String universeName,
       KubernetesPlacement newPlacement,
       String masterAddresses,
       KubernetesPlacement currPlacement,
@@ -292,6 +310,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean newNamingStyle,
       boolean isReadOnlyCluster) {
     upgradePodsTask(
+        universeName,
         newPlacement,
         masterAddresses,
         currPlacement,
@@ -308,6 +327,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public void upgradePodsTask(
+      String universeName,
       KubernetesPlacement newPlacement,
       String masterAddresses,
       KubernetesPlacement currPlacement,
@@ -442,8 +462,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 nodePrefix,
                 isMultiAz,
                 newNamingStyle,
+                universeName,
                 isReadOnlyCluster);
         createSingleKubernetesExecutorTaskForServerType(
+            universeName,
             commandType,
             tempPI,
             azCode,
@@ -460,6 +482,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             null);
 
         createKubernetesWaitForPodTask(
+            universeName,
             KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
             podName,
             azCode,
@@ -488,6 +511,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public void deletePodsTask(
+      String universeName,
       KubernetesPlacement currPlacement,
       String masterAddresses,
       KubernetesPlacement newPlacement,
@@ -570,6 +594,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
         helmDeletes.addSubTask(
             createKubernetesExecutorTask(
+                universeName,
                 CommandType.HELM_UPGRADE,
                 tempPI,
                 azCode,
@@ -581,6 +606,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 isReadOnlyCluster));
         podsWait.addSubTask(
             createKubernetesCheckPodNumTask(
+                universeName,
                 KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS,
                 azCode,
                 config,
@@ -590,6 +616,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         // Delete the helm deployments.
         helmDeletes.addSubTask(
             createKubernetesExecutorTask(
+                universeName,
                 KubernetesCommandExecutor.CommandType.HELM_DELETE,
                 azCode,
                 config,
@@ -598,6 +625,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         // Delete the PVs created for the deployments.
         volumeDeletes.addSubTask(
             createKubernetesExecutorTask(
+                universeName,
                 KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
                 azCode,
                 config,
@@ -611,6 +639,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           // Delete the namespaces of the deployments.
           namespaceDeletes.addSubTask(
               createKubernetesExecutorTask(
+                  universeName,
                   KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
                   azCode,
                   config,
@@ -653,11 +682,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String nodePrefix,
       boolean isMultiAz,
       boolean newNamingStyle,
+      String universeName,
       boolean isReadOnlyCluster) {
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
     String helmFullName =
-        PlacementInfoUtil.getHelmFullNameWithSuffix(
-            isMultiAz, nodePrefix, azCode, newNamingStyle, isReadOnlyCluster);
+        KubernetesUtil.getHelmFullNameWithSuffix(
+            isMultiAz, nodePrefix, universeName, azCode, newNamingStyle, isReadOnlyCluster);
     return String.format("%s%s-%d", helmFullName, sType, partition);
   }
 
@@ -714,16 +744,18 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   // Create Kubernetes Executor task for creating the namespaces and pull secrets.
   public KubernetesCommandExecutor createKubernetesExecutorTask(
+      String universeName,
       KubernetesCommandExecutor.CommandType commandType,
       String az,
       Map<String, String> config,
       boolean isReadOnlyCluster) {
     return createKubernetesExecutorTask(
-        commandType, null, az, null, null, config, null, null, isReadOnlyCluster);
+        universeName, commandType, null, az, null, null, config, null, null, isReadOnlyCluster);
   }
 
   // Create the Kubernetes Executor task for the helm deployments. (USED)
   public KubernetesCommandExecutor createKubernetesExecutorTask(
+      String universeName,
       CommandType commandType,
       PlacementInfo pi,
       String az,
@@ -734,6 +766,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, Object> azOverrides,
       boolean isReadOnlyCluster) {
     return createKubernetesExecutorTaskForServerType(
+        universeName,
         commandType,
         pi,
         az,
@@ -750,6 +783,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   // Create and return the Kubernetes Executor task for deployment of a k8s universe.
   public KubernetesCommandExecutor createKubernetesExecutorTaskForServerType(
+      String universeName,
       KubernetesCommandExecutor.CommandType commandType,
       PlacementInfo pi,
       String az,
@@ -777,7 +811,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.commandType = commandType;
     params.universeUUID = taskParams().universeUUID;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            az,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
     params.universeOverrides = universeOverrides;
     params.azOverrides = azOverrides;
 
@@ -795,7 +834,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               az,
               config,
@@ -814,16 +853,20 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public void createSingleKubernetesExecutorTask(
-      KubernetesCommandExecutor.CommandType commandType, boolean isReadCluster) {
-    createSingleKubernetesExecutorTask(commandType, null, isReadCluster);
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      boolean isReadCluster) {
+    createSingleKubernetesExecutorTask(universeName, commandType, null, isReadCluster);
   }
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
   public void createSingleKubernetesExecutorTask(
+      String universeName,
       KubernetesCommandExecutor.CommandType commandType,
       PlacementInfo pi,
       boolean isReadOnlyCluster) {
     createSingleKubernetesExecutorTaskForServerType(
+        universeName,
         commandType,
         pi,
         null,
@@ -841,6 +884,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public void createSingleKubernetesExecutorTaskForServerType(
+      String universeName,
       KubernetesCommandExecutor.CommandType commandType,
       PlacementInfo pi,
       String az,
@@ -856,6 +900,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String podName,
       String newDiskSize) {
     createSingleKubernetesExecutorTaskForServerType(
+        universeName,
         commandType,
         pi,
         az,
@@ -875,6 +920,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
   public void createSingleKubernetesExecutorTaskForServerType(
+      String universeName,
       KubernetesCommandExecutor.CommandType commandType,
       PlacementInfo pi,
       String az,
@@ -908,9 +954,15 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.commandType = commandType;
     params.universeUUID = taskParams().universeUUID;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            az,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
     params.universeOverrides = universeOverrides;
     params.azOverrides = azOverrides;
+    params.universeName = universeName;
 
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
@@ -926,7 +978,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               az,
               config,
@@ -949,6 +1001,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public void createKubernetesWaitForPodTask(
+      String universeName,
       KubernetesWaitForPod.CommandType commandType,
       String podName,
       String az,
@@ -967,14 +1020,18 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
-
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            az,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               az,
               config,
@@ -991,6 +1048,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public KubernetesCheckNumPod createKubernetesCheckPodNumTask(
+      String universeName,
       KubernetesCheckNumPod.CommandType commandType,
       String az,
       Map<String, String> config,
@@ -1007,14 +1065,19 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            az,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
 
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               az,
               config,

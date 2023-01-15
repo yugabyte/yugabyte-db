@@ -260,7 +260,6 @@ export default class AZSelectorTable extends Component {
         newTaskParams.currentClusterType = clusterType.toUpperCase();
         newTaskParams.clusterOperation = 'CREATE';
         newTaskParams.resetAZConfig = false;
-        newTaskParams.regionsChanged = false;
         this.props.submitConfigureUniverse(newTaskParams);
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
@@ -269,7 +268,6 @@ export default class AZSelectorTable extends Component {
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
         newTaskParams.userAZSelected = true;
         newTaskParams.resetAZConfig = false;
-        newTaskParams.regionsChanged = false;
         if (
           isNonEmptyObject(
             getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType)
@@ -369,7 +367,7 @@ export default class AZSelectorTable extends Component {
                 count: configArrayItem.count,
                 isAffinitized: azItem.isAffinitized === undefined ? true : azItem.isAffinitized
               });
-              if (uniqueRegions.indexOf(regionItem.uuid) === -1) {
+              if (!uniqueRegions.includes(regionItem.uuid)) {
                 uniqueRegions.push(regionItem.uuid);
               }
             }

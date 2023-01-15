@@ -430,4 +430,15 @@ public class UtilTest extends FakeDBApplication {
     long nanos = TimeUnit.SECONDS.toNanos(duration.getSeconds()) + duration.getNano();
     assertEquals(expectedNanos, nanos);
   }
+
+  @Test
+  @Parameters({
+    "kg10, abc",
+    "eij0, abcd",
+    "n000, 1",
+    "tdxk, ReallyReallyLongStringStillHashIs4CharactersOnly"
+  })
+  public void testBase36hash(String output, String input) {
+    assertEquals(output, Util.base36hash(input));
+  }
 }

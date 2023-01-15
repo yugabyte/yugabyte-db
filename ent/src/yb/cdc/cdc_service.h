@@ -247,6 +247,8 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<std::shared_ptr<StreamMetadata>> GetStream(
       const std::string& stream_id, bool ignore_cache = false);
 
+  void RemoveStreamFromCache(const CDCStreamId& stream_id);
+
   std::shared_ptr<StreamMetadata> GetStreamMetadataFromCache(const std::string& stream_id);
   void AddStreamMetadataToCache(
       const std::string& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata);
@@ -382,8 +384,7 @@ class CDCServiceImpl : public CDCServiceIf {
       const consensus::ReplicateMsg& split_op_msg,
       const client::YBSessionPtr& session);
 
-  Status UpdateChildrenTabletsOnSplitOpForCDCSDK(
-      const ProducerTabletInfo& info, const OpId& split_op_id);
+  Status UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info);
 
   // Get enum map from the cache.
   Result<EnumOidLabelMap> GetEnumMapFromCache(const NamespaceName& ns_name);

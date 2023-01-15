@@ -82,8 +82,7 @@ namespace docdb {
     range_elmalign = range_elemalign; \
   } while (0);
 
-Status DocPgInit()
-{
+Status DocPgInit() {
   PG_RETURN_NOT_OK(YbgInit());
   return Status::OK();
 }
@@ -269,7 +268,7 @@ Result<std::vector<std::string>> ExtractVectorFromQLBinaryValueHelper(
   YbgTypeDesc elem_pg_arg_type {elem_type, -1 /* typmod */};
   const YBCPgTypeEntity *elem_arg_type = DocPgGetTypeEntity(elem_pg_arg_type);
   VLOG(4) << "Number of parsed elements: " << num_elems;
-  Arena arena;
+  ThreadSafeArena arena;
   std::vector<std::string> result;
   for (int i = 0; i < num_elems; ++i) {
     pggate::PgConstant value(&arena,
@@ -2112,7 +2111,7 @@ Status SetValueFromQLBinaryHelper(
       break;
   }
   return Status::OK();
-}
+} // NOLINT(readability/fn_size)
 
 }  // namespace docdb
 }  // namespace yb

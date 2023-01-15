@@ -64,6 +64,13 @@ const string kTableName = "test_table";
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 const string kTableName2 = "test_table2";
 const string kDatabaseName = "yugabyte";
+constexpr auto kNumRecordsPerBatch = 10;
+
+namespace {
+auto GetSafeTime(tserver::TabletServer* tserver, const NamespaceId& namespace_id) {
+  return tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+}
+}  // namespace
 
 class XClusterSafeTimeTest : public TwoDCTestBase {
  public:
@@ -135,6 +142,8 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
         safe_time_table_name, CoarseMonoClock::Now() + MonoDelta::FromMinutes(1)));
   }
 
+  HybridTime GetProducerSafeTime() { return CHECK_RESULT(producer_tablet_peer_->LeaderSafeTime()); }
+
   Status GetNamespaceId() {
     master::GetNamespaceInfoResponsePB resp;
 
@@ -173,7 +182,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
 
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
+          auto safe_time_status = GetSafeTime(tserver, namespace_id_);
           if (!safe_time_status) {
             CHECK(safe_time_status.status().IsNotFound() || safe_time_status.status().IsTryAgain());
 
@@ -190,7 +199,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
     auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
+          auto safe_time_status = GetSafeTime(tserver, namespace_id_);
           if (!safe_time_status.ok() && safe_time_status.status().IsNotFound()) {
             return true;
           }
@@ -212,25 +221,34 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
 
 TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
   // 1. Make sure safe time is initialized.
-  auto ht_1 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_1 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_1));
 
   // 2. Write some data.
   LOG(INFO) << "Writing records for table " << producer_table_->name().ToString();
   WriteWorkload(0, 100, producer_client(), producer_table_->name());
-  auto ht_2 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_2 = GetProducerSafeTime();
 
   // 3. Make sure safe time has progressed.
   ASSERT_OK(WaitForSafeTime(ht_2));
   ASSERT_TRUE(VerifyWrittenRecords());
 
-  // 4. Make sure safe time is cleaned up when we pause replication.
+  // 4. Make sure safe time does not advance when we pause replication.
+  auto ht_before_pause = GetProducerSafeTime();
+  ASSERT_OK(WaitForSafeTime(ht_before_pause));
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
-  ASSERT_OK(WaitForNotFoundSafeTime());
+  // Wait for Pollers to Stop.
+  SleepFor(2s * kTimeMultiplier);
+  auto ht_after_pause = GetProducerSafeTime();
+  auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
+  auto safe_time_after_pause = ASSERT_RESULT(GetSafeTime(tserver, namespace_id_));
+  ASSERT_TRUE(safe_time_after_pause.is_valid());
+  ASSERT_GE(safe_time_after_pause, ht_before_pause);
+  ASSERT_LT(safe_time_after_pause, ht_after_pause);
 
   // 5.  Make sure safe time is reset when we resume replication.
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
-  auto ht_4 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_4 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_4));
 
   // 6. Make sure safe time is cleaned up when we switch to ACTIVE role.
@@ -239,7 +257,7 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
 
   // 7.  Make sure safe time is reset when we switch back to STANDBY role.
   ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-  auto ht_5 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_5 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_5));
 
   // 8.  Make sure safe time is cleaned up when we delete replication.
@@ -251,13 +269,13 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
 
 TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   // 1. Make sure safe time is initialized.
-  auto ht_1 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_1 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_1));
 
   // 2. Simulate replication lag and make sure safe time does not move.
   SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
   WriteWorkload(0, 100, producer_client(), producer_table_->name());
-  auto ht_2 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  auto ht_2 = GetProducerSafeTime();
 
   // 3. Make sure safe time has not progressed beyond the write.
   ASSERT_NOK(WaitForSafeTime(ht_2));
@@ -586,8 +604,6 @@ class XClusterConsistencyTest : public TwoDCTestBase {
 };
 
 TEST_F(XClusterConsistencyTest, ConsistentReads) {
-  constexpr auto kNumRecordsPerBatch = 10;
-  CHECK_GE(FLAGS_cdc_max_apply_batch_num_records, kNumRecordsPerBatch);
   uint32_t num_records_written = 0;
   StoreReadTimes();
 
@@ -660,8 +676,6 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
 }
 
 TEST_F(XClusterConsistencyTest, LagInTransactionsTable) {
-  constexpr auto kNumRecordsPerBatch = 10;
-  CHECK_GE(FLAGS_cdc_max_apply_batch_num_records, kNumRecordsPerBatch);
 
   // Pause replication on global transactions table
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
@@ -712,7 +726,7 @@ class XClusterConsistencyNoSafeTimeTest : public XClusterConsistencyTest {
     for (auto& tserver : consumer_cluster()->mini_tablet_servers()) {
       RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
-            auto safe_time = tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
+            auto safe_time = GetSafeTime(tserver->server(), namespace_id_);
             CHECK(!safe_time);
 
             if (safe_time.status().ToString().find(
@@ -742,6 +756,90 @@ TEST_F_EX(XClusterConsistencyTest, LoginWithNoSafeTime, XClusterConsistencyNoSaf
   // Verify that we can read user table with tablet level consistency.
   ASSERT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet"));
   ASSERT_OK(conn.Fetch(query));
+}
+
+class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
+  void SetUp() override {
+    ASSERT_NO_FATALS(XClusterConsistencyTest::SetUp());
+
+    ASSERT_EQ(bootstrap_ids_.size(), stream_ids_.size());
+    for (auto& bootstrap_id : bootstrap_ids_) {
+      auto it = std::find(stream_ids_.begin(), stream_ids_.end(), bootstrap_id);
+      ASSERT_TRUE(it != stream_ids_.end())
+          << "Bootstrap Ids " << JoinStrings(bootstrap_ids_, ",") << " and Stream Ids "
+          << JoinStrings(stream_ids_, ",") << " should match";
+    }
+  }
+
+  // Override the Setup the replication and perform it with Bootstrap.
+  Status SetupUniverseReplication(
+      const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only) override {
+    // 1. Bootstrap the producer
+    cdc::BootstrapProducerRequestPB req;
+    cdc::BootstrapProducerResponsePB resp;
+
+    std::vector<std::shared_ptr<client::YBTable>> new_tables = tables;
+    new_tables.emplace_back(producer_tran_table_);
+
+    for (const auto& producer_table : new_tables) {
+      req.add_table_ids(producer_table->id());
+    }
+
+    rpc::RpcController rpc;
+    auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+        &producer_client()->proxy_cache(),
+        HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+    RETURN_NOT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
+    CHECK(!resp.has_error());
+
+    CHECK_EQ(resp.cdc_bootstrap_ids().size(), new_tables.size());
+
+    int table_idx = 0;
+    for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
+      LOG(INFO) << "Got bootstrap id " << bootstrap_id << " for table "
+                << new_tables[table_idx++]->name().table_name();
+      bootstrap_ids_.emplace_back(bootstrap_id);
+    }
+
+    // 2. Write some rows transactonally.
+    WriteWorkload(producer_table1_->name(), 0, kNumRecordsPerBatch);
+
+    // 3. Run log GC on producer.
+    RETURN_NOT_OK(producer_client()->FlushTables(
+        {producer_table1_->id()}, /* add_indexes = */ false,
+        /* timeout_secs = */ 30, /* is_compaction = */ true));
+    for (size_t i = 0; i < producer_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& tablet_peer : producer_cluster()->GetTabletPeers(i)) {
+        RETURN_NOT_OK(tablet_peer->RunLogGC());
+      }
+    }
+
+    // 4. Setup replication.
+    return TwoDCTestBase::SetupUniverseReplication(
+        producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, new_tables,
+        leader_only, bootstrap_ids_);
+  }
+
+  std::vector<string> bootstrap_ids_;
+};
+
+// Test Setup with Bootstrap works.
+// 1. Bootstrap producer
+// 2. Write some rows transactonally
+// 3. Run Log GC on all producer tablets
+// 4. Setup replication
+// 5. Ensure rows from step 2 are replicated
+// 6. Write some more rows and ensure they get replicated
+TEST_F_EX(
+    XClusterConsistencyTest, BootstrapTransactionsTable, XClusterConsistencyTestWithBootstrap) {
+  // 5. Ensure rows from step 2 are replicated.
+  ASSERT_OK(WaitForRowCount(consumer_table1_->name(), kNumRecordsPerBatch));
+  ASSERT_OK(ValidateConsumerRows(consumer_table1_->name(), kNumRecordsPerBatch));
+
+  // 6. Write some more rows and ensure they get replicated.
+  WriteWorkload(producer_table1_->name(), kNumRecordsPerBatch, 2 * kNumRecordsPerBatch);
+  ASSERT_OK(WaitForRowCount(consumer_table1_->name(), 2 * kNumRecordsPerBatch));
+  ASSERT_OK(ValidateConsumerRows(consumer_table1_->name(), 2 * kNumRecordsPerBatch));
 }
 
 }  // namespace enterprise

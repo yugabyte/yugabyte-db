@@ -197,12 +197,30 @@ void WriteQuery::set_client_request(std::unique_ptr<tserver::WriteRequestPB> req
 void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
   LOG_IF(DFATAL, operation_) << "Finished not submitted operation: " << status;
 
+  auto tablet_result = operation->tablet_safe();
+  if (!tablet_result.ok()) {
+    LOG(DFATAL) << "Could not obtain tablet from operation "
+                << operation->ToString() << " to finish write query: "
+                << tablet_result.status()
+                << ". Operation status: " << status;
+    Complete(status.ok() ? tablet_result.status() : status);
+    return;
+  }
+
+  auto tablet = *tablet_result;
   if (status.ok()) {
-    TabletMetrics* metrics = operation->tablet()->metrics();
+    TabletMetrics* metrics = tablet->metrics();
     if (metrics) {
-      auto op_duration_usec = MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds();
+      auto op_duration_usec =
+          MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds();
       metrics->ql_write_latency->Increment(op_duration_usec);
     }
+  }
+
+  auto& metadata = *tablet->metadata();
+
+  for (const auto& sv : operation->request()->write_batch().table_schema_version()) {
+    CHECK_LE(metadata.schema_version(), sv.schema_version());
   }
 
   Complete(status);
@@ -282,8 +300,8 @@ Result<bool> WriteQuery::PrepareExecute() {
 }
 
 Status WriteQuery::InitExecute(ExecuteMode mode) {
-  auto shared_tablet = VERIFY_RESULT(tablet());
-  scoped_read_operation_ = shared_tablet->CreateNonAbortableScopedRWOperation();
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  scoped_read_operation_ = tablet->CreateNonAbortableScopedRWOperation();
   if (!scoped_read_operation_.ok()) {
     return MoveStatus(scoped_read_operation_);
   }
@@ -311,10 +329,10 @@ Result<bool> WriteQuery::SimplePrepareExecute() {
 }
 
 Result<bool> WriteQuery::CqlPrepareExecute() {
-  auto shared_tablet = VERIFY_RESULT(tablet());
+  auto tablet = VERIFY_RESULT(tablet_safe());
   RETURN_NOT_OK(InitExecute(ExecuteMode::kCql));
 
-  auto& metadata = *shared_tablet->metadata();
+  auto& metadata = *tablet->metadata();
   VLOG(2) << "Schema version for  " << metadata.table_name() << ": " << metadata.schema_version();
 
   if (!CqlCheckSchemaVersion()) {
@@ -328,7 +346,7 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
 
   doc_ops_.reserve(ql_write_batch.size());
 
-  auto txn_op_ctx = VERIFY_RESULT(shared_tablet->CreateTransactionOperationContext(
+  auto txn_op_ctx = VERIFY_RESULT(tablet->CreateTransactionOperationContext(
       client_request_->write_batch().transaction(),
       /* is_ysql_catalog_table */ false,
       &client_request_->write_batch().subtransaction()));
@@ -339,7 +357,7 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
         req,
         rpc::SharedField(table_info, table_info->doc_read_context.get()),
         *table_info->index_map,
-        shared_tablet->unique_index_key_schema(),
+        tablet->unique_index_key_schema(),
         txn_op_ctx);
     RETURN_NOT_OK(write_op->Init(resp));
     doc_ops_.emplace_back(std::move(write_op));
@@ -349,7 +367,7 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
 }
 
 Result<bool> WriteQuery::PgsqlPrepareExecute() {
-  auto shared_tablet = VERIFY_RESULT(tablet());
+  auto tablet = VERIFY_RESULT(tablet_safe());
   RETURN_NOT_OK(InitExecute(ExecuteMode::kPgsql));
 
   if (!PgsqlCheckSchemaVersion()) {
@@ -362,9 +380,9 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
 
   TransactionOperationContext txn_op_ctx;
 
-  auto& metadata = *shared_tablet->metadata();
+  auto& metadata = *tablet->metadata();
   // Colocated via DB/tablegroup/syscatalog.
-  bool colocated = metadata.colocated() || shared_tablet->is_sys_catalog();
+  bool colocated = metadata.colocated() || tablet->is_sys_catalog();
 
   for (const auto& req : pgsql_write_batch) {
     PgsqlResponsePB* resp = response_->add_pgsql_response_batch();
@@ -379,7 +397,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
         table_info->cotable_id, table_info->schema_version, request().mutable_write_batch());
     if (doc_ops_.empty()) {
       // Use the value of is_ysql_catalog_table from the first operation in the batch.
-      txn_op_ctx = VERIFY_RESULT(shared_tablet->CreateTransactionOperationContext(
+      txn_op_ctx = VERIFY_RESULT(tablet->CreateTransactionOperationContext(
           client_request_->write_batch().transaction(),
           table_info->schema().table_properties().is_ysql_catalog_table(),
           &client_request_->write_batch().subtransaction()));
@@ -458,11 +476,11 @@ docdb::ConflictManagementPolicy GetConflictManagementPolicy(
 }
 
 Status WriteQuery::DoExecute() {
-  auto shared_tablet = VERIFY_RESULT(tablet());
+  auto tablet = VERIFY_RESULT(tablet_safe());
   auto& write_batch = *request().mutable_write_batch();
-  isolation_level_ = VERIFY_RESULT(shared_tablet->GetIsolationLevelFromPB(write_batch));
+  isolation_level_ = VERIFY_RESULT(tablet->GetIsolationLevelFromPB(write_batch));
   const RowMarkType row_mark_type = GetRowMarkTypeFromPB(write_batch);
-  const auto& metadata = *shared_tablet->metadata();
+  const auto& metadata = *tablet->metadata();
 
   const bool transactional_table = metadata.schema()->table_properties().is_transactional() ||
                                    force_txn_path_;
@@ -475,31 +493,31 @@ Status WriteQuery::DoExecute() {
 
   docdb::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-      doc_ops_, write_batch.read_pairs(), shared_tablet->metrics()->write_lock_latency,
+      doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
       isolation_level_, kind(), row_mark_type, transactional_table, write_batch.has_transaction(),
-      deadline(), partial_range_key_intents, shared_tablet->shared_lock_manager()));
+      deadline(), partial_range_key_intents, tablet->shared_lock_manager()));
 
   TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
-  auto* transaction_participant = shared_tablet->transaction_participant();
+  auto* transaction_participant = tablet->transaction_participant();
   if (transaction_participant) {
     request_scope_ = VERIFY_RESULT(RequestScope::Create(transaction_participant));
   }
 
-  if (!shared_tablet->txns_enabled() || !transactional_table) {
+  if (!tablet->txns_enabled() || !transactional_table) {
     CompleteExecute();
     return Status::OK();
   }
 
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
-    auto now = shared_tablet->clock()->Now();
+    auto now = tablet->clock()->Now();
     auto conflict_management_policy = GetConflictManagementPolicy(
-        shared_tablet->wait_queue(), write_batch);
+        tablet->wait_queue(), write_batch);
     return docdb::ResolveOperationConflicts(
-        doc_ops_, conflict_management_policy, now, shared_tablet->doc_db(),
+        doc_ops_, conflict_management_policy, now, tablet->doc_db(),
         partial_range_key_intents, transaction_participant,
-        shared_tablet->metrics()->transaction_conflicts.get(), &prepare_result_.lock_batch,
-        shared_tablet->wait_queue(),
+        tablet->metrics()->transaction_conflicts.get(), &prepare_result_.lock_batch,
+        tablet->wait_queue(),
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
             ExecuteDone(result.status());
@@ -531,15 +549,15 @@ Status WriteQuery::DoExecute() {
   }
 
   auto conflict_management_policy = GetConflictManagementPolicy(
-      shared_tablet->wait_queue(), write_batch);
+      tablet->wait_queue(), write_batch);
 
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
-      doc_ops_, conflict_management_policy, write_batch, shared_tablet->clock()->Now(),
+      doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax,
-      shared_tablet->doc_db(), partial_range_key_intents,
-      transaction_participant, shared_tablet->metrics()->transaction_conflicts.get(),
-      &prepare_result_.lock_batch, shared_tablet->wait_queue(),
+      tablet->doc_db(), partial_range_key_intents,
+      transaction_participant, tablet->metrics()->transaction_conflicts.get(),
+      &prepare_result_.lock_batch, tablet->wait_queue(),
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
           ExecuteDone(result.status());
@@ -552,15 +570,15 @@ Status WriteQuery::DoExecute() {
 }
 
 void WriteQuery::NonTransactionalConflictsResolved(HybridTime now, HybridTime result) {
-  auto shared_tablet_result = tablet();
-  if (!shared_tablet_result.ok()) {
-    ExecuteDone(shared_tablet_result.status());
+  auto tablet_result = tablet_safe();
+  if (!tablet_result.ok()) {
+    ExecuteDone(tablet_result.status());
     return;
   }
-  auto shared_tablet = *shared_tablet_result;
+  auto tablet = *tablet_result;
 
   if (now != result) {
-    shared_tablet->clock()->Update(result);
+    tablet->clock()->Update(result);
   }
 
   CompleteExecute();
@@ -575,11 +593,11 @@ void WriteQuery::TransactionalConflictsResolved() {
 }
 
 Status WriteQuery::DoTransactionalConflictsResolved() {
-  auto shared_tablet = VERIFY_RESULT(tablet());
+  auto tablet = VERIFY_RESULT(tablet_safe());
   if (!read_time_) {
-    auto safe_time = VERIFY_RESULT(shared_tablet->SafeTime(RequireLease::kTrue));
+    auto safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
     read_time_ = ReadHybridTime::FromHybridTimeRange(
-        {safe_time, shared_tablet->clock()->NowRange().second});
+        {safe_time, tablet->clock()->NowRange().second});
   } else if (prepare_result_.need_read_snapshot &&
              isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
     return STATUS_FORMAT(
@@ -597,9 +615,9 @@ void WriteQuery::CompleteExecute() {
 }
 
 Status WriteQuery::DoCompleteExecute() {
-  auto shared_tablet = VERIFY_RESULT(tablet());
+  auto tablet = VERIFY_RESULT(tablet_safe());
   auto read_op = prepare_result_.need_read_snapshot
-      ? VERIFY_RESULT(ScopedReadOperation::Create(shared_tablet.get(),
+      ? VERIFY_RESULT(ScopedReadOperation::Create(tablet.get(),
                                                   RequireLease::kTrue,
                                                   read_time_))
       : ScopedReadOperation();
@@ -607,7 +625,7 @@ Status WriteQuery::DoCompleteExecute() {
   auto real_read_time = prepare_result_.need_read_snapshot
       ? read_op.read_time()
       // When need_read_snapshot is false, this time is used only to write TTL field of record.
-      : ReadHybridTime::SingleTime(shared_tablet->clock()->Now());
+      : ReadHybridTime::SingleTime(tablet->clock()->Now());
 
   // We expect all read operations for this transaction to be done in AssembleDocWriteBatch. Once
   // read_txn goes out of scope, the read point is deregistered.
@@ -616,15 +634,15 @@ Status WriteQuery::DoCompleteExecute() {
   // This loop may be executed multiple times multiple times only for serializable isolation or
   // when read_time was not yet picked for snapshot isolation.
   // In all other cases it is executed only once.
-  auto init_marker_behavior = shared_tablet->table_type() == TableType::REDIS_TABLE_TYPE
+  auto init_marker_behavior = tablet->table_type() == TableType::REDIS_TABLE_TYPE
       ? docdb::InitMarkerBehavior::kRequired
       : docdb::InitMarkerBehavior::kOptional;
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
-        doc_ops_, deadline(), real_read_time, shared_tablet->doc_db(),
+        doc_ops_, deadline(), real_read_time, tablet->doc_db(),
         request().mutable_write_batch(), init_marker_behavior,
-        shared_tablet->monotonic_counter(), &restart_read_ht_,
-        shared_tablet->metadata()->table_name()));
+        tablet->monotonic_counter(), &restart_read_ht_,
+        tablet->metadata()->table_name()));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.
@@ -636,7 +654,7 @@ Status WriteQuery::DoCompleteExecute() {
     if (!local_limit_updated) {
       local_limit_updated = true;
       real_read_time.local_limit = std::min(
-          real_read_time.local_limit, VERIFY_RESULT(shared_tablet->SafeTime(RequireLease::kTrue)));
+          real_read_time.local_limit, VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue)));
     }
 
     restart_read_ht_ = HybridTime();
@@ -663,19 +681,19 @@ Status WriteQuery::DoCompleteExecute() {
   return Status::OK();
 }
 
-Result<TabletPtr> WriteQuery::tablet() const {
+Result<TabletPtr> WriteQuery::tablet_safe() const {
   return operation_->tablet_safe();
 }
 
 void WriteQuery::AdjustYsqlQueryTransactionality(size_t ysql_batch_size) {
-  auto shared_tablet_result = tablet();
-  if (!shared_tablet_result.ok()) {
+  auto tablet_result = tablet_safe();
+  if (!tablet_result.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << "Cannot adjust YSQL query transactionality, the tablet has already been destroyed. "
         << "ysql_batch_size=" << ysql_batch_size;
     return;
   }
-  force_txn_path_ = ysql_batch_size > 0 && (*shared_tablet_result)->is_sys_catalog();
+  force_txn_path_ = ysql_batch_size > 0 && (*tablet_result)->is_sys_catalog();
 }
 
 void WriteQuery::RedisExecuteDone(const Status& status) {
@@ -692,16 +710,16 @@ void WriteQuery::RedisExecuteDone(const Status& status) {
 }
 
 bool WriteQuery::CqlCheckSchemaVersion() {
-  auto shared_tablet_result = tablet();
-  if (!shared_tablet_result.ok()) {
+  auto tablet_result = tablet_safe();
+  if (!tablet_result.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << "Tablet has already been destroyed in WriteQuery::CqlCheckSchemaVersion.";
     return false;
   }
-  auto shared_tablet = *shared_tablet_result;
+  auto tablet = *tablet_result;
 
   constexpr auto error_code = QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH;
-  auto& metadata = *shared_tablet->metadata();
+  auto& metadata = *tablet->metadata();
   const auto& req_batch = client_request_->ql_write_batch();
   auto& resp_batch = *response_->mutable_ql_response_batch();
 
@@ -763,14 +781,14 @@ void WriteQuery::CompleteQLWriteBatch(const Status& status) {
     StartSynchronization(std::move(self_), status);
     return;
   }
-  auto shared_tablet_result = tablet();
-  if (!shared_tablet_result.ok()) {
-    StartSynchronization(std::move(self_), shared_tablet_result.status());
+  auto tablet_result = tablet_safe();
+  if (!tablet_result.ok()) {
+    StartSynchronization(std::move(self_), tablet_result.status());
     return;
   }
-  auto shared_tablet = *shared_tablet_result;
+  auto tablet = *tablet_result;
 
-  bool is_unique_index = shared_tablet->metadata()->is_unique_index();
+  bool is_unique_index = tablet->metadata()->is_unique_index();
 
   for (auto& doc_op : doc_ops_) {
     std::unique_ptr<docdb::QLWriteOperation> ql_write_op(
@@ -786,7 +804,7 @@ void WriteQuery::CompleteQLWriteBatch(const Status& status) {
                << " due to " << AsString(ql_write_op->response());
       ql_write_op->response()->set_error_message(
           Format("Duplicate value disallowed by unique index $0",
-          shared_tablet->metadata()->table_name()));
+          tablet->metadata()->table_name()));
       ql_write_op->response()->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
     } else if (ql_write_op->rowblock() != nullptr) {
       // If the QL write op returns a rowblock, move the op to the transaction state to return the
@@ -799,12 +817,12 @@ void WriteQuery::CompleteQLWriteBatch(const Status& status) {
 }
 
 void WriteQuery::UpdateQLIndexes() {
-  auto shared_tablet_result = tablet();
-  if (!shared_tablet_result.ok()) {
-    StartSynchronization(std::move(self_), shared_tablet_result.status());
+  auto tablet_result = tablet_safe();
+  if (!tablet_result.ok()) {
+    StartSynchronization(std::move(self_), tablet_result.status());
     return;
   }
-  auto shared_tablet = *shared_tablet_result;
+  auto tablet = *tablet_result;
 
   client::YBClient* client = nullptr;
   client::YBSessionPtr session;
@@ -817,7 +835,7 @@ void WriteQuery::UpdateQLIndexes() {
       continue;
     }
     if (!client) {
-      client = &shared_tablet->client();
+      client = &tablet->client();
       session = std::make_shared<client::YBSession>(client);
       session->SetDeadline(deadline());
       if (write_op->request().has_child_transaction_data()) {
@@ -829,7 +847,7 @@ void WriteQuery::UpdateQLIndexes() {
           return;
         }
         txn = std::make_shared<client::YBTransaction>(
-            &shared_tablet->transaction_manager(), *child_data);
+            &tablet->transaction_manager(), *child_data);
         session->SetTransaction(txn);
       } else {
         child_transaction_data = nullptr;
@@ -847,7 +865,7 @@ void WriteQuery::UpdateQLIndexes() {
     for (auto& [index_info, index_request] : write_op->index_requests()) {
       client::YBTablePtr index_table;
       bool cache_used_ignored = false;
-      auto metadata_cache = shared_tablet->YBMetaDataCache();
+      auto metadata_cache = tablet->YBMetaDataCache();
       if (!metadata_cache) {
         StartSynchronization(
             std::move(self_),
@@ -932,15 +950,15 @@ void WriteQuery::UpdateQLIndexesFlushed(
 }
 
 bool WriteQuery::PgsqlCheckSchemaVersion() {
-  auto shared_tablet_result = tablet();
-  if (!shared_tablet_result.ok()) {
-    StartSynchronization(std::move(self_), shared_tablet_result.status());
+  auto tablet_result = tablet_safe();
+  if (!tablet_result.ok()) {
+    StartSynchronization(std::move(self_), tablet_result.status());
     return false;
   }
-  auto shared_tablet = *shared_tablet_result;
+  auto tablet = *tablet_result;
 
   constexpr auto error_code = PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH;
-  auto& metadata = *shared_tablet->metadata();
+  auto& metadata = *tablet->metadata();
   const auto& req_batch = client_request_->pgsql_write_batch();
   auto& resp_batch = *response_->mutable_pgsql_response_batch();
 

@@ -3,7 +3,7 @@ title: Prisma
 linkTitle: Prisma
 description: Prisma
 menu:
-  preview:
+  preview_integrations:
     identifier: prisma-integration
     parent: integrations
     weight: 571

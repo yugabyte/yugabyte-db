@@ -200,4 +200,17 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
     LOG.info("cleanupWithService called: {}, {}", universeUUID, configUUID);
   }
+
+  public void refreshService(UUID configUUID) {
+    LOG.debug("Starting refresh Hashicorp KMS with KMS config '{}'.", configUUID);
+    try {
+      ObjectNode authConfig = getAuthConfig(configUUID);
+      HashicorpEARServiceUtil.refreshServiceUtil(configUUID, authConfig);
+      LOG.info("Refreshed Hashicorp KMS with config '{}'.", configUUID);
+    } catch (Exception e) {
+      final String errMsg = "Error occurred while refreshing Hashicorp KMS.";
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
+    }
+  }
 }

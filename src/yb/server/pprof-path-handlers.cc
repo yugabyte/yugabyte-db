@@ -43,7 +43,7 @@
 
 #include "yb/server/pprof-path-handlers.h"
 
-#ifdef TCMALLOC_ENABLED
+#if defined(YB_TCMALLOC_ENABLED) && defined(YB_GPERFTOOLS_TCMALLOC)
 #include <gperftools/heap-profiler.h>
 #include <gperftools/malloc_extension.h>
 #include <gperftools/profiler.h>
@@ -108,8 +108,8 @@ static void PprofCmdLineHandler(const Webserver::WebRequest& req,
 static void PprofHeapHandler(const Webserver::WebRequest& req,
                               Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#ifndef TCMALLOC_ENABLED
-  (*output) << "Heap profiling is not available without tcmalloc.";
+#if !defined(YB_TCMALLOC_ENABLED) || defined(YB_GOOGLE_TCMALLOC)
+  (*output) << "Heap profiling is not available without gpertools tcmalloc.";
 #else
   // Remote (on-demand) profiling is disabled if the process is already being profiled.
   if (FLAGS_enable_process_lifetime_heap_profiling) {
@@ -143,8 +143,8 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
                                   Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#ifndef TCMALLOC_ENABLED
-  (*output) << "CPU profiling is not available without tcmalloc.";
+#if !defined(YB_TCMALLOC_ENABLED) || defined(YB_GOOGLE_TCMALLOC)
+  (*output) << "CPU profiling is not available without gperftools tcmalloc.";
 #else
   auto it = req.parsed_args.find("seconds");
   int seconds = PPROF_DEFAULT_SAMPLE_SECS;
@@ -176,8 +176,8 @@ static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
 // MallocExtension::instance()->GetHeapGrowthStacks(&output);
 static void PprofGrowthHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#ifndef TCMALLOC_ENABLED
-  (*output) << "Growth profiling is not available without tcmalloc.";
+#if !defined(YB_TCMALLOC_ENABLED) || defined(YB_GOOGLE_TCMALLOC)
+  (*output) << "Growth profiling is not available without gperftools tcmalloc.";
 #else
   string heap_growth_stack;
   MallocExtension::instance()->GetHeapGrowthStacks(&heap_growth_stack);

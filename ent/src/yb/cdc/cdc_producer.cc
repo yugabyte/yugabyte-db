@@ -318,8 +318,8 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
                            ReplicateIntents replicate_intents,
                            GetChangesResponsePB* resp) {
   const auto& batch = msg->write().write_batch();
-  auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-  const auto& schema = *shared_tablet->schema();
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  const auto& schema = *tablet->schema();
   // Write batch may contain records from different rows.
   // For CDC, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
@@ -348,7 +348,13 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
         // For 2DC, populate serialized data from WAL, to avoid unnecessary deserializing on
         // producer and re-serializing on consumer.
         auto kv_pair = record->add_key();
-        kv_pair->set_key(std::to_string(decoded_key.doc_key().hash()));
+        if (decoded_key.doc_key().has_hash()) {
+          // TODO: is there another way of getting this? Perhaps using kUpToHashOrFirstRange?
+          kv_pair->set_key(
+              PartitionSchema::EncodeMultiColumnHashValue(decoded_key.doc_key().hash()));
+        } else {
+          kv_pair->set_key(decoded_key.doc_key().Encode().ToStringBuffer());
+        }
         kv_pair->mutable_value()->set_binary_value(write_pair.key().ToBuffer());
       } else {
         AddPrimaryKey(decoded_key, schema, record);
@@ -423,7 +429,8 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
   const auto& transaction_status = transaction_state.status();
   if (transaction_status != TransactionStatus::APPLYING &&
       transaction_status != TransactionStatus::COMMITTED &&
-      transaction_status != TransactionStatus::CREATED) {
+      transaction_status != TransactionStatus::CREATED &&
+      transaction_status != TransactionStatus::PENDING) {
     // This is an unsupported transaction status.
     return Status::OK();
   }
@@ -437,8 +444,8 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
     case TransactionStatus::APPLYING: {
       record->set_operation(CDCRecordPB::APPLY);
       txn_state->set_commit_hybrid_time(transaction_state.commit_hybrid_time());
-      auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-      shared_tablet->metadata()->partition()->ToPB(record->mutable_partition());
+      auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+      tablet->metadata()->partition()->ToPB(record->mutable_partition());
       break;
     }
     case TransactionStatus::COMMITTED: {
@@ -448,6 +455,10 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
       }
       break;
     }
+    case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
+    // If transaction status tablet log is GCed, or we bootstrap it is possible that that first
+    // record we see for the transaction is the PENDING record. This can be treated as a CREATED
+    // record which is impotently handled.
     case TransactionStatus::CREATED: {
       record->set_operation(CDCRecordPB::TRANSACTION_CREATED);
       break;
@@ -520,8 +531,8 @@ Status GetChangesForXCluster(const std::string& stream_id,
   OpId checkpoint;
   TxnStatusMap txn_map;
   if (!replicate_intents) {
-    auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-    auto txn_participant = shared_tablet->transaction_participant();
+    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    auto txn_participant = tablet->transaction_participant();
     if (txn_participant) {
       request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
     }

@@ -20,7 +20,7 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>Kubernetes</a>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
   <li>
@@ -30,7 +30,7 @@ type: docs
 
   <li>
     <a href="../openshift/" class="nav-link active">
-      <i class="fa-solid fa-cubes"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
 </ul>
@@ -174,7 +174,7 @@ Alternatively, you can create an instance of YugabyteDB Anywhere via the command
   oc get storageClass
   ```
 
-  
+
   If your cluster's StorageClass is not `standard`, change the value of  `spec.yugaware.storageClass` to the correct StorageClass name when you create an instance of YugabyteDB Anywhere.
 
 - To create an instance of YugabyteDB Anywhere in the yb-platform project, execute the following command:

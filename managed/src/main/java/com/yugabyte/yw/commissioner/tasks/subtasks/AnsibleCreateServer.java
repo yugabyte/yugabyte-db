@@ -71,9 +71,8 @@ public class AnsibleCreateServer extends NodeTaskBase {
     List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     boolean skipProvision = false;
 
-    // For now we will skipProvision if it's set in accessKeys.
-    if (p.code.equals(Common.CloudType.onprem.name()) && accessKeys.size() > 0) {
-      skipProvision = accessKeys.get(0).getKeyInfo().skipProvisioning;
+    if (p.code.equals(Common.CloudType.onprem.name())) {
+      skipProvision = p.details.skipProvisioning;
     }
 
     if (skipProvision) {

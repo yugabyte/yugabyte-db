@@ -138,7 +138,7 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
       transitEngine = HashicorpEARServiceUtil.getVaultSecretEngine(cfg);
     }
 
-    HashicorpEARServiceUtil.updateAuthConfigObj(testUniverseID, testConfigID, transitEngine, cfg);
+    HashicorpEARServiceUtil.updateAuthConfigObj(testConfigID, transitEngine, cfg);
 
     JsonNode ttl = cfg.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     JsonNode ttlExpiry = cfg.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY);
@@ -158,7 +158,7 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
     vAccessor = mock(VaultAccessor.class);
     when(vAccessor.getTokenExpiryFromVault()).thenThrow(NullPointerException.class);
     transitEngine = new VaultTransit(vAccessor, mountPath, KeyType.CMK);
-    HashicorpEARServiceUtil.updateAuthConfigObj(testUniverseID, testConfigID, transitEngine, cfg);
+    HashicorpEARServiceUtil.updateAuthConfigObj(testConfigID, transitEngine, cfg);
     JsonNode ttl = cfg.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     JsonNode ttlExpiry = cfg.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY);
     assertNull(ttl);

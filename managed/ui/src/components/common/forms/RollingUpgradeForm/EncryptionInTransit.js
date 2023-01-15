@@ -106,7 +106,7 @@ function getEncryptionComponent(
           </Col>
         </Row>
       )}
-      {status && status[inputName] && (
+      {status?.[inputName] && (
         <Alert key={status[inputName]} variant="warning" bsStyle="warning">
           {status[inputName]}
         </Alert>

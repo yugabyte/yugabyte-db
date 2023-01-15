@@ -24,6 +24,7 @@ const customerConfigToasterHandler = (errorMessageObject) => {
       toast.error(
         <ul>
           {errorMessageObject[errorKey].map((error) => (
+            // eslint-disable-next-line react/jsx-key
             <li>{error}</li>
           ))}
         </ul>

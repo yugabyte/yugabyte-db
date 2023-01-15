@@ -45,8 +45,10 @@ DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
-DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_int32(wait_queue_poll_interval_ms);
 DECLARE_uint64(force_single_shard_waiter_retry_ms);
+DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_uint64(transactions_status_poll_interval_ms);
 
 using namespace std::literals;
 
@@ -639,6 +641,7 @@ class ConcurrentBlockedWaitersTest {
   CountDownLatch finished_waiter_ = CountDownLatch(0);
 };
 
+
 class PgConcurrentBlockedWaitersTest : public PgWaitQueuesTest,
                                        public ConcurrentBlockedWaitersTest {
   Result<PGConn> GetDbConn() const override { return Connect(); }
@@ -667,9 +670,8 @@ TEST_F(PgConcurrentBlockedWaitersTest, YB_DISABLE_TEST_IN_TSAN(LongPauseRetrySin
 class PgLeaderChangeWaitQueuesTest : public PgConcurrentBlockedWaitersTest {
  protected:
   Status WaitForLoadBalance(int num_tablet_servers) {
-    auto client = VERIFY_RESULT(cluster_->CreateClient());
     return WaitFor(
-      [&]() -> Result<bool> { return client->IsLoadBalanced(num_tablet_servers); },
+      [&]() -> Result<bool> { return client_->IsLoadBalanced(num_tablet_servers); },
       60s * kTimeMultiplier,
       Format("Wait for load balancer to balance to $0 tservers.", num_tablet_servers));
   }
@@ -745,6 +747,56 @@ TEST_F(PgTabletSplittingWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SplitTablet)) {
   }, 15s * kTimeMultiplier, "Wait for split completion."));
 
   UnblockWaitersAndValidate(&conn, kNumWaiters);
+}
+
+class PgWaitQueueContentionStressTest : public PgMiniTestBase {
+  static constexpr int kClientStatementTimeoutSeconds = 60;
+
+  void SetUp() override {
+    FLAGS_ysql_pg_conf_csv = Format(
+        "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
+    FLAGS_enable_wait_queues = true;
+    FLAGS_wait_queue_poll_interval_ms = 2;
+    FLAGS_transactions_status_poll_interval_ms = 5;
+    PgMiniTestBase::SetUp();
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+TEST_F(PgWaitQueueContentionStressTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentReaders)) {
+  constexpr int kNumReaders = 8;
+  constexpr int kNumTxnsPerReader = 100;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo VALUES (1, 1)"));
+  TestThreadHolder thread_holder;
+  CountDownLatch finished_readers{kNumReaders};
+
+  for (int reader_idx = 0; reader_idx < kNumReaders; ++reader_idx) {
+    thread_holder.AddThreadFunctor([this, &finished_readers, &stop = thread_holder.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      for (int i = 0; i < kNumTxnsPerReader; ++i) {
+        if (stop) {
+          EXPECT_FALSE(true) << "Only completed " << i << " reads";
+          return;
+        }
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+        ASSERT_OK(conn.CommitTransaction());
+      }
+      finished_readers.CountDown();
+      finished_readers.Wait();
+    });
+  }
+
+  finished_readers.WaitFor(60s * kTimeMultiplier);
+  finished_readers.Reset(0);
+  thread_holder.Stop();
 }
 
 } // namespace pgwrapper

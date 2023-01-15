@@ -25,9 +25,17 @@ public class NodeDetailsResp {
 
   @JsonIgnore public final Universe universe;
 
+  // Applicable to kubernetes universes only.
+  public String kubernetesOverrides;
+
   public NodeDetailsResp(NodeDetails nodeDetails, Universe universe) {
+    this(nodeDetails, universe, "");
+  }
+
+  public NodeDetailsResp(NodeDetails nodeDetails, Universe universe, String helmValues) {
     this.delegate = nodeDetails;
     this.universe = universe;
+    this.kubernetesOverrides = helmValues;
   }
 
   @JsonProperty(access = JsonProperty.Access.READ_ONLY)

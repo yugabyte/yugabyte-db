@@ -69,6 +69,8 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
     line_prefix_ = line_prefix;
   }
 
+  int Count() { return kv_index_; }
+
  protected:
   virtual std::string FormatKey(const Slice& key);
 

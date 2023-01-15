@@ -57,6 +57,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
         && nodeItem.cloudInfo?.region === selectedRegionCode : selectedRegionClusterUUID === nodeItem.placementUuid);
     }
 
+    // eslint-disable-next-line react/display-name
     nodeItemsElement = nodeItems?.map((nodeItem: any, nodeIdx: number) => {
       let zoneNameElement = null;
       let zoneDividerElement = null;
@@ -84,6 +85,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
       }
 
       return (
+        // eslint-disable-next-line react/jsx-key
         <Fragment>
           {zoneNameElement}
           {nodeItems.length > 1 && isZoneDivider ? zoneDividerElement : null}

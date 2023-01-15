@@ -59,10 +59,14 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
   }
 
   public void verifyParams(Universe universe) {
+    verifyParams(universe, null);
+  }
+
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     Map<String, String> universeConfig = universe.getConfig();
 
-    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE && universe.nodesInTransit()) {
+    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE && universe.nodesInTransit(nodeState)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "Cannot perform a rolling upgrade on universe "

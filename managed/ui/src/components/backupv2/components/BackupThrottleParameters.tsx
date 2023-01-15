@@ -96,8 +96,9 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
   const initialValues: ThrottleParameters = {
     ...throttleParameters!.data
   };
-  const noOfCoresPresent = currentUniverseResources.numCores 
-  const defaultBufferPerNode = noOfCoresPresent / 2 + 1;
+
+  const noOfCoresPerNode = currentUniverseResources.numCores / currentUniverseResources.numNodes;
+  const defaultBufferPerNode = noOfCoresPerNode / 2 + 1;
 
   const min_buffers_allowed = 1;
 
@@ -106,22 +107,22 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
       .required('Required')
       .typeError('Required')
       .min(min_buffers_allowed, 'Min limit is 1')
-      .max(noOfCoresPresent, `Max limit is ${noOfCoresPresent}`),
+      .max(noOfCoresPerNode, `Max limit is ${noOfCoresPerNode}`),
     per_upload_num_objects: Yup.number()
       .required('Required')
       .typeError('Required')
       .min(min_buffers_allowed, 'Min Limit is 1')
-      .max(noOfCoresPresent, `Max limit is ${noOfCoresPresent}`),
+      .max(noOfCoresPerNode, `Max limit is ${noOfCoresPerNode}`),
     max_concurrent_downloads: Yup.number()
       .required('Required')
       .typeError('Required')
       .min(min_buffers_allowed, 'Min limit is 1')
-      .max(noOfCoresPresent, `Max limit is ${noOfCoresPresent}`),
+      .max(noOfCoresPerNode, `Max limit is ${noOfCoresPerNode}`),
     per_download_num_objects: Yup.number()
       .required('Required')
       .typeError('Required')
       .min(min_buffers_allowed, 'Min Limit is 1')
-      .max(noOfCoresPresent, `Max limit is ${noOfCoresPresent}`)
+      .max(noOfCoresPerNode, `Max limit is ${noOfCoresPerNode}`)
   });
 
   return (
@@ -167,7 +168,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                   </div>
                   <div>
                     For <b>faster</b> backups and restores, enter higher values.
-                    <YBTag type={YBTag_Types.YB_GRAY}>Max {noOfCoresPresent}</YBTag>
+                    <YBTag type={YBTag_Types.YB_GRAY}>Max {noOfCoresPerNode}</YBTag>
                   </div>
                   <div>
                     For <b>lower impact</b> on database performance, enter lower values.

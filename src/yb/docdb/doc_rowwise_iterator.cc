@@ -24,6 +24,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_scanspec.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -51,6 +52,7 @@
 
 #include "yb/rocksdb/db.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -60,6 +62,9 @@
 #include "yb/util/strongly_typed_bool.h"
 
 using std::string;
+
+DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
+    "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
 namespace yb {
 namespace docdb {
@@ -114,16 +119,17 @@ Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) 
   has_bound_key_ = false;
   table_type_ = table_type;
   if (table_type == TableType::PGSQL_TABLE_TYPE) {
-    ignore_ttl_ = true;
+    ConfigureForYsql();
   }
+  InitResult();
 
   return Status::OK();
 }
 
 Result<bool> DocRowwiseIterator::InitScanChoices(
     const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
-  scan_choices_ = ScanChoices::Create(
-      doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
+  scan_choices_ = ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key,
+    upper_doc_key, doc_spec.prefix_length());
 
   if (scan_choices_ && scan_choices_->IsInitialPositionKnown()) {
     // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
@@ -137,8 +143,8 @@ Result<bool> DocRowwiseIterator::InitScanChoices(
 Result<bool> DocRowwiseIterator::InitScanChoices(
     const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
-  scan_choices_ = ScanChoices::Create(
-      doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
+  scan_choices_ = ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key,
+    upper_doc_key, doc_spec.prefix_length());
 
   if (scan_choices_ && scan_choices_->IsInitialPositionKnown()) {
     // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
@@ -151,6 +157,7 @@ Result<bool> DocRowwiseIterator::InitScanChoices(
 
 template <class T>
 Status DocRowwiseIterator::DoInit(const T& doc_spec) {
+  InitResult();
   is_forward_scan_ = doc_spec.is_forward_scan();
 
   VLOG(4) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD");
@@ -212,8 +219,27 @@ Status DocRowwiseIterator::Init(const QLScanSpec& spec) {
 
 Status DocRowwiseIterator::Init(const PgsqlScanSpec& spec) {
   table_type_ = TableType::PGSQL_TABLE_TYPE;
-  ignore_ttl_ = true;
+  ConfigureForYsql();
   return DoInit(down_cast<const DocPgsqlScanSpec&>(spec));
+}
+
+void DocRowwiseIterator::ConfigureForYsql() {
+  ignore_ttl_ = true;
+  if (FLAGS_ysql_use_flat_doc_reader) {
+    is_flat_doc_ = IsFlatDoc::kTrue;
+  }
+}
+
+void DocRowwiseIterator::InitResult() {
+  if (is_flat_doc_) {
+    result_ = std::vector<PrimitiveValue>();
+    values_ = &std::get<std::vector<PrimitiveValue>>(result_);
+    row_ = nullptr;
+  } else {
+    result_ = SubDocument();
+    row_ = &std::get<SubDocument>(result_);
+    values_ = nullptr;
+  }
 }
 
 Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
@@ -314,7 +340,11 @@ Result<bool> DocRowwiseIterator::HasNext() {
           // GH15304 (https://github.com/yugabyte/yugabyte-db/issues/15304) which will remove key
           // decoding from ScanChoices completely.
           RETURN_NOT_OK(ValidateSystemKey());
-          db_iter_->SeekOutOfSubDoc(&iter_key_);
+          if (is_forward_scan_) {
+            db_iter_->SeekOutOfSubDoc(&iter_key_);
+          } else {
+            db_iter_->PrevDocKey(row_key_);
+          }
           continue;
         }
 
@@ -328,6 +358,7 @@ Result<bool> DocRowwiseIterator::HasNext() {
       // We found a match for the target key or a static column, so we move on to getting the
       // SubDocument.
     }
+
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), deadline_, &projection_subkeys_, table_type_,
@@ -338,9 +369,13 @@ Result<bool> DocRowwiseIterator::HasNext() {
       }
     }
 
-    DCHECK(row_.type() == ValueEntryType::kObject);
-    row_.object_container().clear();
-    auto doc_found_res = doc_reader_->Get(doc_key, &row_);
+    if (!is_flat_doc_) {
+      DCHECK(row_->type() == ValueEntryType::kObject);
+      row_->object_container().clear();
+    }
+
+    auto doc_found_res =
+        is_flat_doc_ ? doc_reader_->GetFlat(doc_key, values_) : doc_reader_->Get(doc_key, row_);
     if (!doc_found_res.ok()) {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
@@ -407,7 +442,8 @@ bool DocRowwiseIterator::IsNextStaticColumn() const {
   return doc_read_context_.schema.has_statics() && row_hash_key_.end() + 1 == row_key_.end();
 }
 
-Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table_row) {
+Status DocRowwiseIterator::DoNextRow(
+    boost::optional<const Schema&> projection_opt, QLTableRow* table_row) {
   VLOG(4) << __PRETTY_FUNCTION__;
 
   if (PREDICT_FALSE(done_)) {
@@ -439,16 +475,54 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
         doc_read_context_.schema.num_range_key_columns(), "range", &decoder, table_row));
   }
 
-  for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
-    const auto& column_id = projection.column_id(i);
-    const auto ql_type = projection.column(i).type();
-    const SubDocument* column_value = row_.GetChild(KeyEntryValue::MakeColumnId(column_id));
-    if (column_value != nullptr) {
+  const auto& projection = projection_opt.get_value_or(schema());
+
+  DVLOG_WITH_FUNC(4) << "table_row: " << AsString(*table_row);
+  if (is_flat_doc_) {
+    DVLOG_WITH_FUNC(4) << "values: " << AsString(*values_);
+    for (size_t column_reader_idx = 0; column_reader_idx < projection_subkeys_.size();
+         ++column_reader_idx) {
+      const auto& column_id = projection_subkeys_[column_reader_idx].GetColumnId();
+      if (column_id.rep() == static_cast<ColumnIdRep>(SystemColumnIds::kLivenessColumn)) {
+        // This has been already added by SetQLPrimaryKeyColumnValues, no need to overwrite.
+        continue;
+      }
+      const auto column_projection_idx = projection.find_column_by_id(column_id);
+      DVLOG_WITH_FUNC(4) << "column_reader_idx: " << column_reader_idx
+                         << " column_id: " << column_id << " column: "
+                         << (column_projection_idx == Schema::kColumnNotFound
+                                 ? "not found"
+                                 : AsString(projection.column(column_projection_idx)));
+      if (column_projection_idx == Schema::kColumnNotFound) {
+        // TODO: potentially could be optimized to not iterate over columns in reader that
+        // we don't need here, but this is only possible in YCQL as of 2022-12-27.
+        // And for YCQL we don't use IsFlatDoc::kTrue mode, because for YCQL we can have nested
+        // SubDocuments.
+        continue;
+      }
+      const auto ql_type = projection.column(column_projection_idx).type();
       QLTableColumn& column = table_row->AllocColumn(column_id);
-      column_value->ToQLValuePB(ql_type, &column.value);
-      column.ttl_seconds = column_value->GetTtl();
-      if (column_value->IsWriteTimeSet()) {
-        column.write_time = column_value->GetWriteTime();
+
+      const auto& column_value = (*values_)[column_reader_idx];
+      column_value.ToQLValuePB(ql_type, &column.value);
+      column.ttl_seconds = column_value.GetTtl();
+      if (column_value.IsWriteTimeSet()) {
+        column.write_time = column_value.GetWriteTime();
+      }
+    }
+  } else {
+    DVLOG_WITH_FUNC(4) << "subdocument: " << AsString(*row_);
+    for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
+      const auto& column_id = projection.column_id(i);
+      const auto ql_type = projection.column(i).type();
+      const SubDocument* column_value = row_->GetChild(KeyEntryValue::MakeColumnId(column_id));
+      if (column_value != nullptr) {
+        QLTableColumn& column = table_row->AllocColumn(column_id);
+        column_value->ToQLValuePB(ql_type, &column.value);
+        column.ttl_seconds = column_value->GetTtl();
+        if (column_value->IsWriteTimeSet()) {
+          column.write_time = column_value->GetWriteTime();
+        }
       }
     }
   }
@@ -475,7 +549,11 @@ Status DocRowwiseIterator::ValidateSystemKey() {
 }
 
 bool DocRowwiseIterator::LivenessColumnExists() const {
-  const SubDocument* subdoc = row_.GetChild(KeyEntryValue::kLivenessColumn);
+  if (is_flat_doc_) {
+    const auto& type = (*values_)[0].type();
+    return type != ValueEntryType::kInvalid;
+  }
+  const SubDocument* subdoc = row_->GetChild(KeyEntryValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != ValueEntryType::kInvalid;
 }
 
@@ -499,11 +577,10 @@ Status DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
 
 Status DocRowwiseIterator::Iterate(const YQLScanCallback& callback) {
   QLTableRow row;
-  auto& projection = schema();
   while (VERIFY_RESULT(HasNext())) {
     row.Clear();
 
-    RETURN_NOT_OK(DoNextRow(projection, &row));
+    RETURN_NOT_OK(DoNextRow(boost::none, &row));
     if (!VERIFY_RESULT(callback(row))) {
       break;
     }

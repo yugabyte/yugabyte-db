@@ -12,7 +12,7 @@ import { downloadLogs } from '../../../actions/universe';
 import _ from 'lodash';
 
 export default class NodeAction extends Component {
-  constructor(props) {
+  constructor() {
     super();
     this.state = {
       showModal: false,

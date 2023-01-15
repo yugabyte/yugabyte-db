@@ -7,7 +7,6 @@ import { SlowQueries } from './SlowQueries';
 
 // TODO: Under discussion if we need to have Perf Advisor under queries section
 export const QueriesViewer = (props) => {
-  console.log('QueriesViewer', props);
   return (
     <div>
       <YBTabsPanel defaultTab={'live-queries'} id="queries-tab-panel">

@@ -54,6 +54,7 @@ const STEPS = [
     title: 'Restore Backup',
     submitLabel: TEXT_RESTORE,
     component: RenameSingleKeyspace,
+    // eslint-disable-next-line react/display-name
     footer: (onClick: Function) => (
       <YBButton
         btnClass={`btn btn-default pull-right restore-wth-rename-but`}
@@ -359,6 +360,7 @@ function RestoreForm({
               label="Backup config"
               options={storageConfigs}
               components={{
+                // eslint-disable-next-line react/display-name
                 SingleValue: ({ data }: { data: any }) => (
                   <>
                     <span className="storage-cfg-name">{data.label}</span>
@@ -388,10 +390,10 @@ function RestoreForm({
                   values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Database' : 'Keyspace'
                 } name`}
                 validate={(name: string) => {
-                  // Restoring with duplicate keyspace name is supported in redis
+                  // Restoring with duplicate keyspace name is supported in redis and YCQL
                   if (
                     Array.isArray(tablesInUniverse) &&
-                    values['api_type'].value !== BACKUP_API_TYPES.YEDIS &&
+                    values['api_type'].value === BACKUP_API_TYPES.YSQL &&
                     find(tablesInUniverse, { tableType: values['api_type'].value, keySpace: name })
                   ) {
                     setFieldValue('should_rename_keyspace', true, false);

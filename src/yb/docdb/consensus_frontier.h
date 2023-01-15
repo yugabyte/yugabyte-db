@@ -80,6 +80,8 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     hybrid_time_filter_ = value;
   }
 
+  void UpdateSchemaVersion(
+      const Uuid& table_id, SchemaVersion version, rocksdb::UpdateUserValueType type);
   void AddSchemaVersion(const Uuid& table_id, SchemaVersion version);
   void ResetSchemaVersion();
 
