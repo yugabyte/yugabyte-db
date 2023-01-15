@@ -222,7 +222,7 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.39.0
+        version: v2.41.0
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
@@ -531,7 +531,7 @@ components:
       - source: public
         image_name: nginx
         name: nginx
-        version: 1.23.1
+        version: 1.23.3
         cmd: ""
         publish_events:
           - name: Container nginx started
