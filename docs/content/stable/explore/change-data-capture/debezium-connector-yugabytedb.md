@@ -982,7 +982,7 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 ## Deploy a Debezium connector {#deployment}
 
-To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](preview/integrations/cdc/debezium).
+To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](/preview/integrations/cdc/debezium).
 
 ### Connector configuration example
 
