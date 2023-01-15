@@ -21,17 +21,6 @@ Because YugabyteDB is a distributed database, supporting all PostgreSQL features
 
 The following PostgreSQL features are not supported in YugabyteDB:
 
-<<<<<<< conflict-management-docs
-- Table locks
-- [Inheritance](https://www.postgresql.org/docs/11/tutorial-inheritance.html)
-- Exclusion Constraints
-- GiST indexes
-- Kerberos/GSSAPI
-- Events (Listen/Notify)
-- Drop primary key
-- XML Functions
-- XA syntax
-=======
 | Unsupported PostgreSQL feature      | Track feature request GitHub issue |
 | ----------- | ----------- |
 | LOCK TABLE to obtain a table-level lock | [5384](https://github.com/yugabyte/yugabyte-db/issues/5384)|
@@ -58,4 +47,3 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | transaction ids (xid) | [15638](https://github.com/yugabyte/yugabyte-db/issues/15638)|
 | DDL operations within transaction| [1404](https://github.com/yugabyte/yugabyte-db/issues/1404)|
 | Track ALTER TABLE variants| [1124](https://github.com/yugabyte/yugabyte-db/issues/1124)|
->>>>>>> master
