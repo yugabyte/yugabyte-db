@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.common.kms.services;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.algorithms.AwsAlgorithm;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
@@ -49,12 +48,6 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
           String.format("Error generating universe key for universe %s", universeUUID.toString()));
     }
     return result;
-  }
-
-  private String getCMKId(UUID configUUID) {
-    final ObjectNode authConfig = getAuthConfig(configUUID);
-    final JsonNode cmkNode = authConfig.get(AwsKmsAuthConfigField.CMK_ID.fieldName);
-    return cmkNode == null ? null : cmkNode.asText();
   }
 
   @Override
@@ -96,7 +89,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
   protected byte[] createKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
     byte[] result = null;
-    final String cmkId = getCMKId(configUUID);
+    final String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
     if (cmkId != null) {
       // Ensure an alias exists from KMS CMK to universe UUID
       AwsEARServiceUtil.createOrUpdateCMKAlias(configUUID, cmkId, universeUUID.toString());
@@ -119,7 +112,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
   protected byte[] rotateKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
     byte[] result = null;
-    final String cmkId = getCMKId(configUUID);
+    final String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
     if (cmkId != null) {
       // Ensure an alias exists from KMS CMK to universe UUID
       AwsEARServiceUtil.createOrUpdateCMKAlias(configUUID, cmkId, universeUUID.toString());
