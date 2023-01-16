@@ -48,7 +48,7 @@ Use one or more of the following techniques to improve import performance:
 
    {{< note title="Note" >}}
 
-   If timeouts are witnessed, then import should be restarted with less parallelism.
+   If there are timeouts during import, restart the import with fewer parallel jobs.
 
    {{< /note >}}
 
