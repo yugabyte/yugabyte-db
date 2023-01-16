@@ -27,9 +27,12 @@ import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
 import com.amazonaws.services.kms.model.DecryptRequest;
 import com.amazonaws.services.kms.model.DeleteAliasRequest;
+import com.amazonaws.services.kms.model.EncryptRequest;
+import com.amazonaws.services.kms.model.EncryptResult;
 import com.amazonaws.services.kms.model.DescribeKeyRequest;
 import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.amazonaws.services.kms.model.GenerateDataKeyWithoutPlaintextRequest;
+import com.amazonaws.services.kms.model.GenerateRandomRequest;
 import com.amazonaws.services.kms.model.KeyListEntry;
 import com.amazonaws.services.kms.model.ListAliasesRequest;
 import com.amazonaws.services.kms.model.ListAliasesResult;
@@ -40,6 +43,7 @@ import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -299,6 +303,37 @@ public class AwsEARServiceUtil {
       if (!result.getTruncated()) done = true;
     }
     return cmk;
+  }
+
+  public static String getCMKId(UUID configUUID) {
+    final ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
+    final JsonNode cmkNode = authConfig.get(AwsKmsAuthConfigField.CMK_ID.fieldName);
+    return cmkNode == null ? null : cmkNode.asText();
+  }
+
+  public static byte[] getByteArrayFromBuffer(ByteBuffer byteBuffer) {
+    byteBuffer.rewind();
+    byte[] byteArray = new byte[byteBuffer.remaining()];
+    byteBuffer.get(byteArray);
+    return byteArray;
+  }
+
+  /**
+   * This will only be used at the time of rotating the master key when we need to re-encrypt the
+   * universe keys. This is not used at the time of generating new universe keys like the other KMS
+   * services.
+   *
+   * @param configUUID the KMS config UUID.
+   * @param plainTextUniverseKey the plaintext universe key to be encrypted.
+   * @return the encrypted universe key.
+   */
+  public static byte[] encryptUniverseKey(UUID configUUID, byte[] plainTextUniverseKey) {
+    AWSKMS client = AwsEARServiceUtil.getKMSClient(configUUID);
+    String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
+    EncryptRequest request =
+        new EncryptRequest().withKeyId(cmkId).withPlaintext(ByteBuffer.wrap(plainTextUniverseKey));
+    EncryptResult response = client.encrypt(request);
+    return getByteArrayFromBuffer(response.getCiphertextBlob());
   }
 
   public static byte[] decryptUniverseKey(
