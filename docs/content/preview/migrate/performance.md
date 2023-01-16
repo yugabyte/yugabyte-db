@@ -42,7 +42,7 @@ Use one or more of the following techniques to improve import performance:
 
 - **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to half of the total number of cores in the YugabyteDB cluster. Normally this is considered good default practice. However, if the target cluster runs on high resource machines with a large number of CPU cores, the default may result in underusing CPU resources.
 
-  Use the [-–parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set `--parallel-jobs` to a number higher than the default based on your cluster requirement.
+  Use the [-–parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set `--parallel-jobs` to a number higher than the default based on your cluster configuration.
 
   If CPU use is greater than 50-60%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
 
