@@ -30,7 +30,7 @@ yb-voyager maximizes performance when migrating data into a newly created empty 
 
   {{< note title="Note" >}}
 
-yb-voyager only disables all the constraints except check constraints on the column in internal sessions to migrate data.
+yb-voyager only disables constraint checks (except check constraints on columns) in internal sessions to migrate data.
 
   {{< /note >}}
 
