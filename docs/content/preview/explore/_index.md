@@ -156,7 +156,7 @@ Start a local three-node cluster with a replication factor of `3` by first creat
                 --cloud_location=aws.us-east-2.us-east-2a
 ```
 
-On MacOS and Linux, the additional nodes need loopback addresses configured:
+On macOS, the additional nodes need loopback addresses configured:
 
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2
