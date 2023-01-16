@@ -738,8 +738,11 @@ Status Tablet::OpenKeyValueTablet() {
       metadata_.get());
 
   rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
-    if (mem_table_flush_filter_factory_) {
-      return mem_table_flush_filter_factory_();
+    {
+      std::lock_guard<std::mutex> lock(flush_filter_mutex_);
+      if (mem_table_flush_filter_factory_) {
+        return mem_table_flush_filter_factory_();
+      }
     }
     return rocksdb::MemTableFilter();
   });
