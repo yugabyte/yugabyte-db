@@ -56,7 +56,7 @@ Use one or more of the following techniques to improve import performance:
 
 - **Add disks** to reduce disk write contention. YugabyteDB servers can be configured with one or multiple disk volumes to store tablet data. If all tablets are writing to a single disk, write contention can slow down the ingestion speed. Configuring the [YB-TServers](../../reference/configuration/yb-tserver/) with multiple disks can reduce disk write contention, thereby increasing throughput. Disks with higher IOPS and better throughput also improve write performance.
 
-- **Enabling packed columns** helps in increasing the throughput to more than two times. Enable packed columns on the YugabyteDB cluster by setting the YB-TServer gflag `ysql_enable_packed_row` to true.
+- **Enable packed columns** to increase the throughput by more than two times. Enable packed columns on the YugabyteDB cluster by setting the YB-TServer gflag `ysql_enable_packed_row` to true.
 
 - **Client machine's disk** with higher IOPS and better throughput also improves the import performance as the performance of splitter which splits the large data file into smaller splits of 20000 rows depends on the client machine's disk.
 
