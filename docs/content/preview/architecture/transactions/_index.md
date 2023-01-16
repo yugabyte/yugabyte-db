@@ -14,7 +14,7 @@ menu:
     weight: 1120
 type: indexpage
 ---
-YugabyteDB's distributed transaction architecture is based on principles of atomicity, consistency, isolation, durability (ACID) and is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
+YugabyteDB's distributed transaction architecture is based on principles of atomicity, consistency, isolation, and durability (ACID), and is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
 
 <div class="row">
 
@@ -43,13 +43,13 @@ YugabyteDB's distributed transaction architecture is based on principles of atom
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="explicit-locking/">
+    <a class="section-link icon-offset" href="concurrency-control/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Explicit row locks</div>
+        <div class="title">Concurrency control</div>
       </div>
       <div class="body">
-        YugabyteDB's use of a combination of optimistic and pessimistic concurrency control to support explicit row locking.
+        Learn how YugabyteDB handles conflicts between concurrent transactions.
       </div>
     </a>
   </div>

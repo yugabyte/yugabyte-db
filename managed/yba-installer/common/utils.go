@@ -33,15 +33,17 @@ import (
 // Systemctl linux command.
 const Systemctl string = "systemctl"
 
-// InputFile where installer config settings are specified.
-const InputFile = "/opt/yba-ctl/yba-ctl.yml"
+// YBA-CTL specific files
+const (
+	// InputFile where installer config settings are specified.
+	InputFile      = "/opt/yba-ctl/yba-ctl.yml"
+	YbaCtlLogFile  = "/opt/yba-ctl/yba-ctl.log"
+	installingFile = "/opt/yba-ctl/.installing"
 
-const YbaCtlLogFile = "/opt/yba-ctl/yba-ctl.log"
-
-const installingFile = "/opt/yba-ctl/.installing"
-
-// InstalledFile is location of install completed marker file.
-const InstalledFile = "/opt/yba-ctl/.installed"
+	// InstalledFile is location of install completed marker file.
+	InstalledFile      = "/opt/yba-ctl/.installed"
+	LicenseFileInstall = "/opt/yba-ctl/yba.lic"
+)
 
 const PostgresPackageGlob = "yba_installer-*linux*/postgresql-*-linux-x64-binaries.tar.gz"
 

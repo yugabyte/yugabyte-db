@@ -159,6 +159,9 @@ DEFINE_test_flag(bool, block_get_changes, false,
 DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");
 
+DEFINE_test_flag(bool, force_get_checkpoint_from_cdc_state, false,
+    "Always bypass the cache and fetch the checkpoint from the cdc state table");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -2982,7 +2985,7 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
       LOG(WARNING) << err_message;
       return STATUS(ServiceUnavailable, err_message, CDCError(CDCErrorPB::INTERNAL_ERROR));
     }
-    tablet_peer->log()->GetLatestEntryOpId().ToPB(resp.mutable_op_id());
+    VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType()).ToPB(resp.mutable_op_id());
 
     return resp;
   }
@@ -3007,7 +3010,7 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
     }
 
     // Add op_id to response.
-    OpId op_id = tablet_peer->log()->GetLatestEntryOpId();
+    OpId op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
     op_id.ToPB(resp.add_op_ids());
   }
 
@@ -3193,7 +3196,7 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
           LOG(WARNING) << err_message;
           return STATUS(InternalError, err_message);
         }
-        op_id = tablet_peer->log()->GetLatestEntryOpId();
+        op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
 
         // Add checkpoint for rollback before modifying tablet state.
         impl_->AddTabletCheckpoint(
@@ -3454,7 +3457,7 @@ Status CDCServiceImpl::BootstrapProducerHelper(
           LOG(WARNING) << err_message;
           return STATUS(InternalError, err_message);
         }
-        op_id = tablet_peer->log()->GetLatestEntryOpId();
+        op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
         // Update the term and index for the consumed checkpoint
         // to tablet's LEADER as well as FOLLOWER.
         op_id_min.cdc_op_id = OpId(OpId::kUnknownTerm, op_id.index);
@@ -3593,9 +3596,11 @@ Result<int64_t> CDCServiceImpl::GetLastActiveTime(
 
 Result<OpId> CDCServiceImpl::GetLastCheckpoint(
     const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session) {
-  auto result = impl_->GetLastCheckpoint(producer_tablet);
-  if (result) {
-    return *result;
+  if (!PREDICT_FALSE(FLAGS_TEST_force_get_checkpoint_from_cdc_state)) {
+    auto result = impl_->GetLastCheckpoint(producer_tablet);
+    if (result) {
+      return *result;
+    }
   }
 
   auto cdc_state_table_result = GetCdcStateTable();

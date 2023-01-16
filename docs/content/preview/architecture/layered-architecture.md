@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB architecture follows a layered design. It is comprised of two logical layers: Yugabyte Query Layer and DocDB distributed document store, as per the following diagram:
+YugabyteDB architecture follows a layered design. The logical layers are the Yugabyte Query Layer, and the DocDB distributed document store, as per the following diagram:
 
 ![YugabyteDB Logical Architecture](/images/architecture/yb-arch-new.png)
 

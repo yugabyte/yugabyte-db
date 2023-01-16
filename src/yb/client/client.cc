@@ -1598,10 +1598,11 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-    GetTableLocationsCallback callback) {
+    PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetTableLocations(
-      this, table_id, max_tablets, require_tablets_running, deadline, std::move(callback));
+      this, table_id, max_tablets, require_tablets_running, partitions_only, deadline,
+      std::move(callback));
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {

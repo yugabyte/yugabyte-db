@@ -35,9 +35,9 @@ On any RPC communication between two nodes, HLC values are exchanged. The node w
 
 The same HLC is used to determine the read point in order to determine which updates should be visible to end clients. If an update has safely been replicated onto a majority of nodes, as per the Raft protocol, that update operation can be acknowledged as successful to the client and it is safe to serve all reads up to that HLC. This forms the foundation for [lockless multiversion concurrency control in YugabyteDB](#mvcc).
 
-## Multiversion concurrency control
+## Multi-version concurrency control
 
-YugabyteDB maintains data consistency internally using multiversion concurrency control (MVCC) without the need to lock rows. Each transaction works on a version of the data in the database as of some hybrid timestamp. This prevents transactions from reading the intermediate updates made by concurrently-running transactions, some of which may be updating the same rows. Each transaction, however, can see its own updates, thereby providing transaction isolation for each database session. Using MVCC minimizes lock contention during the execution of multiple concurrent transactions.
+YugabyteDB maintains data consistency internally using multi-version concurrency control (MVCC) without the need to lock rows. Each transaction works on a version of the data in the database as of some hybrid timestamp. This prevents transactions from reading the intermediate updates made by concurrently-running transactions, some of which may be updating the same rows. Each transaction, however, can see its own updates, thereby providing transaction isolation for each database session. Using MVCC minimizes lock contention during the execution of multiple concurrent transactions.
 
 ### MVCC using hybrid time
 
@@ -46,7 +46,7 @@ YugabyteDB implements MVCC and internally keeps track of multiple versions of va
 The timestamp used for MVCC comes from the [hybrid time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local real-time (physical) clocks and Lamport clocks. The hybrid time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value observed, including the current physical time on the server. Multiple aspects of YugabyteDB's transaction model rely on these properties of hybrid time. Consider the following examples:
 
 * Hybrid timestamps assigned to committed Raft log entries in the same tablet always keep increasing, even if there are leader changes. This is because the new leader always has all committed entries from previous leaders, and it makes sure to update its hybrid clock with the timestamp of the last committed entry before appending new entries. This property simplifies the logic of selecting a safe hybrid time to select for single-tablet read requests.
-  
+
 * A request trying to read data from a tablet at a particular hybrid time needs to ensure that no
   changes happen in the tablet with timestamp values lower than the read timestamp, which could lead to an inconsistent result set. The need to read from a tablet at a particular timestamp arises during transactional reads across multiple tablets. This condition becomes easier to satisfy due to the fact that the read timestamp is chosen as the current hybrid time on the YB-TServer processing the read request, so hybrid time on the leader of the tablet being read from immediately becomes updated to a value that is at least as high as the read timestamp. Then the read request only has to wait for any relevant entries in the Raft queue with timestamp values lower than the read timestamp to be replicated and applied to RocksDB, and it can proceed with processing the read request after that.
 
@@ -54,19 +54,19 @@ The timestamp used for MVCC comes from the [hybrid time](http://users.ece.utexas
 
 YugabyteDB supports the following transaction isolation levels:
 
-- Read Committed, which maps to the SQL isolation level of the same name.
-- Serializable, which maps to the SQL isolation level of the same name.
-- Snapshot, which maps to the SQL isolation level `REPEATABLE READ`. 
+* Read Committed, which maps to the SQL isolation level of the same name.
+* Serializable, which maps to the SQL isolation level of the same name.
+* Snapshot, which maps to the SQL isolation level `REPEATABLE READ`.
 
 For more information, see [isolation levels in YugabyteDB](../isolation-levels).
 
 ### Explicit locking
 
-Just as with PostgreSQL, YugabyteDB provides various lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in cases where MVCC does not provide the desired behavior. For more information, see [explicit locking in YugabyteDB](../explicit-locking).
+As with PostgreSQL, YugabyteDB provides various row-level lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in cases where MVCC does not provide the desired behavior. Read more about [explicit locking in YugabyteDB](../../../explore/transactions/explicit-locking)
 
 ## Transactions execution path
 
-End user statements seamlessly map to one of the types of transactions inside YugabyteDB.
+End-user statements seamlessly map to one of the types of transactions inside YugabyteDB.
 
 ### Single-row transactions
 

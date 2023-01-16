@@ -14,15 +14,13 @@ aliases:
 type: docs
 ---
 
-YugabyteDB supports distributed transactions based on principles of atomicity, consistency, isolation, durability (ACID) that modify multiple rows in more than one shard. This enables strongly consistent secondary indexes, as well as multi-table and multi-row ACID operations in both YCQL and YSQL contexts. 
+YugabyteDB supports distributed transactions based on principles of atomicity, consistency, isolation, durability (ACID) that modify multiple rows in more than one shard. This enables strongly consistent secondary indexes, as well as multi-table and multi-row ACID operations in both YCQL and YSQL contexts.
 
 Once you are familiar with the preceding concepts, refer to [Transactional I/O path](../transactional-io-path/) for an overview of a distributed transaction's lifecycle.
 
 ## Provisional records
 
-Just as YugabyteDB stores values written by single-shard ACID transactions into [DocDB](../../docdb/persistence/), it needs to store uncommitted values written by distributed transactions in a similar persistent data structure. However, they cannot be written to DocDB as regular values, because they would then become visible at different times to clients reading through different tablet servers, allowing a client to see a partially applied transaction and thus breaking atomicity. YugabyteDB therefore writes provisional records to all tablets
-responsible for the keys the transaction is trying to modify. These transactions are called provisional as opposed to regular (permanent) records because they are invisible to readers until the transaction
-commits.
+Just as YugabyteDB stores values written by single-shard ACID transactions into [DocDB](../../docdb/persistence/), it needs to store uncommitted values written by distributed transactions in a similar persistent data structure. However, they cannot be written to DocDB as regular values, because they would then become visible at different times to clients reading through different tablet servers, allowing a client to see a partially applied transaction and thus breaking atomicity. YugabyteDB therefore writes provisional records to all tablets responsible for the keys the transaction is trying to modify. These transactions are called provisional as opposed to regular (permanent) records because they are invisible to readers until the transaction commits.
 
 Provisional records are stored in a separate RocksDB instance in the same tablet peer. Compared to other possible design options, such as storing provisional records inline with the regular records, or putting them in the same RocksDB instance together with regular records, the chosen approach has the following benefits:
 
@@ -34,8 +32,7 @@ Provisional records are stored in a separate RocksDB instance in the same tablet
 
 ### Encoding details of provisional records
 
-There are three types of RocksDB key-value pairs corresponding to provisional records, omitting
-the one-byte prefix that puts these records before all regular records in RocksDB, as per the following diagram:
+There are three types of RocksDB key-value pairs corresponding to provisional records, omitting the one-byte prefix that puts these records before all regular records in RocksDB, as per the following diagram:
 
 ![DocDB storage, including provisional records](/images/architecture/txn/provisional_record_storage.svg)
 
@@ -66,7 +63,7 @@ TxnId -> StatusTabletId, IsolationLevel, Priority
 
 - `StatusTabletId` is the ID of the tablet that keeps track of this transaction's status. Unlike the case of tables and tablets holding user data, where a [hash-based mapping](../../concepts/sharding/) is used from keys to tablets, there is no deterministic way to compute the transaction status tablet ID by transaction ID, so this information must be explicitly passed to all components handling a particular transaction.
 - `Isolation Level` [snapshot isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or [serializable isolation](https://en.wikipedia.org/wiki/Serializability).
-- `Priority` is assigned randomly during transaction creation, when optimistic concurrency control is used. For a transaction running under pessimistic concurrency control, this priority is assigned a very high value. When a conflict is detected between two transactions, the transaction with lower priority is aborted and restarted. For details about concurrency control, see [Explicit locking](../explicit-locking).
+- `Priority` This priority is assigned randomly during transaction creation, when the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy is used.
 
 #### Provisional record keys indexed by transaction ID
 

@@ -26,6 +26,7 @@ export const MetricTypesWithOperations = {
       'ysql_server_rpc_per_second',
       'ysql_sql_latency',
       'ysql_connections',
+      'ysql_connections_per_sec',
       'ysql_server_advanced_rpc_per_second',
       'ysql_sql_advanced_latency'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.

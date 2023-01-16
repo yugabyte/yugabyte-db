@@ -7,10 +7,12 @@ VERSION ?= $(shell cat $(CURDIR)/version.txt)
 # go compile options
 GOOS ?= linux
 GOARCH ?= amd64
+BUILD_TYPE := dev
 
 
 # build requirements
 BIN_NAME ?= yba-ctl
+LICENSE_GEN := licensectl
 
 BIN_DIR := ${TOP_BUILDDIR}/bin
 PACKAGE_DIR := ${TOP_BUILDDIR}/yba_installer-${VERSION}-${GOOS}-${GOARCH}
@@ -56,7 +58,7 @@ ${PREREQS_DIR}/${JDK_BINARY_NAME}:
 
 yba-ctl: test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
-	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@
+	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TYPE}
 
 
 package: ${PACKAGE_NAME}
@@ -66,7 +68,10 @@ ${PACKAGE_NAME}: prereqs yba-ctl
 	tar -czvf ${PACKAGE_NAME} --remove-files ${PACKAGE_DIR}
 
 
-
+licensectl: test ${BIN_DIR}/${LICENSE_GEN}
+${BIN_DIR}/${LICENSE_GEN}:
+	cd licensectl && \
+	  CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o ../$@
 
 .PHONY: clean clean-bin clean-prereqs clean-package
 clean: clean-bin clean-prereqs clean-package

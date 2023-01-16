@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
+import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
@@ -9,6 +10,7 @@ import static org.hamcrest.Matchers.is;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.alerts.AlertChannelPagerDutyParams;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
@@ -23,24 +25,19 @@ import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
-  @Rule public ExpectedException exceptionGrabber = ExpectedException.none();
-
   private static final String PAGERDUTY_PATH = "/test/path";
 
   private Customer defaultCustomer;
 
-  @InjectMocks private AlertChannelPagerDuty channel;
+  private AlertChannelPagerDuty channel;
 
   private MockWebServer server;
 
@@ -50,7 +47,8 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     server = new MockWebServer();
     server.start();
     HttpUrl baseUrl = server.url(PAGERDUTY_PATH);
-    channel = new AlertChannelPagerDuty(baseUrl.toString());
+    WSClientRefresher refresher = app.injector().instanceOf(WSClientRefresher.class);
+    channel = new AlertChannelPagerDuty(baseUrl.toString(), refresher);
   }
 
   @Test
@@ -124,8 +122,11 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
 
-    exceptionGrabber.expect(PlatformNotificationException.class);
-    channel.sendNotification(defaultCustomer, alert, channelConfig);
+    assertThat(
+        () -> channel.sendNotification(defaultCustomer, alert, channelConfig),
+        thrown(
+            PlatformNotificationException.class,
+            "Error sending PagerDuty event for alert Alert 1: {\"error\":\"not_ok\"}"));
   }
 
   @After

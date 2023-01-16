@@ -16,7 +16,6 @@ import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 
 public class GlobalConfKeys extends RuntimeConfigKeysModule {
 
-  // TODO(): Add correct metadata
   public static final ConfKeyInfo<Integer> taskDbQueryLimit =
       new ConfKeyInfo<>(
           "yb.customer_task_db_query_limit",
@@ -25,15 +24,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Knob that can be used when there are too many customer tasks"
               + " overwhelming the server",
           ConfDataType.IntegerType);
-  // TODO(Aleksandr): Add correct metadata
   public static final ConfKeyInfo<Integer> maxParallelNodeChecks =
       new ConfKeyInfo<>(
           "yb.health.max_num_parallel_node_checks",
           ScopeType.GLOBAL,
           "Max Number of Parallel Node Checks",
-          "TODO - Leave this for feature owners to fill in",
+          "Number of parallel node checks, spawned as part of universes health check process",
           ConfDataType.IntegerType);
-  // TODO(Shashank): Add correct metadata
   public static final ConfKeyInfo<Boolean> logScriptOutput =
       new ConfKeyInfo<>(
           "yb.ha.logScriptOutput",
@@ -167,37 +164,33 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "OIDC Email Attribute",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.StringType);
-  // TODO(Shubham): Add correct metadata
   public static final ConfKeyInfo<Boolean> ssh2Enabled =
       new ConfKeyInfo<>(
           "yb.security.ssh2_enabled",
           ScopeType.GLOBAL,
           "Enable SSH2",
-          "TODO - Leave this for feature owners to fill in",
+          "Flag for enabling ssh2 on YBA",
           ConfDataType.BooleanType);
-  // TODO(Shubham): Add correct metadata
   public static final ConfKeyInfo<Boolean> enableCustomHooks =
       new ConfKeyInfo<>(
           "yb.security.custom_hooks.enable_custom_hooks",
           ScopeType.GLOBAL,
           "Enable Custom Hooks",
-          "TODO - Leave this for feature owners to fill in",
+          "Flag for enabling custom hooks on YBA",
           ConfDataType.BooleanType);
-  // TODO(Shubham): Add correct metadata
   public static final ConfKeyInfo<Boolean> enableSudo =
       new ConfKeyInfo<>(
           "yb.security.custom_hooks.enable_sudo",
           ScopeType.GLOBAL,
           "Enable SUDO",
-          "TODO - Leave this for feature owners to fill in",
+          "Flag for enabling sudo access while running custom hooks",
           ConfDataType.BooleanType);
-  // TODO(Shubham): Add correct metadata
   public static final ConfKeyInfo<Boolean> disableXxHashChecksum =
       new ConfKeyInfo<>(
           "yb.backup.disable_xxhash_checksum",
           ScopeType.GLOBAL,
           "Disable XX Hash Checksum",
-          "TODO - Leave this for feature owners to fill in",
+          "Flag for disabling xxhsum based checksums for computing the backup",
           ConfDataType.BooleanType);
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<Boolean> auditVerifyLogging =
@@ -239,31 +232,27 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Audit Log Max History",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.StringType);
-  // TODO(Sahith): Add correct metadata
   public static final ConfKeyInfo<Boolean> supportBundleK8sEnabled =
       new ConfKeyInfo<>(
           "yb.support_bundle.k8s_enabled",
           ScopeType.GLOBAL,
-          "K8s Enabled",
-          "TODO - Leave this for feature owners to fill in",
+          "Enable K8s Support Bundle",
+          "This config lets you enable support bundle creation on k8s universes.",
           ConfDataType.BooleanType);
-  // TODO(Sahith): Add correct metadata
   public static final ConfKeyInfo<Boolean> supportBundleOnPremEnabled =
       new ConfKeyInfo<>(
           "yb.support_bundle.onprem_enabled",
           ScopeType.GLOBAL,
-          "On Prem Enabled",
-          "TODO - Leave this for feature owners to fill in",
+          "Enable On Prem Support Bundle",
+          "This config lets you enable support bundle creation for onprem universes.",
           ConfDataType.BooleanType);
-  // TODO(rajagopalan): Add correct metadata
   public static final ConfKeyInfo<Boolean> runtimeConfigUiEnableForAll =
       new ConfKeyInfo<>(
           "yb.runtime_conf_ui.enable_for_all",
           ScopeType.GLOBAL,
           "Runtime Config UI",
-          "TODO - Leave this for feature owners to fill in",
+          "Allows users to view the runtime configuration properties via UI",
           ConfDataType.BooleanType);
-  // TODO(): Add correct metadata
   public static final ConfKeyInfo<Boolean> isPlatformDowngradeAllowed =
       new ConfKeyInfo<>(
           "yb.is_platform_downgrade_allowed",
@@ -271,65 +260,63 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow Platform Downgrade",
           "Allow Downgrading the Platform Version",
           ConfDataType.BooleanType);
-  // TODO(vipul): Add correct metadata
   public static final ConfKeyInfo<Duration> ybcUpgradeInterval =
       new ConfKeyInfo<>(
           "ybc.upgrade.scheduler_interval",
           ScopeType.GLOBAL,
           "YBC Upgrade Interval",
-          "TODO",
+          "YBC Upgrade interval",
           ConfDataType.DurationType);
-  // TODO(vipul): Add correct metadata
   public static final ConfKeyInfo<Integer> ybcUniverseBatchSize =
       new ConfKeyInfo<>(
           "ybc.upgrade.universe_batch_size",
           ScopeType.GLOBAL,
           "YBC Universe Upgrade Batch Size",
-          "TODO",
+          "The number of maximum universes on which ybc will be upgraded simultaneously",
           ConfDataType.IntegerType);
-  // TODO(vipul): Add correct metadata
   public static final ConfKeyInfo<Integer> ybcNodeBatchSize =
       new ConfKeyInfo<>(
           "ybc.upgrade.node_batch_size",
           ScopeType.GLOBAL,
           "YBC Node Upgrade Batch Size",
-          "TODO",
+          "The number of maximum nodes on which ybc will be upgraded simultaneously",
           ConfDataType.IntegerType);
-  // TODO(Vivek): Add correct metadata
   public static final ConfKeyInfo<String> ybcStableVersion =
       new ConfKeyInfo<>(
           "ybc.releases.stable_version",
           ScopeType.GLOBAL,
           "YBC Stable Release",
-          "TODO",
+          "Stable version for Yb-Controller",
           ConfDataType.StringType);
-  // TODO(Mohan): Add correct metadata
   public static final ConfKeyInfo<Boolean> enableCertReload =
       new ConfKeyInfo<>(
           "yb.features.cert_reload.enabled",
           ScopeType.GLOBAL,
           "Enable Cert Reload",
-          "TODO",
+          "Enable hot reload of TLS certificates without restart of the DB nodes",
           ConfDataType.BooleanType);
-  // TODO(Vipul): Add correct metadata
   public static final ConfKeyInfo<Boolean> cmdOutputDelete =
       new ConfKeyInfo<>(
-          "yb.logs.shell.cmdOutputDelete", ScopeType.GLOBAL, "", "TODO", ConfDataType.BooleanType);
-  // TODO(Yury): Add correct metadata
+          "yb.logs.shell.cmdOutputDelete",
+          ScopeType.GLOBAL,
+          "Delete Output File",
+          "Flag to delete temp output file created by the shell command",
+          ConfDataType.BooleanType);
   public static final ConfKeyInfo<Integer> shellOutputRetentationHours =
       new ConfKeyInfo<>(
           "yb.logs.shell.output_retention_hours",
           ScopeType.GLOBAL,
           "Shell Output Retention Duration",
-          "TODO",
+          "Output logs for shell commands are written to tmp folder."
+              + "This setting defines how long will we wait before garbage collecting them.",
           ConfDataType.IntegerType);
-  // TODO(Yury): Add correct metadata
   public static final ConfKeyInfo<Long> shellMaxOutputDirSize =
       new ConfKeyInfo<>(
           "yb.logs.shell.output_dir_max_size",
           ScopeType.GLOBAL,
           "Shell Output Max Directory Size",
-          "TODO",
+          "Output logs for shell commands are written to tmp folder."
+              + "This setting defines rotation policy based on directory size.",
           ConfDataType.BytesType);
   // TODO(Shashank): Add correct metadata
   public static final ConfKeyInfo<Long> logsMaxMsgSize =
