@@ -11,7 +11,8 @@ import {
   isNonEmptyObject,
   isDefinedNotNull,
   isNonEmptyString,
-  isNonEmptyArray
+  isNonEmptyArray,
+  isEmptyObject
 } from '../../../utils/ObjectUtils';
 import { YBButton, YBModal } from '../../../components/common/forms/fields';
 import { UniverseResources } from '../UniverseResources';
@@ -25,7 +26,7 @@ import {
 } from '../../../utils/UniverseUtils';
 import { DeleteUniverseContainer } from '../../universes';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isEmptyObject } from '../../../utils/ObjectUtils';
+
 import pluralize from 'pluralize';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 
@@ -52,7 +53,7 @@ class UniverseForm extends Component {
     type: PropTypes.oneOf(['Async', 'Edit', 'Create']).isRequired
   };
 
-  constructor(props, context) {
+  constructor(props) {
     super(props);
     this.createUniverse = this.createUniverse.bind(this);
     this.editUniverse = this.editUniverse.bind(this);
@@ -143,7 +144,9 @@ class UniverseForm extends Component {
         const responseData = response?.payload?.data;
         if (responseData) {
           this.transitionToDefaultRoute(responseData.universeUUID);
-          toast.success(`Creating universe "${responseData.name}"`, { autoClose: TOAST_DISMISS_TIME_MS });
+          toast.success(`Creating universe "${responseData.name}"`, {
+            autoClose: TOAST_DISMISS_TIME_MS
+          });
         }
       });
     } else if (type === 'Async') {
@@ -220,10 +223,14 @@ class UniverseForm extends Component {
         const masterArr = [];
         const tServerArr = [];
         formValues[clusterType].gFlags.forEach((flag) => {
-          if (flag?.hasOwnProperty('MASTER'))
+          // eslint-disable-next-line no-prototype-builtins
+          if (flag?.hasOwnProperty('MASTER')) {
             masterArr.push({ name: flag?.Name, value: flag['MASTER'] });
-          if (flag?.hasOwnProperty('TSERVER'))
+          }
+          // eslint-disable-next-line no-prototype-builtins
+          if (flag?.hasOwnProperty('TSERVER')) {
             tServerArr.push({ name: flag?.Name, value: flag['TSERVER'] });
+          }
         });
         intent['masterGFlags'] = masterArr;
         intent['tserverGFlags'] = tServerArr;
@@ -248,11 +255,11 @@ class UniverseForm extends Component {
       });
     }
     universeTaskParams.clusterOperation = isEdit ? 'EDIT' : 'CREATE';
-    if(!isEdit){
+    if (!isEdit) {
       universeTaskParams.enableYbc =
-      this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
+        this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
     }
-    
+
     universeTaskParams.ybcSoftwareVersion = '';
   };
 
@@ -517,14 +524,18 @@ class UniverseForm extends Component {
       }
       const currentProvider = self.getCurrentProvider(formValues[clusterType].provider).code;
       if (clusterType === 'primary') {
-        const masterArr = [],
-          tServerArr = [];
+        const masterArr = [];
+        const tServerArr = [];
         if (isNonEmptyArray(formValues?.primary?.gFlags)) {
           formValues.primary.gFlags.forEach((flag) => {
-            if (flag?.hasOwnProperty('MASTER'))
+            // eslint-disable-next-line no-prototype-builtins
+            if (flag?.hasOwnProperty('MASTER')) {
               masterArr.push({ name: flag?.Name, value: flag['MASTER'] });
-            if (flag?.hasOwnProperty('TSERVER'))
+            }
+            // eslint-disable-next-line no-prototype-builtins
+            if (flag?.hasOwnProperty('TSERVER')) {
               tServerArr.push({ name: flag?.Name, value: flag['TSERVER'] });
+            }
           });
         }
         clusterIntent.masterGFlags = masterArr;
@@ -546,27 +557,23 @@ class UniverseForm extends Component {
         if (formValues[clusterType]?.azOverrides?.length !== 0) {
           clusterIntent.azOverrides = formValues[clusterType].azOverrides;
         }
+      } else if (isDefinedNotNull(formValues.primary)) {
+        clusterIntent.tserverGFlags =
+          formValues?.primary?.tserverGFlags
+            ?.filter((tserverFlag) => {
+              return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
+            })
+            .map((tserverFlag) => {
+              return { name: tserverFlag.name, value: tserverFlag.value.trim() };
+            }) || {};
       } else {
-        if (isDefinedNotNull(formValues.primary)) {
-          clusterIntent.tserverGFlags =
-            (formValues.primary.tserverGFlags &&
-              formValues.primary.tserverGFlags
-                .filter((tserverFlag) => {
-                  return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
-                })
-                .map((tserverFlag) => {
-                  return { name: tserverFlag.name, value: tserverFlag.value.trim() };
-                })) ||
-            {};
-        } else {
-          const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent
-            .tserverGFlags;
-          const tserverGFlags = [];
-          Object.entries(existingTserverGFlags).forEach(([key, value]) =>
-            tserverGFlags.push({ name: key, value: value.trim() })
-          );
-          clusterIntent.tserverGFlags = tserverGFlags;
-        }
+        const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent
+          .tserverGFlags;
+        const tserverGFlags = [];
+        Object.entries(existingTserverGFlags).forEach(([key, value]) =>
+          tserverGFlags.push({ name: key, value: value.trim() })
+        );
+        clusterIntent.tserverGFlags = tserverGFlags;
       }
       return clusterIntent;
     };
@@ -658,7 +665,7 @@ class UniverseForm extends Component {
       }
     }
 
-    if (formValues['primary'] && formValues['primary'].ybcSoftwareVersion)
+    if (formValues['primary']?.ybcSoftwareVersion)
       submitPayload.ybcSoftwareVersion = formValues['primary'].ybcSoftwareVersion;
     else if (universeDetails && isDefinedNotNull(universeDetails.ybcSoftwareVersion))
       submitPayload.ybcSoftwareVersion = universeDetails.ybcSoftwareVersion;
@@ -743,26 +750,24 @@ class UniverseForm extends Component {
             </span>
           </h2>
         );
+      } else if (type === 'Create') {
+        return createUniverseTitle;
       } else {
-        if (type === 'Create') {
-          return createUniverseTitle;
-        } else {
-          return (
-            <h2 className="content-title">
-              {primaryUniverseName}
-              <span>
-                <i className="fa fa-chevron-right"></i>
-                {this.props.type} Universe
-              </span>
-              <Link
-                className="try-new-ui-link"
-                to={`/universe/${universe.currentUniverse.data.universeUUID}/edit/primary`}
-              >
-                Try New UI
-              </Link>
-            </h2>
-          );
-        }
+        return (
+          <h2 className="content-title">
+            {primaryUniverseName}
+            <span>
+              <i className="fa fa-chevron-right"></i>
+              {this.props.type} Universe
+            </span>
+            <Link
+              className="try-new-ui-link"
+              to={`/universe/${universe.currentUniverse.data.universeUUID}/edit/primary`}
+            >
+              Try New UI
+            </Link>
+          </h2>
+        );
       }
     })(this.props);
 
@@ -816,27 +821,25 @@ class UniverseForm extends Component {
     let submitTextLabel = '';
     if (type === 'Create') {
       submitTextLabel = 'Create';
-    } else {
-      if (type === 'Async') {
-        if (readOnlyCluster) {
-          submitTextLabel = 'Edit Read Replica';
-        } else {
-          submitTextLabel = 'Add Read Replica';
-        }
+    } else if (type === 'Async') {
+      if (readOnlyCluster) {
+        submitTextLabel = 'Edit Read Replica';
       } else {
-        submitTextLabel = 'Save';
+        submitTextLabel = 'Add Read Replica';
       }
+    } else {
+      submitTextLabel = 'Save';
     }
 
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
       ? universeConfigTemplate.data.nodeDetailsSet.filter(
-        (node) =>
-          node.nodeName &&
+          (node) =>
+            node.nodeName &&
             (type === 'Async'
               ? node.nodeName.includes('readonly')
               : !node.nodeName.includes('readonly'))
-      )
+        )
       : [];
 
     const resizePossible = this.isResizePossible();
@@ -992,9 +995,11 @@ class UniverseForm extends Component {
 
       const renderConfig = ({ azConfig }) =>
         Object.values(azConfig).map((region) => (
+          // eslint-disable-next-line react/jsx-key
           <div className="full-move-config--region">
             <strong>{region.region}</strong>
             {region.zones.map((zone) => (
+              // eslint-disable-next-line react/jsx-key
               <div>
                 {zone.az} - {zone.count} {pluralize('node', zone.count)}
               </div>

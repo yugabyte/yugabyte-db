@@ -41,7 +41,7 @@ export default class YBCopyButton extends PureComponent {
         className={'btn btn-small btn-copy ' + className + additionalClassName}
         onClick={this.onClick}
       >
-        {children || caption}
+        {children ?? caption}
       </button>
     );
   }

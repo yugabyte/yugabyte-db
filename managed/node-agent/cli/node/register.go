@@ -123,7 +123,7 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 		util.ExtractBaseURL,
 	)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Unable to get platform URL - %s", err.Error())
+		util.ConsoleLogger().Fatalf("Unable to store platform URL - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagBool(
 		cmd,
@@ -131,7 +131,7 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 		util.PlatformSkipVerifyCertKey,
 	)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Error storing skip_verify_cert value - %s", err.Error())
+		util.ConsoleLogger().Fatalf("Unable to store skip_verify_cert value - %s", err.Error())
 	}
 	err = server.RetrieveUser(apiToken)
 	if err != nil {

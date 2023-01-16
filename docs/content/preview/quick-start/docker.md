@@ -12,14 +12,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
-      <img src="/icons/cloud-icon.svg" alt="Icon">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
       Use a cloud cluster
     </a>
   </li>
   <li class="active">
     <a href="../../quick-start/" class="nav-link">
-             <img src="/icons/server-iconsvg.svg" alt="Icon">
-Use a local cluster
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use a local cluster
     </a>
   </li>
 </ul>

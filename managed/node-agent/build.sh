@@ -41,6 +41,7 @@ readonly build_arch=$(to_lower "$(uname -m)")
 
 setup_protoc() {
     if [ ! -f "$GOBIN"/protoc ]; then
+        pushd "$project_dir"
         go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
         go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
         local release_url=https://github.com/protocolbuffers/protobuf/releases
@@ -52,6 +53,7 @@ setup_protoc() {
         if [ "$protoc_arch" = "arm64" ]; then
             protoc_arch=aarch_64
         fi
+        popd
         local protoc_filename=protoc-${protoc_version}-${protoc_os}-${protoc_arch}.zip
         pushd "$GOPATH"
         curl -fsSLO ${release_url}/download/v"${protoc_version}"/"${protoc_filename}"
@@ -116,11 +118,13 @@ build_for_platform() {
     exec_name=$(get_executable_name "$os" "$arch")
     echo "Building ${exec_name}"
     executable="$build_output_dir/$exec_name"
+    pushd "$project_dir"
     env GOOS="$os" GOARCH="$arch" go build -o "$executable" "$project_dir"/cmd/cli/main.go
     if [ $? -ne 0 ]; then
         echo "Build failed for $exec_name"
         exit 1
     fi
+    popd
 }
 
 build_for_platforms() {
@@ -141,9 +145,9 @@ clean_build() {
 
 
 format() {
+    pushd "$project_dir"
     go install github.com/segmentio/golines@latest
     go install golang.org/x/tools/cmd/goimports@latest
-    pushd "$project_dir"
     for dir in */ ; do
         # Remove trailing slash.
         dir=$(echo "${dir}" | sed 's/\/$//')
@@ -220,7 +224,9 @@ package_for_platforms() {
 }
 
 update_dependencies() {
+    pushd "$project_dir"
     go mod tidy -e
+    popd
 }
 
 # Initialize the vars.
@@ -326,9 +332,11 @@ fi
 if [ "$build" == "true" ]; then
     help_needed=false
     echo "Building..."
+    pushd "$project_dir"
     if [ ! -f "go.mod" ]; then
         go mod init node-agent
     fi
+    popd
     format
     prepare
     build_for_platforms "${PLATFORMS[@]}"

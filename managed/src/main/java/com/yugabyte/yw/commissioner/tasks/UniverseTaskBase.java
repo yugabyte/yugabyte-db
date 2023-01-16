@@ -44,6 +44,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
@@ -85,6 +86,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeaderBlacklistComplet
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
@@ -99,6 +101,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdate
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.NodeAgentClient;
+import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
@@ -119,6 +123,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -941,7 +946,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     WaitForYbcServer task = createTask(WaitForYbcServer.class);
     WaitForYbcServer.Params params = new WaitForYbcServer.Params();
     params.universeUUID = taskParams().universeUUID;
-    params.nodeDetailsSet = nodeDetailsSet == null ? null : new HashSet<>(nodeDetailsSet);
+    params.nodeNameList =
+        nodeDetailsSet == null
+            ? null
+            : nodeDetailsSet.stream().map(node -> node.nodeName).collect(Collectors.toSet());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1013,10 +1021,69 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
-      // Add it to the task list.
       subTaskGroup.addSubTask(task);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup(InstallNodeAgent.class.getSimpleName(), executor);
+    NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
+    if (nodeAgentManager.isServerToBeInstalled()) {
+      Universe universe = getUniverse();
+      for (NodeDetails node : nodes) {
+        if (node.cloudInfo == null) {
+          continue;
+        }
+        Cluster cluster = getUniverse().getCluster(node.placementUuid);
+        Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+        if (provider.getCloudCode() == CloudType.onprem) {
+          AccessKey accessKey =
+              AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
+          if (accessKey.getKeyInfo().skipProvisioning) {
+            continue;
+          }
+        } else if (provider.getCloudCode() != CloudType.aws
+            && provider.getCloudCode() != CloudType.azu
+            && provider.getCloudCode() != CloudType.gcp) {
+          continue;
+        }
+        InstallNodeAgent.Params params = new InstallNodeAgent.Params();
+        params.nodeName = node.nodeName;
+        params.customerUuid = provider.customerUUID;
+        params.azUuid = node.azUuid;
+        params.universeUUID = universe.universeUUID;
+        InstallNodeAgent task = createTask(InstallNodeAgent.class);
+        task.initialize(params);
+        subTaskGroup.addSubTask(task);
+      }
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createWaitForNodeAgentTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup(WaitForNodeAgent.class.getSimpleName(), executor);
+    NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
+    if (nodeAgentClient.isClientEnabled()) {
+      for (NodeDetails node : nodes) {
+        if (node.cloudInfo == null) {
+          continue;
+        }
+        WaitForNodeAgent.Params params = new WaitForNodeAgent.Params();
+        params.nodeName = node.nodeName;
+        params.azUuid = node.azUuid;
+        params.universeUUID = taskParams().universeUUID;
+        params.timeout = Duration.ofMinutes(2);
+        WaitForNodeAgent task = createTask(WaitForNodeAgent.class);
+        task.initialize(params);
+        subTaskGroup.addSubTask(task);
+      }
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
     return subTaskGroup;
   }
 
@@ -2083,7 +2150,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     Backup backup = null;
     if (backupRequestParams.backupUUID != null) {
-      backup = Backup.get(backupRequestParams.customerUUID, backupRequestParams.backupUUID);
+      backup =
+          Backup.getOrBadRequest(backupRequestParams.customerUUID, backupRequestParams.backupUUID);
       backup.transitionState(Backup.BackupState.InProgress);
     } else {
       backup =
@@ -2204,16 +2272,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     Restore restore = null;
     Optional<Restore> restoreIfPresent = Restore.fetchRestore(restoreBackupParams.prefixUUID);
-    if (!restoreIfPresent.isPresent()) {
+    if (restoreIfPresent.isPresent()) {
+      restore = restoreIfPresent.get();
+      restore.updateTaskUUID(taskUUID);
+      restore.update(taskUUID, Restore.State.InProgress);
+    } else {
       log.info(
           "Creating entry for restore taskUUID: {}, restoreUUID: {} ",
           taskUUID,
           restoreBackupParams.prefixUUID);
-      restore = Restore.create(TaskInfo.getOrBadRequest(taskUUID));
-    } else {
-      restore = restoreIfPresent.get();
-      restore.updateTaskUUID(taskUUID);
-      restore.update(taskUUID, TaskInfo.State.Running);
+      restore = Restore.create(taskUUID, restoreBackupParams);
     }
 
     return restore;
@@ -3093,9 +3161,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         || taskType == TaskType.DeleteXClusterConfig);
   }
 
-  // TODO: Use of synchronized in static scope! Looks suspicious.
-  //  Use of transactions may be better.
-  private static synchronized int getClusterConfigVersion(Universe universe) {
+  private static int getClusterConfigVersion(Universe universe) {
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final String hostPorts = universe.getMasterAddresses();
     final String certificate = universe.getCertificateNodetoNode();
@@ -3112,23 +3178,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return version;
   }
 
-  // TODO: Use of synchronized in static scope! Looks suspicious.
-  //  Use of transactions may be better.
-  private static synchronized boolean versionsMatch(UUID universeUUID) {
+  private static boolean versionsMatch(UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    final int clusterConfigVersion = UniverseTaskBase.getClusterConfigVersion(universe);
-
-    // For backwards compatibility (see V56__Alter_Universe_Version.sql)
-    if (universe.version == -1) {
-      universe.version = clusterConfigVersion;
-      log.info(
-          "Updating version for universe {} from -1 to cluster config version {}",
-          universeUUID,
-          universe.version);
-      universe.save();
+    Universe.UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
+    try {
+      final int clusterConfigVersion = UniverseTaskBase.getClusterConfigVersion(universe);
+      // For backwards compatibility (see V56__Alter_Universe_Version.sql)
+      if (universe.version == -1) {
+        universe.version = clusterConfigVersion;
+        log.info(
+            "Updating version for universe {} from -1 to cluster config version {}",
+            universeUUID,
+            universe.version);
+        universe.save();
+      }
+      return universe.version == clusterConfigVersion;
+    } finally {
+      Universe.UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
     }
-
-    return universe.version == clusterConfigVersion;
   }
 
   /**

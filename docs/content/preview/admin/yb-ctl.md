@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-ctl
     parent: admin
-    weight: 2410
+    weight: 90
 aliases:
   - /admin/yb-ctl
 type: docs
@@ -210,7 +210,7 @@ Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. 
 
 {{< note title="Loopback addresses" >}}
 
-On MacOS and Linux, for local clusters, every additional node after the first needs a loopback address configured to simulate the use of multiple hosts or nodes. For example, for a three-node cluster, you add two additional addresses as follows:
+On macOS, every additional node after the first needs a loopback address configured to simulate the use of multiple hosts or nodes. For example, for a three-node cluster, you add two additional addresses as follows:
 
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2

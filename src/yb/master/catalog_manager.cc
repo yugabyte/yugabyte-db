@@ -109,8 +109,8 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/async_rpc_tasks.h"
+#include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_loaders.h"
@@ -136,23 +136,6 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
-#include "yb/master/yql_aggregates_vtable.h"
-#include "yb/master/yql_auth_resource_role_permissions_index.h"
-#include "yb/master/yql_auth_role_permissions_vtable.h"
-#include "yb/master/yql_auth_roles_vtable.h"
-#include "yb/master/yql_columns_vtable.h"
-#include "yb/master/yql_empty_vtable.h"
-#include "yb/master/yql_functions_vtable.h"
-#include "yb/master/yql_indexes_vtable.h"
-#include "yb/master/yql_keyspaces_vtable.h"
-#include "yb/master/yql_local_vtable.h"
-#include "yb/master/yql_partitions_vtable.h"
-#include "yb/master/yql_peers_vtable.h"
-#include "yb/master/yql_size_estimates_vtable.h"
-#include "yb/master/yql_tables_vtable.h"
-#include "yb/master/yql_triggers_vtable.h"
-#include "yb/master/yql_types_vtable.h"
-#include "yb/master/yql_views_vtable.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
@@ -200,6 +183,8 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
+
+#include "yb/vtables/yql_all_vtables.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -834,6 +819,17 @@ void AbortAndWaitForAllTasksImplementation(const IterableTables& tables) {
     t->WaitTasksCompletion();
   }
   VLOG(1) << "Waiting on Aborting tasks done";
+}
+
+// Sets basic fields in the TabletLocationsPB proto that are always filled regardless of the
+// PartitionsOnly parameter.
+void InitializeTabletLocationsPB(
+    const TabletId& tablet_id, const SysTabletsEntryPB& pb, TabletLocationsPB* locs_pb) {
+  locs_pb->set_table_id(pb.table_id());
+  locs_pb->set_tablet_id(tablet_id);
+  locs_pb->mutable_partition()->CopyFrom(pb.partition());
+  locs_pb->set_split_depth(pb.split_depth());
+  locs_pb->set_split_parent_tablet_id(pb.split_parent_tablet_id());
 }
 
 }  // anonymous namespace
@@ -1547,45 +1543,45 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
   RETURN_NOT_OK(PrepareSysCatalogTable(term));
 
   // Create the required system tables here.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<PeersVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::PeersVTable>(
       kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<LocalVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::LocalVTable>(
       kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLKeyspacesVTable>(
       kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLTablesVTable>(
       kSystemSchemaTablesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLColumnsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLColumnsVTable>(
       kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLSizeEstimatesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLSizeEstimatesVTable>(
       kSystemSizeEstimatesTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
 
   // Empty tables.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAggregatesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAggregatesVTable>(
       kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLFunctionsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLFunctionsVTable>(
       kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLIndexesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLIndexesVTable>(
       kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTriggersVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLTriggersVTable>(
       kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLViewsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLViewsVTable>(
       kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<QLTypesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::QLTypesVTable>(
       kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLPartitionsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLPartitionsVTable>(
       kSystemPartitionsTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
 
   // System auth tables.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAuthRolesVTable>(
       kSystemAuthRolesTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolePermissionsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAuthRolePermissionsVTable>(
       kSystemAuthRolePermissionsTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthResourceRolePermissionsIndexVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAuthResourceRolePermissionsIndexVTable>(
       kSystemAuthResourceRolePermissionsIndexTableName, kSystemAuthNamespaceName,
       kSystemAuthNamespaceId, term)));
 
@@ -1663,7 +1659,7 @@ Status CatalogManager::PrepareSystemTableTemplate(const TableName& table_name,
                                                   const NamespaceName& namespace_name,
                                                   const NamespaceId& namespace_id,
                                                   int64_t term) {
-  YQLVirtualTable* vtable = new T(table_name, namespace_name, master_);
+  yb::vtables::YQLVirtualTable* vtable = new T(table_name, namespace_name, master_);
   return PrepareSystemTable(
       table_name, namespace_name, namespace_id, vtable->schema(), term, vtable);
 }
@@ -1673,8 +1669,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                           const NamespaceId& namespace_id,
                                           const Schema& schema,
                                           int64_t term,
-                                          YQLVirtualTable* vtable) {
-  std::unique_ptr<YQLVirtualTable> yql_storage(vtable);
+                                          yb::vtables::YQLVirtualTable* vtable) {
+  std::unique_ptr<yb::vtables::YQLVirtualTable> yql_storage(vtable);
 
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
                                                  std::make_pair(namespace_id, table_name));
@@ -4803,7 +4799,7 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   if (DCHECK_IS_ON() &&
       result &&
       IsYcqlTable(*table) &&
-      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
+      yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
       FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
@@ -11111,81 +11107,89 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
   return Status::OK();
 }
 
-Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
-                                               TabletLocationsPB* locs_pb,
-                                               IncludeInactive include_inactive) {
-  {
-    auto l_tablet = tablet->LockForRead();
-    if (l_tablet->is_hidden() && !include_inactive) {
-      return STATUS_FORMAT(NotFound, "Tablet hidden", tablet->id());
-    }
-    locs_pb->set_table_id(l_tablet->pb.table_id());
-    *locs_pb->mutable_table_ids() = l_tablet->pb.table_ids();
-  }
-
-  // For system tables, the set of replicas is always the set of masters.
-  if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
-    consensus::ConsensusStatePB master_consensus;
-    RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
-    locs_pb->set_tablet_id(tablet->tablet_id());
-    locs_pb->set_stale(false);
-    const auto initial_size = locs_pb->replicas_size();
-    RETURN_NOT_OK(ConsensusStateToTabletLocations(master_consensus, locs_pb));
-    const auto capabilities = Capabilities();
-    // Set capabilities of master node for all newly created system table locations.
-    for (auto i = locs_pb->mutable_replicas()->begin() + initial_size,
-        end = locs_pb->mutable_replicas()->end(); i != end; ++i) {
-      *i->mutable_ts_info()->mutable_capabilities() = google::protobuf::RepeatedField<CapabilityId>(
-          capabilities.begin(), capabilities.end());
-    }
+Status CatalogManager::BuildLocationsForSystemTablet(
+    const scoped_refptr<TabletInfo>& tablet,
+    TabletLocationsPB* locs_pb,
+    IncludeInactive include_inactive,
+    PartitionsOnly partitions_only) {
+  DCHECK(system_tablets_.find(tablet->id()) != system_tablets_.end())
+      << Format("Non-system tablet $0 passed to BuildLocationsForSystemTablet", tablet->id());
+  auto l_tablet = tablet->LockForRead();
+  InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
+  locs_pb->set_stale(false);
+  if (partitions_only) {
     return Status::OK();
   }
+  *locs_pb->mutable_table_ids() = l_tablet->pb.table_ids();
+  // For system tables, the set of replicas is always the set of masters.
+  consensus::ConsensusStatePB master_consensus;
+  RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
+  const auto initial_size = locs_pb->replicas_size();
+  RETURN_NOT_OK(ConsensusStateToTabletLocations(master_consensus, locs_pb));
+  const auto capabilities = Capabilities();
+  // Set capabilities of master node for all newly created system table locations.
+  for (auto i = locs_pb->mutable_replicas()->begin() + initial_size,
+            end = locs_pb->mutable_replicas()->end();
+       i != end;
+       ++i) {
+    *i->mutable_ts_info()->mutable_capabilities() =
+        google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
+  }
+  return Status::OK();
+}
 
-  TSRegistrationPB reg;
+Status CatalogManager::BuildLocationsForTablet(
+    const scoped_refptr<TabletInfo>& tablet,
+    TabletLocationsPB* locs_pb,
+    IncludeInactive include_inactive,
+    PartitionsOnly partitions_only) {
 
+  if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
+    return BuildLocationsForSystemTablet(tablet, locs_pb, include_inactive, partitions_only);
+  }
   std::shared_ptr<const TabletReplicaMap> locs;
   consensus::ConsensusStatePB cstate;
   {
     auto l_tablet = tablet->LockForRead();
+    if (l_tablet->is_hidden() && !include_inactive) {
+      return STATUS_FORMAT(NotFound, "Tablet $0 hidden", tablet->id());
+    }
     if (PREDICT_FALSE(l_tablet->is_deleted())) {
-      std::vector<TabletId> split_tablet_ids;
-      for (const auto& split_tablet_id : l_tablet->pb.split_tablet_ids()) {
-        split_tablet_ids.push_back(split_tablet_id);
-      }
+      std::vector<TabletId> split_tablet_ids(
+          l_tablet->pb.split_tablet_ids().begin(), l_tablet->pb.split_tablet_ids().end());
       return STATUS(
           NotFound, "Tablet deleted", l_tablet->pb.state_msg(),
           SplitChildTabletIdsData(split_tablet_ids));
     }
-
     if (PREDICT_FALSE(!l_tablet->is_running())) {
       return STATUS_FORMAT(ServiceUnavailable, "Tablet $0 not running", tablet->id());
     }
-
+    InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
     locs = tablet->GetReplicaLocations();
+    locs_pb->set_stale(locs->empty());
+    if (partitions_only) {
+      return Status::OK();
+    }
+    const auto& tablet_pb = l_tablet->pb;
+    *locs_pb->mutable_table_ids() = tablet_pb.table_ids();
     if (locs->empty() && l_tablet->pb.has_committed_consensus_state()) {
       cstate = l_tablet->pb.committed_consensus_state();
     }
-
-    const auto& metadata = tablet->metadata().state().pb;
-    locs_pb->mutable_partition()->CopyFrom(metadata.partition());
-    locs_pb->set_split_depth(metadata.split_depth());
-    locs_pb->set_split_parent_tablet_id(metadata.split_parent_tablet_id());
-    for (const auto& split_tablet_id : metadata.split_tablet_ids()) {
+    locs_pb->mutable_split_tablet_ids()->Reserve(tablet_pb.split_tablet_ids().size());
+    for (const auto& split_tablet_id : tablet_pb.split_tablet_ids()) {
       *locs_pb->add_split_tablet_ids() = split_tablet_id;
     }
   }
 
-  locs_pb->set_tablet_id(tablet->tablet_id());
-  locs_pb->set_stale(locs->empty());
-
   // If the locations are cached.
   if (!locs->empty()) {
     if (cstate.IsInitialized() &&
-            locs->size() != implicit_cast<size_t>(cstate.config().peers_size())) {
+        locs->size() != implicit_cast<size_t>(cstate.config().peers_size())) {
       LOG(WARNING) << "Cached tablet replicas " << locs->size() << " does not match consensus "
                    << cstate.config().peers_size();
     }
 
+    locs_pb->mutable_replicas()->Reserve(narrow_cast<int32_t>(locs->size()));
     for (const auto& replica : *locs) {
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
@@ -11198,15 +11202,11 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
       out_ts_info->set_placement_uuid(tsinfo_pb->registration().common().placement_uuid());
       *out_ts_info->mutable_capabilities() = tsinfo_pb->registration().capabilities();
     }
-    return Status::OK();
-  }
-
-  // If the locations were not cached.
-  // TODO: Why would this ever happen? See KUDU-759.
-  if (cstate.IsInitialized()) {
+  } else if (cstate.IsInitialized()) {
+    // If the locations were not cached.
+    // TODO: Why would this ever happen? See KUDU-759.
     RETURN_NOT_OK(ConsensusStateToTabletLocations(cstate, locs_pb));
   }
-
   return Status::OK();
 }
 
@@ -11274,20 +11274,21 @@ Status CatalogManager::GetTableLocations(
   auto l = table->LockForRead();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
-  vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetTabletsInRange(req, &tablets);
-
+  vector<scoped_refptr<TabletInfo>> tablets = table->GetTabletsInRange(req);
   IncludeInactive include_inactive(req->has_include_inactive() && req->include_inactive());
+  PartitionsOnly partitions_only(req->partitions_only());
   bool require_tablets_runnings = req->require_tablets_running();
 
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
   GetExpectedNumberOfReplicas(&expected_live_replicas, &expected_read_replicas);
+  resp->mutable_tablet_locations()->Reserve(narrow_cast<int32_t>(tablets.size()));
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    auto status = BuildLocationsForTablet(tablet, locs_pb, include_inactive);
+    auto status =
+        BuildLocationsForTablet(tablet, locs_pb, include_inactive, partitions_only);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {
@@ -12102,13 +12103,13 @@ Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tab
 }
 
 void CatalogManager::RebuildYQLSystemPartitions() {
-  if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
-      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
+  if (yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
+      yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.IsInitializedAndIsLeader()) {
       if (system_partitions_tablet_ != nullptr) {
         Status s;
-        if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {
+        if (yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {
           // If we are not generating the vtable on changes, then we need to do a full refresh.
           s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
         } else {
@@ -12240,8 +12241,8 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
   }), "Failed to submit update table task");
 }
 
-const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
-  return down_cast<const YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
+const yb::vtables::YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
+  return down_cast<const yb::vtables::YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
 }
 
 void CatalogManager::InitializeTableLoadState(

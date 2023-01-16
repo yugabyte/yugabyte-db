@@ -348,7 +348,13 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
         // For 2DC, populate serialized data from WAL, to avoid unnecessary deserializing on
         // producer and re-serializing on consumer.
         auto kv_pair = record->add_key();
-        kv_pair->set_key(std::to_string(decoded_key.doc_key().hash()));
+        if (decoded_key.doc_key().has_hash()) {
+          // TODO: is there another way of getting this? Perhaps using kUpToHashOrFirstRange?
+          kv_pair->set_key(
+              PartitionSchema::EncodeMultiColumnHashValue(decoded_key.doc_key().hash()));
+        } else {
+          kv_pair->set_key(decoded_key.doc_key().Encode().ToStringBuffer());
+        }
         kv_pair->mutable_value()->set_binary_value(write_pair.key().ToBuffer());
       } else {
         AddPrimaryKey(decoded_key, schema, record);
@@ -423,7 +429,8 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
   const auto& transaction_status = transaction_state.status();
   if (transaction_status != TransactionStatus::APPLYING &&
       transaction_status != TransactionStatus::COMMITTED &&
-      transaction_status != TransactionStatus::CREATED) {
+      transaction_status != TransactionStatus::CREATED &&
+      transaction_status != TransactionStatus::PENDING) {
     // This is an unsupported transaction status.
     return Status::OK();
   }
@@ -448,6 +455,10 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
       }
       break;
     }
+    case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
+    // If transaction status tablet log is GCed, or we bootstrap it is possible that that first
+    // record we see for the transaction is the PENDING record. This can be treated as a CREATED
+    // record which is impotently handled.
     case TransactionStatus::CREATED: {
       record->set_operation(CDCRecordPB::TRANSACTION_CREATED);
       break;

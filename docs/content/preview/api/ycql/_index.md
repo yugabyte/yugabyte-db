@@ -8,9 +8,11 @@ image: /images/section_icons/api/ycql.png
 headcontent:
 menu:
   preview:
-    identifier: api-cassandra
     parent: api
-    weight: 3000
+    identifier: api-cassandra
+    weight: 10
+    params:
+      classes: separator
 aliases:
   - /preview/api/ycql/
   - /preview/api/cassandra/

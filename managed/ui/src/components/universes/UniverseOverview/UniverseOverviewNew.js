@@ -26,10 +26,10 @@ import {
   isNullOrEmpty,
   isNonEmptyArray,
   isNonEmptyString
-} from '../../../utils/ObjectUtils';
+, isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import moment from 'moment';
@@ -48,7 +48,7 @@ class DatabasePanel extends PureComponent {
       }
     } = this.props;
     const primaryCluster = getPrimaryCluster(clusters);
-    const userIntent = primaryCluster && primaryCluster.userIntent;
+    const userIntent = primaryCluster?.userIntent;
 
     const optimizeVersion = (version) => {
       if (parseInt(version[version.length - 1], 10) === 0) {

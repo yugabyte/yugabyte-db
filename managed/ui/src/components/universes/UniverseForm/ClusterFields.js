@@ -264,8 +264,7 @@ export default class ClusterFields extends Component {
           editNotAllowed: false,
           useSystemd: primaryClusterUserIntent.useSystemd,
           enableEncryptionAtRest:
-            universeDetails.encryptionAtRestConfig &&
-            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled
+            universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled
         };
       }
     } else {
@@ -399,11 +398,10 @@ export default class ClusterFields extends Component {
               ybcSoftwareVersion: primaryCluster.userIntent.ybcSoftwareVersion,
               universeOverrides: primaryCluster.userIntent.universeOverrides
             }
-          : primaryCluster && primaryCluster.userIntent;
-      const providerUUID = userIntent && userIntent.provider;
+          : primaryCluster?.userIntent;
+      const providerUUID = userIntent?.provider;
       const encryptionAtRestEnabled =
-        universeDetails.encryptionAtRestConfig &&
-        universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
+        universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled;
 
       if (clusterType === 'async' && primaryCluster) {
         // setting form fields when adding a Read replica
@@ -450,8 +448,7 @@ export default class ClusterFields extends Component {
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
           enableEncryptionAtRest:
-            universeDetails.encryptionAtRestConfig &&
-            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled,
+            universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           storageType: storageType,
@@ -483,6 +480,7 @@ export default class ClusterFields extends Component {
       this.props.getExistingUniverseConfiguration(_.cloneDeep(universeDetails));
     } else {
       // Repopulate the form fields when switching back to the view
+      // eslint-disable-next-line no-lonely-if
       if (formValues && isNonEmptyObject(formValues[clusterType])) {
         this.setState({
           providerType: formValues[clusterType].providerType,
@@ -1395,7 +1393,8 @@ export default class ClusterFields extends Component {
         }
       } else {
         // Create flow
-        if (isEmptyObject(universeConfigTemplate.data) || universeConfigTemplate.data == null) {
+        // eslint-disable-next-line no-lonely-if
+        if (isEmptyObject(universeConfigTemplate.data) || universeConfigTemplate.data == null) { // eslint-disable-line eqeqeq
           this.props.submitConfigureUniverse(universeTaskParams);
         } else {
           const currentClusterConfiguration = getClusterByType(
@@ -1784,8 +1783,7 @@ export default class ClusterFields extends Component {
       return num + ' GB';
     }
     const ebsTypesList =
-      cloud.ebsTypes &&
-      cloud.ebsTypes.sort().map(function (ebsType, idx) {
+      cloud.ebsTypes?.sort().map(function (ebsType) {
         return (
           <option key={ebsType} value={ebsType}>
             {API_UI_STORAGE_TYPES[ebsType]}
@@ -1793,8 +1791,7 @@ export default class ClusterFields extends Component {
         );
       });
     const gcpTypesList =
-      cloud.gcpTypes.data &&
-      cloud.gcpTypes.data.sort().map(function (gcpType, idx) {
+      cloud.gcpTypes.data?.sort().map(function (gcpType) {
         return (
           <option key={gcpType} value={gcpType}>
             {API_UI_STORAGE_TYPES[gcpType]}
@@ -1802,8 +1799,7 @@ export default class ClusterFields extends Component {
         );
       });
     const azuTypesList =
-      cloud.azuTypes.data &&
-      cloud.azuTypes.data.sort().map?.(function (azuType, idx) {
+      cloud.azuTypes.data?.sort().map?.(function (azuType) {
         return (
           <option key={azuType} value={azuType}>
             {API_UI_STORAGE_TYPES[azuType]}
@@ -2082,7 +2078,7 @@ export default class ClusterFields extends Component {
           checkedVal={this.state.enableYSQL}
           onToggle={this.toggleEnableYSQL}
           label="Enable YSQL"
-          subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
+          subLabel="Enable the YSQL API endpoint to run postgres compatible workloads. WARNING: If disabled, YSQL cannot be enabled later after universe creation."
         />
       );
 
@@ -2366,8 +2362,7 @@ export default class ClusterFields extends Component {
     let universeRegionList = [];
     if (self.state.providerSelected) {
       universeRegionList =
-        cloud.regions.data &&
-        cloud.regions.data.map(function (regionItem) {
+        cloud.regions.data?.map(function (regionItem) {
           return { value: regionItem.uuid, label: regionItem.name };
         });
     }
@@ -2460,8 +2455,7 @@ export default class ClusterFields extends Component {
       universeInstanceTypeList = this.instanceTypeGroupsToOptions(groups);
     } else if (currentProviderCode === 'kubernetes') {
       universeInstanceTypeList =
-        cloud.instanceTypes.data &&
-        cloud.instanceTypes.data.map(function (instanceTypeItem) {
+        cloud.instanceTypes.data?.map(function (instanceTypeItem) {
           return (
             <option
               key={instanceTypeItem.instanceTypeCode}
@@ -2475,8 +2469,7 @@ export default class ClusterFields extends Component {
         });
     } else {
       universeInstanceTypeList =
-        cloud.instanceTypes.data &&
-        cloud.instanceTypes.data.map(function (instanceTypeItem) {
+        cloud.instanceTypes.data?.map(function (instanceTypeItem) {
           return (
             <option
               key={instanceTypeItem.instanceTypeCode}
@@ -2697,6 +2690,7 @@ export default class ClusterFields extends Component {
               </div>
 
               {clusterType !== 'async' && [
+                // eslint-disable-next-line react/jsx-key
                 <Row>
                   <div className="form-right-aligned-labels">
                     <Col lg={5}>
@@ -2730,6 +2724,7 @@ export default class ClusterFields extends Component {
                     </Col>
                   </div>
                 </Row>,
+                // eslint-disable-next-line react/jsx-key
                 <Row>
                   <div className="form-right-aligned-labels">
                     {enableGeoPartitioning && (
@@ -2746,6 +2741,7 @@ export default class ClusterFields extends Component {
                     )}
                   </div>
                 </Row>,
+                // eslint-disable-next-line react/jsx-key
                 <Row>
                   <div className="form-right-aligned-labels">
                     {enableGeoPartitioning && (

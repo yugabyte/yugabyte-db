@@ -3,7 +3,7 @@ title: Using Sequelize with YugabyteDB
 linkTitle: Sequelize
 description: Using Sequelize with YugabyteDB
 menu:
-  preview:
+  preview_integrations:
     identifier: sequelize
     parent: integrations
     weight: 571

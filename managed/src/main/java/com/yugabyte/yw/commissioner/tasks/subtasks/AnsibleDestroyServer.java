@@ -12,24 +12,35 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class AnsibleDestroyServer extends NodeTaskBase {
+  private final NodeAgentManager nodeAgentManager;
 
   @Inject
   protected AnsibleDestroyServer(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      NodeManager nodeManager,
+      NodeAgentManager nodeAgentManager) {
     super(baseTaskDependencies, nodeManager);
+    this.nodeAgentManager = nodeAgentManager;
   }
 
   public static class Params extends NodeTaskParams {
@@ -66,6 +77,24 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         };
 
     saveUniverseDetails(updater);
+  }
+
+  private void deleteNodeAgent(NodeDetails nodeDetails) {
+    if (nodeAgentManager.isServerToBeInstalled()
+        && nodeDetails.cloudInfo != null
+        && nodeDetails.cloudInfo.private_ip != null) {
+      Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (provider.getCloudCode() == CloudType.onprem) {
+        AccessKey accessKey =
+            AccessKey.getOrBadRequest(provider.uuid, cluster.userIntent.accessKeyCode);
+        if (accessKey.getKeyInfo().skipProvisioning) {
+          return;
+        }
+      }
+      NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip)
+          .ifPresent(n -> nodeAgentManager.purge(n));
+    }
   }
 
   @Override
@@ -111,6 +140,19 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     }
 
     NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
+
+    try {
+      deleteNodeAgent(univNodeDetails);
+    } catch (Exception e) {
+      if (!taskParams().isForceDelete) {
+        throw e;
+      } else {
+        log.debug(
+            "Ignoring error deleting node agent {} due to isForceDelete being set.",
+            taskParams().nodeName,
+            e);
+      }
+    }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)
         && univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {

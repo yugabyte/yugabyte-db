@@ -66,10 +66,10 @@ func MarkInstallStart() {
 }
 
 func PostInstall() {
-	// Symlink at /usr/local/bin/yba-ctl -> /opt/yba-ctl/yba-ctl -> actual yba-ctl
+	// Symlink at /usr/bin/yba-ctl -> /opt/yba-ctl/yba-ctl -> actual yba-ctl
 	if HasSudoAccess() {
 		CreateSymlink(GetInstallerSoftwareDir(), filepath.Dir(InputFile), goBinaryName)
-		CreateSymlink(filepath.Dir(InputFile), "/usr/local/bin", goBinaryName)
+		CreateSymlink(filepath.Dir(InputFile), "/usr/bin", goBinaryName)
 	}
 
 	MarkInstallComplete()
@@ -135,7 +135,7 @@ func createUpgradeDirs() {
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
 func copyBits(vers string) {
 	yugabundleBinary := "yugabundle-" + GetVersion() + "-centos-x86_64.tar.gz"
-	neededFiles := []string{goBinaryName, versionMetadataJSON, "../" + yugabundleBinary,
+	neededFiles := []string{goBinaryName, versionMetadataJSON, yugabundleBinary,
 		GetJavaPackagePath(), GetPostgresPackagePath()}
 
 	for _, file := range neededFiles {
@@ -146,10 +146,13 @@ func copyBits(vers string) {
 		}
 	}
 
+	configDirPath := GetTemplatesDir()
 	templateCpCmd := fmt.Sprintf("cp %s/* %s/%s",
-		ConfigDir, GetInstallerSoftwareDir(), ConfigDir)
+		configDirPath, GetInstallerSoftwareDir(), ConfigDir)
+
+	cronDirPath := GetCronDir()
 	cronCpCmd := fmt.Sprintf("cp %s/* %s/%s",
-		CronDir, GetInstallerSoftwareDir(), CronDir)
+		cronDirPath, GetInstallerSoftwareDir(), CronDir)
 
 	if _, err := RunBash("bash", []string{"-c", templateCpCmd}); err != nil {
 		log.Fatal("failed to copy config files: " + err.Error())
@@ -217,6 +220,11 @@ func Uninstall(serviceNames []string, removeData bool) {
 
 // Upgrade performs the upgrade procedures common to all services.
 func Upgrade(version string) {
+
+	// Change into the dir we are in so that we can specify paths relative to ourselves
+	// TODO(minor): probably not a good idea in the long run
+	os.Chdir(GetBinaryDir())
+
 	createUpgradeDirs()
 	copyBits(version)
 	extractPlatformSupportPackageAndYugabundle(version)

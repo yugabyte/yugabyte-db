@@ -159,6 +159,9 @@ DEFINE_test_flag(bool, block_get_changes, false,
 DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");
 
+DEFINE_test_flag(bool, force_get_checkpoint_from_cdc_state, false,
+    "Always bypass the cache and fetch the checkpoint from the cdc state table");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -2206,6 +2209,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
         VLOG(2) << "We will remove the entry for the stream: " << stream_id
                 << ", from cdc_state table.";
         tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+        RemoveStreamFromCache(stream_id);
       }
       continue;
     }
@@ -2218,6 +2222,12 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
     const auto& op_id = *op_id_result;
+
+    // If a tablet_id, stream_id pair is in "uninitialized state", we don't need to send the
+    // checkpoint to the tablet peers.
+    if (op_id == OpId::Invalid() && last_active_time_cdc_state_table == 0) {
+      continue;
+    }
 
     // Check that requested tablet_id is part of the CDC stream.
     ProducerTabletInfo producer_tablet = {"" /* UUID */, stream_id, tablet_id};
@@ -2975,7 +2985,7 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
       LOG(WARNING) << err_message;
       return STATUS(ServiceUnavailable, err_message, CDCError(CDCErrorPB::INTERNAL_ERROR));
     }
-    tablet_peer->log()->GetLatestEntryOpId().ToPB(resp.mutable_op_id());
+    VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType()).ToPB(resp.mutable_op_id());
 
     return resp;
   }
@@ -3000,7 +3010,7 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
     }
 
     // Add op_id to response.
-    OpId op_id = tablet_peer->log()->GetLatestEntryOpId();
+    OpId op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
     op_id.ToPB(resp.add_op_ids());
   }
 
@@ -3186,7 +3196,7 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
           LOG(WARNING) << err_message;
           return STATUS(InternalError, err_message);
         }
-        op_id = tablet_peer->log()->GetLatestEntryOpId();
+        op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
 
         // Add checkpoint for rollback before modifying tablet state.
         impl_->AddTabletCheckpoint(
@@ -3447,7 +3457,7 @@ Status CDCServiceImpl::BootstrapProducerHelper(
           LOG(WARNING) << err_message;
           return STATUS(InternalError, err_message);
         }
-        op_id = tablet_peer->log()->GetLatestEntryOpId();
+        op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
         // Update the term and index for the consumed checkpoint
         // to tablet's LEADER as well as FOLLOWER.
         op_id_min.cdc_op_id = OpId(OpId::kUnknownTerm, op_id.index);
@@ -3586,9 +3596,11 @@ Result<int64_t> CDCServiceImpl::GetLastActiveTime(
 
 Result<OpId> CDCServiceImpl::GetLastCheckpoint(
     const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session) {
-  auto result = impl_->GetLastCheckpoint(producer_tablet);
-  if (result) {
-    return *result;
+  if (!PREDICT_FALSE(FLAGS_TEST_force_get_checkpoint_from_cdc_state)) {
+    auto result = impl_->GetLastCheckpoint(producer_tablet);
+    if (result) {
+      return *result;
+    }
   }
 
   auto cdc_state_table_result = GetCdcStateTable();
@@ -3893,6 +3905,11 @@ Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(
   return stream_metadata;
 }
 
+void CDCServiceImpl::RemoveStreamFromCache(const CDCStreamId& stream_id) {
+  std::lock_guard<decltype(mutex_)> l(mutex_);
+  stream_metadata_.erase(stream_id);
+}
+
 void CDCServiceImpl::AddStreamMetadataToCache(
     const std::string& stream_id, const std::shared_ptr<StreamMetadata>& metadata) {
   std::lock_guard<decltype(mutex_)> l(mutex_);
@@ -4033,26 +4050,8 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTab
       impl_->AddEntriesForChildrenTabletsOnSplitOp(info, children_tablets, children_op_id),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   VLOG(1) << "Added entries for children tablets: " << children_tablets[0]->tablet_id() << " and "
-          << children_tablets[1]->tablet_id()
+          << children_tablets[1]->tablet_id() << ", of parent tablet: " << info.tablet_id
           << ", to 'cdc_state_metadata_' and 'tablet_checkpoints_'";
-
-  // Update the entries for the children tablets to 'cdc_state' table.
-  auto session = client()->NewSession();
-  for (auto const& child_tablet : children_tablets) {
-    ProducerTabletInfo child_info;
-    child_info.tablet_id = child_tablet->tablet_id();
-    child_info.stream_id = info.stream_id;
-
-    RETURN_NOT_OK_SET_CODE(
-        UpdateCheckpointAndActiveTime(
-            child_info, children_op_id, children_op_id, session, GetCurrentTimeMicros(),
-            CDCRequestSource::CDCSDK, true),
-        CDCError(CDCErrorPB::INTERNAL_ERROR));
-  }
-
-  VLOG(1) << "Updated entries active time, and safe time for children tablets: "
-          << children_tablets[0]->tablet_id() << " and " << children_tablets[1]->tablet_id()
-          << ", in 'cdc_state' table";
 
   return Status::OK();
 }

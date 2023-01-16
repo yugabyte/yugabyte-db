@@ -37,12 +37,12 @@
 
 #include "yb/common/hybrid_time.h"
 
-DEFINE_RUNTIME_int32(cdc_max_apply_batch_num_records, 1024,
+DEFINE_RUNTIME_int32(cdc_max_apply_batch_num_records, 0,
     "Max CDC write request batch num records. If set to 0, there is no max num records, which"
     " means batches will be limited only by size.");
 
 DEFINE_RUNTIME_int32(cdc_max_apply_batch_size_bytes, 0,
-    "Max CDC write request batch size in kb. If 0, default to consensus_max_batch_size_bytes.");
+    "Max CDC write request batch size in kb. If 0, default to no max batch size.");
 
 DEFINE_test_flag(bool, twodc_write_hybrid_time, false,
                  "Override external_hybrid_time with initialHybridTimeValue for testing.");
@@ -247,7 +247,7 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
     auto max_batch_records = FLAGS_cdc_max_apply_batch_num_records != 0 ?
         FLAGS_cdc_max_apply_batch_num_records : std::numeric_limits<uint32_t>::max();
     auto max_batch_size = FLAGS_cdc_max_apply_batch_size_bytes != 0 ?
-        FLAGS_cdc_max_apply_batch_size_bytes : FLAGS_consensus_max_batch_size_bytes;
+        FLAGS_cdc_max_apply_batch_size_bytes : std::numeric_limits<uint32_t>::max();
 
     if (queue.empty() ||
         implicit_cast<size_t>(queue.back()->write_batch().write_pairs_size())

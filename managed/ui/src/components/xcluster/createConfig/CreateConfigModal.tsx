@@ -392,7 +392,7 @@ export const CreateConfigModal = ({
                 }}
               />
             );
-          case FormStep.SELECT_TABLES:
+          case FormStep.SELECT_TABLES: {
             // Casting because FormikValues and FormikError have different types.
             const errors = formik.current.errors as FormikErrors<CreateXClusterConfigFormErrors>;
             const { values } = formik.current;
@@ -422,6 +422,7 @@ export const CreateConfigModal = ({
                 />
               </>
             );
+          }
           case FormStep.CONFIGURE_BOOTSTRAP:
             return (
               <ConfigureBootstrapStep
@@ -495,47 +496,70 @@ const validateForm = async (
             body: 'Select at least 1 table to proceed'
           };
         }
-
         // Check if bootstrap is required, for each selected table
-        const bootstrapTests = await isBootstrapRequired(
-          sourceUniveres.universeUUID,
-          values.tableUUIDs.map(adaptTableUUID)
-        );
-
-        const bootstrapTableUUIDs = bootstrapTests.reduce(
-          (bootstrapTableUUIDs: string[], bootstrapTest) => {
-            // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
-            // Until the backend supports multiple tableUUIDs per request, the response object
-            // will only contain one tableUUID.
-            // Note: Once backend does support multiple tableUUIDs per request, we will replace this
-            //       logic with one that simply filters on the keys (tableUUIDs) of the returned object.
-            const tableUUID = Object.keys(bootstrapTest)[0];
-
-            if (bootstrapTest[tableUUID]) {
-              bootstrapTableUUIDs.push(tableUUID);
-            }
-            return bootstrapTableUUIDs;
-          },
-          []
-        );
-        setBootstrapRequiredTableUUIDs(bootstrapTableUUIDs);
-
-        // If some tables require bootstrapping, we need to validate the source universe has enough
-        // disk space.
-        if (bootstrapTableUUIDs.length > 0) {
-          // Disk space validation
-          const currentUniverseNodePrefix = sourceUniveres.universeDetails.nodePrefix;
-          const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
-          const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
-            (trace) => trace.name === 'free'
+        let bootstrapTests: { [tableUUID: string]: boolean }[] | null = null;
+        try {
+          bootstrapTests = await isBootstrapRequired(
+            sourceUniveres.universeUUID,
+            values.tableUUIDs.map(adaptTableUUID)
           );
-          const freeDiskSpace = parseFloatIfDefined(freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]);
+        } catch (error) {
+          toast.error(
+            <span className={styles.alertMsg}>
+              <div>
+                <i className="fa fa-exclamation-circle" />
+                <span>Table bootstrap verification failed.</span>
+              </div>
+              <div>
+                An error occured while verifying whether the selected tables require bootstrapping:
+              </div>
+              <div>{error.message}</div>
+            </span>
+          );
+          errors.tableUUIDs = {
+            title: 'Table bootstrap verification error',
+            body:
+              'An error occured while verifying whether the selected tables require bootstrapping.'
+          };
+        }
+        if (bootstrapTests !== null) {
+          const bootstrapTableUUIDs = bootstrapTests.reduce(
+            (bootstrapTableUUIDs: string[], bootstrapTest) => {
+              // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
+              // Until the backend supports multiple tableUUIDs per request, the response object
+              // will only contain one tableUUID.
+              // Note: Once backend does support multiple tableUUIDs per request, we will replace this
+              //       logic with one that simply filters on the keys (tableUUIDs) of the returned object.
+              const tableUUID = Object.keys(bootstrapTest)[0];
 
-          if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
-            warnings.tableUUIDs = {
-              title: 'Insufficient disk space.',
-              body: `Some selected tables require bootstrapping. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
-            };
+              if (bootstrapTest[tableUUID]) {
+                bootstrapTableUUIDs.push(tableUUID);
+              }
+              return bootstrapTableUUIDs;
+            },
+            []
+          );
+          setBootstrapRequiredTableUUIDs(bootstrapTableUUIDs);
+
+          // If some tables require bootstrapping, we need to validate the source universe has enough
+          // disk space.
+          if (bootstrapTableUUIDs.length > 0) {
+            // Disk space validation
+            const currentUniverseNodePrefix = sourceUniveres.universeDetails.nodePrefix;
+            const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
+            const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
+              (trace) => trace.name === 'free'
+            );
+            const freeDiskSpace = parseFloatIfDefined(
+              freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]
+            );
+
+            if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
+              warnings.tableUUIDs = {
+                title: 'Insufficient disk space.',
+                body: `Some selected tables require bootstrapping. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
+              };
+            }
           }
         }
         setFormWarnings(warnings);

@@ -2,11 +2,11 @@
 
 import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
-import { Button } from 'react-bootstrap';
+import { Button , Row, Col } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../../panels';
-import { Row, Col } from 'react-bootstrap';
+
 import { Link, browserHistory } from 'react-router';
 import { YBCopyButton } from '../../../common/descriptors';
 import { KUBERNETES_PROVIDERS } from '../../../../config';
@@ -223,6 +223,7 @@ export default class ListKubernetesConfigurations extends Component {
                 onFormSubmit={confirmDelete}
               >
                 Are you sure you want to delete{' '}
+                {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing */}
                 <strong>{this.state.providerToDelete && this.state.providerToDelete.name}</strong>{' '}
                 provider?
               </YBModal>

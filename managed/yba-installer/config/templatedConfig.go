@@ -16,61 +16,11 @@ import (
 	"text/template"
 
 	"github.com/spf13/viper"
-	"github.com/xeipuuv/gojsonschema"
 	"sigs.k8s.io/yaml"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
-
-// ValidateJSONSchema checks that the parameters in each component's config file are indeed
-// valid by turning the input YAML file into a JSON file, and then validating that
-// the parameters have been specified appropriately using the available
-// JSON schema.
-func validateJSONSchema() {
-
-	createdBytes, err := os.ReadFile(common.InputFile)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Error: %v.", err))
-	}
-
-	jsonString, jsonStringErr := yaml.YAMLToJSON(createdBytes)
-	if jsonStringErr != nil {
-		log.Fatal(fmt.Sprintf("Error: %v.\n", jsonStringErr))
-	}
-
-	var jsonData map[string]interface{}
-	if jsonDataError := json.Unmarshal([]byte(jsonString), &jsonData); jsonDataError != nil {
-		log.Fatal(fmt.Sprintf("Error: %v.\n", jsonDataError))
-	}
-
-	jsonBytesInput, _ := json.Marshal(jsonData)
-
-	jsonStringInput := string(jsonBytesInput)
-
-	jsonSchemaName := fmt.Sprintf("file://./%s/yba-installer-input-json-schema.json", common.ConfigDir)
-
-	schemaLoader := gojsonschema.NewReferenceLoader(jsonSchemaName)
-	documentLoader := gojsonschema.NewStringLoader(jsonStringInput)
-
-	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
-
-	// Panic to automatically exit the Templating Phase if the passed-in parameters are
-	// not valid.
-	if err != nil {
-		log.Fatal("Error: " + err.Error() + ".")
-	}
-
-	if result.Valid() {
-		log.Debug("The YBA Installer configuration is valid.\n")
-	} else {
-		log.Info("The YBA Installer configuration is not valid! See Errors: \n")
-		for _, desc := range result.Errors() {
-			log.Fatal(fmt.Sprintf("- %s\n", desc))
-		}
-	}
-
-}
 
 // GetYamlPathData reads the key text from the input file and returns it as a string.
 // Also does some custom processing for passwords by returning random defaults.
@@ -97,7 +47,7 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 	}
 
 	tmpl, err := template.New(configYmlFileName).
-		Funcs(funcMap).ParseFiles(fmt.Sprintf("%s/%s", common.ConfigDir, configYmlFileName))
+		Funcs(funcMap).ParseFiles(fmt.Sprintf("%s/%s", common.GetTemplatesDir(), configYmlFileName))
 
 	if err != nil {
 		log.Fatal("Error: " + err.Error() + ".")
@@ -157,8 +107,6 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
 // GenerateTemplate of a particular component.
 func GenerateTemplate(component common.Component) {
-
-	validateJSONSchema()
 
 	createdBytes, _ := readConfigAndTemplate(component.TemplateFile(), component)
 

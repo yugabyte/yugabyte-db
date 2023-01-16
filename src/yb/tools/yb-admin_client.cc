@@ -682,6 +682,39 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::PromoteAutoFlags(
+    const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
+  master::PromoteAutoFlagsRequestPB req;
+  master::PromoteAutoFlagsResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_max_flag_class(max_flag_class);
+  req.set_promote_non_runtime_flags(promote_non_runtime_flags);
+  req.set_force(force);
+  RETURN_NOT_OK(master_cluster_proxy_->PromoteAutoFlags(req, &resp, &rpc));
+  if (resp.has_error()) {
+    const auto status = StatusFromPB(resp.error().status());
+    if (!status.IsAlreadyPresent()) {
+      return status;
+    }
+  }
+
+  std::cout << "PromoteAutoFlags status: " << std::endl;
+  if (!resp.has_new_config_version()) {
+    std::cout << "No new AutoFlags to promote";
+  } else {
+    std::cout << "New AutoFlags were promoted. Config version: " << resp.new_config_version();
+    if (resp.non_runtime_flags_promoted()) {
+      std::cout << std::endl;
+      std::cout << "All YbMaster and YbTserver processes need to be restarted to apply the "
+                   "promoted AutoFlags";
+    }
+  }
+  std::cout << std::endl;
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ParseChangeType(
     const string& change_type,
     consensus::ChangeConfigType* cc_type) {

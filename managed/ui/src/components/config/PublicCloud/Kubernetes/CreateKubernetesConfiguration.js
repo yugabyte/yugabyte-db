@@ -8,14 +8,15 @@ import { Formik, Field } from 'formik';
 import JsYaml from 'js-yaml';
 import _ from 'lodash';
 import clsx from 'clsx';
-import { YBButton } from '../../../common/forms/fields';
-import { YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
+import { YBButton, YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
+
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import { readUploadedFile } from '../../../../utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
 import { specialChars } from '../../constants';
+import { toast } from 'react-toastify';
 
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
 const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
@@ -56,18 +57,19 @@ class CreateKubernetesConfiguration extends Component {
 
     // Loop thru regions to add location information
     const regionsLocInfo = vals.regionList.map((region) => {
-      const { code, latitude, longitude, name } = REGION_DICT[region.regionCode.value];
+      const regInDict = REGION_DICT[region.regionCode.value];
       return {
-        name,
-        code,
-        latitude,
-        longitude,
+        name: regInDict?.name ?? region.regionCode.label,
+        code: regInDict?.code ?? region.regionCode.value,
+        latitude: regInDict?.latitude,
+        longitude: regInDict?.longitude,
         zoneList: region.zoneList.map((zone) => {
           const config = {
             STORAGE_CLASS: zone.storageClasses || undefined,
             KUBENAMESPACE: zone.namespace || undefined,
             KUBE_DOMAIN: zone.kubeDomain || undefined,
             OVERRIDES: zone.zoneOverrides,
+            // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
             KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined,
             KUBE_POD_ADDRESS_TEMPLATE: zone.zonePodAddressTemplate || undefined
           };
@@ -92,8 +94,8 @@ class CreateKubernetesConfiguration extends Component {
           KUBECONFIG_PROVIDER: vals.providerType
             ? vals.providerType.value
             : providerTypeMetadata
-              ? providerTypeMetadata.code
-              : 'gke',
+            ? providerTypeMetadata.code
+            : 'gke',
           KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
           KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
         };
@@ -126,6 +128,46 @@ class CreateKubernetesConfiguration extends Component {
     );
     this.props.toggleListView(true);
     setSubmitting(false);
+  };
+
+  fillFormWithKubeConfig = (formikProps) => {
+    const { setFieldValue } = formikProps;
+    this.props
+      .fetchKubenetesConfig()
+      .then((resp) => {
+        const { KUBECONFIG_PULL_SECRET_NAME, KUBECONFIG_PULL_SECRET_CONTENT } = resp.data.config;
+        const { regionList } = resp.data;
+        const fileObj = new File([KUBECONFIG_PULL_SECRET_CONTENT], KUBECONFIG_PULL_SECRET_NAME, {
+          type: 'text/plain',
+          lastModified: new Date().getTime()
+        });
+        setFieldValue('pullSecret', fileObj);
+
+        const parsedRegionList = regionList.map((r) => {
+          let regionCode = {};
+
+          const region = REGION_DICT[r.code];
+          if (region) {
+            regionCode = { label: region.name, value: region.code };
+          } else {
+            regionCode = { label: r.code, value: r.code };
+          }
+          return {
+            regionCode,
+            zoneList: r.zoneList.map((z) => {
+              return {
+                storageClasses: z.config.STORAGE_CLASS,
+                zoneLabel: z.name
+              };
+            }),
+            isValid: true
+          };
+        });
+        setFieldValue('regionList', parsedRegionList);
+      })
+      .catch(() => {
+        toast.error('Unable to fetch Kube Config');
+      });
   };
 
   render() {
@@ -217,6 +259,11 @@ class CreateKubernetesConfiguration extends Component {
       return p.values.regionList.filter((region) => region.isValid).length > 0;
     };
 
+    const showPrefillKubeConfigLink =
+      type === 'k8s' &&
+      (this.props.featureFlags.test.enablePrefillKubeConfig ||
+        this.props.featureFlags.released.enablePrefillKubeConfig);
+
     return (
       <div>
         <h2 className="table-container-title">{title}</h2>
@@ -235,6 +282,19 @@ class CreateKubernetesConfiguration extends Component {
               <form name="kubernetesConfigForm" onSubmit={props.handleSubmit}>
                 <div className="editor-container">
                   <Row>
+                    {showPrefillKubeConfigLink && (
+                      <div
+                        className="fetch-kube-config-but"
+                        onClick={() => this.fillFormWithKubeConfig(props)}
+                      >
+                        <YBInfoTip
+                          placement="left"
+                          title="Fetch suggested kube config"
+                          content={'Prefill the current cluster config with suggested config'}
+                        />
+                        Fetch Kube config
+                      </div>
+                    )}
                     <Col lg={8}>
                       <Row
                         className={clsx('config-provider-row', {

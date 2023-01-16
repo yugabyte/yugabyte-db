@@ -2,6 +2,7 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -9,9 +10,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -19,7 +24,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Singleton
@@ -30,12 +37,13 @@ public class NodeUniverseManager extends DevopsBase {
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
   public static final String CERTS_DIR = "/yugabyte-tls-config";
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
+  public static final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
 
   private final KeyLock<UUID> universeLock = new KeyLock<>();
 
   @Override
   protected String getCommandType() {
-    return null;
+    return "node";
   }
 
   public ShellResponse downloadNodeLogs(
@@ -238,18 +246,6 @@ public class NodeUniverseManager extends DevopsBase {
     return runCommand(node, universe, command, context);
   }
 
-  /** returns (location of) access key for a particular node in a universe */
-  private String getAccessKey(NodeDetails node, Universe universe) {
-    if (node == null) {
-      throw new RuntimeException("node must be nonnull");
-    }
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-    UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-    AccessKey ak = AccessKey.get(providerUUID, cluster.userIntent.accessKeyCode);
-    return ak.getKeyInfo().privateKey;
-  }
-
   /**
    * Returns yb home directory for node
    *
@@ -261,8 +257,54 @@ public class NodeUniverseManager extends DevopsBase {
     UUID providerUUID =
         UUID.fromString(
             universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.provider);
-    Provider provider = Provider.get(providerUUID);
+    Provider provider = Provider.getOrBadRequest(providerUUID);
     return provider.getYbHome();
+  }
+
+  private void addConnectionParams(
+      Universe universe, NodeDetails node, ShellProcessContext context, List<String> commandArgs) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    CloudType cloudType = universe.getNodeDeploymentMode(node);
+    if (cloudType == CloudType.kubernetes) {
+      Map<String, String> k8sConfig =
+          KubernetesUtil.getKubernetesConfigPerPod(
+                  cluster.placementInfo,
+                  universe.getUniverseDetails().getNodesInCluster(cluster.uuid))
+              .get(node.cloudInfo.private_ip);
+      if (k8sConfig == null) {
+        throw new RuntimeException("Kubernetes config cannot be null");
+      }
+      commandArgs.add("k8s");
+      commandArgs.add("--k8s_config");
+      commandArgs.add(Json.stringify(Json.toJson(k8sConfig)));
+    } else if (cloudType != Common.CloudType.unknown) {
+      UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+      ProviderDetails providerDetails = Provider.getOrBadRequest(providerUUID).details;
+      AccessKey accessKey =
+          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
+      Optional<NodeAgent> optional =
+          getNodeAgentClient().maybeGetNodeAgentClient(node.cloudInfo.private_ip);
+      if (optional.isPresent()) {
+        commandArgs.add("rpc");
+        NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);
+      } else {
+        commandArgs.add("ssh");
+        commandArgs.add("--port");
+        commandArgs.add(providerDetails.sshPort.toString());
+        commandArgs.add("--ip");
+        commandArgs.add(node.cloudInfo.private_ip);
+        commandArgs.add("--key");
+        commandArgs.add(accessKey.getKeyInfo().privateKey);
+        if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+          commandArgs.add("--ssh2_enabled");
+        }
+      }
+      if (context.isCustomUser() && StringUtils.isNotBlank(providerDetails.sshUser)) {
+        commandArgs.add("--user");
+        commandArgs.add(providerDetails.sshUser);
+      }
+    }
   }
 
   private ShellResponse executeNodeAction(
@@ -275,50 +317,12 @@ public class NodeUniverseManager extends DevopsBase {
 
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(NODE_ACTION_SSH_SCRIPT);
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-    UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     if (node.isMaster) {
       commandArgs.add("--is_master");
     }
     commandArgs.add("--node_name");
     commandArgs.add(node.nodeName);
-    if (universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
-      Map<String, String> k8sConfig =
-          KubernetesUtil.getKubernetesConfigPerPod(
-                  cluster.placementInfo,
-                  universe.getUniverseDetails().getNodesInCluster(cluster.uuid))
-              .get(node.cloudInfo.private_ip);
-      if (k8sConfig == null) {
-        throw new RuntimeException("Kubernetes config cannot be null");
-      }
-
-      commandArgs.add("k8s");
-      commandArgs.add("--k8s_config");
-      commandArgs.add(Json.stringify(Json.toJson(k8sConfig)));
-    } else if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.unknown)) {
-      AccessKey accessKey =
-          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
-      Optional<NodeAgent> optional =
-          getNodeAgentClient().maybeGetNodeAgentClient(node.cloudInfo.private_ip);
-      if (optional.isPresent()) {
-        commandArgs.add("rpc");
-        NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);
-      } else {
-        commandArgs.add("ssh");
-        commandArgs.add("--port");
-        commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
-        commandArgs.add("--ip");
-        commandArgs.add(node.cloudInfo.private_ip);
-        commandArgs.add("--key");
-        commandArgs.add(getAccessKey(node, universe));
-        if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
-          commandArgs.add("--ssh2_enabled");
-        }
-      }
-    } else {
-      throw new RuntimeException("Cloud type unknown");
-    }
+    addConnectionParams(universe, node, context, commandArgs);
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
     return shellProcessHandler.run(commandArgs, context);
@@ -329,6 +333,54 @@ public class NodeUniverseManager extends DevopsBase {
       return K8S_CERTS_DIR;
     }
     return getYbHomeDir(node, universe) + CERTS_DIR;
+  }
+
+  /**
+   * Checks if a file or directory exists on the node in the universe
+   *
+   * @param node
+   * @param universe
+   * @param remotePath
+   * @return true if file/directory exists, else false
+   */
+  public boolean checkNodeIfFileExists(NodeDetails node, Universe universe, String remotePath) {
+    List<String> params = new ArrayList<>();
+    params.add("check_file_exists");
+    params.add(remotePath);
+
+    ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params);
+
+    if (scriptOutput.extractRunCommandOutput().trim().equals("1")) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  /**
+   * Gets a list of all the absolute file paths at a given remote directory
+   *
+   * @param node
+   * @param universe
+   * @param remoteDirPath
+   * @param maxDepth
+   * @param fileType
+   * @return list of strings of all the absolute file paths
+   */
+  public List<Path> getNodeFilePaths(
+      NodeDetails node, Universe universe, String remoteDirPath, int maxDepth, String fileType) {
+    List<String> command = new ArrayList<>();
+    command.add("find");
+    command.add(remoteDirPath);
+    command.add("-maxdepth");
+    command.add(String.valueOf(maxDepth));
+    command.add("-type");
+    command.add(fileType);
+
+    ShellResponse shellOutput = runCommand(node, universe, command);
+    List<String> nodeFilePathStrings =
+        Arrays.asList(shellOutput.extractRunCommandOutput().trim().split("\n", 0));
+    return nodeFilePathStrings.stream().map(Paths::get).collect(Collectors.toList());
   }
 
   public enum UniverseNodeAction {

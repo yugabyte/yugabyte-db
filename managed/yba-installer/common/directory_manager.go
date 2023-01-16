@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -72,7 +73,7 @@ func GetActiveSymlink() string {
 
 // GetInstallerSoftwareDir returns the yba_installer directory inside InstallRoot
 func GetInstallerSoftwareDir() string {
-	return dm.WorkingDirectory() + "/yba_installer-" + GetVersion()
+	return dm.WorkingDirectory() + "/yba_installer"
 }
 
 func PrunePastInstalls() {
@@ -156,20 +157,36 @@ func (dm directoryManager) ActiveSymlink() string {
 	return filepath.Join(dm.BaseInstall(), "software", InstallSymlink)
 }
 
-func getFileMatchingGlob(glob string) string {
-	matches, err := filepath.Glob(glob)
-	if err != nil || len(matches) != 1 {
-		log.Fatal(fmt.Sprintf("Expect to find one match for glob %s (err %s)", matches, err))
-	}
-	return matches[0]
-}
-
 func GetPostgresPackagePath() string {
-	return getFileMatchingGlob(PostgresPackageGlob)
+	return GetFileMatchingGlobOrFatal(PostgresPackageGlob)
 }
 
 func GetJavaPackagePath() string {
-	return getFileMatchingGlob(javaBinaryGlob)
+	return GetFileMatchingGlobOrFatal(javaBinaryGlob)
+}
+
+func GetTemplatesDir() string {
+	// if we are being run from the installed dir, templates
+	// is in the same dir as the binary
+	installedPath := filepath.Join(GetBinaryDir(), ConfigDir)
+	if _, err := os.Stat(installedPath); err == nil {
+		return installedPath
+	}
+
+	// if we are being run from the .tar.gz before install
+	return GetFileMatchingGlobOrFatal(filepath.Join(GetBinaryDir(), tarTemplateDirGlob))
+}
+
+func GetCronDir() string {
+	// if we are being run from the installed dir, cron
+	// is in the same dir as the binary
+	installedPath := filepath.Join(GetBinaryDir(), CronDir)
+	if _, err := os.Stat(installedPath); err == nil {
+		return installedPath
+	}
+
+	// if we are being run from the .tar.gz before install
+	return GetFileMatchingGlobOrFatal(filepath.Join(GetBinaryDir(), tarCronDirGlob))
 }
 
 func GetYBAInstallerDataDir() string {

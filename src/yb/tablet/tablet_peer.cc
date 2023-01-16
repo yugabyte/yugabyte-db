@@ -1029,6 +1029,23 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
+Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() const {
+  if (VERIFY_RESULT(shared_tablet_safe())->table_type() ==
+      TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
+    // earliest required log record. This will be the CREATED\PENDING log record of the oldest
+    // active transaction.
+    auto index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+    if (index > 0) {
+      index--;
+    }
+    // Term does not matter, so can be set to 0.
+    return OpId(0, index);
+  }
+
+  return GetLatestLogEntryOpId();
+}
+
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
   int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
@@ -1164,10 +1181,6 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
     const HybridTime& cdc_sdk_safe_time) {
-  if (cdc_sdk_op_id == OpId::Invalid()) {
-    return Status::OK();
-  }
-
   RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
   RETURN_NOT_OK(set_cdc_sdk_safe_time(cdc_sdk_safe_time));
 

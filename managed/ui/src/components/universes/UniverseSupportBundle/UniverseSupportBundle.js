@@ -104,7 +104,7 @@ export const UniverseSupportBundle = (props) => {
 
   const isSubmitDisabled = () => {
     if(steps === stepsObj.secondStep) {
-      return payload && payload.components && payload.components.length === 0;
+      return payload?.components?.length === 0;
     }
     return false;
   };

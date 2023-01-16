@@ -23,7 +23,9 @@ import {
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const momentLocalizer = require('react-widgets-moment');
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -36,6 +38,7 @@ interface CreateMaintenanceWindowProps {
   selectedWindow: MaintenanceWindowSchema | null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 enum TARGET_OPTIONS {
   ALL = 'all',
   SELECTED = 'selected'

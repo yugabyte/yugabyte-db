@@ -28,31 +28,31 @@ DOCUMENTATION = """
         description:
           - Default connection user similar to SSH user.
         vars:
-          - name: rpc_user
+          - name: node_agent_user
         required: False
       ip:
         description:
           - IP of the node agent server.
         default: inventory_hostname
         vars:
-          - name: rpc_ip
+          - name: node_agent_ip
         required: True
       port:
         description:
           - Port of the node agent server.
         vars:
-          - name: rpc_port
+          - name: node_agent_port
       cert_path:
         description:
           - Cert path to verify the server self-signed cert.
         vars:
-          - name: rpc_cert_path
+          - name: node_agent_cert_path
         required: True
       auth_token:
         description:
           - Auth token to authenticate the RPC requests.
         vars:
-          - name: rpc_auth_token
+          - name: node_agent_auth_token
         required: True
 """
 

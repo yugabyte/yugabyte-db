@@ -191,7 +191,8 @@ export const panelTypes = {
     metrics: [
       'ysql_server_rpc_per_second',
       'ysql_sql_latency',
-      'ysql_connections'
+      'ysql_connections',
+      'ysql_connections_per_sec'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
       // "ysql_server_rpc_p99"
     ]
@@ -410,7 +411,7 @@ class GraphPanel extends Component {
 
       if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
         //Hide master related panels for tserver pods.
-        if (nodeName.match('yb-tserver-') != null) {
+        if (nodeName.match('yb-tserver-') !== null) {
           if (
             panelTypes[type].title === 'Master Server' ||
             panelTypes[type].title === 'Master Server Advanced'
@@ -419,7 +420,7 @@ class GraphPanel extends Component {
           }
         }
         //Hide empty panels for master pods.
-        if (nodeName.match('yb-master-') != null) {
+        if (nodeName.match('yb-master-') !== null) {
           const skipList = [
             'Tablet Server',
             'YSQL Ops and Latency',

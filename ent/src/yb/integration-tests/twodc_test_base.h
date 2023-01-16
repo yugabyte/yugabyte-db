@@ -47,6 +47,7 @@ constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kKeyColumnName = "key";
+static const uint32_t kRangePartitionInterval = 500;
 
 class TwoDCTestBase : public YBTest {
  public:
@@ -57,6 +58,7 @@ class TwoDCTestBase : public YBTest {
     std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
     HostPort pg_host_port_;
     boost::optional<client::TransactionManager> txn_mgr_;
+    size_t pg_ts_idx_;
 
     Result<pgwrapper::PGConn> Connect() {
       return ConnectToDB(std::string() /* dbname */);
@@ -108,12 +110,14 @@ class TwoDCTestBase : public YBTest {
       const boost::optional<std::string>& tablegroup_name,
       uint32_t num_tablets,
       bool colocated = false,
-      const ColocationId colocation_id = 0);
+      const ColocationId colocation_id = 0,
+      const bool ranged_partitioned = false);
 
   Status CreateYsqlTable(
       uint32_t idx, uint32_t num_tablets, Cluster* cluster,
       std::vector<client::YBTableName>* table_names,
-      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false);
+      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false,
+      const bool ranged_partitioned = false);
 
   Result<client::YBTableName> GetYsqlTable(
       Cluster* cluster,
@@ -124,7 +128,7 @@ class TwoDCTestBase : public YBTest {
       bool verify_schema_name = false,
       bool exclude_system_tables = true);
 
-  Status SetupUniverseReplication(
+  virtual Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);
 
   Status SetupUniverseReplication(
@@ -137,7 +141,7 @@ class TwoDCTestBase : public YBTest {
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
-      bool leader_only = true);
+      bool leader_only = true, const std::vector<std::string>& bootstrap_ids = {});
 
   Status SetupNSUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -187,6 +191,18 @@ class TwoDCTestBase : public YBTest {
   Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
 
   Status WaitForValidSafeTimeOnAllTServers(const NamespaceId& namespace_id);
+
+  // Wait for replication drain on a list of tables.
+  Status WaitForReplicationDrain(
+      const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
+      const master::WaitForReplicationDrainRequestPB& req,
+      int expected_num_nondrained,
+      int timeout_secs = kRpcTimeout);
+
+  // Populate a WaitForReplicationDrainRequestPB request from a list of tables.
+  void PopulateWaitForReplicationDrainRequest(
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+      master::WaitForReplicationDrainRequestPB* req);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -243,6 +259,13 @@ class TwoDCTestBase : public YBTest {
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+
+  // Function that translates the api response from a WaitForReplicationDrainResponsePB call into
+  // a status.
+  Status SetupWaitForReplicationDrainStatus(
+      Status api_status,
+      const master::WaitForReplicationDrainResponsePB& api_resp,
+      int expected_num_nondrained);
 };
 
 } // namespace enterprise

@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: ysql-dump
     parent: admin
-    weight: 2467
+    weight: 70
 type: docs
 ---
 

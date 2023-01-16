@@ -160,6 +160,12 @@
         enabled: yes
         scope: user
 
+    - name: Enable yb-bind check service
+      systemd:
+        name: yb-bind_check
+        enabled: yes
+        scope: user
+
     - name: Enable and start controller
       systemd:
         name: yb-controller

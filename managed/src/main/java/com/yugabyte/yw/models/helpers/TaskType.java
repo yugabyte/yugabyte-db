@@ -67,6 +67,7 @@ public enum TaskType {
   RunApiTriggeredHooks(com.yugabyte.yw.commissioner.tasks.RunApiTriggeredHooks.class),
 
   AddOnClusterCreate(com.yugabyte.yw.commissioner.tasks.AddOnClusterCreate.class),
+
   AddOnClusterDelete(com.yugabyte.yw.commissioner.tasks.AddOnClusterDelete.class),
 
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
@@ -472,7 +473,11 @@ public enum TaskType {
   DeleteRootVolumes(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes.class),
 
   InstallingThirdPartySoftware(
-      com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s.class),
+
+  InstallNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent.class),
+
+  WaitForNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent.class);
 
   private final Class<? extends ITask> taskClass;
 

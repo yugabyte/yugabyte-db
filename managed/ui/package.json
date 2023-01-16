@@ -7,6 +7,7 @@
     "prettier": "prettier --write src/redesign/**/*",
     "cleanup": "rimraf build && rimraf ../src/main/public",
     "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zx -C build/static",
+    "build": "CI=false craco build",
     "build:ci": "CI=true GENERATE_SOURCEMAP=false craco build",
     "build-and-copy": "npm run build && ncp build ../src/main/public",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
@@ -15,7 +16,7 @@
     "test:ci": "CI=true craco test --reporters=jest-junit --env=jest-environment-jsdom-sixteen",
     "test:debug": "react-scripts --inspect-brk test --runInBand --no-cache --env=jest-environment-jsdom-sixteen",
     "start": "craco start",
-    "build": "craco build"
+    "prepare": "cd ../../ && husky install ./managed/ui/.husky"
   },
   "engines": {
     "node": ">=16.10.x",
@@ -37,6 +38,8 @@
     "esbuild-loader": "^2.20.0",
     "eslint-config-prettier": "6.11.0",
     "eslint-plugin-import": "2.20.2",
+    "eslint-plugin-react-hooks": "4.3.0",
+    "husky": "8.0.2",
     "jest-environment-jsdom-sixteen": "1.0.3",
     "jest-junit": "12.0.0",
     "ncp": "2.0.0",

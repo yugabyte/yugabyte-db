@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/writer"
@@ -12,6 +13,9 @@ import (
 // Fatal prints the error message to stdout at the error level, and
 // then kills the currently running process.
 func Fatal(errorMsg string) {
+	stackTrace := make([]byte, 4096)
+	count := runtime.Stack(stackTrace, false)
+	log.Debug("Hit fatal error with stack trace: \n" + string(stackTrace[:count]) + "\n")
 	log.Fatalln(errorMsg)
 }
 
@@ -39,7 +43,7 @@ func AddOutputFile(filePath string) {
 	if err != nil {
 		log.Fatalln("Unable to create log file " + filePath)
 	}
-	log.Infoln(fmt.Sprintf("Opened log file %s", filePath))
+	log.Debugln(fmt.Sprintf("Opened log file %s", filePath))
 
 	// log file is always at trace level
 	levels := []log.Level{}
@@ -59,8 +63,9 @@ func Init(logLevel string) {
 	// TODO: use different formatters for tty and log file, similar to
 	// https://github.com/sirupsen/logrus/issues/894#issuecomment-1284051207
 	log.SetFormatter(&log.TextFormatter{
-		ForceColors:   true, // without this, logrus logs in logfmt output by default
-		FullTimestamp: true,
+		ForceColors:            true, // without this, logrus logs in logfmt output by default
+		FullTimestamp:          true,
+		DisableLevelTruncation: true,
 	})
 
 	log.SetLevel(log.TraceLevel)

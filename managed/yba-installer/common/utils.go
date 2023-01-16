@@ -33,17 +33,19 @@ import (
 // Systemctl linux command.
 const Systemctl string = "systemctl"
 
-// InputFile where installer config settings are specified.
-var InputFile = "/opt/yba-ctl/yba-ctl.yml"
+// YBA-CTL specific files
+const (
+	// InputFile where installer config settings are specified.
+	InputFile      = "/opt/yba-ctl/yba-ctl.yml"
+	YbaCtlLogFile  = "/opt/yba-ctl/yba-ctl.log"
+	installingFile = "/opt/yba-ctl/.installing"
 
-var YbaCtlLogFile = "/opt/yba-ctl/yba-ctl.log"
+	// InstalledFile is location of install completed marker file.
+	InstalledFile      = "/opt/yba-ctl/.installed"
+	LicenseFileInstall = "/opt/yba-ctl/yba.lic"
+)
 
-var installingFile = "/opt/yba-ctl/.installing"
-
-// InstalledFile is location of install completed marker file.
-var InstalledFile = "/opt/yba-ctl/.installed"
-
-var PostgresPackageGlob = "postgresql-*-linux-x64-binaries.tar.gz"
+const PostgresPackageGlob = "yba_installer-*linux*/postgresql-*-linux-x64-binaries.tar.gz"
 
 var skipConfirmation = false
 
@@ -51,11 +53,15 @@ var yumList = []string{"RedHat", "CentOS", "Oracle", "Alma", "Amazon"}
 
 var aptList = []string{"Ubuntu", "Debian"}
 
-var goBinaryName = "yba-ctl"
+const goBinaryName = "yba-ctl"
 
-var versionMetadataJSON = "version_metadata.json"
+const versionMetadataJSON = "version_metadata.json"
 
-var javaBinaryGlob = "OpenJDK8U-jdk_x64_linux_*.tar.gz"
+const javaBinaryGlob = "yba_installer-*linux*/OpenJDK8U-jdk_x64_linux_*.tar.gz"
+
+const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
+
+const tarCronDirGlob = "yba_installer-*linux*/" + CronDir
 
 // DetectOS detects the operating system yba-installer is running on.
 func DetectOS() string {
@@ -85,8 +91,8 @@ func GetVersion() string {
 
 	versionNumber := fmt.Sprint(configViper.Get("version_number"))
 	buildNumber := fmt.Sprint(configViper.Get("build_number"))
-	if os.Getenv("YBA_MODE") == "dev" {
-		// in dev itest builds, build_number is set to PRE_RELEASE
+	if buildNumber == "PRE_RELEASE" && os.Getenv("YBA_MODE") == "dev" {
+		// hack to allow testing dev itest builds
 		buildNumber = fmt.Sprint(configViper.Get("build_id"))
 	}
 
@@ -513,4 +519,37 @@ func GuessPrimaryIP() string {
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String()
+}
+
+func GetFileMatchingGlob(glob string) (string, error) {
+	matches, err := filepath.Glob(glob)
+	if err != nil || len(matches) != 1 {
+		return "", fmt.Errorf(
+			"Expect to find one match for glob %s (err %s, matches %v)",
+			glob, err, matches)
+	}
+	return matches[0], nil
+}
+
+func GetFileMatchingGlobOrFatal(glob string) string {
+	result, err := GetFileMatchingGlob(glob)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	return result
+}
+
+// given a path like /a/b/c/d that may not exist,
+// returns the first valid directory in the hierarchy
+// that actually exists
+func GetValidParent(dir string) (string, error) {
+	curDir := filepath.Clean(dir)
+	_, curError := os.Stat(curDir)
+	lastDir := ""
+	for curError != nil && lastDir != curDir {
+		lastDir = curDir
+		curDir = filepath.Dir(curDir)
+		_, curError = os.Stat(curDir)
+	}
+	return curDir, curError
 }

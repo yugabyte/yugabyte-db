@@ -2153,8 +2153,12 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
                                   MonoDelta::FromMilliseconds(100));
     ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
 
-    // Step down.
-    ASSERT_OK(LeaderStepDown(initial_leader, tablet_id_, nullptr, MonoDelta::FromSeconds(10)));
+    // Step down. Disable graceful transition to avoid other voters are elected as leader.
+    ASSERT_OK(LeaderStepDown(initial_leader,
+                             tablet_id_,
+                             nullptr,
+                             MonoDelta::FromSeconds(10),
+                             /* disable_graceful_transition = */ true));
 
     // Assert that elections time out without a live majority.
     // We specify a very short timeout here to keep the tests fast.

@@ -27,7 +27,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | :--- | :--- | :--- |
 | [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single&nbsp;node<br/>Local/Cloud |
 | [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi node<br/>Local |
-| [Fault tolerance](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi&nbsp;node<br/>Local |
+| [Continuous availability](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi&nbsp;node<br/>Local |
 | [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi node<br/>Local |
 | [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single&nbsp;node<br/>Local/Cloud |
 | [Indexes and constraints](indexes-constraints/) | Explore indexes in YugabyteDB, including primary and foreign keys, secondary, unique, partial, and expression indexes, and more. | Single&nbsp;node<br/>Local/Cloud |
@@ -48,15 +48,15 @@ This section assumes that you have either [created an account](https://cloud.yug
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li >
     <a href="#cloud" class="nav-link active" id="cloud-tab" data-toggle="tab"
-       role="tab" aria-controls="cloud" aria-selected="true">
-      <i class="fas fa-cloud" aria-hidden="true"></i>
+      role="tab" aria-controls="cloud" aria-selected="true">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
       Use a cloud cluster
     </a>
   </li>
   <li>
     <a href="#local" class="nav-link" id="local-tab" data-toggle="tab"
-       role="tab" aria-controls="local" aria-selected="false">
-      <i class="icon-shell" aria-hidden="true"></i>
+      role="tab" aria-controls="local" aria-selected="false">
+      <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
   </li>
@@ -156,14 +156,14 @@ Start a local three-node cluster with a replication factor of `3` by first creat
                 --cloud_location=aws.us-east-2.us-east-2a
 ```
 
-On MacOS and Linux, the additional nodes need loopback addresses configured:
+On macOS, the additional nodes need loopback addresses configured:
 
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2
 sudo ifconfig lo0 alias 127.0.0.3
 ```
 
-Next, join two more nodes with the previous node. By default, [yugabyted](../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
+Next, join two more nodes with the previous node. [yugabyted](../reference/configuration/yugabyted/) automatically applies a replication factor of `3` when a third node is added.
 
 ```sh
 ./bin/yugabyted start \
@@ -236,9 +236,9 @@ ycqlsh>
 
 ## Set up YB Workload Simulator
 
-YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB. 
+YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
 
-The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features cluster- and topology-aware connection load balancing. For more information about the workload application, refer to [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
+The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features cluster- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a cluster, and re-balances connections when a node fails. For more information about the workload application, refer to [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
 
 ### Download
 
@@ -255,15 +255,15 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li >
     <a href="#cloudworkload" class="nav-link active" id="cloud-tab" data-toggle="tab"
-       role="tab" aria-controls="cloud" aria-selected="true">
-      <i class="fas fa-cloud" aria-hidden="true"></i>
+      role="tab" aria-controls="cloud" aria-selected="true">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
       Use a cloud cluster
     </a>
   </li>
   <li>
     <a href="#localworkload" class="nav-link" id="local-tab" data-toggle="tab"
-       role="tab" aria-controls="local" aria-selected="false">
-      <i class="icon-shell" aria-hidden="true"></i>
+      role="tab" aria-controls="local" aria-selected="false">
+      <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
   </li>

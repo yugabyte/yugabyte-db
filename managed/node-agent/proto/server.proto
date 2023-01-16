@@ -9,14 +9,19 @@ service NodeAgent {
     rpc ExecuteCommand(ExecuteCommandRequest) returns (stream ExecuteCommandResponse);
     rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
     rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
+    rpc Update(UpdateRequest) returns (UpdateResponse);
+}
+
+message ServerInfo {
+    string version = 1;
+    bool restartNeeded = 2;
 }
 
 message PingRequest {
-    string data = 1;
 }
 
 message PingResponse {
-    string data = 1;
+    ServerInfo serverInfo = 1;
 }
 
 message ExecuteCommandRequest {
@@ -58,4 +63,18 @@ message DownloadFileRequest {
 
 message DownloadFileResponse {
     bytes chunkData = 1;
+}
+
+message UpgradeInfo {
+    string packagePath = 1;
+    string certDir = 2;
+}
+
+message UpdateRequest {
+    string state = 1;
+    UpgradeInfo upgradeInfo = 2;
+}
+
+message UpdateResponse {
+
 }

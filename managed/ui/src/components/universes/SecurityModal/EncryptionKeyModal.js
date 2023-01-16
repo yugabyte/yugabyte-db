@@ -43,8 +43,7 @@ export default class EncryptionKeyModal extends Component {
       fetchCurrentUniverse
     } = this.props;
     const encryptionAtRestEnabled =
-      universeDetails.encryptionAtRestConfig &&
-      universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
+      universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled;
 
     // When both the encryption enabled and key values didn't change
     // we don't submit the form
@@ -82,7 +81,7 @@ export default class EncryptionKeyModal extends Component {
     } = currentUniverse;
     const encryptionAtRestConfig = universeDetails.encryptionAtRestConfig;
     const encryptionAtRestEnabled =
-      encryptionAtRestConfig && encryptionAtRestConfig.encryptionAtRestEnabled;
+      encryptionAtRestConfig?.encryptionAtRestEnabled;
     const labelText = currentUniverse.data.name
       ? `Enable Encryption-at-Rest for ${this.props.name} ?`
       : 'Enable Encryption-at-Rest ?';

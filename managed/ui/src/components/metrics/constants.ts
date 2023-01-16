@@ -26,6 +26,7 @@ export const MetricTypesWithOperations = {
       'ysql_server_rpc_per_second',
       'ysql_sql_latency',
       'ysql_connections',
+      'ysql_connections_per_sec',
       'ysql_server_advanced_rpc_per_second',
       'ysql_sql_advanced_latency'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
@@ -307,12 +308,12 @@ export enum MetricMeasure {
   OVERALL = 'Overall',
   OUTLIER = 'Outlier',
   OUTLIER_TABLES = "Outlier_Tables"
-};
+}
 
 export enum SplitType {
   NODE = 'NODE',
   TABLE = 'TABLE'
-};
+}
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;
 export const MIN_OUTLIER_NUM_NODES = 1;

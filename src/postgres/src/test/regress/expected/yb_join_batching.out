@@ -176,6 +176,33 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
  20 | 20 | 0020 |    |   | 
 (16 rows)
 
+-- Batching should still be disabled if there is a filter
+-- clause on a batched relation.
+/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_b_idx on p1
+         Index Cond: (b = p2.a)
+         Filter: (p2.b = a)
+(5 rows)
+
+/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p3)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1, p2, p3 where p1.a = p3.a AND p2.a = p3.a and p1.b = p2.b;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Nested Loop
+   Join Filter: (p3.a = p1.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (p2.a = p3.a)
+         ->  Seq Scan on p2
+         ->  Index Scan using p3_pkey on p3
+               Index Cond: (a = ANY (ARRAY[p2.a, $1, $2]))
+   ->  Index Scan using p1_b_idx on p1
+         Index Cond: (b = p2.b)
+         Filter: (p2.a = a)
+(10 rows)
+
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------
@@ -240,14 +267,14 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
  20 | 20 | 0020 |    |   | 
 (16 rows)
 
-/*+ Leading((p2 p1)) IndexScan(p1 p1_b_idx) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: ((p1.a = p2.b) AND (p1.b = p2.a))
+/*+ set(enable_seqscan true) Leading((p2 p1)) IndexScan(p1 p1_b_idx) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+              QUERY PLAN
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on p2
    ->  Index Scan using p1_b_idx on p1
-   ->  Index Scan using p2_pkey on p2
-         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(p1.b, p1.a), ROW($1, $4), ROW($2, $5)]))
+         Index Cond: (b = p2.a)
+         Filter: (p2.b = a)
 (5 rows)
 
 CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
@@ -553,8 +580,8 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 DROP TABLE int2type;
 set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
-                                             QUERY PLAN
------------------------------------------------------------------------------------------------------
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
  Sort
    Sort Key: a.a, d.a
    ->  Nested Loop
@@ -565,9 +592,9 @@ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a =
                      ->  Index Scan using p1_b_idx on p1 a
                            Index Cond: (b = 10)
                      ->  Index Scan using p3_pkey on p3 c
-                           Index Cond: (a = ANY (ARRAY[a.a, $1, $2, $3, $4, $5, $6, $7, $8, $9]))
+                           Index Cond: (a = ANY (ARRAY[a.a, $1, $2, ..., $9]))
                ->  Index Scan using p2_pkey on p2 b
-                     Index Cond: (a = ANY (ARRAY[c.a, $11, $12, $13, $14, $15, $16, $17, $18, $19]))
+                     Index Cond: (a = ANY (ARRAY[c.a, $11, $12, ..., $19]))
          ->  Index Scan using p4_pkey on p4 d
                Index Cond: (b = 10)
 (15 rows)

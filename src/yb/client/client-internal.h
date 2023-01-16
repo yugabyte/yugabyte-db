@@ -318,8 +318,8 @@ class YBClient::Data {
 
   void GetTableLocations(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
-      RequireTabletsRunning require_tablets_running, CoarseTimePoint deadline,
-      GetTableLocationsCallback callback);
+      RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
+      CoarseTimePoint deadline, GetTableLocationsCallback callback);
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
