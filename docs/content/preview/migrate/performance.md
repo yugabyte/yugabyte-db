@@ -46,13 +46,19 @@ Use one or more of the following techniques to improve import performance:
 
   If CPU use is greater than 50-60%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
 
-- **Increase batch size**. If the [--batch-size](../yb-voyager-cli/#batch-size) (default is 100000) is too small, the import will run slower because the time spent importing data may be comparable or less than the time spent on other tasks, such as bookkeeping, setting up the client connection, and so on. Increasing the batch-size to a very high value is not recommended as the whole batch is executed in one transaction.
+   {{< note title="Note" >}}
+
+   If timeouts are witnessed, then import should be restarted with less parallelism.
+
+   {{< /note >}}
+
+- **Increase batch size**. If the [--batch-size](../yb-voyager-cli/#batch-size) (default is 20000) is too small, the import will run slower because the time spent importing data may be comparable or less than the time spent on other tasks, such as bookkeeping, setting up the client connection, and so on. Increasing the batch-size to a very high value is not recommended as the whole batch is executed in one transaction.
 
 - **Add disks** to reduce disk write contention. YugabyteDB servers can be configured with one or multiple disk volumes to store tablet data. If all tablets are writing to a single disk, write contention can slow down the ingestion speed. Configuring the [YB-TServers](../../reference/configuration/yb-tserver/) with multiple disks can reduce disk write contention, thereby increasing throughput. Disks with higher IOPS and better throughput also improve write performance.
 
 - **Enabling packed columns** helps in increasing the throughput to more than two times. Enable packed columns on the YugabyteDB cluster by setting the YB-TServer gflag `ysql_enable_packed_row` to true.
 
-- **Client machine's disks** with higher IOPS and better throughput also improve import performance as a splitter, which splits the large data file into smaller splits of 20000 rows depending on the client machine's disk.
+- **Client machine's disk** with higher IOPS and better throughput also improves the import performance as the performance of splitter which splits the large data file into smaller splits of 20000 rows depends on the client machine's disk.
 
 {{< note title="Note" >}}
 
@@ -92,4 +98,4 @@ As more optimizations are introduced, average throughput increases. The followin
 | 24 parallel jobs (default) | 3 node [RF](../../architecture/docdb-replication/replication/#replication-factor) 3 cluster, c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=24 | ~80% | 44014 rows/sec |
 | Increase jobs<br>(1 per core) | 3 node RF 3 cluster, c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~95% | 47696 rows/sec |
 | Add nodes | 6 Node RF 3 cluster, c5.4x large (16 cores 32GB) <br> 4 EBS Type gp3 disks per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~80% | 86547 rows/sec |
-| Enabling packed columns | 3 node RF 3 cluster, c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~95% | 134048 rows/sec |
+| Enabling packed columns | 3 node RF 3 cluster, c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node, 10000 IOPS, 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48<br>YB-TServer gflag: `ysql_enable_packed_row` = `true` | ~95% | 134048 rows/sec |
