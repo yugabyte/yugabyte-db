@@ -23,100 +23,110 @@ xCluster replication of data works across YSQL and YCQL APIs because the replica
 
 ## Supported deployment scenarios
 
-### Active-Passive
+A number of deployement scenarios is supported.
 
-The replication could be unidirectional from a source cluster (also known the producer cluster) to one sink cluster (also known consumer cluster). The sink clusters are typically located in data centers or regions that are different from the source cluster. They are passive because they do not take writes from the higher layer services. Usually, such deployments are used for serving low-latency reads from the sink clusters as well as for disaster recovery purposes.
+### Active-passive
 
-The following diagram shows the source-sink deployment architecture:
+The replication could be unidirectional from a source cluster (also known as producer cluster) to one target cluster (also known as consumer cluster or sink cluster). The target clusters are typically located in data centers or regions that are different from the source cluster. They are passive because they do not take writes from the higher layer services. Usually, such deployments are used for serving low-latency reads from the target clusters, as well as for disaster recovery purposes.
+
+The following diagram shows the source-target deployment architecture:
 
 <img src="/images/architecture/replication/2DC-source-sink-deployment.png" style="max-width:750px;"/>
 
-### Active-Active
+### Active-active
 
-The replication of data can be bi-directional between two clusters. In this case, both clusters can perform reads and writes. Writes to any cluster are asynchronously replicated to the other cluster with a timestamp for the update. If the same key is updated in both clusters at a similar time window, this results in the write with the larger timestamp becoming the latest write. In this case, the clusters are all active, and this deployment mode is called a multi-master or active-active deployment.
+The replication of data can be bi-directional between two clusters, in which case both clusters can perform reads and writes. Writes to any cluster are asynchronously replicated to the other cluster with a timestamp for the update. If the same key is updated in both clusters at a similar time window, this results in the write with the larger timestamp becoming the latest write. In this case, the clusters are all active, and this deployment mode is called a multi-master or active-active deployment.
 
-The multi-master deployment is built internally using two source-sink unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to guarantee last writer wins semantics and the data arriving from the replication stream is not re-replicated.
+The multi-master deployment is built internally using two source-target unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to guarantee last writer wins semantics and the data arriving from the replication stream is not rereplicated.
 
 The following is the architecture diagram:
 
 <img src="/images/architecture/replication/2DC-multi-master-deployment.png" style="max-width:750px;"/>
 
-## Not currently supported deployment scenarios
+## Not supported deployment scenarios
+
+A number of deployment scenarios are not yet supported in YugabyteDB.
 
 ### Broadcast
 
-This topology involves one source cluster sending data to many sink clusters. This is currently not officially supported [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
+This topology involves one source cluster sending data to many target clusters. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
 
 ### Consolidation
 
-This topology involves many source clusters sending data to one central sink cluster. This is currently not officially supported [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
+This topology involves many source clusters sending data to one central target cluster. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
 
 ### More complex topologies
 
-Outside of our traditional 1:1 topology and the above 1:N and N:1, there are many other sensible configurations one might want to setup this replication feature with. However, none of these are currently officially supported. For example:
+Outside of the traditional 1:1 topology and the previously described 1:N and N:1 topologies, there are many other desired configurations that are not currently supported, such as the following:
 
-- Daisy chaining - connecting a series of clusters, as both source and target, for example: `A<>B<>C`
-- Ring - connecting a series of clusters, in a loop, for example: `A<>B<>C<>A`
+- Daisy chaining, which involves connecting a series of clusters as both source and target, for example: `A<>B<>C`
+- Ring, which involves connecting a series of clusters in a loop, for example: `A<>B<>C<>A`
 
-Note that some of these might become naturally unblocked as soon as both Broadcast and Consolidation use cases are unblocked, thus allowing a cluster to simultaneously be both a source and a sink to several other clusters. These are tracked in [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
+Some of these topologies might become naturally available as soon as [Broadcast](#broadcast) and [Consolidation](#consolidation) use cases are resolved, thus allowing a cluster to simultaneously be both a source and a target to several other clusters. For details, see [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
 
 ## Features and limitations
 
+A number of features and limitations are worth noting.
+
 ### Features
 
-- The sink cluster has at-least-once semantics. This means every update on the source will eventually be replicated to the sink.
-- Updates will be timeline consistent. That is, target data center will receive updates for a row in the same order in which they occurred on the source.
-- Multi-shard transactions are also supported, but with relaxed atomicity and global ordering semantics, as per [Limitations](#limitations).
-- For Active-Active deployments, there could be updates to the same rows, on both clusters. Underneath, a last-writer-wins conflict resolution semantic could be used. The deciding factor here is the underlying HybridTime of the updates, from each cluster.
+- The target cluster has at-least-once semantics. This means every update on the source is eventually replicated to the target.
+- Updates are timeline-consistent. That is, the target data center receives updates for a row in the same order in which they occurred on the source.
+- Multi-shard transactions are supported, but with relaxed atomicity and global ordering semantics, as per [Limitations](#limitations).
+- For active-active deployments, there could be updates to the same rows, on both clusters. Underneath, a last-writer-wins conflict resolution semantic could be used. The deciding factor is the underlying hybrid time of the updates, from each cluster.
 
 ### Impact on application design
 
 Because 2DC replication is done asynchronously and by replicating the WAL (and thereby bypassing the query layer), application design needs to follow these patterns:
 
-- **Avoid UNIQUE indexes / constraints (only for active-active mode):** Because replication is done at the WAL level, we don't have a way to check for unique constraints. It's possible to have two conflicting writes on separate universes which will violate the unique constraint and will cause the main table to contain both rows but the index to contain just 1 row, resulting in an inconsistent state.
+- Avoid `UNIQUE` indexes and constraints (only for active-active mode): Because replication is done at the WAL-level, there is no way to check for unique constraints. It is possible to have two conflicting writes on separate universes which would violate the unique constraint and cause the main table to contain both rows, yet the index to contain only one row, resulting in an inconsistent state.
 
-- **Avoid triggers:** Because we bypass the query layer for replicated records, DB triggers will not be fired for those and can result in unexpected behavior.
+- Avoid triggers: Because the query layer is bypassed for replicated records, the database triggers are not fired for those records and can result in unexpected behavior.
 
-- **Avoid serial columns in primary key (only for active-active mode):** Because both universes will generate the same sequence numbers, this can result in conflicting rows. It is better to use UUIDs instead.
+- Avoid serial columns in primary key (only for active-active mode): Because both universes generate the same sequence numbers, this can result in conflicting rows. It is recommended to use UUIDs instead.
 
 ### Limitations
+
+There is a number of limitations in the current xCluster implementation.
 
 #### Transactional semantics 
 
 - Transactions from the source are not applied atomically on the target. That is, some changes in a transaction may be visible before others.
-- Transactions from the source might not respect global ordering on the target. While transactions affecting the same shards, are guaranteed to be timeline consistent even on the target, transactions affecting different shards might end up being visible on the target in a different order than they were committed on the source.
+- Transactions from the source might not respect global ordering on the target. While transactions affecting the same shards are guaranteed to be timeline consistent even on the target, transactions affecting different shards might end up being visible on the target in a different order than they were committed on the source.
 
 This is tracked in [#10976](https://github.com/yugabyte/yugabyte-db/issues/10976).
 
-#### Bootstrapping sink clusters
+#### Bootstrapping target clusters
 
-- Currently, it is the responsibility of the end user to ensure that a sink cluster has sufficiently recent updates so that replication can safely resume. In the future, bootstrapping the sink cluster can be automated [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
-- Bootstrap currently relies on the underlying backup and restore (BAR) mechanics of YugabyteDB. This means it also inherits all of the limitations of BAR. For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level. This implies that when bootstrapping a sink cluster, you will automatically bring in any tables from source database, in the sink database, even ones you might not plan to actually configure replication on. This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
+- Currently, it is your responsibility to ensure that a target cluster has sufficiently recent updates, so that replication can safely resume. In the future, bootstrapping the target cluster will be automated, which is tracked in [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
+- Bootstrap currently relies on the underlying backup and restore (BAR) mechanism of YugabyteDB. This means it also inherits all of the limitations of BAR. For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level. This implies that when bootstrapping a target cluster, you automatically bring any tables from source database to the target database, even the ones on which you might not plan to actually configure replication. This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
 
 #### DDL changes
 
-- Currently, DDL changes are not automatically replicated. Applying commands such as CREATE TABLE, ALTER TABLE, CREATE INDEX to the sink clusters is the responsibility of the user.
-- `DROP TABLE` is not supported. The user must first disable replication for this table.
-- `TRUNCATE TABLE` is not supported. This is an underlying limitation, due to the level at which the two features operate. That is, replication is implemented on top of raft WAL files, while truncate is implemented on top of RocksDB SST files.
-- In the future, it will be possible to propagate DDL changes safely to other clusters [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
+- Currently, DDL changes are not automatically replicated. Applying commands such as `CREATE TABLE`, `ALTER TABLE`, `CREATE INDEX` to the target clusters is your responsibility.
+- `DROP TABLE` is not supported. You must first disable replication for this table.
+- `TRUNCATE TABLE` is not supported. This is an underlying limitation, due to the level at which the two features operate. That is, replication is implemented on top of the Raft WAL files, while truncate is implemented on top of the RocksDB SST files.
+- In the future, it will be possible to propagate DDL changes safely to other clusters. This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
 
 #### Safety of DDL and DML in active-active
 
-- Currently, certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe because a violation could be introduced by inserting different values on the two clusters, since each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
-- In the future, allowing detection of such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
+- Currently, certain potentially unsafe combinations of DDL and DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe because a violation could be introduced by inserting different values on the two clusters, since each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint and cause the two clusters to permanently diverge and the replication to fail.
+- In the future, it will be possible to detect such unsafe combinations and issue a warning, potentially by default. This is tracked in [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
 
 #### Kubernetes
 
-- Technically replication can be set up with Kubernetes deployed universes. However, the source and sink must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster, or that two Kubernetes clusters must have DNS and routing properly setup amongst themselves.
-- Being able to have two YugabyteDB clusters, each in their own standalone Kubernetes cluster, talking to each other via a LoadBalancer, is not currently supported, as per [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
+- Technically, replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly setup amongst themselves.
+- Being able to have two YugabyteDB clusters, each in their own standalone Kubernetes cluster, communicating with each other via a LoadBalancer, is not currently supported, as per [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
 
 ### Cross-feature interactions
+
+A number of interactions across features is supported.
 
 #### Supported
 
 - TLS is supported for both client and internal RPC traffic. Universes can also be configured with different certificates.
 - RPC compression is supported. Note that both clusters must be on a version that supports compression, before a compression algorithm is enabled.
-- Encryption at rest is supported. Note that the clusters can technically use different KMS configurations. However, for bootstrapping a sink cluster, the reliance is on the backup and restore flow. As such, a limitation from that is inherited, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the sink must have access to the same KMS configurations.
+- Encryption at rest is supported. Note that the clusters can technically use different Key Management Service (KMS) configurations. However, for bootstrapping a target cluster, the reliance is on the backup and restore flow. As such, a limitation from that is inherited, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the target must have access to the same KMS configurations.
 - YSQL colocation is supported.
 - YSQL geo-partitioning is supported. Note that you must configure replication on all new partitions manually, as DDL changes are not replicated automatically.
 
@@ -138,7 +148,7 @@ This implies one can never read a partial result of a transaction on the sink cl
 
 ### Not globally ordered
 
-Transactions on non-overlapping rows may be applied in a different order on the sink cluster, than they were on the source cluster.
+Transactions on non-overlapping rows may be applied in a different order on the target cluster, than they were on the source cluster.
 
 ### Last writer wins
 
