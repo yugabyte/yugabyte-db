@@ -39,6 +39,7 @@ import com.amazonaws.services.elasticloadbalancingv2.model.TargetTypeEnum;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
+import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.amazonaws.services.kms.model.DisableKeyRequest;
 import com.amazonaws.services.kms.model.ScheduleKeyDeletionRequest;
 import com.amazonaws.services.kms.model.Tag;
@@ -49,6 +50,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
@@ -177,42 +179,64 @@ public class AWSCloudImpl implements CloudAPI {
   @Override
   public boolean isValidCredsKms(ObjectNode config, UUID customerUUID) {
     try {
-      AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
-      // Create a key.
-      String keyDescription =
-          "Fake key to test the authenticity of the credentials. It is scheduled to be deleted. "
-              + "DO NOT USE.";
-      ObjectNode keyPolicy = Json.newObject().put("Version", "2012-10-17");
-      ObjectNode keyPolicyStatement = Json.newObject();
-      keyPolicyStatement.put("Effect", "Allow");
-      keyPolicyStatement.put("Resource", "*");
-      ArrayNode keyPolicyActions =
-          Json.newArray()
-              .add("kms:Create*")
-              .add("kms:Put*")
-              .add("kms:DisableKey")
-              .add("kms:ScheduleKeyDeletion");
-      keyPolicyStatement.set("Principal", Json.newObject().put("AWS", "*"));
-      keyPolicyStatement.set("Action", keyPolicyActions);
-      keyPolicy.set("Statement", Json.newArray().add(keyPolicyStatement));
-      CreateKeyRequest keyReq =
-          new CreateKeyRequest()
-              .withDescription(keyDescription)
-              .withPolicy(new ObjectMapper().writeValueAsString(keyPolicy))
-              .withTags(
-                  new Tag().withTagKey("customer-uuid").withTagValue(customerUUID.toString()),
-                  new Tag().withTagKey("usage").withTagValue("validate-aws-key-authenticity"),
-                  new Tag().withTagKey("status").withTagValue("deleted"));
-      CreateKeyResult result = kmsClient.createKey(keyReq);
-      // Disable and schedule the key for deletion. The minimum waiting period for deletion is 7
-      // days on AWS.
-      String keyArn = result.getKeyMetadata().getArn();
-      DisableKeyRequest req = new DisableKeyRequest().withKeyId(keyArn);
-      kmsClient.disableKey(req);
-      ScheduleKeyDeletionRequest scheduleKeyDeletionRequest =
-          new ScheduleKeyDeletionRequest().withKeyId(keyArn).withPendingWindowInDays(7);
-      kmsClient.scheduleKeyDeletion(scheduleKeyDeletionRequest);
-      return true;
+      if (config.has(AwsKmsAuthConfigField.CMK_ID.fieldName)) {
+        String cmkId = config.get(AwsKmsAuthConfigField.CMK_ID.fieldName).asText();
+        AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
+
+        // Test if key exists
+        DescribeKeyResult describeKeyResult = AwsEARServiceUtil.describeKey(config, cmkId);
+
+        // Test if GenerateDataKeyWithoutPlaintext permission exists
+        byte[] randomEncryptedBytes =
+            AwsEARServiceUtil.generateDataKey(null, config, cmkId, "AES", 256);
+
+        // Test if Decrypt permission exists
+        byte[] decryptedBytes =
+            AwsEARServiceUtil.decryptUniverseKey(null, randomEncryptedBytes, config);
+
+        if (decryptedBytes != null && decryptedBytes.length > 0) {
+          return true;
+        } else {
+          return false;
+        }
+      } else {
+        AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
+        // Create a key.
+        String keyDescription =
+            "Fake key to test the authenticity of the credentials. It is scheduled to be deleted. "
+                + "DO NOT USE.";
+        ObjectNode keyPolicy = Json.newObject().put("Version", "2012-10-17");
+        ObjectNode keyPolicyStatement = Json.newObject();
+        keyPolicyStatement.put("Effect", "Allow");
+        keyPolicyStatement.put("Resource", "*");
+        ArrayNode keyPolicyActions =
+            Json.newArray()
+                .add("kms:Create*")
+                .add("kms:Put*")
+                .add("kms:DisableKey")
+                .add("kms:ScheduleKeyDeletion");
+        keyPolicyStatement.set("Principal", Json.newObject().put("AWS", "*"));
+        keyPolicyStatement.set("Action", keyPolicyActions);
+        keyPolicy.set("Statement", Json.newArray().add(keyPolicyStatement));
+        CreateKeyRequest keyReq =
+            new CreateKeyRequest()
+                .withDescription(keyDescription)
+                .withPolicy(new ObjectMapper().writeValueAsString(keyPolicy))
+                .withTags(
+                    new Tag().withTagKey("customer-uuid").withTagValue(customerUUID.toString()),
+                    new Tag().withTagKey("usage").withTagValue("validate-aws-key-authenticity"),
+                    new Tag().withTagKey("status").withTagValue("deleted"));
+        CreateKeyResult result = kmsClient.createKey(keyReq);
+        // Disable and schedule the key for deletion. The minimum waiting period for deletion is 7
+        // days on AWS.
+        String keyArn = result.getKeyMetadata().getArn();
+        DisableKeyRequest req = new DisableKeyRequest().withKeyId(keyArn);
+        kmsClient.disableKey(req);
+        ScheduleKeyDeletionRequest scheduleKeyDeletionRequest =
+            new ScheduleKeyDeletionRequest().withKeyId(keyArn).withPendingWindowInDays(7);
+        kmsClient.scheduleKeyDeletion(scheduleKeyDeletionRequest);
+        return true;
+      }
     } catch (Exception e) {
       LOG.error(e.getMessage());
       return false;

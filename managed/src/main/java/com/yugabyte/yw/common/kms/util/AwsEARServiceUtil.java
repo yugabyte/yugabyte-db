@@ -27,6 +27,8 @@ import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
 import com.amazonaws.services.kms.model.DecryptRequest;
 import com.amazonaws.services.kms.model.DeleteAliasRequest;
+import com.amazonaws.services.kms.model.DescribeKeyRequest;
+import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.amazonaws.services.kms.model.GenerateDataKeyWithoutPlaintextRequest;
 import com.amazonaws.services.kms.model.KeyListEntry;
 import com.amazonaws.services.kms.model.ListAliasesRequest;
@@ -272,6 +274,13 @@ public class AwsEARServiceUtil {
     return result.getRole();
   }
 
+  public static DescribeKeyResult describeKey(ObjectNode authConfig, String cmkId) {
+    AWSKMS client = AwsEARServiceUtil.getKMSClient(null, authConfig);
+    DescribeKeyRequest request = new DescribeKeyRequest().withKeyId(cmkId);
+    DescribeKeyResult response = client.describeKey(request);
+    return response;
+  }
+
   public static KeyListEntry getCMK(UUID configUUID, String cmkId) {
     KeyListEntry cmk = null;
     ListKeysRequest req = new ListKeysRequest().withLimit(1000);
@@ -308,13 +317,18 @@ public class AwsEARServiceUtil {
 
   public static byte[] generateDataKey(
       UUID configUUID, String cmkId, String algorithm, int keySize) {
+    return generateDataKey(configUUID, null, cmkId, algorithm, keySize);
+  }
+
+  public static byte[] generateDataKey(
+      UUID configUUID, ObjectNode authConfig, String cmkId, String algorithm, int keySize) {
     final String keySpecBase = "%s_%s";
     final GenerateDataKeyWithoutPlaintextRequest dataKeyRequest =
         new GenerateDataKeyWithoutPlaintextRequest()
             .withKeyId(cmkId)
             .withKeySpec(String.format(keySpecBase, algorithm, Integer.toString(keySize)));
     ByteBuffer encryptedKeyBuffer =
-        AwsEARServiceUtil.getKMSClient(configUUID)
+        AwsEARServiceUtil.getKMSClient(configUUID, authConfig)
             .generateDataKeyWithoutPlaintext(dataKeyRequest)
             .getCiphertextBlob();
     encryptedKeyBuffer.rewind();
