@@ -9,4 +9,4 @@ menu:
 type: docs
 ---
 
-{{% master-flags %}}
+{{% flag-listing "tserver" %}}

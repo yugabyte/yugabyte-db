@@ -42,6 +42,15 @@
   to = "/images/:splat"
   status = 200
 
+# redirect numeric versions of preview and stable
+
+[[redirects]]
+  from = "/v2.17/*"
+  to = "/preview/:splat"
+[[redirects]]
+  from = "/v2.16/*"
+  to = "/stable/:splat"
+
 # Ancient links to CDC should go to explore
 
 [[redirects]]

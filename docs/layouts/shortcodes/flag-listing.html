@@ -1,0 +1,87 @@
+{{/*
+Outputs a table of all known master or tserver flags.
+
+Syntax:
+  {{% flag-listing [process] %}}
+
+  Where process is either "master" or "tserver". Default is master.
+
+Example:
+
+{{% flag-listing "master" %}}
+
+TROUBLESHOOTING
+
+  * If you get an error like
+      "execute of template failed at <transform.Unmarshal>: error calling Unmarshal: no data to transform",
+    verify that $remoteUrl is correct. The YBA team may have moved the XML files we're using!
+
+  * If you trigger the "no version name!" error, check params.toml for problems in the [[versions]] entries.
+*/}}
+
+{{- $process := default "master" (.Get 0) -}}
+{{ $versionName := .Site.Params.version_menu }}
+{{ $pagePermalink := .Page.RelPermalink }}
+{{ $remoteUrl := "https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/src/main/resources/gflags_metadata/2.17/" }}
+
+{{/* Cut the version name down to just a number */}}
+
+{{ range .Site.Params.versions }}
+  {{ if hasPrefix $pagePermalink .url }}
+    {{ $versionName = .version }}
+    {{- if in .version "(Preview)" -}}
+      {{ $versionName = replace .version " (Preview)" "" }}
+    {{- else if in .version "(STS)" -}}
+      {{ $versionName = replace .version " (STS)" "" }}
+    {{- else if in .version "(LTS)" -}}
+      {{ $versionName = replace .version " (LTS)" "" }}
+    {{ end }}
+  {{ end }}
+  {{- if in $versionName "v" -}}
+    {{ $versionName = replace $versionName "v" "" }}
+  {{- end -}}
+{{ end }}
+
+{{/* Add the version and filename to the remote URL */}}
+
+{{- if $versionName -}}
+  {{ $remoteUrl =  replace $remoteUrl "2.17" $versionName }}
+  {{ $remoteUrl = printf "%s%s.xml" $remoteUrl $process }}
+
+  {{/* Uncomment this next line to log the remote URL for troubleshooting */}}
+  {{/*
+  {{ warnf "remoteUrl is %s" $remoteUrl }}
+  */}}
+
+  {{ else }}
+  {{ errorf "something went wrong in %s shortcode: no version name! %s" .Name .Position }}
+{{ end }}
+
+{{/* Get the remote XML file and load it up as an array. Then, build the table. */}}
+
+{{ with resources.GetRemote $remoteUrl | transform.Unmarshal }}
+
+The following table lists all flags for [{{ .program }}](/v{{ $versionName }}/reference/configuration/{{.program}}/) version {{ $versionName }}
+
+<table>
+  <thead>
+    <th>GFlag</th>
+    <th>Description</th>
+    <th>Default value</th>
+  </thead>
+  <tbody>
+    {{ range .flag }}
+  <tr>
+    <td><code>{{ .name | plainify | htmlUnescape }}</code> ({{ .type | plainify | htmlUnescape }})
+      {{- if .tags -}}
+        <br/><strong>Tags: </strong><em>{{ .tags | plainify | htmlUnescape }}</em>
+      {{- end -}}
+    </td>
+    <td>{{ .meaning | plainify | htmlUnescape }}</td>
+    <td>{{ .default | plainify | htmlUnescape }}</td>
+  </tr>
+    {{ end }}
+  </tbody>
+</table>
+
+{{ end }}

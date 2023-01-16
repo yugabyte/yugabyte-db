@@ -1,0 +1,57 @@
+{{- $process := default "master" (.Get 0) -}}
+{{ $versionName := .Site.Params.version_menu }}
+{{ $pagePermalink := .Page.RelPermalink }}
+{{ $remoteUrl := "https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/src/main/resources/gflags_metadata/2.17/" }}
+
+{{ range .Site.Params.versions }}
+  {{ if hasPrefix $pagePermalink .url }}
+    {{ $versionName = .version }}
+    {{- if in .version "(Preview)" -}}
+      {{ $versionName = replace .version " (Preview)" "" }}
+    {{- else if in .version "(STS)" -}}
+      {{ $versionName = replace .version " (STS)" "" }}
+    {{- else if in .version "(LTS)" -}}
+      {{ $versionName = replace .version " (LTS)" "" }}
+    {{ end }}
+  {{ end }}
+  {{- if in $versionName "v" -}}
+    {{ $versionName = replace $versionName "v" "" }}
+  {{- end -}}
+{{ end }}
+
+{{- if $versionName -}}
+  {{ $remoteUrl =  replace $remoteUrl "2.17" $versionName }}
+  {{ $remoteUrl = printf "%s%s.xml" $remoteUrl $process }}
+  {{ warnf "remoteUrl is %s" $remoteUrl }}
+{{ else }}
+  {{ errorf "something went wrong in the gflag-listing partial: no version name!" }}
+{{ end }}
+
+{{ with resources.GetRemote $remoteUrl | transform.Unmarshal }}
+
+The following table lists all flags for [{{ .program }}](/v{{ $versionName }}/reference/configuration/{{.program}}/) version {{ $versionName }}
+
+{{ $remoteUrl }}
+
+<table>
+  <thead>
+    <th>GFlag</th>
+    <th>Description</th>
+    <th>Default value</th>
+  </thead>
+  <tbody>
+    {{ range .flag }}
+  <tr>
+    <td><code>{{ .name | plainify | htmlUnescape }}</code> ({{ .type | plainify | htmlUnescape }})
+      {{- if .tags -}}
+        <br/><strong>Tags: </strong><em>{{ .tags | plainify | htmlUnescape }}</em>
+      {{- end -}}
+    </td>
+    <td>{{ .meaning | plainify | htmlUnescape }}</td>
+    <td>{{ .default | plainify | htmlUnescape }}</td>
+  </tr>
+    {{ end }}
+  </tbody>
+</table>
+
+{{ end }}
