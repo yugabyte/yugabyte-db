@@ -20,7 +20,7 @@ Debezium is an open-source distributed platform used to capture the changes in a
 Using Docker, you can get the connector from Quay:
 
 ```sh
-docker pull quay.io/yugabyte/debezium-connector:1.3.7-BETA
+docker pull quay.io/yugabyte/debezium-connector:latest
 ```
 
 If you want to build the connector image yourself, follow the steps in the [README for debezium-connector-yugabytedb](https://github.com/yugabyte/debezium-connector-yugabytedb/blob/main/README.md).
@@ -167,7 +167,7 @@ See [limitations](../../../explore/change-data-capture/#limitations) for more de
 ### Start a Kafka Topic console consumer (optional)
 
 ```sh
-docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.7 \
+docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.9 \
 watch-topic -a dbserver1.public.test
 ```
 

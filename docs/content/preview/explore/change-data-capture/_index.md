@@ -79,7 +79,7 @@ To facilitate the streaming of data, you have to create a DB Stream. This stream
 
 ### Stream expiry
 
-When a client reads the changes from WAL (Write-ahead Log) /IntentDB, the intents are retained and the retention time is controlled by the gflag [cdc_intent_retention_ms](https://github.com/yugabyte/yugabyte-db/reference/configuration/yb-tserver/#cdc-intent-retention-ms).
+When a client reads the changes from WAL (Write-ahead Log) /IntentDB, the intents are retained and the retention time is controlled by the gflag [cdc_intent_retention_ms](../../reference/configuration/yb-tserver/#cdc-intent-retention-ms).
 
 When you create a stream, the checkpoint for a tablet is set as soon as the client requests changes. If the client doesn't request changes within `cdc_intent_retention_ms` milliseconds, the CDC service considers the `tablet_id, stream_id` combination to be expired, and allows those intents to be removed by the garbage collection process.
 
@@ -172,9 +172,7 @@ CDC supports packed rows. However, if all the non-key columns of a packed row ar
 ## Limitations
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
-* Enabling CDC on tables created using previous versions of YugabyteDB is not supported, even after YugabyteDB is upgraded to version 2.13 or higher.
-  * Also, CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
-* DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
+* CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
 * A single stream can only be used to stream data from one namespace only.
 * There should be a primary key on the table you want to stream the changes from.

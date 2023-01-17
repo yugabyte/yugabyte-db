@@ -55,7 +55,7 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 | :--- | :--- |
 | **Java** | 11+ |
 | **Kafka Connect** | 2.x, 3.x |
-| **YugabyteDB** | 2.16, 2.17 |
+| **YugabyteDB** | 2.14, 2.16, 2.17 |
 
 ### Release resources
 
@@ -1150,8 +1150,8 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 If you have a YugabyteDB cluster with SSL enabled, need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
 
 * [Local deployments](../../../secure/tls-encryption/)
-* [YB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
-* [YB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+* [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [YugabyteDB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 
