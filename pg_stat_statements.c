@@ -4,7 +4,7 @@
  *
  * Part of pg_stat_statements.c in PostgreSQL 10.
  *
- * Copyright (c) 2008-2020, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2023, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */

@@ -468,4 +468,4 @@ The available hints are listed below.
 
 * * * * *
 
-Copyright (c) 2012-2022, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+Copyright (c) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
