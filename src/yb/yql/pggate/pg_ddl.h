@@ -96,6 +96,7 @@ class PgAlterDatabase : public PgDdl {
 
 class PgCreateTablegroup : public PgDdl {
  public:
+  // Assumes we are within a DDL transaction.
   PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
                      const char *database_name,
                      const PgOid database_oid,

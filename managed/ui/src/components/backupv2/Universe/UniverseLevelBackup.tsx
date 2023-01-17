@@ -16,7 +16,7 @@ import { YBTabsPanel } from '../../panels';
 import { BackupList } from '..';
 import { ScheduledBackup } from '../scheduled/ScheduledBackup';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
-import { isYbcInstalledInUniverse } from '../../../utils/UniverseUtils';
+import { isYbcInstalledInUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
 import { BackupAdvancedRestore } from '../components/BackupAdvancedRestore';
 import './UniverseLevelBackup.scss';
@@ -28,9 +28,23 @@ interface UniverseBackupProps {
   };
 }
 
+const isPITRSupported = (version: string): boolean => {
+  //PITR is supported from 2.14
+  const [major, minor] = version.split('.');
+  return parseInt(major, 10) > 2 || (parseInt(major, 10) === 2 && parseInt(minor, 10) >= 14);
+};
+
 const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
+  const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+  const currentSoftwareVersion = primaryCluster.userIntent.ybSoftwareVersion.split('-')[0];
+
+  //PITR
+  const enablePITR =
+    isPITRSupported(currentSoftwareVersion) &&
+    (featureFlags.test.enablePITR || featureFlags.released.enablePITR);
+
   const YBCInstalled =
     (featureFlags.test.enableYbc || featureFlags.released.enableYbc) &&
     isYbcInstalledInUniverse(currentUniverse.data.universeDetails);
@@ -60,7 +74,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
       <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
         <ScheduledBackup universeUUID={uuid} />
       </Tab>
-      {(featureFlags.test.enablePITR || featureFlags.released.enablePITR) && (
+      {enablePITR && (
         <Tab eventKey="point-in-time-recovery" title="Point-in-time Recovery" unmountOnExit>
           <PointInTimeRecovery universeUUID={uuid} />
         </Tab>

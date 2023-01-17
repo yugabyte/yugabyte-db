@@ -211,7 +211,8 @@ class LoadBalancerTablegroupsTest : public LoadBalancerColocatedTablesTest {
           tn.namespace_name(),
           tn.namespace_id(),
           ns_id_to_tg_id[tn.namespace_id()],
-          "" /* tablespace_id */));
+          "" /* tablespace_id */,
+          nullptr /* txn */));
       client::YBSchemaBuilder b;
       b.AddColumn("k")->Type(BINARY)->NotNull()->PrimaryKey();
       b.AddColumn("v")->Type(BINARY)->NotNull();

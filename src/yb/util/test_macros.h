@@ -320,6 +320,14 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   }) \
   /**/
 
+#define ASSERT_QUERY_FAIL(query_exec, expected_failure_substr) \
+  do { \
+    auto&& status = (query_exec); \
+    ASSERT_NOK(status); \
+    ASSERT_STR_CONTAINS(status.ToString(), expected_failure_substr); \
+  } while (false) \
+  /**/
+
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()
 

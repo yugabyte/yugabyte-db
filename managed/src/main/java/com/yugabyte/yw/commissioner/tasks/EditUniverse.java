@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -397,7 +398,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
-      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.waitForLbForAddedNodes)
           && !newTservers.isEmpty()) {
         // If only tservers are added, wait for load to balance across all tservers.
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);

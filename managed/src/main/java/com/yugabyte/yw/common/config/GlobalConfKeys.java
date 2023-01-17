@@ -10,9 +10,8 @@
 
 package com.yugabyte.yw.common.config;
 
-import java.time.Duration;
-
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import java.time.Duration;
 
 public class GlobalConfKeys extends RuntimeConfigKeysModule {
 
@@ -38,50 +37,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Log Script Output For YBA HA Feature",
           "To log backup restore script output for debugging issues",
           ConfDataType.BooleanType);
-  // Looks like most of these ansible keys are already universe scope:
-  public static final ConfKeyInfo<String> ansibleStrategy =
-      new ConfKeyInfo<>(
-          "yb.ansible.strategy",
-          ScopeType.GLOBAL,
-          "Ansible Strategy",
-          "strategy can be linear, mitogen_linear or debug",
-          ConfDataType.StringType);
-  public static final ConfKeyInfo<Integer> ansibleConnectionTimeoutSecs =
-      new ConfKeyInfo<>(
-          "yb.ansible.conn_timeout_secs",
-          ScopeType.GLOBAL,
-          "Ansible Connection Timeout Duration",
-          "This is the default timeout for connection plugins to use.",
-          ConfDataType.IntegerType);
-  public static final ConfKeyInfo<Integer> ansibleVerbosity =
-      new ConfKeyInfo<>(
-          "yb.ansible.verbosity",
-          ScopeType.GLOBAL,
-          "Ansible Verbosity Level",
-          "verbosity of ansible logs, 0 to 4 (more verbose)",
-          ConfDataType.IntegerType);
-  public static final ConfKeyInfo<Boolean> ansibleDebug =
-      new ConfKeyInfo<>(
-          "yb.ansible.debug",
-          ScopeType.GLOBAL,
-          "Ansible Debug Output",
-          "Debug output (can include secrets in output)",
-          ConfDataType.BooleanType);
-  public static final ConfKeyInfo<Boolean> ansibleDiffAlways =
-      new ConfKeyInfo<>(
-          "yb.ansible.diff_always",
-          ScopeType.GLOBAL,
-          "Ansible Diff Always",
-          "Configuration toggle to tell modules to show differences "
-              + "when in 'changed' status, equivalent to --diff.",
-          ConfDataType.BooleanType);
-  public static final ConfKeyInfo<String> ansibleLocalTemp =
-      new ConfKeyInfo<>(
-          "yb.ansible.local_temp",
-          ScopeType.GLOBAL,
-          "Ansible Local Temp Directory",
-          "Temporary directory for Ansible to use on the controller.",
-          ConfDataType.StringType);
   // TODO: Use Enum type SkipCertValidationType
   // I traced this to be Using Universe scope
   public static final ConfKeyInfo<String> tlsSkipCertValidation =
@@ -98,7 +53,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.use_kubectl",
           ScopeType.GLOBAL,
           "Use Kubectl",
-          "TODO - Leave this for feature owners to fill ",
+          "Use java library instead of spinning up kubectl process.",
           ConfDataType.BooleanType);
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<Boolean> useNewHelmNaming =
@@ -184,6 +139,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enable SUDO",
           "Flag for enabling sudo access while running custom hooks",
+          ConfDataType.BooleanType);
+  public static final ConfKeyInfo<Boolean> enabledApiTriggerHooks =
+      new ConfKeyInfo<>(
+          "yb.security.custom_hooks.enable_api_triggered_hooks",
+          ScopeType.GLOBAL,
+          "Enable API Triggered Hooks",
+          "Flag for enabling API Triggered Hooks on YBA",
           ConfDataType.BooleanType);
   public static final ConfKeyInfo<Boolean> disableXxHashChecksum =
       new ConfKeyInfo<>(
@@ -318,13 +280,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Output logs for shell commands are written to tmp folder."
               + "This setting defines rotation policy based on directory size.",
           ConfDataType.BytesType);
-  // TODO(Shashank): Add correct metadata
   public static final ConfKeyInfo<Long> logsMaxMsgSize =
       new ConfKeyInfo<>(
           "yb.logs.max_msg_size",
           ScopeType.GLOBAL,
-          "Max Log Message Size",
-          "TODO",
+          "Max Size of each log message",
+          "We limit the length of each log line as sometimes we dump entire output"
+              + " of script. If you want to debug something specific and the script output is"
+              + "getting truncated in application log then increase this limit",
           ConfDataType.BytesType);
   public static final ConfKeyInfo<Duration> kmsRefreshInterval =
       new ConfKeyInfo<>(
@@ -333,4 +296,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "KMS Refresh Interval",
           "Default refresh interval for the KMS providers.",
           ConfDataType.DurationType);
+  // TODO() Add metadata
+  public static final ConfKeyInfo<Boolean> startMasterOnStopNode =
+      new ConfKeyInfo<>(
+          "yb.start_master_on_stop_node",
+          ScopeType.GLOBAL,
+          "Start Master On Stop Node",
+          "TODO",
+          ConfDataType.BooleanType);
 }

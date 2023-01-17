@@ -13,6 +13,8 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -36,6 +38,8 @@ public abstract class DevopsBase {
   @Inject ShellProcessHandler shellProcessHandler;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject NodeAgentClient nodeAgentClient;
 

@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-var ValidateInstallerConfig = &validateConfigCheck{"ssd", false}
+var ValidateInstallerConfig = &validateConfigCheck{"validate-config", false}
 
 type validateConfigCheck struct {
 	name        string

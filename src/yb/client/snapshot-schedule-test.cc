@@ -195,7 +195,11 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
   }
 
   // Since this is just for testing purposes, we do not bother generating a valid PgsqlTablegroupId.
-  ASSERT_OK(client_->CreateTablegroup(namespace_name, namespace_id, tablegroup_id, tablespace_id));
+  ASSERT_OK(client_->CreateTablegroup(namespace_name,
+                                      namespace_id,
+                                      tablegroup_id,
+                                      tablespace_id,
+                                      nullptr /* txn */));
 
   // Ensure that the newly created tablegroup shows up in the list.
   auto exist = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));

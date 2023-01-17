@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -79,10 +80,9 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                   : new ArrayList<>();
 
           Universe universe = getUniverse();
-          Config runtimeConfig = runtimeConfigFactory.forUniverse(universe);
 
           if (!config.getBoolean("yb.cloud.enabled")
-              && !runtimeConfig.getBoolean("yb.gflags.allow_user_override")) {
+              && !confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride)) {
             masterNodes.forEach(
                 node ->
                     checkForbiddenToOverrideGFlags(

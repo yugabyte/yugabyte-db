@@ -11,6 +11,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,6 +20,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
@@ -52,6 +56,8 @@ public class SwamperHelperTest extends FakeDBApplication {
 
   @Mock Config appConfig;
 
+  @Mock RuntimeConfGetter mockConfGetter;
+
   SwamperHelper swamperHelper;
 
   static String SWAMPER_TMP_PATH = "/tmp/swamper/";
@@ -63,7 +69,8 @@ public class SwamperHelperTest extends FakeDBApplication {
 
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     Environment env = new Environment(new File("."), classLoader, Mode.TEST);
-    swamperHelper = new SwamperHelper(new DummyRuntimeConfigFactoryImpl(appConfig), env);
+    swamperHelper =
+        new SwamperHelper(new DummyRuntimeConfigFactoryImpl(appConfig), env, mockConfGetter);
   }
 
   @After
@@ -89,7 +96,9 @@ public class SwamperHelperTest extends FakeDBApplication {
 
   private void testWriteUniverseTargetJson(MetricCollectionLevel level, String expectedFile) {
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
-    when(appConfig.getString("yb.metrics.collection_level")).thenReturn(level.name().toLowerCase());
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.metricsCollectionLevel)))
+        .thenReturn(level.name().toLowerCase());
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -129,7 +138,8 @@ public class SwamperHelperTest extends FakeDBApplication {
   @Test
   public void testWriteUniverseTargetOffJson() {
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
-    when(appConfig.getString("yb.metrics.collection_level"))
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.metricsCollectionLevel)))
         .thenReturn(MetricCollectionLevel.OFF.name().toLowerCase());
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
@@ -171,7 +181,8 @@ public class SwamperHelperTest extends FakeDBApplication {
     if (OS.isFamilyMac()) {
       swamperFilePath = "/System";
     }
-    when(appConfig.getString("yb.metrics.collection_level"))
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.metricsCollectionLevel)))
         .thenReturn(MetricCollectionLevel.NORMAL.name().toLowerCase());
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(swamperFilePath);
     Universe u = createUniverse();
