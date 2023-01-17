@@ -58,7 +58,7 @@ Use one or more of the following techniques to improve import performance:
 
 - **Enable packed columns** to increase the throughput by more than two times. Enable packed columns on the YugabyteDB cluster by setting the YB-TServer gflag `ysql_enable_packed_row` to true.
 
-- **Client machine's disk** with higher IOPS and better throughput also improves the import performance as the performance of splitter which splits the large data file into smaller splits of 20000 rows depends on the client machine's disk.
+- **Configure the host machine's disk** with higher IOPS and better throughput to improve the performance of the splitter, which splits the large data file into smaller splits of 20000 rows. Splitter performance depends on the host machine's disk.
 
 {{< note title="Note" >}}
 
