@@ -64,6 +64,7 @@ const string kTableName = "test_table";
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 const string kTableName2 = "test_table2";
 const string kDatabaseName = "yugabyte";
+constexpr auto kNumRecordsPerBatch = 10;
 
 namespace {
 auto GetSafeTime(tserver::TabletServer* tserver, const NamespaceId& namespace_id) {
@@ -603,7 +604,6 @@ class XClusterConsistencyTest : public TwoDCTestBase {
 };
 
 TEST_F(XClusterConsistencyTest, ConsistentReads) {
-  constexpr auto kNumRecordsPerBatch = 10;
   uint32_t num_records_written = 0;
   StoreReadTimes();
 
@@ -676,7 +676,6 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
 }
 
 TEST_F(XClusterConsistencyTest, LagInTransactionsTable) {
-  constexpr auto kNumRecordsPerBatch = 10;
 
   // Pause replication on global transactions table
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
@@ -757,6 +756,90 @@ TEST_F_EX(XClusterConsistencyTest, LoginWithNoSafeTime, XClusterConsistencyNoSaf
   // Verify that we can read user table with tablet level consistency.
   ASSERT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet"));
   ASSERT_OK(conn.Fetch(query));
+}
+
+class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
+  void SetUp() override {
+    ASSERT_NO_FATALS(XClusterConsistencyTest::SetUp());
+
+    ASSERT_EQ(bootstrap_ids_.size(), stream_ids_.size());
+    for (auto& bootstrap_id : bootstrap_ids_) {
+      auto it = std::find(stream_ids_.begin(), stream_ids_.end(), bootstrap_id);
+      ASSERT_TRUE(it != stream_ids_.end())
+          << "Bootstrap Ids " << JoinStrings(bootstrap_ids_, ",") << " and Stream Ids "
+          << JoinStrings(stream_ids_, ",") << " should match";
+    }
+  }
+
+  // Override the Setup the replication and perform it with Bootstrap.
+  Status SetupUniverseReplication(
+      const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only) override {
+    // 1. Bootstrap the producer
+    cdc::BootstrapProducerRequestPB req;
+    cdc::BootstrapProducerResponsePB resp;
+
+    std::vector<std::shared_ptr<client::YBTable>> new_tables = tables;
+    new_tables.emplace_back(producer_tran_table_);
+
+    for (const auto& producer_table : new_tables) {
+      req.add_table_ids(producer_table->id());
+    }
+
+    rpc::RpcController rpc;
+    auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+        &producer_client()->proxy_cache(),
+        HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+    RETURN_NOT_OK(producer_cdc_proxy->BootstrapProducer(req, &resp, &rpc));
+    CHECK(!resp.has_error());
+
+    CHECK_EQ(resp.cdc_bootstrap_ids().size(), new_tables.size());
+
+    int table_idx = 0;
+    for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
+      LOG(INFO) << "Got bootstrap id " << bootstrap_id << " for table "
+                << new_tables[table_idx++]->name().table_name();
+      bootstrap_ids_.emplace_back(bootstrap_id);
+    }
+
+    // 2. Write some rows transactonally.
+    WriteWorkload(producer_table1_->name(), 0, kNumRecordsPerBatch);
+
+    // 3. Run log GC on producer.
+    RETURN_NOT_OK(producer_client()->FlushTables(
+        {producer_table1_->id()}, /* add_indexes = */ false,
+        /* timeout_secs = */ 30, /* is_compaction = */ true));
+    for (size_t i = 0; i < producer_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& tablet_peer : producer_cluster()->GetTabletPeers(i)) {
+        RETURN_NOT_OK(tablet_peer->RunLogGC());
+      }
+    }
+
+    // 4. Setup replication.
+    return TwoDCTestBase::SetupUniverseReplication(
+        producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, new_tables,
+        leader_only, bootstrap_ids_);
+  }
+
+  std::vector<string> bootstrap_ids_;
+};
+
+// Test Setup with Bootstrap works.
+// 1. Bootstrap producer
+// 2. Write some rows transactonally
+// 3. Run Log GC on all producer tablets
+// 4. Setup replication
+// 5. Ensure rows from step 2 are replicated
+// 6. Write some more rows and ensure they get replicated
+TEST_F_EX(
+    XClusterConsistencyTest, BootstrapTransactionsTable, XClusterConsistencyTestWithBootstrap) {
+  // 5. Ensure rows from step 2 are replicated.
+  ASSERT_OK(WaitForRowCount(consumer_table1_->name(), kNumRecordsPerBatch));
+  ASSERT_OK(ValidateConsumerRows(consumer_table1_->name(), kNumRecordsPerBatch));
+
+  // 6. Write some more rows and ensure they get replicated.
+  WriteWorkload(producer_table1_->name(), kNumRecordsPerBatch, 2 * kNumRecordsPerBatch);
+  ASSERT_OK(WaitForRowCount(consumer_table1_->name(), 2 * kNumRecordsPerBatch));
+  ASSERT_OK(ValidateConsumerRows(consumer_table1_->name(), 2 * kNumRecordsPerBatch));
 }
 
 }  // namespace enterprise

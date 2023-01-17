@@ -38,6 +38,8 @@
     "transaction_pool_cache,",
     "yb_ysqlserver_connection_total,",
     "yb_ysqlserver_active_connection_total,",
+    "yb_ysqlserver_new_connection_total,",
+    "yb_ysqlserver_connection_over_limit_total,",
     "hybrid_clock_skew,",
     "log_wal_size"
   ],

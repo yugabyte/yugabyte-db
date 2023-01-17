@@ -1212,7 +1212,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status BuildLocationsForTablet(
       const scoped_refptr<TabletInfo>& tablet,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse);
+      IncludeInactive include_inactive = IncludeInactive::kFalse,
+      PartitionsOnly partitions_only = PartitionsOnly::kFalse);
 
   // Check whether the tservers in the current replica map differs from those in the cstate when
   // processing a tablet report. Ignore the roles reported by the cstate, just compare the
@@ -2000,8 +2001,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status TryRemoveFromTablegroup(const TableId& table_id);
 
   // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
-  AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(
-    const std::string& ts_uuid) EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
+  AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(const std::string& ts_uuid)
+      EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
+
+  // Helper function for BuildLocationsForTablet to handle the special case of a system tablet.
+  Status BuildLocationsForSystemTablet(
+      const scoped_refptr<TabletInfo>& tablet,
+      TabletLocationsPB* locs_pb,
+      IncludeInactive include_inactive,
+      PartitionsOnly partitions_only);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

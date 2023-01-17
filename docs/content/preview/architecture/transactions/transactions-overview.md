@@ -81,13 +81,7 @@ YugabyteDB supports three transaction isolation levels - Read Committed, Seriali
 
 ### Explicit locking
 
-Just as with PostgreSQL, YugabyteDB provides various lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in situations where MVCC does not give the desired behavior. Read more about [explicit locking in YugabyteDB](../explicit-locking).
-
-{{< note title="Note" >}}
-
-The architecture section covers the set of explicit locking modes currently supported by YugabyteDB. The plan is to cover most of the locking modes supported by PostgreSQL over time.
-
-{{</note >}}
+Just as with PostgreSQL, YugabyteDB provides various row-level lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in situations where MVCC does not give the desired behavior. Read more about [explicit locking in YugabyteDB](../../../explore/transactions/explicit-locking)
 
 ## Transactions execution path
 

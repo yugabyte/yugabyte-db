@@ -429,7 +429,8 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
   const auto& transaction_status = transaction_state.status();
   if (transaction_status != TransactionStatus::APPLYING &&
       transaction_status != TransactionStatus::COMMITTED &&
-      transaction_status != TransactionStatus::CREATED) {
+      transaction_status != TransactionStatus::CREATED &&
+      transaction_status != TransactionStatus::PENDING) {
     // This is an unsupported transaction status.
     return Status::OK();
   }
@@ -454,6 +455,10 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
       }
       break;
     }
+    case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
+    // If transaction status tablet log is GCed, or we bootstrap it is possible that that first
+    // record we see for the transaction is the PENDING record. This can be treated as a CREATED
+    // record which is impotently handled.
     case TransactionStatus::CREATED: {
       record->set_operation(CDCRecordPB::TRANSACTION_CREATED);
       break;

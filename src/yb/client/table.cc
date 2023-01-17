@@ -286,6 +286,7 @@ void YBTable::FetchPartitions(
   client->GetTableLocations(
       table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
       RequireTabletsRunning::kTrue,
+      PartitionsOnly::kTrue,
       [table_id, callback = std::move(callback)]
           (const Result<master::GetTableLocationsResponsePB*>& result) {
         if (!result.ok()) {

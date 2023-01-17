@@ -19,7 +19,14 @@ body:not(.td-searchpage) {
     width: 100%;
     max-height: 85vh;
     overflow: auto;
-    scrollbar-width: thin; // firefox
+    scrollbar-width: thin;
+
+    @media (max-width: 767px) {
+      max-height: 65.3vh;
+      width: calc(100% + 2px);
+      margin-left: -1px;
+    }
+
     &::-webkit-scrollbar {
       width: 5px;
       height: 5px;
@@ -45,12 +52,18 @@ body:not(.td-searchpage) {
       bottom: 0;
       background: #fff;
       border-top: 1px solid #e9eef2;
+      border-radius: 5px;
 
       nav {
         > a {
           position: absolute;
           right: 15px;
           bottom: 7px;
+
+          @media (max-width: 1200px) {
+            font-size: 12px;
+            right: 5px;
+          }
         }
 
         .pager-area {
@@ -116,14 +129,14 @@ body.td-searchpage {
     #doc-hit {
       padding-left: 0;
 
-      @media (max-width: 991px) and (min-width: 768px) {
+      /*
+      @media(max-width: 991px) and (min-width: 768px) {
         justify-content: center;
       }
-
-      @media (max-width: 599px) {
+      @media(max-width: 599px) {
         justify-content: center;
       }
-
+      */
       li {
         min-width: 280px;
 
@@ -156,15 +169,14 @@ body.td-searchpage {
           text-decoration: none;
         }
 
-        @media (max-width: 991px) and (min-width: 768px) {
-          width: 400px;
-          max-width: 100%;
-        }
-
-        @media (max-width: 599px) {
-          width: 400px;
-          max-width: 100%;
-        }
+        /* @media(max-width: 991px) and (min-width: 768px) {
+           width: 400px;
+           max-width: 100%;
+         }
+         @media(max-width: 599px) {
+           width: 400px;
+           max-width: 100%;
+         } */
       }
 
       .no-result {
@@ -310,9 +322,129 @@ body.td-searchpage .td-content {
   .td-search-input.have-text {
     &:hover,
     &:focus {
-      +.reset-input {
+      + .reset-input {
         opacity: 1;
       }
+    }
+  }
+}
+
+@media (max-width: 991px) {
+  body.td-searchpage .td-content {
+    .search-by-algolia {
+      width: 150px;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  body.td-searchpage .td-content {
+    padding-top: 40px;
+
+    .search-by-algolia {
+      width: 120px;
+      top: 0;
+    }
+  }
+}
+
+@media (max-width: 991px) {
+  body.td-searchpage .search-result .pager .pager-area {
+    padding: 0;
+
+    .pager-btn {
+      width: 30px;
+      height: 30px;
+    }
+
+    .left-right-button {
+      gap: 10px;
+    }
+
+    .left-btn.pager-btn,
+    .right-btn.pager-btn {
+      width: 35px;
+      height: 35px;
+      padding: 0;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  body.td-searchpage .td-main aside.td-sidebar .docs-menu.desktop-hide {
+    visibility: hidden;
+    animation: cssAnimation 0s 1.5s forwards;
+  }
+
+  @keyframes cssAnimation {
+    to { visibility: visible; }
+  }
+}
+
+@media (max-width: 480px) {
+  body.td-searchpage .search-result .pager .pager-area {
+    padding: 0;
+
+    .pager-btn {
+      width: 30px;
+      height: 30px;
+    }
+
+    .page-number {
+      gap: 5px;
+    }
+
+    .left-right-button {
+      gap: 10px;
+    }
+
+    .page-number .dots-3 {
+      font-size: 15px;
+    }
+
+    span:not(.total-result) {
+      font-size: 12px;
+      padding: 0;
+    }
+
+    .left-btn.pager-btn,
+    .right-btn.pager-btn {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+    }
+  }
+}
+
+@media (max-width: 370px) {
+  body.td-searchpage .search-result .pager .pager-area {
+    .pager-btn {
+      width: 25px;
+      height: 25px;
+    }
+
+    .page-number {
+      gap: 5px;
+    }
+
+    .left-right-button {
+      gap: 10px;
+    }
+
+    .page-number .dots-3 {
+      font-size: 15px;
+    }
+
+    span:not(.total-result) {
+      font-size: 12px;
+      padding: 0;
+    }
+
+    .left-btn.pager-btn,
+    .right-btn.pager-btn {
+      width: 30px;
+      height: 30px;
+      padding: 0;
     }
   }
 }
