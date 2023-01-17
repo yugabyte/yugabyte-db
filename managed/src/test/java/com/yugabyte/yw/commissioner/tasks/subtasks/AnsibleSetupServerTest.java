@@ -19,8 +19,14 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import org.junit.Test;
 
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+@RunWith(JUnitParamsRunner.class)
 public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   private AnsibleSetupServer.Params createUniverse(
       Common.CloudType cloudType, AccessKey.KeyInfo accessKeyInfo) {
@@ -115,15 +121,15 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   }
 
   @Test
-  public void testAllProvidersWithAccessKey() {
+  @Parameters({"aws", "gcp", "azu", "kubernetes", "onprem"})
+  public void testAllProvidersWithAccessKey(String code) {
+    Common.CloudType cloudType = Common.CloudType.valueOf(code);
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
-    for (Common.CloudType cloudType : Common.CloudType.values()) {
-      AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
-      AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-      AnsibleSetupServer.Params params = createUniverse(cloudType, keyInfo);
-      ansibleSetupServer.initialize(params);
-      ansibleSetupServer.run();
-      verify(mockNodeManager, times(1)).nodeCommand(NodeManager.NodeCommandType.Provision, params);
-    }
+    AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    AnsibleSetupServer.Params params = createUniverse(cloudType, keyInfo);
+    ansibleSetupServer.initialize(params);
+    ansibleSetupServer.run();
+    verify(mockNodeManager, times(1)).nodeCommand(NodeManager.NodeCommandType.Provision, params);
   }
 }

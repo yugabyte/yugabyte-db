@@ -20,8 +20,12 @@ import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +69,7 @@ public class CloudRegionSetup extends CloudTaskBase {
     final Region region = Region.createWithMetadata(provider, regionCode, metaData);
     String customImageId = taskParams().metadata.customImageId;
     if (customImageId != null && !customImageId.isEmpty()) {
-      region.ybImage = customImageId;
+      region.setYbImage(customImageId);
       region.update();
     } else {
       switch (Common.CloudType.valueOf(provider.code)) {
@@ -78,7 +82,7 @@ public class CloudRegionSetup extends CloudTaskBase {
           if (defaultImage == null || defaultImage.isEmpty()) {
             throw new RuntimeException("Could not get default image for region: " + regionCode);
           }
-          region.ybImage = defaultImage;
+          region.setYbImage(defaultImage);
           region.update();
           break;
       }
@@ -94,7 +98,9 @@ public class CloudRegionSetup extends CloudTaskBase {
       String arch = queryHelper.getImageArchitecture(region);
       if (arch == null || arch.isEmpty()) {
         log.warn(
-            "Could not get architecture for image {} in region {}.", region.ybImage, region.code);
+            "Could not get architecture for image {} in region {}.",
+            region.getYbImage(),
+            region.code);
 
       } else {
         try {
@@ -126,6 +132,8 @@ public class CloudRegionSetup extends CloudTaskBase {
           }
           zoneSubnets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
+        region.setVnetName(taskParams().metadata.vpcId);
+        region.update();
         region.zones = new ArrayList<>();
         Map<String, String> zoneSecondarySubnets = taskParams().metadata.azToSecondarySubnetIds;
         // Secondary subnets were passed, which mean they should have a one to one mapping.
