@@ -865,7 +865,7 @@ class ControlScript(object):
         has_errors = False
 
         # Enable encryption at rest.
-        if self.configs.temp_data.get("enable"):
+        if self.configs.temp_data.get("enable_encrypt_at_rest"):
             Output.log("Trying to enable encryption at rest.")
 
             # Check whether the encryption at rest is already enabled.
