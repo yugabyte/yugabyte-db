@@ -2,9 +2,10 @@
 Outputs a table of all known master or tserver flags.
 
 Syntax:
-  {{% flag-listing [process] %}}
+  {{% flag-listing [process] [flag-type] %}}
 
-  Where process is either "master" or "tserver". Default is master.
+  * process is either "master" or "tserver". Default is master.
+  * flag-type is "all" or "runtime". Default is all.
 
 Example:
 
@@ -19,7 +20,8 @@ TROUBLESHOOTING
   * If you trigger the "no version name!" error, check params.toml for problems in the [[versions]] entries.
 */}}
 
-{{- $process := default "master" (.Get 0) -}}
+{{ $process := default "master" (.Get 0) }}
+{{ $flagType := default "all" (.Get 1) }}
 {{ $versionName := .Site.Params.version_menu }}
 {{ $pagePermalink := .Page.RelPermalink }}
 {{ $remoteUrl := "https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/src/main/resources/gflags_metadata/2.17/" }}
@@ -47,21 +49,17 @@ TROUBLESHOOTING
 {{- if $versionName -}}
   {{ $remoteUrl =  replace $remoteUrl "2.17" $versionName }}
   {{ $remoteUrl = printf "%s%s.xml" $remoteUrl $process }}
-
-  {{/* Uncomment this next line to log the remote URL for troubleshooting */}}
-  {{/*
-  {{ warnf "remoteUrl is %s" $remoteUrl }}
-  */}}
-
-  {{ else }}
+{{ else }}
   {{ errorf "something went wrong in %s shortcode: no version name! %s" .Name .Position }}
 {{ end }}
 
 {{/* Get the remote XML file and load it up as an array. Then, build the table. */}}
 
-{{ with resources.GetRemote $remoteUrl | transform.Unmarshal }}
+{{ if eq $flagType "all" }}
 
-The following table lists all flags for [{{ .program }}](/v{{ $versionName }}/reference/configuration/{{.program}}/) version {{ $versionName }}
+  {{ with resources.GetRemote $remoteUrl | transform.Unmarshal }}
+
+<p>The following table lists all flags for <a href="/v{{ $versionName }}/reference/configuration/{{.program}}/">{{ .program }}</a> version {{ $versionName }}</p>
 
 <table>
   <thead>
@@ -70,18 +68,84 @@ The following table lists all flags for [{{ .program }}](/v{{ $versionName }}/re
     <th>Default value</th>
   </thead>
   <tbody>
+
+  {{/*
+    Iterate over each GFlag record.
+    Certain tags indicate we shouldn't display the GFlag on the docs page, so skip those.
+  */}}
     {{ range .flag }}
+      {{ $publish := true }}
+      {{ with split .tags "," }}
+        {{ range . }}
+          {{/* see if anything says testing or unsafe or hidden */}}
+          {{/* if not, output the table row */}}
+          {{ if or (eq . "hidden") (eq . "unsafe") (eq . "testing") }}
+            {{ $publish = false }}
+            {{ break }}
+          {{ end }}
+        {{ end }}
+      {{ end }}
+      {{ if $publish }}
   <tr>
     <td><code>{{ .name | plainify | htmlUnescape }}</code> ({{ .type | plainify | htmlUnescape }})
-      {{- if .tags -}}
-        <br/><strong>Tags: </strong><em>{{ .tags | plainify | htmlUnescape }}</em>
-      {{- end -}}
+    {{- if .tags -}}<br/><strong>Tags: </strong><em>{{ .tags | plainify | htmlUnescape }}</em>{{- end -}}
     </td>
     <td>{{ .meaning | plainify | htmlUnescape }}</td>
     <td>{{ .default | plainify | htmlUnescape }}</td>
   </tr>
+      {{ else }}
+        {{/* warnf "%s not publishing this one: %s" .Position (.name | plainify | htmlUnescape) */}}
+      {{ end }}
     {{ end }}
   </tbody>
 </table>
+  {{ end }}
+
+{{ end }}
+
+{{ if eq $flagType "runtime" }}
+  {{ with resources.GetRemote $remoteUrl | transform.Unmarshal }}
+
+<p>The following table lists the runtime flags for <a href="/v{{ $versionName }}/reference/configuration/{{.program}}/">{{ .program }}</a> version {{ $versionName }}</p>
+
+<table>
+  <thead>
+    <th>Runtime GFlag</th>
+    <th>Description</th>
+    <th>Default value</th>
+  </thead>
+  <tbody>
+
+    {{ range .flag }}
+      {{ $publish := false }}
+      {{ with split .tags "," }}
+        {{ range . }}
+          {{/* see if anything says testing or unsafe or hidden */}}
+          {{/* if not, output the table row */}}
+          {{ if eq . "runtime" }}
+            {{ $publish = true }}
+          {{ else if or (eq . "testing") (eq . "unsafe") (eq . "hidden") }}
+            {{ $publish = false }}
+            {{ break }}
+          {{ end }}
+        {{ end }}
+      {{ end }}
+      {{ if $publish }}
+<tr>
+  <td><code>{{ .name | plainify | htmlUnescape }}</code> ({{ .type | plainify | htmlUnescape }})
+  {{- if .tags -}}<br/><strong>Tags: </strong><em>{{ .tags | plainify | htmlUnescape }}</em>{{- end -}}
+  </td>
+  <td>{{ .meaning | plainify | htmlUnescape }}</td>
+  <td>{{ .default | plainify | htmlUnescape }}</td>
+</tr>
+      {{ else }}
+        {{/* warnf "%s not publishing this one: %s" .Position (.name | plainify | htmlUnescape) */}}
+      {{ end }}
+    {{ end }}
+
+  </tbody>
+</table>
+
+  {{ end }}
 
 {{ end }}

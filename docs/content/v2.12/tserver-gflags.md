@@ -3,17 +3,11 @@ title: Tablet server Gflags
 description: Tablet server Gflags
 linktitle: TServer gflags
 menu:
-  preview:
+  v2.12:
     identifier: tserver-gflags
     weight: 10000
 type: docs
 private: true
 ---
 
-## Runtime yb-tserver Gflags
-
-{{% flag-listing "tserver" "runtime" %}}
-
-## All yb-tserver Gflags
-
-{{% flag-listing "tserver" "all" %}}
+<!-- {% flag-listing "tserver" %}} -->

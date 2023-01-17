@@ -3,17 +3,11 @@ title: Master Gflags
 description: Master Gflags
 linktitle: Master gflags
 menu:
-  preview:
+  stable:
     identifier: master-gflags
     weight: 10000
 type: docs
 private: true
 ---
 
-## Runtime yb-master Gflags
-
-{{% flag-listing "master" "runtime" %}}
-
-## All yb-master Gflags
-
-{{% flag-listing "master" "all" %}}
+<!-- {% flag-listing "master" %}} -->
