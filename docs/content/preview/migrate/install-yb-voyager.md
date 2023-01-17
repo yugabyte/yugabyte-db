@@ -23,15 +23,17 @@ You can install YugabyteDB Voyager on the following:
 - RHEL 7/8
 - CentOS 7/8
 - Ubuntu 18.04, 20.04, 22.04
-- MacOS (currently supported only for PostgreSQL source database)
+- MacOS (currently supported only for PostgreSQL source database.)
 
-    {{< note title = "note" >}}
+    {{< note title = "MySQL/Oracle on MacOS" >}}
 
 You will get the following error if you use MySQL/Oracle as the source database on MacOS:
 
 ```output
 "ora2pg" not found. Check if it is installed and included in the path.
 ```
+
+For MySQL/Oracle source databases on MacOS, [install yb-voyager](#install-yb-voyager) using the Docker option.
 
     {{< /note >}}
 
@@ -47,30 +49,9 @@ The node where you'll run the yb-voyager command should:
 - connect to both the source and the target database.
 - have sudo access.
 
-### Create an export directory
-
-Before starting migration, you should create the export directory on a file system that has enough space to keep the entire data dump. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command.
-
-yb-voyager uses the directory to store source data, schema files, and the migration state. The file system in which the directory resides must have enough free space to hold the entire source database. Create an export directory in the local file system on the machine where YugabyteDB Voyager will be installed, and place its path in an environment variable.
-
-```sh
-mkdir $HOME/export-dir
-export EXPORT_DIR=$HOME/export-dir
-```
-
-The export directory has the following sub-directories and files:
-
-- `reports` directory contains the generated *Schema Analysis Report*.
-- `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
-- `data` directory contains TSV (Tab Separated Values) files that are passed to the COPY command on the target database.
-- `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
-- `yb-voyager.log` contains log messages.
-
-<!-- For more information, refer to [Export directory](../../yb-voyager/reference/#export-directory). -->
-
 ## Install yb-voyager
 
-YugabyteDB Voyager consists of the yb-voyager command line executable. yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the [*export directory*](#create-an-export-directory).
+YugabyteDB Voyager consists of the yb-voyager command line executable.
 
 Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisites) using one of the following options:
 
@@ -124,7 +105,7 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
 {{% readfile "./macos.md" %}}
   </div>
   <div id="airgapped" class="tab-pane fade" role="tabpanel" aria-labelledby="airgapped-tab">
-{{% readfile "./airgapped.md" %}}
+{{< readfile "./airgapped.md" >}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
 {{% readfile "./docker.md" %}}

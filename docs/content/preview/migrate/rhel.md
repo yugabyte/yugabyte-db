@@ -23,12 +23,12 @@ Perform the following steps to install yb-voyager using yum for RHEL 7/8 and Cen
 1. Install the `epel-release` repository using the following command:
 
     ```sh
-    // For RHEL 7 or CentOS 7
+    # For RHEL 7 or CentOS 7
     sudo yum install epel-release
     ```
 
     ```sh
-    // For RHEL8 or Centos 8
+    # For RHEL8 or Centos 8
     sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
     ```
 

@@ -108,6 +108,27 @@ DROP USER ybvoyager;
 
 {{< /warning >}}
 
+## Create an export directory
+
+yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*.
+
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire data dump. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command.
+
+yb-voyager uses the directory to store source data, schema files, and the migration state. The file system in which the directory resides must have enough free space to hold the entire source database. Create an export directory in the local file system on the machine where YugabyteDB Voyager will be installed, and place its path in an environment variable.
+
+```sh
+mkdir $HOME/export-dir
+export EXPORT_DIR=$HOME/export-dir
+```
+
+The export directory has the following sub-directories and files:
+
+- `reports` directory contains the generated *Schema Analysis Report*.
+- `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
+- `data` directory contains TSV (Tab Separated Values) files that are passed to the COPY command on the target database.
+- `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
+- `yb-voyager.log` contains log messages.
+
 ## Migrate your database to YugabyteDB
 
 Proceed with schema and data migration using the following steps:
