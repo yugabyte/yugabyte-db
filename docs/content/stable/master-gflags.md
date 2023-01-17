@@ -12,8 +12,8 @@ private: true
 
 ## Runtime yb-master GFlags
 
-<!-- {% flag-listing "master" "runtime" %}} -->
+<!-- {< flag-listing process="master" flagType="runtime" >}} -->
 
 ## All yb-master GFlags
 
-<!-- {% flag-listing "master" "all" %}} -->
+<!-- {< flag-listing process="master" flagType="all" >}} -->
