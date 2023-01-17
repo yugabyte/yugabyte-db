@@ -2819,8 +2819,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultpleActiveStreamOnSameTabl
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSameTablet)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-  FLAGS_cdc_intent_retention_ms = 5000;
-  ASSERT_OK(SetUpWithParams(3, 1, false));
+  FLAGS_cdc_intent_retention_ms = 20000;
+  uint32_t num_tservers = 3;
+  ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
@@ -2838,10 +2839,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSame
     ASSERT_FALSE(resp.has_error());
   }
   // Insert some records in transaction.
-  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
 
   vector<GetChangesResponsePB> change_resp(2);
   // Call GetChanges for the stream-1 and stream-2
@@ -2849,25 +2847,49 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSame
     change_resp[idx] = ASSERT_RESULT(GetChangesFromCDC(stream_id[idx], tablets));
     uint32_t record_size = change_resp[idx].cdc_sdk_proto_records_size();
     ASSERT_GE(record_size, 100);
-    LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
+    LOG(INFO) << "Total records read by GetChanges call on stream_id: " << record_size;
   }
+
+  // Get the checkpoint details of the stream-2 and tablet-1 from the cdc_state table.
+  auto checkpoints_stream_2 = ASSERT_RESULT(GetCDCCheckpoint(stream_id[1], tablets));
 
   // Keep stream-1 active.
   uint32_t idx = 0;
   const uint32_t total_count = 10;
   while (idx < total_count) {
     uint32_t record_size = 0;
-    ASSERT_OK(WriteRowsHelper(100 + idx /* start */, 101 + idx /* end */, &test_cluster_, true));
-    ASSERT_OK(test_client()->FlushTables(
-        {table.table_id()}, /* add_indexes = */
-        false,              /* timeout_secs = */
-        30, /* is_compaction = */ false));
-    GetChangesResponsePB latest_change_resp =
-        ASSERT_RESULT(UpdateCheckpoint(stream_id[0], tablets, &change_resp[0]));
+    ASSERT_OK(WriteRows(100 + idx /* start */, 101 + idx /* end */, &test_cluster_));
+    GetChangesResponsePB latest_change_resp = ASSERT_RESULT(
+        GetChangesFromCDC(stream_id[0], tablets, &change_resp[0].cdc_sdk_checkpoint()));
+
     record_size = latest_change_resp.cdc_sdk_proto_records_size();
     change_resp[0] = latest_change_resp;
     ASSERT_GE(record_size, 1);
     idx += 1;
+    // This check is to make sure that UpdatePeersAndMetrics thread gets the CPU slot to execute, so
+    // that it updates minimum checkpoint and active time in tablet LEADER and FOLLOWERS so that GC
+    // can be controlled.
+    for (uint tserver_index = 0; tserver_index < num_tservers; tserver_index++) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(tserver_index)) {
+        if (peer->tablet_id() == tablets[0].tablet_id()) {
+          ASSERT_OK(WaitFor(
+              [&]() -> Result<bool> {
+                // Here checkpoints_stream_2[0].index is compared because on the same tablet 2
+                // streams are created whereas on stream_2 there is no Getchanges call, so minimum
+                // checkpoint that will be updated in tablet LEADER and FOLLOWERS will be the
+                // checkpoint that is set for stream_id_2
+                // + tablet_id during setCDCCheckpoint.
+                if (checkpoints_stream_2[0].index == peer->cdc_sdk_min_checkpoint_op_id().index) {
+                  return true;
+                }
+                SleepFor(MonoDelta::FromMilliseconds(100));
+                return false;
+              },
+              MonoDelta::FromSeconds(60),
+              "Failed to update checkpoint in tablet peer."));
+        }
+      }
+    }
   }
 
   OpId overall_min_checkpoint = OpId::Max();
@@ -2881,8 +2903,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSame
     auto read_tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
     auto read_stream_id = row.column(master::kCdcStreamIdIdx).string_value();
     auto read_checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-    GetChangesResponsePB latest_change_resp =
-        ASSERT_RESULT(UpdateCheckpoint(stream_id[0], tablets, &change_resp[0]));
+    GetChangesResponsePB latest_change_resp = ASSERT_RESULT(
+        GetChangesFromCDC(stream_id[0], tablets, &change_resp[0].cdc_sdk_checkpoint()));
     auto result = OpId::FromString(read_checkpoint);
     ASSERT_OK(result);
     if (read_tablet_id == tablets[0].tablet_id() && stream_id[0] == read_stream_id) {
