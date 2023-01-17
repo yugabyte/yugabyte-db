@@ -13,11 +13,11 @@ Example:
 
 TROUBLESHOOTING
 
-  * If you get an error like
+  * If you get an error like this:
       "execute of template failed at <transform.Unmarshal>: error calling Unmarshal: no data to transform",
-    verify that $remoteUrl is correct. The YBA team may have moved the XML files we're using!
+    The most likely reason is that $remoteUrl is incorrect.
 
-  * If you trigger the "no version name!" error, check params.toml for problems in the [[versions]] entries.
+  * If you get the "no version name!" error, check params.toml for problems in the [[versions]] entries.
 */}}
 
 {{ $process := default "master" (.Get 0) }}
@@ -26,8 +26,8 @@ TROUBLESHOOTING
 {{ $pagePermalink := .Page.RelPermalink }}
 {{ $remoteUrl := "https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/src/main/resources/gflags_metadata/2.17/" }}
 
-{{/* Cut the version name down to just a number */}}
-
+{{/* Cut the version name down to just a number. */}}
+{{/* (This part will need redoing when we start using per-build flag lists.) */}}
 {{ range .Site.Params.versions }}
   {{ if hasPrefix $pagePermalink .url }}
     {{ $versionName = .version }}
@@ -45,7 +45,7 @@ TROUBLESHOOTING
 {{ end }}
 
 {{/* Add the version and filename to the remote URL */}}
-
+{{/* (This part will need redoing when we start using per-build flag lists.) */}}
 {{- if $versionName -}}
   {{ $remoteUrl =  replace $remoteUrl "2.17" $versionName }}
   {{ $remoteUrl = printf "%s%s.xml" $remoteUrl $process }}
@@ -59,7 +59,7 @@ TROUBLESHOOTING
 
   {{ with resources.GetRemote $remoteUrl | transform.Unmarshal }}
 
-<p>The following table lists all flags for <a href="/v{{ $versionName }}/reference/configuration/{{.program}}/">{{ .program }}</a> version {{ $versionName }}</p>
+<p>The following table lists {{ $flagType }} flags for <a href="/v{{ $versionName }}/reference/configuration/{{.program}}/">{{ .program }}</a> version {{ $versionName }}</p>
 
 <table>
   <thead>
@@ -69,22 +69,22 @@ TROUBLESHOOTING
   </thead>
   <tbody>
 
-  {{/*
-    Iterate over each GFlag record.
-    Certain tags indicate we shouldn't display the GFlag on the docs page, so skip those.
-  */}}
+    {{/* Iterate over each GFlag record and check for tags we don't want. */}}
     {{ range .flag }}
       {{ $publish := true }}
       {{ with split .tags "," }}
         {{ range . }}
-          {{/* see if anything says testing or unsafe or hidden */}}
-          {{/* if not, output the table row */}}
+          {{/* See if anything says testing or unsafe or hidden. */}}
+          {{/* If yes, break out of this range iteration to stop processing this GFlag. */}}
+          {{/* If no, continue checking the tags. */}}
           {{ if or (eq . "hidden") (eq . "unsafe") (eq . "testing") }}
             {{ $publish = false }}
             {{ break }}
           {{ end }}
         {{ end }}
       {{ end }}
+
+      {{/* If this GFlag doesn't have any bad tags, publish it in a table row. */}}
       {{ if $publish }}
   <tr>
     <td><code>{{ .name | plainify | htmlUnescape }}</code> ({{ .type | plainify | htmlUnescape }})
@@ -93,8 +93,6 @@ TROUBLESHOOTING
     <td>{{ .meaning | plainify | htmlUnescape }}</td>
     <td>{{ .default | plainify | htmlUnescape }}</td>
   </tr>
-      {{ else }}
-        {{/* warnf "%s not publishing this one: %s" .Position (.name | plainify | htmlUnescape) */}}
       {{ end }}
     {{ end }}
   </tbody>
@@ -106,7 +104,7 @@ TROUBLESHOOTING
 {{ if eq $flagType "runtime" }}
   {{ with resources.GetRemote $remoteUrl | transform.Unmarshal }}
 
-<p>The following table lists the runtime flags for <a href="/v{{ $versionName }}/reference/configuration/{{.program}}/">{{ .program }}</a> version {{ $versionName }}</p>
+<p>The following table lists {{ $flagType }} flags for <a href="/v{{ $versionName }}/reference/configuration/{{.program}}/">{{ .program }}</a> version {{ $versionName }}</p>
 
 <table>
   <thead>
@@ -116,20 +114,28 @@ TROUBLESHOOTING
   </thead>
   <tbody>
 
+    {{/* Iterate over each GFlag record and check for tags we don't want. */}}
     {{ range .flag }}
       {{ $publish := false }}
       {{ with split .tags "," }}
         {{ range . }}
-          {{/* see if anything says testing or unsafe or hidden */}}
-          {{/* if not, output the table row */}}
           {{ if eq . "runtime" }}
             {{ $publish = true }}
+            {{/*
+              If this GFlag has a "runtime" tag, that's good, but let's
+              keep going in case it's also got a tag we don't want.
+            */}}
           {{ else if or (eq . "testing") (eq . "unsafe") (eq . "hidden") }}
+            {{/* See if anything says testing or unsafe or hidden. */}}
+            {{/* If yes, break out of this range iteration to stop processing this GFlag. */}}
+            {{/* If no, continue checking the tags. */}}
             {{ $publish = false }}
             {{ break }}
           {{ end }}
         {{ end }}
       {{ end }}
+
+      {{/* If this GFlag doesn't have any bad tags, publish it in a table row. */}}
       {{ if $publish }}
 <tr>
   <td><code>{{ .name | plainify | htmlUnescape }}</code> ({{ .type | plainify | htmlUnescape }})
@@ -138,14 +144,9 @@ TROUBLESHOOTING
   <td>{{ .meaning | plainify | htmlUnescape }}</td>
   <td>{{ .default | plainify | htmlUnescape }}</td>
 </tr>
-      {{ else }}
-        {{/* warnf "%s not publishing this one: %s" .Position (.name | plainify | htmlUnescape) */}}
       {{ end }}
     {{ end }}
-
   </tbody>
 </table>
-
   {{ end }}
-
 {{ end }}
