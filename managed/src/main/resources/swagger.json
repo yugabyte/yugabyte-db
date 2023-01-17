@@ -1,6 +1,51 @@
 {
   "consumes" : [ "application/json" ],
   "definitions" : {
+    "AWSCloudInfo" : {
+      "properties" : {
+        "awsAccessKeyID" : {
+          "type" : "string"
+        },
+        "awsAccessKeySecret" : {
+          "type" : "string"
+        },
+        "awsHostedZoneId" : {
+          "type" : "string"
+        },
+        "awsHostedZoneName" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AWSRegionCloudInfo" : {
+      "properties" : {
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnet" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "The AMI to be used in this region.",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AZCloudInfo" : {
+      "properties" : {
+        "kubernetes" : {
+          "$ref" : "#/definitions/KubernetesRegionInfo"
+        }
+      },
+      "type" : "object"
+    },
     "AccessKey" : {
       "description" : "Access key for the cloud provider. This helps to authenticate the user and get access to the provider.",
       "properties" : {
@@ -1159,6 +1204,9 @@
           "description" : "AZ configuration values",
           "type" : "object"
         },
+        "details" : {
+          "$ref" : "#/definitions/AvailabilityZoneDetails"
+        },
         "kubeconfigPath" : {
           "description" : "Path to Kubernetes configuration file",
           "readOnly" : true,
@@ -1212,6 +1260,14 @@
       "required" : [ "code", "name" ],
       "type" : "object"
     },
+    "AvailabilityZoneDetails" : {
+      "properties" : {
+        "cloudInfo" : {
+          "$ref" : "#/definitions/AZCloudInfo"
+        }
+      },
+      "type" : "object"
+    },
     "AvailabilityZoneFormData" : {
       "properties" : {
         "availabilityZones" : {
@@ -1223,6 +1279,44 @@
         }
       },
       "required" : [ "availabilityZones" ],
+      "type" : "object"
+    },
+    "AzureCloudInfo" : {
+      "properties" : {
+        "azuClientId" : {
+          "type" : "string"
+        },
+        "azuClientSecret" : {
+          "type" : "string"
+        },
+        "azuHostedZoneId" : {
+          "type" : "string"
+        },
+        "azuRG" : {
+          "type" : "string"
+        },
+        "azuSubscriptionId" : {
+          "type" : "string"
+        },
+        "azuTenantId" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AzureRegionCloudInfo" : {
+      "properties" : {
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnet" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "The AMI to be used in this region.",
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "Backup" : {
@@ -2630,6 +2724,26 @@
       "required" : [ "certExpiry", "certStart", "username" ],
       "type" : "object"
     },
+    "CloudInfo" : {
+      "properties" : {
+        "aws" : {
+          "$ref" : "#/definitions/AWSCloudInfo"
+        },
+        "azu" : {
+          "$ref" : "#/definitions/AzureCloudInfo"
+        },
+        "gcp" : {
+          "$ref" : "#/definitions/GCPCloudInfo"
+        },
+        "kubernetes" : {
+          "$ref" : "#/definitions/KubernetesInfo"
+        },
+        "onprem" : {
+          "$ref" : "#/definitions/OnPremCloudInfo"
+        }
+      },
+      "type" : "object"
+    },
     "CloudSpecificInfo" : {
       "description" : "Node information reported by the cloud provider",
       "properties" : {
@@ -3687,6 +3801,39 @@
       },
       "type" : "object"
     },
+    "GCPCloudInfo" : {
+      "properties" : {
+        "customGceNetwork" : {
+          "type" : "string"
+        },
+        "gceApplicationCredentialsPath" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "gceProject" : {
+          "type" : "string"
+        },
+        "useHostCredentials" : {
+          "type" : "boolean"
+        },
+        "useHostVPC" : {
+          "type" : "boolean"
+        },
+        "ybFirewallTags" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "GCPRegionCloudInfo" : {
+      "properties" : {
+        "ybImage" : {
+          "description" : "The AMI to be used in this region.",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "GCSLocation" : {
       "properties" : {
         "paths" : {
@@ -4262,6 +4409,44 @@
       "required" : [ "allTables", "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
       "type" : "object"
     },
+    "KubernetesInfo" : {
+      "properties" : {
+        "kubeConfig" : {
+          "type" : "string"
+        },
+        "kubeConfigContent" : {
+          "type" : "string"
+        },
+        "kubeConfigName" : {
+          "type" : "string"
+        },
+        "kubernetesImagePullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesImageRegistry" : {
+          "type" : "string"
+        },
+        "kubernetesProvider" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecret" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretContent" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesServiceAccount" : {
+          "type" : "string"
+        },
+        "kubernetesStorageClass" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "KubernetesOverrideError" : {
       "properties" : {
         "errorString" : {
@@ -4498,6 +4683,56 @@
         }
       },
       "required" : [ "azOverrides", "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeOverrides", "upgradeOption" ],
+      "type" : "object"
+    },
+    "KubernetesRegionInfo" : {
+      "properties" : {
+        "kubeConfig" : {
+          "type" : "string"
+        },
+        "kubeConfigContent" : {
+          "type" : "string"
+        },
+        "kubeConfigName" : {
+          "type" : "string"
+        },
+        "kubeDomain" : {
+          "type" : "string"
+        },
+        "kubeNamespace" : {
+          "type" : "string"
+        },
+        "kubePodAddressTemplate" : {
+          "type" : "string"
+        },
+        "kubernetesImagePullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesImageRegistry" : {
+          "type" : "string"
+        },
+        "kubernetesProvider" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecret" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretContent" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesServiceAccount" : {
+          "type" : "string"
+        },
+        "kubernetesStorageClass" : {
+          "type" : "string"
+        },
+        "overrides" : {
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "LogData" : {
@@ -5588,6 +5823,14 @@
       "required" : [ "node", "numDelete", "numInsert", "numSelect", "numUpdate" ],
       "type" : "object"
     },
+    "OnPremCloudInfo" : {
+      "properties" : {
+        "ybHomeDir" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "Package" : {
       "properties" : {
         "arch" : {
@@ -6042,12 +6285,6 @@
         "hostVpcRegion" : {
           "type" : "string"
         },
-        "hostedZoneId" : {
-          "type" : "string"
-        },
-        "hostedZoneName" : {
-          "type" : "string"
-        },
         "keyPairName" : {
           "description" : "Transient property - only present in mutate API request",
           "type" : "string"
@@ -6079,13 +6316,16 @@
           "type" : "integer"
         }
       },
-      "required" : [ "details", "regions" ],
+      "required" : [ "regions" ],
       "type" : "object"
     },
     "ProviderDetails" : {
       "properties" : {
         "airGapInstall" : {
           "type" : "boolean"
+        },
+        "cloudInfo" : {
+          "$ref" : "#/definitions/CloudInfo"
         },
         "installNodeExporter" : {
           "type" : "boolean"
@@ -6162,10 +6402,6 @@
           "readOnly" : true,
           "type" : "boolean"
         },
-        "architecture" : {
-          "enum" : [ "x86_64", "aarch64" ],
-          "type" : "string"
-        },
         "code" : {
           "description" : "Cloud provider region code",
           "example" : "us-west-2",
@@ -6176,6 +6412,9 @@
             "type" : "string"
           },
           "type" : "object"
+        },
+        "details" : {
+          "$ref" : "#/definitions/RegionDetails"
         },
         "latitude" : {
           "description" : "The region's latitude",
@@ -6197,21 +6436,10 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "securityGroupId" : {
-          "type" : "string"
-        },
         "uuid" : {
           "description" : "Region UUID",
           "format" : "uuid",
           "readOnly" : true,
-          "type" : "string"
-        },
-        "vnetName" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "description" : "The AMI to be used in this region.",
-          "example" : "TODO",
           "type" : "string"
         },
         "zones" : {
@@ -6222,6 +6450,31 @@
         }
       },
       "required" : [ "zones" ],
+      "type" : "object"
+    },
+    "RegionCloudInfo" : {
+      "properties" : {
+        "aws" : {
+          "$ref" : "#/definitions/AWSRegionCloudInfo"
+        },
+        "azu" : {
+          "$ref" : "#/definitions/AzureRegionCloudInfo"
+        },
+        "gcp" : {
+          "$ref" : "#/definitions/GCPRegionCloudInfo"
+        },
+        "kubernetes" : {
+          "$ref" : "#/definitions/KubernetesRegionInfo"
+        }
+      },
+      "type" : "object"
+    },
+    "RegionDetails" : {
+      "properties" : {
+        "cloudInfo" : {
+          "$ref" : "#/definitions/RegionCloudInfo"
+        }
+      },
       "type" : "object"
     },
     "RegionEditFormData" : {
