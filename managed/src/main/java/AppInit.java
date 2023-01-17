@@ -4,6 +4,7 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
@@ -53,6 +54,8 @@ import play.Logger;
 @Singleton
 public class AppInit {
 
+  private static final long MAX_APP_INITIALIZATION_TIME = 30;
+
   @Inject
   public AppInit(
       Environment environment,
@@ -85,7 +88,8 @@ public class AppInit {
       Config config,
       SupportBundleCleanup supportBundleCleanup,
       NodeAgentPoller nodeAgentPoller,
-      YbcUpgrade ybcUpgrade)
+      YbcUpgrade ybcUpgrade,
+      @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
 
@@ -241,6 +245,13 @@ public class AppInit {
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
 
+      Long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
+      String elapsedStr = String.valueOf(elapsed);
+      if (elapsed > MAX_APP_INITIALIZATION_TIME) {
+        Logger.warn("Completed initialization in " + elapsedStr + " seconds.");
+      } else {
+        Logger.info("Completed initialization in " + elapsedStr + " seconds.");
+      }
       Logger.info("AppInit completed");
     }
   }
