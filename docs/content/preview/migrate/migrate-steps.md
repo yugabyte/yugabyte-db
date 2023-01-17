@@ -202,7 +202,7 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
 ```
 
 Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
-Refer to [export data](../yb-voyager-cli/#export-data) for details about the arguments.
+Refer to [export data](../yb-voyager-cli/#export-data) for details about the arguments, and [export data status](../yb-voyager-cli/#export-data) to track the status of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 

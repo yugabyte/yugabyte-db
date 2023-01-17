@@ -37,6 +37,14 @@ To display the available online help for any migration step, run:
 yb-voyager [ <migration-step>... ] --help
 ```
 
+### Version check
+
+To verify the version of yb-voyager installed on your machine, run:
+
+```sh
+yb-voyager version
+```
+
 ## Commands
 
 The following command line options specify the migration steps.
@@ -64,14 +72,13 @@ yb-voyager export schema --export-dir /path/to/yb/export/dir \
         --source-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --source-db-name dbname \
         --source-db-schema schemaName \ # Not applicable for MySQL
-        --use-orafce \
         --start-clean
 
 ```
 
 ### analyze-schema
 
-Analyse the PostgreSQL schema dumped in the export schema step.
+[Analyse the PostgreSQL schema](../migrate-steps/#analyze-schema) dumped in the export schema step.
 
 #### Syntax
 
@@ -89,7 +96,7 @@ yb-voyager analyze-schema --export-dir /path/to/yb/export/dir --output-format tx
 
 ### export data
 
-Dump the source database to the machine where yb-voyager is installed.
+[Dump](../migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
 
 #### Syntax
 
@@ -109,10 +116,7 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-user username \
         --source-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --source-db-name dbname \
-        --source-db-schema schemaName \ # Not applicable for MySQL
-        --oracle-home string \ # Oracle only
-        --exclude-table-list string \
-        --start-clean
+        --source-db-schema schemaName # Not applicable for MySQL
 ```
 
 ### export data status
@@ -135,7 +139,7 @@ yb-voyager export data status --export-dir /path/to/yb/export/dir
 
 ### import schema
 
-Import schema to the target YugabyteDB.
+[Import the schema](../migrate-steps/#import-schema) to the target YugabyteDB.
 
 During migration, run the import schema command twice, first without the [--post-import-data](#post-import-data) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../migrate-steps/#import-data) is complete.
 
@@ -155,13 +159,12 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name dbname \
-        --target-db-schema schemaName \ # MySQL and Oracle only
-        --start-clean
+        --target-db-schema schemaName # MySQL and Oracle only
 ```
 
 ### import data
 
-Import the data objects to the target YugabyteDB.
+[Import the data](../migrate-steps/#import-data) to the target YugabyteDB.
 
 #### Syntax
 
@@ -180,14 +183,12 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
         --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name dbname \
         --target-db-schema schemaName \ # MySQL and Oracle only
-        --parallel-jobs connectionCount \
-        --batch-size size \
-        --start-clean
+        --parallel-jobs connectionCount
 ```
 
 ### import data file
 
-Load all your data files in CSV or text format directly to the target YugabyteDB.
+[Load all your data files](../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB.
 
 #### Syntax
 
@@ -213,7 +214,6 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --has-header \
         --file-opts "escape_char=\",quote_char=\"" \
         --format format \
-        --start-clean
 
 ```
 
@@ -241,6 +241,13 @@ yb-voyager import data status --export-dir /path/to/yb/export/dir
 
 Specifies the path to the directory containing the data files to export.
 
+An export directory is a workspace used by yb-voyager to store the following:
+
+- exported schema DDL files
+- export data files
+- migration state
+- log file
+
 ### --source-db-type
 
 Specifies the source database type (postgresql, mysql or oracle).
@@ -253,6 +260,8 @@ Specifies the domain name or IP address of the machine on which the source datab
 
 Specifies the port number of the machine on which the source database server is running.
 
+Default: 5432 (PostgreSQL), 3306 (MySQL), and 1521 (Oracle)
+
 ### --source-db-user
 
 Specifies the username of the source database.
@@ -261,7 +270,9 @@ Specifies the username of the source database.
 
 Specifies the password of the source database.
 
-If the password contains special characters, enclose it in single quotes.
+If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password.
+
+If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes.
 
 ### --source-db-name
 
@@ -270,6 +281,12 @@ Specifies the name of the source database.
 ### --source-db-schema
 
 Specifies the schema of the source database. Not applicable for MySQL.
+
+For Oracle, you can specify only one schema name using this option.
+
+For PostgreSQL, you can specify a list of comma separated schema names.
+
+Case sensitive schema names are not yet supported.
 
 ### --output-format
 
@@ -283,6 +300,8 @@ Specifies the domain name or IP address of the machine on which target database 
 
 Specifies the port number of the machine on which the target database server is running.
 
+Default: 5433
+
 ### --target-db-user
 
 Specifies the username of the target database.
@@ -291,11 +310,15 @@ Specifies the username of the target database.
 
 Specifies the password of the target database.
 
-If the password contains special characters, enclose it in single quotes.
+If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password.
+
+If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes.
 
 ### --target-db-name
 
 Specifies the name of the target database.
+
+Default: yugabyte
 
 ### --target-db-schema
 
@@ -303,7 +326,11 @@ Specifies the schema of the target database. Applicable only for MySQL and Oracl
 
 ### --parallel-jobs
 
-Specifies the count to increase the number of connections.
+Specifies the number of parallel COPY commands issued to the target database.
+
+If yb-voyager can determine the total number of cores `N` in the target YugabyteDB cluster, it will use `N/2` as the default value of `--parallel-jobs`. Otherwise, it will default to twice the number of nodes in the cluster.
+
+Depending on the target YugabyteDB configuration, the value of `--parallel-jobs` should be tweaked such that *at most* 50% of target cores are utilised.
 
 ### --batch-size
 
@@ -325,7 +352,7 @@ Example : `filename1:tablename1,filename2:tablename2[,...]`
 
 ### --delimiter
 
-Default: '\t' (tab); can be changed to comma(,), pipe(|) or any other character.
+Default: comma(,); can be changed to '\t' (tab), pipe(|), or any other character.
 
 ### --has-header
 
@@ -370,7 +397,7 @@ Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$OR
 
 ### --use-orafce
 
-Enable using orafce extension in export schema.
+Enable using orafce extension in export schema. Applicable for Oracle only.
 
 Default: true
 
