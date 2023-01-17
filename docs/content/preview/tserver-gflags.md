@@ -10,10 +10,10 @@ type: docs
 private: true
 ---
 
-## Runtime yb-tserver Gflags
+## Runtime yb-tserver GFlags
 
 {{% flag-listing "tserver" "runtime" %}}
 
-## All yb-tserver Gflags
+## All yb-tserver GFlags
 
 {{% flag-listing "tserver" "all" %}}

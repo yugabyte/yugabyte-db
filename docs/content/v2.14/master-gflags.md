@@ -10,4 +10,10 @@ type: docs
 private: true
 ---
 
-<!-- {% flag-listing "master" %}} -->
+## Runtime yb-master GFlags
+
+{{% flag-listing "master" "runtime" %}}
+
+## All yb-master GFlags
+
+{{% flag-listing "master" "all" %}}

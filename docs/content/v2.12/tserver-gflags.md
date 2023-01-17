@@ -10,4 +10,10 @@ type: docs
 private: true
 ---
 
-<!-- {% flag-listing "tserver" %}} -->
+## Runtime yb-tserver GFlags
+
+{{% flag-listing "tserver" "runtime" %}}
+
+## All yb-tserver GFlags
+
+{{% flag-listing "tserver" "all" %}}
