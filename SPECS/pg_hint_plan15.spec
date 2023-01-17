@@ -73,7 +73,16 @@ rm -rf %{buildroot}
 %defattr(0755,root,root)
 %{_libdir}/pg_hint_plan.so
 %defattr(0644,root,root)
-%{_datadir}/extension/pg_hint_plan--1.5.sql
+%{_datadir}/extension/pg_hint_plan--1.3.0.sql
+%{_datadir}/extension/pg_hint_plan--1.3.0--1.3.1.sql
+%{_datadir}/extension/pg_hint_plan--1.3.1--1.3.2.sql
+%{_datadir}/extension/pg_hint_plan--1.3.2--1.3.3.sql
+%{_datadir}/extension/pg_hint_plan--1.3.3--1.3.4.sql
+%{_datadir}/extension/pg_hint_plan--1.3.4--1.3.5.sql
+%{_datadir}/extension/pg_hint_plan--1.3.5--1.3.6.sql
+%{_datadir}/extension/pg_hint_plan--1.3.6--1.3.7.sql
+%{_datadir}/extension/pg_hint_plan--1.3.7--1.4.sql
+%{_datadir}/extension/pg_hint_plan--1.4--1.5.sql
 %{_datadir}/extension/pg_hint_plan.control
 
 %files llvmjit
