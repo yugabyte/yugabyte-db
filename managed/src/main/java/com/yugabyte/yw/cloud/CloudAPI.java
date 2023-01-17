@@ -53,7 +53,7 @@ public interface CloudAPI {
    * @param config The credentials info.
    * @return true if credentials are valid otherwise return false.
    */
-  boolean isValidCreds(Map<String, String> config, String region);
+  boolean isValidCreds(Provider provider, String region);
 
   /**
    * Check whether cloud provider's credentials are valid to do KMS operations.
