@@ -15,7 +15,7 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
 
     This repository contains the `yb-voyager` debian package and the dependencies required to run `yb-voyager`.
 
-2. Clean out the temporary cache of `apt-get` and update the package lists of `apt-get` on your machine using the following commands:
+2. Clean the `apt-get` cache and package lists using the following commands::
 
     ```sh
     sudo apt-get clean
