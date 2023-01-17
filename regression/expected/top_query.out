@@ -24,9 +24,9 @@ SELECT add2(1,2);
 (1 row)
 
 SELECT query, top_query FROM pg_stat_monitor ORDER BY query COLLATE "C";
-                            query                             |    top_query     
---------------------------------------------------------------+------------------
- (select $1 + $2)                                             | SELECT add2(1,2)
+                            query                             |     top_query     
+--------------------------------------------------------------+-------------------
+ (select $1 + $2)                                             | SELECT add2(1,2);
  CREATE OR REPLACE FUNCTION add(int, int) RETURNS INTEGER AS +| 
  $$                                                          +| 
  BEGIN                                                       +| 
