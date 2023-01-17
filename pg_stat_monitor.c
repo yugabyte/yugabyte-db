@@ -1411,7 +1411,7 @@ pgss_store(uint64 queryid,
 {
 	pgssHashKey key;
 	pgssEntry  *entry;
-	pgssSharedState *pgss = pgsm_get_ss();
+	pgssSharedState *pgss;
 	char	   *app_name_ptr;
 	char		app_name[APPLICATIONNAME_LEN] = "";
 	int			app_name_len = 0;
@@ -1433,6 +1433,8 @@ pgss_store(uint64 queryid,
 	/* Safety check... */
 	if (!IsSystemInitialized())
 		return;
+
+	pgss = pgsm_get_ss();
 
 #if PG_VERSION_NUM >= 140000
 
@@ -1652,13 +1654,15 @@ pgss_store(uint64 queryid,
 Datum
 pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 {
-	pgssSharedState *pgss = pgsm_get_ss();
+	pgssSharedState *pgss;
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
+
+	pgss = pgsm_get_ss();
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 	hash_entry_dealloc(-1, -1, NULL);
 
@@ -1721,7 +1725,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	PGSM_HASH_SEQ_STATUS hstat;
 	pgssEntry  *entry;
 	char		parentid_txt[32];
-	pgssSharedState *pgss = pgsm_get_ss();
+	pgssSharedState *pgss;
 	char	   *query_txt = NULL;
 	char	   *parent_query_txt = NULL;
 	int        expected_columns = (api_version >= PGSM_V2_0)?PG_STAT_MONITOR_COLS_V2_0:PG_STAT_MONITOR_COLS_V1_0;
@@ -1742,6 +1746,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("pg_stat_monitor: materialize mode required, but it is not " \
 						"allowed in this context")));
+
+	pgss = pgsm_get_ss();
 
 	/* Switch into long-lived context to construct returned data structures */
 	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
