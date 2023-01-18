@@ -111,7 +111,7 @@ In this case, it is possible for CDC to push the later update corresponding to `
 
 #### At-least-once delivery
 
-Updates for rows are pushed at least once. With the so-called at-least-once delivery, you never lose a message, however the message might be delivered to a CDC consumer more than once. This can happen in case of a tablet leader change, where the old leader already pushed changes to Kafka, but the latest pushed `op id` was not updated in the CDC metadata.
+Updates for rows are pushed at least once. With the at-least-once delivery, you never lose a message, however the message might be delivered to a CDC consumer more than once. This can happen in case of a tablet leader change, where the old leader already pushed changes to Kafka, but the latest pushed `op id` was not updated in the CDC metadata.
 
 For example, a CDC client has received changes for a row at times `t1` and `t3`. It is possible for the client to receive those updates again.
 

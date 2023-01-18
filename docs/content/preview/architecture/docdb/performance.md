@@ -47,7 +47,7 @@ Backups and snapshots needed to be higher-level operations that take into consid
 
 ## Data model-aware bloom filters
 
-The keys stored by DocDB in RocksDB consist of a number of components, where the first component is a so-called document key, followed by a few scalar components, and finally followed by a timestamp (sorted in reverse order).
+The keys stored by DocDB in RocksDB consist of a number of components, where the first component is a document key, followed by a few scalar components, and finally followed by a timestamp (sorted in reverse order).
 
 The bloom filter needs to be aware of what components of the key should be added to the bloom, so that only the relevant SSTable files in the LSM store are being searched during a read operation.
 

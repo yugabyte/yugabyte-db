@@ -70,7 +70,7 @@ End-user statements seamlessly map to one of the types of transactions inside Yu
 
 ### Single-row transactions
 
-The transaction manager of YugabyteDB automatically detects transactions that update a single row (as opposed to transactions that update rows across tablets or nodes). In order to achieve high performance, the updates to a single row directly update the row without having to interact with the transaction status tablet using a so-called single row transaction path (also known as fast path). For more information, see [Single-row transactions I/O path](../single-row-transactions).
+The transaction manager of YugabyteDB automatically detects transactions that update a single row (as opposed to transactions that update rows across tablets or nodes). In order to achieve high performance, the updates to a single row directly update the row without having to interact with the transaction status tablet using a single row transaction path (also known as fast path). For more information, see [Single-row transactions I/O path](../single-row-transactions).
 
 Because single-row transactions do not have to update the transaction status table, their performance is much higher than [distributed transactions](#distributed-transactions).
 
@@ -112,4 +112,4 @@ DELETE FROM table WHERE <all_primary_key_values_are_specified>;
 
 ### Distributed transactions
 
-A transaction that impacts a set of rows distributed across multiple tablets (which would be hosted on different nodes in the most general case) use a so-called distributed transactions path to execute transactions. Implementing distributed transactions in YugabyteDB requires the use of a transaction manager that can coordinate various operations included in the transaction and finally commit or abort the transaction as needed. For more information, see [Distributed transactions I/O path](../transactional-io-path).
+A transaction that impacts a set of rows distributed across multiple tablets (which would be hosted on different nodes in the most general case) use a distributed transactions path to execute transactions. Implementing distributed transactions in YugabyteDB requires the use of a transaction manager that can coordinate various operations included in the transaction and finally commit or abort the transaction as needed. For more information, see [Distributed transactions I/O path](../transactional-io-path).

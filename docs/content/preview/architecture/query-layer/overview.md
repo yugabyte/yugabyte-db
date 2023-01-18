@@ -23,6 +23,6 @@ From the application perspective, YQL is stateless and the clients can connect t
 
 The YQL inside of each YB-TServer implements some API-specific aspects required for each of the supported APIs, but ultimately it is responsible for replication storage, and retrieval of data using DocDB, which is YugabyteDB’s common underlying strongly-consistent and distributed store. The following are some of the subcomponents in YQL for each API:
 
-- A  so-called statement cache that caches compiled or execution plans for prepared statements to avoid overheads associated with repeated parsing of statements.
+- A statement cache that caches compiled or execution plans for prepared statements to avoid overheads associated with repeated parsing of statements.
 - A command parser and execution layer.
 - Language-specific built-in operations, data type encodings, and so on.
