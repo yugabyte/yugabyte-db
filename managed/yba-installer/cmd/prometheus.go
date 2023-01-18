@@ -171,7 +171,7 @@ func (prom Prometheus) Restart() {
 
 }
 
-// Uninstall uninstalls prometheus and optionally removes all data.
+// Uninstall stops prometheus and optionally removes all data.
 func (prom Prometheus) Uninstall(removeData bool) {
 	prom.Stop()
 
@@ -181,6 +181,8 @@ func (prom Prometheus) Uninstall(removeData bool) {
 			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
 				err.Error(), prom.SystemdFileLocation))
 		}
+		// reload systemd daemon
+		common.RunBash(common.Systemctl, []string{"daemon-reload"})
 	}
 
 	if removeData {
