@@ -59,7 +59,38 @@ The following command line options specify the migration steps.
 yb-voyager export schema [ <arguments> ... ]
 ```
 
-- *arguments*: See [Arguments](#arguments)
+The valid list of *arguments* for export schema are as follows:
+
+- --comments-on-objects
+- -e, --export-dir string
+- -h, --help
+- --log-level string
+- --oracle-db-sid string
+- --oracle-home string
+- --oracle-tns-alias string
+- --send-diagnostics
+- --source-db-host string
+- --source-db-name string
+- --source-db-password string
+- --source-db-port int
+- --source-db-schema string
+- --source-db-type string
+- --source-db-user string
+-  --source-ssl-cert string
+- --source-ssl-crl string
+- --source-ssl-key string
+- --source-ssl-mode string
+- --source-ssl-root-cert string
+- --start-clean
+- --use-orafce
+- --verbose
+- -y, --yes
+
+The valid list of *arguments* for export schema are described in the following table:
+
+| Argument | Description link |
+| :------- | :--------------- |
+| -e, --export-dir string |
 
 #### Example
 
