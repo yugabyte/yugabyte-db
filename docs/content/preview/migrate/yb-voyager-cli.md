@@ -62,35 +62,59 @@ yb-voyager export schema [ <arguments> ... ]
 The valid list of *arguments* for export schema are as follows:
 
 - --comments-on-objects
-- -e, --export-dir string
-- -h, --help
+- [-e, --export-dir](#export-dir) string
+- [-h, --help](#command-line-help)
 - --log-level string
-- --oracle-db-sid string
-- --oracle-home string
-- --oracle-tns-alias string
+- [--oracle-db-sid](#oracle-db-sid) string
+- [--oracle-home](#oracle-home) string
+- [--oracle-tns-alias](#ssl-connectivity) string
 - --send-diagnostics
-- --source-db-host string
-- --source-db-name string
-- --source-db-password string
-- --source-db-port int
-- --source-db-schema string
-- --source-db-type string
-- --source-db-user string
--  --source-ssl-cert string
-- --source-ssl-crl string
-- --source-ssl-key string
-- --source-ssl-mode string
-- --source-ssl-root-cert string
-- --start-clean
-- --use-orafce
+- [--source-db-host](#source-db-host) string
+- [--source-db-name](#source-db-name) string
+- [--source-db-password](#source-db-password) string
+- [--source-db-port](#source-db-port) int
+- [--source-db-schema](#source-db-schema) string
+- [--source-db-type](#source-db-type) string
+- [--source-db-user](#source-db-user) string
+-  [--source-ssl-cert](#ssl-connectivity) string
+- [--source-ssl-crl](#ssl-connectivity) string
+- [--source-ssl-key](#ssl-connectivity) string
+- [--source-ssl-mode](#ssl-connectivity) string
+- [--source-ssl-root-cert](#ssl-connectivity) string
+- [--start-clean](#start-clean)
+- [--use-orafce](#use-orafce)
 - --verbose
-- -y, --yes
+- [-y, --yes](#yes)
 
 The valid list of *arguments* for export schema are described in the following table:
 
-| Argument | Description link |
-| :------- | :--------------- |
-| -e, --export-dir string |
+| Argument | Link to description  |
+| :------- | :------------------- |
+| --comments-on-objects |
+| -e, --export-dir string | [--export-dir](#export-dir) |
+| -h, --help | [Command line help](#command-line-help) |
+| --log-level string |
+| --oracle-db-sid string | [--oracle-db-sid](#oracle-db-sid) |
+| --oracle-home string | [--oracle-home](#oracle-home) |
+| --oracle-tns-alias string | [--oracle-tns-alias](#ssl-connectivity)
+| --send-diagnostics |
+| --source-db-host string | [--source-db-host](#source-db-host) |
+| --source-db-name string | [--source-db-name](#source-db-name) |
+| --source-db-password string | [--source-db-password](#source-db-password) |
+| --source-db-port int | [--source-db-port](#source-db-port) |
+| --source-db-schema string |  [--source-db-schema](#source-db-schema) |
+| --source-db-type string | [--source-db-type](#source-db-type) |
+| --source-db-user string | [--source-db-user](#source-db-user) |
+| --source-ssl-cert string | [--source-ssl-cert](#ssl-connectivity) |
+| --source-ssl-crl string | [--source-ssl-crl](#ssl-connectivity) |
+| --source-ssl-key string | [--source-ssl-key](#ssl-connectivity) |
+| --source-ssl-mode string | [--source-ssl-mode](#ssl-connectivity) |
+| --source-ssl-root-cert string | [--source-ssl-root-cert](#ssl-connectivity) |
+| --start-clean | [--start-clean](#start-clean) |
+| --use-orafce | [--use-orafce](#use-orafce) |
+| --verbose |
+| -y, --yes | [-y, --yes](#yes) |
+
 
 #### Example
 
