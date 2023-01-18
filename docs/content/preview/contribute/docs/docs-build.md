@@ -28,7 +28,7 @@ To run the docs site locally and edit the docs, you'll need:
 
 * [**Homebrew**](https://brew.sh) on macOS or Linux.
 
-* **[Node.js](https://nodejs.org/en/download/)** LTS (16):
+* [**Node.js**](https://nodejs.org/en/download/) LTS (16):
 
   * Using Homebrew: `brew install node@16`
   * Using NVM: `nvm install 16`
