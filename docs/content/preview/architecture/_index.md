@@ -21,7 +21,7 @@ type: indexpage
         <div class="title">Design goals</div>
       </div>
       <div class="body">
-          The design goals of YugabyteDB.
+          The YugabyteDB design goals.
       </div>
     </a>
   </div>
@@ -47,7 +47,7 @@ type: indexpage
         <div class="title">Core functions</div>
       </div>
       <div class="body">
-        The universe and table creation,, the IO path reading and writing, as well as high availability.
+        Universe and table creation, the I/O path reading and writing, and high availability.
       </div>
     </a>
   </div>
@@ -59,7 +59,7 @@ type: indexpage
         <div class="title">Layered architecture</div>
       </div>
       <div class="body">
-          The YugabyteDB architecture overview.
+          YugabyteDB architecture overview.
       </div>
     </a>
   </div>

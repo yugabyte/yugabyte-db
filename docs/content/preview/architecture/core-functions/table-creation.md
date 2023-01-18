@@ -32,16 +32,16 @@ At this point, the asynchronous table creation API returns a success, since the 
 
 ## Execution
 
-The YB-Master leader assigns each of the tablets to as many YB-TServers as the replication factor of the table. The tablet-peer placement is done in such a manner as to ensure that the desired fault tolerance is
+The YB-Master leader assigns each of the tablets to as many YB-TServers as the replication factor of the table. The tablet peer placement is done in such a manner as to ensure that the desired fault tolerance is
 achieved and the YB-TServers are evenly balanced with respect to the number of tablets they are assigned. In some deployment scenarios, the assignment of the tablets to YB-TServers may need to satisfy additional constraints such as distributing the individual replicas of each tablet across multiple cloud providers, regions, and availability zones.
 
 ## Continuous monitoring
 
-The YB-Master leader Keeps monitors the entire tablet assignment operation and reports on its progress and completion to the user-issued API calls.
+The YB-Master leader monitors the entire tablet assignment operation and reports on its progress and completion to the user-issued API calls.
 
 ## Examples
 
-Suppose a table with four nodes is created in a YugabyteDB universe. In addition, suppose that the table has sixteen tablets and a replication factor of 3. The YB-Master leader validates the schema, creates sixteen tablets (fourty eight tablet-peers in total, due to the replication factor of 3) and replicates the data needed for table creation across a majority of YB-Masters using Raft. The following diagram depicts the start of the table creation process: 
+Suppose a table with four nodes is created in a YugabyteDB universe. In addition, suppose that the table has sixteen tablets and a replication factor of 3. The YB-Master leader validates the schema, creates sixteen tablets (forty-eight tablet peers in total, due to the replication factor of 3) and replicates the data needed for table creation across a majority of YB-Masters using Raft. The following diagram depicts the start of the table creation process: 
 
 ![create_table_masters](/images/architecture/create_table_masters.png)
 

@@ -33,7 +33,7 @@ A tighter coupling into the read and compaction layers of the underlying RocksDB
 
 ### Raft vs. RocksDB WAL logs
 
-DocDB uses Raft for replication. Changes to the distributed system are already recorded or journaled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional write-ahead logging (WAL) mechanism in RocksDB (under DocDB) was unnecessary and would add overhead. For correctness, in addition to disabling the WAL mechanism in RocksDB, YugabyteDB tracks the Raft sequence ID up to which data has been flushed from RocksDB’s memtables to SSTable files. This ensures that the Raft WAL logs can be correctly garbage-collect. It also allows to replay the minimal number of records from Raft WAL logs on a server crash or restart.
+DocDB uses Raft for replication. Changes to the distributed system are already recorded or journaled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional write-ahead logging (WAL) mechanism in RocksDB (under DocDB) was unnecessary and would add overhead. For correctness, in addition to disabling the WAL mechanism in RocksDB, YugabyteDB tracks the Raft sequence ID up to which data has been flushed from RocksDB’s memtables to SSTable files. This ensures that the Raft WAL logs can be correctly garbage-collected. It also allows to replay the minimal number of records from Raft WAL logs on a server crash or restart.
 
 ### MVCC at a higher layer
 
@@ -49,7 +49,7 @@ Backups and snapshots needed to be higher-level operations that take into consid
 
 The keys stored by DocDB in RocksDB consist of a number of components, where the first component is a so-called document key, followed by a few scalar components, and finally followed by a timestamp (sorted in reverse order).
 
-The bloom filter needs to be aware of what components of the key should  be added to the bloom, so that only the relevant SSTable files in the LSM store are being searched during a read operation.
+The bloom filter needs to be aware of what components of the key should be added to the bloom, so that only the relevant SSTable files in the LSM store are being searched during a read operation.
 
 In a traditional key-value store, range scans do not make use of bloom filters because exact keys that fall in the range are unknown. However, a data-model-aware bloom filter was implemented, where range scans within keys that share the same hash component can also benefit from bloom filters. For example, a scan to get all the columns within a row or all the elements of a collection can also benefit from bloom filters.
 

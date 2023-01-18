@@ -2,8 +2,8 @@
 title: xCluster
 headerTitle: xCluster replication
 linkTitle: xCluster
-description: xCluster replication between multiple YugabyteDB clusters.
-headContent: Asynchronous replication between independent YugabyteDB clusters
+description: xCluster replication between multiple YugabyteDB universes.
+headContent: Asynchronous replication between independent YugabyteDB universes
 aliases:
   - /preview/architecture/docdb/2dc-deployments/
   - /preview/architecture/2dc-deployments/
@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB provides [synchronous replication](../replication/) of data in clusters dispersed across multiple (three or more) data centers by using the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two-data-center (2DC) deployments that use cross-cluster (xCluster) replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
+YugabyteDB provides [synchronous replication](../replication/) of data in universes dispersed across multiple (three or more) data centers by using the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two-data-center (2DC) deployments that use cross-cluster (xCluster) replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
 
 For details about configuring an xCluster deployment, see [xCluster deployment](../../../deploy/multi-dc/async-replication).
 
@@ -23,11 +23,11 @@ xCluster replication of data works across YSQL and YCQL APIs because the replica
 
 ## Supported deployment scenarios
 
-A number of deployement scenarios is supported.
+A number of deployment scenarios is supported.
 
 ### Active-passive
 
-The replication could be unidirectional from a source cluster (also known as producer cluster) to one target cluster (also known as consumer cluster or sink cluster). The target clusters are typically located in data centers or regions that are different from the source cluster. They are passive because they do not take writes from the higher layer services. Usually, such deployments are used for serving low-latency reads from the target clusters, as well as for disaster recovery purposes.
+The replication could be unidirectional from a source universe (also known as producer universe) to one target universe (also known as consumer universe or sink universe). The target universes are typically located in data centers or regions that are different from the source universe. They are passive because they do not take writes from the higher layer services. Usually, such deployments are used for serving low-latency reads from the target universes, as well as for disaster recovery purposes.
 
 The following diagram shows the source-target deployment architecture:
 
@@ -35,7 +35,7 @@ The following diagram shows the source-target deployment architecture:
 
 ### Active-active
 
-The replication of data can be bi-directional between two clusters, in which case both clusters can perform reads and writes. Writes to any cluster are asynchronously replicated to the other cluster with a timestamp for the update. If the same key is updated in both clusters at a similar time window, this results in the write with the larger timestamp becoming the latest write. In this case, the clusters are all active, and this deployment mode is called a multi-master or active-active deployment.
+The replication of data can be bidirectional between two universes, in which case both universes can perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. If the same key is updated in both universes at a similar time window, this results in the write with the larger timestamp becoming the latest write. In this case, the universes are all active, and this deployment mode is called a multi-master or active-active deployment.
 
 The multi-master deployment is built internally using two source-target unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to guarantee last writer wins semantics and the data arriving from the replication stream is not rereplicated.
 
@@ -49,20 +49,20 @@ A number of deployment scenarios are not yet supported in YugabyteDB.
 
 ### Broadcast
 
-This topology involves one source cluster sending data to many target clusters. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
+This topology involves one source universe sending data to many target universes. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
 
 ### Consolidation
 
-This topology involves many source clusters sending data to one central target cluster. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
+This topology involves many source universes sending data to one central target universe. See [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535) for details.
 
 ### More complex topologies
 
 Outside of the traditional 1:1 topology and the previously described 1:N and N:1 topologies, there are many other desired configurations that are not currently supported, such as the following:
 
-- Daisy chaining, which involves connecting a series of clusters as both source and target, for example: `A<>B<>C`
-- Ring, which involves connecting a series of clusters in a loop, for example: `A<>B<>C<>A`
+- Daisy chaining, which involves connecting a series of universes as both source and target, for example: `A<>B<>C`
+- Ring, which involves connecting a series of universes in a loop, for example: `A<>B<>C<>A`
 
-Some of these topologies might become naturally available as soon as [Broadcast](#broadcast) and [Consolidation](#consolidation) use cases are resolved, thus allowing a cluster to simultaneously be both a source and a target to several other clusters. For details, see [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
+Some of these topologies might become naturally available as soon as [Broadcast](#broadcast) and [Consolidation](#consolidation) use cases are resolved, thus allowing a universe to simultaneously be both a source and a target to several other universes. For details, see [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
 
 ## Features and limitations
 
@@ -70,10 +70,10 @@ A number of features and limitations are worth noting.
 
 ### Features
 
-- The target cluster has at-least-once semantics. This means every update on the source is eventually replicated to the target.
+- The target universe has at-least-once semantics. This means every update on the source is eventually replicated to the target.
 - Updates are timeline-consistent. That is, the target data center receives updates for a row in the same order in which they occurred on the source.
 - Multi-shard transactions are supported, but with relaxed atomicity and global ordering semantics, as per [Limitations](#limitations).
-- For active-active deployments, there could be updates to the same rows, on both clusters. Underneath, a last-writer-wins conflict resolution semantic could be used. The deciding factor is the underlying hybrid time of the updates, from each cluster.
+- For active-active deployments, there could be updates to the same rows, on both universes. Underneath, a last-writer-wins conflict resolution semantic could be used. The deciding factor is the underlying hybrid time of the updates, from each universe.
 
 ### Impact on application design
 
@@ -96,27 +96,27 @@ There is a number of limitations in the current xCluster implementation.
 
 This is tracked in [#10976](https://github.com/yugabyte/yugabyte-db/issues/10976).
 
-#### Bootstrapping target clusters
+#### Bootstrapping target universes
 
-- Currently, it is your responsibility to ensure that a target cluster has sufficiently recent updates, so that replication can safely resume. In the future, bootstrapping the target cluster will be automated, which is tracked in [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
-- Bootstrap currently relies on the underlying backup and restore (BAR) mechanism of YugabyteDB. This means it also inherits all of the limitations of BAR. For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level. This implies that when bootstrapping a target cluster, you automatically bring any tables from source database to the target database, even the ones on which you might not plan to actually configure replication. This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
+- Currently, it is your responsibility to ensure that a target universe has sufficiently recent updates, so that replication can safely resume. In the future, bootstrapping the target universe will be automated, which is tracked in [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
+- Bootstrap currently relies on the underlying backup and restore (BAR) mechanism of YugabyteDB. This means it also inherits all of the limitations of BAR. For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level. This implies that when bootstrapping a target universe, you automatically bring any tables from source database to the target database, even the ones on which you might not plan to actually configure replication. This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
 
 #### DDL changes
 
-- Currently, DDL changes are not automatically replicated. Applying commands such as `CREATE TABLE`, `ALTER TABLE`, `CREATE INDEX` to the target clusters is your responsibility.
+- Currently, DDL changes are not automatically replicated. Applying commands such as `CREATE TABLE`, `ALTER TABLE`, and `CREATE INDEX` to the target universes is your responsibility.
 - `DROP TABLE` is not supported. You must first disable replication for this table.
 - `TRUNCATE TABLE` is not supported. This is an underlying limitation, due to the level at which the two features operate. That is, replication is implemented on top of the Raft WAL files, while truncate is implemented on top of the RocksDB SST files.
-- In the future, it will be possible to propagate DDL changes safely to other clusters. This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
+- In the future, it will be possible to propagate DDL changes safely to other universes. This is tracked in [#11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
 
 #### Safety of DDL and DML in active-active
 
-- Currently, certain potentially unsafe combinations of DDL and DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe because a violation could be introduced by inserting different values on the two clusters, since each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint and cause the two clusters to permanently diverge and the replication to fail.
+- Currently, certain potentially unsafe combinations of DDL and DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe because a violation could be introduced by inserting different values on the two universes, since each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint and cause the two universes to permanently diverge and the replication to fail.
 - In the future, it will be possible to detect such unsafe combinations and issue a warning, potentially by default. This is tracked in [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
 
 #### Kubernetes
 
 - Technically, replication can be set up with Kubernetes-deployed universes. However, the source and target must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster or that two Kubernetes clusters must have DNS and routing properly setup amongst themselves.
-- Being able to have two YugabyteDB clusters, each in their own standalone Kubernetes cluster, communicating with each other via a LoadBalancer, is not currently supported, as per [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
+- Being able to have two YugabyteDB universes, each in their own standalone Kubernetes cluster, communicating with each other via a load balancer, is not currently supported, as per [#2422](https://github.com/yugabyte/yugabyte-db/issues/2422).
 
 ### Cross-feature interactions
 
@@ -125,8 +125,8 @@ A number of interactions across features is supported.
 #### Supported
 
 - TLS is supported for both client and internal RPC traffic. Universes can also be configured with different certificates.
-- RPC compression is supported. Note that both clusters must be on a version that supports compression, before a compression algorithm is enabled.
-- Encryption at rest is supported. Note that the clusters can technically use different Key Management Service (KMS) configurations. However, for bootstrapping a target cluster, the reliance is on the backup and restore flow. As such, a limitation from that is inherited, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the target must have access to the same KMS configurations.
+- RPC compression is supported. Note that both universes must be on a version that supports compression, before a compression algorithm is enabled.
+- Encryption at rest is supported. Note that the universes can technically use different Key Management Service (KMS) configurations. However, for bootstrapping a target universe, the reliance is on the backup and restore flow. As such, a limitation from that is inherited, which requires that the universe being restored has at least access to the same KMS as the one in which the backup was taken. This means both the source and the target must have access to the same KMS configurations.
 - YSQL colocation is supported.
 - YSQL geo-partitioning is supported. Note that you must configure replication on all new partitions manually, as DDL changes are not replicated automatically.
 
@@ -142,13 +142,13 @@ A number of interactions across features is supported.
 
 ### Atomicity of transactions
 
-This implies one can never read a partial result of a transaction on the sink cluster.
+This implies one can never read a partial result of a transaction on the sink universe.
 
 -->
 
 ### Not globally ordered
 
-Transactions on non-overlapping rows may be applied in a different order on the target cluster, than they were on the source cluster.
+Transactions on non-overlapping rows may be applied in a different order on the target universe, than they were on the source universe.
 
 ### Last writer wins
 

@@ -19,7 +19,7 @@ The write path of a transaction is used for modifying multiple keys and the read
 
 ## Write path
 
-The write path can be demonstrated through the lifecycle of a single distributed write-only transaction. Suppose it is required to modify rows with keys `k1` and `k2`. If they belong to the same tablet, we could the transaction can be executed as a [single-shard transaction](../../core-functions/write-path/), in which case atomicity would be ensured by the fact that both updates would be replicated as part of the same Raft log record. However, in the most general case, these keys would belong to different tablets, and that is the working assumption.
+The write path can be demonstrated through the lifecycle of a single distributed write-only transaction. Suppose it is required to modify rows with keys `k1` and `k2`. If they belong to the same tablet, the transaction can be executed as a [single-shard transaction](../../core-functions/write-path/), in which case atomicity would be ensured by the fact that both updates would be replicated as part of the same Raft log record. However, in the most general case, these keys would belong to different tablets, and that is the working assumption.
 
 The following diagram depicts the high-level steps of a distributed write-only transaction, not including
 any conflict resolution:
@@ -45,7 +45,7 @@ A transaction ID is assigned and a transaction status tablet is selected to keep
 
 - Status that can be pending, committed, or aborted.
 - Commit hybrid timestamp, if committed.
-- List of ids of participating tablets, if committed.
+- List of IDs of participating tablets, if committed.
 
 It makes sense to select a transaction status tablet in a way such that the transaction manager's tablet server is also the leader of its Raft group, because this allows to cut the RPC latency on querying and updating the transaction status. But in the most general case, the transaction status tablet might not be hosted on the same tablet server that initiates the transaction.
 
@@ -68,7 +68,7 @@ The YQL engine sends the response back to the client. If any client (either the 
 
 ### Asynchronously apply and clean up provisional records
 
-This step is coordinated by the transaction status tablet after it receives the commit message for our transaction and successfully replicates a change to the transaction's status in its Raft group. The transaction status tablet already knows what tablets are participating in this transaction, so it sends cleanup requests to them. Each participating tablet records a special "apply" record into its Raft log, containing the transaction ID and commit timestamp. When this record is Raft-replicated in the participating tablet, the tablet remove the provisional records belonging to the transaction, and writes regular records with the correct commit timestamp to its RocksDB databases. These records are virtually indistinguishable from those written by regular single-row operations.
+This step is coordinated by the transaction status tablet after it receives the commit message for our transaction and successfully replicates a change to the transaction's status in its Raft group. The transaction status tablet already knows what tablets are participating in this transaction, so it sends cleanup requests to them. Each participating tablet records a special "apply" record into its Raft log, containing the transaction ID and commit timestamp. When this record is Raft-replicated in the participating tablet, the tablet removes the provisional records belonging to the transaction, and writes regular records with the correct commit timestamp to its RocksDB databases. These records are virtually indistinguishable from those written by regular single-row operations.
 
 Once all participating tablets have successfully processed these apply requests, the status tablet can delete the transaction status record because all replicas of participating tablets that have not yet cleaned up provisional records (for example, slow followers) will do so based on information available locally within those tablets. The deletion of the status record happens by writing a special "applied everywhere" entry to the Raft log of the status tablet. Raft log entries belonging to this transaction will be cleaned up from the status tablet's Raft log as part of regular garbage-collection of old Raft logs soon after this point.
 
@@ -78,9 +78,9 @@ YugabyteDB is a multiversion concurrency control (MVCC) database, which means it
 
 As described in [Single-row transactions](../single-row-transactions/), up-to-date reads are performed from a single tablet (shard), with the most recent value of a key being the value written by the last committed Raft log record known to the Raft leader. For reading multiple keys from different tablets, though, it must be ensured that the values read come from a recent consistent snapshot of the database. The following clarifies these properties of the selected snapshot:
 
-- Consistent snapshot: The snapshot must show any transaction's records fully, or not show them at all. It cannot contain half of the values written by a transaction and omit the other half. The snapshot is consistency is ensured by performing all reads at a particular hybrid time (`ht_read`), and ignoring any records with later hybrid time.
+- Consistent snapshot: The snapshot must show any transaction's records fully, or not show them at all. It cannot contain half of the values written by a transaction and omit the other half. The snapshot consistency is ensured by performing all reads at a particular hybrid time (`ht_read`), and ignoring any records with later hybrid time.
 
-- Recent snapshot: The snapshot includes any value that any client might have already seen, which means all values that were written or read before this read operation was initiated. This also includes all previously written values that other components of the client application might have written to or read from the database. The client performing the current read might rely on presence of those values in the result set because those other components of the client application might have communicated this data to the current client through asynchronous communication channels. To ensure the snapshot is recent, the read operation needs to be restarted when it is determined that the chosen hybrid time was too early, that is, there are some records that could have been written before the read operation was initiated but have a hybrid time later than the currently set `ht_read`.
+- Recent snapshot: The snapshot includes any value that any client might have already seen, which means all values that were written or read before this read operation was initiated. This also includes all previously written values that other components of the client application might have written to or read from the database. The client performing the current read might rely on the presence of those values in the result set because those other components of the client application might have communicated this data to the current client through asynchronous communication channels. To ensure the snapshot is recent, the read operation needs to be restarted when it is determined that the chosen hybrid time was too early, that is, there are some records that could have been written before the read operation was initiated but have a hybrid time later than the currently set `ht_read`.
 
 The following diagram depicts the process:
 
@@ -106,7 +106,7 @@ To prevent an infinite loop of these read restarts, a tablet-dependent hybrid ti
 
 ### Tablets query the transaction status
 
-As each participating tablet reads from its local DocDB, it might encounter provisional records for which it does not yet know the final transaction status and commit time. In these cases, it would send a transaction status request to the transaction status tablet. If a transaction is committed, it is treated as if DocDB already contained permanent records with hybrid time equal to the transaction's commit time. The [cleanup](../transactional-io-path/asynchronously-apply-and-clean-up-provisional-records) of provisional records happens independently and asynchronously.
+As each participating tablet reads from its local DocDB, it might encounter provisional records for which it does not yet know the final transaction status and commit time. In these cases, it would send a transaction status request to the transaction status tablet. If a transaction is committed, it is treated as if DocDB already contained permanent records with hybrid time equal to the transaction's commit time. The [cleanup](#asynchronously-apply-and-clean-up-provisional-records) of provisional records happens independently and asynchronously.
 
 ### Tablets respond to YQL
 

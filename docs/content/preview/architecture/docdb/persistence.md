@@ -34,14 +34,11 @@ The values in a DocDB document data model can be of the following types:
 * Primitive types, such as int32, int64, double, text, timestamp, and so on.
 * Non-primitive types (sorted maps), where objects map scalar keys to values that could be either scalar or sorted maps.
 
-This model allows multiple levels of nesting and corresponds to a JSON-like format. Other data structures such as lists, sorted sets, and so on are implemented using DocDB’s object type with special key
-encodings. In DocDB, [hybrid timestamps](../../transactions/distributed-txns/) of each update are recorded carefully, making it possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
+This model allows multiple levels of nesting and corresponds to a JSON-like format. Other data structures such as lists, sorted sets, and so on are implemented using DocDB’s object type with special key encodings. In DocDB, [hybrid timestamps](../../transactions/distributed-txns/) of each update are recorded carefully, making it possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
 
 #### Encoding documents
 
-The documents are stored using a key-value store based on RocksDB, which is typeless. The documents
-are converted to multiple key-value pairs along with timestamps. Because documents are spread across
-many different key-values, it is possible to partially modify them without incurring overhead.
+The documents are stored using a key-value store based on RocksDB, which is typeless. The documents are converted to multiple key-value pairs along with timestamps. Because documents are spread across many different key-values, it is possible to partially modify them without incurring overhead.
 
 The following example shows a document stored in DocDB:
 
@@ -56,7 +53,7 @@ DocumentKey1 = {
 ```
 
 Keys stored in RocksDB consist of a number of components, where the first component is a document
-key, followed by several scalar components, and finally followed by a MVCC timestamp (sorted in reverse order). Each component in the DocumentKey, SubKey, and Value, are PrimitiveValues, which are type-value pairs that can be encoded to and decoded from strings. When encoding primitive values in keys, a binary-comparable encoding is used for the value, so that sort order of the encoding is the same as the sort order of the value.
+key, followed by several scalar components, and finally followed by a MVCC timestamp (sorted in reverse order). Each component in the DocumentKey, SubKey, and Value, are PrimitiveValues, which are type value pairs that can be encoded to and decoded from strings. When encoding primitive values in keys, a binary-comparable encoding is used for the value, so that sort order of the encoding is the same as the sort order of the value.
 
 #### Updates and deletes
 
@@ -271,7 +268,9 @@ T2: UPDATE page_views
 The entries in DocDB should look similar to the following:
 
 <pre>
-<code>(hash1, 'abc.com'), liveness_column_id, T1 -> (TTL = 86400) [NULL]
+<code>
+(hash1, 'abc.com'), liveness_column_id, T1 -> (TTL = 86400) [NULL]
 (hash1, 'abc.com'), views_column_id, T1 -> (TTL = 86400) 10
-<b>(hash1, 'abc.com'), category_column_id, T2 -> (TTL = 3600) 'news'</b></code>
+<b>(hash1, 'abc.com'), category_column_id, T2 -> (TTL = 3600) 'news'</b>
+</code>
 </pre>

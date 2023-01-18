@@ -1,5 +1,5 @@
 ---
-title: Distribute transactions
+title: Distributed transactions
 headerTitle: Distributed transactions
 linkTitle: Distributed transactions
 description: Distributed ACID transactions modify multiple rows spread across multiple shards.

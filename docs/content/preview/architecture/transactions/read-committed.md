@@ -31,7 +31,7 @@ In addition to the two key requirements, there is an extra YSQL-specific require
 
 * A client starts a distributed transaction by connecting to YSQL on a node `N1` in the YugabyteDB cluster and issuing a statement which reads data from multiple shards on different physical YB-TServers in the cluster. For this issued statement, the read point which defines the snapshot of the database at which the data will be read, is picked on a YB-TServer node `M` based on the current time of that YB-TServer. Depending on the scenario, node `M` could be the same as `N1` or not, but that is not relevant to this discussion. Consider `T1` to be the chosen read time.
 * The node `N1` might collect data from many shards on different physical YB-TServers. In this pursuit, it will issue requests to many other nodes to read data.
-* Assuming that node `N1` reads from node `N2`, it could be the case that there exists some data written on node `N2` at time `T2` (> `T1`) but had been written before the read was issued. This can happen because of clock skew where the physical clock on node `N2` might be running slightly ahead of node `M,` and hence the write which was actually done in the past, still has a timestamp higher than `T1`.
+* Assuming that node `N1` reads from node `N2`, it could be the case that there exists some data written on node `N2` at time `T2` (> `T1`) but had been written before the read was issued. This can happen because of clock skew where the physical clock on node `N2` might be running slightly ahead of node `M`, and hence the write which was actually done in the past, still has a timestamp higher than `T1`.
 
   Note that the clock skew between all nodes in the cluster is always in a [`max_clock_skew`](/preview/reference/configuration/yb-tserver/#max-clock-skew-usec) bound due to clock synchronization algorithms.
 * For writes at some time later than `T1` + `max_clock_skew`, the database can be sure that they were done after the read timestamp was chosen on any node. But for writes at a time between `T1` and `T1` + `max_clock_skew`, node `N2` can find itself in an ambiguous situation such as the following:
@@ -40,7 +40,7 @@ In addition to the two key requirements, there is an extra YSQL-specific require
 
   * It should not return the data if the write was actually performed in the future, that is, after the read point (also known as snapshot) was chosen.
 
-* If node `N2` finds writes in the range `(T1, T1+max_clock_skew]`, to avoid breaking the strong guarantee of a reader should always be able to read what was committed earlier, node `N2` avoids giving incorrect results and raises a `Read restart` error.
+* If node `N2` finds writes in the range `(T1, T1+max_clock_skew]`, to avoid breaking the strong guarantee that a reader should always be able to read what was committed earlier, node `N2` avoids giving incorrect results and raises a `Read restart` error.
 
 Some distributed databases handle this uncertainty due to clock skew by using algorithms to maintain a tight bound on the clock skew, and then taking the conservative approach of waiting out the clock skew before acknowledging the commit request from the client for each transaction that writes data. YugabyteDB instead uses various mechanisms internally to reduce the scope of this ambiguity, and if there is still ambiguity in rare scenarios, the error is surfaced to the client.
 
@@ -60,9 +60,9 @@ To handle serialization errors in the database without surfacing them to the cli
 
 Note that two transactions are `concurrent` if their `read time` to `commit time` ranges overlap. If a transaction has not yet committed, the closing range is the current time. Also, for read committed isolation, there is a `read time` for each statement, and not one for the whole transaction.
 
-##### Recheck steps
+##### Validation steps
 
-The recheck steps are as follows:
+The validation steps are as follows:
 
 1. Read the latest version of the conflicting row and lock it appropriately. The latest version could have a different primary key as well. PostgreSQL finds it by following the chain of updates for a row even across primary key changes. Note that locking is necessary so that another conflict isn't seen on this row while re-evaluating the row again and possibly updating/acquiring a lock on it in step 3. If the locking faces a conflict, it would wait and resume traversing the chain further once unblocked.
 1. If the updated version of a row is deleted, ignore it.

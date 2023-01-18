@@ -19,7 +19,7 @@ Note that all update operations inside DocDB are considered to be transactions, 
 
 ## Time synchronization
 
-A transaction in a YugabyteDB cluster may need to update multiple rows that span across nodes in a cluster. In order to be ACID-compliant, the various updates made by this transaction should be visible instantaneously as of a fixed time, irrespective of the node in the cluster that reads the update. To achieve this, the nodes of the cluster must agree on a global notion of time, which requires all nodes to have access to a highly-available and globally-synchronized clock. [TrueTime](https://cloud.google.com/spanner/docs/true-time-external-consistency), used by Google Cloud Spanner, is an example of such a clock with tight error bounds. However, this type of clocks are not available in many deployments. Physical time clocks (or wall clocks) cannot be perfectly synchronized across nodes and cannot order events with the purpose to establish a causal relationship across nodes.
+A transaction in a YugabyteDB cluster may need to update multiple rows that span across nodes in a cluster. In order to be ACID-compliant, the various updates made by this transaction should be visible instantaneously as of a fixed time, irrespective of the node in the cluster that reads the update. To achieve this, the nodes of the cluster must agree on a global notion of time, which requires all nodes to have access to a highly-available and globally-synchronized clock. [TrueTime](https://cloud.google.com/spanner/docs/true-time-external-consistency), used by Google Cloud Spanner, is an example of such a clock with tight error bounds. However, this type of clock is not available in many deployments. Physical time clocks (or wall clocks) cannot be perfectly synchronized across nodes and cannot order events with the purpose to establish a causal relationship across nodes.
 
 ### Hybrid logical clocks
 
@@ -33,7 +33,7 @@ Each node in a YugabyteDB cluster first computes its HLC represented as a tuple 
 
 On any RPC communication between two nodes, HLC values are exchanged. The node with the lower HLC updates its HLC to the higher value. If the physical time on a node exceeds the physical time component of its HLC, the latter is updated to the physical time and the logical component is set to 0. Thus, HLCs on a node are monotonically increasing.
 
-The same HLC is used to determine the read point in order to determine which updates should be visible to end clients. If an update has safely been replicated onto a majority of nodes, as per the Raft protocol, that update operation can be acknowledged as successful to the client and it is safe to serve all reads up to that HLC. This forms the foundation for [lockless multiversion concurrency control in YugabyteDB](#mvcc).
+The same HLC is used to determine the read point in order to determine which updates should be visible to end clients. If an update has safely been replicated onto a majority of nodes, as per the Raft protocol, that update operation can be acknowledged as successful to the client and it is safe to serve all reads up to that HLC. This forms the foundation for [lockless multiversion concurrency control in YugabyteDB](#multi-version-concurrency-control).
 
 ## Multi-version concurrency control
 
@@ -62,7 +62,7 @@ For more information, see [isolation levels in YugabyteDB](../isolation-levels).
 
 ### Explicit locking
 
-As with PostgreSQL, YugabyteDB provides various row-level lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in cases where MVCC does not provide the desired behavior. Read more about [explicit locking in YugabyteDB](../../../explore/transactions/explicit-locking)
+As with PostgreSQL, YugabyteDB provides various row-level lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in cases where MVCC does not provide the desired behavior. For more information, see [Explicit locking in YugabyteDB](../../../explore/transactions/explicit-locking).
 
 ## Transactions execution path
 
@@ -74,7 +74,7 @@ The transaction manager of YugabyteDB automatically detects transactions that up
 
 Because single-row transactions do not have to update the transaction status table, their performance is much higher than [distributed transactions](#distributed-transactions).
 
-`INSERT`, `UPDATE`, and `DELETE` single-row SQL statements that map to single row transactions.
+`INSERT`, `UPDATE`, and `DELETE` single-row SQL statements map to single row transactions.
 
 #### INSERT statements
 
@@ -112,4 +112,4 @@ DELETE FROM table WHERE <all_primary_key_values_are_specified>;
 
 ### Distributed transactions
 
- A transaction that impacts a set of rows distributed across multiple tablets (which would be hosted on different nodes in the most general case) use a so-called distributed transactions path to execute transactions. Implementing distributed transactions in YugabyteDB requires the use of a transaction manager that can coordinate various operations included in the transaction and finally commit or abort the transaction as needed. For more information, see [Distributed transactions I/O path](../transactional-io-path).
+A transaction that impacts a set of rows distributed across multiple tablets (which would be hosted on different nodes in the most general case) use a so-called distributed transactions path to execute transactions. Implementing distributed transactions in YugabyteDB requires the use of a transaction manager that can coordinate various operations included in the transaction and finally commit or abort the transaction as needed. For more information, see [Distributed transactions I/O path](../transactional-io-path).

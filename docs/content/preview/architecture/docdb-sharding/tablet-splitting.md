@@ -11,9 +11,11 @@ menu:
 type: docs
 ---
 
-Tablet splitting is the resharding of data in the cluster by presplitting tables before data is added or by changing the number of tablets at runtime. Currently, there are three mechanisms for tablet splitting in YugabyteDB clusters.
+## Overview
 
-## Range scans
+Tablet splitting is the resharding of data in the universe by presplitting tables before data is added or by changing the number of tablets at runtime. Currently, there are [three mechanisms for tablet splitting](#approaches-to-tablet-splitting) in YugabyteDB universes.
+
+### Range scans
 
 When there is a need to scan a range of data, the data is stored in the natural sort order (also known as range-sharding). In such cases, it is often impossible to predict a good split boundary ahead of time. Consider the following example:
 
@@ -25,15 +27,15 @@ CREATE TABLE census_stats (
     );
 ```
 
-In the preceding example, picking a good split point ahead of time is difficult. The database cannot infer the range of values for `age` (typically in the `1` to `100` range) in the table. And the distribution of rows in the table (that is, how many `user_id` rows will be inserted for each value of `age` to make an evenly distributed data split) is impossible to predict.
+In this example, picking a split point ahead of time is difficult. The database cannot infer the range of values for `age` (typically in the `1` to `100` range) in the table. And the distribution of rows in the table (that is, how many `user_id` rows will be inserted for each value of `age` to make an evenly distributed data split) is impossible to predict.
 
-## Low-cardinality primary keys
+### Low-cardinality primary keys
 
 In use cases with a low cardinality of the primary keys or the secondary index, hashing is not effective. For example, if a table where the primary key or index is the column `gender`, with only two values (`Male` or `Female`), hash sharding would not be effective. Using the entire cluster of machines to maximize serving throughput, however, is important.
 
-## Small tables that become very large
+### Small tables that become very large
 
-Some tables start off small, with only a few shards. If these tables grow very large, the nodes are continuously added to the cluster. It is possible that the number of nodes exceeds the number of tablets. To effectively rebalance the cluster, tablet splitting is required.
+Some tables start off small, with only a few shards. If these tables grow very large, the nodes are continuously added to the universe. It is possible that the number of nodes exceeds the number of tablets. To effectively rebalance the cluster, tablet splitting is required.
 
 ## Approaches to tablet splitting
 
@@ -45,7 +47,7 @@ DocDB allows data resharding by splitting tablets using the following three mech
 
 * [Automatic tablet splitting](#automatic-tablet-splitting): The tablets in a running cluster are automatically split according to some policy by the database.
 
-## Presplitting tablets
+### Presplitting tablets
 
 At creation time, you can presplit a table into the desired number of tablets. YugabyteDB supports presplitting tablets for both range-sharded and hash-sharded YSQL tables, as well as hash-sharded YCQL tables. The number of tablets can be specified in one of the following two ways:
 
@@ -56,7 +58,7 @@ At creation time, you can presplit a table into the desired number of tablets. Y
 
 To presplit a table into a desired number of tablets, you need the start key and end key for each tablet. This makes presplitting slightly different for hash-sharded and range-sharded tables.
 
-### Hash-sharded tables
+#### Hash-sharded tables
 
 Because hash sharding works by applying a hash function on all or a subset of the primary key columns, the byte space of the hash sharded keys is known ahead of time. For example, if you use a 2-byte hash, the byte space would be `[0x0000, 0xFFFF]`, as per the following illustration:
 
@@ -90,7 +92,7 @@ For information on the relevant YCQL API, see the following:
 
 * [CREATE TABLE ... WITH tablets](../../../api/ycql/ddl_create_table/#table-properties) and the example, [Create a table specifying the number of tablets](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets).
 
-### Range-sharded tables
+#### Range-sharded tables
 
 In range-sharded YSQL tables, the start and end key for each tablet is not immediately known since this depends on the column type and the intended usage. For example, if the primary key is a `percentage NUMBER` column where the range of values is in the `[0, 100]` range, presplitting on the entire `NUMBER` space would not be effective.
 
@@ -115,13 +117,13 @@ CREATE TABLE customers (
 
 For information on the relevant YSQL API, see [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-at-values) for use with range-sharded tables.
 
-## Manual tablet splitting
+### Manual tablet splitting
 
 Suppose there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually.
 
 Note that misuse or overuse of manual tablet splitting (for example, splitting tablets which get less traffic) may result in creation of a large number of tablets of different sizes and traffic rates. This cannot be easily remedied, as tablet merging is not currently supported.
 
-### Create a sample YSQL table
+#### Create a sample YSQL table
 
 1. Create a three-node local cluster, as follows:
 
@@ -156,7 +158,7 @@ Note that misuse or overuse of manual tablet splitting (for example, splitting t
     (1 row)
     ```
 
-### Verify the table has one tablet
+#### Verify the table has one tablet
 
 In order to verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command:
 
@@ -173,7 +175,7 @@ Tablet UUID                       Range                         Leader
 
 Note the tablet UUID for later use.
 
-### Manually split the tablet
+#### Manually split the tablet
 
 The tablet of this table can be manually split into two tablets by running the following [`yb-admin split_tablet`](../../../admin/yb-admin/#split-tablet) command:
 
@@ -195,13 +197,13 @@ The original tablet `9991368c4b85456988303cd65a3c6503` no longer exists; it has 
 
 The tablet leaders are now spread across two nodes in order to evenly balance the tablets for the table across the nodes of the cluster.
 
-## Automatic tablet splitting
+### Automatic tablet splitting
 
 Automatic tablet splitting enables resharding of data in a cluster automatically while online, as well as transparently, when a specified size threshold has been reached.
 
 For details on the architecture design, see [Automatic resharding of data with tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md).
 
-### Enable automatic tablet splitting
+#### Enable automatic tablet splitting
 
 To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split.
 
@@ -209,19 +211,19 @@ When automatic tablet splitting is enabled, newly-created tables have one shard 
 
 Automatic tablet splitting happens in three phases, determined by the shard count per node. As the shard count increases, the threshold size for splitting a tablet also increases, as follows:
 
-#### Low phase
+##### Low phase
 
 In the low phase, each node has fewer than [`tablet_split_low_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards (8 by default). In this phase, YugabyteDB splits tablets larger than [`tablet_split_low_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes) (512 MB by default).
 
-#### High phase
+##### High phase
 
 In the high phase, each node has fewer than [`tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-high-phase-shard-count-per-node) shards (24 by default). In this phase, YugabyteDB splits tablets larger than [`tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-high-phase-size-threshold-bytes) (10 GB by default).
 
-#### Final phase
+##### Final phase
 
 Once the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GB by default). This will continue until the [`tablet_split_limit_per_table`](../../../reference/configuration/yb-master/#tablet-split-limit-per-table) tablets per table limit is reached (256 tablets by default; if set to 0, there will be no limit).
 
-### Post-split compactions
+#### Post-split compactions
 
 Once a split has been executed on a tablet, the two resulting tablets require a full compaction in order to remove unnecessary data from each. These post-split compactions can significantly increase CPU and disk usage and thus impact performance. To limit the impact, the number of simultaneous tablet splits allowed is conservative by default.
 
@@ -235,7 +237,7 @@ In the event that performance suffers due to automatic tablet splitting, the fol
   - `post_split_trigger_compaction_pool_max_queue_size` indicates the number of outstanding post-split compaction tasks that can be queued at once per node, limited to 16 by default.
   - `automatic_compaction_extra_priority` provides additional compaction priorities to [smaller compactions](../../concepts/yb-tserver/#small-and-large-compaction-queues) when automatic tablet splitting is enabled. This prevents smaller compactions from being starved for resources by the larger post-split compactions. This is set to 50 by default (the maximum recommended), and can be reduced to 0.
 
-### YCSB workload with automatic tablet splitting example
+#### YCSB workload with automatic tablet splitting example
 
 In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database:
 

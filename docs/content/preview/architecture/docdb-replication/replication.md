@@ -40,9 +40,9 @@ The fault tolerance (FT) of a YugabyteDB universe is the maximum number of node 
 
 YugabyteDB replicates data across nodes (or fault domains) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB universe. FT and RF are correlated. To achieve a FT of `k` nodes, the universe has to be configured with a RF of (2k + 1).
 
-## Tablet-peers
+## Tablet peers
 
-Replication of data in DocDB is achieved at the level of tablets, using so called tablet-peers, with each table is sharded into a set of tablets, as demonstrated in the following diagram:
+Replication of data in DocDB is achieved at the level of tablets, using tablet peers, with each table sharded into a set of tablets, as demonstrated in the following diagram:
 
 <img src="/images/architecture/replication/tablets_in_a_docsb_table.png" style="max-width:750px;"/>
 
@@ -58,7 +58,7 @@ As soon as a tablet initiates, it elects one of the tablet peers as the tablet l
 
 The set of DocDB updates depends on the user-issued write, and involves locking a set of keys to establish a strict update order, and optionally reading the older value to modify and update in case of a read-modify-write operation. The Raft log is used to ensure that the database state-machine of a tablet is replicated amongst the tablet peers with strict ordering and correctness guarantees even in the face of failures or membership changes. This is essential to achieving strong consistency.
 
-Once the Raft log is replicated to a majority of tablet-peers and successfully persisted on the majority, the write is applied into DocDB document storage layer and is subsequently available for reads. Once the write is persisted on disk by the document storage layer, the write entries can be purged from the Raft log. This is performed as a controlled background operation without any impact to the foreground operations.
+Once the Raft log is replicated to a majority of tablet-peers and successfully persisted on the majority, the write is applied into the DocDB document storage layer and is subsequently available for reads. Once the write is persisted on disk by the document storage layer, the write entries can be purged from the Raft log. This is performed as a controlled background operation without any impact to the foreground operations.
 
 ## Replication in a cluster
 

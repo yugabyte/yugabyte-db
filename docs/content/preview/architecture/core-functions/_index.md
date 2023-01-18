@@ -22,7 +22,7 @@ type: indexpage
         <div class="title">Universe creation</div>
       </div>
       <div class="body">
-        Overview of the YugabyteDB universe creation.
+        Overview of YugabyteDB universe creation.
       </div>
     </a>
   </div>
@@ -34,7 +34,7 @@ type: indexpage
         <div class="title">Table creation</div>
       </div>
       <div class="body">
-        Overview of a table creation within a YugabyteDB universe,
+        Overview of a table creation within a YugabyteDB universe.
       </div>
     </a>
   </div>

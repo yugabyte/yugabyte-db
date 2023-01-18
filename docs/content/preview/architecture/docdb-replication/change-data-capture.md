@@ -76,10 +76,10 @@ The following diagram depicts the CDC process architecture:
 '-------------------------------------------'    '-------------------------------------------'
 ```
 
-Every YB-TServer has a `CDC service` that is stateless. The main APIs provided by the CDC service are following:
+Every YB-TServer has a `CDC service` that is stateless. The main APIs provided by the CDC service are the following:
 
 * `createCDCSDKStream` API for creating the stream on the database.
-* `getChangesCDCSDK` API that can be use by the client to get the latest set of changes.
+* `getChangesCDCSDK` API that can be used by the client to get the latest set of changes.
 
 ### CDC streams
 

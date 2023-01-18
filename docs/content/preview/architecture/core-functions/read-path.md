@@ -17,9 +17,9 @@ The read I/O path can be illustrated by an example of a single key read that inv
 
 ## Tablet leader identification
 
-The user-issued read request interacts with the YQL query layer via a port with the appropriate API (either YSQL or YCQL). This user request is translated by the YQL layer into an internal key, allowing the YQL layer to find the tablet and the YB-TServers hosting it. The YQL layer perfroms this by making an RPC call to the YB-Master. The response is cached for future uses. Next, the YQL layer issues the read to the YB-TServer that hosts the leader tablet-peer. The read is handled by the leader of the Raft group of the tablet owning the internal key. The leader of the tablet Raft group which handles the read request reads from its DocDB and returns the result to the user.
+The user-issued read request interacts with the YQL query layer via a port with the appropriate API (either YSQL or YCQL). This user request is translated by the YQL layer into an internal key, allowing the YQL layer to find the tablet and the YB-TServers hosting it. The YQL layer performs this by making an RPC call to the YB-Master. The response is cached for future uses. Next, the YQL layer issues the read to the YB-TServer that hosts the leader tablet peer. The read is handled by the leader of the Raft group of the tablet owning the internal key. The leader of the tablet Raft group which handles the read request reads from its DocDB and returns the result to the user.
 
-As described in [Write I/O path](../write-path/#step-1-identify-tablet-leader), the YugabyteDB smart client can route the application requests directly to the correct YB-TServer avoiding any extra network hops or master lookups.
+As described in [Write I/O path](../write-path/#step-1-identify-tablet-leader), the YugabyteDB smart client can route the application requests directly to the correct YB-TServer, avoiding any extra network hops or master lookups.
 
 ## Read operation performed by tablet leader
 

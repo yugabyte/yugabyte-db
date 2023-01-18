@@ -31,7 +31,7 @@ An application can send write requests to read replicas, but these write request
 
 ## Schema changes
 
-Since read replicas are a Raft replication-level extension, the schema changes are transparently apply to these replicas. There is no need to execute DDL operations separately on the read replica cluster.
+Since read replicas are a Raft replication-level extension, the schema changes are transparently applied to these replicas. There is no need to execute DDL operations separately on the read replica cluster.
 
 ## Read replicas vs. eventual consistency
 

@@ -17,46 +17,46 @@ YugabyteDB was created to achieve a number of design goals.
 
 ## Consistency
 
-YugabyteDB supports distributed transactions while offering consistency guarantees in the face of potential failures. 
+YugabyteDB supports distributed transactions while offering strong consistency guarantees in the face of potential failures. 
 
-### CAP theorem and split-brain
-
-In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugabyteDB is a CP database (consistent and partition-tolerant), yet it also achieves very high availability. The architectural design of YugabyteDB is similar to Google Cloud Spanner, which is also a CP system. The description of [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is applicable to YugabyteDB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugabyteDB is an insignificant contributor to its downtime, then users are correct to not worry about it.
-
-Split-brain is a computing scenario in which data and availability inconsistencies arise when a distributed system incurs a network partition. For YugabyteDB, when a network partition occurs, the remaining (majority for write acknowledgement purposes) RAFT group peers elect a new tablet leader. YugabyteDB implements _leader leases_, which ensures that a single tablet leader exists throughout the entire distributed system including when network partitions occur. Leader leases have a default value of two seconds, and can be configured to use a different value. This architecture ensures that YugabyteDB's distributed database is not susceptible to the split-brain condition.
-
-### Single-row linearizability
-
-YugabyteDB supports single-row linearizable writes. Linearizability is one of the strongest single-row consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single row:
-
-- Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
-- If operation A completes before operation B begins, then B should logically take effect after A.
-
-### Multi-row ACID transactions
-
-YugabyteDB supports multi-row transactions with three isolation levels: `Serializable`, `Snapshot` (also known as repeatable read), and `Read Committed` isolation.
-
-- The [YSQL API](../../api/ysql/) supports `Serializable`, `Snapshot` (default<sup>1</sup>), and `Read Committed` isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively.
-- The [YCQL API](../../api/ycql/dml_transaction/) supports only `Snapshot Isolation` (default) using the `BEGIN TRANSACTION` syntax.
-
-<sup>1</sup> `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to `Read Committed` of YugabyteDB's transactional layer (that is, a statement sees all rows that are committed before it begins). However, by default `yb_enable_read_committed_isolation=false` and in this case `Read Committed` of YugabyteDB's transactional layer maps to `Snapshot Isolation`. Essentially this comes down to the fact that `Snapshot Isolation` is the default in YSQL. Note that `Read Committed` support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-{{< tip title="YSQL vs PostgreSQL isolation levels" >}}
-
-Refer to the [table of isolation levels](/preview/explore/transactions/isolation-levels/) to learn how YSQL isolation levels map to the levels defined by PostgreSQL.
-
-{{< /tip >}}
-
-For more information about consistency, see the following:
+For more information, see the following:
 
 - [Achieving consistency with Raft consensus](../docdb-replication/replication/)
 - [Fault tolerance and high availability](../core-functions/high-availability/)
 - [Single-row linearizable transactions in YugabyteDB](../transactions/single-row-transactions/)
 - [The architecture of distributed transactions](../transactions/distributed-txns/)
 
+### CAP theorem and split-brain
+
+In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugabyteDB is a consistent and partition-tolerant (CP) database that at the same time achieves very high availability. The architectural design of YugabyteDB is similar to Google Cloud Spanner, another CP system. The description of [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is also applicable to YugabyteDB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers sufficiently high availability that most users no longer have to be concerned about outages. For example, given that there are many sources of outages for an application, if YugabyteDB is an insignificant contributor to its downtime, then users are correct not to worry about it.
+
+Split-brain is a computing scenario in which data and availability inconsistencies arise when a distributed system incurs a network partition. For YugabyteDB, when a network partition occurs, the remaining (majority for write acknowledgement purposes) RAFT group peers elect a new tablet leader. YugabyteDB implements _leader leases_, which ensures that a single tablet leader exists throughout the entire distributed system including when network partitions occur. Leader leases have a default value of two seconds, and can be configured to use a different value. This architecture ensures that YugabyteDB's distributed database is not susceptible to the split-brain condition.
+
+### Single-row linearizability
+
+YugabyteDB supports single-row linearizable writes. Linearizability is one of the strongest single-row consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following is expected to be true of operations on a single row:
+
+- Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
+- If operation A completes before operation B begins, then B should logically take effect after A.
+
+### Multi-row ACID transactions
+
+YugabyteDB supports multi-row transactions with three isolation levels: Serializable, Snapshot (also known as repeatable read), and Read Committed isolation.
+
+- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [YSQL vs. PostgreSQL isolation levels](#ysql-vs-postgresql-isolation -levels).
+- The [YCQL API](../../api/ycql/dml_transaction/) supports only Snapshot isolation (default) using the `BEGIN TRANSACTION` syntax.
+
+#### YSQL vs. PostgreSQL isolation levels
+
+`READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (that is, a statement sees all rows that are committed before it begins). However, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot isolation, thus making Snapshot isolation default in YSQL. 
+
+Note that Read Committed support in YugabyteDB is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+Refer to the [table of isolation levels](/preview/explore/transactions/isolation-levels/) to learn how YSQL isolation levels map to the levels defined by PostgreSQL.
+
 ## Query APIs
 
-YugabyteDB does not reinvent data client APIs. The two supported APIs are YSQL and YCQL. They are compatible with existing APIs and extends their functionality.
+YugabyteDB does not reinvent data client APIs. The two supported APIs are YSQL and YCQL. They are compatible with existing APIs and extend their functionality.
 
 ### YSQL
 
@@ -87,7 +87,7 @@ For more information, see [The query layer overview](../query-layer/overview/).
 
 ## Performance
 
-Written in C++ to ensure high performance and the ability to use large memory heaps (RAM) as an internal database cache, YugabyteDB is optimized primarily to run on SSDs and NVMe drives. YugabyteDB is designed with the following workloads in mind:
+Written in C++ to ensure high performance and the ability to use large memory heaps (RAM) as an internal database cache, YugabyteDB is optimized primarily to run on SSDs and Non-Volatile Memory Express (NVMe) drives. YugabyteDB is designed with the following workload characteristics in mind:
 
 - High write throughput
 - High client concurrency
@@ -105,19 +105,19 @@ YugabyteDB is suitable for deployments where the nodes of the universe span acro
 - Multiple regions that are geographically replicated
 - Multiple clouds (both public and private clouds)
 
-The ensure functionality, a number of requirements must be met. For example, client drivers across the various languages should meet the following criteria:
+To provide functionality, a number of requirements must be met. For example, client drivers across various languages meet the following criteria:
 
 - Cluster-awareness, with ability to seamlessly handle node failures.
 - Topology-awareness, with ability to seamlessly route traffic.
 
 ## Cloud-native architecture
 
-YugabyteDB is a cloud-native database that was designed with a number of cloud-native principles in mind.
+YugabyteDB is a cloud-native database, designed with a number of cloud-native principles in mind.
 
 ### Running on commodity hardware
 
-- Ability to run on any public cloud or on-premises data center. This includes commodity hardware on bare metal machines, virtual machines, containers.
-- Not having hard external dependencies. For example, YugabyteDB does not rely on atomic clocks, but can utilize an atomic clock if available.
+- Ability to run on any public cloud or on-premises data center. This includes commodity hardware on bare metal machines, virtual machines, and containers.
+- Not having hard external dependencies. For example, YugabyteDB does not rely on atomic clocks, but can use an atomic clock if available.
 
 ### Kubernetes-ready
 
@@ -132,7 +132,7 @@ YugabyteDB is open source under the very permissive Apache 2.0 license.
 See also:
 
 - [Overview of the architectural layers in YugabyteDB](../layered-architecture/)
-- [Architecture of DocDB](../docdb/)
+- [DocDB architecture](../docdb/)
 - [Transactions in DocDB](../transactions/)
-- [Design of the query layer](../query-layer/)
-- [Core functions overview](../core-functions/)
+- [Query layer design](../query-layer/)
+- [Core functions](../core-functions/)
