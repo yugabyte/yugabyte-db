@@ -352,8 +352,8 @@ typedef struct pgssSharedState
 	pg_atomic_uint64 current_wbucket;
 	pg_atomic_uint64 prev_bucket_sec;
 	uint64		bucket_entry[MAX_BUCKETS];
-	struct tm   bucket_start_time[MAX_BUCKETS]; /* start time of the bucket */
-	LWLock	   *errors_lock;	/* protects errors hashtable
+	TimestampTz	bucket_start_time[MAX_BUCKETS]; /* start time of the bucket */
+	LWLock	   	*errors_lock;	/* protects errors hashtable
 								 * search/modification */
 	/*
 	 * These variables are used when pgsm_overflow_target is ON.
