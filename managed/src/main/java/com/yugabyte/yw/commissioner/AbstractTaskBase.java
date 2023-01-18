@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -65,6 +66,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final Config config;
   protected final ConfigHelper configHelper;
   protected final RuntimeConfigFactory runtimeConfigFactory;
+  protected final RuntimeConfGetter confGetter;
   protected final MetricService metricService;
   protected final AlertConfigurationService alertConfigurationService;
   protected final YBClientService ybService;
@@ -81,6 +83,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.config = baseTaskDependencies.getConfig();
     this.configHelper = baseTaskDependencies.getConfigHelper();
     this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
+    this.confGetter = baseTaskDependencies.getConfGetter();
     this.metricService = baseTaskDependencies.getMetricService();
     this.alertConfigurationService = baseTaskDependencies.getAlertConfigurationService();
     this.ybService = baseTaskDependencies.getYbService();

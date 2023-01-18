@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.HookScope.TriggerType;
@@ -79,11 +80,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   public void runUpgrade(Runnable upgradeLambda) {
     try {
       isBlacklistLeaders =
-          runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
+          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaders);
       leaderBacklistWaitTimeMs =
-          runtimeConfigFactory
-              .forUniverse(getUniverse())
-              .getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
+          confGetter.getConfForScope(
+              getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.

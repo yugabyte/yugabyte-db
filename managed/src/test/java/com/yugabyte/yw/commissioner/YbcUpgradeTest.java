@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -15,7 +16,9 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -42,7 +45,7 @@ import org.yb.ybc.UpgradeResultResponse;
 public class YbcUpgradeTest extends FakeDBApplication {
 
   @Mock PlatformScheduler mockPlatformScheduler;
-  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock RuntimeConfGetter mockConfGetter;
   @Mock Config mockAppConfig;
   @Mock NodeUniverseManager mockNodeUniverseManager;
 
@@ -68,18 +71,18 @@ public class YbcUpgradeTest extends FakeDBApplication {
             null,
             null,
             true);
-    when(mockAppConfig.getInt(YbcUpgrade.YBC_NODE_UPGRADE_BATCH_SIZE_PATH)).thenReturn(1);
-    when(mockAppConfig.getInt(YbcUpgrade.YBC_UNIVERSE_UPGRADE_BATCH_SIZE_PATH)).thenReturn(1);
-    when(mockAppConfig.getBoolean(YbcUpgrade.YBC_ALLOW_SCHEDULED_UPGRADE_PATH)).thenReturn(true);
-    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockAppConfig);
-    when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockAppConfig);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcNodeBatchSize))).thenReturn(1);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcUniverseBatchSize))).thenReturn(1);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ybcAllowScheduledUpgrade)))
+        .thenReturn(true);
     when(mockYbcManager.getStableYbcVersion()).thenReturn(NEW_YBC_VERSION);
     mockYbcClient = mock(YbcClient.class);
     mockYbcClient2 = mock(YbcClient.class);
     ybcUpgrade =
         new YbcUpgrade(
             mockPlatformScheduler,
-            mockRuntimeConfigFactory,
+            mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
             mockNodeUniverseManager);
@@ -148,7 +151,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
     new YbcUpgrade(
             mockPlatformScheduler,
-            mockRuntimeConfigFactory,
+            mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
             mockNodeUniverseManager)
@@ -187,12 +190,11 @@ public class YbcUpgradeTest extends FakeDBApplication {
         UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
-    when(mockAppConfig.getInt(YbcUpgrade.YBC_NODE_UPGRADE_BATCH_SIZE_PATH)).thenReturn(1);
-    when(mockAppConfig.getInt(YbcUpgrade.YBC_UNIVERSE_UPGRADE_BATCH_SIZE_PATH)).thenReturn(2);
-    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockAppConfig);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcNodeBatchSize))).thenReturn(1);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcUniverseBatchSize))).thenReturn(2);
     new YbcUpgrade(
             mockPlatformScheduler,
-            mockRuntimeConfigFactory,
+            mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
             mockNodeUniverseManager)
@@ -230,12 +232,11 @@ public class YbcUpgradeTest extends FakeDBApplication {
         UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
-    when(mockAppConfig.getInt(YbcUpgrade.YBC_NODE_UPGRADE_BATCH_SIZE_PATH)).thenReturn(4);
-    when(mockAppConfig.getInt(YbcUpgrade.YBC_UNIVERSE_UPGRADE_BATCH_SIZE_PATH)).thenReturn(2);
-    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockAppConfig);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcNodeBatchSize))).thenReturn(4);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcUniverseBatchSize))).thenReturn(2);
     new YbcUpgrade(
             mockPlatformScheduler,
-            mockRuntimeConfigFactory,
+            mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
             mockNodeUniverseManager)
@@ -330,7 +331,9 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
   @Test
   public void testDisabledScheduledUniverseUpgrade() {
-    when(mockAppConfig.getBoolean(YbcUpgrade.YBC_ALLOW_SCHEDULED_UPGRADE_PATH)).thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ybcAllowScheduledUpgrade)))
+        .thenReturn(false);
     String oldYbcVersion = defaultUniverse.getUniverseDetails().ybcSoftwareVersion;
     ybcUpgrade.scheduleRunner();
     assertEquals(
@@ -348,7 +351,9 @@ public class YbcUpgradeTest extends FakeDBApplication {
         UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
-    when(mockAppConfig.getBoolean(YbcUpgrade.YBC_ALLOW_SCHEDULED_UPGRADE_PATH)).thenReturn(true);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ybcAllowScheduledUpgrade)))
+        .thenReturn(true);
     ybcUpgrade.scheduleRunner();
     assertEquals(
         NEW_YBC_VERSION,

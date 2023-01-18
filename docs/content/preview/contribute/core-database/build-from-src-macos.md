@@ -64,7 +64,7 @@ brew install autoconf automake bash ccache cmake coreutils gnu-tar libtool \
 
 {{< note title="Note" >}}
 
-YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/usr/local/bin/bash` before proceeding. You may need to put `/usr/local/bin` as the first directory on `PATH` in your `~/.bashrc` to achieve that.
+YugabyteDB build scripts require at least Bash version 4. Make sure that `bash --version` outputs a version of 4 or higher before proceeding. You may need to put `/usr/local/bin` (Intel) or `/opt/homebrew/bin` (Apple Silicon) as the first directory on `PATH` in your `~/.bashrc` to achieve that.
 
 {{< /note >}}
 
@@ -78,9 +78,9 @@ YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/u
 
 ### Build release package
 
-You can build a release package by executing:
+Run the `yb_release` script to build a release package:
 
-```shell
+```output.sh
 $ ./yb_release
 ......
 2020-10-27 13:55:40,856 [yb_release.py:283 INFO] Generated a package at '/Users/me/code/yugabyte-db/build/yugabyte-2.5.1.0-6ab8013159fdca00ced7e6f5d2f98cacac6a536a-release-darwin-x86_64.tar.gz'

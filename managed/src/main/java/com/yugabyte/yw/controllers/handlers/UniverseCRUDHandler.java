@@ -30,6 +30,8 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -100,6 +102,8 @@ public class UniverseCRUDHandler {
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject SettableRuntimeConfigFactory settableRuntimeConfigFactory;
+
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject KubernetesManagerFactory kubernetesManagerFactory;
   @Inject PasswordPolicyService passwordPolicyService;
@@ -577,7 +581,7 @@ public class UniverseCRUDHandler {
               ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
           universe.save();
           // This flag will be used for testing purposes as well. Don't remove.
-          if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.use_new_helm_naming")) {
+          if (confGetter.getGlobalConf(GlobalConfKeys.useNewHelmNaming)) {
             if (Util.compareYbVersions(primaryIntent.ybSoftwareVersion, "2.15.4.0") >= 0) {
               taskParams.useNewHelmNamingStyle = true;
             } else {

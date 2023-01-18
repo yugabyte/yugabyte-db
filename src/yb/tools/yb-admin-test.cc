@@ -1194,5 +1194,30 @@ TEST_F(AdminCliTest, PromoteAutoFlags) {
   ASSERT_NE(result.find("New AutoFlags were promoted. Config version"), std::string::npos);
 }
 
+TEST_F(AdminCliTest, PrintArgumentExpressions) {
+  const auto namespace_expression = "<namespace>:\n [(ycql|ysql).]<namespace_name> (default ycql.)";
+  const auto table_expression = "<table>:\n <namespace> <table_name> | tableid.<table_id>";
+  const auto index_expression = "<index>:\n  <namespace> <index_name> | tableid.<index_id>";
+
+  BuildAndStart();
+  auto status = CallAdmin("delete_table");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(table_expression), std::string::npos);
+
+  status = CallAdmin("delete_namespace");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
+
+  status = CallAdmin("delete_index");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(index_expression), std::string::npos);
+
+  status = CallAdmin("add_universe_key_to_all_masters");
+  ASSERT_NOK(status);
+  ASSERT_EQ(status.ToString().find(namespace_expression), std::string::npos);
+  ASSERT_EQ(status.ToString().find(table_expression), std::string::npos);
+  ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
+}
+
 }  // namespace tools
 }  // namespace yb

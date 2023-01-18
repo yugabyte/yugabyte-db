@@ -48,6 +48,9 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
     "Whether or not to fail after processing a replicated split_op on the consumer.");
 
+DEFINE_test_flag(bool, xcluster_disable_replication_transaction_status_table, false,
+                 "Whether or not to disable replication of txn status table.");
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -286,6 +289,12 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
   if (!table_) {
     HANDLE_ERROR_AND_RETURN_IF_NOT_OK(
         local_client_->client->OpenTable(consumer_tablet_info_.table_id, &table_));
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_xcluster_disable_replication_transaction_status_table) &&
+      table_->table_type() == client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    HANDLE_ERROR_AND_RETURN_IF_NOT_OK(
+        STATUS(TryAgain, "Failing ApplyChanges for transaction status table for test"));
   }
 
   twodc_resp_copy_ = *poller_resp;
@@ -698,8 +707,13 @@ void TwoDCOutputClient::DoWriteCDCRecordDone(
 }
 
 void TwoDCOutputClient::HandleError(const Status& s) {
-  LOG(ERROR) << "Error while applying replicated record: " << s
-             << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+  if (s.IsTryAgain()) {
+    LOG(WARNING) << "Retrying applying replicated record for consumer tablet: "
+                 << consumer_tablet_info_.tablet_id << ", reason: " << s;
+  } else {
+    LOG(ERROR) << "Error while applying replicated record: " << s
+               << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+  }
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     error_status_ = s;

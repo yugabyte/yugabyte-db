@@ -821,6 +821,17 @@ void AbortAndWaitForAllTasksImplementation(const IterableTables& tables) {
   VLOG(1) << "Waiting on Aborting tasks done";
 }
 
+// Sets basic fields in the TabletLocationsPB proto that are always filled regardless of the
+// PartitionsOnly parameter.
+void InitializeTabletLocationsPB(
+    const TabletId& tablet_id, const SysTabletsEntryPB& pb, TabletLocationsPB* locs_pb) {
+  locs_pb->set_table_id(pb.table_id());
+  locs_pb->set_tablet_id(tablet_id);
+  locs_pb->mutable_partition()->CopyFrom(pb.partition());
+  locs_pb->set_split_depth(pb.split_depth());
+  locs_pb->set_split_parent_tablet_id(pb.split_parent_tablet_id());
+}
+
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -1880,13 +1891,15 @@ bool CatalogManager::IsInitialized() const {
   return state_ == kRunning;
 }
 
-// TODO - delete this API after HandleReportedTablet() usage is removed.
 Status CatalogManager::CheckIsLeaderAndReady() const {
-  std::lock_guard<simple_spinlock> l(state_lock_);
-  if (PREDICT_FALSE(state_ != kRunning)) {
-    return STATUS_SUBSTITUTE(ServiceUnavailable,
-        "Catalog manager is shutting down. State: $0", state_);
+  {
+    std::lock_guard<simple_spinlock> l(state_lock_);
+    if (PREDICT_FALSE(state_ != kRunning)) {
+      return STATUS_SUBSTITUTE(ServiceUnavailable,
+          "Catalog manager is shutting down. State: $0", state_);
+    }
   }
+
   string uuid = master_->fs_manager()->uuid();
   if (master_->opts().IsShellMode()) {
     // Consensus and other internal fields should not be checked when is shell mode.
@@ -1902,10 +1915,14 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
     return STATUS_SUBSTITUTE(IllegalState,
         "Not the leader. Local UUID: $0, Consensus state: $1", uuid, cstate.ShortDebugString());
   }
-  if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
-    return STATUS_SUBSTITUTE(ServiceUnavailable,
-        "Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
-        leader_ready_term_, cstate.current_term());
+
+  {
+    std::lock_guard<simple_spinlock> l(state_lock_);
+    if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
+      return STATUS_SUBSTITUTE(ServiceUnavailable,
+          "Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
+          leader_ready_term_, cstate.current_term());
+    }
   }
   return Status::OK();
 }
@@ -3862,15 +3879,21 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     // Check whether this CREATE TABLE request which has a tablegroup_id is for a normal user table
-    // or the request to create the parent table for the tablegroup. This is done by checking the
-    // catalog manager maps.
+    // or the request to create the parent table for the tablegroup.
     YsqlTablegroupManager::TablegroupInfo* tablegroup = nullptr;
     if (req.has_tablegroup_id()) {
       tablegroup = tablegroup_manager_->Find(req.tablegroup_id());
-      if (tablegroup == nullptr && !IsTablegroupParentTableId(req.table_id())) {
+      bool is_parent = IsTablegroupParentTableId(req.table_id());
+      if (tablegroup == nullptr && !is_parent) {
         Status s = STATUS_SUBSTITUTE(InvalidArgument, "Tablegroup with ID $0 does not exist",
                                      req.tablegroup_id());
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+      }
+      if (tablegroup != nullptr && is_parent) {
+        Status s = STATUS_SUBSTITUTE(AlreadyPresent, "Tablegroup with ID $0 already exists",
+                                     req.tablegroup_id());
+
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
       }
     }
 
@@ -4161,20 +4184,37 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
 Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool rpc_success) {
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
-  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
-  const auto pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
 
-  auto entry_id = table->id();
-  auto relfilenode_id = TableId();
+  bool entry_exists = false;
+  if (!table->IsColocationParentTable()) {
+    // Check that pg_class still has an entry for the table.
+    const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
+    const auto pg_class_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
 
-  if (!table->matview_pg_table_id().empty()) {
-    relfilenode_id = entry_id;
-    entry_id = table->matview_pg_table_id();
+    PgOid table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+    boost::optional<PgOid> relfilenode_oid = boost::none;
+
+    if (!table->matview_pg_table_id().empty()) {
+      relfilenode_oid = table_oid;
+      table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->matview_pg_table_id()));
+    }
+
+    entry_exists = VERIFY_RESULT(
+        ysql_transaction_->PgEntryExists(pg_class_table_id, table_oid, relfilenode_oid));
+  } else {
+    // The table we have is a dummy parent table, hence not present in YSQL.
+    // We need to check a tablegroup instead.
+    const auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
+    const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTablegroupId(tablegroup_id));
+    const auto pg_yb_tablegroup_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
+    const PgOid tablegroup_oid = VERIFY_RESULT(GetPgsqlTablegroupOid(tablegroup_id));
+
+    entry_exists = VERIFY_RESULT(
+        ysql_transaction_->PgEntryExists(pg_yb_tablegroup_table_id,
+                                         tablegroup_oid,
+                                         boost::none /* relfilenode_oid */));
   }
 
-  auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlTableOid(entry_id),
-                                       relfilenode_id));
   auto l = table->LockForWrite();
   auto& metadata = table->mutable_metadata()->mutable_dirty()->pb;
 
@@ -7962,6 +8002,9 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
       parent_table_name = GetTablegroupParentTableName(req->id());
     }
   }
+  if (req->has_transaction()) {
+    ctreq.mutable_transaction()->CopyFrom(req->transaction());
+  }
   ctreq.set_name(parent_table_name);
   ctreq.set_table_id(parent_table_id);
   ctreq.mutable_namespace_()->set_name(req->namespace_name());
@@ -8378,8 +8421,11 @@ Status CatalogManager::VerifyNamespacePgLayer(
     scoped_refptr<NamespaceInfo> ns, bool rpc_success) {
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   const auto pg_table_id = GetPgsqlTableId(atoi(kSystemNamespaceId), kPgDatabaseTableOid);
+  const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns->id()));
   auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlDatabaseOid(ns->id()), TableId()));
+      ysql_transaction_->PgEntryExists(pg_table_id,
+                                       database_oid,
+                                       boost::none /* relfilenode_oid */));
   auto l = ns->LockForWrite();
   SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
 
@@ -11096,81 +11142,89 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
   return Status::OK();
 }
 
-Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
-                                               TabletLocationsPB* locs_pb,
-                                               IncludeInactive include_inactive) {
-  {
-    auto l_tablet = tablet->LockForRead();
-    if (l_tablet->is_hidden() && !include_inactive) {
-      return STATUS_FORMAT(NotFound, "Tablet hidden", tablet->id());
-    }
-    locs_pb->set_table_id(l_tablet->pb.table_id());
-    *locs_pb->mutable_table_ids() = l_tablet->pb.table_ids();
-  }
-
-  // For system tables, the set of replicas is always the set of masters.
-  if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
-    consensus::ConsensusStatePB master_consensus;
-    RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
-    locs_pb->set_tablet_id(tablet->tablet_id());
-    locs_pb->set_stale(false);
-    const auto initial_size = locs_pb->replicas_size();
-    RETURN_NOT_OK(ConsensusStateToTabletLocations(master_consensus, locs_pb));
-    const auto capabilities = Capabilities();
-    // Set capabilities of master node for all newly created system table locations.
-    for (auto i = locs_pb->mutable_replicas()->begin() + initial_size,
-        end = locs_pb->mutable_replicas()->end(); i != end; ++i) {
-      *i->mutable_ts_info()->mutable_capabilities() = google::protobuf::RepeatedField<CapabilityId>(
-          capabilities.begin(), capabilities.end());
-    }
+Status CatalogManager::BuildLocationsForSystemTablet(
+    const scoped_refptr<TabletInfo>& tablet,
+    TabletLocationsPB* locs_pb,
+    IncludeInactive include_inactive,
+    PartitionsOnly partitions_only) {
+  DCHECK(system_tablets_.find(tablet->id()) != system_tablets_.end())
+      << Format("Non-system tablet $0 passed to BuildLocationsForSystemTablet", tablet->id());
+  auto l_tablet = tablet->LockForRead();
+  InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
+  locs_pb->set_stale(false);
+  if (partitions_only) {
     return Status::OK();
   }
+  *locs_pb->mutable_table_ids() = l_tablet->pb.table_ids();
+  // For system tables, the set of replicas is always the set of masters.
+  consensus::ConsensusStatePB master_consensus;
+  RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
+  const auto initial_size = locs_pb->replicas_size();
+  RETURN_NOT_OK(ConsensusStateToTabletLocations(master_consensus, locs_pb));
+  const auto capabilities = Capabilities();
+  // Set capabilities of master node for all newly created system table locations.
+  for (auto i = locs_pb->mutable_replicas()->begin() + initial_size,
+            end = locs_pb->mutable_replicas()->end();
+       i != end;
+       ++i) {
+    *i->mutable_ts_info()->mutable_capabilities() =
+        google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
+  }
+  return Status::OK();
+}
 
-  TSRegistrationPB reg;
+Status CatalogManager::BuildLocationsForTablet(
+    const scoped_refptr<TabletInfo>& tablet,
+    TabletLocationsPB* locs_pb,
+    IncludeInactive include_inactive,
+    PartitionsOnly partitions_only) {
 
+  if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
+    return BuildLocationsForSystemTablet(tablet, locs_pb, include_inactive, partitions_only);
+  }
   std::shared_ptr<const TabletReplicaMap> locs;
   consensus::ConsensusStatePB cstate;
   {
     auto l_tablet = tablet->LockForRead();
+    if (l_tablet->is_hidden() && !include_inactive) {
+      return STATUS_FORMAT(NotFound, "Tablet $0 hidden", tablet->id());
+    }
     if (PREDICT_FALSE(l_tablet->is_deleted())) {
-      std::vector<TabletId> split_tablet_ids;
-      for (const auto& split_tablet_id : l_tablet->pb.split_tablet_ids()) {
-        split_tablet_ids.push_back(split_tablet_id);
-      }
+      std::vector<TabletId> split_tablet_ids(
+          l_tablet->pb.split_tablet_ids().begin(), l_tablet->pb.split_tablet_ids().end());
       return STATUS(
           NotFound, "Tablet deleted", l_tablet->pb.state_msg(),
           SplitChildTabletIdsData(split_tablet_ids));
     }
-
     if (PREDICT_FALSE(!l_tablet->is_running())) {
       return STATUS_FORMAT(ServiceUnavailable, "Tablet $0 not running", tablet->id());
     }
-
+    InitializeTabletLocationsPB(tablet->tablet_id(), l_tablet->pb, locs_pb);
     locs = tablet->GetReplicaLocations();
+    locs_pb->set_stale(locs->empty());
+    if (partitions_only) {
+      return Status::OK();
+    }
+    const auto& tablet_pb = l_tablet->pb;
+    *locs_pb->mutable_table_ids() = tablet_pb.table_ids();
     if (locs->empty() && l_tablet->pb.has_committed_consensus_state()) {
       cstate = l_tablet->pb.committed_consensus_state();
     }
-
-    const auto& metadata = tablet->metadata().state().pb;
-    locs_pb->mutable_partition()->CopyFrom(metadata.partition());
-    locs_pb->set_split_depth(metadata.split_depth());
-    locs_pb->set_split_parent_tablet_id(metadata.split_parent_tablet_id());
-    for (const auto& split_tablet_id : metadata.split_tablet_ids()) {
+    locs_pb->mutable_split_tablet_ids()->Reserve(tablet_pb.split_tablet_ids().size());
+    for (const auto& split_tablet_id : tablet_pb.split_tablet_ids()) {
       *locs_pb->add_split_tablet_ids() = split_tablet_id;
     }
   }
 
-  locs_pb->set_tablet_id(tablet->tablet_id());
-  locs_pb->set_stale(locs->empty());
-
   // If the locations are cached.
   if (!locs->empty()) {
     if (cstate.IsInitialized() &&
-            locs->size() != implicit_cast<size_t>(cstate.config().peers_size())) {
+        locs->size() != implicit_cast<size_t>(cstate.config().peers_size())) {
       LOG(WARNING) << "Cached tablet replicas " << locs->size() << " does not match consensus "
                    << cstate.config().peers_size();
     }
 
+    locs_pb->mutable_replicas()->Reserve(narrow_cast<int32_t>(locs->size()));
     for (const auto& replica : *locs) {
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
@@ -11183,15 +11237,11 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
       out_ts_info->set_placement_uuid(tsinfo_pb->registration().common().placement_uuid());
       *out_ts_info->mutable_capabilities() = tsinfo_pb->registration().capabilities();
     }
-    return Status::OK();
-  }
-
-  // If the locations were not cached.
-  // TODO: Why would this ever happen? See KUDU-759.
-  if (cstate.IsInitialized()) {
+  } else if (cstate.IsInitialized()) {
+    // If the locations were not cached.
+    // TODO: Why would this ever happen? See KUDU-759.
     RETURN_NOT_OK(ConsensusStateToTabletLocations(cstate, locs_pb));
   }
-
   return Status::OK();
 }
 
@@ -11259,20 +11309,21 @@ Status CatalogManager::GetTableLocations(
   auto l = table->LockForRead();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
-  vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetTabletsInRange(req, &tablets);
-
+  vector<scoped_refptr<TabletInfo>> tablets = table->GetTabletsInRange(req);
   IncludeInactive include_inactive(req->has_include_inactive() && req->include_inactive());
+  PartitionsOnly partitions_only(req->partitions_only());
   bool require_tablets_runnings = req->require_tablets_running();
 
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
   GetExpectedNumberOfReplicas(&expected_live_replicas, &expected_read_replicas);
+  resp->mutable_tablet_locations()->Reserve(narrow_cast<int32_t>(tablets.size()));
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    auto status = BuildLocationsForTablet(tablet, locs_pb, include_inactive);
+    auto status =
+        BuildLocationsForTablet(tablet, locs_pb, include_inactive, partitions_only);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {

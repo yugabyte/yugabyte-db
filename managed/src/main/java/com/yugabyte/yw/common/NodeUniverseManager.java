@@ -4,6 +4,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -296,7 +297,7 @@ public class NodeUniverseManager extends DevopsBase {
         commandArgs.add(node.cloudInfo.private_ip);
         commandArgs.add("--key");
         commandArgs.add(accessKey.getKeyInfo().privateKey);
-        if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+        if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
           commandArgs.add("--ssh2_enabled");
         }
       }

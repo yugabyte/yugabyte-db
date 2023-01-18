@@ -4,6 +4,8 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
@@ -17,18 +19,17 @@ import play.routing.Router;
 public class AuditAction extends Action.Simple {
 
   public static final Logger LOG = LoggerFactory.getLogger(AuditAction.class);
-  private final RuntimeConfigFactory runtimeConfigFactory;
-  private static final String YB_AUDIT_LOG_VERIFY_LOGGING = "yb.audit.log.verifyLogging";
+  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public AuditAction(RuntimeConfigFactory runtimeConfigFactory) {
-    this.runtimeConfigFactory = runtimeConfigFactory;
+  public AuditAction(RuntimeConfGetter confGetter) {
+    this.confGetter = confGetter;
   }
 
   @Override
   public CompletionStage<Result> call(Context ctx) {
 
-    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean(YB_AUDIT_LOG_VERIFY_LOGGING)) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.auditVerifyLogging)) {
       return delegate.call(ctx);
     } else {
       return delegate

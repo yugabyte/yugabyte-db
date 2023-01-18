@@ -384,7 +384,7 @@ Status TwoDCTestBase::SetupReverseUniverseReplication(
 Status TwoDCTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
     const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
-    bool leader_only) {
+    bool leader_only, const std::vector<string>& bootstrap_ids) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
   if (!FLAGS_certs_for_cdc_dir.empty() && !FLAGS_certs_dir.empty()) {
@@ -421,6 +421,14 @@ Status TwoDCTestBase::SetupUniverseReplication(
   req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
   for (const auto& table : tables) {
     req.add_producer_table_ids(table->id());
+  }
+
+  SCHECK(
+      bootstrap_ids.empty() || bootstrap_ids.size() == tables.size(), InvalidArgument,
+      "Bootstrap Ids for all tables should be provided");
+
+  for (const auto& bootstrap_id : bootstrap_ids) {
+    req.add_producer_bootstrap_ids(bootstrap_id);
   }
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -689,6 +697,49 @@ Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(const NamespaceId& names
         Format("Wait for safe_time of namespace $0 to be valid", namespace_id)));
   }
 
+  return Status::OK();
+}
+
+Status TwoDCTestBase::WaitForReplicationDrain(
+    const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
+    const master::WaitForReplicationDrainRequestPB& req,
+    int expected_num_nondrained,
+    int timeout_secs) {
+  master::WaitForReplicationDrainResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(timeout_secs));
+  auto s = master_proxy->WaitForReplicationDrain(req, &resp, &rpc);
+  return SetupWaitForReplicationDrainStatus(s, resp, expected_num_nondrained);
+}
+
+void TwoDCTestBase::PopulateWaitForReplicationDrainRequest(
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+    master::WaitForReplicationDrainRequestPB* req) {
+  for (const auto& producer_table : producer_tables) {
+    master::ListCDCStreamsResponsePB list_resp;
+    ASSERT_OK(GetCDCStreamForTable(producer_table->id(), &list_resp));
+    ASSERT_EQ(list_resp.streams_size(), 1);
+    ASSERT_EQ(list_resp.streams(0).table_id(0), producer_table->id());
+    req->add_stream_ids(list_resp.streams(0).stream_id());
+  }
+}
+
+Status TwoDCTestBase::SetupWaitForReplicationDrainStatus(
+    Status api_status,
+    const master::WaitForReplicationDrainResponsePB& api_resp,
+    int expected_num_nondrained) {
+  if (!api_status.ok()) {
+    return api_status;
+  }
+  if (api_resp.has_error()) {
+    return STATUS(IllegalState,
+        Format("WaitForReplicationDrain returned error: $0", api_resp.error().DebugString()));
+  }
+  if (api_resp.undrained_stream_info_size() != expected_num_nondrained) {
+    return STATUS(IllegalState,
+        Format("Mismatched number of non-drained streams. Expected $0, got $1.",
+               expected_num_nondrained, api_resp.undrained_stream_info_size()));
+  }
   return Status::OK();
 }
 

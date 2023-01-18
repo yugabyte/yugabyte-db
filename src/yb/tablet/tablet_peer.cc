@@ -1029,6 +1029,23 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
+Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() const {
+  if (VERIFY_RESULT(shared_tablet_safe())->table_type() ==
+      TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
+    // earliest required log record. This will be the CREATED\PENDING log record of the oldest
+    // active transaction.
+    auto index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+    if (index > 0) {
+      index--;
+    }
+    // Term does not matter, so can be set to 0.
+    return OpId(0, index);
+  }
+
+  return GetLatestLogEntryOpId();
+}
+
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
   int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());

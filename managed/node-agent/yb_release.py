@@ -39,6 +39,7 @@ def get_release_version(source_dir):
 parser = argparse.ArgumentParser()
 parser.add_argument('--source_dir', help='Source code directory.', required=True)
 parser.add_argument('--destination', help='Copy release to Destination directory.', required=True)
+parser.add_argument('--pre_release', help='Generate pre-release packages.', action='store_true')
 args = parser.parse_args()
 
 try:
@@ -60,6 +61,8 @@ try:
         release_file = get_release_file(args.source_dir,
                                         "node_agent", os_type=parts[0], arch_type=parts[1])
         shutil.copyfile(packaged_file, release_file)
+        if args.pre_release:
+            release_file = packaged_file
         logging.info("Copying file {} to {}".format(release_file, args.destination))
         shutil.copy(release_file, args.destination)
 
