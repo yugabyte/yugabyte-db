@@ -217,16 +217,6 @@ def log_heading(msg: str) -> None:
     logging.info('\n%s\n%s\n%s' % ('-' * 80, msg, '-' * 80))
 
 
-def find_python_interpreter() -> str:
-    # We are not using "which" here because we don't want to pick up the python3 script inside the
-    # virtualenv's bin directory.
-    candidates = ['/usr/local/bin/python3', '/usr/bin/python3']
-    for python_interpreter_path in candidates:
-        if os.path.isfile(python_interpreter_path):
-            return python_interpreter_path
-    raise ValueError("Could not find Python interpreter at any of the paths: %s" % candidates)
-
-
 # Initializes the spark context. The details list will be incorporated in the Spark application
 # name visible in the Spark web UI.
 def init_spark_context(details: List[str] = []) -> None:
@@ -260,9 +250,6 @@ def init_spark_context(details: List[str] = []) -> None:
     if 'BUILD_URL' in os.environ:
         details.append('URL: {}'.format(os.environ['BUILD_URL']))
 
-    python_interpreter = find_python_interpreter()
-    logging.info("Using this Python interpreter for Spark: %s", python_interpreter)
-    SparkContext.setSystemProperty("spark.pyspark.python", python_interpreter)
     spark_context = SparkContext(spark_master_url, "YB tests: {}".format(' '.join(details)))
     yb_python_zip_path = yb_dist_tests.get_tmp_filename(
             prefix='yb_python_module_for_spark_workers_', suffix='.zip', auto_remove=True)
