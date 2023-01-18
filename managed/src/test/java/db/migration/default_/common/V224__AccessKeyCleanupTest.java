@@ -24,10 +24,14 @@ import com.yugabyte.yw.models.Provider;
 import io.ebean.Ebean;
 import io.ebean.SqlUpdate;
 import java.util.Collections;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import play.libs.Json;
 
+@RunWith(JUnitParamsRunner.class)
 public class V224__AccessKeyCleanupTest extends FakeDBApplication {
 
   private Provider awsProvider;
@@ -78,8 +82,13 @@ public class V224__AccessKeyCleanupTest extends FakeDBApplication {
   }
 
   @Test
-  public void empty() {
+  @Parameters({"true", "false"})
+  public void empty(boolean isOldProvider) {
+    if (isOldProvider) {
+      awsProvider.details = null;
+    }
     V224__AccessKeyCleanup.migrateAllAccessKeys();
+    awsProvider.refresh();
     assertNull(awsProvider.details.sshUser);
     assertEquals(22, awsProvider.details.sshPort.intValue());
     assertFalse(awsProvider.details.airGapInstall);
@@ -99,7 +108,11 @@ public class V224__AccessKeyCleanupTest extends FakeDBApplication {
   }
 
   @Test
-  public void nonDefault() {
+  @Parameters({"true", "false"})
+  public void nonDefault(boolean isOldProvider) {
+    if (isOldProvider) {
+      gcpProvider.details = null;
+    }
     V224__AccessKeyCleanup.migrateAllAccessKeys();
     gcpProvider.refresh();
     assertEquals("sbapat", gcpProvider.details.sshUser);

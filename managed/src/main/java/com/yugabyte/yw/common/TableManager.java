@@ -31,6 +31,7 @@ import com.yugabyte.yw.forms.TableManagerParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -85,7 +86,7 @@ public class TableManager extends DevopsBase {
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
-    Map<String, String> extraVars = region.provider.getUnmaskedConfig();
+    Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(provider);
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
