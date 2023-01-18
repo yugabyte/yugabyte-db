@@ -766,7 +766,7 @@ Status DoUpdateCDCConsumerOpId(
 }
 
 bool UpdateCheckpointRequired(
-    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id) {
+    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id, bool* force_update) {
   switch (record.source_type) {
     case XCLUSTER:
       return true;
@@ -775,12 +775,24 @@ bool UpdateCheckpointRequired(
       if (cdc_sdk_op_id.write_id() == 0) {
         return true;
       }
-      return cdc_sdk_op_id.write_id() == -1 && cdc_sdk_op_id.key().empty() &&
-             cdc_sdk_op_id.snapshot_time() != 0;
+      if (cdc_sdk_op_id.write_id() == -1) {
+        // CDC should do a force update of checkpoint in cdc_state table as a part snapshot
+        // initialization, so that it can restrict intents and WALS GC if concurrent DML operations
+        // are running as well as UpdatePeersAndMetrics will not GC the intents and WALS for the
+        // FOLLOWERS.
+        if (cdc_sdk_op_id.key().empty() && cdc_sdk_op_id.snapshot_time() == 0) {
+          *force_update = true;
+        }
+        // CDC should update the stream active time in cdc_state table, during snapshot operation to
+        // avoid stream expiry.
+        return true;
+      }
+      break;
 
     default:
       return false;
   }
+  return false;
 }
 
 bool GetFromOpId(const GetChangesRequestPB* req, OpId* op_id, CDCSDKCheckpointPB* cdc_sdk_op_id) {
@@ -1718,11 +1730,19 @@ void CDCServiceImpl::GetChanges(
                  : 0);
 
   if (record.checkpoint_type == IMPLICIT) {
-    if (UpdateCheckpointRequired(record, cdc_sdk_op_id)) {
+    bool force_update = false;
+    if (UpdateCheckpointRequired(record, cdc_sdk_op_id, &force_update)) {
+      // This is the snapshot bootstrap operation, so taking the checkpoint from the resp.
+      if (force_update) {
+        op_id = OpId(resp->cdc_sdk_checkpoint().term(), resp->cdc_sdk_checkpoint().index());
+        LOG(INFO) << "Snapshot bootstrapping is initiated, forcefully update the checkpoint: "
+                  << op_id;
+      }
+
       RPC_STATUS_RETURN_ERROR(
           UpdateCheckpointAndActiveTime(
               producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), op_id, session,
-              last_record_hybrid_time, record.source_type, false,
+              last_record_hybrid_time, record.source_type, force_update,
               record.record_type == CDCRecordType::ALL
                   ? HybridTime::FromPB(resp->safe_hybrid_time())
                   : HybridTime::kInvalid),
