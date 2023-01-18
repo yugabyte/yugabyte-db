@@ -365,6 +365,23 @@ void RunningTransaction::DoStatusReceived(const Status& status,
       new_request_id = context_.NextRequestIdUnlocked();
       VLOG_WITH_PREFIX(4) << "Waiters still present, send new status request: " << new_request_id;
     }
+
+    if (external_transaction()) {
+      // The time of the status from a GetStatus resp is typically the non-xcluster safe time on the
+      // coordinator. It is possible that txn COMMIT record comes in at earlier time. The ideal fix
+      // is to use the coordinator's xcluster safe time in the GetStatus response. But the quick fix
+      // is to just use the smallest read time of the waiters as the resolved status time.
+      for (const auto& waiter : status_waiters) {
+        auto status_for_waiter = GetStatusAt(
+            waiter.global_limit_ht, time_of_status, transaction_status, external_transaction());
+        if (status_for_waiter && *status_for_waiter == TransactionStatus::PENDING) {
+          if (last_known_status_hybrid_time_ > waiter.read_ht) {
+            time_of_status = last_known_status_hybrid_time_ = waiter.read_ht;
+          }
+          transaction_status = last_known_status_ = TransactionStatus::PENDING;
+        }
+      }
+    }
   }
   if (new_request_id >= 0) {
     SendStatusRequest(new_request_id, shared_self);
@@ -405,20 +422,13 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
     auto status_for_waiter = GetStatusAt(
         waiter.global_limit_ht, time_of_status, transaction_status, external_transaction());
     if (status_for_waiter) {
-      if (external_transaction() && *status_for_waiter == TransactionStatus::PENDING) {
-        last_known_status_hybrid_time_ = waiter.read_ht;
-        last_known_status_ = TransactionStatus::PENDING;
-        waiter.callback(TransactionStatusResult{
-            TransactionStatus::PENDING, waiter.read_ht, aborted_subtxn_set});
-      } else {
-        // We know status at global_limit_ht, so could notify waiter.
-        auto result = TransactionStatusResult{*status_for_waiter, time_of_status};
-        if (result.status == TransactionStatus::COMMITTED ||
-            result.status == TransactionStatus::PENDING) {
-          result.aborted_subtxn_set = aborted_subtxn_set;
-        }
-        waiter.callback(std::move(result));
+      // We know status at global_limit_ht, so could notify waiter.
+      auto result = TransactionStatusResult{*status_for_waiter, time_of_status};
+      if (result.status == TransactionStatus::COMMITTED ||
+          result.status == TransactionStatus::PENDING) {
+        result.aborted_subtxn_set = aborted_subtxn_set;
       }
+      waiter.callback(std::move(result));
     } else if (time_of_status >= waiter.read_ht) {
       // It means that between read_ht and global_limit_ht transaction was pending.
       // It implies that transaction was not committed before request was sent.
