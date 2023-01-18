@@ -213,7 +213,7 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --delimiter "|" \
         --has-header \
         --file-opts "escape_char=\",quote_char=\"" \
-        --format format \
+        --format format
 
 ```
 
