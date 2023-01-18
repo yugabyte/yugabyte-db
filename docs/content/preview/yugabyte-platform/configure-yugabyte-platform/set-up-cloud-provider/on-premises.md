@@ -14,7 +14,6 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li>
     <a href="../aws/" class="nav-link">
       <i class="fa-brands fa-aws"></i>
@@ -756,13 +755,13 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    StartLimitBurst=10
    
    [Path]
-   PathExists={{yb_home_dir}}/controller/bin/yb-controller-server
-   PathExists={{yb_home_dir}}/controller/conf/server.conf
+   PathExists=/home/yugabyte/controller/bin/yb-controller-server
+   PathExists=/home/yugabyte/controller/conf/server.conf
    
    [Service]
    # Start
-   ExecStart={{yb_home_dir}}/controller/bin/yb-controller-server \
-       --flagfile {{yb_home_dir}}/controller/conf/server.conf \
+   ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
+       --flagfile /home/yugabyte/controller/conf/server.conf \
        --only_bind --logtostderr
    Type=oneshot
    KillMode=control-group
