@@ -9,10 +9,19 @@ import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/helpers/dtos';
 import { isEmptyObject } from '../../utils/ObjectUtils';
 
-export const EDIT_CONFIG_BOOLEAN_TYPE_OPTIONS = [
+const EDIT_CONFIG_BOOLEAN_TYPE_OPTIONS = [
   { value: 'true', label: 'True' },
   { value: 'false', label: 'False' }
 ];
+
+const CONFIG_DATA_TYPE_TO_TOOLTIP_MESSAGE = {
+  Bytes: 'BytesTooltipMessage',
+  Duration: 'DurationTooltipMessage',
+  Integer: 'IntegerTooltipMessage',
+  Long: 'LongTooltipMessage',
+  String: 'StringTooltipMessage',
+  'String List': 'StringListTooltipMessage'
+};
 
 interface EditConfigData {
   configData: RunTimeConfigData;
@@ -95,6 +104,12 @@ export const EditConfig: FC<EditConfigData> = ({
                   defaultValue={configData.configValue}
                   component={YBFormInput}
                   disabled={false}
+                  infoTitle={`Type: ${configData.type}`}
+                  infoContent={t(
+                    `admin.advanced.globalConfig.${
+                      CONFIG_DATA_TYPE_TO_TOOLTIP_MESSAGE[configData.type]
+                    }`
+                  )}
                 />
               </Col>
             )}
