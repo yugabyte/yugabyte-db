@@ -10,7 +10,6 @@ DROP FUNCTION pgsm_create_14_view CASCADE;
 DROP FUNCTION pgsm_create_view CASCADE;
 DROP FUNCTION pg_stat_monitor_settings CASCADE;
 
--- pg_stat_monitor internal function, must not call outside from this file.
 CREATE FUNCTION pg_stat_monitor_internal(
     IN showtext             boolean,
     OUT bucket              int8,   -- 0
@@ -18,13 +17,13 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT dbid                oid,
     OUT client_ip           int8,
 
-    OUT queryid             text,  -- 4
-    OUT planid              text,
+    OUT queryid             int8,  -- 4
+    OUT planid              int8,
     OUT query               text,
     OUT query_plan          text,
     OUT pgsm_query_id       int8,
-    OUT top_queryid         text,
-    OUT top_query           text,
+    OUT top_queryid         int8,
+	OUT top_query           text,
 	OUT application_name	text,
 
 	OUT relations			text, -- 11
@@ -32,7 +31,7 @@ CREATE FUNCTION pg_stat_monitor_internal(
 	OUT elevel              int,
     OUT sqlcode             TEXT,
     OUT message             text,
-    OUT bucket_start_time   timestamp,
+    OUT bucket_start_time   timestamptz,
 
 	OUT calls         		int8,  -- 16
 
@@ -42,9 +41,9 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT mean_exec_time      float8,
     OUT stddev_exec_time    float8,
 
-    OUT rows_retrieved      int8,
+    OUT rows                int8,
 
-	OUT plans_calls    	 	int8,  -- 23
+	OUT plans          	 	int8,  -- 23
    
     OUT total_plan_time     float8,
     OUT min_plan_time       float8,
@@ -64,6 +63,7 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT temp_blks_written   int8,
     OUT blk_read_time       float8,
     OUT blk_write_time      float8,
+
     OUT temp_blk_read_time  float8,
     OUT temp_blk_write_time float8,
 
@@ -84,8 +84,8 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT jit_emission_count      int8,
     OUT jit_emission_time       float8,
 
-    OUT toplevel                BOOLEAN,
-    OUT bucket_done             BOOLEAN
+    OUT toplevel            BOOLEAN,
+    OUT bucket_done         BOOLEAN
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor_2_0'
@@ -98,12 +98,13 @@ BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
 	bucket_start_time AS bucket_start_time,
-    userid::regrole,
+    userid,
+    userid::regrole AS user,
+    dbid,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
 	pgsm_query_id,
     queryid,
-    toplevel,
     top_queryid,
     query,
 	comments,
@@ -118,12 +119,12 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	sqlcode,
 	message,
     calls,
-	total_exec_time,
-	min_exec_time,
-	max_exec_time,
-	mean_exec_time,
-	stddev_exec_time,
-	rows_retrieved,
+	total_exec_time AS total_time,
+	min_exec_time AS min_time,
+	max_exec_time AS max_time,
+	mean_exec_time AS mean_time,
+	stddev_exec_time AS stddev_time,
+	rows,
 	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,
@@ -153,7 +154,9 @@ BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
 	bucket_start_time AS bucket_start_time,
-    userid::regrole,
+    userid,
+    userid::regrole AS user,
+    dbid,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
 	pgsm_query_id,
@@ -178,7 +181,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	max_exec_time,
 	mean_exec_time,
 	stddev_exec_time,
-	rows_retrieved,
+	rows,
 	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,
@@ -197,7 +200,9 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_records,
     wal_fpi,
     wal_bytes,
-    plans_calls,
+	bucket_done,
+    -- PostgreSQL-13 Specific Coulumns
+	plans,
 	total_plan_time,
 	min_plan_time,
 	max_plan_time,
@@ -215,7 +220,9 @@ BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
 	bucket_start_time AS bucket_start_time,
-    userid::regrole,
+    userid,
+    userid::regrole AS user,
+    dbid,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
 	pgsm_query_id,
@@ -240,7 +247,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	max_exec_time,
 	mean_exec_time,
 	stddev_exec_time,
-	rows_retrieved,
+	rows,
 	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,
@@ -261,7 +268,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_bytes,
 	bucket_done,
 
-    plans_calls,
+    plans,
 	total_plan_time,
 	min_plan_time,
 	max_plan_time,
@@ -279,9 +286,12 @@ BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
 	bucket_start_time AS bucket_start_time,
-    userid::regrole,
+    userid,
+    userid::regrole AS user,
+    dbid,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
+	pgsm_query_id,
     queryid,
     toplevel,
     top_queryid,
@@ -303,7 +313,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	max_exec_time,
 	mean_exec_time,
 	stddev_exec_time,
-	rows_retrieved,
+	rows,
 	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,
@@ -327,7 +337,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_bytes,
 	bucket_done,
 
-    plans_calls,
+    plans,
 	total_plan_time,
 	min_plan_time,
 	max_plan_time,
@@ -371,7 +381,6 @@ $$
 $$ LANGUAGE plpgsql;
 
 SELECT pgsm_create_view();
-
 REVOKE ALL ON FUNCTION range FROM PUBLIC;
 REVOKE ALL ON FUNCTION get_cmd_type FROM PUBLIC;
 REVOKE ALL ON FUNCTION decode_error_level FROM PUBLIC;
@@ -384,4 +393,3 @@ REVOKE ALL ON FUNCTION pgsm_create_14_view FROM PUBLIC;
 REVOKE ALL ON FUNCTION pgsm_create_15_view FROM PUBLIC;
 
 GRANT SELECT ON pg_stat_monitor TO PUBLIC;
-

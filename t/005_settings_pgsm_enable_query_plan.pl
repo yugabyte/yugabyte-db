@@ -63,7 +63,7 @@ PGSM::append_to_file($stdout);
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT planid FROM pg_stat_monitor WHERE calls = 2;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 isnt($stdout,'',"Test: planid should not be empty");
-ok(length($stdout) == 16, 'Length of planid is 16');
+ok(length($stdout) > 0, 'Length of planid is > 0');
 
 $node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_enable_query_plan = 'no'\n");
 $node->restart();

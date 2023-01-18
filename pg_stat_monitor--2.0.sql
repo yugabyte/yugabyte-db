@@ -87,12 +87,12 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT dbid                oid,
     OUT client_ip           int8,
 
-    OUT queryid             text,  -- 4
-    OUT planid              text,
+    OUT queryid             int8,  -- 4
+    OUT planid              int8,
     OUT query               text,
     OUT query_plan          text,
     OUT pgsm_query_id       int8,
-    OUT top_queryid         text,
+    OUT top_queryid         int8,
 	OUT top_query           text,
 	OUT application_name	text,
 
@@ -111,9 +111,9 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT mean_exec_time      float8,
     OUT stddev_exec_time    float8,
 
-    OUT rows_retrieved      int8,
+    OUT rows                int8,
 
-	OUT plans_calls    	 	int8,  -- 23
+	OUT plans          	 	int8,  -- 23
    
     OUT total_plan_time     float8,
     OUT min_plan_time       float8,
@@ -168,7 +168,9 @@ BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
 	bucket_start_time AS bucket_start_time,
-    userid::regrole,
+    userid,
+    userid::regrole AS user,
+    dbid,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
 	pgsm_query_id,
@@ -192,7 +194,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	max_exec_time AS max_time,
 	mean_exec_time AS mean_time,
 	stddev_exec_time AS stddev_time,
-	rows_retrieved,
+	rows,
 	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,
@@ -222,7 +224,9 @@ BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
 	bucket_start_time AS bucket_start_time,
-    userid::regrole,
+    userid,
+    userid::regrole AS user,
+    dbid,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
 	pgsm_query_id,
@@ -247,7 +251,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	max_exec_time,
 	mean_exec_time,
 	stddev_exec_time,
-	rows_retrieved,
+	rows,
 	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,
@@ -268,7 +272,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_bytes,
 	bucket_done,
     -- PostgreSQL-13 Specific Coulumns
-	plans_calls,
+	plans,
 	total_plan_time,
 	min_plan_time,
 	max_plan_time,
@@ -286,7 +290,9 @@ BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
 	bucket_start_time AS bucket_start_time,
-    userid::regrole,
+    userid,
+    userid::regrole AS user,
+    dbid,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
 	pgsm_query_id,
@@ -311,7 +317,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	max_exec_time,
 	mean_exec_time,
 	stddev_exec_time,
-	rows_retrieved,
+	rows,
 	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,
@@ -332,7 +338,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_bytes,
 	bucket_done,
 
-    plans_calls,
+    plans,
 	total_plan_time,
 	min_plan_time,
 	max_plan_time,
@@ -350,7 +356,9 @@ BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
 	bucket_start_time AS bucket_start_time,
-    userid::regrole,
+    userid,
+    userid::regrole AS user,
+    dbid,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
 	pgsm_query_id,
@@ -375,7 +383,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	max_exec_time,
 	mean_exec_time,
 	stddev_exec_time,
-	rows_retrieved,
+	rows,
 	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,
@@ -399,7 +407,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_bytes,
 	bucket_done,
 
-    plans_calls,
+    plans,
 	total_plan_time,
 	min_plan_time,
 	max_plan_time,
