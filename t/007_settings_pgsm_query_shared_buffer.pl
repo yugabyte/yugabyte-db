@@ -20,7 +20,7 @@ my $pgdata = $node->data_dir;
 # UPDATE postgresql.conf to include/load pg_stat_monitor library
 open my $conf, '>>', "$pgdata/postgresql.conf";
 print $conf "shared_preload_libraries = 'pg_stat_monitor'\n";
-print $conf "pg_stat_monitor.pgsm_bucket_time = 300\n";
+print $conf "pg_stat_monitor.pgsm_bucket_time = 360000\n";
 print $conf "pg_stat_monitor.pgsm_query_shared_buffer = 1\n";
 print $conf "pg_stat_monitor.pgsm_normalized_query = 'yes'\n";
 close $conf;
@@ -52,7 +52,7 @@ PGSM::append_to_file($stdout);
 my $port = $node->port;
 print "port $port \n";
 
-my $out = system ("pgbench -i -s 100 -p $port example");
+my $out = system ("pgbench -i -s 10 -p $port example");
 print " out: $out \n";
 ok($cmdret == 0, "Perform pgbench init");
 
@@ -60,12 +60,11 @@ $out = system ("pgbench -c 10 -j 2 -t 1000 -p $port example");
 print " out: $out \n";
 ok($cmdret == 0, "Run pgbench");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
-print "cmdret $cmdret\n";
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT datname, substr(query,0,150) AS query, SUM(calls) AS calls FROM pg_stat_monitor GROUP BY datname, query ORDER BY datname, query, calls DESC Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "SELECT XXX FROM pg_stat_monitor");
 PGSM::append_to_file($stdout);
 
-$node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_query_shared_buffer = 100\n");
+$node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_query_shared_buffer = 2\n");
 $node->restart();
 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT pg_stat_monitor_reset();', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
@@ -76,7 +75,7 @@ PGSM::append_to_file($stdout);
 ok($cmdret == 0, "Print PGSM EXTENSION Settings");
 PGSM::append_to_file($stdout);
 
-$out = system ("pgbench -i -s 100 -p $port example");
+$out = system ("pgbench -i -s 10 -p $port example");
 print " out: $out \n";
 ok($cmdret == 0, "Perform pgbench init");
 
@@ -84,8 +83,7 @@ $out = system ("pgbench -c 10 -j 2 -t 1000 -p $port example");
 print " out: $out \n";
 ok($cmdret == 0, "Run pgbench");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
-print "cmdret $cmdret\n";
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT datname, substr(query,0,150) AS query, SUM(calls) AS calls FROM pg_stat_monitor GROUP BY datname, query ORDER BY datname, query, calls DESC Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "SELECT XXX FROM pg_stat_monitor");
 PGSM::append_to_file($stdout);
 
@@ -100,7 +98,7 @@ PGSM::append_to_file($stdout);
 ok($cmdret == 0, "Print PGSM EXTENSION Settings");
 PGSM::append_to_file($stdout);
 
-$out = system ("pgbench -i -s 100 -p $port example");
+$out = system ("pgbench -i -s 10 -p $port example");
 print " out: $out \n";
 ok($cmdret == 0, "Perform pgbench init");
 
@@ -108,8 +106,7 @@ $out = system ("pgbench -c 10 -j 2 -t 1000 -p $port example");
 print " out: $out \n";
 ok($cmdret == 0, "Run pgbench");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
-print "cmdret $cmdret\n";
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT datname, substr(query,0,150) AS query, SUM(calls) AS calls FROM pg_stat_monitor GROUP BY datname, query ORDER BY datname, query, calls DESC Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "SELECT XXX FROM pg_stat_monitor");
 PGSM::append_to_file($stdout);
 

@@ -12,7 +12,7 @@ SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals
 (1 row)
 
 CREATE database example;
-SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
+SELECT datname, substr(query,0,150) AS query, SUM(calls) AS calls FROM pg_stat_monitor GROUP BY datname, query ORDER BY datname, query, calls DESC Limit 20;
  datname |                                                     query                                                     | calls 
 ---------+---------------------------------------------------------------------------------------------------------------+-------
  example | BEGIN                                                                                                         | 10000
@@ -33,8 +33,8 @@ SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER B
  example | create table pgbench_history(tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22))            |     1
  example | create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfactor=100)     |     1
  example | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers                     |     1
- example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |   100
- example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |  1000
+ example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |    10
+ example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |   100
 (20 rows)
 
 SELECT pg_stat_monitor_reset();
@@ -46,10 +46,10 @@ SELECT pg_stat_monitor_reset();
 SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_shared_buffer';
                    name                   | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
 ------------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
- pg_stat_monitor.pgsm_query_shared_buffer | 100     | MB   | postmaster | integer | configuration file | 1       | 10000   |          | 20       | 100       | f
+ pg_stat_monitor.pgsm_query_shared_buffer | 2       | MB   | postmaster | integer | configuration file | 1       | 10000   |          | 20       | 2         | f
 (1 row)
 
-SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
+SELECT datname, substr(query,0,150) AS query, SUM(calls) AS calls FROM pg_stat_monitor GROUP BY datname, query ORDER BY datname, query, calls DESC Limit 20;
  datname |                                                     query                                                     | calls 
 ---------+---------------------------------------------------------------------------------------------------------------+-------
  example | BEGIN                                                                                                         | 10000
@@ -70,8 +70,8 @@ SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER B
  example | create table pgbench_history(tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22))            |     1
  example | create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfactor=100)     |     1
  example | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers                     |     1
- example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |   100
- example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |  1000
+ example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |    10
+ example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |   100
 (20 rows)
 
 SELECT pg_stat_monitor_reset();
@@ -86,7 +86,7 @@ SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals
  pg_stat_monitor.pgsm_query_shared_buffer | 20      | MB   | postmaster | integer | configuration file | 1       | 10000   |          | 20       | 20        | f
 (1 row)
 
-SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
+SELECT datname, substr(query,0,150) AS query, SUM(calls) AS calls FROM pg_stat_monitor GROUP BY datname, query ORDER BY datname, query, calls DESC Limit 20;
  datname |                                                     query                                                     | calls 
 ---------+---------------------------------------------------------------------------------------------------------------+-------
  example | BEGIN                                                                                                         | 10000
@@ -107,8 +107,8 @@ SELECT datname, substr(query,0,150) AS query, calls FROM pg_stat_monitor ORDER B
  example | create table pgbench_history(tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22))            |     1
  example | create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfactor=100)     |     1
  example | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers                     |     1
- example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |   100
- example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |  1000
+ example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |    10
+ example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |   100
 (20 rows)
 
 DROP EXTENSION pg_stat_monitor;
