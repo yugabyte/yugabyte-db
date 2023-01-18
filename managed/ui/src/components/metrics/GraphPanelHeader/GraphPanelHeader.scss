@@ -104,8 +104,11 @@
   }
 
   .node-filter-dropdown {
-    .dropdown-toggle-button {
+    &__border-topk {
       border-radius: 0px 8px 8px 0px;
+    }
+    &__border {
+      border-radius: 8px;
     }
   }
 
