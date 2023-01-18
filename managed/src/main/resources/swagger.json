@@ -3088,9 +3088,16 @@
         "scope" : {
           "enum" : [ "GLOBAL", "CUSTOMER", "UNIVERSE", "PROVIDER" ],
           "type" : "string"
+        },
+        "tags" : {
+          "items" : {
+            "enum" : [ "PUBLIC", "INTERNAL", "YBM", "BETA", "UIDriven" ],
+            "type" : "string"
+          },
+          "type" : "array"
         }
       },
-      "required" : [ "dataType", "displayName", "helpTxt", "key", "scope" ],
+      "required" : [ "dataType", "displayName", "helpTxt", "key", "scope", "tags" ],
       "type" : "object"
     },
     "ConfigEntry" : {
