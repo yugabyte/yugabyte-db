@@ -12,6 +12,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -191,12 +192,21 @@ public class MetricQueryHelper {
       if (CollectionUtils.isNotEmpty(metricQueryParams.getClusterUuids())
           || CollectionUtils.isNotEmpty(metricQueryParams.getRegionCodes())
           || CollectionUtils.isNotEmpty(metricQueryParams.getAvailabilityZones())
-          || CollectionUtils.isNotEmpty(metricQueryParams.getNodeNames())) {
+          || CollectionUtils.isNotEmpty(metricQueryParams.getNodeNames())
+          || metricQueryParams.getServerType() != null) {
         // Need to get matching nodes
         universe
             .getNodes()
             .forEach(
                 node -> {
+                  if (metricQueryParams.getServerType() == UniverseTaskBase.ServerType.MASTER
+                      && !node.isMaster) {
+                    return;
+                  }
+                  if (metricQueryParams.getServerType() == UniverseTaskBase.ServerType.TSERVER
+                      && !node.isTserver) {
+                    return;
+                  }
                   if (CollectionUtils.isNotEmpty(metricQueryParams.getClusterUuids())
                       && !metricQueryParams.getClusterUuids().contains(node.placementUuid)) {
                     return;
