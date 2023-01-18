@@ -32,8 +32,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -161,10 +163,17 @@ public class YbcUpgrade {
       while (ybcUpgradeUniverseSet.size() > 0 && numRetries < MAX_YBC_UPGRADE_POLL_RESULT_TRIES) {
         numRetries++;
         boolean found = false;
-        for (UUID universeUUID : targetUniverseList) {
+        Iterator<UUID> iter = targetUniverseList.iterator();
+        while (iter.hasNext()) {
+          UUID universeUUID = iter.next();
           if (checkYBCUpgradeProcessExists(universeUUID)) {
             found = true;
-            pollUpgradeTaskResult(universeUUID, ybcVersion, false);
+            Optional<Universe> optional = Universe.maybeGet(universeUUID);
+            if (!optional.isPresent()) {
+              iter.remove();
+            } else {
+              pollUpgradeTaskResult(universeUUID, ybcVersion, false);
+            }
           }
         }
         if (!found) {
