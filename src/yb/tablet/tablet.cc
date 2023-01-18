@@ -4046,10 +4046,15 @@ void Tablet::UnregisterOperationFilterUnlocked(OperationFilter* filter) {
   operation_filters_.erase(operation_filters_.iterator_to(*filter));
 }
 
-docdb::DocReadContextPtr Tablet::GetDocReadContext(const std::string& table_id) const {
-  auto table_info = table_id.empty()
-      ? metadata_->primary_table_info() : CHECK_RESULT(metadata_->GetTableInfo(table_id));
-  return table_info->doc_read_context;
+docdb::DocReadContextPtr Tablet::GetDocReadContext() const {
+  return metadata_->primary_table_info()->doc_read_context;
+}
+
+Result<docdb::DocReadContextPtr> Tablet::GetDocReadContext(const std::string& table_id) const {
+  if (table_id.empty()) {
+    return GetDocReadContext();
+  }
+  return VERIFY_RESULT(metadata_->GetTableInfo(table_id))->doc_read_context;
 }
 
 Schema Tablet::GetKeySchema(const std::string& table_id) const {

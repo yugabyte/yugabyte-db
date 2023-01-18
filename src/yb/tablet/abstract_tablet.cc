@@ -99,7 +99,7 @@ Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
   // Form a schema of columns that are referenced by this query.
   const auto doc_read_context = table_info->doc_read_context;
   const auto index_doc_read_context = pgsql_read_request.has_index_request()
-      ? GetDocReadContext(pgsql_read_request.index_request().table_id()) : nullptr;
+    ? VERIFY_RESULT(GetDocReadContext(pgsql_read_request.index_request().table_id())) : nullptr;
 
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute(

@@ -34,8 +34,13 @@ SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable
       tablet_id_(tablet_id) {
 }
 
-docdb::DocReadContextPtr SystemTablet::GetDocReadContext(const std::string& table_id) const {
+Result<docdb::DocReadContextPtr> SystemTablet::GetDocReadContext(
+    const std::string& table_id) const {
   // table_id is ignored. It should match the system table's id.
+  return GetDocReadContext();
+}
+
+docdb::DocReadContextPtr SystemTablet::GetDocReadContext() const {
   return doc_read_context_;
 }
 
