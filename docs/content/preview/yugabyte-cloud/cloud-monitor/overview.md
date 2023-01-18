@@ -38,8 +38,8 @@ The following table describes the metrics available on the **Overview**.
 | :---| :--- | :--- |
 | Operations/sec | The number of [YB-TServer](../../../architecture/concepts/yb-tserver/) read and write operations per second. | Spikes in read operations are normal during backups and scheduled maintenance. If the count drops significantly below average, it might indicate an application connection failure. If the count is much higher than average, it could indicate a DDoS, security incident, and so on. Coordinate with your application team because there could be legitimate reasons for dips and spikes. |
 | Average Latency (ms) | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
-| CPU Usage (%) | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
-| Disk Usage (%) | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks; some file systems issue an alert at 75% usage due to performance degradation. |
+| CPU Usage (%) | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. An [alert](../cloud-alerts/) is issued when node CPU use exceeds 70% (Warning) or 90% (Severe) on average for at least 5 minutes. |
+| Disk Usage (GB) | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks. An [alert](../cloud-alerts/) is issued when the free storage on any node in the cluster falls below 40% (Warning) and 25% (Severe). |
 
 ## Performance metrics
 
@@ -53,7 +53,7 @@ The **Performance** tab provides the following metrics.
 | :---| :--- | :--- |
 | YSQL Operations/Sec | The count of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. This does not include index writes. | If the count drops significantly lower than your average count, it might indicate an application connection failure. In addition, if the count is much higher than your average count, it could indicate a DDoS, security incident, and so on. You should coordinate with your application team because there could be legitimate reasons for dips and spikes. |
 | YSQL Average Latency (ms) | Average time (in milliseconds) of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. | When latency is close to or higher than your application SLA, it may be a cause for concern. The overall latency metric is less helpful for troubleshooting specific queries. It is recommended that the application track query latency. There could be reasons your traffic experiences spikes in latency, such as when ad-hoc queries such as count(*) are executed. |
-| YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, you can have up to 10 simultaneous connections per vCPU. Issue alerts when the connection count exceeds 60 and 80 per cent of the cluster limit. |
+| YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, you can have up to 10 simultaneous connections per vCPU. An [alert](../cloud-alerts/) is issued when the number of connections exceeds 60% (Warning) and 95% (Severe) of the limit. |
 
 ### YCQL
 
@@ -68,15 +68,15 @@ The **Performance** tab provides the following metrics.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
-| CPU Usage (%) | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
-| Disk Usage (GB) | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks; some file systems issue an alert at 75% usage due to performance degradation. |
-| Memory Usage (GB) | Shows the amount of RAM (in GB) used and available to the cluster. | An alert should be issued if memory use exceeds 75 or 90 per cent for 10 minutes or more. Typically you would add vCPUs if load regularly exceeds 90 per cent. |
-| Network Bytes/Sec (MiB) | The size (in bytes; scale: millions) of network packets received (RX) and transmitted (TX) per second, averaged over nodes. | Provides a view of the intensity of the network activity on the server. |
+| CPU Usage (%) | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. An [alert](../cloud-alerts/) is issued when node CPU use exceeds 70% (Warning) or 90% (Severe) on average for at least 5 minutes. |
+| Disk Usage (GB) | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks. An [alert](../cloud-alerts/) is issued when the free storage on any node in the cluster falls below 40% (Warning) and 25% (Severe). |
+| Memory Usage (GB) | Shows the amount of RAM (in GB) used and available to the cluster. | An [alert](../cloud-alerts/) is issued if memory use exceeds 70 (Warning) or 90 (Severe) per cent. Typically you would add vCPUs if load regularly exceeds 90 per cent. |
+| Network Bytes/Sec (MiB) | The size (in bytes; scale: millions) of network packets received (RX) and transmitted (TX) per second, averaged over nodes. | Shows the amount of network traffic to and from the server. |
 | Disk Bytes/Sec (MiB) | The number of bytes (scale: millions) being read or written to disk per second, averaged over each node. | If the maximum IOPS for the instance volume type has high utilization, you should ensure that the schema and query are optimized. In addition, consider increasing the instance volume IOPS capacity. |
-| Disk IOPS/Sec | The number of disk input / output read and write operations per second averaged over each node. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Because random reads always hit disk, you should increase IOPS capacity for this type of workload.<br>You should set an alert to a value much greater than your average or as a percentage of your available IOPS.<br>This value is averaged across all nodes in a cluster. An alert should be issued per node to detect source of underlying issues. |
+| Disk IOPS/Sec | The number of disk input / output read and write operations per second averaged over each node. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Because random reads always hit disk, you should increase IOPS capacity for this type of workload.<br>This value is averaged across all nodes in a cluster. |
 | Network Errors/Sec | The number of errors related to network packets received (RX) and transmitted (TX) per second, averaged over nodes. | If your environment produces a lot of errors, that could indicate an underlying infrastructure or operating system issue. |
-| Network Packets/Sec | The count of network packets received to the server (RX) and transmitted from the server (TX) per second, averaged over nodes. | Provides a view of the intensity of the network activity on the server. |
-| Clock Skew (ms) | The clock drift and skew across different nodes. | Important for performance and data consistency. An OSS product can refuse to come up or can crash at a default value of 500 milliseconds, as it is considered better to be down than inconsistent.<br>It should be considered a top priority to resolve this alert. |
+| Network Packets/Sec | The count of network packets received to the server (RX) and transmitted from the server (TX) per second, averaged over nodes. | Shows the amount of network traffic to and from the server. |
+| Clock Skew (ms) | The clock drift and skew across different nodes. | Important for performance and data consistency. An OSS product can refuse to come up or can crash at a default value of 500 milliseconds, as it is considered better to be down than inconsistent.<br>It should be considered a top priority to resolve clock skew. |
 | RPC Queue Size | The number of remote procedure calls (RPC) in service queues for tablet servers, including the following services: CDC (Change Data Capture); Remote Bootstrap; TS RPC (Tablet Server Service); Consensus; Admin; Generic; Backup. | The queue size is an indicator of the incoming traffic. If the backends get overloaded, requests pile up in the queues. When the queue is full, the system responds with backpressure errors. |
 <!--| System Load Over Time | The measure of system load averaged over 1, 5, and 15 minutes. | Values greater than your configured number of cores indicates that processes are waiting for CPU time. Consider your averages when determining the alert threshold.<br>In some cases, this can mean issuing an alert when the 5-minute load average is at 75-80% of available cores on the server. For some systems and workloads, you may want to set the threshold higher (for example, to 4 times the number of cores). |-->
 
@@ -93,7 +93,9 @@ The **Performance** tab provides the following metrics.
 | Transaction | The number of transactions. | This value depends on the application or activity. Because transactions can have batched statements, no specific guidance is possible for this metric. |
 | Inbound RPC Connections Alive | The count of current connections at the CQL API level. | If this spikes to a number much higher than average, you should consider that there may be an active DDoS or a security incident. |-->
 
-### Tablet server
+### YB-Tablet server
+
+The [YugabyteDB Tablet Server](../../../architecture/concepts/yb-tserver/) (YB-TServer) is responsible for the actual I/O of the end-user requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each one hosts one or more tablet-peers.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
@@ -108,13 +110,13 @@ The **Performance** tab provides the following metrics.
 | YB-TServer Change Config Latency (ms) | Latency of consensus change configuration processes. | You may consider this information while examining other metrics. |
 | YB-TServer Change Config RPCs | This metric is related to the RAFT Consensus Process. The number of times a peer was added or removed from the consensus group. | An increase in Change Config typically happens when YugabyteDB needs to move data around. This may happen as a result of a planned server addition or decommission, or a server crash looping. |
 | YB-TServer Context Switches | Voluntary context switches are writer processes that take a lock.<br>Involuntary context switches happen when a writer process has waited longer than a set threshold, which results in other waiting processes taking over. | A large number of involuntary context switches indicates a CPU-bound workload. |
-| YB-TServer Leader Elections Lost RPCs | This metric is related to the RAFT Consensus Process. The number of times a leader election has failed. | You should issue an alert on Leader Election Lost. |
+| YB-TServer Leader Elections Lost RPCs | This metric is related to the RAFT Consensus Process. The number of times a leader election has failed. | Leader election failures could be an indicator of a high CPU, blocked RPC queues, server restarts, and so on. <!--You should issue an alert on Leader Election Lost.--> |
 | YB-TServer Leader Step Down RPCs | This metric is related to the RAFT Consensus Process. The number of leader changes. | A Leader Step Down can indicate a normal change in leader, or it could be an indicator of a high CPU, blocked RPC queues, server restarts, and so on. <!--You should issue an alert on LeaderStepDown as a proxy for other system issues. --> |
 | YB-TServer WAL Latency (ms) | Group (Log Group Commit Latency): the number of microseconds spent on committing an entire group.<br>Append (Log Append Latency): the number of microseconds spent on appending to the log segment file.<br>Sync (Log Sync Latency): the number of microseconds spent on synchronizing the log segment file. | These metrics provide information on the amount to time spent writing to a disk. You should perform tuning accordingly. |
 | YB-TServer WAL Operations/Sec | Group (Log Group Commit Count): the number of commits of an entire group, per second, per node.<br>Append (Log Append Count): the number of appends to the log segment file, per second, per node.<br>Sync (Log Sync Count): the number of syncs for the log segment file, per second, per node. | |
 | YB-TServer Consensus RPC Latency (ms) | Request Consensus Vote: latency of consensus request operations.<br>Update Consensus: latency of consensus update operations.<br>Multi-Raft Update Consensus: information pending. | If the value is high, it is likely that the overall latency is high.<br>This metric should be treated as a starting point in debugging the YB-Master and YB-TServer processes. |
-| YB-TServer Remote Bootstrap RPCs | The total count of remote bootstraps. | When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.<br>Bootstrapping can also be a result of planned user activity when adding or decommissioning nodes.<br>It is recommended to issue an alert on a change in this count outside of planned activity. |
-| YB-TServer Remote Bootstrap Connections | The total count of remote bootstrap connections. | When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.<br>Bootstrapping can also be a result of planned user activity when adding or decommissioning nodes.<br>It is recommended to issue an alert on a change in this count outside of planned activity. |
+| YB-TServer Remote Bootstrap RPCs | The total count of remote bootstraps. | When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.<br>Bootstrapping can also be a result of planned user activity when adding or decommissioning nodes. <!--It is recommended to issue an alert on a change in this count outside of planned activity.--> |
+| YB-TServer Remote Bootstrap Connections | The total count of remote bootstrap connections. | When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.<br>Bootstrapping can also be a result of planned user activity when adding or decommissioning nodes. <!--It is recommended to issue an alert on a change in this count outside of planned activity.--> |
 | YB-TServer Leader Election RPCs | This metric is related to the RAFT Consensus Process. The number of times a leader has been elected. | |
 | YB-TServer Spinlock Contention Time (s) | Spinlock is a measurement of processes waiting for a server resource and using a CPU to check and wait repeatedly until the resource is available. | This value can become very high on large computers with many cores.<br>The GFlag `tserver_tcmalloc_max_total_thread_cache_bytes` is by default 256 MB, and this is typically sufficient for 16-core computers with less than 32 GB of memory. For larger computers, it is recommended to increase this to 1 GB or 2 GB.<br>You should monitor memory usage, as this requires more memory. |
 | YB-TServer CPU Usage (%) | The percentage of CPU use being consumed by the tablet server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
@@ -127,7 +129,9 @@ The **Performance** tab provides the following metrics.
 | CPU Util Secs / Sec  | The tablet server CPU use. | The tablet server should not use the full allocation of CPUs. For example, on a 4-core computer, three cores are used by the tablet server, but if the usage is usually close to three, you should increase the number of available CPUs. |
 | Inbound RPC Connections Alive | The count of active connections to YB-TServers. | |-->
 
-### Master server
+### YB-Master server
+
+The [YugabyteDB Master Server](../../../architecture/concepts/yb-master/) (YB-Master) hosts system metadata, and records such as what tables exist in the system, where their tablets live, what users and roles exist, the permissions associated with them, and so on. YB-Masters are also responsible for coordinating background operations.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
@@ -163,14 +167,14 @@ The **Performance** tab provides the following metrics.
 
 ### DocDB
 
-DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store.
+[DocDB](../../../architecture/layered-architecture/#docdb) is a distributed document store, and the YugabyteDB storage layer. It uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
 | YB-Master RocksDB Operations/sec  | The number of master RocksDB operations per second. | You may consider this information while examining other metrics. |
 | YB-Master RocksDB SST Disk Usage (GB) | The size (in GB) of all SST files. | |
 | YB-Master RocksDB SST Files | The number of SST files. | |
-| YB-Master RocksDB Cache | Hit: the total number of block cache hits (cache index + cache filter + cache data).<br>Miss: the total number of block cache misses (cache index + cache filter + cache data). | If the number of misses is significant, it is recommended to issue an alert. |
+| YB-Master RocksDB Cache | Hit: the total number of block cache hits (cache index + cache filter + cache data).<br>Miss: the total number of block cache misses (cache index + cache filter + cache data). | <!-- If the number of misses is significant, it is recommended to issue an alert.--> |
 | YB-Master RocksDB Cache Usage (GB) | A block requires multiple touches before it is added to the multi-touch (hot) portion of the cache.<br><br>Multi Touch: the size (in bytes) of the cache usage by blocks having multiple touches.<br>Single Touch: the size (in bytes) of the cache usage by blocks having only a single touch. | |
 | YB-Master RocksDB Blooms | Checked: the number of times the bloom filter has been checked.<br>Useful: the number of times the bloom filter has avoided file reads (avoiding iops). | Bloom filters are hash tables used to determine if a given SSTable has the data for a query looking for a particular value.<br>Bloom filters are not helpful for range queries. |
 | YB-Master RocksDB Flush Write Bytes (MiB) | The number of bytes written during the flush process. | |
@@ -182,7 +186,7 @@ DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-
 | YB-TServer RocksDB Operations/sec  | The number of master RocksDB operations per second. | You may consider this information while examining other metrics. |
 | YB-TServer RocksDB SST Disk Usage (GB) | The size (in GB) of all SST files. | |
 | YB-TServer RocksDB Latency (ms) | Get: Latency in time to retrieve data matching a value.<br>Write: Latency in time to write data.<br>Seek: Latency in time to retrieve data in a range query.<br>Mutex Wait: The wait time for the DB mutex. This mutex is held for meta operations, such as checking data structures before and after compactions or flushes. | |
-| YB-TServer RocksDB Cache | Hit: the total number of block cache hits (cache index + cache filter + cache data).<br>Miss: the total number of block cache misses (cache index + cache filter + cache data). | If the number of misses is significant, it is recommended to issue an alert. |
+| YB-TServer RocksDB Cache | Hit: the total number of block cache hits (cache index + cache filter + cache data).<br>Miss: the total number of block cache misses (cache index + cache filter + cache data). | <!-- If the number of misses is significant, it is recommended to issue an alert.--> |
 | YB-TServer RocksDB Cache Usage (GB) | A block requires multiple touches before it is added to the multi-touch (hot) portion of the cache.<br><br>Multi Touch: the size (in bytes) of the cache usage by blocks having multiple touches.<br>Single Touch: the size (in bytes) of the cache usage by blocks having only a single touch. | |
 | YB-TServer RocksDB Blooms | Checked: the number of times the bloom filter has been checked.<br>Useful: the number of times the bloom filter has avoided file reads (avoiding iops). | Bloom filters are hash tables used to determine if a given SSTable has the data for a query looking for a particular value.<br>Bloom filters are not helpful for range queries. |
 | YB-TServer RocksDB Stall Time (ms) | Time the writer has to wait for compactions or flushes to finish. | |
@@ -193,8 +197,8 @@ DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-
 | YB-TServer RocksDB Compaction Time (ms) | Time for the compaction processes to complete. | |
 | YB-TServer RocksDB Transactions | Expired: the number of expired distributed transactions.<br>Conflicts: the number of conflicts detected among uncommitted distributed transactions.<br><br>This is related to the process that resolves conflicts for write transactions. This process reads all intents that could conflict and tries to abort transactions with a lower priority. If a write transaction conflicts with a higher-priority transaction, then an error is returned and this metric is iterated. | |
 | YB-TServer RocksDB Transaction Pool Cache | Percentage of transaction pool requests fulfilled by the transaction pool cache. | |
-| YB-TServer RocksDB Tablet Splitting Operations | | |
-| YB-TServer RocksDB Tablet Splitting Manager Runtime (ms) | | |
+| YB-TServer RocksDB Tablet Splitting Operations | Number of tablet splitting operations. | |
+| YB-TServer RocksDB Tablet Splitting Manager Runtime (ms) | Time the tablet splitting manager has run. | |
 <!--| LSM-DB Seek/Next Num Ops | The number of calls to seek / next. | |
 | LSM-DB Seeks/Sec/Node | The number of calls to seek per second per node. | |
 | SSTable size/Node | The size (in bytes) of all SST files. | |
