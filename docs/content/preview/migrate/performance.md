@@ -28,13 +28,13 @@ yb-voyager improves performance when migrating data into a newly created empty d
 
 - Disables foreign key constraints during data import. However, other constraints like primary key constraints, check constraints, unique key constraints, and so on are not disabled. It's safe to disable some constraint checks as the data is from a reliable source. For maximum throughput, it is also preferable to not follow any order when populating tables.
 
+- Disables triggers also during the import data phase.
+
   {{< note title="Note" >}}
 
-yb-voyager only disables constraint checks (except check constraints on columns) in internal sessions to migrate data.
+yb-voyager only disables the constraint checks and triggers in the internal sessions it uses to migrate data.
 
   {{< /note >}}
-
-- Disables triggers also during the import data phase.
 
 ### Techniques to improve performance
 
@@ -68,7 +68,7 @@ These performance optimizations apply whether you are importing data using the y
 
 ## Improve export performance
 
-By default, yb-voyager exports one table at a time. To improve data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can however negatively impact performance; a setting of '4' typically performs well.
+By default, yb-voyager exports four tables at a time. To improve data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can however negatively impact performance; a setting of '4' typically performs well.
 
 ## Test results
 
