@@ -1697,16 +1697,14 @@ pg_stat_monitor(PG_FUNCTION_ARGS)
 static bool
 IsBucketValid(uint64 bucketid)
 {
-	time_t		bucket_t,
-				current_t;
-	double		diff_t;
+	long secs;
+	int  microsecs;
+	TimestampTz current_tz = GetCurrentTimestamp();
 	pgssSharedState *pgss = pgsm_get_ss();
 
-	bucket_t = mktime(&pgss->bucket_start_time[bucketid]);
+	TimestampDifference(pgss->bucket_start_time[bucketid], current_tz,&secs, &microsecs);
 
-	time(&current_t);
-	diff_t = difftime(current_t, bucket_t);
-	if (diff_t > (PGSM_BUCKET_TIME * PGSM_MAX_BUCKETS))
+	if (secs > (PGSM_BUCKET_TIME * PGSM_MAX_BUCKETS))
 		return false;
 	return true;
 }
@@ -1984,11 +1982,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum(tmp.error.message);
 
 		/* bucket_start_time at column number 15 */
-		{
-			TimestampTz tm;
-			tm2timestamp((struct pg_tm*) &pgss->bucket_start_time[entry->key.bucket_id], 0, NULL, &tm);
-			values[i++] = TimestampGetDatum(tm);
-		}
+			values[i++] = TimestampTzGetDatum(pgss->bucket_start_time[entry->key.bucket_id]);
+
 		if (tmp.calls.calls == 0)
 		{
 			/* Query of pg_stat_monitor itslef started from zero count */
@@ -2142,7 +2137,7 @@ get_next_wbucket(pgssSharedState *pgss)
 	uint64		current_bucket_sec;
 	uint64		new_bucket_id;
 	uint64		prev_bucket_id;
-	struct tm  *lt;
+	struct 		tm;
 	bool		update_bucket = false;
 
 	gettimeofday(&tv, NULL);
@@ -2187,18 +2182,14 @@ get_next_wbucket(pgssSharedState *pgss)
 
 		LWLockRelease(pgss->lock);
 
-		tv.tv_sec = (tv.tv_sec) - (tv.tv_sec % PGSM_BUCKET_TIME);
-		lt = localtime(&tv.tv_sec);
-		/*
-		 * Year is 1900 behind and month is 0 based, therefore we need to
-		 * adjust that.
-		 */
-		lt->tm_year += 1900;
-		lt->tm_mon += 1;
-
 		/* Allign the value in prev_bucket_sec to the bucket start time */
+		tv.tv_sec = (tv.tv_sec) - (tv.tv_sec % PGSM_BUCKET_TIME);
+
 		pg_atomic_exchange_u64(&pgss->prev_bucket_sec, (uint64)tv.tv_sec);
-		memcpy(&pgss->bucket_start_time[new_bucket_id], lt, sizeof(struct tm));
+
+		pgss->bucket_start_time[new_bucket_id] = (TimestampTz) tv.tv_sec -
+					((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
+		pgss->bucket_start_time[new_bucket_id] = pgss->bucket_start_time[new_bucket_id] * USECS_PER_SEC;
 		return new_bucket_id;
 	}
 
