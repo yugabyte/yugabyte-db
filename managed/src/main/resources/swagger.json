@@ -4981,6 +4981,11 @@
           },
           "type" : "array"
         },
+        "serverType" : {
+          "description" : "Server type",
+          "enum" : [ "MASTER", "TSERVER", "CONTROLLER", "YQLSERVER", "YSQLSERVER", "REDISSERVER", "EITHER" ],
+          "type" : "string"
+        },
         "start" : {
           "description" : "Start time",
           "format" : "int64",
