@@ -89,7 +89,7 @@ DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(async_replication_idle_delay_ms);
 DECLARE_int32(async_replication_polling_delay_ms);
 DECLARE_int32(async_replication_max_idle_wait);
-DECLARE_int32(external_intent_cleanup_secs);
+DECLARE_uint32(external_intent_cleanup_secs);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
@@ -1889,9 +1889,8 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableWithBootstrap) {
   WriteTransactionalWorkload(10, 20, producer_client(), producer_txn_mgr(), producer_table->name());
 
   // 4. Flush the table and run log GC.
-  ASSERT_OK(producer_client()->FlushTables(
-      {producer_table->id()}, /* add_indexes = */ false,
-      /* timeout_secs = */ 30, /* is_compaction = */ true));
+  ASSERT_OK(producer_cluster()->FlushTablets());
+  ASSERT_OK(producer_cluster()->CompactTablets());
   for (size_t i = 0; i < producer_cluster()->num_tablet_servers(); ++i) {
     for (const auto& tablet_peer : producer_cluster()->GetTabletPeers(i)) {
       ASSERT_OK(tablet_peer->RunLogGC());
