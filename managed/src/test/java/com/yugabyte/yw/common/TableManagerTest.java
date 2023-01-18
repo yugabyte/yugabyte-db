@@ -11,12 +11,16 @@ import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -25,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -63,6 +68,7 @@ public class TableManagerTest extends FakeDBApplication {
 
   @Mock RuntimeConfigFactory mockruntimeConfigFactory;
   @Mock Config mockConfigUniverseScope;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   private Provider testProvider;
   private Customer testCustomer;
@@ -314,8 +320,12 @@ public class TableManagerTest extends FakeDBApplication {
     metadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
-    when(mockConfigUniverseScope.getBoolean("yb.backup.pg_based")).thenReturn(false);
-    when(mockruntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfigUniverseScope);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.pgBasedBackup)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.backupLogVerbose)))
+        .thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
   }
 
   @Test
@@ -324,7 +334,7 @@ public class TableManagerTest extends FakeDBApplication {
     BulkImportParams bulkImportParams = getBulkImportParams();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     List<String> expectedCommand = getExpectedBulkImportCommmand(bulkImportParams);
-    Map<String, String> expectedEnvVars = testProvider.getUnmaskedConfig();
+    Map<String, String> expectedEnvVars = CloudInfoInterface.fetchEnvVars(testProvider);
     expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
 
     tableManager.bulkImport(bulkImportParams);
@@ -338,7 +348,7 @@ public class TableManagerTest extends FakeDBApplication {
     bulkImportParams.instanceCount = 5;
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     List<String> expectedCommand = getExpectedBulkImportCommmand(bulkImportParams);
-    Map<String, String> expectedEnvVars = testProvider.getUnmaskedConfig();
+    Map<String, String> expectedEnvVars = CloudInfoInterface.fetchEnvVars(testProvider);
     expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
 
     tableManager.bulkImport(bulkImportParams);

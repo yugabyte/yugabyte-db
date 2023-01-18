@@ -88,4 +88,5 @@ const (
 	StatusStopped      StatusType = "Stopped"
 	StatusNotInstalled StatusType = "Not Installed"
 	StatusErrored      StatusType = "Errored"
+	StatusUnlicensed   StatusType = "Unlicensed"
 )

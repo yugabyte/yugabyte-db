@@ -112,6 +112,7 @@ Citrix
 Citus
 clonable
 Cloudwatch
+CMake
 Cobertura
 Codepen
 Cognito

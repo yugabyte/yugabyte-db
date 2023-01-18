@@ -266,7 +266,7 @@ public class ScheduleScriptController extends AuthenticatedController {
 
   private void canAccess() {
     if (!runtimeConfigFactory
-        .globalRuntimeConf()
+        .staticApplicationConf()
         .getBoolean(ExternalScriptHelper.EXT_SCRIPT_ACCESS_FULL_PATH)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "External Script APIs are disabled. Please contact support team");

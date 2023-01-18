@@ -317,6 +317,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // to it.
   Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
 
+  // Returns the latest log index for non transaction tables and the minimum log index for
+  // transaction tables.
+  Result<OpId> GetCdcBootstrapOpIdByTableType() const;
+
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
   // Returns a non-ok status if the tablet isn't running.

@@ -5,7 +5,8 @@ package com.yugabyte.yw.common;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.protobuf.Descriptors.FieldDescriptor;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -58,7 +59,7 @@ public class YbcManager {
   private final CustomerConfigService customerConfigService;
   private final YbcBackupUtil ybcBackupUtil;
   private final BackupUtil backupUtil;
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfGetter confGetter;
   private final ReleaseManager releaseManager;
   private final NodeManager nodeManager;
 
@@ -66,22 +67,20 @@ public class YbcManager {
   private static final int WAIT_EACH_SHORT_ATTEMPT_MS = 2000;
   private static final int MAX_RETRIES = 10;
 
-  private static final String YBC_STABLE_RELEASE_PATH = "ybc.releases.stable_version";
-
   @Inject
   public YbcManager(
       YbcClientService ybcClientService,
       CustomerConfigService customerConfigService,
       YbcBackupUtil ybcBackupUtil,
       BackupUtil backupUtil,
-      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter,
       ReleaseManager releaseManager,
       NodeManager nodeManager) {
     this.ybcClientService = ybcClientService;
     this.customerConfigService = customerConfigService;
     this.ybcBackupUtil = ybcBackupUtil;
     this.backupUtil = backupUtil;
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.confGetter = confGetter;
     this.releaseManager = releaseManager;
     this.nodeManager = nodeManager;
   }
@@ -253,7 +252,7 @@ public class YbcManager {
   }
 
   public String getStableYbcVersion() {
-    return runtimeConfigFactory.globalRuntimeConf().getString(YBC_STABLE_RELEASE_PATH);
+    return confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
   }
 
   /**

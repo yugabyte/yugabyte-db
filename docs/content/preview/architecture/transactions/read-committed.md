@@ -25,6 +25,8 @@ The following two key semantics set apart Read Committed isolation from Repeatab
 1. Each statement should be able to read everything that was committed before the statement was issued. In other words, each statement runs on the latest snapshot of the database as of when the statement was issued.
 1. Clients never face serialization errors (40001) in read committed isolation level. To achieve this, PostgreSQL re-evaluates statements for conflicting rows based on some rules as described in the next section.
 
+### Read restart errors
+
 In addition to the two key requirements, there is an extra YSQL specific requirement for its read committed isolation level: ensure that external clients don't face `kReadRestart` errors. `Read restart` errors stem from clock skew which is inherent in distributed databases due to the distribution of data across more than one physical node. PostgreSQL doesn't require defining semantics around read restart errors because it is a single node database without clock skew. When there is clock skew, the following situation can arise in a distributed database like YugabyteDB:
 
 * A client starts a distributed transaction by connecting to YSQL on some node N1 in the YugabyteDB cluster and issuing some statement which reads data from multiple shards on different physical YB-TServers in the cluster. For this issued statement, the read point which defines the snapshot of the database at which the data will be read, is picked on some YB-TServer node M based on the current time of that YB-TServer. Depending on the scenario, node M could be the same as N1 or not, but that isn't relevant to this discussion. Consider T1 to be the chosen read time.
@@ -43,11 +45,11 @@ Some distributed databases handle this uncertainty due to clock skew by using al
 
 However, for Read Committed isolation, YugabyteDB has stronger mechanisms in place to ensure that the ambiguity is always resolved internally, and `Read restart` errors are not surfaced to the client. So, in read committed transactions, clients don't have to add any retry logic for `Read restart` errors (similar to serialization errors).
 
-## Handling serialization errors
+### Handling serialization errors
 
 To handle serialization errors in the database (without surfacing them to the client), PostgreSQL takes the following steps based on the statement type.
 
-### UPDATE, DELETE, SELECT FOR UPDATE, FOR SHARE, FOR NO KEY UPDATE, FOR KEY SHARE
+#### UPDATE, DELETE, SELECT FOR UPDATE, FOR SHARE, FOR NO KEY UPDATE, FOR KEY SHARE
 
 (The last two are not mentioned in the PostgreSQL documentation, but the same behavior is seen for these as follows.)
 
@@ -59,9 +61,8 @@ If the row of interest:
 
 * has been locked by other concurrent transactions in a conflicting way, wait for them to commit or rollback, then perform recheck steps.
 
-Note that two transactions are `concurrent` if their `read time` to `commit time` ranges overlap. If a transaction hasn't yet committed, the closing range is the current time. Also, for read committed isolation, there is a `read time` for each statement, and not one for the whole transaction.
 
-#### Recheck steps
+##### Recheck steps
 
 The recheck steps are as follows:
 
@@ -69,7 +70,7 @@ The recheck steps are as follows:
 1. If the updated version of a row is deleted, ignore it.
 1. Apply update/delete/acquire lock on updated version of row if the where clause evaluates to true on the updated version of row.
 
-### INSERT
+#### INSERT
 
 1. ON CONFLICT DO UPDATE: if a conflict occurs, wait for the conflicting transaction(s) to commit or rollback.
     1. If all conflicting transaction(s) rollback, proceed as usual.
@@ -322,6 +323,17 @@ These two possibilities show that the client can't have application logic that r
 
 This can change after [#11573](https://github.com/yugabyte/yugabyte-db/issues/11573) as mentioned in the roadmap for read committed isolation [#13557](https://github.com/yugabyte/yugabyte-db/issues/13557).
 
+### Interaction with concurrency control
+
+Semantics of Read Committed isolation adheres only with the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict-beta-preview-faq-general-what-is-the-definition-of-the-beta-feature-tag) concurrency control policy. This is because a Read Committed transaction has to wait for other transactions to commit or rollback in case of a conflict, and then perform the re-check steps to make progress.
+
+As the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy doesn't make sense for Read Committed, even if this policy is set for use on the cluster (by having the TServer flag `enable_wait_queues=false`), transactions in Read Committed isolation will still provide `Wait-on-Conflict` semantics. For providing `Wait-on-Conflict` semantics without wait queues, YugabyteDB relyies on an indefinite retry-backoff mechanism with exponential delays when conflicts are detected. The retries are at the statement level. Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided since T1's statement and T2 would no longer be "concurrent".
+
+However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist:
+- You may have to manually tune the exponential backoff parameters for performance as explained in [Performance tuning](../read-committed/#performance-tuning).
+- The app may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
+- There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
+
 ## Usage
 
 By setting the YB-TServer gflag `yb_enable_read_committed_isolation=true`, the syntactic `Read Committed` isolation in YSQL will actually map to the Read Committed implementation in DocDB. If set to false, it will have the earlier behavior of mapping syntactic `Read Committed` on YSQL to Snapshot Isolation in DocDB, meaning it will behave same as `Repeatable Read`.
@@ -333,8 +345,6 @@ The following ways can be used to start a Read Committed transaction after setti
 3. `BEGIN [TRANSACTION]; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494))
 4. `BEGIN [TRANSACTION]; SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after #12494)
 
-Read Committed on YSQL will have pessimistic locking behavior; in other words, a Read Committed transaction will wait for other Read Committed transactions to commit or rollback in case of a conflict. Two or more transactions could be waiting on each other in a cycle. Hence, to avoid a deadlock, be sure to configure a statement timeout (by setting the `statement_timeout` parameter in `ysql_pg_conf_csv` YB-TServer gflag on cluster startup). Statement timeouts will help avoid deadlocks (see [Avoid deadlocks in Read Committed transactions](#avoid-deadlocks-in-read-committed-transactions)). This limitation will be resolved with [#13211](https://github.com/yugabyte/yugabyte-db/issues/13211)
-
 ## Examples
 
 Start by setting up the table you'll use in all of the examples in this section.
@@ -345,7 +355,7 @@ create table test (k int primary key, v int);
 
 ### Avoid deadlocks in Read Committed transactions
 
-You can avoid deadlocks in Read Committed transactions by relying on statement timeout.
+When wait queues are not enabled, that is, `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks. A different statement timeout can be set for each session using the `statement_timeout` session variable. Also, a single statement timeout can be applied globally to all sessions by setting the `statement_timeout` session variable in `ysql_pg_conf_csv` YB-TServer gflag on cluster startup.
 
 ```sql
 truncate table test;
@@ -1542,8 +1552,6 @@ This feature interacts with the following features:
 
 1. **Follower reads (integration in progress):** When follower reads is turned on, the read point for each statement in a Read Committed transaction will be picked as _Now()_ - _yb_follower_read_staleness_ms_ (if the transaction/statement is known to be explicitly/implicitly read only).
 
-2. **Pessimistic locking:** Read Committed has a dependency on pessimistic locking to work fully. Pessimistic locking means: on facing a conflict, a transaction has to wait for the conflicting transaction(s) to rollback/commit before resuming and making progress appropriately. Pessimistic locking behavior can already be seen for Read Committed isolation level, because without pessimistic locking, the semantics of read committed isolation can't be fulfilled. An optimized wait-queue based version of pessimistic locking will be available in the near future ([#5680](https://github.com/yugabyte/yugabyte-db/issues/5680)), which will provide better performance and will also work for REPEATABLE READ and SERIALIZABLE isolation levels. The optimized version will also help detect deadlocks proactively instead of relying on statement timeouts for deadlock avoidance (see example 1).
-
 ## Limitations
 
 Refer to [#13557](https://github.com/yugabyte/yugabyte-db/issues/13557) for limitations.
@@ -1564,4 +1572,4 @@ If a statement in the Read Committed isolation level faces a conflict, it will b
 
 You can set these parameters on a per-session basis, or in the `ysql_pg_conf_csv` YB-TServer gflag on cluster startup.
 
-After the optimized version of pessimistic locking (as described in [Cross-feature interaction](#cross-feature-interaction)) is completed, there won't be a need to manually tune these parameters for performance. Statements will restart only when all conflicting transactions have committed or rolled back, instead of retrying with an exponential backoff.
+If the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) concurrency control policy is enabled, there won't be a need to manually tune these parameters for performance. Statements will restart only when all conflicting transactions have committed or rolled back, instead of retrying with an exponential backoff.

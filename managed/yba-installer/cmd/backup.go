@@ -7,6 +7,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
@@ -82,4 +83,85 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	log.Info("Restoring a backup of your Yugabyte Anywhere Installation.")
 	common.RunBash(fileName, args)
 
+}
+
+func createBackupCmd() *cobra.Command {
+	var dataDir string
+	var excludePrometheus bool
+	var skipRestart bool
+	var verbose bool
+
+	createBackup := &cobra.Command{
+		Use:   "createBackup outputPath",
+		Short: "The createBackup command is used to take a backup of your Yugabyte Anywhere instance.",
+		Long: `
+    The createBackup command executes our yb_platform_backup.sh that creates a backup of your
+    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
+    outputPath where you want the backup .tar.gz file to be stored as the first argument to
+    createBackup.
+    `,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+
+			outputPath := args[0]
+
+			if plat, ok := services["yb-platform"].(Platform); ok {
+				CreateBackupScript(outputPath, dataDir, excludePrometheus, skipRestart, verbose, plat)
+			} else {
+				log.Fatal("Could not cast service to Platform struct.")
+			}
+		},
+	}
+
+	createBackup.Flags().StringVar(&dataDir, "data_dir", common.GetBaseInstall(),
+		"data directory to be backed up")
+	createBackup.Flags().BoolVar(&excludePrometheus, "exclude_prometheus", false,
+		"exclude prometheus metric data from backup (default: false)")
+	createBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
+		"don't restart processes during execution (default: false)")
+	createBackup.Flags().BoolVar(&verbose, "verbose", false,
+		"verbose output of script (default: false)")
+	return createBackup
+}
+
+func restoreBackupCmd() *cobra.Command {
+	var destination string
+	var skipRestart bool
+	var verbose bool
+
+	restoreBackup := &cobra.Command{
+		Use:   "restoreBackup inputPath",
+		Short: "The restoreBackup command restores a backup of your Yugabyte Anywhere instance.",
+		Long: `
+    The restoreBackup command executes our yb_platform_backup.sh that restores the backup of your
+    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
+    inputPath where the backup .tar.gz file that will be restored is located as the first argument
+    to restoreBackup.
+    `,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+
+			inputPath := args[0]
+
+			// TODO: backupScript is the only reason we need to have this cast. Should probably refactor.
+			if plat, ok := services["yb-platform"].(Platform); ok {
+				RestoreBackupScript(inputPath, destination, skipRestart, verbose, plat)
+			} else {
+				log.Fatal("Could not cast service to Platform for backup script execution.")
+			}
+
+		},
+	}
+
+	restoreBackup.Flags().StringVar(&destination, "destination", common.GetBaseInstall(),
+		"where to un-tar the backup")
+	restoreBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
+		"don't restart processes during execution (default: false)")
+	restoreBackup.Flags().BoolVar(&verbose, "verbose", false,
+		"verbose output of script (default: false)")
+	return restoreBackup
+}
+
+func init() {
+	rootCmd.AddCommand(createBackupCmd(), restoreBackupCmd())
 }

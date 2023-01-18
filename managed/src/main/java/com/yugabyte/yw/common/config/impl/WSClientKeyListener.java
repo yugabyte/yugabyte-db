@@ -9,28 +9,25 @@
  */
 package com.yugabyte.yw.common.config.impl;
 
-import static com.yugabyte.yw.common.ha.PlatformInstanceClient.YB_HA_WS_KEY;
-
-import com.google.inject.name.Named;
 import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
-import javax.inject.Inject;
-import javax.inject.Singleton;
+import play.api.Play;
 
-@Singleton
-public class HAWSClientKeyListener implements RuntimeConfigChangeListener {
-  private final WSClientRefresher wsClientRefresher;
+public class WSClientKeyListener implements RuntimeConfigChangeListener {
 
-  @Inject
-  public HAWSClientKeyListener(@Named(YB_HA_WS_KEY) WSClientRefresher wsClientRefresher) {
-    this.wsClientRefresher = wsClientRefresher;
+  private final String clientKey;
+
+  public WSClientKeyListener(String clientKey) {
+    this.clientKey = clientKey;
   }
 
   public String getKeyPath() {
-    return YB_HA_WS_KEY;
+    return clientKey;
   }
 
   public void processGlobal() {
+    WSClientRefresher wsClientRefresher =
+        Play.current().injector().instanceOf(WSClientRefresher.class);
     wsClientRefresher.refreshWsClient(getKeyPath());
   }
 }

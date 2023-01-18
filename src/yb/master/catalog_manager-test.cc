@@ -85,8 +85,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
     req.set_max_returned_locations(1);
     req.mutable_table()->mutable_table_name()->assign(table_id);
     req.mutable_partition_key_start()->assign(start_key);
-    vector<scoped_refptr<TabletInfo> > tablets_in_range;
-    table->GetTabletsInRange(&req, &tablets_in_range);
+    vector<scoped_refptr<TabletInfo>> tablets_in_range = table->GetTabletsInRange(&req);
 
     // Only one tablet should own this key.
     ASSERT_EQ(1, tablets_in_range.size());

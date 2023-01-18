@@ -130,6 +130,11 @@ message GetTableLocationsRequestPB {
 
   // If true, then return any hidden tablets as well. Does not work with partition key ranges.
   optional bool include_inactive = 7;
+
+  // When set, the TabletLocationsPBs in the response will only have basic fields and
+  // partition-related fields set. The fields set are table_id, tablet_id, partition, split_depth,
+  // split_parent_tablet_id, and stale.
+  optional bool partitions_only = 8;
 }
 
 message GetTableLocationsResponsePB {

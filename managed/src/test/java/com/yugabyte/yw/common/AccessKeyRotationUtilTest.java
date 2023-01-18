@@ -2,7 +2,6 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,7 +23,6 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.MockedStatic;
 
 import com.yugabyte.yw.models.Customer;
@@ -44,9 +42,9 @@ import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.List;
-
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.typesafe.config.Config;
 
 @RunWith(JUnitParamsRunner.class)
@@ -55,6 +53,7 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
   @InjectMocks AccessKeyRotationUtil accessKeyRotationUtil;
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
   @Mock Config mockConfigUniverseScope;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   private Provider defaultProvider;
   private Region defaultRegion;
@@ -66,6 +65,9 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     MockitoAnnotations.initMocks(this);
     when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfigUniverseScope.getInt(AccessKeyRotationUtil.SSH_KEY_EXPIRATION_THRESHOLD_DAYS))
+        .thenReturn(365);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.sshKeyExpirationThresholdDays)))
         .thenReturn(365);
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
@@ -182,6 +184,8 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     when(mockConfigUniverseScope.getBoolean(AccessKeyRotationUtil.SSH_KEY_EXPIRATION_ENABLED))
         .thenReturn(false);
     Universe uni = ModelFactory.createUniverse("uni1");
+    when(mockConfGetter.getConfForScope(uni, UniverseConfKeys.enableSshKeyExpiration))
+        .thenReturn(false);
     setUniverseAccessKey(defaultAccessKey.getKeyCode(), uni);
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     Double daysToExpiry = accessKeyRotationUtil.getSSHKeyExpiryDays(uni, allAccessKeys);
@@ -193,6 +197,8 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     when(mockConfigUniverseScope.getBoolean(AccessKeyRotationUtil.SSH_KEY_EXPIRATION_ENABLED))
         .thenReturn(true);
     Universe uni = ModelFactory.createUniverse("uni1");
+    when(mockConfGetter.getConfForScope(uni, UniverseConfKeys.enableSshKeyExpiration))
+        .thenReturn(true);
     setUniverseAccessKey(defaultAccessKey.getKeyCode(), uni);
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     long currentTime = System.currentTimeMillis();

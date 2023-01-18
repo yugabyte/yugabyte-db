@@ -715,7 +715,7 @@ Start the first node by running the following command:
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
 ```
 
-On MacOS and Linux, the additional nodes need loopback addresses configured, as follows:
+On macOS, the additional nodes need loopback addresses configured, as follows:
 
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2

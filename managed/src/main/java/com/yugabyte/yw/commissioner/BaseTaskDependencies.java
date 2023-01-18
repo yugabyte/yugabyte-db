@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import javax.inject.Inject;
@@ -35,6 +36,7 @@ public class BaseTaskDependencies {
   private final Config config;
   private final ConfigHelper configHelper;
   private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfGetter confGetter;
   private final MetricService metricService;
   private final AlertConfigurationService alertConfigurationService;
   private final YBClientService ybService;

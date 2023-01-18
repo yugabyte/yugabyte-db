@@ -25,51 +25,6 @@ Currently, yb-voyager doesn't support the following features:
 
 ### MySQL issues
 
-#### Unsigned decimal types are not exported properly
-
-**GitHub link**: [Issue #573](https://github.com/yugabyte/yb-voyager/issues/573)
-
-**Description**: Unsigned decimal types lose their precision and have `UNSIGNED` exported along with them.
-
-**Workaround**: Manual intervention needed. Unsigned decimal type is not supported in YugabyteDB. You have to remove `UNSIGNED` and add the precision.
-
-**Example**
-
-An example schema on the source MySQL database is as follows:
-
-```sql
-create table if not exists fixed_point_types(
-     d_us decimal(10,2)unsigned,
-     dec_type dec(5,5) unsigned,
-     numeric_type numeric(10,5)unsigned,
-     fixed_type fixed(10,3)unsigned
-);
-```
-
-The exported schema is as follows:
-
-```sql
-CREATE TABLE fixed_point_types (
-        d_us DECIMAL UNSIGNED,
-        dec_type DECIMAL UNSIGNED,
-        numeric_type DECIMAL UNSIGNED,
-        fixed_type DECIMAL UNSIGNED
-) ;
-```
-
-Suggested change to the schema is as follows:
-
-```sql
-CREATE TABLE fixed_point_types (
-        d_us DECIMAL(10,2),
-        dec_type DECIMAL(5,5),
-        numeric_type DECIMAL(10,5),
-        fixed_type DECIMAL (10,3)
-) ;
-```
-
----
-
 #### Approaching MAX/MIN double precision values are not exported
 
 **GitHub link**: [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188)
@@ -253,6 +208,357 @@ CREATE TABLE address (
 
 ---
 
+#### Incorrect parsing of views involving functions without alias
+
+**GitHub link**: [Issue #689](https://github.com/yugabyte/yb-voyager/issues/689)
+
+**Description**: If a view contains a function in its definition in a SELECT statement without any ALIAS, an alias corresponding to the function is appended to the schema. This results in an invalid schema.
+
+**Workaround**: Remove or change the alias to a valid value.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE OR REPLACE VIEW v1 AS SELECT foo(id) FROM bar;
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id) AS foo(id) FROM bar;
+```
+
+Choose one from the following suggested changes to the schema.
+
+- Remove the alias as follows:
+
+    ```sql
+    CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id) FROM bar;
+    ```
+
+- Change the alias as follows:
+
+    ```sql
+    CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id) AS foo FROM bar;
+    ```
+
+---
+
+#### Datatype mismatch in objects causing issues
+
+**GitHub link**: [Issue #690](https://github.com/yugabyte/yb-voyager/issues/690)
+
+**Description**: If you have an object which references a table column whose datatype has been mapped to something else, there may be datatype mismatch issues on the target YugabyteDB database.
+
+**Workaround**: Type cast the reference to match the table column.
+
+**Example**
+
+In the following example, the table column type `int` is mapped to `bigint` and causes issues when referenced in the view via the function, because the function parameter remains as `int` type.
+
+```sql
+/* Table definition */
+DROP TABLE IF EXISTS bar;
+CREATE TABLE bar(
+id int,
+p_name varchar(10)
+);
+
+/* Function definition */
+DROP FUNCTION IF EXISTS foo;
+delimiter //
+CREATE FUNCTION foo (p_id int)
+RETURNS varchar(20)
+READS SQL DATA
+  BEGIN
+    RETURN (SELECT p_name FROM bar WHERE p_id=id);
+  END//
+delimiter ;
+
+/* View definition */
+CREATE OR REPLACE VIEW v2 AS SELECT foo(id) AS p_name FROM bar;
+```
+
+The exported schema is as follows:
+
+```sql
+/* Table definition */
+CREATE TABLE bar(
+id bigint,
+p_name varchar(10)
+);
+
+/* Function definition */
+CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
+  BEGIN
+    RETURN(SELECT p_name FROM bar WHERE p_id=id);
+  END;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+
+/* View definition */
+CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id) AS p_name FROM bar;
+```
+
+Suggested change is to type cast the reference to match the table column as follows:
+
+```sql
+CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
+```
+
+---
+
+#### `drop temporary table` statements are not supported
+
+**GitHub link**: [Issue #705](https://github.com/yugabyte/yb-voyager/issues/705)
+
+**Description**: If you have a temporary table defined in a function or stored procedure in MySQL and you have a `drop temporary table` statement associated with it, the schema gets exported as is, which is an invalid syntax in YugabyteDB.
+
+**Workaround**: Manually remove the temporary clause from the drop statement.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+/* procedure definition */
+delimiter //
+CREATE PROCEDURE foo(p_id int)
+deterministic
+  BEGIN
+    DROP TEMPORARY TABLE IF EXISTS temp;
+    CREATE TEMPORARY TABLE temp(id int, name text);
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+    SELECT name FROM temp;
+  END//
+delimiter;
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
+  BEGIN
+    DROP TEMPORARY TABLE IF EXISTS temp;
+    CREATE TEMPORARY TABLE temp(id int, name text);
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+    SELECT name FROM temp;
+  END;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+```
+
+Suggested change to the schema is to remove the temporary clause from the drop statement as follows:
+
+```sql
+CREATE OR REPLACE PROCEDURE foo (p_id integer) AS $body$
+  BEGIN
+    DROP TABLE IF EXISTS temp;
+    CREATE TEMPORARY TABLE temp(id int, name text);
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+    SELECT name FROM temp;
+  END;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+```
+
+---
+
+#### Key defined for a table in functions/procedures cause issues
+
+**GitHub link**: [Issue #707](https://github.com/yugabyte/yb-voyager/issues/707)
+
+**Description**: If you have a basic _key_ defined for a table in a function/procedure, the schema is exported as is, and causes issues because using a key in YugabyteDB is an invalid syntax.
+
+**Workaround**: Manually remove the key from the exported schema, or create an index.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+/* function definition */
+
+delimiter //
+CREATE FUNCTION foo (p_id int)
+RETURNS varchar(20)
+READS SQL DATA
+  BEGIN
+    CREATE TEMPORARY TABLE temp(id int, name text,key(id));
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+    RETURN (SELECT name FROM temp);
+  END//
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
+  BEGIN
+    CREATE TEMPORARY TABLE temp(id int, name text,key(id));
+    INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+    RETURN (SELECT name FROM temp);
+  END;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+```
+
+Choose one from the following suggested changes to the schema.
+
+- Remove the key from the schema as follows:
+
+    ```sql
+    CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
+      BEGIN
+        CREATE TEMPORARY TABLE temp(id int, name text);
+        INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+        RETURN (SELECT name FROM temp);
+      END;
+    $body$
+    LANGUAGE PLPGSQL
+    SECURITY DEFINER
+    ;
+    ```
+
+- Create an index manually as follows:
+
+    ```sql
+    CREATE OR REPLACE FUNCTION foo (p_id integer) RETURNS varchar AS $body$
+      BEGIN
+        CREATE TEMPORARY TABLE temp(id int, name text);
+        CREATE INDEX index_as_key ON temp(id);
+        INSERT INTO temp(id,name) SELECT id,p_name FROM bar WHERE p_id=id;
+        RETURN (SELECT name FROM temp);
+      END;
+    $body$
+    LANGUAGE PLPGSQL
+    SECURITY DEFINER
+    ;
+    ```
+
+---
+
+#### Multiple declarations of variables in functions
+
+**GitHub link**: [Issue #708](https://github.com/yugabyte/yb-voyager/issues/708)
+
+**Description**: If you re-initializate a variable in a function in MySQL using the set statement, the variable is declared twice with different datatypes in the exported schema.
+
+**Workaround**: Manually remove the extra declaration of the variable from the exported schema file.
+
+**Example**
+
+An example declaration of the variable in the schema is as follows:
+
+```sql
+/* function definition */
+delimiter //
+CREATE FUNCTION xyz()
+RETURNS VARCHAR(10)
+READS SQL DATA
+  BEGIN
+    DECLARE max_date date;
+    SET max_date=(SELECT CURRENT_DATE());
+    SET @max_date=max_date;
+    RETURN max_date;
+  END //
+delimiter;
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE OR REPLACE FUNCTION xyz () RETURNS varchar AS $body$
+DECLARE
+max_date timestamp;max_date date;
+  BEGIN
+    max_date = (SELECT CURRENT_DATE
+    );
+    max_date:=max_date;
+    RETURN max_date;
+  END;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+```
+
+Suggested change to the schema is to remove the extra declaration of the variable as follows:
+
+```sql
+CREATE OR REPLACE FUNCTION xyz () RETURNS varchar AS $body$
+DECLARE
+max_date timestamp;
+  BEGIN
+    max_date = (SELECT CURRENT_DATE
+    );
+    max_date:=max_date;
+    RETURN max_date;
+  END;
+$body$
+LANGUAGE PLPGSQL
+SECURITY DEFINER
+;
+```
+
+---
+
+#### Exporting text type columns with default value
+
+**GitHub link**: [Issue #621](https://github.com/yugabyte/yb-voyager/issues/621)
+
+**Description**: If you have a default value for text type columns in MYSQL, it does not export properly and fails during import.
+
+**Workaround**: Manually remove the extra encoding DDLs from the exported files.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE text_types (
+    id int,
+    tt TINYTEXT DEFAULT ('c'),
+    te TEXT DEFAULT ('abc'),
+    mt MEDIUMTEXT DEFAULT ('abc'),
+    lt LONGTEXT DEFAULT ('abc')
+);
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE TABLE text_types (
+    id numeric(10),
+	tt text DEFAULT _utf8mb4\'c\',
+    te text DEFAULT _utf8mb4\'abc\',
+    mt text DEFAULT _utf8mb4\'abc\',
+    lt text DEFAULT _utf8mb4\'abc\'
+) ;
+```
+
+Suggested changes to the schema is to remove the encoding as follows:
+
+```sql
+CREATE TABLE text_types (
+    id numeric(10),
+    tt text DEFAULT 'c',
+    te text DEFAULT 'abc',
+    mt text DEFAULT 'abc',
+    lt text DEFAULT 'abc'
+) ;
+```
+
 ### Oracle issues
 
 #### Some numeric types are not exported
@@ -268,7 +574,7 @@ CREATE TABLE address (
 An example schema on the source Oracle database is as follows:
 
 ```sql
-create table numeric_size(
+CREATE TABLE numeric_size(
     num_min number(1,-84),
     num_max number(38,127),
     numeric_min numeric(1,-84),
@@ -476,7 +782,7 @@ ALTER SCHEMA "test" RENAME TO "Test";
 
 **Description**:  In YugabyteDB, if a table is partitioned on a column, then that column needs to be a part of the primary key columns. Creating a table where the partition key column is not part of the primary key columns results in an error.
 
-**Workaround**: Add all Partition columns to the Primary key columns.
+**Workaround**: Add all partition columns to the primary key columns.
 
 **Example**
 
@@ -484,16 +790,16 @@ An example schema on the source database is as follows:
 
 ```sql
 CREATE TABLE employees (
-employee_id integer NOT NULL,
-first_name varchar(20),
-last_name varchar(25),
-email varchar(25),
-phone_number varchar(20),
-hire_date timestamp DEFAULT statement_timestamp(),
-job_id varchar(10),
-salary double precision,
-part_name varchar(25),
-PRIMARY KEY (employee_id)) PARTITION BY RANGE (hire_date) ;
+    employee_id integer NOT NULL,
+    first_name varchar(20),
+    last_name varchar(25),
+    email varchar(25),
+    phone_number varchar(20),
+    hire_date timestamp DEFAULT statement_timestamp(),
+    job_id varchar(10),
+    salary double precision,
+    part_name varchar(25),
+    PRIMARY KEY (employee_id)) PARTITION BY RANGE (hire_date) ;
 ```
 
 The preceding example will result in an error as follows:
@@ -507,16 +813,126 @@ An example table with the suggested workaround is as follows:
 
 ```sql
 CREATE TABLE employees (
-employee_id integer NOT NULL,
-first_name varchar(20),
-last_name varchar(25),
-email varchar(25),
-phone_number varchar(20),
-hire_date timestamp DEFAULT statement_timestamp(),
-job_id varchar(10),
-salary double precision,
-part_name varchar(25),
-PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
+    employee_id integer NOT NULL,
+    first_name varchar(20),
+    last_name varchar(25),
+    email varchar(25),
+    phone_number varchar(20),
+    hire_date timestamp DEFAULT statement_timestamp(),
+    job_id varchar(10),
+    salary double precision,
+    part_name varchar(25),
+    PRIMARY KEY (employee_id, hire_date)
+) PARTITION BY RANGE (hire_date) ;
+```
+
+---
+
+#### Tables partitioned with expressions cannot contain primary/unique keys
+
+**GitHub Link**: [Issue#698](https://github.com/yugabyte/yb-voyager/issues/698)
+
+**Description**: If you have a table in the source database which is partitioned using any expression/function, that table cannot have a primary or unique key on any of its columns, as it is an invalid syntax in YugabyteDB.
+
+**Workaround**: Remove any primary/unique keys from exported schemas.
+
+An example schema on the MySQL source database with primary key is as follows:
+
+```sql
+/* Table definition */
+
+CREATE TABLE Sales (
+    cust_id INT NOT NULL,
+    name VARCHAR(40),
+    store_id VARCHAR(20) NOT NULL,
+    bill_no INT NOT NULL,
+    bill_date DATE NOT NULL,
+    amount DECIMAL(8,2) NOT NULL,
+    PRIMARY KEY (bill_no,bill_date)
+)
+PARTITION BY RANGE (year(bill_date))(
+    PARTITION p0 VALUES LESS THAN (2016),
+    PARTITION p1 VALUES LESS THAN (2017),
+    PARTITION p2 VALUES LESS THAN (2018),
+    PARTITION p3 VALUES LESS THAN (2020)
+);
+```
+
+The exported schema is as follows:
+
+```sql
+/* Table definition */
+CREATE TABLE sales (
+    cust_id bigint NOT NULL,
+    name varchar(40),
+    store_id varchar(20) NOT NULL,
+    bill_no bigint NOT NULL,
+    bill_date timestamp NOT NULL,
+    amount decimal(8,2) NOT NULL,
+    PRIMARY KEY (bill_no,bill_date)
+) PARTITION BY RANGE ((extract(year from date(bill_date)))) ;
+```
+
+Suggested change to the schema is to remove the primary/unique key from the exported schema as follows:
+
+```sql
+CREATE TABLE sales (
+    cust_id bigint NOT NULL,
+    name varchar(40),
+    store_id varchar(20) NOT NULL,
+    bill_no bigint NOT NULL,
+    bill_date timestamp NOT NULL,
+    amount decimal(8,2) NOT NULL
+) PARTITION BY RANGE ((extract(year from date(bill_date)))) ;
+```
+
+---
+
+#### Multi-column partition by list is not supported
+
+**GitHub Link**: [Issue#699](https://github.com/yugabyte/yb-voyager/issues/699)
+
+**Description**: In YugabyteDB, you cannot perform a partition by list on multiple columns and exporting the schema results in an error.
+
+**Workaround**: Make the partition a single column partition by list by making suitable changes or choose other supported partitioning methods.
+
+**Example**
+
+An example schema on the Oracle source database is as follows:
+
+```sql
+CREATE TABLE test (
+   id NUMBER,
+   country_code VARCHAR2(3),
+   record_type VARCHAR2(5),
+   descriptions VARCHAR2(50),
+   CONSTRAINT t1_pk PRIMARY KEY (id)
+)
+PARTITION BY LIST (country_code, record_type)
+(
+  PARTITION part_gbr_abc VALUES (('GBR','A'), ('GBR','B'), ('GBR','C')),
+  PARTITION part_ire_ab VALUES (('IRE','A'), ('IRE','B')),
+  PARTITION part_usa_a VALUES (('USA','A')),
+  PARTITION part_others VALUES (DEFAULT)
+);
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE TABLE test (
+    id numeric NOT NULL,
+    country_code varchar(3),
+    record_type varchar(5),
+    descriptions varchar(50),
+    PRIMARY KEY (id)
+) PARTITION BY LIST (country_code, record_type) ;
+```
+
+The preceding schema example will result in an error as follows:
+
+```output
+ERROR: cannot use "list" partition strategy with more than one column (SQLSTATE 42P17)
 ```
 
 ---
@@ -536,13 +952,88 @@ PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
 An example schema on the source database is as follows:
 
 ```sql
-create index ON timestamp_demo (ts);
+CREATE INDEX ON timestamp_demo (ts);
 ```
 
-Suggested change to the schema is to add the `asc` clause as follows:
+Suggested change to the schema is to add the `ASC` clause as follows:
 
 ```sql
-create index ON timestamp_demo (ts asc);
+CREATE INDEX ON timestamp_demo (ts ASC);
 ```
 
 ---
+
+#### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
+
+**GitHub links**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
+
+**Description**: If you define complex names for your source database tables/functions/procedures using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123", the migration hangs during the export data step.
+
+**Workaround**: Rename the objects (Tables/functions/procedures) on the source database to something without special characters.
+
+**Example**
+
+An example schema on the source MySQL database is as follows:
+
+```sql
+CREATE TABLE `xyz abc`(id int);
+INSERT INTO `xyz abc` VALUES(1);
+INSERT INTO `xyz abc` VALUES(2);
+INSERT INTO `xyz abc` VALUES(3);
+```
+
+The exported schema is as follows:
+
+```sql
+CREATE TABLE "xyz abc" (id bigint);
+```
+
+The preceding example may hang or result in an error.
+
+---
+
+#### Import issue with case-sensitive schema names
+
+**GitHub links**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
+
+**Description**: If you migrate your database using a case-sensitive schema name, the migration will fail with a "no schema has been selected" or "schema already exists" error(s).
+
+**Workaround**: Currently, yb-voyager does not support migration via case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If required, you may alter the schema names to a case-sensitive alternative post-migration using the ALTER SCHEMA command.
+
+**Example**
+
+An example yb-voyager import-schema command with a case-sensitive schema name is as follows:
+
+```sh
+yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema "\"Test\""
+```
+
+The preceding example will result in an error as follows:
+
+```output
+ERROR: no schema has been selected to create in (SQLSTATE 3F000)
+```
+
+Suggested changes to the schema can be done using the following steps:
+
+1. Change the case sensitive schema name during schema migration as follows:
+
+    ```sh
+    yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema test
+    ```
+
+1. Alter the schema name post migration as follows:
+
+    ```sh
+    ALTER SCHEMA "test" RENAME TO "Test";
+    ```

@@ -15,6 +15,7 @@
 
 #include <memory>
 
+#include <boost/multi_index/member.hpp>
 #include <glog/logging.h>
 
 #include "yb/common/common.pb.h"
@@ -32,6 +33,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
+#include "yb/util/lru_cache.h"
 #include "yb/util/string_util.h"
 #include "yb/util/flags.h"
 
@@ -48,6 +50,9 @@ DEFINE_UNKNOWN_int32(external_intent_cleanup_secs, 60 * 60 * 24, // 24 hours by 
 DEFINE_UNKNOWN_uint64(intents_compaction_filter_max_errors_to_log, 100,
               "Maximum number of errors to log for life cycle of the intents compcation filter.");
 
+DEFINE_RUNTIME_int32(external_transaction_lru_cache_capacity, 1024,
+                     "External transaction LRU cache capacity for the intents compaction filter.");
+
 using std::shared_ptr;
 using std::unique_ptr;
 using std::unordered_set;
@@ -63,7 +68,8 @@ namespace {
 class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
  public:
   explicit DocDBIntentsCompactionFilter(tablet::Tablet* tablet, const KeyBounds* key_bounds)
-      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now().GetPhysicalValueMicros()) {}
+      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now().GetPhysicalValueMicros()),
+        external_transaction_lru_cache_(FLAGS_external_transaction_lru_cache_capacity) {}
 
   ~DocDBIntentsCompactionFilter() override;
 
@@ -91,6 +97,8 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
 
   Result<rocksdb::FilterDecision> FilterExternalIntent(const Slice& key);
 
+  Result<bool> IsExternalTransaction(const TransactionId& transaction_id);
+
   tablet::Tablet* const tablet_;
   const MicrosTime compaction_start_time_;
 
@@ -101,6 +109,23 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
   // We use this to only log a message that the filter is being used once on the first call to
   // the Filter function.
   bool filter_usage_logged_ = false;
+
+  struct ExternalTxnCacheEntry {
+    explicit ExternalTxnCacheEntry(TransactionId&& transaction_id_)
+        : transaction_id(std::move(transaction_id_)) {}
+
+    TransactionId transaction_id;
+    std::optional<bool> is_external;
+  };
+  // This cache stores a mapping of transaction_id to a bool indicating whether the transaction
+  // comes from an external producer source. External transactions are always retained for
+  // --external_intent_cleanup_secs, since it is possible that transactions with aborted status
+  // are committed in the future.
+  LRUCache<
+      ExternalTxnCacheEntry,
+      boost::multi_index::member<
+          ExternalTxnCacheEntry, TransactionId, &ExternalTxnCacheEntry::transaction_id>
+  > external_transaction_lru_cache_;
 };
 
 #define MAYBE_LOG_ERROR_AND_RETURN_KEEP(result) { \
@@ -129,6 +154,17 @@ void DocDBIntentsCompactionFilter::CleanupTransactions() {
 DocDBIntentsCompactionFilter::~DocDBIntentsCompactionFilter() {
 }
 
+Result<bool> DocDBIntentsCompactionFilter::IsExternalTransaction(
+    const TransactionId& transaction_id) {
+  auto transaction_id_copy = transaction_id;
+  auto& entry = *external_transaction_lru_cache_.emplace(std::move(transaction_id_copy));
+  if (!entry.is_external) {
+    const_cast<ExternalTxnCacheEntry&>(entry).is_external =
+        VERIFY_RESULT(tablet_->transaction_participant()->IsExternalTransaction(transaction_id));
+  }
+  return *entry.is_external;
+}
+
 rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
     int level, const Slice& key, const Slice& existing_value, std::string* new_value,
     bool* value_changed) {
@@ -138,7 +174,16 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
   }
 
   if (GetKeyType(key, StorageDbType::kIntents) == KeyType::kExternalIntents) {
-    auto filter_decision_result = FilterExternalIntent(key);
+    // The first byte of the key is a special kExternalIntents char, so this is an external intent
+    // of the old data format. See https://phabricator.dev.yugabyte.com/D18669 for a description of
+    // the old vs new format for external intents. First, strip off the external intent byte from
+    // the key, and then check whether to keep the intent.
+    auto key_slice = key;
+    // We know the first byte of the slice is kExternalTransactionId, so we can safely strip if off.
+    CHECK_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kExternalTransactionId));
+    auto filter_decision_result = FilterExternalIntent(key_slice);
+    // With the old format, the write path bypasses the txn participant, so just return the result
+    // without adding to transactions_to_cleanup_.
     MAYBE_LOG_ERROR_AND_RETURN_KEEP(filter_decision_result);
     return *filter_decision_result;
   }
@@ -148,9 +193,24 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
     auto transaction_id_result = FilterTransactionMetadata(key, existing_value);
     MAYBE_LOG_ERROR_AND_RETURN_KEEP(transaction_id_result);
     auto transaction_id_optional = *transaction_id_result;
-    if (transaction_id_optional.has_value()) {
-      AddToSet(transaction_id_optional.value(), &transactions_to_cleanup_);
+    if (!transaction_id_optional.has_value()) {
+      return rocksdb::FilterDecision::kKeep;
     }
+    auto transaction_id = *transaction_id_optional;
+    auto is_external_transaction_result = IsExternalTransaction(transaction_id);
+    MAYBE_LOG_ERROR_AND_RETURN_KEEP(is_external_transaction_result);
+    if (*is_external_transaction_result) {
+      // This is an external intent of the new data format.
+      auto filter_decision_result = FilterExternalIntent(key);
+      MAYBE_LOG_ERROR_AND_RETURN_KEEP(filter_decision_result);
+      if (*filter_decision_result == rocksdb::FilterDecision::kDiscard) {
+        // With the new format, the write path goes through the txn participant, add to
+        // transactions_to_cleanup_.
+        AddToSet(transaction_id, &transactions_to_cleanup_);
+      }
+      return rocksdb::FilterDecision::kKeep;
+    }
+    AddToSet(transaction_id, &transactions_to_cleanup_);
   }
 
   // TODO(dtxn): If/when we add processing of reverse index or intents here - we will need to
@@ -181,8 +241,6 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTrans
 Result<rocksdb::FilterDecision>
 DocDBIntentsCompactionFilter::FilterExternalIntent(const Slice& key) {
   Slice key_slice = key;
-  RETURN_NOT_OK_PREPEND(key_slice.consume_byte(KeyEntryTypeAsChar::kExternalTransactionId),
-                        "Could not decode external transaction byte");
   // Ignoring transaction id result since function just returns kKeep or kDiscard.
   RETURN_NOT_OK_PREPEND(
       DecodeTransactionId(&key_slice), "Could not decode external transaction id");

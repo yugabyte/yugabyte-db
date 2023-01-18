@@ -1,6 +1,7 @@
 package cmd
 
 import (
+
 	"github.com/spf13/cobra"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
@@ -21,6 +22,11 @@ var installCmd = &cobra.Command{
         `,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+
+		// Install the license if it is provided.
+		if licensePath != "" {
+			InstallLicense()
+		}
 
 		// Preflight checks
 		results := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
@@ -58,5 +64,6 @@ var installCmd = &cobra.Command{
 func init() {
 	installCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
 		[]string{}, "Preflight checks to skip")
+	installCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
 	rootCmd.AddCommand(installCmd)
 }
