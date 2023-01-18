@@ -740,6 +740,7 @@ Status GetChangesForCDCSDK(
     int64_t* last_readable_opid_index,
     const CoarseTimePoint deadline) {
   OpId op_id{from_op_id.term(), from_op_id.index()};
+  VLOG(1) << "The from_op_id from GetChanges is  " << op_id << " for tablet_id: " << tablet_id;
   ScopedTrackedConsumption consumption;
   CDCSDKCheckpointPB checkpoint;
   bool checkpoint_updated = false;
@@ -772,6 +773,8 @@ Status GetChangesForCDCSDK(
         return STATUS_SUBSTITUTE(
             Corruption, "Cannot read data as the transaction participant context is null");
       }
+      LOG(INFO) << "CDC snapshot initialization is started, by setting checkpoint as: "
+                << data.op_id << ", for tablet_id: " << tablet_id << " stream_id: " << stream_id;
       txn_participant->SetIntentRetainOpIdAndTime(
           data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
       RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
@@ -838,6 +841,8 @@ Status GetChangesForCDCSDK(
       // Snapshot ends when next key is empty.
       if (sub_doc_key.doc_key().empty()) {
         VLOG(1) << "Setting next sub doc key empty ";
+        LOG(INFO) << "Done with snapshot operation for tablet_id: " << tablet_id
+                  << " stream_id: " << stream_id << ", from_op_id: " << from_op_id.DebugString();
         // Get the checkpoint or read the checkpoint from the table/cache.
         SetCheckpoint(from_op_id.term(), from_op_id.index(), 0, "", 0, &checkpoint, nullptr);
         checkpoint_updated = true;
