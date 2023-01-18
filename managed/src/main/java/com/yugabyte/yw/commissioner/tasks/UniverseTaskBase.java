@@ -108,6 +108,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -534,9 +535,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         "Force lock universe {} at version {}.",
         taskParams().universeUUID,
         expectedUniverseVersion);
-    if (runtimeConfigFactory
-        .forUniverse(Universe.getOrBadRequest(taskParams().universeUUID))
-        .getBoolean("yb.task.override_force_universe_lock")) {
+    if (confGetter.getConfForScope(
+        Universe.getOrBadRequest(taskParams().universeUUID),
+        UniverseConfKeys.taskOverrideForceUniverseLock)) {
       UniverseUpdater updater =
           getLockingUniverseUpdater(
               expectedUniverseVersion,
@@ -1518,9 +1519,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         CommonUtils.isReleaseEqualOrAfter(
             MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion);
     boolean isWriteReadTableEnabled =
-        runtimeConfigFactory
-            .forUniverse(getUniverse())
-            .getBoolean(HealthChecker.READ_WRITE_TEST_PARAM);
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.dbReadWriteTest);
     if (primaryCluster.userIntent.enableYSQL
         && isWriteReadTableRelease
         && isWriteReadTableEnabled) {
@@ -3124,9 +3123,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     final VersionCheckMode mode =
-        runtimeConfigFactory
-            .forUniverse(universe.get())
-            .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode");
+        confGetter.getConfForScope(universe.get(), UniverseConfKeys.universeVersionCheckMode);
 
     if (mode == VersionCheckMode.NEVER) {
       return false;
@@ -3231,9 +3228,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected void checkUniverseVersion() {
     UniverseTaskBase.checkUniverseVersion(
         taskParams().universeUUID,
-        runtimeConfigFactory
-            .forUniverse(getUniverse())
-            .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode"));
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.universeVersionCheckMode));
   }
 
   /** Increment the cluster config version */

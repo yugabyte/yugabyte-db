@@ -94,8 +94,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
     explicitly passed to all components handling a particular transaction.
   - `Isolation Level` [Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or
     [Serializable Isolation](https://en.wikipedia.org/wiki/Serializability).
-  - `Priority` This priority is assigned randomly during transaction creation, when optimistic concurrency control is used. For a transaction running under pessimistic concurrency control, this priority is assigned a very high value. When a conflict is detected between two transactions, the transaction with lower priority is aborted and restarted.
-    For details about concurrency control, see [Explicit locking](../explicit-locking).
+  - `Priority` This priority is assigned randomly during transaction creation, when the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy is used.
 
 #### 3. Provisional record keys indexed by transaction ID ("reverse index")
 

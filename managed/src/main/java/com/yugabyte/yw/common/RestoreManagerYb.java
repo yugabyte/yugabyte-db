@@ -3,6 +3,8 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
@@ -10,6 +12,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -55,7 +58,7 @@ public class RestoreManagerYb extends DevopsBase {
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
-    Map<String, String> extraVars = region.provider.getUnmaskedConfig();
+    Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(region.provider);
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
@@ -116,11 +119,11 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(secondaryToPrimaryIP)));
     }
 
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
       commandArgs.add("--ssh2_enabled");
     }
 
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.disableXxHashChecksum)) {
       commandArgs.add("--disable_xxhash_checksum");
     }
 
@@ -284,7 +287,7 @@ public class RestoreManagerYb extends DevopsBase {
     commandArgs.add(restoreBackupParams.actionType.name().toLowerCase());
     Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
     boolean verboseLogsEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+        confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);
     if (restoreBackupParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }

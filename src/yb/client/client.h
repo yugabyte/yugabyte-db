@@ -431,7 +431,8 @@ class YBClient {
   Status CreateTablegroup(const std::string& namespace_name,
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
-                          const std::string& tablespace_id);
+                          const std::string& tablespace_id,
+                          const TransactionMetadata* txn);
 
   Status DeleteTablegroup(const std::string& tablegroup_id);
 
@@ -560,7 +561,7 @@ class YBClient {
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-      GetTableLocationsCallback callback);
+      PartitionsOnly partitions_only, GetTableLocationsCallback callback);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.

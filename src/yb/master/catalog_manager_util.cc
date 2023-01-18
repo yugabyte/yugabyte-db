@@ -259,10 +259,9 @@ Status CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
   }
   const auto partition = tablet_pb.partition();
 
-  TabletInfos tablets_in_range;
   VLOG(3) << "Tablet " << tablet_id << " " << AsString(partition);
-  tablet->table()->GetTabletsInRange(
-      partition.partition_key_start(), partition.partition_key_end(), &tablets_in_range);
+  TabletInfos tablets_in_range = tablet->table()->GetTabletsInRange(
+      partition.partition_key_start(), partition.partition_key_end());
 
   std::string partition_key = partition.partition_key_start();
   for (const auto& inner_tablet : tablets_in_range) {

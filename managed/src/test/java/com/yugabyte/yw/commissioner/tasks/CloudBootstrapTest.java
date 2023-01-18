@@ -255,9 +255,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       }
       // Check AMI info.
       if (customImageId) {
-        assertEquals(r.ybImage, metadata.customImageId);
+        assertEquals(r.getYbImage(), metadata.customImageId);
       } else {
-        assertEquals(r.ybImage, defaultImage);
+        assertEquals(r.getYbImage(), defaultImage);
       }
     }
   }

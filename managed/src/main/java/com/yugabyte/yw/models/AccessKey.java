@@ -49,7 +49,7 @@ public class AccessKey extends Model {
     @ApiModelProperty public String nodeExporterUser = "prometheus";
     @ApiModelProperty public boolean skipProvisioning = false;
     @ApiModelProperty public boolean setUpChrony = false;
-    @ApiModelProperty public List<String> ntpServers = Collections.emptyList();;
+    @ApiModelProperty public List<String> ntpServers = Collections.emptyList();
 
     // Indicates whether the provider was created before or after PLAT-3009
     // True if it was created after, else it was created before.

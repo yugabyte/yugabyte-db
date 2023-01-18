@@ -28,4 +28,12 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Default AWS Instance Type",
           "Default AWS Instance Type",
           ConfDataType.StringType);
+  // TODO(artem): Add correct metadata
+  public static final ConfKeyInfo<String> universeBootScript =
+      new ConfKeyInfo<>(
+          "yb.universe_boot_script",
+          ScopeType.PROVIDER,
+          "Universe Boot Script",
+          "Custom script to run on VM boot during universe provisioning",
+          ConfDataType.StringType);
 }

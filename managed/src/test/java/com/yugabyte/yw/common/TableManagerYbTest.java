@@ -8,12 +8,16 @@ import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BACKUP;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -57,6 +61,7 @@ public class TableManagerYbTest extends FakeDBApplication {
 
   @Mock RuntimeConfigFactory mockruntimeConfigFactory;
   @Mock Config mockConfigUniverseScope;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   private Provider testProvider;
   private Customer testCustomer;
@@ -259,8 +264,12 @@ public class TableManagerYbTest extends FakeDBApplication {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
-    when(mockConfigUniverseScope.getBoolean("yb.backup.pg_based")).thenReturn(false);
-    when(mockruntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfigUniverseScope);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.pgBasedBackup)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.backupLogVerbose)))
+        .thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
   }
 
   private void testCreateS3BackupHelper(boolean enableVerbose, boolean sse) {

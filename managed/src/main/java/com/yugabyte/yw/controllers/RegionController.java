@@ -19,6 +19,7 @@ import com.yugabyte.yw.forms.RegionEditFormData;
 import com.yugabyte.yw.forms.RegionFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.Api;
@@ -81,6 +82,7 @@ public class RegionController extends AuthenticatedController {
     List<Provider> providerList = Provider.getAll(customerUUID);
     ArrayNode resultArray = Json.newArray();
     for (Provider provider : providerList) {
+      CloudInfoInterface.mayBeMassageResponse(provider);
       List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.uuid, 1);
       for (Region region : regionList) {
         ObjectNode regionNode = (ObjectNode) Json.toJson(region);
@@ -199,7 +201,7 @@ public class RegionController extends AuthenticatedController {
 
     region.setSecurityGroupId(form.securityGroupId);
     region.setVnetName(form.vnetName);
-    region.ybImage = form.ybImage;
+    region.setYbImage(form.ybImage);
 
     region.update();
 
@@ -248,9 +250,8 @@ public class RegionController extends AuthenticatedController {
   // TODO: Use @Transactionally on controller method to get rid of region.delete()
   // TODO: Move this to CloudQueryHelper after getting rid of region.delete()
   private JsonNode getZoneInfoOrFail(Provider provider, Region region) {
-    JsonNode zoneInfo =
-        cloudQueryHelper.getZones(
-            region.uuid, provider.getUnmaskedConfig().get("CUSTOM_GCE_NETWORK"));
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(region.provider);
+    JsonNode zoneInfo = cloudQueryHelper.getZones(region.uuid, config.get("CUSTOM_GCE_NETWORK"));
     if (zoneInfo.has("error") || !zoneInfo.has(region.code)) {
       region.delete();
       throw new PlatformServiceException(

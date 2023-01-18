@@ -21,7 +21,9 @@ import com.google.common.io.PatternFilenameFilter;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertTemplateSettings;
@@ -101,11 +103,16 @@ public class SwamperHelper {
 
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final Environment environment;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public SwamperHelper(RuntimeConfigFactory runtimeConfigFactory, Environment environment) {
+  public SwamperHelper(
+      RuntimeConfigFactory runtimeConfigFactory,
+      Environment environment,
+      RuntimeConfGetter confGetter) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.environment = environment;
+    this.confGetter = confGetter;
   }
 
   @Getter
@@ -419,7 +426,7 @@ public class SwamperHelper {
 
   private MetricCollectionLevel getLevel(Universe universe) {
     return MetricCollectionLevel.fromString(
-        runtimeConfigFactory.forUniverse(universe).getString(COLLECTION_LEVEL_PARAM));
+        confGetter.getConfForScope(universe, UniverseConfKeys.metricsCollectionLevel));
   }
 
   private void appendCollectionLevelLabels(MetricCollectionLevel level, ObjectNode labels) {

@@ -737,7 +737,8 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                                         const std::string& namespace_name,
                                         const std::string& namespace_id,
                                         const std::string& tablegroup_id,
-                                        const std::string& tablespace_id) {
+                                        const std::string& tablespace_id,
+                                        const TransactionMetadata* txn) {
   CreateTablegroupRequestPB req;
   CreateTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
@@ -746,6 +747,10 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
 
   if (!tablespace_id.empty()) {
     req.set_tablespace_id(tablespace_id);
+  }
+
+  if (txn) {
+    txn->ToPB(req.mutable_transaction());
   }
 
   int attempts = 0;
@@ -1774,12 +1779,13 @@ class GetTableLocationsRpc
  public:
   GetTableLocationsRpc(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
-      RequireTabletsRunning require_tablets_running, GetTableLocationsCallback user_cb,
-      CoarseTimePoint deadline)
+      RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
+      GetTableLocationsCallback user_cb, CoarseTimePoint deadline)
       : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
     req_.mutable_table()->set_table_id(table_id);
     req_.set_max_returned_locations(max_tablets);
     req_.set_require_tablets_running(require_tablets_running);
+    req_.set_partitions_only(partitions_only);
   }
 
   std::string ToString() const override {
@@ -2085,10 +2091,10 @@ void YBClient::Data::DeleteNotServingTablet(
 
 void YBClient::Data::GetTableLocations(
     YBClient* client, const TableId& table_id, const int32_t max_tablets,
-    const RequireTabletsRunning require_tablets_running, const CoarseTimePoint deadline,
-    GetTableLocationsCallback callback) {
+    const RequireTabletsRunning require_tablets_running, const PartitionsOnly partitions_only,
+    const CoarseTimePoint deadline, GetTableLocationsCallback callback) {
   auto rpc = StartRpc<internal::GetTableLocationsRpc>(
-      client, table_id, max_tablets, require_tablets_running, callback, deadline);
+      client, table_id, max_tablets, require_tablets_running, partitions_only, callback, deadline);
 }
 
 void YBClient::Data::LeaderMasterDetermined(const Status& status,

@@ -63,8 +63,9 @@ public class RuntimeConfController extends AuthenticatedController {
   private final Result mutableKeysResult;
   private final Set<String> mutableObjects;
   private final Set<String> mutableKeys;
-  private static final Set<String> sensitiveKeys =
+  private static final Set<String> SENSITIVE_KEYS =
       ImmutableSet.of("yb.security.ldap.ldap_service_account_password", "yb.security.secret");
+  public static final String INCLUDED_OBJECTS_KEY = "runtime_config.included_objects";
 
   @Inject private TokenAuthenticator tokenAuthenticator;
 
@@ -81,7 +82,7 @@ public class RuntimeConfController extends AuthenticatedController {
         Sets.newLinkedHashSet(
             settableRuntimeConfigFactory
                 .staticApplicationConf()
-                .getStringList("runtime_config.included_objects"));
+                .getStringList(INCLUDED_OBJECTS_KEY));
     this.mutableKeys = buildMutableKeysSet();
     this.mutableKeysResult = buildCachedResult();
   }
@@ -180,7 +181,7 @@ public class RuntimeConfController extends AuthenticatedController {
 
       String value = fullConfig.getValue(k).render(ConfigRenderOptions.concise());
       value = unwrap(value);
-      if (sensitiveKeys.contains(k)) {
+      if (SENSITIVE_KEYS.contains(k)) {
         value = CommonUtils.getMaskedValue(k, value);
       }
 
@@ -222,7 +223,7 @@ public class RuntimeConfController extends AuthenticatedController {
     RuntimeConfigEntry runtimeConfigEntry = RuntimeConfigEntry.getOrBadRequest(scopeUUID, path);
 
     String value = runtimeConfigEntry.getValue();
-    if (sensitiveKeys.contains(path)) {
+    if (SENSITIVE_KEYS.contains(path)) {
       value = CommonUtils.getMaskedValue(path, value);
     }
     return ok(value);
@@ -256,7 +257,7 @@ public class RuntimeConfController extends AuthenticatedController {
     }
 
     String logValue = newValue;
-    if (sensitiveKeys.contains(path)) {
+    if (SENSITIVE_KEYS.contains(path)) {
       logValue = CommonUtils.getMaskedValue(path, logValue);
     }
     LOG.info(
