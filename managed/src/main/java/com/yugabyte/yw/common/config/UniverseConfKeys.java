@@ -317,4 +317,121 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Ansible Local Temp Directory",
           "Temporary directory for Ansible to use on the controller.",
           ConfDataType.StringType);
+
+  public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Performance Advisor",
+          "Defines if performance advisor is enabled for the universe or not",
+          ConfDataType.BooleanType);
+  public static final ConfKeyInfo<Integer> perfAdvisorUniverseFrequencyMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.universe_frequency_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor Run Frequency",
+          "Defines performance advisor run frequency for universe",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Double> perfAdvisorConnectionSkewThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.connection_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor connection skew threshold",
+          "Defines max difference between avg connections count usage and"
+              + " node connection count before connection skew recommendation is raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Integer> perfAdvisorConnectionSkewMinConnections =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.connection_skew_min_connections",
+          ScopeType.UNIVERSE,
+          "Performance Advisor connection skew min connections",
+          "Defines minimal number of connections for connection "
+              + "skew recommendation to be raised",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> perfAdvisorConnectionSkewIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.connection_skew_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor connection skew interval mins",
+          "Defines time interval for connection skew recommendation check, in minutes",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Double> perfAdvisorCpuSkewThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor cpu skew threshold",
+          "Defines max difference between avg cpu usage and"
+              + " node cpu usage before cpu skew recommendation is raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Double> perfAdvisorCpuSkewMinUsage =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_skew_min_usage_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor cpu skew min usage",
+          "Defines minimal cpu usage for cpu skew recommendation to be raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Integer> perfAdvisorCpuSkewIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_skew_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor cpu skew interval mins",
+          "Defines time interval for cpu skew recommendation check, in minutes",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Double> perfAdvisorCpuUsageThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_usage_threshold",
+          ScopeType.UNIVERSE,
+          "Performance Advisor CPU usage threshold",
+          "Defines max allowed average CPU usage per 10 minutes before "
+              + "CPU usage recommendation is raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Integer> perfAdvisorCpuUsageIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_usage_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor cpu usage interval mins",
+          "Defines time interval for cpu usage recommendation check, in minutes",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Double> perfAdvisorQuerySkewThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.query_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor query skew threshold",
+          "Defines max difference between avg queries count and"
+              + " node queries count before cpu skew recommendation is raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Integer> perfAdvisorQuerySkewMinQueries =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.query_skew_min_queries",
+          ScopeType.UNIVERSE,
+          "Performance Advisor query skew min queries",
+          "Defines minimal queries count for query skew recommendation to be raised",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> perfAdvisorQuerySkewIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.query_skew_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor query skew interval mins",
+          "Defines time interval for query skew recommendation check, in minutes",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Integer> perfAdvisorRejectedConnThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.rejected_conn_threshold",
+          ScopeType.UNIVERSE,
+          "Performance Advisor rejected connections threshold",
+          "Defines number of rejected connections during configured interval"
+              + " for rejected connections recommendation to be raised ",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> perfAdvisorRejectedConnIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.rejected_conn_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor rejected connections interval mins",
+          "Defines time interval for rejected connections recommendation check, in minutes",
+          ConfDataType.IntegerType);
 }

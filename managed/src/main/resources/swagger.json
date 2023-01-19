@@ -1117,7 +1117,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -1249,7 +1249,7 @@
           "type" : "string"
         },
         "secondarySubnet" : {
-          "description" : "AZ subnet",
+          "description" : "AZ secondary subnet",
           "type" : "string"
         },
         "subnet" : {
@@ -1264,6 +1264,20 @@
       "properties" : {
         "cloudInfo" : {
           "$ref" : "#/definitions/AZCloudInfo"
+        }
+      },
+      "type" : "object"
+    },
+    "AvailabilityZoneEditData" : {
+      "description" : "Model used to edit an availability zone",
+      "properties" : {
+        "secondarySubnet" : {
+          "description" : "AZ secondary subnet",
+          "type" : "string"
+        },
+        "subnet" : {
+          "description" : "AZ subnet",
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -5912,6 +5926,99 @@
         }
       },
       "required" : [ "buildNumber" ],
+      "type" : "object"
+    },
+    "PerfAdvisorSettingsFormData" : {
+      "properties" : {
+        "connectionSkewIntervalMins" : {
+          "description" : "Perf advisor connection skew check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "connectionSkewMinConnections" : {
+          "description" : "Perf advisor connection skew min connections",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "connectionSkewThreshold" : {
+          "description" : "Perf advisor connection skew threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "cpuSkewIntervalMins" : {
+          "description" : "Perf advisor cpu skew check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "cpuSkewMinUsage" : {
+          "description" : "Perf advisor cpu skew min cpu usage",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "cpuSkewThreshold" : {
+          "description" : "Perf advisor cpu skew threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "cpuUsageIntervalMins" : {
+          "description" : "Perf advisor CPU usage check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "cpuUsageThreshold" : {
+          "description" : "Perf advisor CPU usage threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "enabled" : {
+          "description" : "Enable/disable perf advisor runs for the universe",
+          "type" : "boolean"
+        },
+        "querySkewIntervalMins" : {
+          "description" : "Perf advisor query skew check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "querySkewMinQueries" : {
+          "description" : "Perf advisor query skew min queries",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "querySkewThreshold" : {
+          "description" : "Perf advisor query skew threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "rejectedConnIntervalMins" : {
+          "description" : "Perf advisor rejected connections check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "rejectedConnThreshold" : {
+          "description" : "Perf advisor rejected connections threshold",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "runFrequencyMins" : {
+          "description" : "Perf advisor runs frequency, in minutes",
+          "format" : "int32",
+          "minimum" : 5,
+          "type" : "integer"
+        }
+      },
       "type" : "object"
     },
     "PerformanceRecommendation" : {
@@ -15065,7 +15172,7 @@
           "name" : "azFormData",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/AvailabilityZoneEditData"
           }
         } ],
         "responses" : {
@@ -17146,6 +17253,75 @@
         } ],
         "summary" : "Pause a universe",
         "tags" : [ "Universe management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/perf_advisor_settings" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PerfAdvisorSettingsFormData"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get universe performance advisor settings",
+        "tags" : [ "Performance Advisor" ]
+      },
+      "post" : {
+        "description" : "",
+        "operationId" : "updateSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "PerformanceAdvisorSettingsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/PerfAdvisorSettingsFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update universe performance advisor settings",
+        "tags" : [ "Performance Advisor" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/pitr" : {
