@@ -6281,6 +6281,12 @@
           "readOnly" : true,
           "type" : "boolean"
         },
+        "allKeys" : {
+          "items" : {
+            "$ref" : "#/definitions/AccessKey"
+          },
+          "type" : "array"
+        },
         "code" : {
           "description" : "Provider cloud code",
           "type" : "string"
@@ -6340,7 +6346,7 @@
           "type" : "integer"
         }
       },
-      "required" : [ "regions" ],
+      "required" : [ "allKeys", "regions" ],
       "type" : "object"
     },
     "ProviderDetails" : {
