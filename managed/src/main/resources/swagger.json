@@ -5926,6 +5926,9 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "isStale" : {
+          "type" : "boolean"
+        },
         "new" : {
           "type" : "boolean"
         },
@@ -5954,7 +5957,7 @@
           "type" : "integer"
         },
         "recommendationType" : {
-          "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE" ],
+          "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE", "REJECTED_CONNECTIONS" ],
           "type" : "string"
         },
         "stateChangeAuditInfoList" : {
@@ -5968,7 +5971,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerId", "entityNames", "entityType", "id", "new", "observation", "recommendation", "recommendationInfo", "recommendationPriority", "recommendationState", "recommendationTimestamp", "recommendationType", "stateChangeAuditInfoList", "universeId" ],
+      "required" : [ "customerId", "entityNames", "entityType", "id", "isStale", "new", "observation", "recommendation", "recommendationInfo", "recommendationPriority", "recommendationState", "recommendationTimestamp", "recommendationType", "stateChangeAuditInfoList", "universeId" ],
       "type" : "object"
     },
     "PerformanceRecommendationFilter" : {
@@ -5984,6 +5987,9 @@
           },
           "type" : "array",
           "uniqueItems" : true
+        },
+        "isStale" : {
+          "type" : "boolean"
         },
         "priorities" : {
           "items" : {
@@ -6003,7 +6009,7 @@
         },
         "types" : {
           "items" : {
-            "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE" ],
+            "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE", "REJECTED_CONNECTIONS" ],
             "type" : "string"
           },
           "type" : "array",
@@ -6014,7 +6020,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerId", "ids", "priorities", "states", "types", "universeId" ],
+      "required" : [ "customerId", "ids", "isStale", "priorities", "states", "types", "universeId" ],
       "type" : "object"
     },
     "PerformanceRecommendationPagedQuery" : {
