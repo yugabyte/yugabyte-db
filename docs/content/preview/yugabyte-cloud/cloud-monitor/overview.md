@@ -197,8 +197,11 @@ The [YugabyteDB Master Server](../../../architecture/concepts/yb-master/) (YB-Ma
 | YB-TServer RocksDB Compaction Time (ms) | Time for the compaction processes to complete. | |
 | YB-TServer RocksDB Transactions | Expired: the number of expired distributed transactions.<br>Conflicts: the number of conflicts detected among uncommitted distributed transactions.<br><br>This is related to the process that resolves conflicts for write transactions. This process reads all intents that could conflict and tries to abort transactions with a lower priority. If a write transaction conflicts with a higher-priority transaction, then an error is returned and this metric is iterated. | |
 | YB-TServer RocksDB Transaction Pool Cache | Percentage of transaction pool requests fulfilled by the transaction pool cache. | |
-| YB-TServer RocksDB Tablet Splitting Operations | Number of tablet splitting operations. | |
-| YB-TServer RocksDB Tablet Splitting Manager Runtime (ms) | Time the tablet splitting manager has run. | |
+| YB-TServer RocksDB Tablet Splitting Operations | Tracks tablet splits that have passed each of the following states:<br/>
+Add: Successfully submitted split RPC requests (applied on leader only)<br/>
+Apply: Successfully applied Raft split operations.<br/>
+Post Split Compactions: Number of successfully started post-split compactions. | If these metrics are high, a lot of tablet splits are being performed. These numbers should be roughly equal, and any large gap between them is anomalous. |
+| YB-TServer RocksDB Tablet Splitting Manager Runtime (ms) | How long the last automatic split manager run took. | The automatic split manager runs periodically to determine whether any new tablets are eligible for splitting. |
 <!--| LSM-DB Seek/Next Num Ops | The number of calls to seek / next. | |
 | LSM-DB Seeks/Sec/Node | The number of calls to seek per second per node. | |
 | SSTable size/Node | The size (in bytes) of all SST files. | |
