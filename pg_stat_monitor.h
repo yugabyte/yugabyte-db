@@ -485,7 +485,15 @@ static const struct config_enum_entry track_options[] =
 #define PGSM_BUCKET_TIME get_conf(5)->guc_variable
 #define PGSM_HISTOGRAM_MIN get_conf(6)->guc_variable
 #define PGSM_HISTOGRAM_MAX get_conf(7)->guc_variable
-#define PGSM_HISTOGRAM_BUCKETS get_conf(8)->guc_variable
+
+/*
+ * Important that we keep user bucket values separate but must add 1
+ * for max outlier queries. However, for min, bucket should only be added
+ * if the minimum value provided by user is greater than 0
+ */
+#define PGSM_HISTOGRAM_BUCKETS_USER get_conf(8)->guc_variable
+#define PGSM_HISTOGRAM_BUCKETS (PGSM_HISTOGRAM_BUCKETS_USER + 1 + (int)(PGSM_HISTOGRAM_MIN > 0))
+
 #define PGSM_QUERY_SHARED_BUFFER get_conf(9)->guc_variable
 #define PGSM_OVERFLOW_TARGET get_conf(10)->guc_variable
 #define PGSM_QUERY_PLAN get_conf(11)->guc_variable

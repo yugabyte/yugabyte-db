@@ -150,7 +150,7 @@ init_guc(void)
 			.guc_max = MAX_RESPONSE_BUCKET,
 			.guc_restart = true,
 			.guc_unit = 0,
-			.guc_value = &PGSM_HISTOGRAM_BUCKETS
+			.guc_value = &PGSM_HISTOGRAM_BUCKETS_USER
 	};
 	DefineIntGUC(&conf[i++]);
 

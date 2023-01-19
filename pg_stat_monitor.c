@@ -93,6 +93,7 @@ static struct rusage rusage_end;
 static char *pgss_explain(QueryDesc *queryDesc);
 
 static void extract_query_comments(const char *query, char *comments, size_t max_len);
+static void histogram_bucket_timings(int index, int64 *b_start, int64 *b_end);
 static int	get_histogram_bucket(double q_time);
 static bool IsSystemInitialized(void);
 static double time_diff(struct timeval end, struct timeval start);
@@ -253,6 +254,24 @@ _PG_init(void)
 
 	/* Inilize the GUC variables */
 	init_guc();
+
+	/* Validate histogram values and in case of failure, revert to defaults */
+	{
+		int64 b1_start;
+		int64 b2_start;
+		int64 b1_end;
+		int64 b2_end;
+
+		if (PGSM_HISTOGRAM_BUCKETS_USER >= 2)
+		{
+			histogram_bucket_timings(1, &b1_start, &b1_end);
+			histogram_bucket_timings(2, &b2_start, &b2_end);
+
+			/* Checking if histograms buckets overlap */
+			if (b2_start < b1_end || b2_start == b2_end)
+				elog(ERROR, "pg_stat_monitor: Histogram buckets are overlapping, please fix histogram configuration.");
+		}
+	}
 
 #if PG_VERSION_NUM >= 140000
 
@@ -3238,65 +3257,99 @@ unpack_sql_state(int sql_state)
 	return buf;
 }
 
+/*
+ * Given an index, return the histogram start and end times.
+ */
+static void
+histogram_bucket_timings(int index, int64 *b_start, int64 *b_end)
+{
+	double		q_min = PGSM_HISTOGRAM_MIN;
+	double		q_max = PGSM_HISTOGRAM_MAX;
+	int			b_count = PGSM_HISTOGRAM_BUCKETS;
+	int			b_count_user = PGSM_HISTOGRAM_BUCKETS_USER;
+	double		bucket_size;
+
+	/*
+	 * We must not skip any queries that fall outside the user defined
+	 * histogram buckets. So capturing min/max outliers.
+	*/
+	if (index == 0 && q_min > 0)
+	{
+		*b_start = 0;
+		*b_end = q_min;
+		return;
+	}
+	else if (index == (b_count - 1))
+	{
+		*b_start = q_max;
+		*b_end = -1;
+		return;
+	}
+
+	/*
+	 * Equisized logrithmic values will yield exponential values as required.
+	 * For calculating logrithmic value, we MUST use the number of bucket provided
+	 * by the user.
+	 */
+	bucket_size = log(q_max - q_min) / (double) b_count_user;
+
+	/* Can't do exp(0) as that returns 1. So handling the case of first entry specifically */
+	*b_start = q_min + ((index == 0 || (index == 1 && q_min > 0)) ? 0 : exp(bucket_size * (index - 1)));
+	*b_end = q_min + exp(bucket_size * index);
+}
+
+/*
+ * Get the histogram bucket index for a given query time.
+ */
 static int
 get_histogram_bucket(double q_time)
 {
-	double		q_min = PGSM_HISTOGRAM_MIN;
-	double		q_max = PGSM_HISTOGRAM_MAX;
+	int64		b_start;
+	int64		b_end;
 	int			b_count = PGSM_HISTOGRAM_BUCKETS;
 	int			index = 0;
-	double		b_max;
-	double		b_min;
-	double		bucket_size;
 
-	q_time -= q_min;
-
-	b_max = log(q_max - q_min);
-	b_min = 0;
-
-	bucket_size = (b_max - b_min) / (double) b_count;
-
-	for (index = 1; index <= b_count; index++)
+	for (index = 0; index < b_count; index++)
 	{
-		int64		b_start = (index == 1) ? 0 : exp(bucket_size * (index - 1));
-		int64		b_end = exp(bucket_size * index);
+		histogram_bucket_timings(index, &b_start, &b_end);
 
-		if ((index == 1 && q_time < b_start)
-			|| (q_time >= b_start && q_time <= b_end)
-			|| (index == b_count && q_time > b_end))
-		{
-			return index - 1;
-		}
+		if (q_time >= b_start && q_time <= b_end)
+			return index;
 	}
-	return 0;
+
+	/*
+	 * So haven't found a histogram bucket for this query. That's only possible for the
+	 * last bucket as its end time is less than 0.
+	 */
+	return (b_count - 1);
 }
 
+/*
+ * Get the timings of the histogram as a single string. The last bucket
+ * has ellipses as the end value indication infinity.
+ */
 Datum
 get_histogram_timings(PG_FUNCTION_ARGS)
 {
-	double		q_min = PGSM_HISTOGRAM_MIN;
-	double		q_max = PGSM_HISTOGRAM_MAX;
+	int64		b_start;
+	int64		b_end;
 	int			b_count = PGSM_HISTOGRAM_BUCKETS;
 	int			index = 0;
-	double		b_max;
-	double		b_min;
-	double		bucket_size;
-	bool		first = true;
 	char	   *tmp_str = palloc0(MAX_STRING_LEN);
 	char	   *text_str = palloc0(MAX_STRING_LEN);
 
-	b_max = log(q_max - q_min);
-	b_min = 0;
-	bucket_size = (b_max - b_min) / (double) b_count;
-	for (index = 1; index <= b_count; index++)
+	for (index = 0; index < b_count; index++)
 	{
-		int64		b_start = (index == 1) ? 0 : exp(bucket_size * (index - 1));
-		int64		b_end = exp(bucket_size * index);
+		histogram_bucket_timings(index, &b_start, &b_end);
 
-		if (first)
+		if (index == 0)
 		{
 			snprintf(text_str, MAX_STRING_LEN, "(%ld - %ld)}", b_start, b_end);
-			first = false;
+		}
+		else if (index == (b_count - 1))
+		{
+			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%ld - ...)}", text_str, b_start);
+			snprintf(text_str, MAX_STRING_LEN, "%s", tmp_str);
 		}
 		else
 		{
@@ -3304,7 +3357,9 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 			snprintf(text_str, MAX_STRING_LEN, "%s", tmp_str);
 		}
 	}
+
 	pfree(tmp_str);
+
 	return CStringGetTextDatum(text_str);
 }
 

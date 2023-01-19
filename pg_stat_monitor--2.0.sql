@@ -63,7 +63,7 @@ SELECT
 $$
 LANGUAGE SQL PARALLEL SAFE;
 
-CREATE FUNCTION histogram(_bucket int, _quryid text)
+CREATE FUNCTION histogram(_bucket int, _quryid int8)
 RETURNS SETOF RECORD AS $$
 DECLARE
  rec record;
@@ -463,4 +463,3 @@ REVOKE ALL ON FUNCTION pgsm_create_14_view FROM PUBLIC;
 REVOKE ALL ON FUNCTION pgsm_create_15_view FROM PUBLIC;
 
 GRANT SELECT ON pg_stat_monitor TO PUBLIC;
-

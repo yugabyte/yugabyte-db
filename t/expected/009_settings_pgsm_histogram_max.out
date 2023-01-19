@@ -20,19 +20,7 @@ SELECT pg_stat_monitor_reset();
 SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_max';
                 name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
 ------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
- pg_stat_monitor.pgsm_histogram_max | 10      |      | postmaster | integer | configuration file | 10      | 2147483647 |          | 100000   | 10        | f
-(1 row)
-
-SELECT pg_stat_monitor_reset();
- pg_stat_monitor_reset 
------------------------
- 
-(1 row)
-
-SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_max';
-                name                | setting | unit |  context   | vartype |       source       | min_val |  max_val   | enumvals | boot_val | reset_val | pending_restart 
-------------------------------------+---------+------+------------+---------+--------------------+---------+------------+----------+----------+-----------+-----------------
- pg_stat_monitor.pgsm_histogram_max | 100     |      | postmaster | integer | configuration file | 10      | 2147483647 |          | 100000   | 100       | f
+ pg_stat_monitor.pgsm_histogram_max | 50      |      | postmaster | integer | configuration file | 10      | 2147483647 |          | 100000   | 50        | f
 (1 row)
 
 SELECT pg_stat_monitor_reset();
