@@ -278,6 +278,7 @@ Heroku
 Herokuish
 Hexo
 HipChat
+HLCs
 hostname
 hostnames
 hotfix
@@ -825,6 +826,7 @@ unverify
 unverifying
 uploader
 uploaders
+upsert
 upstreams
 upvote
 upvoted
