@@ -6,7 +6,7 @@ menu:
   preview:
     identifier: known-issues-voyager
     parent: voyager
-    weight: 106
+    weight: 105
 type: docs
 ---
 
