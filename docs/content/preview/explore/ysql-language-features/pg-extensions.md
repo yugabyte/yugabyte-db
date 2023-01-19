@@ -212,10 +212,10 @@ You can customize the following passwordcheck parameters:
 | :--- | :--- | :--- |
 | minimum_length | Minimum password length. | 8 |
 | maximum_length | Maximum password length. | 15 |
-| restrict_lower | Passwords must include a lowercase character | true |
-| restrict_upper | Passwords must include an uppercase character | true |
-| restrict_numbers | Passwords must include a number | true |
-| restrict_special | Passwords must include a special character | true |
+| restrict_lower | Passwords must include a lowercase character. | true |
+| restrict_upper | Passwords must include an uppercase character. | true |
+| restrict_numbers | Passwords must include a number. | true |
+| restrict_special | Passwords must include a special character. | true |
 | special_chars | The set of special characters. | <code>!@#$%^&*()_+{}\|\<\>?=</code> |
 
 You can change passwordcheck parameters using a `SET` statement. For example, to increase the maximum length allowed and not require numbers, execute the following commands:
