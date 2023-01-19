@@ -101,6 +101,8 @@ public class CommonUtils {
           "AZU_KEY_NAME",
           "AZU_KEY_ALGORITHM",
           "AZU_KEY_SIZE",
+          // Hashicorp KMS fields
+          "HC_VAULT_KEY_NAME",
           "KEYSPACETABLELIST",
           // General API field
           "KEYSPACE");
@@ -117,7 +119,7 @@ public class CommonUtils {
       return true;
     }
 
-    // Needed for GCP KMS UI - more specifically listKMSConfigs()
+    // Needed for KMS UI - more specifically listKMSConfigs()
     // Can add more exclusions if required
     if (excludedFieldNames.contains(ucFieldname)) {
       return false;
