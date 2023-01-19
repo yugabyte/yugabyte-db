@@ -206,7 +206,7 @@ To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_li
 --ysql_pg_conf_csv="shared_preload_libraries=passwordcheck"
 ```
 
-You can customize the following password parameters:
+You can customize the following passwordcheck parameters:
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
