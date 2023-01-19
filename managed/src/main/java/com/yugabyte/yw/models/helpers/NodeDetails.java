@@ -170,7 +170,7 @@ public class NodeDetails {
     None,
     ToStart,
     Configured,
-    ToStop,
+    ToStop
   }
 
   // The current state of the node.

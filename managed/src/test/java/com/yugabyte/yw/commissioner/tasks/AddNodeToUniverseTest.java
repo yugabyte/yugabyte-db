@@ -303,8 +303,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.AnsibleConfigureServers, // add Master
-          TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers,
+          TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
