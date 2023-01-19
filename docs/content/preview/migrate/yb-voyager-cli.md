@@ -59,62 +59,34 @@ The following command line options specify the migration steps.
 yb-voyager export schema [ <arguments> ... ]
 ```
 
-The valid list of *arguments* for export schema are as follows:
+The valid *arguments* for export schema are described in the following table:
 
-- --comments-on-objects
-- [-e, --export-dir](#export-dir) string
-- [-h, --help](#command-line-help)
-- --log-level string
-- [--oracle-db-sid](#oracle-db-sid) string
-- [--oracle-home](#oracle-home) string
-- [--oracle-tns-alias](#ssl-connectivity) string
-- --send-diagnostics
-- [--source-db-host](#source-db-host) string
-- [--source-db-name](#source-db-name) string
-- [--source-db-password](#source-db-password) string
-- [--source-db-port](#source-db-port) int
-- [--source-db-schema](#source-db-schema) string
-- [--source-db-type](#source-db-type) string
-- [--source-db-user](#source-db-user) string
--  [--source-ssl-cert](#ssl-connectivity) string
-- [--source-ssl-crl](#ssl-connectivity) string
-- [--source-ssl-key](#ssl-connectivity) string
-- [--source-ssl-mode](#ssl-connectivity) string
-- [--source-ssl-root-cert](#ssl-connectivity) string
-- [--start-clean](#start-clean)
-- [--use-orafce](#use-orafce)
-- --verbose
-- [-y, --yes](#yes)
-
-The valid list of *arguments* for export schema are described in the following table:
-
-| Argument | Link to description  |
-| :------- | :------------------- |
+| Argument | Description/valid options |
+| :------- | :------------------------ |
 | --comments-on-objects |
-| -e, --export-dir string | [--export-dir](#export-dir) |
-| -h, --help | [Command line help](#command-line-help) |
-| --log-level string |
-| --oracle-db-sid string | [--oracle-db-sid](#oracle-db-sid) |
-| --oracle-home string | [--oracle-home](#oracle-home) |
-| --oracle-tns-alias string | [--oracle-tns-alias](#ssl-connectivity)
+| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-h, --help](#command-line-help) | Command line help |
+| --log-level <value> |
+| [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier |
+| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable |
+| [--oracle-tns-alias](#ssl-connectivity) <alias> | Applicable for Oracle instances only. A TNS alias that is configured to establish a secure connection with the server. |
 | --send-diagnostics |
-| --source-db-host string | [--source-db-host](#source-db-host) |
-| --source-db-name string | [--source-db-name](#source-db-name) |
-| --source-db-password string | [--source-db-password](#source-db-password) |
-| --source-db-port int | [--source-db-port](#source-db-port) |
-| --source-db-schema string |  [--source-db-schema](#source-db-schema) |
-| --source-db-type string | [--source-db-type](#source-db-type) |
-| --source-db-user string | [--source-db-user](#source-db-user) |
-| --source-ssl-cert string | [--source-ssl-cert](#ssl-connectivity) |
-| --source-ssl-crl string | [--source-ssl-crl](#ssl-connectivity) |
-| --source-ssl-key string | [--source-ssl-key](#ssl-connectivity) |
-| --source-ssl-mode string | [--source-ssl-mode](#ssl-connectivity) |
-| --source-ssl-root-cert string | [--source-ssl-root-cert](#ssl-connectivity) |
-| --start-clean | [--start-clean](#start-clean) |
-| --use-orafce | [--use-orafce](#use-orafce) |
+| [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
+| [--source-db-name](#source-db-name) <name> | Source database name |
+| [--source-db-password](#source-db-password) <password>| Source database password. |
+| [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
+| [--source-db-schema](#source-db-schema) <schemaName> | Schema of the source database. |
+| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql` or `oracle` |
+| [--source-db-user](#source-db-user) <username> | Username of the source database. |
+| [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--use-orafce](#use-orafce) | Orafce extension applicable for Oracle only. |
 | --verbose |
-| -y, --yes | [-y, --yes](#yes) |
-
+| [-y, --yes](#yes) | User input for questions asked during the export schema operation |
 
 #### Example
 
@@ -141,7 +113,17 @@ yb-voyager export schema --export-dir /path/to/yb/export/dir \
 yb-voyager analyze-schema [ <arguments> ... ]
 ```
 
-- *arguments*: See [Arguments](#arguments)
+The valid *arguments* for analyze schema are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-h, --help](#command-line-help) | Command line help |
+| --log-level <value> |
+| --output-format <format> | One of `html`, `txt`, `json` or `xml` |
+| --send-diagnostics |
+| --verbose |
+| [-y, --yes](#yes) | User input for questions asked during the analyze schema operation |
 
 #### Example
 
@@ -159,7 +141,36 @@ yb-voyager analyze-schema --export-dir /path/to/yb/export/dir --output-format tx
 yb-voyager export data [ <arguments> ... ]
 ```
 
-- *arguments*: See [Arguments](#arguments)
+The valid *arguments* for export data are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| --disable-pb |
+| [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
+| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-h, --help](#command-line-help) | Command line help |
+| --log-level <value> |
+| [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier |
+| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable |
+| [--oracle-tns-alias](#ssl-connectivity) <alias> | Applicable for Oracle instances only. A TNS alias that is configured to establish a secure connection with the server. |
+| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
+| --send-diagnostics |
+| [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
+| [--source-db-name](#source-db-name) <name> | Source database name |
+| [--source-db-password](#source-db-password) <password>| Source database password. |
+| [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
+| [--source-db-schema](#source-db-schema) <schemaName> | Schema of the source database. |
+| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql` or `oracle` |
+| [--source-db-user](#source-db-user) <username> | Username of the source database. |
+| [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| --verbose |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation |
 
 #### Example
 
@@ -184,7 +195,16 @@ Get the status report of an ongoing or completed data export operation.
 yb-voyager export data status [ <arguments> ... ]
 ```
 
-- *arguments*: See [Arguments](#arguments)
+The valid *arguments* for export data status are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-h, --help](#command-line-help) | Command line help |
+| --log-level <value> |
+| --send-diagnostics |
+| --verbose |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation |
 
 #### Example
 
@@ -204,7 +224,35 @@ During migration, run the import schema command twice, first without the [--post
 yb-voyager import schema [ <arguments> ... ]
 ```
 
-- *arguments*: See [Arguments](#arguments)
+The valid *arguments* for import schema are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| --continue-on-error |
+| --exclude-object-list |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-h, --help](#command-line-help) | Command line help |
+| --ignore-exist |
+| --log-level string |
+| --object-list string |
+|  [--post-import-data](#post-import-data) | Imports indexes and triggers in the target YugabyteDB database after data import is complete. |
+| --refresh-mviews |
+|  --send-diagnostics |
+| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| --straight-order |
+| [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
+| [--target-db-name](#target-db-name) <name> | Target database name |
+| [--target-db-password](#target-db-password) <password>| Target database password. |
+| [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
+| [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
+| [--target-db-user](#target-db-user) <username> | Username of the target database. |
+| [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| --verbose |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation |
 
 #### Example
 
@@ -227,7 +275,37 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
 yb-voyager import data [ <arguments> ... ]
 ```
 
-- *arguments*: See [Arguments](#arguments)
+The valid *arguments* for import data are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data] |
+| --continue-on-error |
+| --disable-pb |
+| --enable-upsert |
+| [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
+| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-h, --help](#command-line-help) | Command line help |
+| --log-level <value> |
+| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
+| --send-diagnostics |
+| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
+| [--target-db-name](#target-db-name) <name> | Target database name |
+| [--target-db-password](#target-db-password) <password>| Target database password. |
+| [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
+| [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
+| [--target-db-user](#target-db-user) <username> | Username of the target database. |
+| --target-endpoints |
+| [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| --use-public-ip |
+| --verbose |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation |
 
 #### Example
 
@@ -251,7 +329,43 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 yb-voyager import data file [ <arguments> ... ]
 ```
 
-- *arguments*: See [Arguments](#arguments)
+The valid *arguments* for import data file are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data] |
+| --continue-on-error |
+| [--data-dir](#data-dir) <path> | |
+| [--delimiter](#delimiter) |
+| --disable-pb |
+| --enable-upsert |
+| [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
+| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
+| [--file-opts](#file-opts) <string> | Comma-separated string options for CSV file format
+| [--file-table-map](#file-table-map) <filename1:tablename1> | Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database. |
+| [--format](#format) <format> | One of `CSV` or `text` format of the data file |
+| [--has-header](#has-header) | Applies only to CSV file type. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-h, --help](#command-line-help) | Command line help |
+| --log-level <value> |
+| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
+| --send-diagnostics |
+| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
+| [--target-db-name](#target-db-name) <name> | Target database name |
+| [--target-db-password](#target-db-password) <password>| Target database password. |
+| [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
+| [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
+| [--target-db-user](#target-db-user) <username> | Username of the target database. |
+| --target-endpoints |
+| [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| --use-public-ip |
+| --verbose |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation |
 
 #### Example
 
@@ -282,7 +396,16 @@ Get the status report of an ongoing or completed data import operation. The repo
 yb-voyager import data status [ <arguments> ... ]
 ```
 
-- *arguments*: See [Arguments](#arguments)
+The valid *arguments* for import data status are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-h, --help](#command-line-help) | Command line help |
+| --log-level <value> |
+| --send-diagnostics |
+| --verbose |
+| [-y, --yes](#yes) | User input for questions asked during the import data operation |
 
 #### Example
 
@@ -460,7 +583,7 @@ Default: true
 
 By default, answer yes to all questions during migration.
 
-### --start-clean
+### --start-clean--target-endpoints
 
 Cleans the data directories for already existing files and is applicable during all phases of migration, except [analyze-schema](../migrate-steps/#analyze-schema). For the export phase, this implies cleaning the schema or data directories depending on the current phase of migration. For the import phase, it implies cleaning the contents of the target YugabyteDB database.
 
