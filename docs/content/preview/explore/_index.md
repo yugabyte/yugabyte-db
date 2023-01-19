@@ -15,57 +15,65 @@ type: indexpage
 showRightNav: true
 ---
 
-The Explore section introduces you to YugabyteDB's features and provides examples.
+The Explore documentation introduces you to YugabyteDB's features, often through examples.
 
-Most examples demonstrating database features such as API compatibility can be run on a single-node cluster on your laptop or using the free Sandbox cluster in YugabyteDB Managed. More advanced scenarios use a multi-node deployment. Refer to [Set up your YugabyteDB cluster](#set-up-your-yugabytedb-cluster) for instructions on creating clusters to run the examples.
+Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Managed, or using a universe created via YugabyteDB Anywhere. 
+
+More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-your-yugabytedb-universe) for instructions on creating universes to run the examples.
 
 ## Overview
 
-The following table describes the YugabyteDB features you can explore, along with the setup required to run the examples (single- or multi-node cluster).
+The following table describes the YugabyteDB features you can explore, along with the setup required to run the examples (single- or multi-node universe):
 
-| Section | Purpose | [Cluster&nbsp;Setup](#set-up-your-yugabytedb-cluster) |
+| Section | Purpose | [Universe&nbsp;setup](#set-up-your-yugabytedb-cluster) |
 | :--- | :--- | :--- |
-| [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single&nbsp;node<br/>Local/Cloud |
-| [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi node<br/>Local |
-| [Continuous availability](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi&nbsp;node<br/>Local |
-| [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi node<br/>Local |
-| [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single&nbsp;node<br/>Local/Cloud |
-| [Indexes and constraints](indexes-constraints/) | Explore indexes in YugabyteDB, including primary and foreign keys, secondary, unique, partial, and expression indexes, and more. | Single&nbsp;node<br/>Local/Cloud |
-| [JSON support](json-support/jsonb-ysql/) | YugabyteDB support for JSON is nearly identical to that in PostgreSQL - learn about JSON-specific functions and operators in YugabyteDB. | Single&nbsp;node<br/>Local/Cloud |
-| [Multi-region deployments](multi-region-deployments/) | Learn about the different multi-region topologies that you can deploy using YugabyteDB. | Multi node<br/>Local |
-| [Query tuning](query-1-performance/) | Learn about the tools available to identify and optimize queries in YSQL. | Single&nbsp;node<br/>Local/Cloud |
-| [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point in time recovery. | Single&nbsp;node<br/>Local |
+| [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single-node<br/>local/cloud |
+| [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi-node<br/>local |
+| [Continuous availability](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi-node<br/>local |
+| [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node<br/>local |
+| [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single-node<br/>local/cloud |
+| [Indexes and constraints](indexes-constraints/) | Explore indexes in YugabyteDB, including primary and foreign keys, secondary, unique, partial, and expression indexes, and more. | Single-node<br/>local/cloud |
+| [JSON support](json-support/jsonb-ysql/) | YugabyteDB support for JSON is nearly identical to that in PostgreSQL - learn about JSON-specific functions and operators in YugabyteDB. | Single-node local/cloud |
+| [Multi-region deployments](multi-region-deployments/) | Learn about the different multi-region topologies that you can deploy using YugabyteDB. | Multi-node<br/>local |
+| [Query tuning](query-1-performance/) | Learn about the tools available to identify and optimize queries in YSQL. | Single-node<br/>local/cloud |
+| [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point in time recovery. | Single-node<br/>local |
 | [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
-| [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single&nbsp;node<br/>Local/Cloud |
-| [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi node<br/>Local |
+| [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node<br/>local/cloud |
+| [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node<br/>local |
 
-## Set up your YugabyteDB cluster
+## Set up YugabyteDB universe
 
-The examples in Explore can be run on your local machine, or in the cloud using a cluster in YugabyteDB Managed.
-
-This section assumes that you have either [created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Managed or [installed YugabyteDB](../quick-start/linux/) on your local computer.
+You can run examples using a universe set up on your local machine or in a cloud, assuming you have either [created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Managed, [installed](../yugabyte-platform/install-yugabyte-platform/) and [configured](../yugabyte-platform/configure-yugabyte-platform/) YugabyteDB Anywhere, or [installed](../quick-start/linux/) YugabyteDB.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li >
     <a href="#cloud" class="nav-link active" id="cloud-tab" data-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="true">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Use a cloud cluster
+      Use a cloud universe
     </a>
   </li>
   <li>
     <a href="#local" class="nav-link" id="local-tab" data-toggle="tab"
       role="tab" aria-controls="local" aria-selected="false">
       <img src="/icons/database.svg" alt="Server Icon">
-      Use a local cluster
+      Use a local universe
+    </a>
+  </li>
+  <li>
+    <a href="#anywhere" class="nav-link" id="local-tab" data-toggle="tab"
+      role="tab" aria-controls="local" aria-selected="false">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use YugabyteDB Anywhere
     </a>
   </li>
 </ul>
 
-<div class="tab-content">
-  <div id="cloud" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
 
-To run the Explore examples in YugabyteDB Managed, create a single- or multi-node cluster as follows.
+<div class="tab-content">
+
+  <div id="cloud" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
+To run the examples in YugabyteDB Managed, create a single- or multi-node universe (which is referred to as cluster in YugabyteDB Managed).<br><br>
 
 {{< tabpane text=true >}}
 
@@ -98,29 +106,30 @@ You can run Explore exercises in YugabyteDB Managed using the [Cloud Shell](../y
 1. Click **Launch Cloud Shell**.
 1. Enter the user name from the cluster credentials you downloaded when you created the cluster.
 1. Select the API to use (YSQL or YCQL) and click **Confirm**.
-  The shell displays in a separate browser page. Cloud Shell can take up to 30 seconds to be ready.
+    The shell displays in a separate browser page. Cloud Shell can take up to 30 seconds to be ready.
 1. Enter the password from the cluster credentials you downloaded when you created the cluster.
 
 Note that if your Cloud Shell session is idle for more than 5 minutes, your browser may disconnect you. To resume, close the browser tab and connect again.
 
   </div>
+
   <div id="local" class="tab-pane fade" role="tabpanel" aria-labelledby="local-tab">
 
-To run the examples in Explore, you'll need to create a single- or multi-node cluster.
+To run the examples, you need to create a single- or multi-node universe.
 
-For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) cluster management utility to create and manage clusters.
+For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) management utility to create and manage universes.
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Single-node cluster" lang="Single-node cluster" %}}
+  {{% tab header="Single-node universe" lang="Single-node universe" %}}
 
-You can create a single-node local cluster with a replication factor (RF) of 1 by running the following command:
+You can create a single-node local universe with a replication factor (RF) of 1 by running the following command:
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1
 ```
 
-Or, if you are running macOS Monterey:
+Or, if you are running macOS Monterey, use the following command:
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
@@ -129,7 +138,7 @@ Or, if you are running macOS Monterey:
 
 For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
 
-To stop a single-node cluster, do the following:
+To stop a single-node universe, execute the following:
 
 ```sh
 ./bin/yugabyted destroy
@@ -137,17 +146,17 @@ To stop a single-node cluster, do the following:
 
   {{% /tab %}}
 
-  {{% tab header="Multi-node cluster" lang="Multi-node cluster" %}}
+  {{% tab header="Multi-node universe" lang="Multi-node universe" %}}
 
-The following instructions show how to simulate a multi-node cluster on a single computer. To deploy a true multi-node cluster, follow the instructions in [Deploy](../deploy/).
+The following instructions show how to simulate a multi-node universe on a single computer. To deploy a true multi-node universe, follow the instructions in [Deploy](../deploy/).
 
-If a single-node cluster is currently running, first destroy the running cluster as follows:
+If a single-node universe is currently running, first destroy it, as follows:
 
 ```sh
 ./bin/yugabyted destroy
 ```
 
-Start a local three-node cluster with a replication factor of `3` by first creating a single node cluster as follows:
+Start a local three-node universe with an RF of `3` by first creating a single node universe, as follows:
 
 ```sh
 ./bin/yugabyted start \
@@ -156,14 +165,14 @@ Start a local three-node cluster with a replication factor of `3` by first creat
                 --cloud_location=aws.us-east-2.us-east-2a
 ```
 
-On macOS, the additional nodes need loopback addresses configured:
+On macOS, the additional nodes need loopback addresses configured, as follows:
 
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2
 sudo ifconfig lo0 alias 127.0.0.3
 ```
 
-Next, join two more nodes with the previous node. [yugabyted](../reference/configuration/yugabyted/) automatically applies a replication factor of `3` when a third node is added.
+Next, join two more nodes with the previous node. yugabyted automatically applies a replication factor of `3` when a third node is added, as follows:
 
 ```sh
 ./bin/yugabyted start \
@@ -181,7 +190,7 @@ Next, join two more nodes with the previous node. [yugabyted](../reference/confi
                 --join=127.0.0.1
 ```
 
-After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster as follows:
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:
 
 ```sh
 ./bin/yugabyted configure --fault_tolerance=zone --base_dir=/tmp/ybd1
@@ -189,7 +198,7 @@ After starting the yugabyted processes on all the nodes, configure the data plac
 
 This command can be executed on any node where you already started YugabyteDB.
 
-To destroy the multi-node cluster, do the following:
+To destroy the multi-node universe, execute the following:
 
 ```sh
 ./bin/yugabyted destroy --base_dir=/tmp/ybd1
@@ -201,11 +210,11 @@ To destroy the multi-node cluster, do the following:
 
 {{< /tabpane >}}
 
-**Connect to clusters**
+**Connect to universes**
 
-To run the examples in your cluster, you use either the ysqlsh or ycqlsh CLI to interact with YugabyteDB via the YSQL or YCQL API.
+To run the examples in your universe, you use either the ysqlsh or ycqlsh CLI to interact with YugabyteDB via the YSQL or YCQL API.
 
-To start ysqlsh:
+You can start ysqlsh as follows:
 
 ```sh
 ./bin/ysqlsh
@@ -218,7 +227,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-To start ycqlsh:
+You can start ycqlsh as follows:
 
 ```sh
 ./bin/ycqlsh
@@ -230,15 +239,25 @@ Connected to local cluster at 127.0.0.1:9042.
 Use HELP for help.
 ycqlsh>
 ```
+  </div>
+
+  <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
+
+To run the examples in YugabyteDB Anywhere, create a single- or multi-node universe by following instructions provided in [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
+
+
 
   </div>
+
 </div>
+
+
 
 ## Set up YB Workload Simulator
 
 YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
 
-The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features cluster- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a cluster, and re-balances connections when a node fails. For more information about the workload application, refer to [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
+The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and rebalances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
 
 ### Download
 
@@ -302,9 +321,10 @@ Replace the following:
 - `<path-to-cluster-certificate>` with the path to the [cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
 
   </div>
+  
   <div id="localworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="local-tab">
 
-To start the application against a running local cluster, use the following command:
+To start the application against a running local universe, use the following command:
 
 ```sh
 java -jar \
@@ -313,9 +333,9 @@ java -jar \
     ./yb-workload-sim-0.0.2.jar
 ```
 
-The `-Dnode` flag specifies the IP address of the node to connect to.
+The `-Dnode` flag specifies the IP address of the node to which to connect.
 
-The `-Dspring.datasource` flag enables [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) for the application connections. If you created a cluster using different zones, replace the zones with the corresponding zones in your cluster, comma-separated, in the format `cloud.region.zone`.
+The `-Dspring.datasource` flag enables [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) for the application connections. If you created a universe using different zones, replace the zones with the corresponding zones in your universe, comma-separated, in the format `cloud.region.zone`.
 
   </div>
 </div>
@@ -324,17 +344,13 @@ To view the application UI, navigate to <http://localhost:8080>.
 
 #### Start a read and write workload
 
-To start a workload that performs read and write operations across all the nodes of the cluster, do the following:
+You can start a workload that performs read and write operations across all the nodes of the universe as follows:
 
 1. In the [application UI](http://localhost:8080), click the hamburger icon at the top of the page beside Active Workloads for Generic.
-1. Select the **Usable Operations** tab.
+1. Select **Usable Operations**.
 1. Under **Create Tables**, click **Run Create Tables Workload** to add tables to the database.
 1. Under **Seed Data**, click **Run Seed Data Workload** to add data to the tables.
 1. Under **Simulation**, select the **Include new Inserts** option, and click **Run Simulation Workload**.
 1. Click **Close**.
 
 The Latency and Throughput charts show the workload running on the cluster.
-
-## Next step
-
-Start exploring [SQL features](ysql-language-features/).
