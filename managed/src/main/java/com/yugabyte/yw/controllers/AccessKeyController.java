@@ -105,14 +105,6 @@ public class AccessKeyController extends AuthenticatedController {
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID) {
     final Provider provider = Provider.getOrBadRequest(providerUUID);
-    if (!provider.code.equals(onprem.name())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Trying to create access key for non-onprem provider: "
-              + provider.code
-              + "provider "
-              + provider.name);
-    }
     AccessKeyFormData formData =
         formFactory
             .getFormDataOrBadRequest(AccessKeyFormData.class)

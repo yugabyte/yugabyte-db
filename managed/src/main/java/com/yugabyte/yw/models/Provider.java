@@ -103,6 +103,10 @@ public class Provider extends Model {
   @JsonManagedReference(value = "provider-regions")
   public List<Region> regions;
 
+  @OneToMany(cascade = CascadeType.ALL)
+  @JsonManagedReference(value = "provider-accessKey")
+  public List<AccessKey> allKeys;
+
   @JsonIgnore
   @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
   public Set<InstanceType> instanceTypes;
