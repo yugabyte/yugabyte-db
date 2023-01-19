@@ -65,18 +65,18 @@ The valid *arguments* for export schema are described in the following table:
 | :------- | :------------------------ |
 | --comments-on-objects |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
-| [-h, --help](#command-line-help) | Command line help |
+| [-h, --help](#command-line-help) | Command line help. |
 | --log-level <value> |
-| [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier |
-| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable |
+| [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. |
+| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. |
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | Applicable for Oracle instances only. A TNS alias that is configured to establish a secure connection with the server. |
 | --send-diagnostics |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
-| [--source-db-name](#source-db-name) <name> | Source database name |
+| [--source-db-name](#source-db-name) <name> | Source database name. |
 | [--source-db-password](#source-db-password) <password>| Source database password. |
 | [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
 | [--source-db-schema](#source-db-schema) <schemaName> | Schema of the source database. |
-| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql` or `oracle` |
+| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql` or `oracle`. |
 | [--source-db-user](#source-db-user) <username> | Username of the source database. |
 | [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
@@ -86,7 +86,7 @@ The valid *arguments* for export schema are described in the following table:
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | [--use-orafce](#use-orafce) | Orafce extension applicable for Oracle only. |
 | --verbose |
-| [-y, --yes](#yes) | User input for questions asked during the export schema operation |
+| [-y, --yes](#yes) | User input for questions asked during the export schema operation. |
 
 #### Example
 
@@ -118,12 +118,12 @@ The valid *arguments* for analyze schema are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
-| [-h, --help](#command-line-help) | Command line help |
+| [-h, --help](#command-line-help) | Command line help. |
 | --log-level <value> |
-| --output-format <format> | One of `html`, `txt`, `json` or `xml` |
+| --output-format <format> | One of `html`, `txt`, `json` or `xml`. |
 | --send-diagnostics |
 | --verbose |
-| [-y, --yes](#yes) | User input for questions asked during the analyze schema operation |
+| [-y, --yes](#yes) | User input for questions asked during the analyze schema operation. |
 
 #### Example
 
@@ -149,19 +149,19 @@ The valid *arguments* for export data are described in the following table:
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
-| [-h, --help](#command-line-help) | Command line help |
+| [-h, --help](#command-line-help) | Command line help. |
 | --log-level <value> |
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier |
-| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable |
+| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. |
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | Applicable for Oracle instances only. A TNS alias that is configured to establish a secure connection with the server. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | --send-diagnostics |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
-| [--source-db-name](#source-db-name) <name> | Source database name |
+| [--source-db-name](#source-db-name) <name> | Source database name. |
 | [--source-db-password](#source-db-password) <password>| Source database password. |
 | [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
 | [--source-db-schema](#source-db-schema) <schemaName> | Schema of the source database. |
-| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql` or `oracle` |
+| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql` or `oracle`. |
 | [--source-db-user](#source-db-user) <username> | Username of the source database. |
 | [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
@@ -170,7 +170,7 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | --verbose |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
 
@@ -200,11 +200,11 @@ The valid *arguments* for export data status are described in the following tabl
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
-| [-h, --help](#command-line-help) | Command line help |
+| [-h, --help](#command-line-help) | Command line help. |
 | --log-level <value> |
 | --send-diagnostics |
 | --verbose |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
 
@@ -231,7 +231,7 @@ The valid *arguments* for import schema are described in the following table:
 | --continue-on-error |
 | --exclude-object-list |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
-| [-h, --help](#command-line-help) | Command line help |
+| [-h, --help](#command-line-help) | Command line help. |
 | --ignore-exist |
 | --log-level string |
 | --object-list string |
@@ -241,7 +241,7 @@ The valid *arguments* for import schema are described in the following table:
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | --straight-order |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
-| [--target-db-name](#target-db-name) <name> | Target database name |
+| [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
 | [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
 | [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
@@ -252,7 +252,7 @@ The valid *arguments* for import schema are described in the following table:
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --verbose |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
 
@@ -279,20 +279,20 @@ The valid *arguments* for import data are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data] |
+| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
 | --continue-on-error |
 | --disable-pb |
 | --enable-upsert |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
-| [-h, --help](#command-line-help) | Command line help |
+| [-h, --help](#command-line-help) | Command line help. |
 | --log-level <value> |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | --send-diagnostics |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
-| [--target-db-name](#target-db-name) <name> | Target database name |
+| [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
 | [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
 | [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
@@ -305,7 +305,7 @@ The valid *arguments* for import data are described in the following table:
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --use-public-ip |
 | --verbose |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
 
@@ -333,7 +333,7 @@ The valid *arguments* for import data file are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data] |
+| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
 | --continue-on-error |
 | [--data-dir](#data-dir) <path> | |
 | [--delimiter](#delimiter) |
@@ -341,18 +341,18 @@ The valid *arguments* for import data file are described in the following table:
 | --enable-upsert |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
-| [--file-opts](#file-opts) <string> | Comma-separated string options for CSV file format
+| [--file-opts](#file-opts) <string> | Comma-separated string options for CSV file format. |
 | [--file-table-map](#file-table-map) <filename1:tablename1> | Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database. |
-| [--format](#format) <format> | One of `CSV` or `text` format of the data file |
+| [--format](#format) <format> | One of `CSV` or `text` format of the data file. |
 | [--has-header](#has-header) | Applies only to CSV file type. |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
-| [-h, --help](#command-line-help) | Command line help |
+| [-h, --help](#command-line-help) | Command line help. |
 | --log-level <value> |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | --send-diagnostics |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
-| [--target-db-name](#target-db-name) <name> | Target database name |
+| [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
 | [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
 | [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
@@ -365,7 +365,7 @@ The valid *arguments* for import data file are described in the following table:
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --use-public-ip |
 | --verbose |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation |
+| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
 
@@ -401,11 +401,11 @@ The valid *arguments* for import data status are described in the following tabl
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
-| [-h, --help](#command-line-help) | Command line help |
+| [-h, --help](#command-line-help) | Command line help. |
 | --log-level <value> |
 | --send-diagnostics |
 | --verbose |
-| [-y, --yes](#yes) | User input for questions asked during the import data operation |
+| [-y, --yes](#yes) | User input for questions asked during the import data operation. |
 
 #### Example
 
