@@ -503,7 +503,7 @@ export function ReplicationDetails({
             xClusterConfig={xClusterConfig}
             onHide={hideModal}
             visible={showModal && visibleModal === XClusterModalName.DELETE_CONFIG}
-            redirectUrl={`universes/${currentUniverseUUID}/replication`}
+            redirectUrl={`/universes/${currentUniverseUUID}/replication`}
           />
         )}
         {isRestartConfigModalVisible && (

@@ -54,6 +54,7 @@ export const REGION_METADATA = [
   { code: 'eu-west-1', name: 'Europe (Ireland)', latitude: 53, longitude: -9 },
   { code: 'eu-west-2', name: 'Europe (London)', latitude: 51, longitude: 0 },
   { code: 'eu-west-3', name: 'Europe (Paris)', latitude: 48, longitude: 3 },
+  { code: 'eu-west-4', name: 'Europe (Amsterdam)', latitude: 52, longitude: 5 },
   { code: 'eu-central-1', name: 'Europe (Frankfurt)', latitude: 50, longitude: 9 },
   { code: 'ap-southeast-1', name: 'Asia Pacific (Singapore)', latitude: 5, longitude: 104 },
   { code: 'ap-southeast-2', name: 'Asia Pacific (Sydney)', latitude: -34, longitude: 151 },

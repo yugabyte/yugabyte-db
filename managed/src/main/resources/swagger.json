@@ -1695,6 +1695,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -1774,7 +1777,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
+      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "BackupResp" : {
@@ -2052,6 +2055,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2179,7 +2185,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "BootstarpBackupParams" : {
@@ -2288,6 +2294,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2352,7 +2361,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "s3Bucket", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "s3Bucket", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "BundleDetails" : {
@@ -2596,6 +2605,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2704,7 +2716,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "ClientCertParams" : {
@@ -3154,6 +3166,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -3201,7 +3216,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "CreateTablespaceParams" : {
@@ -3954,6 +3969,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -4062,7 +4080,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
       "type" : "object"
     },
     "HashedTimestampColumnFinderResponse" : {
@@ -4577,6 +4595,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -4682,7 +4703,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "azOverrides", "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeOverrides", "upgradeOption" ],
+      "required" : [ "azOverrides", "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeOverrides", "upgradeOption" ],
       "type" : "object"
     },
     "KubernetesRegionInfo" : {
@@ -5196,6 +5217,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -5323,7 +5347,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "NamespaceInfoResp" : {
@@ -6257,6 +6281,12 @@
           "readOnly" : true,
           "type" : "boolean"
         },
+        "allKeys" : {
+          "items" : {
+            "$ref" : "#/definitions/AccessKey"
+          },
+          "type" : "array"
+        },
         "code" : {
           "description" : "Provider cloud code",
           "type" : "string"
@@ -6316,7 +6346,7 @@
           "type" : "integer"
         }
       },
-      "required" : [ "regions" ],
+      "required" : [ "allKeys", "regions" ],
       "type" : "object"
     },
     "ProviderDetails" : {
@@ -6722,6 +6752,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -6824,7 +6857,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "RestartBootstrapParams" : {
@@ -6943,6 +6976,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -7045,7 +7081,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "RestoreApiFilter" : {
@@ -7217,6 +7253,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "prefixUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -7281,7 +7320,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
+      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "platformVersion", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
       "type" : "object"
     },
     "RestoreKeyspace" : {
@@ -7510,6 +7549,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -7562,7 +7604,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "RunQueryFormData" : {
@@ -7956,6 +7998,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8064,7 +8109,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "StateChangeAuditInfo" : {
@@ -8349,6 +8394,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8451,7 +8499,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TableDefinitionTaskParams" : {
@@ -8513,6 +8561,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8571,7 +8622,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tableDetails", "tableType", "tableUUID" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tableDetails", "tableType", "tableUUID" ],
       "type" : "object"
     },
     "TableDetails" : {
@@ -8803,6 +8854,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8905,7 +8959,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TlsToggleParams" : {
@@ -9019,6 +9073,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9121,7 +9178,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TriggerHealthCheckResult" : {
@@ -9244,6 +9301,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9345,7 +9405,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParams" : {
@@ -9450,6 +9510,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9548,7 +9611,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParamsResp" : {
@@ -9653,6 +9716,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9751,7 +9817,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDetailSubset" : {
@@ -10048,6 +10114,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -10150,7 +10219,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "UserIntent" : {
@@ -10604,6 +10673,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -10709,7 +10781,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "ValidationResult" : {
