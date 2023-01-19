@@ -805,9 +805,8 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
     WriteWorkload(producer_table1_->name(), 0, kNumRecordsPerBatch);
 
     // 3. Run log GC on producer.
-    RETURN_NOT_OK(producer_client()->FlushTables(
-        {producer_table1_->id()}, /* add_indexes = */ false,
-        /* timeout_secs = */ 30, /* is_compaction = */ true));
+    RETURN_NOT_OK(producer_cluster()->FlushTablets());
+    RETURN_NOT_OK(producer_cluster()->CompactTablets());
     for (size_t i = 0; i < producer_cluster()->num_tablet_servers(); ++i) {
       for (const auto& tablet_peer : producer_cluster()->GetTabletPeers(i)) {
         RETURN_NOT_OK(tablet_peer->RunLogGC());
