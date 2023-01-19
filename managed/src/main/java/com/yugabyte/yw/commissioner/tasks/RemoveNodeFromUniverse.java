@@ -54,7 +54,6 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         taskParams().nodeName,
         taskParams().universeUUID);
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
 

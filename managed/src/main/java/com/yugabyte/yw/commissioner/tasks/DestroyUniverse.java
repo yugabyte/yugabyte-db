@@ -98,9 +98,9 @@ public class DestroyUniverse extends UniverseTaskBase {
                   universe.getUniverseDetails(), null, new HashSet<>(universe.getNodes()), null));
 
           // Stop master and tservers.
-          createStopServerTasks(universe.getNodes(), "master", params().isForceDelete)
+          createStopServerTasks(universe.getNodes(), ServerType.MASTER, params().isForceDelete)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createStopServerTasks(universe.getNodes(), "tserver", params().isForceDelete)
+          createStopServerTasks(universe.getNodes(), ServerType.TSERVER, params().isForceDelete)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
 

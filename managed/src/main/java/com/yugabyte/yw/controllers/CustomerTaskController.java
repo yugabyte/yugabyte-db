@@ -282,6 +282,8 @@ public class CustomerTaskController extends AuthenticatedController {
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
       case RebootNodeInUniverse:
+      case StartNodeInUniverse:
+      case StopNodeInUniverse:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
         UUID universeUUID = UUID.fromString(universeUUIDStr);
