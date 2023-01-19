@@ -481,7 +481,7 @@ func setYamlValue(filePath string, yamlPath string, value string) {
 	if len(matchNodes) != 1 {
 		log.Fatal(fmt.Sprintf("yamlPath %s is not accurate", yamlPath))
 	}
-	matchNodes[0].Value = value
+	matchNodes[0].SetString(value)
 
 	finalYaml, err := yaml.Marshal(&root)
 	if err != nil {
