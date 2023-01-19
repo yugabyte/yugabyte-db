@@ -16,7 +16,7 @@ aliases:
 type: docs
 ---
 
-PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. This page describes the PostgreSQL extensions supported by YugabyteDB.
+PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. YugabyteDB supports a number of PostgreSQL extensions.
 
 ## PostgreSQL extensions supported by YugabyteDB
 
