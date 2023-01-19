@@ -23,19 +23,7 @@ You can install YugabyteDB Voyager on the following:
 - RHEL 7/8
 - CentOS 7/8
 - Ubuntu 18.04, 20.04, 22.04
-- MacOS (currently supported only for PostgreSQL source database.)
-
-    {{< note title = "MySQL/Oracle on MacOS" >}}
-
-You will get the following error if you use MySQL/Oracle as the source database on MacOS:
-
-```output
-"ora2pg" not found. Check if it is installed and included in the path.
-```
-
-For MySQL/Oracle source databases on MacOS, [install yb-voyager](#install-yb-voyager) using the Docker option.
-
-    {{< /note >}}
+- MacOS (For MySQL/Oracle source databases on MacOS, [install yb-voyager](#install-yb-voyager) using the Docker option.)
 
 ### Hardware requirements
 

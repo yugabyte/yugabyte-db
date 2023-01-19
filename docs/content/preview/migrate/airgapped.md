@@ -76,12 +76,12 @@ You need to download the tarball containing all the rpm files that are necessary
 1. Unzip the folder on your airgapped machine. Change directory to the unzipped folder and install the rpm files using the following command:
 
     ```sh
-    // For RHEL 7/8 or CentOS 7/8
+    # For RHEL 7/8 or CentOS 7/8
     sudo yum install *
     ```
 
     ```sh
-    // For Ubuntu
+    # For Ubuntu
     sudo apt-get install ./*.deb
     ```
 
