@@ -252,11 +252,14 @@ public class RegionControllerTest extends FakeDBApplication {
     when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
+    JsonNode details = json.get("details");
+    JsonNode cloudInfo = details.get("cloudInfo");
+    JsonNode awsRegionCloudInfo = cloudInfo.get("aws");
     assertEquals(OK, result.status());
     assertThat(json.get("uuid").toString(), Is.is(IsNull.notNullValue()));
     assertValue(json, "code", "foo-region");
     assertValue(json, "name", "Foo Region");
-    assertValue(json, "ybImage", "yb image");
+    assertValue(awsRegionCloudInfo, "ybImage", "yb image");
     assertNotNull(json.get("zones"));
     Region r = Region.getByCode(provider, "foo-region");
     assertEquals(1, r.zones.size());
@@ -366,24 +369,31 @@ public class RegionControllerTest extends FakeDBApplication {
 
     Result result = editRegion(provider.uuid, r.uuid, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
+    JsonNode details = json.get("details");
+    JsonNode cloudInfo = details.get("cloudInfo");
+    JsonNode awsRegionCloudInfo = cloudInfo.get("aws");
+
     assertEquals(OK, result.status());
-    assertValue(json, "ybImage", updatedYbImage);
-    assertValue(json, "securityGroupId", updatedSG);
+    assertValue(awsRegionCloudInfo, "ybImage", updatedYbImage);
+    assertValue(awsRegionCloudInfo, "securityGroupId", updatedSG);
 
     r.refresh();
     assertEquals(updatedSG, r.getSecurityGroupId());
-    assertEquals(updatedYbImage, r.ybImage);
+    assertEquals(updatedYbImage, r.getYbImage());
 
     regionJson.put("securityGroupId", (String) null);
     result = editRegion(provider.uuid, r.uuid, regionJson);
     json = Json.parse(contentAsString(result));
+    details = json.get("details");
+    cloudInfo = details.get("cloudInfo");
+    awsRegionCloudInfo = cloudInfo.get("aws");
     assertEquals(OK, result.status());
-    assertValue(json, "ybImage", updatedYbImage);
-    assertNull(json.get("securityGroupId"));
+    assertValue(awsRegionCloudInfo, "ybImage", updatedYbImage);
+    assertNull(awsRegionCloudInfo.get("securityGroupId"));
 
     r.refresh();
     assertNull(r.getSecurityGroupId());
-    assertEquals(updatedYbImage, r.ybImage);
+    assertEquals(updatedYbImage, r.getYbImage());
   }
 
   public Region getFirstRegion() {

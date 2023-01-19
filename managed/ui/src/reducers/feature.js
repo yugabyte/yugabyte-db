@@ -24,7 +24,7 @@ const initialStateFeatureInTest = {
   enablePITR: true,
   enableDedicatedNodes: false,
   enableNotificationTemplates: false,
-  enablePrefillKubeConfig: false,
+  enablePrefillKubeConfig: false
 };
 
 const initialStateFeatureReleased = {

@@ -162,6 +162,47 @@ auto MakeDoneCallback(
   };
 }
 
+bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
+  return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
+          entry.state() == master::SysSnapshotEntryPB::CREATING) &&
+         HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at;
+}
+
+Result<TxnSnapshotId> FindSnapshotSuitableForRestoreAt(
+    const SnapshotScheduleInfoPB& schedule, HybridTime restore_at) {
+  if (schedule.snapshots().empty()) {
+    return STATUS(NotFound, "Schedule does not have any snapshots.");
+  }
+  std::vector<std::reference_wrapper<const SnapshotInfoPB>> snapshots(
+      schedule.snapshots().begin(), schedule.snapshots().end());
+  // Don't rely on the implementation sorting the snapshots by creation time.
+  std::sort(
+      snapshots.begin(), snapshots.end(), [](const SnapshotInfoPB& lhs, const SnapshotInfoPB& rhs) {
+        return HybridTime::FromPB(lhs.entry().snapshot_hybrid_time()) <
+               HybridTime::FromPB(rhs.entry().snapshot_hybrid_time());
+      });
+  if (restore_at < HybridTime::FromPB(snapshots[0].get().entry().snapshot_hybrid_time())) {
+    const auto& earliest_snapshot = snapshots[0];
+    return STATUS_FORMAT(
+        IllegalState,
+        "Trying to restore to $0 which is earlier than the configured retention. "
+        "Not allowed. Earliest snapshot that can be used is $1 and was taken at $2.",
+        restore_at, TryFullyDecodeTxnSnapshotId(earliest_snapshot.get().id()),
+        HybridTime::FromPB(earliest_snapshot.get().entry().snapshot_hybrid_time()));
+  }
+  // Return the id of the oldest valid snapshot created before the restore_at time.
+  auto it = std::find_if(
+      snapshots.begin(), snapshots.end(), [&restore_at](const SnapshotInfoPB& snapshot) {
+        return SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at);
+      });
+  if (it != snapshots.end()) {
+    return FullyDecodeTxnSnapshotId(it->get().id());
+  }
+  return STATUS_FORMAT(
+      NotFound,
+      "The schedule does not have any valid snapshots created after the restore at time.");
+}
+
 } // namespace
 
 class MasterSnapshotCoordinator::Impl {
@@ -638,43 +679,22 @@ class MasterSnapshotCoordinator::Impl {
     return result;
   }
 
-  bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
-    return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
-            entry.state() == master::SysSnapshotEntryPB::CREATING) &&
-           HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
-           HybridTime::FromPB(entry.previous_snapshot_hybrid_time()) < restore_at;
-  }
-
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
       CoarseTimePoint deadline) {
     while (CoarseMonoClock::now() < deadline) {
       ListSnapshotSchedulesResponsePB resp;
-      auto last_snapshot_time = HybridTime::kMin;
-
       RETURN_NOT_OK_PREPEND(ListSnapshotSchedules(schedule_id, &resp),
                             "Failed to list snapshot schedules");
       if (resp.schedules().size() < 1) {
         return STATUS_FORMAT(InvalidArgument, "Unknown schedule: $0", schedule_id);
       }
-
-      for (const auto& snapshot : resp.schedules()[0].snapshots()) {
-        auto snapshot_hybrid_time = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
-        last_snapshot_time = std::max(last_snapshot_time, snapshot_hybrid_time);
-
-        if (SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at)) {
-          return VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
-        }
+      auto snapshot_result = FindSnapshotSuitableForRestoreAt(resp.schedules()[0], restore_at);
+      if (snapshot_result.ok()) {
+        return *snapshot_result;
+      } else if (!snapshot_result.status().IsNotFound()) {
+        return snapshot_result;
       }
-      if (last_snapshot_time > restore_at) {
-        auto& earliest_snapshot = resp.schedules()[0].snapshots()[0];
-        return STATUS_FORMAT(
-            IllegalState, "Trying to restore to $0 which is earlier than the configured retention. "
-            "Not allowed. Earliest snapshot that can be used is $1 and was taken at $2.",
-            restore_at, TryFullyDecodeTxnSnapshotId(earliest_snapshot.id()),
-            HybridTime::FromPB(earliest_snapshot.entry().snapshot_hybrid_time()));
-      }
-
       auto snapshot_id = CreateForSchedule(schedule_id, leader_term, deadline);
       if (!snapshot_id.ok() &&
           MasterError(snapshot_id.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {

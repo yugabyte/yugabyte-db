@@ -32,13 +32,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Cloud Enabled",
           "Enables YBM specific features",
           ConfDataType.BooleanType);
-  public static final ConfKeyInfo<String> universeBootScript =
-      new ConfKeyInfo<>(
-          "yb.universe_boot_script",
-          ScopeType.UNIVERSE,
-          "Universe Boot Script",
-          "Custom script to run on VM boot during universe provisioning",
-          ConfDataType.StringType);
   public static final ConfKeyInfo<Boolean> healthLogOutput =
       new ConfKeyInfo<>(
           "yb.health.logOutput",
@@ -101,20 +94,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "if YSQL catalog upgrade will be performed in single or multi connection mode."
               + "Single connection mode makes it work even on tiny DB nodes.",
           ConfDataType.BooleanType);
-  public static final ConfKeyInfo<String> ybNumReleasesToKeepDefault =
+  public static final ConfKeyInfo<Integer> ybNumReleasesToKeepDefault =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_default",
           ScopeType.UNIVERSE,
           "Default Releases Count",
           "Number of Releases to Keep",
-          ConfDataType.StringType);
-  public static final ConfKeyInfo<String> ybNumReleasesToKeepCloud =
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> ybNumReleasesToKeepCloud =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_cloud",
           ScopeType.UNIVERSE,
           "Cloud Releases Count",
           "Number Of Cloud Releases To Keep",
-          ConfDataType.StringType);
+          ConfDataType.IntegerType);
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<Integer> dbMemPostgresMaxMemMb =
       new ConfKeyInfo<>(
@@ -180,7 +173,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "TODO",
           ConfDataType.BooleanType);
   // TODO(): Add correct metadata
-  public static final ConfKeyInfo<Integer> enableSshKeyExpirationThresholdDays =
+  public static final ConfKeyInfo<Integer> sshKeyExpirationThresholdDays =
       new ConfKeyInfo<>(
           "yb.security.ssh_keys.ssh_key_expiration_threshold_days",
           ScopeType.UNIVERSE,
@@ -210,7 +203,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType);
   public static final ConfKeyInfo<Boolean> ybcAllowScheduledUpgrade =
       new ConfKeyInfo<>(
-          "yb.ybc.upgrade.allow_scheduled_upgrade",
+          "ybc.upgrade.allow_scheduled_upgrade",
           ScopeType.UNIVERSE,
           "Allow Scheduled YBC Upgrades",
           "Enable Scheduled upgrade of ybc on the universe",
@@ -281,4 +274,47 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Excluded Queries",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.StringListType);
+  public static final ConfKeyInfo<String> ansibleStrategy =
+      new ConfKeyInfo<>(
+          "yb.ansible.strategy",
+          ScopeType.UNIVERSE,
+          "Ansible Strategy",
+          "strategy can be linear, mitogen_linear or debug",
+          ConfDataType.StringType);
+  public static final ConfKeyInfo<Integer> ansibleConnectionTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.ansible.conn_timeout_secs",
+          ScopeType.UNIVERSE,
+          "Ansible Connection Timeout Duration",
+          "This is the default timeout for connection plugins to use.",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> ansibleVerbosity =
+      new ConfKeyInfo<>(
+          "yb.ansible.verbosity",
+          ScopeType.UNIVERSE,
+          "Ansible Verbosity Level",
+          "verbosity of ansible logs, 0 to 4 (more verbose)",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Boolean> ansibleDebug =
+      new ConfKeyInfo<>(
+          "yb.ansible.debug",
+          ScopeType.UNIVERSE,
+          "Ansible Debug Output",
+          "Debug output (can include secrets in output)",
+          ConfDataType.BooleanType);
+  public static final ConfKeyInfo<Boolean> ansibleDiffAlways =
+      new ConfKeyInfo<>(
+          "yb.ansible.diff_always",
+          ScopeType.UNIVERSE,
+          "Ansible Diff Always",
+          "Configuration toggle to tell modules to show differences "
+              + "when in 'changed' status, equivalent to --diff.",
+          ConfDataType.BooleanType);
+  public static final ConfKeyInfo<String> ansibleLocalTemp =
+      new ConfKeyInfo<>(
+          "yb.ansible.local_temp",
+          ScopeType.UNIVERSE,
+          "Ansible Local Temp Directory",
+          "Temporary directory for Ansible to use on the controller.",
+          ConfDataType.StringType);
 }

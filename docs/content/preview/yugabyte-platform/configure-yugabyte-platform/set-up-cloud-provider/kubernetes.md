@@ -280,7 +280,7 @@ The following overrides are available:
 
   YugabyteDB servers and other components communicate with each other using the Kubernetes Fully Qualified Domain Names (FQDN). The default domain is `cluster.local`.
 
-- Overrides to add annotations at StatefulSet-level:
+- Overrides to add annotations at StatefulSet level:
 
   ```yml
   networkAnnotation:
@@ -288,7 +288,7 @@ The following overrides are available:
     annotation2: 'bar'
   ```
 
-- Overrides to add custom resource allocation for YB-Master and YB-TServer pods. This overrides instance types selected in the YugabyteDB Anywhere universe creation flow:
+- Overrides to add custom resource allocation for YB-Master and YB-TServer pods:
 
   ```yml
   resource:
@@ -308,15 +308,18 @@ The following overrides are available:
         memory: 4Gi
   ```
 
+  This overrides instance types selected in the YugabyteDB Anywhere universe creation flow.
+
 - Overrides to enable Istio compatibility:
 
   ```yml
-  istioCompatibility: enabled: true
+  istioCompatibility:
+    enabled: true
   ```
 
   This is required when Istio is used with Kubernetes.
 
-- Overrides to publish Node-IP as the server broadcast address:
+- Overrides to publish node IP as the server broadcast address.
 
   By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration: 
 

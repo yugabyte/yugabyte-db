@@ -58,7 +58,16 @@
           "ModalKeyValue": "Config Value",
           "ModelEditConfigTitle": "Edit Configuration",
           "ModelResetConfigTitle": "Reset Configuration",
-          "ShowOverridenConfigs": "Show overriden configs"
+          "ShowOverridenConfigs": "Show Overriden Configs",
+          "EditConfigWarningMessage": "Value not changed",
+          "SelectProvider": "Select Provider:",
+          "SelectUniverse": "Select Universe:",
+          "SelectCustomer": "Select Customer:",
+          "UniverseConfigError": "There are no universes configured",
+          "ProviderConfigError": "There are no providers configured",
+          "CustomerConfigError": "There are no customers configured",
+          "GenericConfigError": "Please try again"
+
         }
       }
     }

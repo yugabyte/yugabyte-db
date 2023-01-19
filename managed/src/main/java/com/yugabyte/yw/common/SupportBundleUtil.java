@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesManager.RoleData;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -464,9 +465,9 @@ public class SupportBundleUtil {
    */
   public String getServiceAccountName(Provider provider) {
     String serviceAccountName = "";
-    Map<String, String> providerConfig = provider.getUnmaskedConfig();
-    if (providerConfig.containsKey("KUBECONFIG_SERVICE_ACCOUNT")) {
-      serviceAccountName = providerConfig.get("KUBECONFIG_SERVICE_ACCOUNT");
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+    if (config.containsKey("KUBECONFIG_SERVICE_ACCOUNT")) {
+      serviceAccountName = config.get("KUBECONFIG_SERVICE_ACCOUNT");
     }
     return serviceAccountName;
   }

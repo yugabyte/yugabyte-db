@@ -82,6 +82,7 @@ class ClusterAdminCli {
  private:
   Status RunCommand(
       const Command& command, const CLIArguments& command_args, const std::string& program_name);
+  std::string GetArgumentExpressions(const std::string& usage_arguments);
   std::vector<Command> commands_;
   std::map<std::string, size_t> command_indexes_;
 };
