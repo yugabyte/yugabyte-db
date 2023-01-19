@@ -2669,7 +2669,6 @@ export default class ClusterFields extends Component {
                         maxVal={15}
                         onInputChanged={this.replicationFactorChanged}
                         val={Number(this.state.replicationFactor)}
-                        disabled={isReadOnlyOnEdit}
                       />
                     ]
                   : null}
