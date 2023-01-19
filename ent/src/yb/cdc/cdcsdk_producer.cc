@@ -53,6 +53,8 @@ DEFINE_test_flag(
     bool, cdc_snapshot_failure, false,
     "For testing only, When it is set to true, the CDC snapshot operation will fail.");
 
+DECLARE_bool(ysql_enable_packed_row);
+
 namespace yb {
 namespace cdc {
 
@@ -229,7 +231,7 @@ Status PopulateBeforeImage(
   auto result = iter.HasNext();
   if (result.ok() && *result) {
     RETURN_NOT_OK(iter.NextRow(&row));
-  } else if (FLAGS_cdc_before_image_mandatory) {
+  } else if (FLAGS_cdc_before_image_mandatory && !FLAGS_ysql_enable_packed_row) {
     return result.ok()
                ? STATUS_FORMAT(
                      InternalError,
