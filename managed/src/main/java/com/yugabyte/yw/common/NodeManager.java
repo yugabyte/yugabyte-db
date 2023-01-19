@@ -120,6 +120,8 @@ public class NodeManager extends DevopsBase {
   public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
   public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
 
+  public static final String YUGABYTE_USER = "yugabyte";
+
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
   @Inject play.Configuration appConfig;

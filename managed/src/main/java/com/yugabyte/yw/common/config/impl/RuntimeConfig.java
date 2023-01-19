@@ -22,7 +22,6 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
 import java.util.function.Supplier;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +79,26 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
     return this;
   }
 
+  public RuntimeConfig<M> deleteEntryIfPresent(String path) {
+    if (scope == null) {
+      RuntimeConfigEntry.maybeGet(GLOBAL_SCOPE_UUID, path).ifPresent(RuntimeConfigEntry::delete);
+    } else if (scope instanceof Customer) {
+      RuntimeConfigEntry.maybeGet(((Customer) scope).uuid, path)
+          .ifPresent(RuntimeConfigEntry::delete);
+    } else if (scope instanceof Universe) {
+      RuntimeConfigEntry.maybeGet(((Universe) scope).universeUUID, path)
+          .ifPresent(RuntimeConfigEntry::delete);
+    } else if (scope instanceof Provider) {
+      RuntimeConfigEntry.maybeGet(((Provider) scope).uuid, path)
+          .ifPresent(RuntimeConfigEntry::delete);
+    } else {
+      throw new UnsupportedOperationException("Unsupported Scope: " + scope);
+    }
+    super.deleteValueInternal(path);
+    LOG.trace("After deleteEntryIfPresent {}", this);
+    return this;
+  }
+
   public RuntimeConfig<M> deleteEntry(String path) {
     if (scope == null) {
       RuntimeConfigEntry.getOrBadRequest(GLOBAL_SCOPE_UUID, path).delete();
@@ -93,7 +112,7 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
       throw new UnsupportedOperationException("Unsupported Scope: " + scope);
     }
     super.deleteValueInternal(path);
-    LOG.trace("After setValue {}", this);
+    LOG.trace("After deleteEntry {}", this);
     return this;
   }
 }
