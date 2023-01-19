@@ -865,7 +865,7 @@ class ControlScript(object):
         has_errors = False
 
         # Enable encryption at rest.
-        if self.configs.temp_data.get("enable"):
+        if self.configs.temp_data.get("enable_encrypt_at_rest"):
             Output.log("Trying to enable encryption at rest.")
 
             # Check whether the encryption at rest is already enabled.
@@ -1264,10 +1264,63 @@ class ControlScript(object):
                 "--start_redis_proxy=false",
             ]
 
-        if self.configs.saved_data.get("tserver_flags"):
+        tserver_flags = self.configs.saved_data.get("tserver_flags")
+
+        # If ysql_hba_conf_csv is present
+        # Extract the value of ysql_hba_conf_csv
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("ysql_hba_conf_csv") != -1:
+            ysql_hba_conf_csv_start_index = tserver_flags.find('ysql_hba_conf_csv')
+            ysql_hba_conf_csv_end_index = tserver_flags.find('}', ysql_hba_conf_csv_start_index) + 1
+            ysql_hba_conf_csv_flag = tserver_flags[ysql_hba_conf_csv_start_index:\
+                    ysql_hba_conf_csv_end_index]
+            ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[ysql_hba_conf_csv_flag.find("{")+1:-1]
+
+            # If the value was given through the config file
+            # remove the starting and ending quotes.
+            if ysql_hba_conf_csv_flag[0] == "'" and ysql_hba_conf_csv_flag[-1] == "'":
+                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
+            elif ysql_hba_conf_csv_flag[0] == '"' and ysql_hba_conf_csv_flag[-1] == '"':
+                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
+
+            # Remove the flag present in tserver_flags
+            if ysql_hba_conf_csv_start_index == 0:
+                tserver_flags = tserver_flags[ysql_hba_conf_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:ysql_hba_conf_csv_start_index-1] + \
+                    tserver_flags[ysql_hba_conf_csv_end_index:]
+
+            yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
+
+        # If ysql_pg_conf_csv is present
+        # Extract the value of ysql_pg_conf_csv given through CLI
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("ysql_pg_conf_csv") != -1:
+            ysql_pg_conf_csv_start_index = tserver_flags.find('ysql_pg_conf_csv')
+            ysql_pg_conf_csv_end_index = tserver_flags.find('}', ysql_pg_conf_csv_start_index) + 1
+            ysql_pg_conf_csv_flag = tserver_flags[ysql_pg_conf_csv_start_index:\
+                    ysql_pg_conf_csv_end_index]
+            ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[ysql_pg_conf_csv_flag.find("{")+1:-1]
+
+            # If the value was given through the config file
+            # remove the starting and ending quotes.
+            if ysql_pg_conf_csv_flag[0] == "'" and ysql_pg_conf_csv_flag[-1] == "'":
+                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
+            elif ysql_pg_conf_csv_flag[0] == '"' and ysql_pg_conf_csv_flag[-1] == '"':
+                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
+
+            # Remove the flag present in tserver_flags
+            if ysql_pg_conf_csv_start_index == 0:
+                tserver_flags = tserver_flags[ysql_pg_conf_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:ysql_pg_conf_csv_start_index-1] + \
+                    tserver_flags[ysql_pg_conf_csv_end_index:]
+
+            yb_tserver_cmd.extend(["--ysql_pg_conf_csv={}".format(ysql_pg_conf_csv_flag)])
+
+        if tserver_flags:
             yb_tserver_cmd.extend(
-                ["--{}".format(flag) for flag in \
-                    self.configs.saved_data.get("tserver_flags").split(",")])
+                ["--{}".format(flag) for flag in tserver_flags.split(",")])
 
         # Add authentication flags in tserver
         if self.configs.saved_data.get("secure"):
