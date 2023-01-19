@@ -220,10 +220,7 @@ public class AppInit {
       // Schedule garbage collection of backups
       backupGC.start();
 
-      if (appConfig.getBoolean("yb.perf_advisor.enable_scheduler", false)) {
-        // Schedule perf advisor data retrieval
-        perfAdvisorScheduler.start();
-      }
+      perfAdvisorScheduler.start();
 
       // Cleanup old support bundles
       supportBundleCleanup.start();
