@@ -22,7 +22,7 @@ import {
   YBNumericInput
 } from '../../common/forms/fields';
 import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from '../common/IBackup';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { find, flatten, groupBy, omit, uniq, uniqBy } from 'lodash';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
@@ -41,9 +41,10 @@ import { components } from 'react-select';
 import Close from '../../universes/images/close.svg';
 
 import { PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
-import './BackupCreateModal.scss';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
+import './BackupCreateModal.scss';
 
 interface BackupCreateModalProps {
   onHide: Function;
@@ -181,6 +182,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
   const queryClient = useQueryClient();
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
+  const dispatch = useDispatch();
 
   const doCreateBackup = useMutation(
     (values: any) => {
@@ -202,6 +204,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         );
         queryClient.invalidateQueries(['backups']);
         queryClient.invalidateQueries(['incremental_backups', values['baseBackupUUID']]);
+
+        dispatch(fetchUniverseInfo(currentUniverseUUID) as any).then((response: any) => {
+          dispatch(fetchUniverseInfoResponse(response.payload));
+        });
+
         onHide();
       },
       onError: (err: any) => {

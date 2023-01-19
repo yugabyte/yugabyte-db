@@ -149,9 +149,9 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
-      const labelName = config.metadata.provider + ' - ' + config.metadata.name;
-      return { value: config.metadata.configUUID, label: labelName };
-    })
+        const labelName = config.metadata.provider + ' - ' + config.metadata.name;
+        return { value: config.metadata.configUUID, label: labelName };
+      })
     : [];
 
   const groupedStorageConfigs = useMemo(() => {
@@ -184,11 +184,11 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     keyspaces:
       currentStep === 1
         ? Yup.array(
-          Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
-            message: 'Invalid keyspace name',
-            excludeEmptyString: true
-          })
-        )
+            Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
+              message: 'Invalid keyspace name',
+              excludeEmptyString: true
+            })
+          )
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
       .min(
