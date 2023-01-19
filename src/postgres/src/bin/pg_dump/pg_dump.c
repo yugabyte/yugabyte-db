@@ -323,7 +323,8 @@ static bool catalogTableExists(Archive *fout, char *tablename);
 
 static void getYbTablePropertiesAndReloptions(Archive *fout,
 						YbTableProperties properties,
-						PQExpBuffer reloptions_buf, Oid reloid, const char* relname);
+						PQExpBuffer reloptions_buf, Oid reloid, const char* relname,
+						char relkind);
 static void isDatabaseColocated(Archive *fout);
 static char *getYbSplitClause(Archive *fout, TableInfo *tbinfo);
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
@@ -16003,20 +16004,22 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		YbTableProperties yb_properties = NULL;
 		if (dopt->include_yb_metadata &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX
-			 || tbinfo->relkind == RELKIND_MATVIEW))
+			 || tbinfo->relkind == RELKIND_MATVIEW || tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
 		{
 			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
 		}
 		PQExpBuffer yb_reloptions = createPQExpBuffer();
 		getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
-			tbinfo->dobj.catId.oid, tbinfo->dobj.name);
+			tbinfo->dobj.catId.oid, tbinfo->dobj.name, tbinfo->relkind);
 
 		/*
 		 * Colocation backup: preserve implicit tablegroup oid.
 		 * Legacy colocated databases skip this step.
 		 */
 		if (is_colocated_database && !is_legacy_colocated_database
-			&& tbinfo->relkind == RELKIND_RELATION && yb_properties && yb_properties->is_colocated
+			&& (tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_MATVIEW
+				|| tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
+			&& yb_properties && yb_properties->is_colocated
 			&& !simple_string_list_member(&colocated_database_tablespaces, tbinfo->reltablespace))
 		{
 			simple_string_list_append(&colocated_database_tablespaces, tbinfo->reltablespace);
@@ -17192,9 +17195,9 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			PQExpBuffer yb_table_reloptions = createPQExpBuffer();
 			PQExpBuffer yb_index_reloptions = createPQExpBuffer();
 			getYbTablePropertiesAndReloptions(fout, yb_table_properties, yb_table_reloptions,
-				tbinfo->dobj.catId.oid, tbinfo->dobj.name);
+				tbinfo->dobj.catId.oid, tbinfo->dobj.name, tbinfo->relkind);
 			getYbTablePropertiesAndReloptions(fout, yb_index_properties, yb_index_reloptions,
-				indxinfo->dobj.catId.oid, indxinfo->dobj.name);
+				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
 
 			/*
 			 * Issue #11600: if tablegroups mismatch between the table and its
@@ -19053,7 +19056,7 @@ appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 static void
 getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 								  PQExpBuffer reloptions_buf,
-								  Oid reloid, const char* relname)
+								  Oid reloid, const char* relname, char relkind)
 {
 	if (properties)
 	{
@@ -19104,8 +19107,9 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		/*
 		 * For colocated tables, we need to set the new table to have the same
 		 * colocation_id since we use it as a prefix in our DocKeys.
+		 * Don't include colocation_id in the reloptions array for colocated partitioned tables.
 		 */
-		if (properties->is_colocated)
+		if (properties->is_colocated && relkind != RELKIND_PARTITIONED_TABLE)
 			appendPQExpBuffer(reloptions_buf, "colocation_id=%u", properties->colocation_id);
 
 		/*
