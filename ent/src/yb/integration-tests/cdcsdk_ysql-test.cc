@@ -10195,7 +10195,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public", 3));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -10213,13 +10214,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
   uint32_t batch_range = 1000;
   int batch_count = 4;
   for (int idx = 0; idx < batch_count; idx++) {
-    ASSERT_OK(WriteRowsHelper(start_idx /* start */, end_idx /* end */, &test_cluster_, true));
+    ASSERT_OK(WriteRowsHelper(start_idx /* start */, end_idx /* end */, &test_cluster_, true, 3));
     start_idx = end_idx;
     end_idx += batch_range;
   }
 
   // Update all row where key is even
-  ASSERT_OK(conn.Execute("UPDATE test_table set value_1 = value_1 + 1 where key % 2 = 0"));
+  ASSERT_OK(conn.Execute("UPDATE test_table set col2 = col2 + 1 where col1 % 2 = 0"));
 
   bool first_get_changes = true;
   GetChangesResponsePB change_resp;
@@ -10243,8 +10244,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
     for (uint32_t i = 0; i < record_size; ++i) {
       const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
       if (record.row_message().op() == RowMessage::INSERT) {
-        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
-        ASSERT_EQ(record.row_message().old_tuple_size(), 2);
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 3);
         // Old tuples validations
         ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), 0);
         ASSERT_EQ(record.row_message().old_tuple(1).datum_int32(), 0);
@@ -10257,8 +10258,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
         ASSERT_EQ(record.row_message().table(), kTableName);
         insert_count += 1;
       } else if (record.row_message().op() == RowMessage::UPDATE) {
-        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
-        ASSERT_EQ(record.row_message().old_tuple_size(), 2);
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 3);
         // The old tuple key should match the new tuple key.
         ASSERT_EQ(
             record.row_message().old_tuple(0).datum_int32(),
