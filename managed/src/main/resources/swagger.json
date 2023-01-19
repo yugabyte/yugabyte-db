@@ -1,6 +1,51 @@
 {
   "consumes" : [ "application/json" ],
   "definitions" : {
+    "AWSCloudInfo" : {
+      "properties" : {
+        "awsAccessKeyID" : {
+          "type" : "string"
+        },
+        "awsAccessKeySecret" : {
+          "type" : "string"
+        },
+        "awsHostedZoneId" : {
+          "type" : "string"
+        },
+        "awsHostedZoneName" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AWSRegionCloudInfo" : {
+      "properties" : {
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnet" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "The AMI to be used in this region.",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AZCloudInfo" : {
+      "properties" : {
+        "kubernetes" : {
+          "$ref" : "#/definitions/KubernetesRegionInfo"
+        }
+      },
+      "type" : "object"
+    },
     "AccessKey" : {
       "description" : "Access key for the cloud provider. This helps to authenticate the user and get access to the provider.",
       "properties" : {
@@ -26,6 +71,26 @@
         }
       },
       "required" : [ "idKey", "keyInfo" ],
+      "type" : "object"
+    },
+    "AccessKeyFormData" : {
+      "properties" : {
+        "expirationThresholdDays" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "keyCode" : {
+          "type" : "string"
+        },
+        "keyContent" : {
+          "type" : "string"
+        },
+        "keyType" : {
+          "enum" : [ "PUBLIC", "PRIVATE" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "keyCode", "keyContent", "keyType" ],
       "type" : "object"
     },
     "AccessKeyId" : {
@@ -1139,6 +1204,9 @@
           "description" : "AZ configuration values",
           "type" : "object"
         },
+        "details" : {
+          "$ref" : "#/definitions/AvailabilityZoneDetails"
+        },
         "kubeconfigPath" : {
           "description" : "Path to Kubernetes configuration file",
           "readOnly" : true,
@@ -1192,6 +1260,14 @@
       "required" : [ "code", "name" ],
       "type" : "object"
     },
+    "AvailabilityZoneDetails" : {
+      "properties" : {
+        "cloudInfo" : {
+          "$ref" : "#/definitions/AZCloudInfo"
+        }
+      },
+      "type" : "object"
+    },
     "AvailabilityZoneFormData" : {
       "properties" : {
         "availabilityZones" : {
@@ -1203,6 +1279,44 @@
         }
       },
       "required" : [ "availabilityZones" ],
+      "type" : "object"
+    },
+    "AzureCloudInfo" : {
+      "properties" : {
+        "azuClientId" : {
+          "type" : "string"
+        },
+        "azuClientSecret" : {
+          "type" : "string"
+        },
+        "azuHostedZoneId" : {
+          "type" : "string"
+        },
+        "azuRG" : {
+          "type" : "string"
+        },
+        "azuSubscriptionId" : {
+          "type" : "string"
+        },
+        "azuTenantId" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AzureRegionCloudInfo" : {
+      "properties" : {
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnet" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "The AMI to be used in this region.",
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "Backup" : {
@@ -1581,6 +1695,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -1660,7 +1777,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
+      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "BackupResp" : {
@@ -1938,6 +2055,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2065,7 +2185,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "BootstarpBackupParams" : {
@@ -2174,6 +2294,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2238,7 +2361,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "s3Bucket", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "s3Bucket", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "BundleDetails" : {
@@ -2482,6 +2605,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2590,7 +2716,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "ClientCertParams" : {
@@ -2608,6 +2734,26 @@
         }
       },
       "required" : [ "certExpiry", "certStart", "username" ],
+      "type" : "object"
+    },
+    "CloudInfo" : {
+      "properties" : {
+        "aws" : {
+          "$ref" : "#/definitions/AWSCloudInfo"
+        },
+        "azu" : {
+          "$ref" : "#/definitions/AzureCloudInfo"
+        },
+        "gcp" : {
+          "$ref" : "#/definitions/GCPCloudInfo"
+        },
+        "kubernetes" : {
+          "$ref" : "#/definitions/KubernetesInfo"
+        },
+        "onprem" : {
+          "$ref" : "#/definitions/OnPremCloudInfo"
+        }
+      },
       "type" : "object"
     },
     "CloudSpecificInfo" : {
@@ -3020,6 +3166,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -3067,7 +3216,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "CreateTablespaceParams" : {
@@ -3667,6 +3816,39 @@
       },
       "type" : "object"
     },
+    "GCPCloudInfo" : {
+      "properties" : {
+        "customGceNetwork" : {
+          "type" : "string"
+        },
+        "gceApplicationCredentialsPath" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "gceProject" : {
+          "type" : "string"
+        },
+        "useHostCredentials" : {
+          "type" : "boolean"
+        },
+        "useHostVPC" : {
+          "type" : "boolean"
+        },
+        "ybFirewallTags" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "GCPRegionCloudInfo" : {
+      "properties" : {
+        "ybImage" : {
+          "description" : "The AMI to be used in this region.",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "GCSLocation" : {
       "properties" : {
         "paths" : {
@@ -3787,6 +3969,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -3895,7 +4080,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
       "type" : "object"
     },
     "HashedTimestampColumnFinderResponse" : {
@@ -4242,6 +4427,44 @@
       "required" : [ "allTables", "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
       "type" : "object"
     },
+    "KubernetesInfo" : {
+      "properties" : {
+        "kubeConfig" : {
+          "type" : "string"
+        },
+        "kubeConfigContent" : {
+          "type" : "string"
+        },
+        "kubeConfigName" : {
+          "type" : "string"
+        },
+        "kubernetesImagePullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesImageRegistry" : {
+          "type" : "string"
+        },
+        "kubernetesProvider" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecret" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretContent" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesServiceAccount" : {
+          "type" : "string"
+        },
+        "kubernetesStorageClass" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "KubernetesOverrideError" : {
       "properties" : {
         "errorString" : {
@@ -4372,6 +4595,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -4477,7 +4703,57 @@
           "type" : "string"
         }
       },
-      "required" : [ "azOverrides", "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeOverrides", "upgradeOption" ],
+      "required" : [ "azOverrides", "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeOverrides", "upgradeOption" ],
+      "type" : "object"
+    },
+    "KubernetesRegionInfo" : {
+      "properties" : {
+        "kubeConfig" : {
+          "type" : "string"
+        },
+        "kubeConfigContent" : {
+          "type" : "string"
+        },
+        "kubeConfigName" : {
+          "type" : "string"
+        },
+        "kubeDomain" : {
+          "type" : "string"
+        },
+        "kubeNamespace" : {
+          "type" : "string"
+        },
+        "kubePodAddressTemplate" : {
+          "type" : "string"
+        },
+        "kubernetesImagePullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesImageRegistry" : {
+          "type" : "string"
+        },
+        "kubernetesProvider" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecret" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretContent" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesServiceAccount" : {
+          "type" : "string"
+        },
+        "kubernetesStorageClass" : {
+          "type" : "string"
+        },
+        "overrides" : {
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "LogData" : {
@@ -4941,6 +5217,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -5068,7 +5347,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "NamespaceInfoResp" : {
@@ -5568,6 +5847,14 @@
       "required" : [ "node", "numDelete", "numInsert", "numSelect", "numUpdate" ],
       "type" : "object"
     },
+    "OnPremCloudInfo" : {
+      "properties" : {
+        "ybHomeDir" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "Package" : {
       "properties" : {
         "arch" : {
@@ -5994,6 +6281,12 @@
           "readOnly" : true,
           "type" : "boolean"
         },
+        "allKeys" : {
+          "items" : {
+            "$ref" : "#/definitions/AccessKey"
+          },
+          "type" : "array"
+        },
         "code" : {
           "description" : "Provider cloud code",
           "type" : "string"
@@ -6020,12 +6313,6 @@
           "type" : "string"
         },
         "hostVpcRegion" : {
-          "type" : "string"
-        },
-        "hostedZoneId" : {
-          "type" : "string"
-        },
-        "hostedZoneName" : {
           "type" : "string"
         },
         "keyPairName" : {
@@ -6059,13 +6346,16 @@
           "type" : "integer"
         }
       },
-      "required" : [ "details", "regions" ],
+      "required" : [ "allKeys", "regions" ],
       "type" : "object"
     },
     "ProviderDetails" : {
       "properties" : {
         "airGapInstall" : {
           "type" : "boolean"
+        },
+        "cloudInfo" : {
+          "$ref" : "#/definitions/CloudInfo"
         },
         "installNodeExporter" : {
           "type" : "boolean"
@@ -6142,10 +6432,6 @@
           "readOnly" : true,
           "type" : "boolean"
         },
-        "architecture" : {
-          "enum" : [ "x86_64", "aarch64" ],
-          "type" : "string"
-        },
         "code" : {
           "description" : "Cloud provider region code",
           "example" : "us-west-2",
@@ -6156,6 +6442,9 @@
             "type" : "string"
           },
           "type" : "object"
+        },
+        "details" : {
+          "$ref" : "#/definitions/RegionDetails"
         },
         "latitude" : {
           "description" : "The region's latitude",
@@ -6177,21 +6466,10 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "securityGroupId" : {
-          "type" : "string"
-        },
         "uuid" : {
           "description" : "Region UUID",
           "format" : "uuid",
           "readOnly" : true,
-          "type" : "string"
-        },
-        "vnetName" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "description" : "The AMI to be used in this region.",
-          "example" : "TODO",
           "type" : "string"
         },
         "zones" : {
@@ -6202,6 +6480,31 @@
         }
       },
       "required" : [ "zones" ],
+      "type" : "object"
+    },
+    "RegionCloudInfo" : {
+      "properties" : {
+        "aws" : {
+          "$ref" : "#/definitions/AWSRegionCloudInfo"
+        },
+        "azu" : {
+          "$ref" : "#/definitions/AzureRegionCloudInfo"
+        },
+        "gcp" : {
+          "$ref" : "#/definitions/GCPRegionCloudInfo"
+        },
+        "kubernetes" : {
+          "$ref" : "#/definitions/KubernetesRegionInfo"
+        }
+      },
+      "type" : "object"
+    },
+    "RegionDetails" : {
+      "properties" : {
+        "cloudInfo" : {
+          "$ref" : "#/definitions/RegionCloudInfo"
+        }
+      },
       "type" : "object"
     },
     "RegionEditFormData" : {
@@ -6449,6 +6752,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -6551,7 +6857,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "RestartBootstrapParams" : {
@@ -6670,6 +6976,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -6772,7 +7081,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "RestoreApiFilter" : {
@@ -6944,6 +7253,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "prefixUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -7008,7 +7320,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
+      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "platformVersion", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
       "type" : "object"
     },
     "RestoreKeyspace" : {
@@ -7237,6 +7549,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -7289,7 +7604,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "RunQueryFormData" : {
@@ -7683,6 +7998,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -7791,7 +8109,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "StateChangeAuditInfo" : {
@@ -8076,6 +8394,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8178,7 +8499,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TableDefinitionTaskParams" : {
@@ -8240,6 +8561,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8298,7 +8622,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tableDetails", "tableType", "tableUUID" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tableDetails", "tableType", "tableUUID" ],
       "type" : "object"
     },
     "TableDetails" : {
@@ -8530,6 +8854,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8632,7 +8959,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TlsToggleParams" : {
@@ -8746,6 +9073,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8848,7 +9178,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TriggerHealthCheckResult" : {
@@ -8971,6 +9301,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9072,7 +9405,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParams" : {
@@ -9177,6 +9510,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9275,7 +9611,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParamsResp" : {
@@ -9380,6 +9716,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9478,7 +9817,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDetailSubset" : {
@@ -9775,6 +10114,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9877,7 +10219,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "UserIntent" : {
@@ -10331,6 +10673,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -10436,7 +10781,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "ValidationResult" : {
@@ -13923,8 +14268,8 @@
         "tags" : [ "Access Keys" ]
       },
       "post" : {
-        "description" : "",
-        "operationId" : "create_accesskey",
+        "description" : "UNSTABLE - This API will undergo changes in future.",
+        "operationId" : "createAccesskey",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -13937,6 +14282,13 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "AccessKeyFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AccessKeyFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -13949,7 +14301,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create an access key",
+        "summary" : "Create/Upload an access key for onprem Provider region",
         "tags" : [ "Access Keys" ]
       }
     },

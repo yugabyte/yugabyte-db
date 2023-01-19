@@ -1,5 +1,4 @@
 import React, { FC, useEffect } from 'react';
-
 import { RunTimeConfigScope } from '../../../redesign/helpers/dtos';
 import { ConfigData } from '../ConfigData';
 
@@ -16,7 +15,7 @@ export const GlobalRuntimeConfig: FC<GlobalRuntimeConfigProps> = ({
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
-  resetRuntimeConfigs,
+  resetRuntimeConfigs
 }) => {
   useEffect(() => {
     resetRuntimeConfigs();

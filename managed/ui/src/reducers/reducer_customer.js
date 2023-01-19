@@ -44,6 +44,8 @@ import {
   EDIT_CUSTOMER_CONFIG_RESPONSE,
   FETCH_RUNTIME_CONFIGS,
   FETCH_RUNTIME_CONFIGS_RESPONSE,
+  FETCH_RUNTIME_CONFIGS_KEY_INFO,
+  FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE,
   SET_RUNTIME_CONFIG,
   SET_RUNTIME_CONFIG_RESPONSE,
   DELETE_RUNTIME_CONFIG,
@@ -396,6 +398,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'runtimeConfigs', []);
     case FETCH_RUNTIME_CONFIGS_RESPONSE:
       return setPromiseResponse(state, 'runtimeConfigs', action);
+    case FETCH_RUNTIME_CONFIGS_KEY_INFO:
+      return setLoadingState(state, 'runtimeConfigsKeyInfo', []);
+    case FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE:
+      return setPromiseResponse(state, 'runtimeConfigsKeyInfo', action);
     case RESET_RUNTIME_CONFIGS:
       return setLoadingState(state, 'runtimeConfigs', []);
     case SET_RUNTIME_CONFIG:

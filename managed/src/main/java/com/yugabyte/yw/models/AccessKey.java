@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -26,6 +27,7 @@ import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
+import javax.persistence.ManyToOne;
 import lombok.Getter;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.time.DateUtils;
@@ -49,7 +51,7 @@ public class AccessKey extends Model {
     @ApiModelProperty public String nodeExporterUser = "prometheus";
     @ApiModelProperty public boolean skipProvisioning = false;
     @ApiModelProperty public boolean setUpChrony = false;
-    @ApiModelProperty public List<String> ntpServers = Collections.emptyList();;
+    @ApiModelProperty public List<String> ntpServers = Collections.emptyList();
 
     // Indicates whether the provider was created before or after PLAT-3009
     // True if it was created after, else it was created before.
@@ -136,6 +138,11 @@ public class AccessKey extends Model {
   public UUID getProviderUUID() {
     return this.idKey.providerUUID;
   }
+
+  @Column(nullable = false)
+  @ManyToOne
+  @JsonBackReference("provider-accessKey")
+  public Provider provider;
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
