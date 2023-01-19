@@ -1908,9 +1908,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const PlacementBlockPB& placement_block,
       const TSDescriptorVector& ts_descs);
 
-  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const;
 
-  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) const;
 
   // Return the id of the tablespace associated with a transaction status table, if any.
   boost::optional<TablespaceId> GetTransactionStatusTableTablespace(
