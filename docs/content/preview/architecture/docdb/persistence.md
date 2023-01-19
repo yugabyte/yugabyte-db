@@ -105,7 +105,7 @@ We use a binary-comparable encoding to translate the value for each YCQL type to
 ## Packed Row format (Beta)
 
 A row corresponding to the user table is stored as multiple key value pairs in the DocDB. For
-example, A row with one primary key and n non-key columns - K (primaty key)  |  C1  | C2  | ………  |
+example, A row with one primary key and n non-key columns - K (primary key)  |  C1  | C2  | ………  |
 Cn, would be stored as n key value pairs - <K, C1> <K, C2> .... <K, Cn>. 
 
 With packed row format, it would be stored as a single key value pair <K, packed {C1, C2...Cn}>.
