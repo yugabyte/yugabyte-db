@@ -20,7 +20,9 @@ export enum Badge_Types {
   STOPPED = 'Stopped',
   FAILED_TO_DELETE = 'FailedToDelete',
   DELETE_IN_PROGRESS = 'DeleteInProgress',
-  QUEUED_FOR_DELETION = 'QueuedForDeletion'
+  QUEUED_FOR_DELETION = 'QueuedForDeletion',
+  SUCCESS = 'Success',
+  CREATED = 'Created',
 }
 
 interface StatusBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -32,6 +34,7 @@ const getIcon = (statusType: Badge_Types) => {
   let icon = '';
   switch (statusType) {
     case Badge_Types.COMPLETED:
+    case Badge_Types.SUCCESS:
       icon = 'fa-check';
       break;
     case Badge_Types.FAILED:
