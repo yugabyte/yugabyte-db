@@ -102,7 +102,56 @@ The non-primary key columns correspond to subdocuments within the document. The 
 
 We use a binary-comparable encoding to translate the value for each YCQL type to strings that go to the KV-Store.
 
-### Data expiration in YCQL
+## Packed Row format (Beta)
+
+A row corresponding to the user table is stored as multiple key value pairs in the DocDB. For
+example, A row with one primary key and n non-key columns - K (primaty key)  |  C1  | C2  | ………  |
+Cn, would be stored as n key value pairs - <K, C1> <K, C2> .... <K, Cn>. 
+
+With packed row format, it would be stored as a single key value pair <K, packed {C1, C2...Cn}>.
+
+While UDTs can be used to achieve the packed row format at the application level, native support for
+packed row format has the following benefits:
+* Lower storage footprint.
+* Efficient INSERTs, especially when a table has large number of columns.
+* Faster bulk ingestion.
+* Faster multi-column reads, as the reads now need to fetch fewer key value pairs.
+* UDTs require application rewrite, and thus are not necessarily an option for everyone, like latency sensitive update workloads.
+
+The packed row format can be enabled using the following gflags.
+
+**ysql_enable_packed_row** - Whether packed row is enabled for YSQL (false by default).
+
+**ysql_packed_row_size_limit** - Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over the size limit, their columns will not be packed, but be stored as individual key value pairs instead.
+
+**ycql_enable_packed_row** - Whether packed row is enabled for YCQL (false by default).
+
+**ycql_packed_row_size_limit** - Packed row size limit for YCQL. The default value is 0 (use block size as limit).
+
+**ysql_enable_packed_row_for_colocated_table** - Whether packed row is enabled for colocated table in YSQL (false by default).
+
+### Design aspects of packed row format
+
+* Inserts: Entire row is stored as a single key-value pair.
+* Updates:  If some column(s) are updated, then each such column update is stored as a key-value pair in DocDb (same as without packed rows). However If all non-key columns are updated, then the row is stored in the packed format as one single key-value pair. This scheme adopts the best of both worlds - efficient updates and efficient storage. 
+* Select: Scans need to construct the row from packed inserts as well as non-packed update(s) if any.
+* Compactions: Compactions produce a compact version of the row, if the row has unpacked fragments due to updates.
+* Backwards compatible: Read code can interpret non-packed format as well. Write/Updates can produce non-packed format as well.
+
+### Performance data
+
+* Sequential scans for table with 1 million rows was 2x faster with packed rows.
+* Bulk ingestion of 1 million rows was 2x faster with packed rows.
+
+### Limitations
+
+While packed row feature works for YSQL api using the YSQL specific gflags with most cross features like backup restore, schema changes etc, the following are some of the known limitations an are being worked on.
+* Integration with xCluster and CDC (Beta) - There are some known limitations with schema changes/DDLs and CDC and Packed Row feature.
+* Colocated and xCluster - There are some limitations around propagation of schema changes for
+  colocated tables in xCluster in the packed row format that are being worked on.
+* Packed row support for YCQL is limited and is still being hardened.
+
+## Data expiration in YCQL
 
 In YCQL there are two types of TTL, the table TTL and column level TTL. The column TTLs are stored
 with the value using the same encoding as Redis. The Table TTL is not stored in DocDB (it is stored
