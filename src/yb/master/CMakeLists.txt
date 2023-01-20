@@ -115,30 +115,49 @@ set(MASTER_SRCS
   tasks_tracker.cc
   ts_descriptor.cc
   ts_manager.cc
+  util/yql_vtable_helpers.cc
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
+  yql_aggregates_vtable.cc
+  yql_auth_resource_role_permissions_index.cc
+  yql_auth_role_permissions_vtable.cc
+  yql_auth_roles_vtable.cc
+  yql_columns_vtable.cc
+  yql_empty_vtable.cc
+  yql_functions_vtable.cc
+  yql_indexes_vtable.cc
+  yql_keyspaces_vtable.cc
+  yql_local_vtable.cc
+  yql_partitions_vtable.cc
+  yql_peers_vtable.cc
+  yql_size_estimates_vtable.cc
+  yql_tables_vtable.cc
+  yql_triggers_vtable.cc
+  yql_types_vtable.cc
+  yql_views_vtable.cc
+  yql_virtual_table.cc
+  yql_vtable_iterator.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
   ysql_transaction_ddl.cc
   ${MASTER_SRCS_EXTENSIONS})
 
 set(MASTER_DEPS
-  ${MASTER_PROTO_LIBS}
-  gutil
-  master_util
-  vtables
-  rpc_header_proto
+  yb_common
+  tablet
   server_common
   server_process
-  tablet
+  yrpc
+  gutil
+  yb_util
   tserver
   tserver_service_proto
+  ${MASTER_PROTO_LIBS}
+  rpc_header_proto
+  master_util
   version_info_proto
-  yb_common
-  yb_pggate
   yb_pggate_flags
-  yb_util
-  yrpc
+  yb_pggate
 )
 
 ADD_YB_LIBRARY(master
