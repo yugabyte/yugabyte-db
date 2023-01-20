@@ -628,6 +628,8 @@ detect_os
 #
 
 export ANSIBLE_HOST_KEY_CHECKING=False
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
 
 log_dir=$HOME/logs
 
