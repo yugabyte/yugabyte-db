@@ -481,7 +481,7 @@ Specifies the password of the target database.
 
 If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password.
 
-If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes.
+If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes.
 
 ### --target-db-name
 
