@@ -453,7 +453,7 @@ Specifies the schema of the source database. Not applicable for MySQL.
 
 For Oracle, you can specify only one schema name using this option.
 
-For PostgreSQL, you can specify a list of comma separated schema names.
+For PostgreSQL, you can specify a list of comma-separated schema names.
 
 Case sensitive schema names are not yet supported.
 
