@@ -477,7 +477,7 @@ Specifies the username in the target database to be used for the migration.
 
 ### --target-db-password
 
-Specifies the password of the target database.
+Specifies the password for the the target database user to be used for the migration.
 
 If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password.
 
