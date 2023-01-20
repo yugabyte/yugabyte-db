@@ -710,6 +710,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		 * levels of hook all do this.)
 		 */
 		InstrEndLoop(queryDesc->totaltime);
+
 		if (getrusage(RUSAGE_SELF, &rusage_end) != 0)
 			elog(DEBUG1, "pg_stat_monitor: failed to execute getrusage");
 
@@ -932,6 +933,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 {
 	Node	   *parsetree = pstmt->utilityStmt;
 	uint64		queryId = 0;
+	SysInfo		sys_info;
 
 #if PG_VERSION_NUM >= 140000
 	queryId = pstmt->queryId;
@@ -975,8 +977,13 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		WalUsage	walusage;
 		WalUsage	walusage_start = pgWalUsage;
 #endif
+
+		if (getrusage(RUSAGE_SELF, &rusage_start) != 0)
+			elog(DEBUG1, "pg_stat_monitor: failed to execute getrusage");
+
 		INSTR_TIME_SET_CURRENT(start);
 		exec_nested_level++;
+
 		PG_TRY();
 		{
 #if PG_VERSION_NUM >= 140000
@@ -1024,6 +1031,13 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		}
 
 		PG_END_TRY();
+
+		if (getrusage(RUSAGE_SELF, &rusage_end) != 0)
+			elog(DEBUG1, "pg_stat_monitor: failed to execute getrusage");
+
+		sys_info.utime = time_diff(rusage_end.ru_utime, rusage_start.ru_utime);
+		sys_info.stime = time_diff(rusage_end.ru_stime, rusage_start.ru_stime);
+
 		INSTR_TIME_SET_CURRENT(duration);
 		INSTR_TIME_SUBTRACT(duration, start);
 
@@ -1059,7 +1073,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 				   pstmt->stmt_len, /* query length */
 				   NULL,		/* PlanInfo */
 				   0,			/* CmdType */
-				   NULL,		/* SysInfo */
+				   &sys_info,	/* SysInfo */
 				   NULL,		/* ErrorInfo */
 				   INSTR_TIME_GET_MILLISEC(duration),	/* total_time */
 				   rows,		/* rows */
