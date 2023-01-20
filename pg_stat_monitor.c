@@ -67,6 +67,7 @@ do                                                      \
 void		_PG_init(void);
 void		_PG_fini(void);
 
+
 /*---- Local variables ----*/
 
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
@@ -77,6 +78,12 @@ volatile bool __pgsm_do_not_capture_error = false;
 static int	plan_nested_level = 0;
 #endif
 
+/* Histogram bucket variables */
+static double hist_bucket_min;
+static double hist_bucket_max;
+static int hist_bucket_count_user;
+static int hist_bucket_count_total;
+
 /* The array to store outer layer query id*/
 uint64	   *nested_queryids;
 char	   **nested_query_txts;
@@ -84,10 +91,12 @@ char	   **nested_query_txts;
 /* Regex object used to extract query comments. */
 static regex_t preg_query_comments;
 static char relations[REL_LST][REL_LEN];
+
 static int	num_relations;		/* Number of relation in the query */
 static bool system_init = false;
 static struct rusage rusage_start;
 static struct rusage rusage_end;
+
 
 /* Query buffer, store queries' text. */
 static char *pgss_explain(QueryDesc *queryDesc);
@@ -255,21 +264,46 @@ _PG_init(void)
 	/* Inilize the GUC variables */
 	init_guc();
 
-	/* Validate histogram values and in case of failure, revert to defaults */
+	/* Validate histogram values and find the max number of histogram buckets that can be created */
 	{
-		int64 b1_start;
 		int64 b2_start;
-		int64 b1_end;
 		int64 b2_end;
+		int b_count = hist_bucket_count_user;
+
+		hist_bucket_min = PGSM_HISTOGRAM_MIN;
+		hist_bucket_max = PGSM_HISTOGRAM_MAX;
+		hist_bucket_count_user = PGSM_HISTOGRAM_BUCKETS_USER;
 
 		if (PGSM_HISTOGRAM_BUCKETS_USER >= 2)
 		{
-			histogram_bucket_timings(1, &b1_start, &b1_end);
-			histogram_bucket_timings(2, &b2_start, &b2_end);
+			for (; hist_bucket_count_user > 0; hist_bucket_count_user--)
+			{
+				histogram_bucket_timings(2, &b2_start, &b2_end);
 
-			/* Checking if histograms buckets overlap */
-			if (b2_start < b1_end || b2_start == b2_end)
-				elog(ERROR, "pg_stat_monitor: Histogram buckets are overlapping, please fix histogram configuration.");
+				/*
+				 * The first bucket size will always be one or greater as we're doing min value + e^0; and e^0 = 1.
+				 * Checking if histograms buckets overlap. That can only happen if the second bucket size is zero
+				 * as we using exponential bucket sizes. Therefore, if the second bucket size is greater than 1, we'll
+				 * never have overlapping buckets.
+				 */
+				if (b2_start != b2_end)
+				{
+					break;
+				}
+			}
+
+			/*
+			* Important that we keep user bucket count separate for calculations, but must add 1
+			* for max outlier queries. However, for min, bucket should only be added
+			* if the minimum value provided by user is greater than 0
+			*/
+			hist_bucket_count_total = (hist_bucket_count_user + 1 + (int)(hist_bucket_min > 0));
+
+			if (b_count != hist_bucket_count_user)
+				ereport(WARNING,
+						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("pg_stat_monitor: Histogram buckets are overlapping."),
+						errdetail("Histogram bucket size is set to %d [not including outlier buckets].", hist_bucket_count_user));
 		}
 	}
 
@@ -2079,7 +2113,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		}
 
 		/* resp_calls at column number 41 */
-		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, PGSM_HISTOGRAM_BUCKETS);
+		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, hist_bucket_count_total);
 
 		/* utime at column number 42 */
 		values[i++] = Float8GetDatumFast(roundf(tmp.sysinfo.utime, 4));
@@ -3263,10 +3297,10 @@ unpack_sql_state(int sql_state)
 static void
 histogram_bucket_timings(int index, int64 *b_start, int64 *b_end)
 {
-	double		q_min = PGSM_HISTOGRAM_MIN;
-	double		q_max = PGSM_HISTOGRAM_MAX;
-	int			b_count = PGSM_HISTOGRAM_BUCKETS;
-	int			b_count_user = PGSM_HISTOGRAM_BUCKETS_USER;
+	double		q_min = hist_bucket_min;
+	double		q_max = hist_bucket_max;
+	int			b_count = hist_bucket_count_total;
+	int			b_count_user = hist_bucket_count_user;
 	double		bucket_size;
 
 	/*
@@ -3306,7 +3340,7 @@ get_histogram_bucket(double q_time)
 {
 	int64		b_start;
 	int64		b_end;
-	int			b_count = PGSM_HISTOGRAM_BUCKETS;
+	int			b_count = hist_bucket_count_total;
 	int			index = 0;
 
 	for (index = 0; index < b_count; index++)
@@ -3333,7 +3367,7 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 {
 	int64		b_start;
 	int64		b_end;
-	int			b_count = PGSM_HISTOGRAM_BUCKETS;
+	int			b_count = hist_bucket_count_total;
 	int			index = 0;
 	char	   *tmp_str = palloc0(MAX_STRING_LEN);
 	char	   *text_str = palloc0(MAX_STRING_LEN);
