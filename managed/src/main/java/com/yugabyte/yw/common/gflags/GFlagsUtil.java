@@ -29,6 +29,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -660,6 +661,16 @@ public class GFlagsUtil {
                 gflagKey, masterGFlags.get(gflagKey), tserverGFlags.get(gflagKey)));
       }
     }
+  }
+
+  public static Map<String, String> trimFlags(Map<String, String> data) {
+    Map<String, String> trimData = new HashMap<>();
+    for (Map.Entry<String, String> intent : data.entrySet()) {
+      String key = intent.getKey();
+      String value = intent.getValue();
+      trimData.put(key.trim(), value.trim());
+    }
+    return trimData;
   }
 
   private static void mergeCSVs(
