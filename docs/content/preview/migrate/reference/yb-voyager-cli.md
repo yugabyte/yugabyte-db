@@ -74,7 +74,7 @@ The valid *arguments* for export schema are described in the following table:
 | [--source-db-password](#source-db-password) <password>| Source database password. |
 | [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
 | [--source-db-schema](#source-db-schema) <schemaName> | Schema of the source database. |
-| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql` or `oracle`. |
+| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | [--source-db-user](#source-db-user) <username> | Username of the source database. |
 | [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
