@@ -38,7 +38,13 @@ Create the two data centers as follows:
                     --base_dir=/tmp/ybd1
     ```
 
-    This starts a one-node local cluster using the IP address of `127.0.0.1` and creates `datacenter-east` as the base directory.
+    This starts a single-node local cluster using the IP address of `127.0.0.1` and creates `/tmp/ybd1` as the base directory.
+
+1. If you are running on macOS and haven't created any loopback addresses, configure one as follows:
+
+    ```sh
+    sudo ifconfig lo0 alias 127.0.0.2
+    ```
 
 1. Create and start the second local cluster that simulates "Data Center - West" by running the following command:
 
@@ -48,17 +54,7 @@ Create the two data centers as follows:
                     --base_dir=/tmp/ybd2
     ```
 
-    This starts a one-node cluster using IP address of `127.0.0.2` and creates `datacenter-west` as the base directory.
-
-{{< note title="Loopback addresses" >}}
-
-If you are running on macOS and the second cluster fails to start, you may need to configure a loopback address as follows:
-
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-```
-
-{{< /note >}}
+    This starts a single-node cluster using IP address of `127.0.0.2` and creates `/tmp/ybd2` as the base directory.
 
 ## Create tables
 
@@ -113,7 +109,7 @@ yb-admin -master_addresses <target-master-addresses> \
 - *source-master-addresses*: a comma-separated list of the source YB-Master servers. For this simulation, you have one YB-Master server for the source, 127.0.0.1:7100.
 - *source-table-ids*: A comma-separated list of table UUIDs. For this simulation, the `users` table; look up the UUID in the YB-Master UI (<http://127.0.0.1:7000/tables>).
 
-Based on actual values you obtained from the YB-Master UI, run the yb-admin `setup_universe_replication` command similar to the one shown in the following example:
+Based on actual values you obtained from the YB-Master UI, run the yb-admin `setup_universe_replication` command from your YugabyteDB home directory similar to the one shown in the following example:
 
 ```sh
 ./bin/yb-admin -master_addresses 127.0.0.2:7100 \
