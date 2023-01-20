@@ -109,8 +109,8 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/auto_flags_orchestrator.h"
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_loaders.h"
@@ -136,6 +136,23 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
+#include "yb/master/yql_aggregates_vtable.h"
+#include "yb/master/yql_auth_resource_role_permissions_index.h"
+#include "yb/master/yql_auth_role_permissions_vtable.h"
+#include "yb/master/yql_auth_roles_vtable.h"
+#include "yb/master/yql_columns_vtable.h"
+#include "yb/master/yql_empty_vtable.h"
+#include "yb/master/yql_functions_vtable.h"
+#include "yb/master/yql_indexes_vtable.h"
+#include "yb/master/yql_keyspaces_vtable.h"
+#include "yb/master/yql_local_vtable.h"
+#include "yb/master/yql_partitions_vtable.h"
+#include "yb/master/yql_peers_vtable.h"
+#include "yb/master/yql_size_estimates_vtable.h"
+#include "yb/master/yql_tables_vtable.h"
+#include "yb/master/yql_triggers_vtable.h"
+#include "yb/master/yql_types_vtable.h"
+#include "yb/master/yql_views_vtable.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
@@ -183,8 +200,6 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
-
-#include "yb/vtables/yql_all_vtables.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -1543,45 +1558,45 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
   RETURN_NOT_OK(PrepareSysCatalogTable(term));
 
   // Create the required system tables here.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::PeersVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<PeersVTable>(
       kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::LocalVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<LocalVTable>(
       kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLKeyspacesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable>(
       kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLTablesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable>(
       kSystemSchemaTablesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLColumnsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLColumnsVTable>(
       kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLSizeEstimatesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLSizeEstimatesVTable>(
       kSystemSizeEstimatesTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
 
   // Empty tables.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAggregatesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAggregatesVTable>(
       kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLFunctionsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLFunctionsVTable>(
       kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLIndexesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLIndexesVTable>(
       kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLTriggersVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTriggersVTable>(
       kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLViewsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLViewsVTable>(
       kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::QLTypesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<QLTypesVTable>(
       kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLPartitionsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLPartitionsVTable>(
       kSystemPartitionsTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
 
   // System auth tables.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAuthRolesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolesVTable>(
       kSystemAuthRolesTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAuthRolePermissionsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolePermissionsVTable>(
       kSystemAuthRolePermissionsTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAuthResourceRolePermissionsIndexVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthResourceRolePermissionsIndexVTable>(
       kSystemAuthResourceRolePermissionsIndexTableName, kSystemAuthNamespaceName,
       kSystemAuthNamespaceId, term)));
 
@@ -1659,7 +1674,7 @@ Status CatalogManager::PrepareSystemTableTemplate(const TableName& table_name,
                                                   const NamespaceName& namespace_name,
                                                   const NamespaceId& namespace_id,
                                                   int64_t term) {
-  yb::vtables::YQLVirtualTable* vtable = new T(table_name, namespace_name, master_);
+  YQLVirtualTable* vtable = new T(table_name, namespace_name, master_);
   return PrepareSystemTable(
       table_name, namespace_name, namespace_id, vtable->schema(), term, vtable);
 }
@@ -1669,8 +1684,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                           const NamespaceId& namespace_id,
                                           const Schema& schema,
                                           int64_t term,
-                                          yb::vtables::YQLVirtualTable* vtable) {
-  std::unique_ptr<yb::vtables::YQLVirtualTable> yql_storage(vtable);
+                                          YQLVirtualTable* vtable) {
+  std::unique_ptr<YQLVirtualTable> yql_storage(vtable);
 
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
                                                  std::make_pair(namespace_id, table_name));
@@ -4831,7 +4846,7 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   if (DCHECK_IS_ON() &&
       result &&
       IsYcqlTable(*table) &&
-      yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
+      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
       FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
@@ -12141,13 +12156,13 @@ Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tab
 }
 
 void CatalogManager::RebuildYQLSystemPartitions() {
-  if (yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
-      yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
+  if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
+      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.IsInitializedAndIsLeader()) {
       if (system_partitions_tablet_ != nullptr) {
         Status s;
-        if (yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {
+        if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {
           // If we are not generating the vtable on changes, then we need to do a full refresh.
           s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
         } else {
@@ -12279,8 +12294,8 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
   }), "Failed to submit update table task");
 }
 
-const yb::vtables::YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
-  return down_cast<const yb::vtables::YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
+const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
+  return down_cast<const YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
 }
 
 void CatalogManager::InitializeTableLoadState(
