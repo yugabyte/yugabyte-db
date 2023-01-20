@@ -521,7 +521,7 @@ Example : `filename1:tablename1,filename2:tablename2[,...]`
 
 ### --delimiter
 
-Default: comma(,); can be changed to '\t' (tab), pipe(|), or any other character.
+Default: comma (,); can be changed to '\t' (tab), pipe(|), or any other character.
 
 ### --has-header
 
