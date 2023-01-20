@@ -19,7 +19,7 @@ import com.yugabyte.yw.models.Universe;
 import java.util.function.Consumer;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.client.YBClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 

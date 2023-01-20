@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.SdkClientException;
