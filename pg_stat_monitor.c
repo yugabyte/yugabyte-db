@@ -1588,7 +1588,7 @@ pgss_store(uint64 queryid,
 		 * in the interval where we don't hold the lock below.  That case is
 		 * handled by entry_alloc.
 		 */
-		if (jstate && jstate->clocations_count > 0)
+		if (jstate)
 		{
 			norm_query_len = query_len;
 
