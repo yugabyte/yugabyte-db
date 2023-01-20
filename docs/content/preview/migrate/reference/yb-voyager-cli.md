@@ -491,7 +491,7 @@ Default: yugabyte
 
 ### --target-db-schema
 
-Specifies the schema of the target database. Applicable only for MySQL and Oracle.
+Specifies the schema of the target database. MySQL and Oracle migrations only.
 
 ### --parallel-jobs
 
