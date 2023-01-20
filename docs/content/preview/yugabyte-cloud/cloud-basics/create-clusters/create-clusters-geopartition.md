@@ -28,6 +28,8 @@ To view your cluster tablespaces, you can enter the following command:
 SELECT * FROM pg_tablespace;
 ```
 
+Note that data placed in regions in tablespaces is not replicated to other regions, and remains subject to the fault tolerance of the cluster (Node- or Availability Zone-level).
+
 For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
 
 ## Features
