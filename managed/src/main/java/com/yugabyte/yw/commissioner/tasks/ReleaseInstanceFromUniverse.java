@@ -52,7 +52,6 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         taskParams().nodeName,
         taskParams().universeUUID);
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
 
@@ -137,7 +136,6 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      hitException = true;
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
