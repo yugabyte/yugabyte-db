@@ -15,7 +15,7 @@ Perform the following steps to install yb-voyager using yum for RHEL 7/8 and Cen
 1. Install the `yugabyte` yum repository using the following command:
 
     ```sh
-    sudo yum install https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/reporpms/yb-yum-repo-1.0-0.noarch.rpm
+    sudo yum install https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/reporpms/yb-yum-repo-1.1-0.noarch.rpm
     ```
 
     This repository contains the yb-voyager rpm and other dependencies required to run `yb-voyager`.
@@ -24,7 +24,7 @@ Perform the following steps to install yb-voyager using yum for RHEL 7/8 and Cen
 
     ```sh
     # For RHEL 7 or CentOS 7
-    sudo yum install epel-release
+    sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
     ```
 
     ```sh

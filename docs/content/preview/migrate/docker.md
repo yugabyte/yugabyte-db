@@ -6,7 +6,7 @@ private=true
 
 Before installing yb-voyager, ensure that you have the [Docker](https://docs.docker.com/get-docker/) runtime installed on your machine.
 
-1. Pull the docker image from YugabyteDB's docker hub as follows:
+1. Pull the docker image from YugabyteDB's docker hub (Pull the version from docker.io) as follows:
 
     ```sh
     docker pull yugabytedb/yb-voyager

@@ -4,7 +4,7 @@ private=true
 +++
 -->
 
-You can perform an airgapped installation on RHEL 7/8, CentOS 7/8, and Ubuntu OS.
+You can perform an airgapped installation on RHEL 7/8 and CentOS 7/8.
 
 {{< tabpane text=true >}}
 
@@ -12,7 +12,7 @@ You can perform an airgapped installation on RHEL 7/8, CentOS 7/8, and Ubuntu OS
 
 Install yb-voyager using a Docker image in an airgapped environment using the following steps:
 
-1. From a machine connected to the internet, run the following commands to pull and save the latest yb-voyager docker image:
+1. From a machine connected to the internet, run the following commands to pull and save the latest yb-voyager docker image (Pull the version from docker.io):
 
     ```sh
     docker pull yugabytedb/yb-voyager
@@ -52,37 +52,74 @@ Install yb-voyager using a Docker image in an airgapped environment using the fo
 
 {{% tab header="Yum" %}}
 
-You need to download the tarball containing all the rpm files that are necessary for installing and running `yb-voyager` on a machine with an internet connection. Transfer the downloaded files to your airgapped machine and proceed with the installation using the following steps:
+{{< note title = "Package dependencies" >}}
 
-1. Download the tarball containing all the rpm files on a machine with internet connection using the following command:
+To resolve package dependencies, yum takes into account the list of packages (and their versions) already installed on a machine.
+
+For yum to download all the required dependencies, ensure that the list of *all* packages (and their versions) already installed on the airgapped machine and the connected machine are *exactly the same*. For example, it will not work if you prepare the installer bundle on RHEL 7.5 and try to install it on RHEL 7.2.
+
+{{< /note >}}
+
+1. Download rpm files for `yb-voyager` and its dependencies on a machine with internet connection using the following steps:
+
+    1. Install the `yugabyte` yum repository on your machine using the following command:
+
+        ```sh
+        sudo yum install https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/reporpms/yb-yum-repo-1.1-0.noarch.rpm
+        ```
+
+        This repository contains the yb-voyager rpm and other dependencies required to run `yb-voyager`.
+
+    1. Install the `epel-release` repository using the following command:
+
+        ```sh
+        # For RHEL 7/CentOS 7
+        sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+        ```
+
+        ```sh
+        # For RHEL 8/CentOS 8
+        sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+        ```
+
+    1. Install the PostgreSQL and Oracle instant clients repositories using the following command:
+
+        ```sh
+        sudo yum install pgdg-redhat-repo oracle-instant-clients-repo
+        ```
+
+        These repositories contain the rest of the dependencies required to run `yb-voyager`.
+
+{{< note >}}
+
+Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two steps before proceeding to step 4.
+
+- Disable the default `PostgreSQL` yum module on your machine using the following command:
 
     ```sh
-    # For RHEL 7 or CentOS 7
-    wget https://downloads.yugabyte.com/repos/airgapped/airgapped-rhel7.tar.gz
+    sudo dnf -qy module disable postgresql
     ```
 
+- Download rpm files for `perl-open` on your machine using the following command:
+
     ```sh
-    # For RHEL 8 or CentOS 8
-    wget https://downloads.yugabyte.com/repos/airgapped/airgapped-rhel8.tar.gz
+    sudo yum install --downloadonly --downloaddir=<path_to_directory> perl-open.noarch
     ```
 
+{{< /note >}}
+
+    1. Download the rpm files for `yb-voyager` and its dependencies using the following command:
+
+        ```sh
+        sudo yum install --downloadonly --downloaddir=<path_to_directory> yb-voyager
+        ```
+
+1. Transfer the downloaded files to your airgapped machine.
+
+1. Navigate to the folder containing all the files and install the rpm files using the following command:
+
     ```sh
-    # For Ubuntu
-    wget https://downloads.yugabyte.com/repos/airgapped/airgapped_ubuntu.tar.gz
-    ```
-
-1. Transfer the tarball to your airgapped machine.
-
-1. Unzip the folder on your airgapped machine. Change directory to the unzipped folder and install the rpm files using the following command:
-
-    ```sh
-    # For RHEL 7/8 or CentOS 7/8
     sudo yum install *
-    ```
-
-    ```sh
-    # For Ubuntu
-    sudo apt-get install ./*.deb
     ```
 
 1. Check that yb-voyager is installed using the following command:
