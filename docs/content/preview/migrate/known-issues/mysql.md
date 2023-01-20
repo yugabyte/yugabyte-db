@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-This page documents known issues you may encounter and suggested workarounds  when migrating data from MySQL to YugabyteDB Voyager.
+This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL to YugabyteDB.
 
 #### Approaching MAX/MIN double precision values are not exported
 

@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-This page documents known issues you may encounter and suggested workarounds  when migrating data from PostgreSQL to YugabyteDB Voyager.
+This page documents known issues you may encounter and suggested workarounds when migrating data from PostgreSQL to YugabyteDB.
 
 #### Adding primary key to a partitioned table results in an error
 

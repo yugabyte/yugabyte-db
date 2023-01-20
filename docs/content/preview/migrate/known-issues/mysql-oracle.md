@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-This page documents known issues you may encounter and suggested workarounds  when migrating data from MySQL or Oracle to YugabyteDB Voyager.
+This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL or Oracle to YugabyteDB.
 
 #### Importing case-sensitive schema names
 

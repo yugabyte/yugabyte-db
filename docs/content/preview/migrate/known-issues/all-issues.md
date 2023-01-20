@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-This page documents known issues you may encounter and suggested workarounds  when migrating data from MySQL, PostgreSQL, or Oracle to YugabyteDB Voyager.
+This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL, PostgreSQL, or Oracle to YugabyteDB.
 
 #### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
 
@@ -42,7 +42,7 @@ CREATE INDEX ON timestamp_demo (ts ASC);
 
 **Description**: If you define complex names for your source database tables/functions/procedures using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123", the migration hangs during the export data step.
 
-**Workaround**: Rename the objects (Tables/functions/procedures) on the source database to something without special characters.
+**Workaround**: Rename the objects (tables/functions/procedures) on the source database to a name without special characters.
 
 **Example**
 
