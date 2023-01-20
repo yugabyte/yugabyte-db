@@ -275,7 +275,7 @@ The valid *arguments* for import data are described in the following table:
 | :------- | :------------------------ |
 | [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
 | --continue-on-error |
-| [--disable-pb](#disable-pb) | Hides progress bars. |
+| [--disable-pb](#disable-pb) | Hide progress bars. |
 | --enable-upsert |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
