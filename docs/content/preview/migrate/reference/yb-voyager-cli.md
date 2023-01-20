@@ -600,7 +600,7 @@ Default: false
 
 ### --disable-pb
 
-Specify this argument to not show progress bars.
+Do not display progress bars.
 
 Default: false
 
