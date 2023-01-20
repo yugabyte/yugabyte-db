@@ -27,22 +27,27 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.Universe;
 import java.net.URLEncoder;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -52,6 +57,7 @@ import junitparams.Parameters;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
@@ -231,6 +237,17 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getCustomerId());
+
+    // Set http context
+    Map<String, String> flashData = Collections.emptyMap();
+    user.email = "shagarwal@yugabyte.com";
+    Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
+    Http.Request request = mock(Http.Request.class);
+    Long id = 2L;
+    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
+    Http.Context currentContext =
+        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
+    Http.Context.current.set(currentContext);
 
     UUID randUUID = UUID.randomUUID();
     CustomerTask.create(

@@ -139,6 +139,14 @@ export default class TaskListTable extends Component {
                 Status
               </TableHeaderColumn>
               <TableHeaderColumn
+                dataField="userEmail"
+                dataSort
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                User
+              </TableHeaderColumn>
+              <TableHeaderColumn
                 dataField="createTime"
                 dataFormat={timeFormatter}
                 dataSort

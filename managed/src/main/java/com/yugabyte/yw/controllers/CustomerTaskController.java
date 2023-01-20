@@ -123,6 +123,7 @@ public class CustomerTaskController extends AuthenticatedController {
               ? task.getCustomTypeName()
               : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
+      taskData.userEmail = task.getUserEmail();
       String correlationId = task.getCorrelationId();
       if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       ObjectNode versionNumbers = Json.newObject();
