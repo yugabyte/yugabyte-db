@@ -67,7 +67,7 @@ The valid *arguments* for export schema are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. |
-| [--oracle-tns-alias](#ssl-connectivity) <alias> | Applicable for Oracle instances only. A TNS alias that is configured to establish a secure connection with the server. |
+| [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS alias configured to establish a secure connection with the server. Oracle migrations only. |
 | [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
 | [--source-db-name](#source-db-name) <name> | Source database name. |
