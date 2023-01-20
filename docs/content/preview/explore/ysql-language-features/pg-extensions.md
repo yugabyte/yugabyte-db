@@ -36,12 +36,12 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | [Example](#file-fdw-example) |
 | [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
 | [hstore](https://www.postgresql.org/docs/11/hstore.html) | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value. | |
-| [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html)| Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. | [Example](#passwordcheck-example) |
-| [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html)| Provides various cryptographic functions. | [Example](#pgcrypto-example) |
+| [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) | Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. | [Example](#passwordcheck-example) |
+| [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html) | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
 | [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html) | Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
 | [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. | |
 | [postgres_fdw](https://www.postgresql.org/docs/11/postgres-fdw.html) | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. | [Example](#postgres-fdw-example) |
-| [spi](https://www.postgresql.org/docs/11/contrib-spi.html)| Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
+| [spi](https://www.postgresql.org/docs/11/contrib-spi.html) | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
 | [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL. | |
 | [tablefunc](https://www.postgresql.org/docs/11/tablefunc.html) | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` | [Example](#tablefunc-example) |
 | [uuid-ossp](https://www.postgresql.org/docs/11/uuid-ossp.html) | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [Example](#uuid-ossp-example) |
@@ -49,14 +49,14 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 ### Other extensions
 
 | Extension | Status | Description | Examples |
-| :-------- | :----- | :---------- | :------ |
+| :-------- | :----- | :---------- | :------- |
 | [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments. | [Example](../../query-1-performance/pg-hint-plan/#root) |
 | [PGAudit](https://www.pgaudit.org/) | Pre-bundled | The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. | [Install and example](../../../secure/audit-logging/audit-logging-ysql/) |
 | [pg_stat_monitor](https://github.com/percona/pg_stat_monitor) | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module. | |
-| [Orafce](https://github.com/orafce/orafce)| Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB. | |
+| [Orafce](https://github.com/orafce/orafce) | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB. | |
 | [PostGIS](https://postgis.net/) | Requires installation | A spatial database extender for PostgreSQL-compatible object-relational databases. | [Install and example](#postgis-example) |
 | [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Requires installation | Introduces the data type `hll`, which is a HyperLogLog data structure. | [Install and example](#postgresql-hll-example) |
-| [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [Install and example](#pgsql-postal-example)|
+| [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [Install and example](#pgsql-postal-example) |
 | [YCQL_fdw](https://github.com/YugaByte/yugabyte-db/issues/830) | In-progress | Access YCQL tables via the YSQL API. | |
 | [pg_cron](https://github.com/citusdata/pg_cron) | In-progress | Cron-based job scheduler for PostgreSQL. Using the same syntax as regular cron, schedule PostgreSQL commands directly from the database. | |
 | [PostgreSQL Anonymizer](https://postgresql-anonymizer.readthedocs.io/en/latest/) | In-progress | Mask or replace personally identifiable information (PII) or commercially sensitive data from a PostgreSQL database. | |
@@ -224,6 +224,8 @@ You can change passwordcheck parameters using a `SET` statement. For example, to
 SET passwordcheck.maximum_length TO 20;
 SET passwordcheck.restrict_numbers TO false;
 ```
+
+The passwordcheck extension only works with plain text. For production deployments, it is recommended to [enable SCRAM-SHA-256 password authentication](../../../secure/authentication/password-authentication/).
 
 When enabled, if a password is considered too weak, it's rejected with an error. For example:
 
