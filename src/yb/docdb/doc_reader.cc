@@ -420,7 +420,7 @@ class DocDBTableReader::GetHelper {
         return true;
       }
       if (reader_.table_type_ == TableType::PGSQL_TABLE_TYPE) {
-        return false;
+        return true;
       }
     }
 
