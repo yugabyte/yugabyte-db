@@ -2574,7 +2574,7 @@ export default class ClusterFields extends Component {
             </Col>
             <Col md={12}>
               <HelmOverridesUniversePage
-                getConfiguretaskParams={() => this.configureUniverseNodeList(false, true)}
+                getConfiguretaskParams={() => this.configureUniverseNodeList(true)}
                 setHelmOverridesData={this.updateHelmOverrides}
               />
             </Col>

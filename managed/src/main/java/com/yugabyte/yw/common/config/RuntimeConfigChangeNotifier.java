@@ -15,7 +15,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelListener;
 import com.yugabyte.yw.common.config.impl.WSClientKeyListener;
-import com.yugabyte.yw.controllers.RuntimeConfController;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
@@ -44,7 +43,7 @@ public class RuntimeConfigChangeNotifier {
       Config config, MetricCollectionLevelListener metricCollectionLevelListener) {
     List<String> refreshableClients =
         config
-            .getStringList(RuntimeConfController.INCLUDED_OBJECTS_KEY)
+            .getStringList(RuntimeConfService.INCLUDED_OBJECTS_KEY)
             .stream()
             .filter(object -> object.endsWith(WS_RUNTIME_CONFIG_SUFFIX))
             .collect(Collectors.toList());

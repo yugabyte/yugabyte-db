@@ -148,7 +148,10 @@ public class Audit extends Model {
     CustomerLicense,
 
     @EnumValue("PerformanceRecommendation")
-    PerformanceRecommendation
+    PerformanceRecommendation,
+
+    @EnumValue("PerformanceAdvisorSettings")
+    PerformanceAdvisorSettings
   }
 
   public enum ActionType {

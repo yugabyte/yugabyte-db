@@ -55,7 +55,7 @@ momentLocalizer(moment);
 const DEFAULT_SORT_COLUMN = 'createTime';
 const DEFAULT_SORT_DIRECTION = 'DESC';
 
-const TIME_RANGE_OPTIONS = [
+export const TIME_RANGE_OPTIONS = [
   {
     value: [1, 'days'],
     label: 'Last 24 hrs'
@@ -110,7 +110,7 @@ const MORE_FILTER_OPTIONS = [
   }
 ];
 
-const DEFAULT_TIME_STATE: TIME_RANGE_STATE = {
+export const DEFAULT_TIME_STATE: TIME_RANGE_STATE = {
   startTime: null,
   endTime: null,
   label: null

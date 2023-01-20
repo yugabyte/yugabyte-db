@@ -2089,7 +2089,9 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
     const scoped_refptr<const TableInfo>& table) const {
   {
     auto table_lock = table->LockForRead();
-    if (table_lock->pb.has_replication_info()) {
+    // Check that the replication info is present and is valid (could be set to invalid null value
+    // due to restore issue, see #15698).
+    if (IsReplicationInfoSet(table_lock->pb.replication_info())) {
       return table_lock->pb.replication_info();
     }
   }
@@ -2140,7 +2142,7 @@ Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicat
   return tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
 }
 
-bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
+bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const {
   const auto& live_placement_info = replication_info.live_replicas();
   if (!(live_placement_info.placement_blocks().empty() && live_placement_info.num_replicas() <= 0 &&
         live_placement_info.placement_uuid().empty()) ||
@@ -2152,7 +2154,8 @@ bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_i
   return false;
 }
 
-Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
+Status CatalogManager::ValidateTableReplicationInfo(
+    const ReplicationInfoPB& replication_info) const {
   if (!IsReplicationInfoSet(replication_info)) {
     return STATUS(InvalidArgument, "No replication info set.");
   }
