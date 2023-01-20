@@ -149,12 +149,11 @@ typedef std::unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTa
 // the state of each tablet on a given tablet-server.
 //
 // Thread-safe.
-class CatalogManager :
-    public tserver::TabletPeerLookupIf,
-    public TabletSplitCandidateFilterIf,
-    public TabletSplitDriverIf,
-    public CatalogManagerIf,
-    public XClusterSplitDriverIf {
+class CatalogManager : public tserver::TabletPeerLookupIf,
+                       public TabletSplitCandidateFilterIf,
+                       public TabletSplitDriverIf,
+                       public CatalogManagerIf,
+                       public XClusterSplitDriverIf {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
   class NamespaceNameMapper {
@@ -1426,6 +1425,8 @@ class CatalogManager :
   // down to.
   Status SysCatalogRespectLeaderAffinity();
 
+  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const;
+
   virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override {
     // Default value.
     return false;
@@ -1721,9 +1722,7 @@ class CatalogManager :
       const PlacementBlockPB& placement_block,
       const TSDescriptorVector& ts_descs);
 
-  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
-
-  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) const;
 
   // Return the id of the tablespace associated with a transaction status table, if any.
   boost::optional<TablespaceId> GetTransactionStatusTableTablespace(
