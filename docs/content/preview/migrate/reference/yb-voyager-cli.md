@@ -497,7 +497,7 @@ Specifies the schema of the target database. Applicable only for MySQL and Oracl
 
 Specifies the number of parallel COPY commands issued to the target database.
 
-If yb-voyager can determine the total number of cores `N` in the target YugabyteDB cluster, it will use `N/2` as the default value of `--parallel-jobs`. Otherwise, it will default to twice the number of nodes in the cluster.
+Default: If yb-voyager can determine the total number of cores `N` in the target YugabyteDB cluster, it uses `N/2` as the default. Otherwise, it defaults to twice the number of nodes in the cluster.
 
 Depending on the target YugabyteDB configuration, the value of `--parallel-jobs` should be tweaked such that *at most* 50% of target cores are utilised.
 
