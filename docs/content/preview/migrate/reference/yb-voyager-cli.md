@@ -84,7 +84,7 @@ The valid *arguments* for export schema are described in the following table:
 | [--start-clean](#start-clean) | Clean the schema data directories. |
 | [--use-orafce](#use-orafce) | Use the Orafce extension. Oracle migrations only. |
 | [--verbose](#verbose) | Display extra information in the output. |
-| [-y, --yes](#yes) | User input for questions asked during the export schema operation. |
+| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
