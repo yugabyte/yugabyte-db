@@ -1117,7 +1117,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -17760,6 +17760,38 @@
         } ],
         "summary" : "Get slow queries for a universe",
         "tags" : [ "Universe information" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/start_manually" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "runPerfAdvisor",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Start performance advisor run for universe",
+        "tags" : [ "Performance Advisor" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/status" : {

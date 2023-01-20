@@ -508,6 +508,7 @@ DELETE /customers/:cUUID/performance_recommendations                           c
 POST   /customers/:cUUID/performance_recommendation_state_change/page          com.yugabyte.yw.controllers.PerfAdvisorController.pageAuditInfo(cUUID: java.util.UUID)
 GET    /customers/:cUUID/universes/:uniUUID/perf_advisor_settings              com.yugabyte.yw.controllers.PerfAdvisorController.getSettings(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST   /customers/:cUUID/universes/:uniUUID/perf_advisor_settings              com.yugabyte.yw.controllers.PerfAdvisorController.updateSettings(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST   /customers/:cUUID/universes/:uniUUID/start_manually                     com.yugabyte.yw.controllers.PerfAdvisorController.runPerfAdvisor(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # List buckets API
 POST     /customers/:cUUID/cloud/:cloud/buckets                                com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)
