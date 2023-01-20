@@ -43,31 +43,36 @@ The following table describes the YugabyteDB features you can explore, along wit
 
 ## Set up YugabyteDB universe
 
-You can run examples using a universe set up on your local machine or in a cloud, assuming you have either [created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Managed, [installed](../yugabyte-platform/install-yugabyte-platform/) and [configured](../yugabyte-platform/configure-yugabyte-platform/) YugabyteDB Anywhere, or [installed](../quick-start/linux/) YugabyteDB.
+You can run examples using a universe set up on your local machine or in a cloud, assuming you have performed one of the following:
+
+- [Installed](../quick-start/linux/) YugabyteDB.
+- [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Managed.
+- [Installed](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configured](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
+      role="tab" aria-controls="local" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use a local universe
+    </a>
+  </li>
   <li >
-    <a href="#cloud" class="nav-link active" id="cloud-tab" data-toggle="tab"
-      role="tab" aria-controls="cloud" aria-selected="true">
+    <a href="#cloud" class="nav-link" id="cloud-tab" data-toggle="tab"
+      role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
       Use a cloud universe
     </a>
   </li>
   <li>
-    <a href="#local" class="nav-link" id="local-tab" data-toggle="tab"
-      role="tab" aria-controls="local" aria-selected="false">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Use a local universe
-    </a>
-  </li>
-  <li>
-    <a href="#anywhere" class="nav-link" id="local-tab" data-toggle="tab"
-      role="tab" aria-controls="local" aria-selected="false">
+    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
+      role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/database.svg" alt="Server Icon">
       Use YugabyteDB Anywhere
     </a>
   </li>
 </ul>
+
 
 
 <div class="tab-content">
@@ -117,7 +122,7 @@ Note that if your Cloud Shell session is idle for more than 5 minutes, your brow
 
 To run the examples, you need to create a single- or multi-node universe.
 
-For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) management utility to create and manage universes.
+For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
 
 {{< tabpane text=true >}}
 
@@ -241,10 +246,10 @@ ycqlsh>
 ```
   </div>
 
+
+
   <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
-
 To run the examples in YugabyteDB Anywhere, create a single- or multi-node universe by following instructions provided in [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
-
 
 
   </div>
@@ -269,27 +274,35 @@ Download the YB Workload Simulator JAR file using the following command:
 wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.2/yb-workload-sim-0.0.2.jar
 ```
 
-### Use the application
+## Use the application
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#localworkload" class="nav-link active" id="local-tab" data-toggle="tab"
+      role="tab" aria-controls="local" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use a local universe
+    </a>
+  </li>  
   <li >
-    <a href="#cloudworkload" class="nav-link active" id="cloud-tab" data-toggle="tab"
-      role="tab" aria-controls="cloud" aria-selected="true">
+    <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-toggle="tab"
+      role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Use a cloud cluster
+      Use a cloud universe
     </a>
   </li>
   <li>
-    <a href="#localworkload" class="nav-link" id="local-tab" data-toggle="tab"
-      role="tab" aria-controls="local" aria-selected="false">
+    <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-toggle="tab"
+      role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/database.svg" alt="Server Icon">
-      Use a local cluster
+      Use YugabyteDB Anywhere
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="cloudworkload" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
+  <div id="cloudworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
+
 
 To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
@@ -322,7 +335,7 @@ Replace the following:
 
   </div>
   
-  <div id="localworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="local-tab">
+  <div id="localworkload" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
 
 To start the application against a running local universe, use the following command:
 
@@ -338,7 +351,100 @@ The `-Dnode` flag specifies the IP address of the node to which to connect.
 The `-Dspring.datasource` flag enables [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) for the application connections. If you created a universe using different zones, replace the zones with the corresponding zones in your universe, comma-separated, in the format `cloud.region.zone`.
 
   </div>
+
+<div id="anywhereworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
+
+You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:
+
+```sh
+scp -i <path_to_your_pem_file> <jar_file_name> ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
+```
+
+For example:
+
+```sh
+scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem test.txt ec2-user@123.456.789.2XS:/tmp/
+```
+
+You can launch the application from your YugabyteDB Anywhere instance by either using the terminal or running an executable script.
+
+To use the terminal, perform the following: 
+
+1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the set up. 
+
+2. Start the application against a running YugabyteDB Anywhere universe by executing the following commands in the terminal:
+
+   ```sh
+   java -Dnode=<node_ip_address> \
+         -Ddbname=<dbname> \
+         -Ddbuser=<dbuser> \
+         -Ddbpassword=<dbpassword> \
+         -Dport=<port> \
+         -Dmax-pool-size=100 \
+         -Dspring.profiles.active=application.yaml \
+         -Dserver.port=8080 \
+         -DidCounter=1 \
+         -Dssl=false \
+         -Dsslmode=disable \
+         -Dworkload=genericWorkload \
+         -DadditionalEndpoints= \
+         -Dspring.datasource.hikari.maximumPoolSize=100 \
+         -Dspring.datasource.hikari.data-source-properties.topologyKeys=<aws.regions.zones> \
+         -DloggingDir="/tmp/logs" \
+         -DXmx=32g \
+         -jar ./yb-workload-sim-0.0.2.jar
+   ```
+
+   Replace the following:
+
+5. - `<node_ip_address>` - IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName >Nodes** in YugabyteDB Anywhere. 
+
+   - `<dbname>` - the name of the database you are connecting to (the default is yugabyte).
+
+   - `<dbuser>` and `<dbpassword>` - the user name and password for the YugabyteDB database.
+
+   - `<port>` - 5433.
+
+   - `<aws.regions.zones>` - the zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName >Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
+
+     ```sh
+     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
+     ```
+
+     
+
+The second way to do this is to make an executable script with the command above in case you wish to rerun the command. To do that you can copy and paste the code into a .sh file here is an example: `touch run.sh` then make the file executable by typing `chmod 700 run.sh` Then you can execute it by typing `./run.sh`
+Now we can navigate to the IP of the YBA cluster(not the IP of the node)with the port 8080.
+![image](https://user-images.githubusercontent.com/78859174/192047682-7bfaba93-9164-49e1-a205-2eb5bab2a50f.png)
+
+```sh
+java -DXmx=16g -Dmax-pool-size=10 -Dnode=<database-ip-or-name> -Ddbuser=<db-user-id> -Ddbpassword=<db-password> -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone> -Dspring.workload=genericWorkload -jar yb-simu-base-app.jar
+```
+
+To try other work loads you can replace the genericWorkload from -Dworkload= line with any other workload from this section src>>main>java>com>yugabyte>simulation>service https://github.com/yugabyte/workload-simulation-demo-app/tree/main/src/main/java/com/yugabyte/simulation/service
+
+#### Additional parameters if you wish to run YCQL workload
+
+(Please remember to move the `-jar yb-simu-base-app.jar` to the last line of the script. Everything after that line gets ignored.)
+
+```sh
+-Dworkload=genericCassandraWorkload
+-Dspring.data.cassandra.contact-points=<host ip>
+-Dspring.data.cassandra.port=9042
+-Dspring.data.cassandra.local-datacenter=<datacenter> [ex. us-east-2 ]
+-Dspring.data.cassandra.userid=cassandra
+-Dspring.data.cassandra.password=<cassandra-password>
+```
+
+#### Local Environment
+
+```sh
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
 </div>
+
+
 
 To view the application UI, navigate to <http://localhost:8080>.
 
