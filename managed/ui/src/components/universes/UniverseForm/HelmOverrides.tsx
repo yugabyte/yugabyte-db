@@ -17,7 +17,13 @@ import { validateHelmYAML } from '../../../actions/universe';
 import { toast } from 'react-toastify';
 import { Alert, Col, Row } from 'react-bootstrap';
 import { isEmpty } from 'lodash';
-import { createErrorMessage } from '../../../utils/ObjectUtils';
+import {
+  createErrorMessage,
+  isEmptyObject,
+  isNonEmptyString,
+  isEmptyArray,
+  isDefinedNotNull
+} from '../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { useSelector } from 'react-redux';
 import Close from '../../universes/images/close.svg';
@@ -54,11 +60,16 @@ export const HelmOverridesUniversePage: FC<HelmOverridesUniversePage> = ({
     }
   }
 
+  const formAlreadyFilled =
+    !isEmptyObject(editValues) &&
+    (isNonEmptyString(editValues['universeOverrides']) ||
+      (isDefinedNotNull(editValues['azOverrides']) && !isEmptyArray(editValues['azOverrides'])));
+
   return (
     <div className="helm-overrides">
       <YBButton
-        btnText="Add Kubernetes Overrides"
-        btnIcon="fa fa-plus"
+        btnText={`${formAlreadyFilled ? 'Edit' : 'Add'} Kubernetes Overrides`}
+        btnIcon={`fa ${formAlreadyFilled ? 'fa-pencil' : 'fa-plus'}`}
         btnSize="small"
         btnClass="btn btn-orange add-overrides-btn"
         onClick={() => {

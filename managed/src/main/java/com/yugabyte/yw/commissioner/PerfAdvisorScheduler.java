@@ -2,41 +2,42 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.time.Duration;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Set;
-import java.util.UUID;
-import java.util.HashMap;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.Arrays;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
-import com.yugabyte.yw.common.ShellProcessContext;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.queries.QueryHelper;
-
+import com.google.common.collect.Iterables;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
+import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.typesafe.config.Config;
-import org.yb.perf_advisor.models.PerformanceRecommendation.RecommendationType;
-import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.queries.QueryHelper;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.perf_advisor.configs.PerfAdvisorScriptConfig;
 import org.yb.perf_advisor.configs.UniverseConfig;
 import org.yb.perf_advisor.configs.UniverseNodeConfigInterface;
-import org.yb.perf_advisor.configs.PerfAdvisorScriptConfig;
-
-import lombok.extern.slf4j.Slf4j;
+import org.yb.perf_advisor.models.PerformanceRecommendation.RecommendationType;
+import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
 
 @Singleton
 @Slf4j
@@ -46,28 +47,28 @@ public class PerfAdvisorScheduler {
 
   private final ExecutorService threadPool;
 
-  private final String DEFAULT_NODE_USER = "yugabyte";
-
   private final List<RecommendationType> DB_QUERY_RECOMMENDATION_TYPES =
       Arrays.asList(RecommendationType.UNUSED_INDEX, RecommendationType.RANGE_SHARDING);
 
-  private PlatformPerfAdvisor platformPerfAdvisor;
+  private final PlatformPerfAdvisor platformPerfAdvisor;
 
-  private QueryHelper queryHelper;
+  private final QueryHelper queryHelper;
 
   /* Simple universe locking mechanism to prevent parallel universe runs */
   private final ConcurrentHashMap.KeySetView<UUID, Boolean> universesLock =
       ConcurrentHashMap.newKeySet();
 
-  private Config appConfig;
+  private final Map<UUID, Long> universeLastRun = new HashMap<>();
+
+  private final SettableRuntimeConfigFactory configFactory;
 
   @Inject
   public PerfAdvisorScheduler(
-      Config appConfig,
+      SettableRuntimeConfigFactory settableRuntimeConfigFactory,
       PlatformScheduler platformScheduler,
       PlatformPerfAdvisor platformPerfAdvisor,
       QueryHelper queryHelper) {
-    this.appConfig = appConfig;
+    this.configFactory = settableRuntimeConfigFactory;
     this.platformPerfAdvisor = platformPerfAdvisor;
     this.platformScheduler = platformScheduler;
     this.queryHelper = queryHelper;
@@ -78,38 +79,49 @@ public class PerfAdvisorScheduler {
     platformScheduler.schedule(
         getClass().getSimpleName(),
         Duration.ZERO,
-        Duration.ofMinutes(appConfig.getLong("yb.perf_advisor.scheduler_interval")),
+        Duration.ofMinutes(
+            configFactory
+                .staticApplicationConf()
+                .getLong("yb.perf_advisor.scheduler_interval_mins")),
         this::scheduleRunner);
   }
 
   void scheduleRunner() {
     log.info("Running Perf Advisor Scheduler");
-    int defaultUniBatchSize = appConfig.getInt("yb.perf_advisor.universe_batch_size");
+    int defaultUniBatchSize =
+        configFactory.staticApplicationConf().getInt("yb.perf_advisor.universe_batch_size");
     try {
       Set<UUID> uuidList = Universe.getAllUUIDs();
-      Iterator<UUID> iter = uuidList.iterator();
-      Set<UUID> subset = new HashSet<>();
-      while (iter.hasNext()) {
-        subset.add(iter.next());
-        if (subset.size() >= defaultUniBatchSize) {
-          this.batchRun(subset);
-          subset.clear();
-        }
-      }
-      if (!subset.isEmpty()) {
-        this.batchRun(subset);
+      for (List<UUID> batch : Iterables.partition(uuidList, defaultUniBatchSize)) {
+        this.batchRun(batch);
       }
     } catch (Exception e) {
       log.error("Error running perf advisor scheduled run", e);
     }
   }
 
-  private void batchRun(Set<UUID> univUuidSet) {
+  private void batchRun(List<UUID> univUuidSet) {
     for (Universe u : Universe.getAllWithoutResources(univUuidSet)) {
       // Check status of universe
       if (u.getUniverseDetails().updateInProgress || universesLock.contains(u.universeUUID)) {
         continue;
       }
+
+      Config universeConfig = configFactory.forUniverse(u);
+      boolean enabled = universeConfig.getBoolean(UniverseConfKeys.perfAdvisorEnabled.getKey());
+      if (!enabled) {
+        continue;
+      }
+      Long lastRun = universeLastRun.get(u.getUniverseUUID());
+      int runFrequencyMins =
+          universeConfig.getInt(UniverseConfKeys.perfAdvisorUniverseFrequencyMins.getKey());
+      if (lastRun != null
+          && Instant.now()
+              .isBefore(Instant.ofEpochMilli(lastRun).plus(runFrequencyMins, ChronoUnit.MINUTES))) {
+        // Need to wait before subsequent run
+        continue;
+      }
+
       List<UniverseNodeConfigInterface> universeNodeConfigList = new ArrayList<>();
       for (NodeDetails details : u.getNodes()) {
         if (details.state.equals(NodeDetails.NodeState.Live)) {
@@ -132,7 +144,7 @@ public class PerfAdvisorScheduler {
         databases.add(queryIterator.next().get("datname").asText());
       }
       Provider provider =
-          Provider.get(
+          Provider.getOrBadRequest(
               UUID.fromString(u.getUniverseDetails().getPrimaryCluster().userIntent.provider));
       NodeDetails tserverNode = CommonUtils.getServerToRunYsqlQuery(u);
       String databaseHost = tserverNode.cloudInfo.private_ip;
@@ -142,30 +154,29 @@ public class PerfAdvisorScheduler {
       PerfAdvisorScriptConfig scriptConfig =
           new PerfAdvisorScriptConfig(
               databases,
-              DEFAULT_NODE_USER,
+              NodeManager.YUGABYTE_USER,
               databaseHost,
               tserverNode.ysqlServerRpcPort,
               DB_QUERY_RECOMMENDATION_TYPES,
               ysqlAuth,
               tlsClient);
       universesLock.add(u.universeUUID);
-      Future<Void> future =
-          (Future<Void>)
-              threadPool.submit(
-                  () -> {
-                    try {
-                      UniverseConfig uConfig =
-                          new UniverseConfig(
-                              u.universeUUID,
-                              universeNodeConfigList,
-                              scriptConfig,
-                              provider.getYbHome() + "/bin");
-                      // Add code to run perf advisor with universe parameters
-                      platformPerfAdvisor.run(uConfig);
-                    } finally {
-                      universesLock.remove(u.universeUUID);
-                    }
-                  });
+      threadPool.submit(
+          () -> {
+            try {
+              universeLastRun.put(u.getUniverseUUID(), System.currentTimeMillis());
+              UniverseConfig uConfig =
+                  new UniverseConfig(
+                      u.universeUUID,
+                      universeNodeConfigList,
+                      scriptConfig,
+                      provider.getYbHome() + "/bin",
+                      universeConfig);
+              platformPerfAdvisor.run(uConfig);
+            } finally {
+              universesLock.remove(u.universeUUID);
+            }
+          });
     }
   }
 }

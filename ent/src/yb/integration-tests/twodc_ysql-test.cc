@@ -952,10 +952,16 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
   ASSERT_OK(consumer_cluster()->FlushTablets());
   // 2. Trigger a compaction on the consumer cluster.
   ASSERT_OK(consumer_cluster()->CompactTablets());
+
   // 3. Enable replication of txn status table.
   FLAGS_TEST_xcluster_disable_replication_transaction_status_table = false;
   // 4. Ensure records match.
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 

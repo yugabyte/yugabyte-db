@@ -1738,7 +1738,10 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   (*output) << Substitute(
       " <tr><td>$0<span class='yb-overview'>$1</span></td>"
-      "<td><i class='fa $2' aria-hidden='true'> </i>  $3</td></tr>\n",
+      "<td>"
+      "<div style='overflow-x:auto; max-width:300px; display:inline-block;'>"
+      "<i class='fa $2' aria-hidden='true'> </i>  $3</div>"
+      "</td></tr>\n",
       "<i class='fa fa-key yb-dashboard-icon' aria-hidden='true'></i>",
       "Encryption Status ",
       encryption_status_icon,

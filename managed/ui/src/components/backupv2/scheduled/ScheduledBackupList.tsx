@@ -23,7 +23,7 @@ import {
   getScheduledBackupList
 } from '../common/BackupScheduleAPI';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
-import { IBackupSchedule } from '../common/IBackupSchedule';
+import { IBackupSchedule, IBackupScheduleStatus } from '../common/IBackupSchedule';
 import { BackupCreateModal } from '../components/BackupCreateModal';
 
 import { convertScheduleToFormValues, convertMsecToTimeFrame } from './ScheduledBackupUtils';
@@ -250,18 +250,20 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           <YBToggle
             name="Enabled"
             input={{
-              value: schedule.status === 'Active',
+              value: schedule.status === IBackupScheduleStatus.ACTIVE,
               onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
                 toggleSchedule.mutateAsync({
                   scheduleUUID: schedule.scheduleUUID,
                   frequency: schedule.frequency,
                   cronExpression: schedule.cronExpression,
-                  status: e.target.checked ? 'Active' : 'Stopped',
+                  status: e.target.checked
+                    ? IBackupScheduleStatus.ACTIVE
+                    : IBackupScheduleStatus.STOPPED,
                   frequencyTimeUnit: schedule.frequencyTimeUnit
                 })
             }}
           />
-          <span>{schedule.status === 'Active' ? 'Enabled' : 'Disabled'}</span>
+          <span>{schedule.status === IBackupScheduleStatus.ACTIVE ? 'Enabled' : 'Disabled'}</span>
         </Col>
         <Col lg={6} className="no-padding">
           <DropdownButton
@@ -273,8 +275,10 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           >
             <MenuItem
               onClick={() => {
+                if (schedule.status !== IBackupScheduleStatus.ACTIVE) return;
                 doEditPolicy(schedule);
               }}
+              disabled={schedule.status !== IBackupScheduleStatus.ACTIVE}
             >
               <i className="fa fa-pencil"></i> Edit Policy
             </MenuItem>
@@ -338,9 +342,9 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
               <div className="info-val">
                 {schedule.backupInfo?.timeBeforeDelete
                   ? convertMsecToTimeFrame(
-                    schedule.backupInfo.timeBeforeDelete,
-                    schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
-                  )
+                      schedule.backupInfo.timeBeforeDelete,
+                      schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
+                    )
                   : 'Indefinitely'}
               </div>
             </Col>
