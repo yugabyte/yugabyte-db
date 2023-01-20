@@ -1319,6 +1319,8 @@ class CatalogManager :
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
 
+  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const;
+
   virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
     // Default value.
     return false;
@@ -1552,9 +1554,7 @@ class CatalogManager :
       const PlacementBlockPB& placement_block,
       const TSDescriptorVector& ts_descs);
 
-  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
-
-  CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+  CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) const;
 
   // Return the tablespaces in the system and their associated replication info from
   // pg catalog tables.

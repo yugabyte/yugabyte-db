@@ -174,7 +174,7 @@ Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
   // Return custom placement policy if it exists.
   {
     auto l = table->LockForRead();
-    if (l->pb.has_replication_info()) {
+    if (catalog_manager_->IsReplicationInfoSet(l->pb.replication_info())) {
       return l->pb.replication_info();
     }
   }
