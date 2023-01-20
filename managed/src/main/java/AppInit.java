@@ -1,8 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
-import static com.yugabyte.yw.models.YugawareProperty.get;
-import static com.yugabyte.yw.forms.AbstractTaskParams.platformVersion;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -251,7 +249,6 @@ public class AppInit {
       } else {
         Logger.info("Completed initialization in " + elapsedStr + " seconds.");
       }
-      platformVersion = get("SoftwareVersion").getValue().get("version").asText();
 
       Logger.info("AppInit completed");
     }

@@ -651,6 +651,7 @@ public class Util {
     try {
       new ObjectMapper().treeToValue(jsonNode, toValueType);
     } catch (JsonProcessingException e) {
+      LOG.info(e.getMessage());
       return false;
     }
     return true;
