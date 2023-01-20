@@ -98,6 +98,12 @@ class TabletServerServiceProxy;
 
 namespace client {
 
+struct NamespaceInfo {
+    master::NamespaceIdentifierPB id;
+    master::SysNamespaceEntryPB_State state;
+    bool colocated;
+};
+
 namespace internal {
 class ClientMasterRpcBase;
 }
@@ -415,8 +421,8 @@ class YBClient {
                                const std::string& role_name);
 
   // List all namespace identifiers.
-  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces();
-  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces(
+Result<std::vector<NamespaceInfo>> ListNamespaces();
+Result<std::vector<NamespaceInfo>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
 
   // Get namespace information.

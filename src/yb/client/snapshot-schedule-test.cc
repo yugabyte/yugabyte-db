@@ -186,8 +186,8 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
   {
     auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
     for (const auto& ns : namespaces) {
-      if (ns.name() == namespace_name) {
-        namespace_id = ns.id();
+      if (ns.id.name() == namespace_name) {
+        namespace_id = ns.id.id();
         break;
       }
     }

@@ -985,7 +985,7 @@ YBNamespaceAlterer* YBClient::NewNamespaceAlterer(
   return new YBNamespaceAlterer(this, namespace_name, namespace_id);
 }
 
-Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
+Result<vector<NamespaceInfo>> YBClient::ListNamespaces(
     const boost::optional<YQLDatabase>& database_type) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
@@ -993,10 +993,16 @@ Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
     req.set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
-  auto* namespaces = resp.mutable_namespaces();
-  vector<master::NamespaceIdentifierPB> result;
-  result.reserve(namespaces->size());
-  for (auto& ns : *namespaces) {
+  auto namespaces = resp.namespaces();
+  auto states = resp.states();
+  auto colocated = resp.colocated();
+  vector<NamespaceInfo> result;
+  result.reserve(namespaces.size());
+  for (int i = 0; i < namespaces.size(); ++i) {
+    NamespaceInfo ns;
+    ns.id = namespaces.Get(i);
+    ns.state = master::SysNamespaceEntryPB_State(states.Get(i));
+    ns.colocated = colocated.Get(i);
     result.push_back(std::move(ns));
   }
   return result;
@@ -1076,7 +1082,7 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
 Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
                                        const boost::optional<YQLDatabase>& database_type) {
   for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.name() == namespace_name) {
+    if (ns.id.name() == namespace_name) {
       return true;
     }
   }
@@ -1086,7 +1092,7 @@ Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
 Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
                                          const boost::optional<YQLDatabase>& database_type) {
   for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.id() == namespace_id) {
+    if (ns.id.id() == namespace_id) {
       return true;
     }
   }
@@ -2307,7 +2313,7 @@ CoarseTimePoint YBClient::PatchAdminDeadline(CoarseTimePoint deadline) const {
   return CoarseMonoClock::Now() + default_admin_operation_timeout();
 }
 
-Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces() {
+Result<vector<NamespaceInfo>> YBClient::ListNamespaces() {
   return ListNamespaces(boost::none);
 }
 

@@ -9253,6 +9253,9 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
     ns->set_id(namespace_info.id());
     ns->set_name(namespace_info.name());
     ns->set_database_type(namespace_info.database_type());
+
+    resp->add_states(namespace_info.state());
+    resp->add_colocated(namespace_info.colocated());
   }
   return Status::OK();
 }
