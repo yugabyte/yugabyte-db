@@ -321,7 +321,6 @@ java -Dnode=<host name> \
 ```
 
 Replace the following:
-
 - `<host name>` - the host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
 - `<dbname>` - the name of the database you are connecting to (the default is yugabyte).
 - `<dbuser>` and `<dbpassword>` - the username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
@@ -353,7 +352,6 @@ The `-Dspring.datasource` flag enables [topology-aware load balancing](../driver
   </div>
 
 <div id="anywhereworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
-
 You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:
 
 ```sh
@@ -366,16 +364,14 @@ For example:
 scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem test.txt ec2-user@123.456.789.2XS:/tmp/
 ```
 
-You can launch the application from your YugabyteDB Anywhere instance by either using the terminal or running an executable script.
-
-To use the terminal, perform the following: 
+You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:
 
 1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the set up. 
 
 2. Start the application against a running YugabyteDB Anywhere universe by executing the following commands in the terminal:
 
    ```sh
-   java -Dnode=<node_ip_address> \
+   java -Dnode=<node_ip> \
          -Ddbname=<dbname> \
          -Ddbuser=<dbuser> \
          -Ddbpassword=<dbpassword> \
@@ -397,7 +393,7 @@ To use the terminal, perform the following:
 
    Replace the following:
 
-5. - `<node_ip_address>` - IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName >Nodes** in YugabyteDB Anywhere. 
+   - `<node_ip>` - IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName >Nodes** in YugabyteDB Anywhere. 
 
    - `<dbname>` - the name of the database you are connecting to (the default is yugabyte).
 
@@ -411,32 +407,20 @@ To use the terminal, perform the following:
      -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
      ```
 
-     
-
-The second way to do this is to make an executable script with the command above in case you wish to rerun the command. To do that you can copy and paste the code into a .sh file here is an example: `touch run.sh` then make the file executable by typing `chmod 700 run.sh` Then you can execute it by typing `./run.sh`
-Now we can navigate to the IP of the YBA cluster(not the IP of the node)with the port 8080.
-![image](https://user-images.githubusercontent.com/78859174/192047682-7bfaba93-9164-49e1-a205-2eb5bab2a50f.png)
+The preceding instructions are applicable to a YSQL workload. To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.2.jar` command :
 
 ```sh
-java -DXmx=16g -Dmax-pool-size=10 -Dnode=<database-ip-or-name> -Ddbuser=<db-user-id> -Ddbpassword=<db-password> -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone> -Dspring.workload=genericWorkload -jar yb-simu-base-app.jar
-```
-
-To try other work loads you can replace the genericWorkload from -Dworkload= line with any other workload from this section src>>main>java>com>yugabyte>simulation>service https://github.com/yugabyte/workload-simulation-demo-app/tree/main/src/main/java/com/yugabyte/simulation/service
-
-#### Additional parameters if you wish to run YCQL workload
-
-(Please remember to move the `-jar yb-simu-base-app.jar` to the last line of the script. Everything after that line gets ignored.)
-
-```sh
--Dworkload=genericCassandraWorkload
--Dspring.data.cassandra.contact-points=<host ip>
+-Dworkload=genericCassandraWorkload \
+-Dspring.data.cassandra.contact-points=<host_ip> \
 -Dspring.data.cassandra.port=9042
--Dspring.data.cassandra.local-datacenter=<datacenter> [ex. us-east-2 ]
--Dspring.data.cassandra.userid=cassandra
--Dspring.data.cassandra.password=<cassandra-password>
+-Dspring.data.cassandra.local-datacenter=<datacenter> [ex. us-east-2 ] \
+-Dspring.data.cassandra.userid=cassandra \
+-Dspring.data.cassandra.password=<cassandra_password> \
 ```
 
-#### Local Environment
+Replace `<host_ip>`, `<datacenter>`, and `<cassandra_password>` with appropriate values.
+
+In the local environment, you would need to execute the following:
 
 ```sh
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
@@ -448,7 +432,7 @@ To try other work loads you can replace the genericWorkload from -Dworkload= lin
 
 To view the application UI, navigate to <http://localhost:8080>.
 
-#### Start a read and write workload
+### Start a read and write workload
 
 You can start a workload that performs read and write operations across all the nodes of the universe as follows:
 
@@ -459,4 +443,4 @@ You can start a workload that performs read and write operations across all the 
 1. Under **Simulation**, select the **Include new Inserts** option, and click **Run Simulation Workload**.
 1. Click **Close**.
 
-The Latency and Throughput charts show the workload running on the cluster.
+The Latency and Throughput charts show the workload running on the universe.
