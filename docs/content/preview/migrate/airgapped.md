@@ -90,23 +90,19 @@ For yum to download all the required dependencies, ensure that the list of *all*
 
         These repositories contain the rest of the dependencies required to run `yb-voyager`.
 
-{{< note >}}
+    1. If you're using **RHEL 8** or **CentOS 8**, do the following:
 
-Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two steps before proceeding to step 4.
+        - Disable the default `PostgreSQL` yum module on your machine using the following command:
 
-- Disable the default `PostgreSQL` yum module on your machine using the following command:
+            ```sh
+            sudo dnf -qy module disable postgresql
+            ```
 
-    ```sh
-    sudo dnf -qy module disable postgresql
-    ```
+        - Download rpm files for `perl-open` on your machine using the following command:
 
-- Download rpm files for `perl-open` on your machine using the following command:
-
-    ```sh
-    sudo yum install --downloadonly --downloaddir=<path_to_directory> perl-open.noarch
-    ```
-
-{{< /note >}}
+            ```sh
+            sudo yum install --downloadonly --downloaddir=<path_to_directory> perl-open.noarch
+            ```
 
     1. Download the rpm files for `yb-voyager` and its dependencies using the following command:
 
