@@ -103,6 +103,10 @@ class ClusterLoadBalancer {
   // and tables which have been marked as DELETING OR DELETED.
   vector<scoped_refptr<TableInfo>> GetAllTablesLoadBalancerSkipped();
 
+  // Return the replication info for 'table'.
+  virtual Result<ReplicationInfoPB> GetTableReplicationInfo(
+      const scoped_refptr<TableInfo>& table) const;
+
   //
   // Catalog manager indirection methods.
   //
@@ -204,9 +208,6 @@ class ClusterLoadBalancer {
   // building the initial state.
 
   virtual void InitTablespaceManager();
-
-  // Return the replication info for 'table'.
-  Result<ReplicationInfoPB> GetTableReplicationInfo(const scoped_refptr<TableInfo>& table) const;
 
   // Method called when initially analyzing tablets, to build up load and usage information.
   // Returns an OK status if the method succeeded or an error if there are transient errors in
