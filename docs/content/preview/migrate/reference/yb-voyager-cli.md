@@ -63,14 +63,12 @@ The valid *arguments* for export schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --comments-on-objects |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
-| --log-level <value> |
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. |
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | Applicable for Oracle instances only. A TNS alias that is configured to establish a secure connection with the server. |
-| --send-diagnostics |
+| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
 | [--source-db-name](#source-db-name) <name> | Source database name. |
 | [--source-db-password](#source-db-password) <password>| Source database password. |
@@ -85,7 +83,7 @@ The valid *arguments* for export schema are described in the following table:
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | [--use-orafce](#use-orafce) | Orafce extension applicable for Oracle only. |
-| --verbose |
+| [--verbose](#verbose) | Displays extra information in the output. |
 | [-y, --yes](#yes) | User input for questions asked during the export schema operation. |
 
 #### Example
@@ -119,10 +117,9 @@ The valid *arguments* for analyze schema are described in the following table:
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
-| --log-level <value> |
 | --output-format <format> | One of `html`, `txt`, `json` or `xml`. |
-| --send-diagnostics |
-| --verbose |
+| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
+| [--verbose](#verbose) | Displays extra information in the output. |
 | [-y, --yes](#yes) | User input for questions asked during the analyze schema operation. |
 
 #### Example
@@ -145,17 +142,16 @@ The valid *arguments* for export data are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --disable-pb |
+| [--disable-pb](#disable-pb) | Hides progress bars. |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
-| --log-level <value> |
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. |
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | Applicable for Oracle instances only. A TNS alias that is configured to establish a secure connection with the server. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
-| --send-diagnostics |
+| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
 | [--source-db-name](#source-db-name) <name> | Source database name. |
 | [--source-db-password](#source-db-password) <password>| Source database password. |
@@ -169,7 +165,7 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
-| --verbose |
+| [--verbose](#verbose) | Displays extra information in the output. |
 | [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
@@ -201,9 +197,8 @@ The valid *arguments* for export data status are described in the following tabl
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
-| --log-level <value> |
-| --send-diagnostics |
-| --verbose |
+| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
+| [--verbose](#verbose) | Displays extra information in the output. |
 | [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
@@ -233,11 +228,10 @@ The valid *arguments* for import schema are described in the following table:
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
 | --ignore-exist |
-| --log-level string |
 | --object-list string |
 |  [--post-import-data](#post-import-data) | Imports indexes and triggers in the target YugabyteDB database after data import is complete. |
 | --refresh-mviews |
-|  --send-diagnostics |
+| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | --straight-order |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
@@ -251,7 +245,7 @@ The valid *arguments* for import schema are described in the following table:
 | [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --verbose |
+| [--verbose](#verbose) | Displays extra information in the output. |
 | [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
@@ -281,15 +275,14 @@ The valid *arguments* for import data are described in the following table:
 | :------- | :------------------------ |
 | [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
 | --continue-on-error |
-| --disable-pb |
+| [--disable-pb](#disable-pb) | Hides progress bars. |
 | --enable-upsert |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
-| --log-level <value> |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
-| --send-diagnostics |
+| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
@@ -304,7 +297,7 @@ The valid *arguments* for import data are described in the following table:
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --use-public-ip |
-| --verbose |
+| [--verbose](#verbose) | Displays extra information in the output. |
 | [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
@@ -337,7 +330,7 @@ The valid *arguments* for import data file are described in the following table:
 | --continue-on-error |
 | [--data-dir](#data-dir) <path> | |
 | [--delimiter](#delimiter) |
-| --disable-pb |
+| [--disable-pb](#disable-pb) | Hides progress bars. |
 | --enable-upsert |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
@@ -347,9 +340,8 @@ The valid *arguments* for import data file are described in the following table:
 | [--has-header](#has-header) | Applies only to CSV file type. |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
-| --log-level <value> |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
-| --send-diagnostics |
+| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
@@ -364,7 +356,7 @@ The valid *arguments* for import data file are described in the following table:
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --use-public-ip |
-| --verbose |
+| [--verbose](#verbose) | Displays extra information in the output. |
 | [-y, --yes](#yes) | User input for questions asked during the export data operation. |
 
 #### Example
@@ -402,9 +394,8 @@ The valid *arguments* for import data status are described in the following tabl
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
-| --log-level <value> |
-| --send-diagnostics |
-| --verbose |
+| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
+| [--verbose](#verbose) | Displays extra information in the output. |
 | [-y, --yes](#yes) | User input for questions asked during the import data operation. |
 
 #### Example
@@ -594,6 +585,24 @@ Comma-separated list of the tables for which data is exported. Do not use in con
 ### --exclude-table-list
 
 Comma-separated list of tables to exclude while exporting data.
+
+### --send-diagnostics
+
+Controls whether to send diagnostics information to Yugabyte.
+
+Default: true
+
+### --verbose
+
+Displays extra information in the output.
+
+Default: false
+
+### --disable-pb
+
+Specify this argument to not show progress bars.
+
+Default: false
 
 ---
 
