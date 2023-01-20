@@ -50,6 +50,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
@@ -127,6 +128,13 @@ bool IsFlagPromoted(
 // Should test promote all Auto Flags at startup?
 bool ShouldTestPromoteAllAutoFlags();
 
+const char* AutoFlagValueAsString(bool value);
+
+template <class T>
+auto AutoFlagValueAsString(const T& value) {
+  return AsString(value);
+}
+
 // Create the gFlag with appropriate tags and register it as an AutoFlag.
 // COMPILE_ASSERT is used to make sure initial_val and target_val are of the specified flag type.
 // If a value of an invalid type is provided, it will cause compilation to fail with an error like
@@ -146,11 +154,11 @@ bool ShouldTestPromoteAllAutoFlags();
   namespace { \
   yb::auto_flags_internal::AutoFlagDescRegisterer \
       BOOST_PP_CAT(afr_, name)(BOOST_PP_STRINGIZE(name), /* name */ \
-        &BOOST_PP_CAT(FLAGS_, name),      /* flag_ptr */ \
-        yb::AutoFlagClass::flag_class,    /* flag_class */ \
-        BOOST_PP_STRINGIZE(initial_val),  /* initial_val */ \
-        BOOST_PP_STRINGIZE(target_val),   /* target_val */ \
-        is_runtime);                      /* is_runtime */ \
+        &BOOST_PP_CAT(FLAGS_, name),              /* flag_ptr */ \
+        ::yb::AutoFlagClass::flag_class,          /* flag_class */ \
+        ::yb::AutoFlagValueAsString(initial_val), /* initial_val */ \
+        ::yb::AutoFlagValueAsString(target_val),  /* target_val */ \
+        is_runtime);                              /* is_runtime */ \
   } \
   _TAG_FLAG(name, ::yb::FlagTag::kAuto, auto); \
   TAG_FLAG(name, stable)
