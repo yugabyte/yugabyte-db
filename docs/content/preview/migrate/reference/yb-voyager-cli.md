@@ -67,14 +67,14 @@ The valid *arguments* for export schema are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. |
-| [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS alias configured to establish a secure connection with the server. Oracle migrations only. |
+| [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
+| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
 | [--source-db-name](#source-db-name) <name> | Source database name. |
 | [--source-db-password](#source-db-password) <password>| Source database password. |
 | [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
 | [--source-db-schema](#source-db-schema) <schemaName> | Schema of the source database. |
-| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | [--source-db-user](#source-db-user) <username> | Name of the source database user (typically `ybvoyager`). |
 | [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
@@ -103,7 +103,7 @@ yb-voyager export schema --export-dir /path/to/yb/export/dir \
 
 ### analyze-schema
 
-[Analyse the PostgreSQL schema](../migrate-steps/#analyze-schema) dumped in the export schema step.
+[Analyse the PostgreSQL schema](../../migrate-steps/#analyze-schema) dumped in the export schema step.
 
 #### Syntax
 
@@ -117,10 +117,10 @@ The valid *arguments* for analyze schema are described in the following table:
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
-| --output-format <format> | One of `html`, `txt`, `json` or `xml`. |
-| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
-| [--verbose](#verbose) | Displays extra information in the output. |
-| [-y, --yes](#yes) | User input for questions asked during the analyze schema operation. |
+| [--output-format](#output-format) <format> | One of `html`, `txt`, `json`, or `xml`. |
+| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
+| [--verbose](#verbose) | Display extra information in the output. |
+| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -130,7 +130,7 @@ yb-voyager analyze-schema --export-dir /path/to/yb/export/dir --output-format tx
 
 ### export data
 
-[Dump](../migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
+[Dump](../../migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
 
 #### Syntax
 
@@ -142,22 +142,22 @@ The valid *arguments* for export data are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [--disable-pb](#disable-pb) | Hides progress bars. |
+| [--disable-pb](#disable-pb) | Hide progress bars. |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. |
-| [--oracle-tns-alias](#ssl-connectivity) <alias> | Applicable for Oracle instances only. A TNS alias that is configured to establish a secure connection with the server. |
+| [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
-| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
+| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
+| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
 | [--source-db-name](#source-db-name) <name> | Source database name. |
 | [--source-db-password](#source-db-password) <password>| Source database password. |
 | [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
 | [--source-db-schema](#source-db-schema) <schemaName> | Schema of the source database. |
-| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql` or `oracle`. |
 | [--source-db-user](#source-db-user) <username> | Username of the source database. |
 | [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
@@ -165,8 +165,8 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
-| [--verbose](#verbose) | Displays extra information in the output. |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
+| [--verbose](#verbose) | Display extra information in the output. |
+| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -197,9 +197,9 @@ The valid *arguments* for export data status are described in the following tabl
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
-| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
-| [--verbose](#verbose) | Displays extra information in the output. |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
+| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
+| [--verbose](#verbose) | Display extra information in the output. |
+| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -209,7 +209,7 @@ yb-voyager export data status --export-dir /path/to/yb/export/dir
 
 ### import schema
 
-[Import the schema](../migrate-steps/#import-schema) to the target YugabyteDB.
+[Import the schema](../../migrate-steps/#import-schema) to the target YugabyteDB.
 
 During migration, run the import schema command twice, first without the [--post-import-data](#post-import-data) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../../migrate-steps/#import-data) is complete.
 
@@ -231,7 +231,7 @@ The valid *arguments* for import schema are described in the following table:
 | --object-list string |
 |  [--post-import-data](#post-import-data) | Imports indexes and triggers in the target YugabyteDB database after data import is complete. |
 | --refresh-mviews |
-| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
+| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | --straight-order |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
@@ -245,8 +245,8 @@ The valid *arguments* for import schema are described in the following table:
 | [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| [--verbose](#verbose) | Displays extra information in the output. |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
+| [--verbose](#verbose) | Display extra information in the output. |
+| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -261,7 +261,7 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
 
 ### import data
 
-[Import the data](../migrate-steps/#import-data) to the target YugabyteDB.
+[Import the data](../../migrate-steps/#import-data) to the target YugabyteDB.
 
 #### Syntax
 
@@ -282,7 +282,7 @@ The valid *arguments* for import data are described in the following table:
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
-| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
+| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
@@ -297,8 +297,8 @@ The valid *arguments* for import data are described in the following table:
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --use-public-ip |
-| [--verbose](#verbose) | Displays extra information in the output. |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
+| [--verbose](#verbose) | Display extra information in the output. |
+| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -314,7 +314,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 
 ### import data file
 
-[Load all your data files](../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB.
+[Load all your data files](../../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB.
 
 #### Syntax
 
@@ -330,7 +330,7 @@ The valid *arguments* for import data file are described in the following table:
 | --continue-on-error |
 | [--data-dir](#data-dir) <path> | |
 | [--delimiter](#delimiter) |
-| [--disable-pb](#disable-pb) | Hides progress bars. |
+| [--disable-pb](#disable-pb) | Hide progress bars. |
 | --enable-upsert |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
@@ -341,7 +341,7 @@ The valid *arguments* for import data file are described in the following table:
 | [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
-| [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
+| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
@@ -356,8 +356,8 @@ The valid *arguments* for import data file are described in the following table:
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --use-public-ip |
-| [--verbose](#verbose) | Displays extra information in the output. |
-| [-y, --yes](#yes) | User input for questions asked during the export data operation. |
+| [--verbose](#verbose) | Display extra information in the output. |
+| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -396,7 +396,7 @@ The valid *arguments* for import data status are described in the following tabl
 | [-h, --help](#command-line-help) | Command line help. |
 | [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
 | [--verbose](#verbose) | Displays extra information in the output. |
-| [-y, --yes](#yes) | User input for questions asked during the import data operation. |
+| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 
@@ -419,7 +419,7 @@ An export directory is a workspace used by yb-voyager to store the following:
 
 ### --source-db-type
 
-Specifies the source database type (postgresql, mysql or oracle).
+Specifies the source database type (postgresql, mysql, or oracle).
 
 ### --source-db-host
 
@@ -455,11 +455,11 @@ For Oracle, you can specify only one schema name using this option.
 
 For PostgreSQL, you can specify a list of comma-separated schema names.
 
-Case sensitive schema names are not yet supported.
+Case-sensitive schema names are not yet supported. Refer to [Import issue with case-sensitive schema names](../../known-issues/#import-issue-with-case-sensitive-schema-names) for more details.
 
 ### --output-format
 
-Specifies the format in which the report file is generated. It can be in `html`, `txt`, `json` or `xml`.
+Specifies the format in which the report file is generated. It can be in `html`, `txt`, `json`, or `xml`.
 
 ### --target-db-host
 
@@ -477,7 +477,7 @@ Specifies the username in the target database to be used for the migration.
 
 ### --target-db-password
 
-Specifies the password for the the target database user to be used for the migration.
+Specifies the password for the target database user to be used for the migration.
 
 If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password.
 
@@ -497,9 +497,9 @@ Specifies the schema of the target database. MySQL and Oracle migrations only.
 
 Specifies the number of parallel COPY commands issued to the target database.
 
-Default: If yb-voyager can determine the total number of cores `N` in the target YugabyteDB cluster, it uses `N/2` as the default. Otherwise, it defaults to twice the number of nodes in the cluster.
-
 Depending on the target YugabyteDB configuration, the value of `--parallel-jobs` should be tweaked such that *at most* 50% of target cores are utilised.
+
+Default: If yb-voyager can determine the total number of cores `N` in the target YugabyteDB cluster, it uses `N/2` as the default. Otherwise, it defaults to twice the number of nodes in the cluster.
 
 ### --batch-size
 
@@ -566,7 +566,7 @@ Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$OR
 
 ### --use-orafce
 
-Enable using orafce extension in export schema. Applicable for Oracle only.
+Enable using orafce extension in export schema. Oracle migrations only.
 
 Default: true
 
@@ -574,7 +574,7 @@ Default: true
 
 By default, answer yes to all questions during migration.
 
-### --start-clean--target-endpoints
+### --start-clean
 
 Cleans the data directories for already existing files and is applicable during all phases of migration, except [analyze-schema](../../migrate-steps/#analyze-schema). For the export phase, this implies cleaning the schema or data directories depending on the current phase of migration. For the import phase, it implies cleaning the contents of the target YugabyteDB database.
 
@@ -600,7 +600,7 @@ Default: false
 
 ### --disable-pb
 
-Do not display progress bars.
+Use this argument to not display progress bars.
 
 Default: false
 
@@ -618,7 +618,7 @@ The following table summarizes the arguments and options you can pass to yb-voya
 | | `--source-ssl-cert` <br /> `--source-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. |
 | | `--source-ssl-root-cert` | Specifies the path to a file containing SSL certificate authority (CA) certificate(s). If the file exists, the server's certificate will be verified to be signed by one of these authorities.
 | | `--source-ssl-crl` | Specifies the path to a file containing the SSL certificate revocation list (CRL). Certificates listed in this file, if it exists, will be rejected while attempting to authenticate the server's certificate.
-| Oracle | `--oracle-tns-alias` | A TNS alias that is configured to establish a secure connection with the server is passed to yb-voyager. When you pass [`--oracle-tns-alias`](../yb-voyager-cli/#ssl-connectivity), you cannot use any other arguments to connect to your Oracle instance including [`--source-db-schema`](../yb-voyager-cli/#source-db-schema) and [`--oracle-db-sid`](../yb-voyager-cli/#oracle-db-sid).|
+| Oracle | `--oracle-tns-alias` | A TNS (Transparent Network Substrate) alias that is configured to establish a secure connection with the server is passed to yb-voyager. When you pass [`--oracle-tns-alias`](../yb-voyager-cli/#ssl-connectivity), you cannot use any other arguments to connect to your Oracle instance including [`--source-db-schema`](../yb-voyager-cli/#source-db-schema) and [`--oracle-db-sid`](../yb-voyager-cli/#oracle-db-sid).|
 | YugabyteDB | `--target-ssl-mode` | Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>allow: First try a non-SSL connection; if that fails, try an SSL connection. (Not supported for MySQL.)</li><li> prefer (default): First try an SSL connection; if that fails, try a non-SSL connection.</li><li>require: Only try an SSL connection. If a root CA file is present, verify the certificate in the same way as if verify-ca was specified.</li><li> verify-ca: Only try an SSL connection, and verify that the server certificate is issued by a trusted certificate authority (CA).</li><li>verify-full: Only try an SSL connection, verify that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate.</li></ul>
 | | `--target-ssl-cert` <br /> `--target-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. |
 | | `--target-ssl-root-cert` | Specifies the path to a file containing SSL certificate authority (CA) certificate(s). If the file exists, the server's certificate will be verified to be signed by one of these authorities. |
