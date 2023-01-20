@@ -473,7 +473,7 @@ Default: 5433
 
 ### --target-db-user
 
-Specifies the username of the target database.
+Specifies the username in the target database to be used for the migration.
 
 ### --target-db-password
 
