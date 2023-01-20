@@ -35,7 +35,7 @@ Create the two data centers as follows:
     ```sh
     ./bin/yugabyted start \
                     --advertise_address=127.0.0.1 \
-                    --base_dir=datacenter-east
+                    --base_dir=/tmp/ybd1
     ```
 
     This starts a one-node local cluster using the IP address of `127.0.0.1` and creates `datacenter-east` as the base directory.
@@ -45,7 +45,7 @@ Create the two data centers as follows:
     ```sh
     ./bin/yugabyted start \
                     --advertise_address=127.0.0.2 \
-                    --base_dir=datacenter-west
+                    --base_dir=/tmp/ybd2
     ```
 
     This starts a one-node cluster using IP address of `127.0.0.2` and creates `datacenter-west` as the base directory.
@@ -254,6 +254,6 @@ For details, see [alter_universe_replication](../../../admin/yb-admin/#alter-uni
 To destroy the simulated data centers and remove their associated directories, use the `yugabyted destroy` command as follows:
 
 ```sh
-./bin/yugabyted destroy --base_dir=datacenter-east
-./bin/yugabyted destroy --base_dir=datacenter-west
+./bin/yugabyted destroy --base_dir=/tmp/ybd1
+./bin/yugabyted destroy --base_dir=/tmp/ybd2
 ```
