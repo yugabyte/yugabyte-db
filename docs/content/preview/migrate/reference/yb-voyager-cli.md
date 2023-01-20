@@ -83,7 +83,7 @@ The valid *arguments* for export schema are described in the following table:
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | [--start-clean](#start-clean) | Clean the schema data directories. |
 | [--use-orafce](#use-orafce) | Use the Orafce extension. Oracle migrations only. |
-| [--verbose](#verbose) | Displays extra information in the output. |
+| [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | User input for questions asked during the export schema operation. |
 
 #### Example
