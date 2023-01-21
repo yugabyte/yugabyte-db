@@ -131,6 +131,14 @@ using rpc::RpcController;
 namespace cdc {
 namespace enterprise {
 
+namespace {
+
+void DisableYsqlPackedRow() {
+  ASSERT_OK(SET_FLAG(ysql_enable_packed_row, false));
+}
+
+}
+
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 
@@ -1891,7 +1899,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKAddColumnsWithImplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -1956,7 +1964,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKAddColumnsWithExplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2028,7 +2036,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKDropColumnsWithRestartTServer(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2078,7 +2086,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKDropColumnsWithImplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2143,7 +2151,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKDropColumnsWithExplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2215,7 +2223,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKRenameColumnsWithImplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2279,7 +2287,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2351,7 +2359,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKMultipleAlterWithRestartTServer(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     // create table with 3 columns
     // insert some records.
@@ -2442,7 +2450,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKMultipleAlterWithTabletLeaderSwitch(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     FLAGS_enable_load_balancing = false;
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     const uint32_t num_tablets = 1;
@@ -2524,7 +2532,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKAlterWithSysCatalogCompaction(bool packed_row) {
     const int num_tservers = 1;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     const uint32_t num_tablets = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -2601,7 +2609,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool packed_row) {
     const int num_tservers = 3;
     FLAGS_enable_load_balancing = false;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     FLAGS_cdc_max_stream_intent_records = 10;
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     const uint32_t num_tablets = 1;
@@ -2918,6 +2926,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage))
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
+  DisableYsqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -4248,6 +4257,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTser
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserver)) {
+  DisableYsqlPackedRow();
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -4278,6 +4288,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserv
 TEST_F(
     CDCSDKYsqlTest,
     YB_DISABLE_TEST_IN_TSAN(TestCleanupMultiStreamDeleteSingleStreamSingleTserver)) {
+  DisableYsqlPackedRow();
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -6686,6 +6697,7 @@ TEST_F(
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWithTwoTabletSplits)) {
+  DisableYsqlPackedRow();
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_aborted_intent_cleanup_ms = 1000;
@@ -10160,6 +10172,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExpiredStreamWithCompaction))
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
+  DisableYsqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -10204,6 +10217,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWithBeforeImage)) {
   EnableVerboseLoggingForModule("cdc_service", 1);
   EnableVerboseLoggingForModule("cdcsdk_producer", 1);
+  DisableYsqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
