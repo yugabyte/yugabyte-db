@@ -11,6 +11,7 @@
 package com.yugabyte.yw.controllers;
 
 import static junit.framework.TestCase.fail;
+import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.route;
 
@@ -34,7 +35,10 @@ import java.util.Comparator;
 import java.util.List;
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
+import play.api.routing.Router;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
+import play.modules.swagger.SwaggerModule;
 import play.mvc.Result;
 import play.test.Helpers;
 
@@ -49,6 +53,14 @@ public class SwaggerGenTest extends FakeDBApplication {
   @Override
   protected boolean isSwaggerEnabled() {
     return true;
+  }
+
+  @Override
+  protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
+    return super.configureApplication(
+        builder
+            .overrides(new SwaggerModule())
+            .overrides(bind(Router.class).toProvider(SwaggerGenRoutesProvider.class)));
   }
 
   @Test

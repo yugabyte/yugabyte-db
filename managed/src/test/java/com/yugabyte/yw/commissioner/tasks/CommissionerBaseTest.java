@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -20,15 +21,13 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.ShellKubernetesManager;
-import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
-import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
@@ -41,6 +40,8 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
+import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
@@ -57,7 +58,6 @@ import org.yb.master.CatalogEntityInfo;
 import play.Application;
 import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
   private static final int MAX_RETRY_COUNT = 2000;
@@ -158,7 +158,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
     return configureApplication(
             new GuiceApplicationBuilder()
-                .disable(SwaggerModule.class)
                 .disable(GuiceModule.class)
                 .configure(testDatabase())
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
