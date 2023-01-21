@@ -48,4 +48,100 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "TODO",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> minPyVer =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.min_python_version",
+          ScopeType.PROVIDER,
+          "Min Python Version",
+          "",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> user =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.user",
+          ScopeType.PROVIDER,
+          "User",
+          "",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> userGroup =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.user_group",
+          ScopeType.PROVIDER,
+          "User Group",
+          "",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> minPrometheusSpaceMb =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.min_prometheus_space_mb",
+          ScopeType.PROVIDER,
+          "Min Prometheus Space MB",
+          "",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> minTempDirSpaceMb =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.min_tmp_dir_space_mb",
+          ScopeType.PROVIDER,
+          "Min Temp Dir Space MB",
+          "",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> minHomeDirSpaceMb =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.min_home_dir_space_mb",
+          ScopeType.PROVIDER,
+          "Min Home Space MB",
+          "",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> minMountPointDirSpaceMb =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.min_mount_point_dir_space_mb",
+          ScopeType.PROVIDER,
+          "Min Mount Point Dir Space MB",
+          "",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> ulimitCore =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.ulimit_core",
+          ScopeType.PROVIDER,
+          "ulimit core ",
+          "",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> ulimitOpenFiles =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.ulimit_open_files",
+          ScopeType.PROVIDER,
+          "ulimit open files",
+          "",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> ulimitUserProcesses =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.ulimit_user_processes",
+          ScopeType.PROVIDER,
+          "ulimit user processes",
+          "",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> swapiness =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.swappiness",
+          ScopeType.PROVIDER,
+          "swapiness",
+          "",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> sshTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.ssh_timeout",
+          ScopeType.PROVIDER,
+          "ssh timeout",
+          "",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }

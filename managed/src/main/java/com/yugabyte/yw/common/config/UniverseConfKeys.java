@@ -291,6 +291,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
+  // TODO(Shashank): Add correct metadata
+  public static final ConfKeyInfo<Boolean> setBatchNestedLoop =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.set_batch_nested_loop",
+          ScopeType.UNIVERSE,
+          "Set Batch Nested Loop",
+          "TODO - Leave this for feature owners to fill in",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
   // TODO(Shashank)
   public static final ConfKeyInfo<List> excludedQueries =
       new ConfKeyInfo<>(
