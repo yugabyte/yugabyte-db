@@ -33,7 +33,7 @@ The benefits of continuous availability extend to performing maintenance and dat
 
 ## Example
 
-This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. In this scenario, you create a cluster with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the cluster remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable on the cluster to preserve data consistency.
+This example demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. In this scenario, you create a cluster with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the cluster remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable on the cluster to preserve data consistency.
 
 The tutorial uses the YB Workload Simulator application, which uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a cluster, and re-balances connections when a node fails.
 
