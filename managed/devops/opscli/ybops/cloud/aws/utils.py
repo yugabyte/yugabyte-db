@@ -1249,7 +1249,7 @@ def _wait_for_disk_modifications(ec2_client, vol_ids):
     # This function returns as soon as the volume state is optimizing, not completed.
     num_vols_to_modify = len(vol_ids)
     # It should retry for a 1 hour time limit.
-    retry_num = int((1 * 3600) / AbstractCloud.SSH_WAIT_SECONDS) + 1
+    retry_num = int((1 * 3600) / AbstractCloud.SERVER_WAIT_SECONDS) + 1
     # Loop till all volumes are modified or the limit is reached.
     while retry_num > 0:
         num_vols_modified = 0
@@ -1270,7 +1270,7 @@ def _wait_for_disk_modifications(ec2_client, vol_ids):
         if num_vols_modified == num_vols_to_modify:
             break
 
-        time.sleep(AbstractCloud.SSH_WAIT_SECONDS)
+        time.sleep(AbstractCloud.SERVER_WAIT_SECONDS)
         retry_num -= 1
 
     if retry_num <= 0:

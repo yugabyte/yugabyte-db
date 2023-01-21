@@ -196,7 +196,7 @@ class AzureCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         modify_tags(args.region, instance["id"], args.instance_tags, args.remove_tags)
 
-    def start_instance(self, args, ssh_ports):
+    def start_instance(self, args, server_ports):
         host_info = self.get_host_info(args)
         if host_info is None:
             raise YBOpsRuntimeError("Host {} does not exist".format(args.search_pattern))
@@ -214,7 +214,7 @@ class AzureCloud(AbstractCloud):
                 args.search_pattern))
             return
 
-        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+        self.wait_for_server_ports(host_info['private_ip'], host_info['name'], server_ports)
         return host_info
 
     def stop_instance(self, args):
