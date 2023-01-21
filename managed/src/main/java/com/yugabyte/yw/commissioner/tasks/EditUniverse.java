@@ -357,7 +357,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start tservers on all nodes.
-      createStartTserverProcessTasks(newTservers);
+      createStartTserverProcessTasks(newTservers, userIntent.enableYSQL);
 
       if (universe.isYbcEnabled()) {
         createStartYbcProcessTasks(

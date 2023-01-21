@@ -91,6 +91,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForServer, // check if postgres is up
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,
@@ -108,6 +109,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

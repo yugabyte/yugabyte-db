@@ -72,6 +72,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForServer, // check if postgres is up
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
@@ -107,6 +108,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForServer, // check if postgres is up
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
