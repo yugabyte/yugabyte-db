@@ -363,8 +363,7 @@ public class NodeAgentClient {
   }
 
   public Optional<NodeAgent> maybeGetNodeAgentClient(String ip) {
-    // TODO check for server readiness?
-    if (appConfig.getBoolean(NODE_AGENT_CLIENT_ENABLED_PROPERTY)) {
+    if (isClientEnabled()) {
       Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(ip);
       if (optional.isPresent() && optional.get().state != State.REGISTERING) {
         return optional;
@@ -461,10 +460,11 @@ public class NodeAgentClient {
   }
 
   public void uploadFile(NodeAgent nodeAgent, String inputFile, String outputFile) {
-    uploadFile(nodeAgent, inputFile, outputFile, null);
+    uploadFile(nodeAgent, inputFile, outputFile, null, 0);
   }
 
-  public void uploadFile(NodeAgent nodeAgent, String inputFile, String outputFile, String user) {
+  public void uploadFile(
+      NodeAgent nodeAgent, String inputFile, String outputFile, String user, int chmod) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     try (InputStream inputStream = new BufferedInputStream(new FileInputStream(inputFile))) {
       NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
@@ -475,6 +475,9 @@ public class NodeAgentClient {
       UploadFileRequest.Builder builder = UploadFileRequest.newBuilder().setFileInfo(fileInfo);
       if (StringUtils.isNotBlank(user)) {
         builder.setUser(user);
+      }
+      if (chmod > 0) {
+        builder.setChmod(chmod);
       }
       UploadFileRequest request = builder.build();
       // Send metadata first.
