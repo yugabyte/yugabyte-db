@@ -51,7 +51,6 @@ protobuf==3.15.8
 pyasn1-modules==0.2.8
 pyasn1==0.4.8
 pycparser==2.20
-pycrypto==2.6.1
 pycryptodome==3.6.1
 pyparsing==2.4.7
 python-dateutil==2.5.3

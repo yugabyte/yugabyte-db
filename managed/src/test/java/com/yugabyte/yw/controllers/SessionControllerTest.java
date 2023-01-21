@@ -70,7 +70,6 @@ import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
-import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
@@ -96,7 +95,6 @@ public class SessionControllerTest {
     ldapUtil = mock(LdapUtil.class);
     app =
         new GuiceApplicationBuilder()
-            .disable(SwaggerModule.class)
             .disable(GuiceModule.class)
             .configure(testDatabase())
             .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))

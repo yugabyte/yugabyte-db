@@ -18,7 +18,6 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import kamon.instrumentation.play.GuiceModule;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 import play.test.WithApplication;
 
 public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
@@ -45,7 +44,6 @@ public abstract class MDCPropagatingDispatcherTestBase extends WithApplication {
                 ConfigValueFactory.fromAnyRef(
                     "com.yugabyte.yw.common.logging.MDCPropagatingDispatcherConfigurator"));
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(config)
         .overrides(

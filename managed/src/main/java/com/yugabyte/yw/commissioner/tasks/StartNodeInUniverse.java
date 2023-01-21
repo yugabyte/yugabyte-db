@@ -27,7 +27,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Class contains the tasks to start a node in a given universe. It starts the tserver process and

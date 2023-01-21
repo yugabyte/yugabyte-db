@@ -93,7 +93,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
         result,
         "Cannot deserialize value of type "
             + "`com.yugabyte.yw.models.CustomerConfig$ConfigType` from String \\\"foo\\\": "
-            + "value not one of declared Enum instance names: "
+            + "not one of the values accepted for Enum class: "
             + "[OTHER, STORAGE, CALLHOME, PASSWORD_POLICY, ALERTS]");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -114,8 +114,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     assertBadRequest(
         result,
-        "Cannot deserialize instance of `com.fasterxml.jackson.databind.node.ObjectNode` "
-            + "out of VALUE_STRING token");
+        "Cannot deserialize value of type `com.fasterxml.jackson.databind.node.ObjectNode` "
+            + "from String value");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
