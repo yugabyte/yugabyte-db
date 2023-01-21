@@ -60,10 +60,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       Cluster primaryCluster = taskParams().getPrimaryCluster();
+      boolean isYSQLEnabled = primaryCluster.userIntent.enableYSQL;
       boolean isYCQLAuthEnabled =
           primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth;
-      boolean isYSQLAuthEnabled =
-          primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth;
+      boolean isYSQLAuthEnabled = isYSQLEnabled && primaryCluster.userIntent.enableYSQLAuth;
 
       // Store the passwords in the temporary variables first.
       // DB does not store the actual passwords.
@@ -160,7 +160,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createStartMasterProcessTasks(newMasters);
 
       // Start tservers on tserver nodes.
-      createStartTserverProcessTasks(newTservers);
+      createStartTserverProcessTasks(newTservers, isYSQLEnabled);
 
       // Set the node state to live.
       createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Live)
