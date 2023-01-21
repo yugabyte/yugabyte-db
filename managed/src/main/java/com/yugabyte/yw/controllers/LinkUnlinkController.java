@@ -17,7 +17,8 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
@@ -41,7 +42,7 @@ public class LinkUnlinkController extends AbstractPlatformController {
 
   @Inject private ConfigHelper configHelper;
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
 
   public Result exportUniverse(UUID customerUUID, UUID universeUUID) throws IOException {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -54,15 +55,13 @@ public class LinkUnlinkController extends AbstractPlatformController {
             provider,
             config,
             configHelper,
-            runtimeConfigFactory
-                .forProvider(provider)
-                .getBoolean("yb.internal.allow_unsupported_instances"));
+            confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances));
 
     List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
 
     List<PriceComponent> priceComponents = PriceComponent.findByProvider(provider);
 
-    String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
+    String storagePath = confGetter.getStaticConf().getString("yb.storage.path");
 
     UniverseSpec universeSpec =
         UniverseSpec.builder()
@@ -90,7 +89,7 @@ public class LinkUnlinkController extends AbstractPlatformController {
       throw new PlatformServiceException(BAD_REQUEST, "Failed to get uploaded spec file");
     }
 
-    String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
+    String storagePath = confGetter.getStaticConf().getString("yb.storage.path");
     File tempFile = (File) tempSpecFile.getFile();
     UniverseSpec universeSpec = UniverseSpec.importSpec(tempFile, storagePath, customer);
     universeSpec.save(storagePath);

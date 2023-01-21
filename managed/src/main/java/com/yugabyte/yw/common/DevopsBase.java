@@ -13,7 +13,10 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.ArrayList;
@@ -36,6 +39,8 @@ public abstract class DevopsBase {
   @Inject ShellProcessHandler shellProcessHandler;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject NodeAgentClient nodeAgentClient;
 
@@ -131,11 +136,21 @@ public abstract class DevopsBase {
       commandList.add(region.provider.code);
       commandList.add("--region");
       commandList.add(region.code);
-      extraVars.putAll(region.provider.getUnmaskedConfig());
+      try {
+        Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(region.provider);
+        extraVars.putAll(envConfig);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to retrieve env variables for the provider!", e);
+      }
     } else if (providerUUID != null) {
       provider = Provider.get(providerUUID);
       commandList.add(provider.code);
-      extraVars.putAll(provider.getUnmaskedConfig());
+      try {
+        Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(provider);
+        extraVars.putAll(envConfig);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to retrieve env variables for the provider!", e);
+      }
     } else if (cloudType != null) {
       commandList.add(cloudType.toString());
     } else {

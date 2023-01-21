@@ -14,7 +14,7 @@ This page describes the steps to perform and verify a successful migration to Yu
 
 - [Install yb-voyager](../install-yb-voyager/#install-yb-voyager).
 - Check the [unsupported features](../known-issues/#unsupported-features) and [known issues](../known-issues/#known-issues).
-- Review [data modeling](../yb-voyager-cli/#data-modeling) strategies.
+- Review [data modeling](../reference/data-modeling/) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
@@ -30,13 +30,13 @@ Prepare your source database by creating a new database user, and provide it wit
     </a>
   </li>
   <li>
-    <a href="#mysql" class="nav-link" id="mysql-tab" data-toggle="tab" role="tab" aria-controls="mysql" aria-selected="false">
+    <a href="#mysql" class="nav-link" id="mysql-tab" data-toggle="tab" role="tab" aria-controls="mysql" aria-selected="true">
       <i class="icon-mysql" aria-hidden="true"></i>
       MySQL
     </a>
   </li>
   <li>
-    <a href="#oracle" class="nav-link" id="oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="false">
+    <a href="#oracle" class="nav-link" id="oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
       Oracle
     </a>
@@ -108,6 +108,25 @@ DROP USER ybvoyager;
 
 {{< /warning >}}
 
+## Create an export directory
+
+yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*.
+
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command in an environment variable.
+
+```sh
+mkdir $HOME/export-dir
+export EXPORT_DIR=$HOME/export-dir
+```
+
+The export directory has the following sub-directories and files:
+
+- `reports` directory contains the generated *Schema Analysis Report*.
+- `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
+- `data` directory contains TSV (Tab Separated Values) files that are passed to the COPY command on the target database.
+- `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
+- `yb-voyager.log` contains log messages.
+
 ## Migrate your database to YugabyteDB
 
 Proceed with schema and data migration using the following steps:
@@ -117,8 +136,6 @@ Proceed with schema and data migration using the following steps:
 To begin, export the schema from the source database. Once exported, analyze the schema and apply any necessary manual changes.
 
 #### Export schema
-
-<!-- To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../yb-voyager/yb-voyager-cli/#data-modeling). -->
 
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
@@ -314,4 +331,9 @@ Refer to [import schema](../yb-voyager-cli/#import-schema) for details about the
 
 After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
-Refer to [Verify a migration](../../manage/data-migration/bulk-import-ysql/#verify-a-migration) to validate queries and ensure a successful migration.
+{{< warning title = "Caveat associated with rows reported by import data status" >}}
+
+Suppose the [import data](#import-data) or [import data file](#import-data-file) command fails, you can resolve the issue by deleting some of the rows from the split files. After retrying the [import data](#import-data) command and post a successful import operation, if you issue an [import data status](#import-data-status) command, it reports an incorrect imported row count because the command doesn't take into account the deleted rows.
+For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
+
+{{< /warning >}}

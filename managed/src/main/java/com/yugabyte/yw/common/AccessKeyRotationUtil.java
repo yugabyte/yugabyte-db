@@ -4,9 +4,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKeyId;
@@ -35,7 +35,7 @@ import play.libs.Json;
 public class AccessKeyRotationUtil {
 
   @Inject AccessManager accessManager;
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
+  @Inject RuntimeConfGetter confGetter;
 
   public static final String SSH_KEY_EXPIRATION_ENABLED =
       "yb.security.ssh_keys.enable_ssh_key_expiration";
@@ -154,9 +154,10 @@ public class AccessKeyRotationUtil {
   // calculates minimum over all clusters
   public Double getSSHKeyExpiryDays(Universe universe, Map<AccessKeyId, AccessKey> allAccessKeys) {
 
-    final Config config = runtimeConfigFactory.forUniverse(universe);
-    boolean expirationEnabled = config.getBoolean(SSH_KEY_EXPIRATION_ENABLED);
-    int expirationThresholdDays = config.getInt(SSH_KEY_EXPIRATION_THRESHOLD_DAYS);
+    boolean expirationEnabled =
+        confGetter.getConfForScope(universe, UniverseConfKeys.enableSshKeyExpiration);
+    int expirationThresholdDays =
+        confGetter.getConfForScope(universe, UniverseConfKeys.sshKeyExpirationThresholdDays);
 
     List<AccessKey> universeAccessKeys = getUniverseAccessKeys(universe, allAccessKeys);
     // if universe is of a provider config such as K8s

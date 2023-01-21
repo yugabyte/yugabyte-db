@@ -12,6 +12,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -190,12 +192,21 @@ public class MetricQueryHelper {
       if (CollectionUtils.isNotEmpty(metricQueryParams.getClusterUuids())
           || CollectionUtils.isNotEmpty(metricQueryParams.getRegionCodes())
           || CollectionUtils.isNotEmpty(metricQueryParams.getAvailabilityZones())
-          || CollectionUtils.isNotEmpty(metricQueryParams.getNodeNames())) {
+          || CollectionUtils.isNotEmpty(metricQueryParams.getNodeNames())
+          || metricQueryParams.getServerType() != null) {
         // Need to get matching nodes
         universe
             .getNodes()
             .forEach(
                 node -> {
+                  if (metricQueryParams.getServerType() == UniverseTaskBase.ServerType.MASTER
+                      && !node.isMaster) {
+                    return;
+                  }
+                  if (metricQueryParams.getServerType() == UniverseTaskBase.ServerType.TSERVER
+                      && !node.isTserver) {
+                    return;
+                  }
                   if (CollectionUtils.isNotEmpty(metricQueryParams.getClusterUuids())
                       && !metricQueryParams.getClusterUuids().contains(node.placementUuid)) {
                     return;
@@ -498,12 +509,13 @@ public class MetricQueryHelper {
       for (Region r : Region.getByProvider(provider.uuid)) {
         for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
           boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
           namespaces.add(
               KubernetesUtil.getKubernetesNamespace(
                   isMultiAZ,
                   nodePrefix,
                   az.code,
-                  az.getUnmaskedConfig(),
+                  zoneConfig,
                   newNamingStyle,
                   cluster.clusterType == ClusterType.ASYNC));
         }

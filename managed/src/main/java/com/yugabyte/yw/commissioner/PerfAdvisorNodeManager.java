@@ -2,25 +2,22 @@ package com.yugabyte.yw.commissioner;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
-import org.yb.perf_advisor.configs.UniverseNodeConfigInterface;
-import org.yb.perf_advisor.query.NodeManagerInterface;
-import org.yb.perf_advisor.query.commands.CommandInterface;
-import org.yb.perf_advisor.query.commands.ExecuteCommand;
-import org.yb.perf_advisor.query.commands.FileUploadCommand;
-import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 import java.util.UUID;
-import java.util.stream.Collectors;
+import org.yb.perf_advisor.configs.UniverseNodeConfigInterface;
+import org.yb.perf_advisor.query.NodeManagerInterface;
+import org.yb.perf_advisor.query.commands.CommandInterface;
+import org.yb.perf_advisor.query.commands.ExecuteCommand;
+import org.yb.perf_advisor.query.commands.FileUploadCommand;
 
 public class PerfAdvisorNodeManager implements NodeManagerInterface {
 
@@ -67,7 +64,7 @@ public class PerfAdvisorNodeManager implements NodeManagerInterface {
                       universeConfig.getNodeDetails(),
                       universe,
                       tempPath.toString(),
-                      fileUpload.getDestFilePath,
+                      fileUpload.getDestFilePath(),
                       fileUpload.getFilePermissions(),
                       universeConfig.getShellProcessContext())
                   .processErrors();

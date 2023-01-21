@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -107,7 +108,7 @@ public class RunYsqlUpgrade extends AbstractTaskBase {
                             "Failed to find leader master node " + leaderMasterAddress));
 
         boolean useSingleConnection =
-            runtimeConfigFactory.forUniverse(universe).getBoolean(USE_SINGLE_CONNECTION_PARAM);
+            confGetter.getConfForScope(universe, UniverseConfKeys.singleConnectionYsqlUpgrade);
         List<String> args = new ArrayList<>();
         if (useSingleConnection) {
           args.add(USE_SINGLE_CONNECTION_ARG);

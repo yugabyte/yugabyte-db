@@ -18,69 +18,56 @@ import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 
 public class UniverseConfKeys extends RuntimeConfigKeysModule {
 
-  // TODO(Aleksandr): Add correct metadata
   public static final ConfKeyInfo<Duration> alertMaxClockSkew =
       new ConfKeyInfo<>(
           "yb.alert.max_clock_skew_ms",
           ScopeType.UNIVERSE,
           "Clock Skew",
-          "TODO - Leave this for feature owners to fill in",
+          "Default threshold for Clock Skew alert",
           ConfDataType.DurationType);
-  // TODO(artem): Add correct metadata
   public static final ConfKeyInfo<Boolean> cloudEnabled =
       new ConfKeyInfo<>(
           "yb.cloud.enabled",
           ScopeType.UNIVERSE,
           "Cloud Enabled",
-          "TODO - Leave this for feature owners to fill in",
+          "Enables YBM specific features",
           ConfDataType.BooleanType);
-  // TODO(artem): Add correct metadata
-  public static final ConfKeyInfo<String> universeBootScript =
-      new ConfKeyInfo<>(
-          "yb.universe_boot_script",
-          ScopeType.UNIVERSE,
-          "Universe Boot Script",
-          "TODO - Leave this for feature owners to fill in",
-          ConfDataType.StringType);
-  // TODO(Hamidreza): Add correct metadata
   public static final ConfKeyInfo<Boolean> healthLogOutput =
       new ConfKeyInfo<>(
           "yb.health.logOutput",
           ScopeType.UNIVERSE,
           "Health Log Output",
-          "TODO - Leave this for feature owners to fill in",
+          "It determines whether to log the output "
+              + "of the node health check script to the console",
           ConfDataType.BooleanType);
-  // TODO(Aleksandr): Add correct metadata
   public static final ConfKeyInfo<Integer> nodeCheckTimeoutSec =
       new ConfKeyInfo<>(
           "yb.health.nodeCheckTimeoutSec",
           ScopeType.UNIVERSE,
           "Node Checkout Time",
-          "TODO - Leave this for feature owners to fill in",
+          "The timeout (in seconds) for node check operation as part of universe health check",
           ConfDataType.IntegerType);
-  // TODO(Nikhil): Add correct metadata
   public static final ConfKeyInfo<Boolean> ybUpgradeBlacklistLeaders =
       new ConfKeyInfo<>(
           "yb.upgrade.blacklist_leaders",
           ScopeType.UNIVERSE,
           "YB Upgrade Blacklist Leaders",
-          "TODO - Leave this for feature owners to fill in",
+          "Determines (boolean) whether we enable/disable "
+              + "leader blacklisting when performing universe/node tasks",
           ConfDataType.BooleanType);
-  // TODO(charles): Add correct metadata
   public static final ConfKeyInfo<Integer> ybUpgradeBlacklistLeaderWaitTimeMs =
       new ConfKeyInfo<>(
           "yb.upgrade.blacklist_leader_wait_time_ms",
           ScopeType.UNIVERSE,
           "YB Upgrade Blacklist Leader Wait Time in Ms",
-          "TODO - Leave this for feature owners to fill in",
+          "The timeout (in milliseconds) that we wait of leader blacklisting on a node to complete",
           ConfDataType.IntegerType);
-  // TODO(charles): Add correct metadata
   public static final ConfKeyInfo<Integer> ybUpgradeMaxFollowerLagThresholdMs =
       new ConfKeyInfo<>(
           "yb.upgrade.max_follower_lag_threshold_ms",
           ScopeType.UNIVERSE,
           "YB Upgrade Max Follower Lag Threshold ",
-          "TODO - Leave this for feature owners to fill in",
+          "The maximum time (in milliseconds) that we allow a tserver to be behind its peers",
           ConfDataType.IntegerType);
   // TODO(naorem): Add correct metadata
   public static final ConfKeyInfo<Boolean> ybUpgradeVmImage =
@@ -98,28 +85,29 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "YB Upgrade Allow Downgrades",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.BooleanType);
-  // TODO(aleksandr): Add correct metadata
   public static final ConfKeyInfo<Boolean> singleConnectionYsqlUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.single_connection_ysql_upgrade",
           ScopeType.UNIVERSE,
           "YB Upgrade Use Single Connection Param",
-          "TODO - Leave this for feature owners to fill in",
+          "The flag, which controls, "
+              + "if YSQL catalog upgrade will be performed in single or multi connection mode."
+              + "Single connection mode makes it work even on tiny DB nodes.",
           ConfDataType.BooleanType);
-  public static final ConfKeyInfo<String> ybNumReleasesToKeepDefault =
+  public static final ConfKeyInfo<Integer> ybNumReleasesToKeepDefault =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_default",
           ScopeType.UNIVERSE,
           "Default Releases Count",
           "Number of Releases to Keep",
-          ConfDataType.StringType);
-  public static final ConfKeyInfo<String> ybNumReleasesToKeepCloud =
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> ybNumReleasesToKeepCloud =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_cloud",
           ScopeType.UNIVERSE,
           "Cloud Releases Count",
           "Number Of Cloud Releases To Keep",
-          ConfDataType.StringType);
+          ConfDataType.IntegerType);
   // TODO(): Add correct metadata
   public static final ConfKeyInfo<Integer> dbMemPostgresMaxMemMb =
       new ConfKeyInfo<>(
@@ -128,37 +116,38 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "DB Postgres Max Mem",
           "TODO",
           ConfDataType.IntegerType);
-  // TODO(vipul): Add correct metadata
   public static final ConfKeyInfo<Long> dbMemAvailableLimit =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.mem_available_limit_kb",
           ScopeType.UNIVERSE,
-          "DB Available Limit",
-          "TODO",
+          "DB Available Mem Limit",
+          "Minimum available memory required on DB nodes for software upgrade.",
           ConfDataType.LongType);
-  // TODO(Vipul): Add correct metadata
   public static final ConfKeyInfo<Boolean> pgBasedBackup =
       new ConfKeyInfo<>(
           "yb.backup.pg_based",
           ScopeType.UNIVERSE,
           "PG Based Backup",
-          "TODO - Leave this for feature owners to fill in",
+          "Enable PG-based backup",
           ConfDataType.BooleanType);
-  // TODO(sahith): Add correct metadata
   public static final ConfKeyInfo<Boolean> dbReadWriteTest =
       new ConfKeyInfo<>(
           "yb.metrics.db_read_write_test",
           ScopeType.UNIVERSE,
           "DB Read Write Test",
-          "TODO - Leave this for feature owners to fill in",
+          "The flag defines, if we perform DB write-read check on DB nodes or not.",
           ConfDataType.BooleanType);
-  // TODO(aleksandr): Add correct metadata
   public static final ConfKeyInfo<String> metricsCollectionLevel =
       new ConfKeyInfo<>(
           "yb.metrics.collection_level",
           ScopeType.UNIVERSE,
           "Metrics Collection Level",
-          "TODO - Leave this for feature owners to fill in",
+          "DB node metrics collection level."
+              + "ALL - collect all metrics, "
+              + "NORMAL - default value, which only limits some per-table metrics, "
+              + "MINIMAL - limits both node level and further limits table level "
+              + "metrics we collect and "
+              + "OFF to completely disable metric collection.",
           ConfDataType.StringType);
   public static final ConfKeyInfo<VersionCheckMode> universeVersionCheckMode =
       new ConfKeyInfo<>(
@@ -184,28 +173,26 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "TODO",
           ConfDataType.BooleanType);
   // TODO(): Add correct metadata
-  public static final ConfKeyInfo<Integer> enableSshKeyExpirationThresholdDays =
+  public static final ConfKeyInfo<Integer> sshKeyExpirationThresholdDays =
       new ConfKeyInfo<>(
           "yb.security.ssh_keys.ssh_key_expiration_threshold_days",
           ScopeType.UNIVERSE,
           "SSh Key Expiration Threshold",
           "TODO",
           ConfDataType.IntegerType);
-  // TODO(Vivek): Add correct metadata
   public static final ConfKeyInfo<String> nfsDirs =
       new ConfKeyInfo<>(
           "yb.ybc_flags.nfs_dirs",
           ScopeType.UNIVERSE,
           "NFS Directry Path",
-          "TODO",
+          "Authorised NFS directories for backups",
           ConfDataType.StringType);
-  // TODO(vineeth): Add correct metadata
   public static final ConfKeyInfo<Boolean> ybcEnableVervbose =
       new ConfKeyInfo<>(
           "yb.ybc_flags.enable_verbose",
           ScopeType.UNIVERSE,
           "Enable Verbose Logging",
-          "TODO",
+          "Enable verbose ybc logging",
           ConfDataType.BooleanType);
   public static final ConfKeyInfo<Integer> maxThreads =
       new ConfKeyInfo<>(
@@ -214,29 +201,26 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Max Thread Count",
           "Max number of threads to support parallel querying of nodes",
           ConfDataType.IntegerType);
-  // TODO(vipul): Add correct metadata
   public static final ConfKeyInfo<Boolean> ybcAllowScheduledUpgrade =
       new ConfKeyInfo<>(
-          "yb.ybc.upgrade.allow_scheduled_upgrade",
+          "ybc.upgrade.allow_scheduled_upgrade",
           ScopeType.UNIVERSE,
           "Allow Scheduled YBC Upgrades",
-          "TODO",
+          "Enable Scheduled upgrade of ybc on the universe",
           ConfDataType.BooleanType);
-  // TODO(vipul): Add correct metadata
   public static final ConfKeyInfo<Boolean> gflagsAllowUserOverride =
       new ConfKeyInfo<>(
           "yb.gflags.allow_user_override",
           ScopeType.UNIVERSE,
           "Allow User Gflags Override",
-          "Allow users to override Gflag values",
+          "Allow users to override default Gflags values",
           ConfDataType.BooleanType);
-  // TODO(sarah): Add correct metadata
   public static final ConfKeyInfo<Boolean> enableTriggerAPI =
       new ConfKeyInfo<>(
           "yb.health.trigger_api.enabled",
           ScopeType.UNIVERSE,
           "Enable Trigger API",
-          "TODO",
+          "Allow trigger_health_check API to be called",
           ConfDataType.BooleanType);
   public static final ConfKeyInfo<Boolean> backupLogVerbose =
       new ConfKeyInfo<>(
@@ -245,29 +229,26 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Verbose Backup Log",
           "Enable verbose backup logging",
           ConfDataType.BooleanType);
-  // TODO(Shubham): Add correct metadata
   public static final ConfKeyInfo<Boolean> waitForLbForAddedNodes =
       new ConfKeyInfo<>(
           "yb.wait_for_lb_for_added_nodes",
           ScopeType.UNIVERSE,
           "Wait for LB for Added Nodes",
-          "TODO",
+          "Wait for Load Balancer for added nodes",
           ConfDataType.BooleanType);
-  // TODO(Rajagopalan): Add correct metadata
   public static final ConfKeyInfo<Boolean> isAuthEnforced =
       new ConfKeyInfo<>(
           "yb.universe.auth.is_enforced",
           ScopeType.UNIVERSE,
           "Enforce Auth",
-          "TODO - Leave this for feature owners to fill in",
+          "Enforces users to enter password for YSQL/YCQL during Universe creation",
           ConfDataType.BooleanType);
-  // TODO(Vivek): Add correct metadata
   public static final ConfKeyInfo<Duration> waitForMasterLeaderTimeout =
       new ConfKeyInfo<>(
           "yb.wait_for_master_leader_timeout",
           ScopeType.UNIVERSE,
           "Wait For master Leader timeout",
-          "TODO - Leave this for feature owners to fill in",
+          "Time in seconds to wait for master leader before timeout for List tables API",
           ConfDataType.DurationType);
   // TODO(Shashank): Add correct metadata
   public static final ConfKeyInfo<Integer> slowQueryLimit =
@@ -293,4 +274,164 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Excluded Queries",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.StringListType);
+  public static final ConfKeyInfo<String> ansibleStrategy =
+      new ConfKeyInfo<>(
+          "yb.ansible.strategy",
+          ScopeType.UNIVERSE,
+          "Ansible Strategy",
+          "strategy can be linear, mitogen_linear or debug",
+          ConfDataType.StringType);
+  public static final ConfKeyInfo<Integer> ansibleConnectionTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.ansible.conn_timeout_secs",
+          ScopeType.UNIVERSE,
+          "Ansible Connection Timeout Duration",
+          "This is the default timeout for connection plugins to use.",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> ansibleVerbosity =
+      new ConfKeyInfo<>(
+          "yb.ansible.verbosity",
+          ScopeType.UNIVERSE,
+          "Ansible Verbosity Level",
+          "verbosity of ansible logs, 0 to 4 (more verbose)",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Boolean> ansibleDebug =
+      new ConfKeyInfo<>(
+          "yb.ansible.debug",
+          ScopeType.UNIVERSE,
+          "Ansible Debug Output",
+          "Debug output (can include secrets in output)",
+          ConfDataType.BooleanType);
+  public static final ConfKeyInfo<Boolean> ansibleDiffAlways =
+      new ConfKeyInfo<>(
+          "yb.ansible.diff_always",
+          ScopeType.UNIVERSE,
+          "Ansible Diff Always",
+          "Configuration toggle to tell modules to show differences "
+              + "when in 'changed' status, equivalent to --diff.",
+          ConfDataType.BooleanType);
+  public static final ConfKeyInfo<String> ansibleLocalTemp =
+      new ConfKeyInfo<>(
+          "yb.ansible.local_temp",
+          ScopeType.UNIVERSE,
+          "Ansible Local Temp Directory",
+          "Temporary directory for Ansible to use on the controller.",
+          ConfDataType.StringType);
+
+  public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Performance Advisor",
+          "Defines if performance advisor is enabled for the universe or not",
+          ConfDataType.BooleanType);
+  public static final ConfKeyInfo<Integer> perfAdvisorUniverseFrequencyMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.universe_frequency_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor Run Frequency",
+          "Defines performance advisor run frequency for universe",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Double> perfAdvisorConnectionSkewThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.connection_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor connection skew threshold",
+          "Defines max difference between avg connections count usage and"
+              + " node connection count before connection skew recommendation is raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Integer> perfAdvisorConnectionSkewMinConnections =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.connection_skew_min_connections",
+          ScopeType.UNIVERSE,
+          "Performance Advisor connection skew min connections",
+          "Defines minimal number of connections for connection "
+              + "skew recommendation to be raised",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> perfAdvisorConnectionSkewIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.connection_skew_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor connection skew interval mins",
+          "Defines time interval for connection skew recommendation check, in minutes",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Double> perfAdvisorCpuSkewThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor cpu skew threshold",
+          "Defines max difference between avg cpu usage and"
+              + " node cpu usage before cpu skew recommendation is raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Double> perfAdvisorCpuSkewMinUsage =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_skew_min_usage_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor cpu skew min usage",
+          "Defines minimal cpu usage for cpu skew recommendation to be raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Integer> perfAdvisorCpuSkewIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_skew_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor cpu skew interval mins",
+          "Defines time interval for cpu skew recommendation check, in minutes",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Double> perfAdvisorCpuUsageThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_usage_threshold",
+          ScopeType.UNIVERSE,
+          "Performance Advisor CPU usage threshold",
+          "Defines max allowed average CPU usage per 10 minutes before "
+              + "CPU usage recommendation is raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Integer> perfAdvisorCpuUsageIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cpu_usage_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor cpu usage interval mins",
+          "Defines time interval for cpu usage recommendation check, in minutes",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Double> perfAdvisorQuerySkewThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.query_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor query skew threshold",
+          "Defines max difference between avg queries count and"
+              + " node queries count before cpu skew recommendation is raised",
+          ConfDataType.DoubleType);
+  public static final ConfKeyInfo<Integer> perfAdvisorQuerySkewMinQueries =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.query_skew_min_queries",
+          ScopeType.UNIVERSE,
+          "Performance Advisor query skew min queries",
+          "Defines minimal queries count for query skew recommendation to be raised",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> perfAdvisorQuerySkewIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.query_skew_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor query skew interval mins",
+          "Defines time interval for query skew recommendation check, in minutes",
+          ConfDataType.IntegerType);
+
+  public static final ConfKeyInfo<Integer> perfAdvisorRejectedConnThreshold =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.rejected_conn_threshold",
+          ScopeType.UNIVERSE,
+          "Performance Advisor rejected connections threshold",
+          "Defines number of rejected connections during configured interval"
+              + " for rejected connections recommendation to be raised ",
+          ConfDataType.IntegerType);
+  public static final ConfKeyInfo<Integer> perfAdvisorRejectedConnIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.rejected_conn_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor rejected connections interval mins",
+          "Defines time interval for rejected connections recommendation check, in minutes",
+          ConfDataType.IntegerType);
 }

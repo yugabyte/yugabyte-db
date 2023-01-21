@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
@@ -253,7 +254,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Wait for the master leader to hear from all tservers.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")) {
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.waitForLbForAddedNodes)) {
         // Wait for load to balance.
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }

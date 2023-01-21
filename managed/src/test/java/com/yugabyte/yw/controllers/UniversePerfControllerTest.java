@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -39,7 +40,9 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.HashedTimestampColumnFinder;
 import com.yugabyte.yw.controllers.handlers.UniversePerfHandler;
 import com.yugabyte.yw.controllers.handlers.UnusedIndexFinder;
@@ -76,8 +79,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   private UnusedIndexFinder unusedIndexFinder;
   private NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
   private PlatformExecutorFactory mockPlatformExecutorFactory = mock(PlatformExecutorFactory.class);
-  private RuntimeConfigFactory mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
-  private Config mockConfig;
+  private RuntimeConfGetter mockConfGetter = mock(RuntimeConfGetter.class);
   private Customer customer;
   private Universe universe;
   private OffsetDateTime mockedTime = OffsetDateTime.now();
@@ -87,15 +89,13 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
   @Override
   protected Application provideApplication() {
-    mockConfig = mock(Config.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     mockPlatformExecutorFactory = mock(PlatformExecutorFactory.class);
-    mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
     hashedTimestampColumnFinder = spy(new HashedTimestampColumnFinder(mockNodeUniverseManager));
     unusedIndexFinder =
         spy(
             new UnusedIndexFinder(
-                mockNodeUniverseManager, mockPlatformExecutorFactory, mockRuntimeConfigFactory));
+                mockNodeUniverseManager, mockPlatformExecutorFactory, mockConfGetter));
     universePerfHandler = spy(new TestUniversePerfHandler(mockNodeUniverseManager));
     universePerfController =
         spy(
@@ -109,9 +109,6 @@ public class UniversePerfControllerTest extends FakeDBApplication {
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(
                     bind(PlatformExecutorFactory.class).toInstance(mockPlatformExecutorFactory))
-                .overrides(
-                    bind(RuntimeConfigFactory.class)
-                        .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
                 .overrides(
                     bind(CustomWsClientFactory.class)
                         .toProvider(CustomWsClientFactoryProvider.class)))
@@ -162,8 +159,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
       shellResponsesUnusedIndex.add(shellResponse);
     }
 
-    when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
-    when(mockConfig.getInt("yb.perf_advisor.max_threads")).thenReturn(22);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.maxThreads)))
+        .thenReturn(22);
 
     customer = ModelFactory.testCustomer();
     universe = createUniverse(customer.getCustomerId());

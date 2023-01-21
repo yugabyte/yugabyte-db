@@ -162,7 +162,7 @@ TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestDatabaseGC)) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_NOK(conn.TestFailDdl("CREATE DATABASE " + test_name));
+  ASSERT_OK(conn.TestFailDdl("CREATE DATABASE " + test_name));
 
   // Verify DocDB Database creation, even though it failed in PG layer.
   // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
@@ -177,7 +177,7 @@ TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestCreateDbFailureAndRestart
   NamespaceName test_name = "test_pgsql";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_NOK(conn.TestFailDdl("CREATE DATABASE " + test_name));
+  ASSERT_OK(conn.TestFailDdl("CREATE DATABASE " + test_name));
 
   // Verify DocDB Database creation, even though it fails in PG layer.
   // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
@@ -210,7 +210,7 @@ TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableGC)) {
   // After successfully creating the first table, set flags to delay the background task.
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "13000"));
 
-  ASSERT_NOK(conn.TestFailDdl("CREATE INDEX " + test_name_idx + " ON " + test_name + "(key)"));
+  ASSERT_OK(conn.TestFailDdl("CREATE INDEX " + test_name_idx + " ON " + test_name + "(key)"));
 
   // Wait for DocDB index creation, even though it will fail in PG layer.
   // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
@@ -249,10 +249,10 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(AlterDropTableRollback)
   sleep(5);
 
   // Deliberately cause failure of the following Alter Table statements.
-  ASSERT_NOK(conn.TestFailDdl(RenameTableStmt(rename_table_test)));
-  ASSERT_NOK(conn.TestFailDdl(RenameColumnStmt(rename_col_test)));
-  ASSERT_NOK(conn.TestFailDdl(AddColumnStmt(add_col_test)));
-  ASSERT_NOK(conn.TestFailDdl(DropTableStmt(drop_table_test)));
+  ASSERT_OK(conn.TestFailDdl(RenameTableStmt(rename_table_test)));
+  ASSERT_OK(conn.TestFailDdl(RenameColumnStmt(rename_col_test)));
+  ASSERT_OK(conn.TestFailDdl(AddColumnStmt(add_col_test)));
+  ASSERT_OK(conn.TestFailDdl(DropTableStmt(drop_table_test)));
 
   // Wait for rollback.
   sleep(5);
@@ -282,8 +282,8 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(PrimaryKeyRollback)) {
   // Delay rollback.
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "10000"));
   // Fail Alter operation that adds/drops primary key.
-  ASSERT_NOK(conn.TestFailDdl(Format("ALTER TABLE $0 ADD PRIMARY KEY(id)", add_pk_table)));
-  ASSERT_NOK(conn.TestFailDdl(Format("ALTER TABLE $0 DROP CONSTRAINT $0_pkey;", drop_pk_table)));
+  ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 ADD PRIMARY KEY(id)", add_pk_table)));
+  ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 DROP CONSTRAINT $0_pkey;", drop_pk_table)));
 
   // Verify presence of temp table created for adding a primary key.
   VerifyTableExists(client.get(), db(), add_pk_table + "_temp_old", 10);
@@ -320,11 +320,11 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(DdlRollbackMasterRestar
   // Set ysql_transaction_bg_task_wait_ms so high that table rollback is nearly
   // disabled.
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "100000"));
-  ASSERT_NOK(conn.TestFailDdl(CreateTableStmt(create_table_test)));
-  ASSERT_NOK(conn.TestFailDdl(RenameTableStmt(rename_table_test)));
-  ASSERT_NOK(conn.TestFailDdl(RenameColumnStmt(rename_col_test)));
-  ASSERT_NOK(conn.TestFailDdl(AddColumnStmt(add_col_test)));
-  ASSERT_NOK(conn.TestFailDdl(DropTableStmt(drop_table_test)));
+  ASSERT_OK(conn.TestFailDdl(CreateTableStmt(create_table_test)));
+  ASSERT_OK(conn.TestFailDdl(RenameTableStmt(rename_table_test)));
+  ASSERT_OK(conn.TestFailDdl(RenameColumnStmt(rename_col_test)));
+  ASSERT_OK(conn.TestFailDdl(AddColumnStmt(add_col_test)));
+  ASSERT_OK(conn.TestFailDdl(DropTableStmt(drop_table_test)));
 
   // Verify that table was created on DocDB.
   VerifyTableExists(client.get(), db(), create_table_test, 10);
@@ -371,10 +371,10 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   // Set ysql_transaction_bg_task_wait_ms so high that table rollback is nearly
   // disabled.
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "100000"));
-  ASSERT_NOK(conn.TestFailDdl(RenameTableStmt(rename_table_test)));
-  ASSERT_NOK(conn.TestFailDdl(RenameColumnStmt(rename_col_test)));
-  ASSERT_NOK(conn.TestFailDdl(AddColumnStmt(add_col_test)));
-  ASSERT_NOK(conn.TestFailDdl(DropTableStmt(drop_table_test)));
+  ASSERT_OK(conn.TestFailDdl(RenameTableStmt(rename_table_test)));
+  ASSERT_OK(conn.TestFailDdl(RenameColumnStmt(rename_col_test)));
+  ASSERT_OK(conn.TestFailDdl(AddColumnStmt(add_col_test)));
+  ASSERT_OK(conn.TestFailDdl(DropTableStmt(drop_table_test)));
 
   // Verify that table was created on DocDB.
   VerifyTableExists(client.get(), db(), drop_table_test, 10);
@@ -468,7 +468,7 @@ class PgDdlAtomicityConcurrentDdlTest : public PgDdlAtomicitySanityTest {
     // Same as 'testConcurrentDDL' but here the first DDL statement is a failure. However
     // other DDLs still cannot happen unless rollback is complete.
     auto conn = ASSERT_RESULT(Connect());
-    ASSERT_NOK(conn.TestFailDdl(stmt1));
+    ASSERT_OK(conn.TestFailDdl(stmt1));
     auto conn2 = ASSERT_RESULT(Connect());
     ASSERT_TRUE(testFailedDueToTxnVerification(&conn2, stmt2));
   }
@@ -594,7 +594,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(DmlWithAddColTest)) {
 
   // Conn2: Initiate rollback of the alter.
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "10000"));
-  ASSERT_NOK(conn2.TestFailDdl(AddColumnStmt(table)));
+  ASSERT_OK(conn2.TestFailDdl(AddColumnStmt(table)));
 
   // Conn1: Since we parallely added a column to the table, the add-column operation would have
   // detected the distributed transaction locks acquired by this transaction on its tablets and
@@ -646,7 +646,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(DmlWithDropTableTest)) 
 
   // Conn3: Initiate rollback of DROP table.
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "5000"));
-  ASSERT_NOK(conn3.TestFailDdl(DropTableStmt(table)));
+  ASSERT_OK(conn3.TestFailDdl(DropTableStmt(table)));
 
   // Conn1: This should succeed.
   ASSERT_OK(conn1.Execute("INSERT INTO " + table + " VALUES (3)"));
@@ -701,11 +701,11 @@ void PgDdlAtomicityNegativeTestBase::negativeTest() {
     ASSERT_OK(conn_->Execute(CreateTableStmt(tables_to_create[ii])));
   }
 
-  ASSERT_NOK(conn_->TestFailDdl(CreateTableStmt(create_table_test)));
-  ASSERT_NOK(conn_->TestFailDdl(CreateIndexStmt(rename_table_test, create_table_idx)));
-  ASSERT_NOK(conn_->TestFailDdl(RenameTableStmt(rename_table_test)));
-  ASSERT_NOK(conn_->TestFailDdl(RenameColumnStmt(rename_col_test)));
-  ASSERT_NOK(conn_->TestFailDdl(AddColumnStmt(add_col_test)));
+  ASSERT_OK(conn_->TestFailDdl(CreateTableStmt(create_table_test)));
+  ASSERT_OK(conn_->TestFailDdl(CreateIndexStmt(rename_table_test, create_table_idx)));
+  ASSERT_OK(conn_->TestFailDdl(RenameTableStmt(rename_table_test)));
+  ASSERT_OK(conn_->TestFailDdl(RenameColumnStmt(rename_col_test)));
+  ASSERT_OK(conn_->TestFailDdl(AddColumnStmt(add_col_test)));
 
   // Wait for rollback to complete.
   sleep(5);
@@ -733,8 +733,8 @@ void PgDdlAtomicityNegativeTestBase::negativeDropTableTxnTest() {
   // Wait for rollback state to clear from the created tables.
   sleep(1);
 
-  ASSERT_NOK(conn_->TestFailDdl(Format("DROP TABLE $0, $1",
-                                       rollback_enabled_table, rollback_disabled_table)));
+  ASSERT_OK(conn_->TestFailDdl(Format("DROP TABLE $0, $1",
+                                      rollback_enabled_table, rollback_disabled_table)));
   // The YB-Master background task ensures that 'rollback_enabled_table' is not deleted. For
   // 'rollback_disabled_table', PG layer delays sending the delete request until the transaction
   // completes. Thus, verify that the tables do not get deleted even after some time.
@@ -831,9 +831,9 @@ TEST_F(PgDdlAtomicitySnapshotTest, YB_DISABLE_TEST_IN_TSAN(SnapshotTest)) {
 
   // Run all the failed DDLs.
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "35000"));
-  ASSERT_NOK(conn.TestFailDdl(CreateTableStmt(create_table_test)));
-  ASSERT_NOK(conn.TestFailDdl(AddColumnStmt(add_col_test)));
-  ASSERT_NOK(conn.TestFailDdl(DropTableStmt(drop_table_test)));
+  ASSERT_OK(conn.TestFailDdl(CreateTableStmt(create_table_test)));
+  ASSERT_OK(conn.TestFailDdl(AddColumnStmt(add_col_test)));
+  ASSERT_OK(conn.TestFailDdl(DropTableStmt(drop_table_test)));
 
   // Wait 10s to ensure that a snapshot is taken right after these DDLs failed.
   sleep(snapshot_interval_secs);
@@ -858,8 +858,8 @@ TEST_F(PgDdlAtomicitySnapshotTest, YB_DISABLE_TEST_IN_TSAN(SnapshotTest)) {
   /*
    TODO (deepthi): Uncomment the following code after #14679 is fixed.
   // Run different failing DDL operations on the tables.
-  ASSERT_NOK(conn.TestFailDdl(RenameTableStmt(add_col_test)));
-  ASSERT_NOK(conn.TestFailDdl(RenameColumnStmt(drop_table_test)));
+  ASSERT_OK(conn.TestFailDdl(RenameTableStmt(add_col_test)));
+  ASSERT_OK(conn.TestFailDdl(RenameColumnStmt(drop_table_test)));
   */
 
   // Restore to before rollback.

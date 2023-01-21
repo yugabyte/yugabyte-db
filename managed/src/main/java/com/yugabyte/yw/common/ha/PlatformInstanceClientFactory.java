@@ -14,7 +14,6 @@ import static com.yugabyte.yw.common.ha.PlatformInstanceClient.YB_HA_WS_KEY;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.google.inject.name.Named;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.WSClientRefresher;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +25,7 @@ public class PlatformInstanceClientFactory {
   private final WSClientRefresher wsClientRefresher;
 
   @Inject
-  public PlatformInstanceClientFactory(@Named(YB_HA_WS_KEY) WSClientRefresher wsClientRefresher) {
+  public PlatformInstanceClientFactory(WSClientRefresher wsClientRefresher) {
     this.wsClientRefresher = wsClientRefresher;
   }
 

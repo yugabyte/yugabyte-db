@@ -10,6 +10,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -51,6 +53,7 @@ public class SupportBundleController extends AuthenticatedController {
   @Inject Commissioner commissioner;
   @Inject SupportBundleUtil supportBundleUtil;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
   @Inject Config config;
 
   @ApiOperation(
@@ -85,8 +88,8 @@ public class SupportBundleController extends AuthenticatedController {
     // Support bundle for onprem and k8s universes was originally behind a runtime flag.
     // Now both are enabled by default.
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
-    Boolean k8s_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(K8S_ENABLED);
-    Boolean onprem_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(ONPREM_ENABLED);
+    Boolean k8s_enabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleK8sEnabled);
+    Boolean onprem_enabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleOnPremEnabled);
     if (cloudType == CloudType.onprem && !onprem_enabled) {
       throw new PlatformServiceException(
           BAD_REQUEST,

@@ -462,6 +462,10 @@ export interface RunTimeConfigData {
   configKey: string;
   configValue: string;
   isConfigInherited: boolean;
+  displayName: string;
+  helpTxt: string;
+  type: string;
+  scope: string;
 }
 
 export enum RunTimeConfigScope {

@@ -1,6 +1,6 @@
 ---
 title: Akka Persistence Cassandra
-linkTitle: Akka Persistence Cassandra
+linkTitle: Akka Persistence
 description: Use Akka Persistence Cassandra with YCQL API
 menu:
   preview_integrations:
@@ -9,6 +9,20 @@ menu:
     weight: 571
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../akka-ysql/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+
+  <li class="active">
+    <a href="../akka-ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 Akka is a toolkit for building highly concurrent, distributed, and resilient message-driven applications for Java and Scala.
 
