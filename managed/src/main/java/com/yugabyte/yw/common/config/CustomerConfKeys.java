@@ -41,4 +41,13 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + " overwhelming the server",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  // Todo shashank
+  public static final ConfKeyInfo<Duration> proxyEndpointTimeout =
+      new ConfKeyInfo<>(
+          "yb.proxy_endpoint_timeout",
+          ScopeType.CUSTOMER,
+          "Proxy Endpoint Timeout",
+          "todo",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }
