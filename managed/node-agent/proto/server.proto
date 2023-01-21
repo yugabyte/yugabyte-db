@@ -47,6 +47,7 @@ message UploadFileRequest {
         bytes chunkData = 2;
     };
     string user = 3;
+    uint32 chmod = 4;
 }
 
 message FileInfo {
