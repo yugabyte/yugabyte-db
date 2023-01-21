@@ -20,6 +20,9 @@ Revision history for pgTAP
 * Added a note on the use of temporary tables to the `fk_ok()` documentation, as
   well as a test to ensure the suggested expressions work. Thanks to Jim Nasby
   for highlighting the special treatment of the temporary schema (#109).
+* Removed redundant `DROP` statements from the 1.2.0 upgrade script that
+  prevented upgrades from working properly. Thanks to @robins for the PR
+  (#300)!
 
 1.2.0 2021-12-05T18:08:13Z
 --------------------------
