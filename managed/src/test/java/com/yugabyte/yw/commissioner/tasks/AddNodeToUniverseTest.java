@@ -190,6 +190,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleClusterServerCtl, // start process
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
+          TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
@@ -215,6 +216,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()));
 
@@ -233,6 +235,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleClusterServerCtl, // start process (master/tServer)
           TaskType.UpdateNodeProcess, // update process name in DB
           TaskType.WaitForServer, // wait for process to come up
+          TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SetNodeState, // Live
@@ -252,6 +255,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -279,6 +283,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer, // tServer
+          TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
@@ -309,6 +314,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
