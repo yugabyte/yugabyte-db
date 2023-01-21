@@ -14,7 +14,9 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static play.libs.Json.newObject;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -61,6 +63,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
           TaskType.WaitForServer,
+          TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.UpdatePlacementInfo,
@@ -78,6 +81,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
           TaskType.WaitForServer,
+          TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.UpdatePlacementInfo,
