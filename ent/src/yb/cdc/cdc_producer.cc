@@ -458,7 +458,7 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
     case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
     // If transaction status tablet log is GCed, or we bootstrap it is possible that that first
     // record we see for the transaction is the PENDING record. This can be treated as a CREATED
-    // record which is impotently handled.
+    // record which is idempotent.
     case TransactionStatus::CREATED: {
       record->set_operation(CDCRecordPB::TRANSACTION_CREATED);
       break;

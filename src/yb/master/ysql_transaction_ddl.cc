@@ -49,17 +49,18 @@ YsqlTransactionDdl::~YsqlTransactionDdl() {
   rpcs_.Shutdown();
 }
 
-Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint32_t> entry_oid,
-                                               TableId relfilenode_oid) {
+Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id,
+                                               PgOid entry_oid,
+                                               boost::optional<PgOid> relfilenode_oid) {
   vector<GStringPiece> col_names = {"oid"};
-  bool is_matview = relfilenode_oid.empty() ? false : true;
+  bool is_matview = relfilenode_oid.has_value();
   if (is_matview) {
     col_names.emplace_back("relfilenode");
   }
 
   Schema projection;
   auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(pg_table_id,
-        "oid", VERIFY_RESULT(std::move(entry_oid)), std::move(col_names), &projection));
+        "oid", entry_oid, std::move(col_names), &projection));
 
   // If no rows found, the entry does not exist.
   if (!VERIFY_RESULT(iter->HasNext())) {
@@ -73,7 +74,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
   if (is_matview) {
     const auto relfilenode_col_id = VERIFY_RESULT(projection.ColumnIdByName("relfilenode")).rep();
     const auto& relfilenode = row.GetValue(relfilenode_col_id);
-    if (relfilenode->uint32_value() != VERIFY_RESULT(GetPgsqlTableOid(relfilenode_oid))) {
+    if (relfilenode->uint32_value() != *relfilenode_oid) {
       return false;
     }
   }
@@ -83,7 +84,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>>
 YsqlTransactionDdl::GetPgCatalogTableScanIterator(const TableId& pg_catalog_table_id,
                                                   const string& oid_col_name,
-                                                  uint32_t oid_value,
+                                                  PgOid oid_value,
                                                   std::vector<GStringPiece> col_names,
                                                   Schema *projection) {
 
@@ -215,11 +216,11 @@ void YsqlTransactionDdl::TransactionReceived(
 }
 
 Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>& table) {
-  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
+  const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
   const auto& pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
 
   Schema projection;
-  uint32_t oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+  PgOid oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
   auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(pg_catalog_table_id,
                                                           "oid" /* oid_col_name */,
                                                           oid,
@@ -345,12 +346,12 @@ YsqlTransactionDdl::ReadPgAttribute(scoped_refptr<TableInfo> table) {
   auto tablet_peer = sys_catalog_->tablet_peer();
   const tablet::TabletPtr tablet = tablet_peer->shared_tablet();
 
-  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
-  const uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+  const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
+  const PgOid table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
   const auto& pg_attribute_table_id = GetPgsqlTableId(database_oid, kPgAttributeTableOid);
 
   Schema projection;
-  uint32_t oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+  PgOid oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
   auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(
       pg_attribute_table_id,
       "attrelid" /* col_name */,
@@ -387,7 +388,7 @@ YsqlTransactionDdl::ReadPgAttribute(scoped_refptr<TableInfo> table) {
       continue;
     }
     string attname = attname_col->string_value();
-    uint32_t atttypid = atttypid_col->uint32_value();
+    PgOid atttypid = atttypid_col->uint32_value();
     if (atttypid == 0) {
       // Ignore dropped columns.
       VLOG(3) << "Ignoring dropped column " << attname << " (atttypid = 0)"

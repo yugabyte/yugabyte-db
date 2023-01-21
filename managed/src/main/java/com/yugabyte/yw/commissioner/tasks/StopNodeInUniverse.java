@@ -16,9 +16,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.NodeActionFormData;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -35,7 +36,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
   protected boolean isBlacklistLeaders;
   protected int leaderBacklistWaitTimeMs;
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
 
   @Inject
   protected StopNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -67,9 +68,9 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           universe.name);
 
       isBlacklistLeaders =
-          runtimeConfigFactory.forUniverse(universe).getBoolean(Util.BLACKLIST_LEADERS);
+          confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaders);
       leaderBacklistWaitTimeMs =
-          runtimeConfigFactory.forUniverse(universe).getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
+          confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
@@ -219,7 +220,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
           if (otherNode != null) {
             boolean runtimeStartMasterOnStopNode =
-                runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.start_master_on_stop_node");
+                confGetter.getGlobalConf(GlobalConfKeys.startMasterOnStopNode);
             boolean apiStartMasterOnStopNode = NodeActionFormData.startMasterOnStopNode;
             if (runtimeStartMasterOnStopNode && apiStartMasterOnStopNode) {
               getRunnableTask().reset();

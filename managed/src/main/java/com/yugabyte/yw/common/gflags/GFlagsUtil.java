@@ -22,10 +22,14 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +42,10 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVPrinter;
+import org.apache.commons.csv.CSVRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -655,20 +663,41 @@ public class GFlagsUtil {
     }
   }
 
+  public static Map<String, String> trimFlags(Map<String, String> data) {
+    Map<String, String> trimData = new HashMap<>();
+    for (Map.Entry<String, String> intent : data.entrySet()) {
+      String key = intent.getKey();
+      String value = intent.getValue();
+      trimData.put(key.trim(), value.trim());
+    }
+    return trimData;
+  }
+
   private static void mergeCSVs(
       Map<String, String> userGFlags, Map<String, String> platformGFlags, String key) {
-    final String separator = ",";
     if (userGFlags.containsKey(key)) {
       String userValue = userGFlags.get(key);
-      Set<String> res =
-          Arrays.stream(userValue.split(separator))
-              .map(s -> s.trim())
-              .collect(Collectors.toCollection(LinkedHashSet::new));
-      String platformValue = platformGFlags.getOrDefault(key, "");
-      for (String plat : platformValue.split(separator)) {
-        res.add(plat);
+      try {
+        CSVParser userValueParser = new CSVParser(new StringReader(userValue), CSVFormat.DEFAULT);
+        CSVParser platformValuesParser =
+            new CSVParser(
+                new StringReader(platformGFlags.getOrDefault(key, "")), CSVFormat.DEFAULT);
+        Set<String> records = new LinkedHashSet<>();
+        StringWriter writer = new StringWriter();
+        CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT);
+        for (CSVRecord record : userValueParser) {
+          records.addAll(record.toList());
+        }
+        for (CSVRecord record : platformValuesParser) {
+          records.addAll(record.toList());
+        }
+        csvPrinter.printRecord(records);
+        csvPrinter.flush();
+        String result = writer.toString();
+        userGFlags.put(key, result.replaceAll("\n", "").replace("\r", ""));
+      } catch (IOException ignored) {
+        // can't really happen
       }
-      userGFlags.put(key, res.stream().collect(Collectors.joining(separator)));
     }
   }
 

@@ -1686,8 +1686,19 @@ public class YBClient implements AutoCloseable {
                                                 long term,
                                                 long index,
                                                 boolean initialCheckpoint) throws Exception {
+    return commitCheckpoint(table, streamId, tabletId, term, index, initialCheckpoint,
+                            false /* bootstrap */ , null /* cdcsdkSafeTime */);
+  }
+
+  public SetCheckpointResponse commitCheckpoint(YBTable table, String streamId,
+                                                String tabletId,
+                                                long term,
+                                                long index,
+                                                boolean initialCheckpoint,
+                                                boolean bootstrap,
+                                                Long cdcsdkSafeTime) throws Exception {
     Deferred<SetCheckpointResponse> d = asyncClient.setCheckpoint(table, streamId, tabletId, term,
-      index, initialCheckpoint);
+      index, initialCheckpoint, bootstrap, cdcsdkSafeTime);
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
       public Exception call(Exception o) throws Exception {

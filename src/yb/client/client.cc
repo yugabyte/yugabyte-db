@@ -1077,14 +1077,16 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
 Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
                                   const std::string& tablegroup_id,
-                                  const std::string& tablespace_id) {
+                                  const std::string& tablespace_id,
+                                  const TransactionMetadata* txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->CreateTablegroup(this,
                                  deadline,
                                  namespace_name,
                                  namespace_id,
                                  tablegroup_id,
-                                 tablespace_id);
+                                 tablespace_id,
+                                 txn);
 }
 
 Status YBClient::DeleteTablegroup(const std::string& tablegroup_id) {

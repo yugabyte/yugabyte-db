@@ -44,7 +44,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -89,7 +92,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.slf4j.Logger;
@@ -117,11 +120,15 @@ public class NodeManager extends DevopsBase {
   public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
   public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
 
+  public static final String YUGABYTE_USER = "yugabyte";
+
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
   @Inject play.Configuration appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject ReleaseManager releaseManager;
 
@@ -710,11 +717,11 @@ public class NodeManager extends DevopsBase {
       ybcDir = "ybc" + matcher.group(1);
       ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
       boolean enableVerbose =
-          runtimeConfigFactory.forUniverse(universe).getBoolean(YBC_ENABLE_VERBOSE);
+          confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
       if (enableVerbose) {
         ybcFlags.put("v", "1");
       }
-      String nfsDirs = runtimeConfigFactory.forUniverse(universe).getString(YBC_NFS_DIRS);
+      String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
       ybcFlags.put("nfs_dirs", nfsDirs);
     }
 
@@ -783,14 +790,13 @@ public class NodeManager extends DevopsBase {
         subcommand.add("--num_releases_to_keep");
         if (config.getBoolean("yb.cloud.enabled")) {
           subcommand.add(
-              runtimeConfigFactory
-                  .forUniverse(universe)
-                  .getString("yb.releases.num_releases_to_keep_cloud"));
+              Integer.toString(
+                  confGetter.getConfForScope(universe, UniverseConfKeys.ybNumReleasesToKeepCloud)));
         } else {
           subcommand.add(
-              runtimeConfigFactory
-                  .forUniverse(universe)
-                  .getString("yb.releases.num_releases_to_keep_default"));
+              Integer.toString(
+                  confGetter.getConfForScope(
+                      universe, UniverseConfKeys.ybNumReleasesToKeepDefault)));
         }
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
@@ -848,14 +854,14 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--num_releases_to_keep");
           if (config.getBoolean("yb.cloud.enabled")) {
             subcommand.add(
-                runtimeConfigFactory
-                    .forUniverse(universe)
-                    .getString("yb.releases.num_releases_to_keep_cloud"));
+                Integer.toString(
+                    confGetter.getConfForScope(
+                        universe, UniverseConfKeys.ybNumReleasesToKeepCloud)));
           } else {
             subcommand.add(
-                runtimeConfigFactory
-                    .forUniverse(universe)
-                    .getString("yb.releases.num_releases_to_keep_default"));
+                Integer.toString(
+                    confGetter.getConfForScope(
+                        universe, UniverseConfKeys.ybNumReleasesToKeepDefault)));
           }
         }
         break;
@@ -893,13 +899,12 @@ public class NodeManager extends DevopsBase {
 
           Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
           if (!config.getBoolean("yb.cloud.enabled")) {
-            Config runtimeConfig = runtimeConfigFactory.forUniverse(universe);
             GFlagsUtil.processUserGFlags(
                 node,
                 gflags,
                 GFlagsUtil.getAllDefaultGFlags(
                     taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
-                runtimeConfig.getBoolean("yb.gflags.allow_user_override"));
+                confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride));
           }
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
@@ -1184,20 +1189,25 @@ public class NodeManager extends DevopsBase {
   private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
     Map<String, String> envVars = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    Config runtimeConfig = runtimeConfigFactory.forUniverse(universe);
 
-    envVars.put("ANSIBLE_STRATEGY", runtimeConfig.getString("yb.ansible.strategy"));
     envVars.put(
-        "ANSIBLE_TIMEOUT", Integer.toString(runtimeConfig.getInt("yb.ansible.conn_timeout_secs")));
+        "ANSIBLE_STRATEGY", confGetter.getConfForScope(universe, UniverseConfKeys.ansibleStrategy));
     envVars.put(
-        "ANSIBLE_VERBOSITY", Integer.toString(runtimeConfig.getInt("yb.ansible.verbosity")));
-    if (runtimeConfig.getBoolean("yb.ansible.debug")) {
+        "ANSIBLE_TIMEOUT",
+        Integer.toString(
+            confGetter.getConfForScope(universe, UniverseConfKeys.ansibleConnectionTimeoutSecs)));
+    envVars.put(
+        "ANSIBLE_VERBOSITY",
+        Integer.toString(confGetter.getConfForScope(universe, UniverseConfKeys.ansibleVerbosity)));
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.ansibleDebug)) {
       envVars.put("ANSIBLE_DEBUG", "True");
     }
-    if (runtimeConfig.getBoolean("yb.ansible.diff_always")) {
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.ansibleDiffAlways)) {
       envVars.put("ANSIBLE_DIFF_ALWAYS", "True");
     }
-    envVars.put("ANSIBLE_LOCAL_TEMP", runtimeConfig.getString("yb.ansible.local_temp"));
+    envVars.put(
+        "ANSIBLE_LOCAL_TEMP",
+        confGetter.getConfForScope(universe, UniverseConfKeys.ansibleLocalTemp));
 
     LOG.trace("ansible env vars {}", envVars);
     return envVars;
@@ -1414,7 +1424,8 @@ public class NodeManager extends DevopsBase {
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
             String ybImage =
-                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+                Optional.ofNullable(taskParam.machineImage)
+                    .orElse(taskParam.getRegion().getYbImage());
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
@@ -1498,7 +1509,8 @@ public class NodeManager extends DevopsBase {
           // gcp uses machine_image for ansible preprovision.yml
           if (cloudType.equals(Common.CloudType.gcp)) {
             String ybImage =
-                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+                Optional.ofNullable(taskParam.machineImage)
+                    .orElse(taskParam.getRegion().getYbImage());
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
@@ -1537,8 +1549,9 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
-          String bootScript = config.getString(BOOT_SCRIPT_PATH);
+          String bootScript =
+              confGetter.getConfForScope(
+                  nodeTaskParam.getProvider(), ProviderConfKeys.universeBootScript);
           if (!bootScript.isEmpty()) {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
@@ -1563,7 +1576,7 @@ public class NodeManager extends DevopsBase {
           commandArgs.add("--pg_max_mem_mb");
           commandArgs.add(
               Integer.toString(
-                  runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
+                  confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb)));
 
           if (cloudType.equals(Common.CloudType.azu)) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -1766,7 +1779,7 @@ public class NodeManager extends DevopsBase {
           commandArgs.add("--pg_max_mem_mb");
           commandArgs.add(
               Integer.toString(
-                  runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
+                  confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb)));
           if (taskParam.force) {
             commandArgs.add("--force");
           }

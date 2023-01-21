@@ -71,11 +71,21 @@ To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you star
 
 kubeconfig is used by YugabyteDB Anywhere to create universes in the OpenShift Container Platform (OCP) cluster.
 
+Set the `YBA_NAMESPACE` environment variable to the project where your YugabyteDB Anywhere is installed, as follows:
+
+```sh
+export YBA_NAMESPACE="yb-platform"
+```
+
+Note that the `YBA_NAMESPACE` variable is used in the commands throughout this document.
+
 To create a service account in the yb-platform project, execute the following command:
 
 ```shell
+export YBA_NAMESPACE="yb-platform"
+
 oc apply \
-  -n yb-platform \
+  -n ${YBA_NAMESPACE} \
   -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml
 ```
 
@@ -90,9 +100,11 @@ The next step is to grant access to this service account using Roles and RoleBin
 To create the required RBAC objects, execute the following command:
 
 ```shell
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
- | sed "s/namespace: <SA_NAMESPACE>/namespace: yb-platform/g" \
- | oc apply -n yb-platform -f -
+ | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}/g" \
+ | oc apply -n ${YBA_NAMESPACE} -f -
 ```
 
 Expect the following output:
@@ -113,9 +125,11 @@ wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/ge
 To generate the kubeconfig file, execute the following:
 
 ```shell
+export YBA_NAMESPACE="yb-platform"
+
 python generate_kubeconfig.py \
  --service_account yugabyte-platform-universe-management \
- --namespace yb-platform
+ --namespace ${YBA_NAMESPACE}
 ```
 
 Expect the following output:
@@ -189,7 +203,9 @@ If the universe creation remains in Pending state for more than 2-3 minutes, ope
 Alternatively, you can execute the following command to check status of the pods:
 
 ```shell
-oc get pods -n yb-platform -l chart=yugabyte
+export YBA_NAMESPACE="yb-platform"
+
+oc get pods -n ${YBA_NAMESPACE} -l chart=yugabyte
 ```
 
 Expect an output similar to the following:

@@ -314,7 +314,7 @@ public class Universe extends Model {
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 
-  public static Set<Universe> getAllWithoutResources(Set<UUID> uuids) {
+  public static Set<Universe> getAllWithoutResources(Collection<UUID> uuids) {
     ExpressionList<Universe> query = find.query().where();
     CommonUtils.appendInClause(query, "universeUUID", uuids);
     List<Universe> rawList = query.findList();

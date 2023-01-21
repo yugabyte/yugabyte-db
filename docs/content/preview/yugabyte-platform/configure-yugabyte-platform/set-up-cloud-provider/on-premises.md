@@ -14,7 +14,6 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li>
     <a href="../aws/" class="nav-link">
       <i class="fa-brands fa-aws"></i>
@@ -507,7 +506,8 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 1. Enable the `yugabyte` user to run the following commands as sudo or root:
 
    ```sh
-   yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master, \
+   yugabyte ALL=(ALL:ALL) NOPASSWD: 
+   /bin/systemctl start yb-master, \
    /bin/systemctl stop yb-master, \
    /bin/systemctl restart yb-master, \
    /bin/systemctl enable yb-master, \
@@ -517,6 +517,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    /bin/systemctl restart yb-tserver, \
    /bin/systemctl enable yb-tserver, \
    /bin/systemctl disable yb-tserver, \
+   /bin/systemctl start yb-bind_check.service, \
+   /bin/systemctl stop yb-bind_check.service, \
+   /bin/systemctl restart yb-bind_check.service, \
+   /bin/systemctl enable yb-bind_check.service, \
+   /bin/systemctl disable yb-bind_check.service, \
    /bin/systemctl start yb-zip_purge_yb_logs.timer, \
    /bin/systemctl stop yb-zip_purge_yb_logs.timer, \
    /bin/systemctl restart yb-zip_purge_yb_logs.timer, \
@@ -554,7 +559,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
    `yb-master.service`
 
-   ```sh
+   ```properties
    [Unit]
    Description=Yugabyte master service
    Requires=network-online.target
@@ -593,7 +598,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
    `yb-tserver.service`
 
-   ```sh
+   ```properties
    [Unit]
    Description=Yugabyte tserver service
    Requires=network-online.target
@@ -632,7 +637,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
    `yb-zip_purge_yb_logs.service`
 
-   ```sh
+   ```properties
    [Unit]
    Description=Yugabyte logs
    Wants=yb-zip_purge_yb_logs.timer
@@ -650,7 +655,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
    `yb-zip_purge_yb_logs.timer`
 
-   ```sh
+   ```properties
    [Unit]
    Description=Yugabyte logs
    Requires=yb-zip_purge_yb_logs.service
@@ -668,7 +673,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
    `yb-clean_cores.service`
 
-   ```sh
+   ```properties
    [Unit]
    Description=Yugabyte clean cores
    Wants=yb-clean_cores.timer
@@ -686,7 +691,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
    `yb-clean_cores.timer`
 
-   ```sh
+   ```properties
    [Unit]
    Description=Yugabyte clean cores
    Requires=yb-clean_cores.service
@@ -704,7 +709,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
    `yb-collect_metrics.service`
 
-   ```sh
+   ```properties
    [Unit]
    Description=Yugabyte collect metrics
    Wants=yb-collect_metrics.timer
@@ -722,7 +727,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
    `yb-collect_metrics.timer`
 
-   ```sh
+   ```properties
    [Unit]
    Description=Yugabyte collect metrics
    Requires=yb-collect_metrics.service
@@ -736,6 +741,38 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
    [Install]
    WantedBy=timers.target
+   ```
+   
+   `yb-bind_check.service`
+   
+   ```properties
+   [Unit]
+   Description=Yugabyte IP bind check
+   Requires=network-online.target
+   After=network.target network-online.target multi-user.target
+   Before=yb-controller.service yb-tserver.service yb-master.service yb-collect_metrics.timer
+   StartLimitInterval=100
+   StartLimitBurst=10
+   
+   [Path]
+   PathExists=/home/yugabyte/controller/bin/yb-controller-server
+   PathExists=/home/yugabyte/controller/conf/server.conf
+   
+   [Service]
+   # Start
+   ExecStart=/home/yugabyte/controller/bin/yb-controller-server \
+       --flagfile /home/yugabyte/controller/conf/server.conf \
+       --only_bind --logtostderr
+   Type=oneshot
+   KillMode=control-group
+   KillSignal=SIGTERM
+   TimeoutStopSec=10
+   # Logs
+   StandardOutput=syslog
+   StandardError=syslog
+   
+   [Install]
+   WantedBy=default.target
    ```
 
 ### Use node agents
