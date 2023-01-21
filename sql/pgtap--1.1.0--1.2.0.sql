@@ -493,14 +493,6 @@ DROP FUNCTION _agg ( NAME );
 DROP FUNCTION _agg ( NAME, NAME[] );
 DROP FUNCTION _agg ( NAME, NAME );
 DROP FUNCTION _agg ( NAME, NAME, NAME[] );
-DROP FUNCTION _agg ( NAME );
-DROP FUNCTION _agg ( NAME, NAME[] );
-DROP FUNCTION _agg ( NAME, NAME );
-DROP FUNCTION _agg ( NAME, NAME, NAME[] );
-DROP FUNCTION _agg ( NAME );
-DROP FUNCTION _agg ( NAME, NAME[] );
-DROP FUNCTION _agg ( NAME, NAME );
-DROP FUNCTION _agg ( NAME, NAME, NAME[] );
 
 -- is_normal_function( schema, function, args[], description )
 CREATE OR REPLACE FUNCTION is_normal_function ( NAME, NAME, NAME[], TEXT )
