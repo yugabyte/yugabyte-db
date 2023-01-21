@@ -30,6 +30,7 @@ public class TestPgWaitQueuesRegress extends BasePgSQLTest {
     flagMap.put("enable_deadlock_detection", "true");
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("auto_promote_nonlocal_transactions_to_global", "false");
+    flagMap.put("ysql_enable_packed_row", "false");
     return flagMap;
   }
 
