@@ -1,6 +1,7 @@
 ---
-title: PostgreSQL issues
-linkTitle: PostgreSQL issues
+title: PostgreSQL
+linkTitle: PostgreSQL
+headcontent: Known issues when migrating data from PostgreSQL.
 description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
 menu:
   preview:
@@ -8,13 +9,19 @@ menu:
     parent: known-issues
     weight: 102
 type: docs
+rightNav:
+  hideH3: true
 ---
 
 This page documents known issues you may encounter and suggested workarounds when migrating data from PostgreSQL to YugabyteDB.
 
-#### Adding primary key to a partitioned table results in an error
+## Contents
 
-**GitHub link**: [Issue #612](https://github.com/yugabyte/yb-voyager/issues/612)
+- [Adding primary key to a partitioned table results in an error](#adding-primary-key-to-a-partitioned-table-results-in-an-error)
+
+### Adding primary key to a partitioned table results in an error
+
+**GitHub**: [Issue #612](https://github.com/yugabyte/yb-voyager/issues/612)
 
 **Description**: If you have a partitioned table in which primary key is added later using `ALTER TABLE`, then the table creation fails with the following error:
 

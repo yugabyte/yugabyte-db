@@ -1,20 +1,36 @@
 ---
-title: MySQL issues
-linkTitle: MySQL issues
+title: MySQL
+linkTitle: MySQL
+headcontent: Known issues when migrating data from MySQL.
 description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
 menu:
   preview:
     identifier: mysql-issues
     parent: known-issues
-    weight: 100
+    weight: 101
 type: docs
+rightNav:
+  hideH3: true
 ---
 
 This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL to YugabyteDB.
 
-#### Approaching MAX/MIN double precision values are not exported
+## Contents
 
-**GitHub link**: [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188)
+- [Approaching MAX/MIN double precision values are not exported](#approaching-max-min-double-precision-values-are-not-exported)
+- [Functional/Expression indexes fail to migrate](#functional-expression-indexes-fail-to-migrate)
+- [Exporting data from MySQL when table names include quotes](#exporting-data-from-mysql-when-table-names-include-quotes)
+- [Spatial datatype migration is not yet supported](#spatial-datatype-migration-is-not-yet-supported)
+- [Incorrect parsing of views involving functions without alias](#incorrect-parsing-of-views-involving-functions-without-alias)
+- [Datatype mismatch in objects causing issues](#datatype-mismatch-in-objects-causing-issues)
+- [`drop temporary table` statements are not supported](#drop-temporary-table-statements-are-not-supported)
+- [Key defined for a table in functions/procedures cause issues](#key-defined-for-a-table-in-functions-procedures-cause-issues)
+- [Multiple declarations of variables in functions](#multiple-declarations-of-variables-in-functions)
+- [Exporting text type columns with default value](#exporting-text-type-columns-with-default-value)
+
+### Approaching MAX/MIN double precision values are not exported
+
+**GitHub**: [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188)
 
 **Description**: Exporting double precision values near MAX/MIN value results in an _out of range_ error.
 
@@ -83,9 +99,9 @@ Suggested changes to the schema can be done using one of the following options:
 
 ---
 
-#### Functional/Expression indexes fail to migrate
+### Functional/Expression indexes fail to migrate
 
-**GitHub link**: [Issue #579](https://github.com/yugabyte/yb-voyager/issues/579)
+**GitHub**: [Issue #579](https://github.com/yugabyte/yb-voyager/issues/579)
 
 **Description**: If your schema contains Functional/Expression indexes in MYSQL, the index creation fails with a syntax error during migration and doesn't get migrated.
 
@@ -113,9 +129,9 @@ CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(to_date))));
 
 ---
 
-#### Exporting data from MySQL when table names include quotes
+### Exporting data from MySQL when table names include quotes
 
-**GitHub link**: [Issue #320](https://github.com/yugabyte/yb-voyager/issues/320)
+**GitHub**: [Issue #320](https://github.com/yugabyte/yb-voyager/issues/320)
 
 **Description**: When exporting a schema from MySQL that includes a table name that has quotes, the table is exported with the table name converted to lowercase and without the quotes, resulting in an error.
 
@@ -175,9 +191,9 @@ Suggested workaround is as follows:
 
 ---
 
-#### Spatial datatype migration is not yet supported
+### Spatial datatype migration is not yet supported
 
-**GitHub link**: [Issue #137](https://github.com/yugabyte/yb-voyager/issues/137)
+**GitHub**: [Issue #137](https://github.com/yugabyte/yb-voyager/issues/137)
 
 **Description**: If your MYSQL schema contains spatial datatypes, the migration will not complete as this migration type is not yet supported by YugabyteDB Voyager. Supporting spatial datatypes will require extra dependencies such as [PostGIS](https://postgis.net/) to be installed.
 
@@ -195,9 +211,9 @@ CREATE TABLE address (
 
 ---
 
-#### Incorrect parsing of views involving functions without alias
+### Incorrect parsing of views involving functions without alias
 
-**GitHub link**: [Issue #689](https://github.com/yugabyte/yb-voyager/issues/689)
+**GitHub**: [Issue #689](https://github.com/yugabyte/yb-voyager/issues/689)
 
 **Description**: If a view contains a function in its definition in a SELECT statement without any ALIAS, an alias corresponding to the function is appended to the schema. This results in an invalid schema.
 
@@ -233,9 +249,9 @@ Choose one from the following suggested changes to the schema.
 
 ---
 
-#### Datatype mismatch in objects causing issues
+### Datatype mismatch in objects causing issues
 
-**GitHub link**: [Issue #690](https://github.com/yugabyte/yb-voyager/issues/690)
+**GitHub**: [Issue #690](https://github.com/yugabyte/yb-voyager/issues/690)
 
 **Description**: If you have an object which references a table column whose datatype has been mapped to something else, there may be datatype mismatch issues on the target YugabyteDB database.
 
@@ -299,9 +315,9 @@ CREATE OR REPLACE VIEW v1 AS SELECT foo(bar.id::int) AS p_name FROM bar;
 
 ---
 
-#### `drop temporary table` statements are not supported
+### `drop temporary table` statements are not supported
 
-**GitHub link**: [Issue #705](https://github.com/yugabyte/yb-voyager/issues/705)
+**GitHub**: [Issue #705](https://github.com/yugabyte/yb-voyager/issues/705)
 
 **Description**: If you have a temporary table defined in a function or stored procedure in MySQL and you have a `drop temporary table` statement associated with it, the schema gets exported as is, which is an invalid syntax in YugabyteDB.
 
@@ -359,9 +375,9 @@ SECURITY DEFINER
 
 ---
 
-#### Key defined for a table in functions/procedures cause issues
+### Key defined for a table in functions/procedures cause issues
 
-**GitHub link**: [Issue #707](https://github.com/yugabyte/yb-voyager/issues/707)
+**GitHub**: [Issue #707](https://github.com/yugabyte/yb-voyager/issues/707)
 
 **Description**: If you have a basic _key_ defined for a table in a function/procedure, the schema is exported as is, and causes issues because using a key in YugabyteDB is an invalid syntax.
 
@@ -435,9 +451,9 @@ Choose one from the following suggested changes to the schema.
 
 ---
 
-#### Multiple declarations of variables in functions
+### Multiple declarations of variables in functions
 
-**GitHub link**: [Issue #708](https://github.com/yugabyte/yb-voyager/issues/708)
+**GitHub**: [Issue #708](https://github.com/yugabyte/yb-voyager/issues/708)
 
 **Description**: If you re-initializate a variable in a function in MySQL using the set statement, the variable is declared twice with different datatypes in the exported schema.
 
@@ -500,9 +516,9 @@ SECURITY DEFINER
 
 ---
 
-#### Exporting text type columns with default value
+### Exporting text type columns with default value
 
-**GitHub link**: [Issue #621](https://github.com/yugabyte/yb-voyager/issues/621)
+**GitHub**: [Issue #621](https://github.com/yugabyte/yb-voyager/issues/621)
 
 **Description**: If you have a default value for text type columns in MYSQL, it does not export properly and fails during import.
 

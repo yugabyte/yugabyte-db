@@ -1,6 +1,7 @@
 ---
-title: MySQL and Oracle issues
-linkTitle: MySQL and Oracle issues
+title: MySQL and Oracle
+linkTitle: MySQL and Oracle
+headcontent: Known issues when migrating data from MySQL or Oracle.
 description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
 menu:
   preview:
@@ -8,13 +9,22 @@ menu:
     parent: known-issues
     weight: 103
 type: docs
+rightNav:
+  hideH3: true
 ---
 
 This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL or Oracle to YugabyteDB.
 
-#### Importing case-sensitive schema names
+## Contents
 
-**GitHub link**: [Issue #334](https://github.com/yugabyte/yb-voyager/issues/334)
+- [Importing case-sensitive schema names](#importing-case-sensitive-schema-names)
+- [Partition key column not part of primary key columns](#partition-key-column-not-part-of-primary-key-columns)
+- [Tables partitioned with expressions cannot contain primary/unique keys](#tables-partitioned-with-expressions-cannot-contain-primary-unique-keys)
+- [Multi-column partition by list is not supported](#multi-column-partition-by-list-is-not-supported)
+
+### Importing case-sensitive schema names
+
+**GitHub**: [Issue #334](https://github.com/yugabyte/yb-voyager/issues/334)
 
 **Description**: When the source is either MySQL or Oracle, if you attempt to migrate the database using a case-sensitive schema name, the migration will fail with `no schema has been selected` or `schema already exists` error(s).
 
@@ -60,9 +70,9 @@ ALTER SCHEMA "test" RENAME TO "Test";
 
 ---
 
-#### Partition key column not part of primary key columns
+### Partition key column not part of primary key columns
 
-**GitHub link**: [Issue #578](https://github.com/yugabyte/yb-voyager/issues/578)
+**GitHub**: [Issue #578](https://github.com/yugabyte/yb-voyager/issues/578)
 
 **Description**:  In YugabyteDB, if a table is partitioned on a column, then that column needs to be a part of the primary key columns. Creating a table where the partition key column is not part of the primary key columns results in an error.
 
@@ -112,9 +122,9 @@ CREATE TABLE employees (
 
 ---
 
-#### Tables partitioned with expressions cannot contain primary/unique keys
+### Tables partitioned with expressions cannot contain primary/unique keys
 
-**GitHub Link**: [Issue#698](https://github.com/yugabyte/yb-voyager/issues/698)
+**GitHub**: [Issue#698](https://github.com/yugabyte/yb-voyager/issues/698)
 
 **Description**: If you have a table in the source database which is partitioned using any expression/function, that table cannot have a primary or unique key on any of its columns, as it is an invalid syntax in YugabyteDB.
 
@@ -172,9 +182,9 @@ CREATE TABLE sales (
 
 ---
 
-#### Multi-column partition by list is not supported
+### Multi-column partition by list is not supported
 
-**GitHub Link**: [Issue#699](https://github.com/yugabyte/yb-voyager/issues/699)
+**GitHub**: [Issue#699](https://github.com/yugabyte/yb-voyager/issues/699)
 
 **Description**: In YugabyteDB, you cannot perform a partition by list on multiple columns and exporting the schema results in an error.
 

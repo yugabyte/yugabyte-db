@@ -27,12 +27,23 @@ Currently, yb-voyager doesn't support the following features:
 ## Known issues
 
 <div class="row">
+ <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="general-issues/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
+        <div class="title">General known issues</div>
+      </div>
+      <div class="body">
+       Known issues common to MySQL, PostgreSQL, and Oracle source databases.
+      </div>
+    </a>
+  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="mysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">MySQL issues</div>
+        <div class="title">MySQL</div>
       </div>
       <div class="body">
         Known issues with MySQL as the source database.
@@ -44,7 +55,7 @@ Currently, yb-voyager doesn't support the following features:
     <a class="section-link icon-offset" href="postgresql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">PostgreSQL issues</div>
+        <div class="title">PostgreSQL</div>
       </div>
       <div class="body">
         Known issues with PostgreSQL as the source database.
@@ -56,7 +67,7 @@ Currently, yb-voyager doesn't support the following features:
     <a class="section-link icon-offset" href="oracle/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">Oracle issues</div>
+        <div class="title">Oracle</div>
       </div>
       <div class="body">
        Known issues with Oracle as the source database.
@@ -68,22 +79,10 @@ Currently, yb-voyager doesn't support the following features:
     <a class="section-link icon-offset" href="mysql-oracle/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">MySQL and Oracle issues</div>
+        <div class="title">MySQL and Oracle</div>
       </div>
       <div class="body">
        Known issues common to MySQL and Oracle source databases.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="all-issues/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">MySQL, PostgreSQL, and Oracle issues</div>
-      </div>
-      <div class="body">
-       Known issues common to MySQL, PostgreSQL, and Oracle source databases.
       </div>
     </a>
   </div>

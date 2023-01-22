@@ -1,20 +1,31 @@
 ---
-title: MySQL, PostgreSQL, and Oracle issues
-linkTitle: MySQL, PostgreSQL, and Oracle issues
+title: General known issues
+linkTitle: General
+headcontent: Known issues when migrating data from MySQL, Oracle, or PostgreSQL.
 description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
 menu:
   preview:
-    identifier: all-issues
+    identifier: general-issues
     parent: known-issues
-    weight: 104
+    weight: 100
 type: docs
+rightNav:
+  hideH3: true
 ---
 
 This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL, PostgreSQL, or Oracle to YugabyteDB.
 
-#### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
+## Contents
 
-**GitHub link**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
+- [Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans](#index-on-timestamp-column-should-be-imported-as-asc-range-index-to-avoid-sequential-scans)
+
+- [Exporting data with names for tables/functions/procedures using special characters/whitespaces fails](#exporting-data-with-names-for-tables-functions-procedures-using-special-characters-whitespaces-fails)
+
+- [Importing with case-sensitive schema names](#importing-with-case-sensitive-schema-names)
+
+### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
+
+**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
 
 **Description**: If there is an index on a timestamp column, the index should be imported as a range index automatically, as most queries relying on timestamp columns use range predicates. This avoids sequential scans and makes indexed scans accessible.
 
@@ -36,9 +47,9 @@ CREATE INDEX ON timestamp_demo (ts ASC);
 
 ---
 
-#### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
+### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
 
-**GitHub links**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
+**GitHub**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
 
 **Description**: If you define complex names for your source database tables/functions/procedures using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123", the migration hangs during the export data step.
 
@@ -65,9 +76,9 @@ The preceding example may hang or result in an error.
 
 ---
 
-#### Importing with case-sensitive schema names
+### Importing with case-sensitive schema names
 
-**GitHub links**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
+**GitHub**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
 
 **Description**: If you migrate your database using a case-sensitive schema name, the migration will fail with a "no schema has been selected" or "schema already exists" error(s).
 

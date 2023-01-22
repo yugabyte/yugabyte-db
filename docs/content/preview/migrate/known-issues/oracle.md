@@ -1,6 +1,7 @@
 ---
-title: Oracle issues
-linkTitle: Oracle issues
+title: Oracle
+linkTitle: Oracle
+headcontent: Known issues when migrating data from Oracle.
 description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
 menu:
   preview:
@@ -8,13 +9,23 @@ menu:
     parent: known-issues
     weight: 101
 type: docs
+rightNav:
+  hideH3: true
 ---
 
 This page documents known issues you may encounter and suggested workarounds when migrating data from Oracle to YugabyteDB.
 
-#### Some numeric types are not exported
+## Contents
 
-**GitHub link**: [Issue #207](https://github.com/yugabyte/yb-voyager/issues/207)
+- [Some numeric types are not exported](#some-numeric-types-are-not-exported)
+- [RAW data is not imported in some cases](#raw-data-is-not-imported-in-some-cases)
+- [Using a variation of `trunc` with datetime columns in Oracle and YugabyteDB](#using-a-variation-of-trunc-with-datetime-columns-in-oracle-and-yugabytedb)
+- [A unique index which is also a primary key is not migrated](#a-unique-index-which-is-also-a-primary-key-is-not-migrated)
+- [Issue in some unsupported cases of GIN indexes](#issue-in-some-unsupported-cases-of-gin-indexes)
+
+### Some numeric types are not exported
+
+**GitHub**: [Issue #207](https://github.com/yugabyte/yb-voyager/issues/207)
 
 **Description**: For cases where the precision is less than the scale in a numeric attribute, the numeric attribute fails to get imported to YugabyteDB.
 
@@ -72,9 +83,9 @@ CREATE TABLE numeric_size (
 
 ---
 
-#### RAW data is not imported in some cases
+### RAW data is not imported in some cases
 
-**GitHub link**: [Issue #584](https://github.com/yugabyte/yb-voyager/issues/584)
+**GitHub**: [Issue #584](https://github.com/yugabyte/yb-voyager/issues/584)
 
 **Description**: When attempting to migrate a (LONG) RAW attribute from an Oracle instance, you may face an _invalid hexadecimal error_.
 
@@ -82,9 +93,9 @@ CREATE TABLE numeric_size (
 
 ---
 
-#### Using a variation of `trunc` with datetime columns in Oracle and YugabyteDB
+### Using a variation of `trunc` with datetime columns in Oracle and YugabyteDB
 
-**GitHub link**: [Issue #602](https://github.com/yugabyte/yb-voyager/issues/602)
+**GitHub**: [Issue #602](https://github.com/yugabyte/yb-voyager/issues/602)
 
 **Description**: You can use the `trunc` function with a timestamp column in your Oracle schema, but this variation is not supported in YugabytedB, where the `date_trunc` function is used for these types of datetime columns. When you export such a schema using `trunc`, the data import fails.
 
@@ -106,9 +117,9 @@ ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = date_trunc('day
 
 ---
 
-#### A unique index which is also a primary key is not migrated
+### A unique index which is also a primary key is not migrated
 
-**GitHub link**: [Issue #571](https://github.com/yugabyte/yb-voyager/issues/571)
+**GitHub**: [Issue #571](https://github.com/yugabyte/yb-voyager/issues/571)
 
 **Description**: If your Oracle schema contains a unique index and a primary key on the same set of columns, the unique index does not get exported.
 
@@ -132,9 +143,9 @@ CREATE UNIQUE INDEX email_unique ON public.employees USING btree (email);
 
 ---
 
-#### Issue in some unsupported cases of GIN indexes
+### Issue in some unsupported cases of GIN indexes
 
-**GitHub link**: [Issue #724](https://github.com/yugabyte/yb-voyager/issues/724)
+**GitHub**: [Issue #724](https://github.com/yugabyte/yb-voyager/issues/724)
 
 **Description**: If there are some GIN indexes in the schema which are [not supported by YugabyteDB](https://github.com/yugabyte/yugabyte-db/issues/7850), it will display an error during import schema.
 
