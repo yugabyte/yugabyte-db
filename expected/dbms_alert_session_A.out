@@ -1,4 +1,4 @@
-\set ECHO all
+\set ECHO none
 SELECT pg_sleep(3);
  pg_sleep 
 ----------

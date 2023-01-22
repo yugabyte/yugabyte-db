@@ -1,4 +1,4 @@
-\set ECHO all
+\set ECHO none
 /* Register alerts */
 SELECT dbms_alert.register('a1');
  register 
