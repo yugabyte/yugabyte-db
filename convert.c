@@ -19,6 +19,12 @@
 
 #endif
 
+#if PG_VERSION_NUM >= 160000
+
+#include "varatt.h"
+
+#endif
+
 PG_FUNCTION_INFO_V1(orafce_to_char_int4);
 PG_FUNCTION_INFO_V1(orafce_to_char_int8);
 PG_FUNCTION_INFO_V1(orafce_to_char_float4);

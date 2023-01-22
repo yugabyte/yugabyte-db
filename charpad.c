@@ -15,6 +15,12 @@
 #include "orafce.h"
 #include "builtins.h"
 
+#if PG_VERSION_NUM >= 160000
+
+#include "varatt.h"
+
+#endif
+
 /* flags */
 #define ON	true
 #define OFF	false

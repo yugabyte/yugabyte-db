@@ -18,6 +18,12 @@
 #include "orafce.h"
 #include "builtins.h"
 
+#if PG_VERSION_NUM >= 160000
+
+#include "varatt.h"
+
+#endif
+
 PG_FUNCTION_INFO_V1(dbms_random_initialize);
 PG_FUNCTION_INFO_V1(dbms_random_normal);
 PG_FUNCTION_INFO_V1(dbms_random_random);

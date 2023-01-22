@@ -21,6 +21,12 @@
 #include "orafce.h"
 #include "builtins.h"
 
+#if PG_VERSION_NUM >= 160000
+
+#include "varatt.h"
+
+#endif
+
 PG_FUNCTION_INFO_V1(plvdate_add_bizdays);
 PG_FUNCTION_INFO_V1(plvdate_nearest_bizday);
 PG_FUNCTION_INFO_V1(plvdate_next_bizday);
