@@ -55,14 +55,14 @@ Prepare your source database by creating a new database user, and provide it wit
   </div>
 </div>
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< note title="Connecting to Oracle instances" >}}
 You can use only one of the following arguments to connect to your Oracle instance.
 
-- [`--source-db-schema`](../yb-voyager-cli/#source-db-schema)
-- [`--oracle-db-sid`](../yb-voyager-cli/#oracle-db-sid)
-- [`--oracle-tns-alias`](../yb-voyager-cli/##ssl-connectivity)
+- [`--source-db-schema`](../reference/yb-voyager-cli/#source-db-schema)
+- [`--oracle-db-sid`](../reference/yb-voyager-cli/#oracle-db-sid)
+- [`--oracle-tns-alias`](../reference/yb-voyager-cli/#ssl-connectivity)
 {{< /note >}}
 
 ## Prepare the target database
@@ -94,7 +94,7 @@ Create a user with [`SUPERUSER`](../../api/ysql/the-sql-language/statements/dcl_
      GRANT yb_superuser TO ybvoyager;
      ```
 
-If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< warning title="Deleting the ybvoyager user" >}}
 
