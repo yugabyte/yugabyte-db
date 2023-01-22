@@ -957,6 +957,83 @@ The example below shows migration when the leaf data is displayed.
 </tbody>
 </table>
 
+##### 4.2.3.8 Returns all possible hierarchy permutations
+
+**Functional differences**
+
+ - **Oracle database**
+     - When CONNECT BY LEVEL is used without START WITH clause and PRIOR operator.
+ - **PostgreSQL**
+     - CONNECT BY LEVEL cannot be specified.
+
+**Migration procedure**
+
+In a recursive query that uses a WITH clause, returns all possible hierarchy permutations can use the descartes product. Use the following procedure to perform migration:
+
+1. Replace the hierarchical query with syntax that uses a recursive query (WITH clause).
+2. The left query of Union ALL does not specify a filter condition. The right query is the Descartes product of two tables, and the filter condition is the number of recursions.
+
+The following shows the conversion format containing rootName.
+
+~~~
+ WITH RECURSIVE queryName(
+     columnUsed1, level
+) AS
+(   SELECT columnUsed, 1
+      FROM  targetTableOfHierarchicalQuery
+    UNION ALL
+    SELECT columnUsed(qualified by n), w.level+1
+      FROM  targetTableOfHierarchicalQuery n,
+            queryName w
+      WHERE  w.level+1 < levelNum
+);
+~~~
+
+
+**Migration example**
+
+The example below shows migration when returns all possible hierarchy permutations of two levels.
+
+<table>
+<thead>
+<tr>
+<th align="center">Oracle database</th>
+<th align="center">PostgreSQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">
+<pre><code>select staff_id, name, level 
+    from staff_table 
+    <b>connect by level < 3</b>;
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+ </code></pre>
+</td>
+
+<td align="left">
+<pre><code>WITH RECURSIVE staff_table_w( staff_id, 
+                     name 
+                     level ) AS 
+ (   SELECT staff_id, name, <b>1 </b>
+       FROM staff_table 
+     UNION ALL 
+     SELECT n.staff_id, n.name, <b>w.level + 1 </b>
+       FROM staff_table n, staff_table_w w
+       <b> WHERE w.level + 1 < 3 </b>
+ )
+ SELECT staff_id, name, level 
+ FROM staff_table_w;</code></pre>
+</td>
+</tr>
+</tbody>
+</table>
+
 #### 4.2.4 MINUS
 
 **Description**
