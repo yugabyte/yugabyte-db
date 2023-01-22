@@ -65,7 +65,7 @@ The preceding example may hang or result in an error.
 
 ---
 
-#### Import issue with case-sensitive schema names
+#### Importing with case-sensitive schema names
 
 **GitHub links**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
 
