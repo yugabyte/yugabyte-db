@@ -67,11 +67,12 @@ You can run examples using a universe set up on your local machine or in a cloud
   <li>
     <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
-      <img src="/icons/database.svg" alt="Server Icon">
+      <img src="/icons/server.svg" alt="Server Icon">
       Use YugabyteDB Anywhere
     </a>
   </li>
 </ul>
+
 
 
 
@@ -294,7 +295,7 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
   <li>
     <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
-      <img src="/icons/database.svg" alt="Server Icon">
+      <img src="/icons/server.svg" alt="Server Icon">
       Use YugabyteDB Anywhere
     </a>
   </li>
