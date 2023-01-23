@@ -384,7 +384,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ImmutableList.of(ConfKeyTags.UIDriven));
   public static ConfKeyInfo<String> ldapServiceAccountPassword =
       new ConfKeyInfo<>(
-          "yb.security.ldap.ldap_service_acccount_password",
+          "yb.security.ldap.ldap_service_account_password",
           ScopeType.GLOBAL,
           "LDAP Service Account Password",
           "Hidden because this key has dedicated UI",
@@ -400,7 +400,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ImmutableList.of(ConfKeyTags.UIDriven));
   public static ConfKeyInfo<Boolean> enableLdapStartTls =
       new ConfKeyInfo<>(
-          "yb.security.ldap.enalbe_ldap_start_tls",
+          "yb.security.ldap.enable_ldap_start_tls",
           ScopeType.GLOBAL,
           "Enable LDAPS start TLS",
           "Hidden because this key has dedicated UI",
