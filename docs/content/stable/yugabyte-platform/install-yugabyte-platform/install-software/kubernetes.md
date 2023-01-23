@@ -302,8 +302,8 @@ When your Kubernetes cluster nodes are spread across multiple zones, you can use
 ```yaml
 # yba-values.yaml
 zoneAffinity:
-  - us-west1-a
-  - us-west1-b
+- us-west1-a
+- us-west1-b
 ```
 
 #### tolerations
