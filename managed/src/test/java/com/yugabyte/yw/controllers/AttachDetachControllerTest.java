@@ -14,6 +14,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.ByteString;
@@ -150,16 +151,20 @@ public class AttachDetachControllerTest extends FakeDBApplication {
       e.printStackTrace();
     }
 
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("skipReleases", true);
+
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", xClusterApiEndpoint, user.createAuthToken(), createXClusterRequestParams);
     assertOk(result);
 
-    result =
-        assertPlatformException(
-            () ->
-                FakeApiHelper.doRequestWithAuthTokenAndBody(
-                    "POST", detachEndpoint, user.createAuthToken(), null));
+    result = assertPlatformException(() -> detachUniverse(bodyJson));
     assertEquals(METHOD_NOT_ALLOWED, result.status());
+  }
+
+  private Result detachUniverse(JsonNode bodyJson) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        "POST", detachEndpoint, user.createAuthToken(), bodyJson);
   }
 }
