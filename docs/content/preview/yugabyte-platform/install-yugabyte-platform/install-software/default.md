@@ -108,6 +108,6 @@ If the preflight check fails, review the [Troubleshoot YugabyteDB Anywhere](../.
 
 Specify TLS versions via **Application config**, as shown in the following illustration:
 
-![Application Config](/images/replicated/application-config.png)
+![Application Config](/images/replicated/application-config1.png)
 
 The recommended TLS version is 1.2.
