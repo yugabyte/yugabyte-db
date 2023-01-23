@@ -55,14 +55,14 @@ Prepare your source database by creating a new database user, and provide it wit
   </div>
 </div>
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< note title="Connecting to Oracle instances" >}}
 You can use only one of the following arguments to connect to your Oracle instance.
 
-- [`--source-db-schema`](../yb-voyager-cli/#source-db-schema)
-- [`--oracle-db-sid`](../yb-voyager-cli/#oracle-db-sid)
-- [`--oracle-tns-alias`](../yb-voyager-cli/##ssl-connectivity)
+- [`--source-db-schema`](../reference/yb-voyager-cli/#source-db-schema)
+- [`--oracle-db-sid`](../reference/yb-voyager-cli/#oracle-db-sid)
+- [`--oracle-tns-alias`](../reference/yb-voyager-cli/#ssl-connectivity)
 {{< /note >}}
 
 ## Prepare the target database
@@ -94,7 +94,7 @@ Create a user with [`SUPERUSER`](../../api/ysql/the-sql-language/statements/dcl_
      GRANT yb_superuser TO ybvoyager;
      ```
 
-If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< warning title="Deleting the ybvoyager user" >}}
 
@@ -170,7 +170,7 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
 
 ```
 
-Refer to [export schema](../yb-voyager-cli/#export-schema) for details about the arguments.
+Refer to [export schema](../reference/yb-voyager-cli/#export-schema) for details about the arguments.
 
 #### Analyze schema
 
@@ -185,7 +185,7 @@ yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 
 The above command generates a report file under the `EXPORT_DIR/reports/` directory.
 
-Refer to [analyze schema](../yb-voyager-cli/#analyze-schema) for details about the arguments.
+Refer to [analyze schema](../reference/yb-voyager-cli/#analyze-schema) for details about the arguments.
 
 #### Manually edit the schema
 
@@ -193,7 +193,7 @@ Fix all the issues listed in the generated schema analysis report by manually ed
 
 After making the manual changes, re-run the `yb-voyager analyze-schema` command. This generates a fresh report using your changes. Repeat these steps until the generated report contains no issues.
 
-To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../yb-voyager-cli/#data-modeling).
+To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../reference/data-modeling/).
 
 {{< note title="Manual schema changes" >}}
 
@@ -219,7 +219,7 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
 ```
 
 Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
-Refer to [export data](../yb-voyager-cli/#export-data) for details about the arguments.
+Refer to [export data](../reference/yb-voyager-cli/#export-data) for details about the arguments, and [export data status](../reference/yb-voyager-cli/#export-data-status) to track the status of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
@@ -246,7 +246,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
 ```
 
-Refer to [import schema](../yb-voyager-cli/#import-schema) for details about the arguments.
+Refer to [import schema](../reference/yb-voyager-cli/#import-schema) for details about the arguments.
 
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
@@ -273,7 +273,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
 
 By default, yb-voyager creates C/2 connections where C is the total number of cores in the cluster. You can change the default number of connections using the `--parallel-jobs` argument. If yb-voyager fails to determine the number of cores in the cluster, it defaults to 2 connections per node.
 
-Refer to [import data](../yb-voyager-cli/#import-data) for details about the arguments.
+Refer to [import data](../reference/yb-voyager-cli/#import-data) for details about the arguments.
 
 yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
 
@@ -307,7 +307,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
         –-has-header
 ```
 
-Refer to [import data file](../yb-voyager-cli/#import-data-file) for details about the arguments.
+Refer to [import data file](../reference/yb-voyager-cli/#import-data-file) for details about the arguments.
 
 ### Import indexes and triggers
 
@@ -325,7 +325,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --post-import-data
 ```
 
-Refer to [import schema](../yb-voyager-cli/#import-schema) for details about the arguments.
+Refer to [import schema](../reference/yb-voyager-cli/#import-schema) for details about the arguments.
 
 ### Verify migration
 
@@ -333,7 +333,14 @@ After the schema and data import is complete, the automated part of the database
 
 {{< warning title = "Caveat associated with rows reported by import data status" >}}
 
-Suppose the [import data](#import-data) or [import data file](#import-data-file) command fails, you can resolve the issue by deleting some of the rows from the split files. After retrying the [import data](#import-data) command and post a successful import operation, if you issue an [import data status](#import-data-status) command, it reports an incorrect imported row count because the command doesn't take into account the deleted rows.
+Suppose you have a scenario where,
+
+- [import data](#import-data) or [import data file](#import-data-file) command fails.
+- To resolve this issue, you delete some of the rows from the split files.
+- After retrying, the import data command completes successfully.
+
+In this scenario, [import data status](#import-data-status) command reports incorrect imported row count; because it doesn't take into account the deleted rows.
+
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
 {{< /warning >}}
