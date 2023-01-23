@@ -138,8 +138,8 @@ replication_info {
 ```
 
 One additional option to consider is to set a preferred location for all the tablet leaders using the [yb-admin set_preferred_zones](../../../admin/yb-admin#set-preferred-zones) command.
-For multi-row or multi-table transactional operations, colocating the leaders within a single zone or region can help reduce the number
-of cross-region network hops involved in executing a transaction and, as a result, improve performance.
+
+For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction and, as a result, improve performance.
 
 The following command sets the preferred zone to `aws.us-west.us-west-2a`:
 
