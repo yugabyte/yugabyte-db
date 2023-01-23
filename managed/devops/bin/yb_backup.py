@@ -1287,6 +1287,18 @@ class YBBackup:
         options = BackupOptions(self.args)
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
+            host_base = os.getenv('AWS_HOST_BASE')
+            path_style_access = True if os.getenv('PATH_STYLE_ACCESS',
+                                                  "false") == "true" else False
+            if host_base:
+                bucket = self.args.backup_location
+                if not path_style_access:
+                    bucket += '.' + host_base
+
+                host_base_cfg = 'host_base = ' + host_base + '\n' \
+                                'host_bucket = ' + bucket + '\n'
+            else:
+                host_base_cfg = ''
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
                 metadata = get_instance_profile_credentials()
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
@@ -1294,27 +1306,15 @@ class YBBackup:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + metadata[0] + '\n' +
                                      'secret_key = ' + metadata[1] + '\n' +
-                                     'access_token = ' + metadata[2] + '\n')
+                                     'access_token = ' + metadata[2] + '\n' +
+                                     host_base_cfg)
                     else:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + '\n' +
                                      'secret_key = ' + '\n' +
-                                     'access_token = ' + '\n')
+                                     'access_token = ' + '\n' +
+                                     host_base_cfg)
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
-                host_base = os.getenv('AWS_HOST_BASE')
-                path_style_access = True if os.getenv('PATH_STYLE_ACCESS',
-                                                      "false") == "true" else False
-                if host_base:
-                    if path_style_access:
-                        host_base_cfg = 'host_base = {0}\n' \
-                                        'host_bucket = {1}\n'.format(
-                                            host_base, self.args.backup_location)
-                    else:
-                        host_base_cfg = 'host_base = {0}\n' \
-                                        'host_bucket = {1}.{0}\n'.format(
-                                            host_base, self.args.backup_location)
-                else:
-                    host_base_cfg = ''
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
                     s3_cfg.write('[default]\n' +
                                  'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
