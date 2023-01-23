@@ -1,18 +1,26 @@
 ---
 title: YugabyteDB
 description: YugabyteDB documentation is the best source to learn the most in-depth information about the YugabyteDB database, YugabyteDB Managed, and YugabyteDB Anywhere.
-headcontent: v2.17 preview release series
+headcontent: Open source cloud native distributed SQL database
 weight: 1
 type: indexpage
+resourcesIntro: Quick Links
+resources:
+  - title: Migrate to YugabyteDB
+    url: /preview/migrate/
+  - title: Deploy
+    url: /preview/deploy/
+  - title: Manage
+    url: /preview/manage/
+  - title: Troubleshoot
+    url: /preview/troubleshoot/
 ---
-
-Documentation for the open source cloud native distributed SQL database.
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Get Started locally on your Laptop"
-    description="Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL."
-    buttonText="Get started"
+    description="Download and install YugabyteDB on your laptop, create a cluster, and build a sample application."
+    buttonText="Quick Start"
     buttonUrl="/preview/quick-start/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
@@ -20,105 +28,67 @@ Documentation for the open source cloud native distributed SQL database.
   {{< sections/bottom-image-box
     title="Explore distributed SQL"
     description="Explore the features of distributed SQL, with examples."
-    buttonText="Get started"
+    buttonText="Explore"
     buttonUrl="/preview/explore/"
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
 
-## Get under the hood
+## Develop for YugabyteDB
 
-{{< sections/3-boxes-top-image >}}
+{{< sections/3-boxes>}}
   {{< sections/3-box-card
     title="Build a Hello world application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
-    buttonText="Get started"
+    buttonText="Build"
     buttonUrl="/preview/develop/build-apps/"
-    imageAlt="Build a Hello world application"
-    imageUrl="/images/homepage/build-hello-world-application.svg"
   >}}
 
   {{< sections/3-box-card
-    title="Run a benchmark"
-    description="Run a distributed full-stack e-commerce application built on YugabyteDB, Node.js Express, and React."
-    buttonText="Get started"
-    buttonUrl="/preview/benchmark/"
-    imageAlt="Run a real world demo app"
-    imageUrl="/images/homepage/run-real-world-demo-app.svg"
+    title="Connect using drivers and ORMs"
+    description="Connect applications to your database using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
+    buttonText="Connect"
+    buttonUrl="/preview/drivers-orms/"
   >}}
 
   {{< sections/3-box-card
-    title="Explore Distributed SQL capabilities"
-    description="Test YugabyteDB's compatibility with standard PostgreSQL features, such as data types, queries, expressions, and more."
-    buttonText="Get started"
-    buttonUrl="/preview/explore/"
-    imageAlt="Explore Distributed SQL capabilities"
-    imageUrl="/images/homepage/explore-distributed-sql-capabilities.svg"
+    title="Use familiar APIs"
+    description="Get up to speed quickly using YugabyteDB's PostgreSQL-compatible YSQL and Cassandra-based YCQL APIs."
+    buttonText="Develop"
+    buttonUrl="/preview/api/"
   >}}
-{{< /sections/3-boxes-top-image >}}
+
+{{< /sections/3-boxes >}}
+
+## Get under the hood
+
+{{< sections/3-boxes>}}
+  {{< sections/3-box-card
+    title="Architecture"
+    description="Learn how YugabyteDB achieves consistency and high availability."
+    buttonText="Learn More"
+    buttonUrl="/preview/architecture/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Secure"
+    description="Secure YugabyteDB with authentication, authorization, and encryption."
+    buttonText="Secure"
+    buttonUrl="/preview/secure/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Configure"
+    description="Configure core database services."
+    buttonText="Configure"
+    buttonUrl="/preview/reference/configuration/"
+  >}}
+
+{{< /sections/3-boxes >}}
 
 <div class="row">
 
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="/preview/quick-start/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/quick_start.png" aria-hidden="true" />
-        <div class="title">Quick Start</div>
-      </div>
-      <div class="body">
-        Get started in 5 minutes on macOS, Linux, Docker, and Kubernetes.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="explore/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/explore.png" aria-hidden="true" />
-        <div class="title">Explore</div>
-      </div>
-      <div class="body">
-          See core YugabyteDB features in action.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="secure/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/secure.png" aria-hidden="true" />
-        <div class="title">Secure</div>
-      </div>
-      <div class="body">
-          Secure YugabyteDB with authentication, authorization, and encryption.
-      </div>
-    </a>
-  </div>
-
- <!-- <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="migrate/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Migrate</div>
-      </div>
-      <div class="body">
-        Migrate data and applications from other databases to YugabyteDB
-      </div>
-    </a>
-  </div> -->
-
-  <!-- <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="deploy/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
-        <div class="title">Deploy</div>
-      </div>
-      <div class="body">
-          Deploy multi-node clusters on any public cloud or private data center
-      </div>
-    </a>
-  </div>
-
+<!--
  <div class="col-12 col-md-6">
     <a class="section-link icon-offset" href="benchmark/">
       <div class="head">
@@ -132,30 +102,6 @@ Documentation for the open source cloud native distributed SQL database.
   </div>
 
   <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="manage/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
-        <div class="title">Manage</div>
-      </div>
-      <div class="body">
-          Perform backup and restore, migrate data, run diagnostics, change cluster configuration
-      </div>
-    </a>
-  </div> -->
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="develop/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/develop.png" aria-hidden="true" />
-        <div class="title">Develop</div>
-      </div>
-      <div class="body">
-        Develop applications powered by YugabyteDB.
-      </div>
-    </a>
-  </div>
-
-  <!-- <div class="col-12 col-md-6">
     <a class="section-link icon-offset" href="reference/drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/connectors/ecosystem-integrations.png" aria-hidden="true" />
@@ -163,42 +109,6 @@ Documentation for the open source cloud native distributed SQL database.
       </div>
       <div class="body">
         Drivers for powering applications with YugabyteDB
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="troubleshoot/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Troubleshoot</div>
-      </div>
-      <div class="body">
-        Troubleshoot YugabyteDB
-      </div>
-    </a>
-  </div> -->
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="architecture/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/architecture.png" aria-hidden="true" />
-        <div class="title">Architecture</div>
-      </div>
-      <div class="body">
-        Learn how YugabyteDB works.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="api/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/api.png" aria-hidden="true" />
-        <div class="title">API reference</div>
-      </div>
-      <div class="body">
-          Reference for the YSQL and YCQL APIs.
       </div>
     </a>
   </div>
@@ -227,7 +137,7 @@ Documentation for the open source cloud native distributed SQL database.
     </a>
   </div>
 
-  <!--<div class="col-12 col-md-6">
+  <div class="col-12 col-md-6">
     <a class="section-link icon-offset" href="reference/connectors/">
       <div class="head">
         <img class="icon" src="/images/section_icons/reference/connectors/ecosystem-integrations.png" aria-hidden="true" />
@@ -263,9 +173,9 @@ Documentation for the open source cloud native distributed SQL database.
         Sample datasets for use with YugabyteDB
       </div>
     </a>
-  </div> -->
+  </div>
 
-  <!-- <div class="col-12 col-md-6">
+  <div class="col-12 col-md-6">
     <a class="section-link icon-offset" href="releases/whats-new">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
@@ -275,9 +185,9 @@ Documentation for the open source cloud native distributed SQL database.
         What's new in the latest and current stable releases
       </div>
     </a>
-  </div> -->
+  </div>
 
-  <!-- <div class="col-12 col-md-6">
+  <div class="col-12 col-md-6">
     <a class="section-link icon-offset" href="releases/earlier-releases/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
@@ -311,7 +221,7 @@ Documentation for the open source cloud native distributed SQL database.
         Frequently asked questions about YugabyteDB, operations, API compatibility, and YugabyteDB Anywhere
       </div>
     </a>
-  </div> -->
+  </div>
 
   <div class="col-12 col-md-6">
     <a class="section-link icon-offset" href="/preview/contribute/">
@@ -325,7 +235,7 @@ Documentation for the open source cloud native distributed SQL database.
     </a>
   </div>
 
-  <!-- <div class="col-12 col-md-6">
+  <div class="col-12 col-md-6">
     <a class="section-link icon-offset" href="/preview/contribute/core-database/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/introduction.png" aria-hidden="true" />
