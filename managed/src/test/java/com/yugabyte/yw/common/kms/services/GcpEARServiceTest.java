@@ -70,7 +70,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
   public Customer customer;
 
   @Spy public GcpEARServiceUtil mockGcpEARServiceUtil;
-  @Spy public GcpEARService mockGcpEARService;
+  @Spy public GcpEARService mockGcpEARService = new GcpEARService(null);
   @Mock public KeyRing mockKeyRing;
   @Mock public CryptoKey mockCryptoKey;
 
