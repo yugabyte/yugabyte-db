@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     identifier: create-universe-multi-region
     parent: create-deployments
-    weight: 20
+    weight: 30
 type: docs
 ---
 
