@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { MetricConsts } from '../../metrics/constants';
-import { isNonEmptyObject, isNonEmptyString } from '../../../utils/ObjectUtils';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 
 interface NodeSelectorData {
   selectedUniverse: any | null;
@@ -66,12 +66,10 @@ export const NodeSelector: FC<NodeSelectorData> = ({
       let zoneDividerElement = null;
       const nodeKey = `${nodeItem.nodeName}-node-${nodeIdx}`;
       const zoneKey = `${nodeItem.cloudInfo.az}-zone-${nodeIdx}`;
-      let isZoneDivider = false;
+      // let isZoneDivider = false;
       // Logic to decide when AZ and divider needs to be shown
       if (zone !== nodeItem.cloudInfo.az) {
-        zoneDividerElement = isNonEmptyString(zone) ? (
-          <div id="zone-divider" className="divider" />
-        ) : null;
+        zoneDividerElement = <div id="zone-divider" className="divider" />;
         zoneNameElement = (
           <MenuItem
             onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItem.cloudInfo.az)}
@@ -87,15 +85,14 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             <span className="cluster-az-name">{nodeItem.cloudInfo.az}</span>
           </MenuItem>
         );
-        isZoneDivider = true;
         zone = nodeItem.cloudInfo.az;
       }
 
       return (
         // eslint-disable-next-line react/jsx-key
         <>
+          {zoneDividerElement}
           {zoneNameElement}
-          {nodeItems.length > 1 && isZoneDivider ? zoneDividerElement : null}
           <MenuItem
             onSelect={() => nodeItemChanged(nodeItem.nodeName, null)}
             key={nodeKey}
@@ -153,10 +150,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
           <Dropdown.Toggle className="dropdown-toggle-button node-filter-dropdown__border-topk">
             <span className="default-node-value">{renderItem}</span>
           </Dropdown.Toggle>
-          <Dropdown.Menu>
-            {nodeItemsElement.length > 1 ? <div id="all-divider" className="divider" /> : null}
-            {nodeItemsElement.length > 1 && nodeItemsElement}
-          </Dropdown.Menu>
+          <Dropdown.Menu>{nodeItemsElement.length > 1 && nodeItemsElement}</Dropdown.Menu>
         </Dropdown>
       </div>
     );
