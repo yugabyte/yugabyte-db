@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.kms.services;
 
 import java.util.UUID;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.AzuAlgorithm;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -24,10 +25,12 @@ import com.yugabyte.yw.forms.EncryptionAtRestConfig;
  */
 public class AzuEARService extends EncryptionAtRestService<AzuAlgorithm> {
   private AzuEARServiceUtil azuEARServiceUtil;
+  private final RuntimeConfGetter confGetter;
   public static final int numBytes = 32;
 
-  public AzuEARService() {
+  public AzuEARService(RuntimeConfGetter confGetter) {
     super(KeyProvider.AZU);
+    this.confGetter = confGetter;
   }
 
   public boolean validateKeyAlgorithmAndSize(ObjectNode authConfig) {

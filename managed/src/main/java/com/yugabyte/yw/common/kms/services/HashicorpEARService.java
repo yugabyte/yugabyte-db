@@ -12,7 +12,7 @@
 package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.HashicorpVaultAlgorithm;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
@@ -33,12 +33,14 @@ import org.slf4j.LoggerFactory;
  */
 public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultAlgorithm> {
   protected static final Logger LOG = LoggerFactory.getLogger(HashicorpEARService.class);
+  private final RuntimeConfGetter confGetter;
 
   static final String algorithm = "AES";
   static final int keySize = 256;
 
-  public HashicorpEARService() {
+  public HashicorpEARService(RuntimeConfGetter confGetter) {
     super(KeyProvider.HASHICORP);
+    this.confGetter = confGetter;
   }
 
   @Override

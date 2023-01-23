@@ -15,6 +15,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
 
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -50,6 +51,11 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
   private class TestEncryptionAtRestService extends HashicorpEARService {
     // private static final Logger LOG = LoggerFactory.getLogger(TestEncryptionAtRestService.class);
 
+    public TestEncryptionAtRestService(RuntimeConfGetter confGetter) {
+      super(confGetter);
+      // TODO Auto-generated constructor stub
+    }
+
     @Override
     public ObjectNode getAuthConfig(UUID configUUID) {
       ObjectNode n = Json.newObject();
@@ -76,7 +82,7 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
   public void setUp() {
     MOCK_RUN = VaultEARServiceUtilTest.MOCK_RUN;
 
-    encryptionService = new TestEncryptionAtRestService();
+    encryptionService = new TestEncryptionAtRestService(null);
 
     config = new EncryptionAtRestConfig();
     config.kmsConfigUUID = testConfigUUID;
@@ -92,7 +98,7 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
   @Test
   public void testGetServiceSingleton() {
     EncryptionAtRestService newService =
-        new EncryptionAtRestManager().getServiceInstance("HASHICORP");
+        new EncryptionAtRestManager(null).getServiceInstance("HASHICORP");
     assertEquals(KeyProvider.HASHICORP.getServiceInstance().hashCode(), newService.hashCode());
   }
 
