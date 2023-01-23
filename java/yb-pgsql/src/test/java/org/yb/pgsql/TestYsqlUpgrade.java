@@ -1046,7 +1046,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   /** Ensure migration filename comment makes sense. */
   @Test
   public void migrationFilenameComment() throws Exception {
-    Pattern commentRe = Pattern.compile("^# .*(V(\\d+)(\\.\\d+)?__\\S+__\\S+.sql)$");
+    Pattern commentRe = Pattern.compile("^# .*(V(\\d+)\\.?(\\d+)?__\\S+__\\S+.sql)$");
     Pattern recordRe = Pattern.compile("^\\{ major => '(\\d+)', minor => '(\\d+)',");
 
     File datFile = new File(
