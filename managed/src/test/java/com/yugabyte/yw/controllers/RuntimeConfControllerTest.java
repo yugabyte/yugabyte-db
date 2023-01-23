@@ -472,4 +472,62 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     JsonNode rJson = Json.parse(contentAsString(r));
     assertValue(rJson, "error", "Not a valid boolean value");
   }
+
+  @Test
+  public void catchKeysWithNoMetadata() {
+
+    Result result = doRequestWithAuthToken("GET", LIST_KEYS, authToken);
+    assertEquals(OK, result.status());
+    Set<String> listKeys =
+        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements())
+            .stream()
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
+
+    result = doRequestWithAuthToken("GET", LIST_KEY_INFO, authToken);
+    assertEquals(OK, result.status());
+    Set<String> metaKeys =
+        ImmutableSet.copyOf(Json.parse(contentAsString(result)))
+            .stream()
+            .map(JsonNode -> JsonNode.get("key"))
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
+
+    for (String key : listKeys) {
+      if (!metaKeys.contains(key) && !validExcludedKey(key)) {
+        String failMsg =
+            String.format(
+                "Please define information for this key \"%s\" in one of "
+                    + "GlobalConfKeys, ProviderConfKeys , CustomerConfKeys or UniverseConfKeys."
+                    + "If you have questions post it to #runtime-config channel."
+                    + "Also see "
+                    + "https://docs.google.com/document/d/"
+                    + "1NAURMNdtOexYnfYN9mOSDChtrP2T4qkRhxsFdah7uwM/edit?usp=sharing",
+                key);
+        fail(failMsg);
+      }
+    }
+  }
+
+  private boolean validExcludedKey(String path) {
+    Set<String> excludedKeys =
+        ImmutableSet.of(
+            "yb.alert.slack.ws",
+            "yb.alert.webhook.ws",
+            "yb.alert.pagerduty.ws",
+            "yb.external_script",
+            "yb.ha.ws",
+            "yb.query_stats.live_queries.ws",
+            // TODO (PLAT-7110)
+            "yb.releases.path");
+    assertEquals(
+        "Do not modify this list to get the test to pass without discussing "
+            + "on #runtime-config channel.",
+        7,
+        excludedKeys.size());
+    for (String key : excludedKeys) {
+      if (path.startsWith(key)) return true;
+    }
+    return false;
+  }
 }
