@@ -533,7 +533,7 @@ TEST_F_EX(
     PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestAutoFlagOnNewCluster), PgWrapperAutoFlagsTest) {
   // New clusters should start with Target value
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "true"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(true /* expect_target_value */));
 }
