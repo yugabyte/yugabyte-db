@@ -13,30 +13,38 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.forms.DetachUniverseFormData;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.UniverseSpec;
+import com.yugabyte.yw.models.UniverseSpec.PlatformPaths;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import play.api.libs.Files.TemporaryFile;
 import play.mvc.Http;
 import play.mvc.Result;
 
+@Slf4j
 public class AttachDetachController extends AbstractPlatformController {
 
   @Inject private Config config;
@@ -45,12 +53,28 @@ public class AttachDetachController extends AbstractPlatformController {
 
   @Inject private RuntimeConfGetter confGetter;
 
+  @Inject private ReleaseManager releaseManager;
+
+  @Inject private SwamperHelper swamperHelper;
+
+  private static final String STORAGE_PATH = "yb.storage.path";
+  private static final String RELEASES_PATH = "yb.releases.path";
+  private static final String YBC_RELEASE_PATH = "ybc.docker.release";
+  private static final String YBC_RELEASES_PATH = "ybc.releases.path";
+
   public Result exportUniverse(UUID customerUUID, UUID universeUUID) throws IOException {
+    JsonNode requestBody = request().body().asJson();
+
+    DetachUniverseFormData detachUniverseFormData =
+        formFactory.getFormDataOrBadRequest(requestBody, DetachUniverseFormData.class);
+    log.debug("Universe spec will include releases: {}", !detachUniverseFormData.skipReleases);
+
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+
     List<InstanceType> instanceTypes =
         InstanceType.findByProvider(
             provider,
@@ -66,11 +90,31 @@ public class AttachDetachController extends AbstractPlatformController {
           "Detach universe currently does not support universes with xcluster replication set up.");
     }
 
-    List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
-
     List<PriceComponent> priceComponents = PriceComponent.findByProvider(provider);
 
-    String storagePath = confGetter.getStaticConf().getString("yb.storage.path");
+    List<CertificateInfo> certificateInfoList = CertificateInfo.getCertificateInfoList(universe);
+
+    // Non-local releases will no be populated by importLocalReleases, so we need to add it
+    // ourselves.
+    ReleaseMetadata ybReleaseMetadata =
+        releaseManager.getReleaseByVersion(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    if (ybReleaseMetadata != null && ybReleaseMetadata.isLocalRelease()) {
+      ybReleaseMetadata = null;
+    }
+
+    String storagePath = confGetter.getStaticConf().getString(STORAGE_PATH);
+    String releasesPath = confGetter.getStaticConf().getString(RELEASES_PATH);
+    String ybcReleasePath = confGetter.getStaticConf().getString(YBC_RELEASE_PATH);
+    String ybcReleasesPath = confGetter.getStaticConf().getString(YBC_RELEASES_PATH);
+
+    PlatformPaths platformPaths =
+        PlatformPaths.builder()
+            .storagePath(storagePath)
+            .releasesPath(releasesPath)
+            .ybcReleasePath(ybcReleasePath)
+            .ybcReleasesPath(ybcReleasesPath)
+            .build();
 
     UniverseSpec universeSpec =
         UniverseSpec.builder()
@@ -78,9 +122,11 @@ public class AttachDetachController extends AbstractPlatformController {
             .universeConfig(universe.getConfig())
             .provider(provider)
             .instanceTypes(instanceTypes)
-            .accessKeys(accessKeys)
             .priceComponents(priceComponents)
-            .oldStoragePath(storagePath)
+            .certificateInfoList(certificateInfoList)
+            .ybReleaseMetadata(ybReleaseMetadata)
+            .oldPlatformPaths(platformPaths)
+            .skipReleases(detachUniverseFormData.skipReleases)
             .build();
 
     InputStream is = universeSpec.exportSpec();
@@ -98,10 +144,22 @@ public class AttachDetachController extends AbstractPlatformController {
       throw new PlatformServiceException(BAD_REQUEST, "Failed to get uploaded spec file");
     }
 
-    String storagePath = confGetter.getStaticConf().getString("yb.storage.path");
+    String storagePath = confGetter.getStaticConf().getString(STORAGE_PATH);
+    String releasesPath = confGetter.getStaticConf().getString(RELEASES_PATH);
+    String ybcReleasePath = confGetter.getStaticConf().getString(YBC_RELEASE_PATH);
+    String ybcReleasesPath = confGetter.getStaticConf().getString(YBC_RELEASES_PATH);
+
+    PlatformPaths platformPaths =
+        PlatformPaths.builder()
+            .storagePath(storagePath)
+            .releasesPath(releasesPath)
+            .ybcReleasePath(ybcReleasePath)
+            .ybcReleasesPath(ybcReleasesPath)
+            .build();
+
     File tempFile = (File) tempSpecFile.getFile();
-    UniverseSpec universeSpec = UniverseSpec.importSpec(tempFile, storagePath, customer);
-    universeSpec.save(storagePath);
-    return PlatformResults.withData(universeSpec);
+    UniverseSpec universeSpec = UniverseSpec.importSpec(tempFile, platformPaths, customer);
+    universeSpec.save(platformPaths, releaseManager, swamperHelper);
+    return ok();
   }
 }
