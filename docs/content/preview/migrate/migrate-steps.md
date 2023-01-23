@@ -319,7 +319,7 @@ After the schema and data import is complete, the automated part of the database
 Suppose you have a scenario where,
 
 - [import data](#import-data) or [import data file](#import-data-file) command fails.
-- To resolve this issue , you delete some of the rows from the split files.
+- To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data command completes successfully.
 
 In this scenario, [import data status](#import-data-status) command reports incorrect imported row count; because it doesn't take into account the deleted rows.
