@@ -308,6 +308,7 @@ externalResolvers := {
 
 cleanPlatform := {
   clean.value
+  (swagger / clean).value
   cleanVenv.value
   cleanUI.value
   cleanModules.value
