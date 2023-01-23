@@ -13,7 +13,7 @@ rightNav:
   hideH3: true
 ---
 
-This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL, PostgreSQL, or Oracle to YugabyteDB.
+This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL, Oracle, or PostgreSQL to YugabyteDB.
 
 ## Contents
 

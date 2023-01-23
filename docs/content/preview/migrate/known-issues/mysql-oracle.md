@@ -17,58 +17,9 @@ This page documents known issues you may encounter and suggested workarounds whe
 
 ## Contents
 
-- [Importing case-sensitive schema names](#importing-case-sensitive-schema-names)
 - [Partition key column not part of primary key columns](#partition-key-column-not-part-of-primary-key-columns)
 - [Tables partitioned with expressions cannot contain primary/unique keys](#tables-partitioned-with-expressions-cannot-contain-primary-unique-keys)
 - [Multi-column partition by list is not supported](#multi-column-partition-by-list-is-not-supported)
-
-### Importing case-sensitive schema names
-
-**GitHub**: [Issue #334](https://github.com/yugabyte/yb-voyager/issues/334)
-
-**Description**: When the source is either MySQL or Oracle, if you attempt to migrate the database using a case-sensitive schema name, the migration will fail with `no schema has been selected` or `schema already exists` error(s).
-
-**Workaround**: Currently, yb-voyager does not support migration via case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If necessary, you can alter the schema names to a case-sensitive alternative post-migration using the ALTER SCHEMA command.
-
-**Example**
-
-An example `yb-voyager` command with a case-sensitive schema name is as follows:
-
-```sh
-yb-voyager import schema --target-db-name voyager
-        --target-db-host localhost
-        --export-dir .
-        --target-db-password password
-        --target-db-user yugabyte
-        --target-db-schema "\"Test\""
-```
-
-Error during data migration is as follows:
-
-```output
-ERROR: no schema has been selected to create in (SQLSTATE 3F000)
-```
-
-Suggested changes are as follows:
-
-1. During schema migration, change the case-sensitive schema name as follows:
-
-```sh
-yb-voyager import schema --target-db-name voyager
-        --target-db-host localhost
-        --export-dir .
-        --target-db-password password
-        --target-db-user yugabyte
-        --target-db-schema test
-```
-
-1. Post migration, alter the schema name as follows:
-
-```sql
-ALTER SCHEMA "test" RENAME TO "Test";
-```
-
----
 
 ### Partition key column not part of primary key columns
 
