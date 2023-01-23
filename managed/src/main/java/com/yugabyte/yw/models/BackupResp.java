@@ -1,16 +1,13 @@
 package com.yugabyte.yw.models;
 
-import java.util.Date;
-import java.util.UUID;
-
-import org.yb.CommonTypes.TableType;
-
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
-
+import java.util.Date;
+import java.util.UUID;
 import lombok.Builder;
 import lombok.Value;
+import org.yb.CommonTypes.TableType;
 
 @Value
 @Builder
