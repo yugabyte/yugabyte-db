@@ -5895,11 +5895,19 @@
     },
     "PackagePaths" : {
       "properties" : {
+        "helmChart" : {
+          "description" : "Path to the Helm chart package",
+          "type" : "string"
+        },
+        "helmChartChecksum" : {
+          "description" : "Checksum for the Helm chart package",
+          "type" : "string"
+        },
         "x86_64" : {
           "description" : "Path to x86_64 package",
           "type" : "string"
         },
-        "x86_64_checksum" : {
+        "x86_64Checksum" : {
           "description" : "Checksum for x86_64 package",
           "type" : "string"
         }
