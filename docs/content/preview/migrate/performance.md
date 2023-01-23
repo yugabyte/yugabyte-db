@@ -56,7 +56,7 @@ Use one or more of the following techniques to improve import data performance:
 
 - **Add disks** to reduce disk write contention. YugabyteDB servers can be configured with one or multiple disk volumes to store tablet data. If all tablets are writing to a single disk, write contention can slow down the ingestion speed. Configuring the [YB-TServers](../../reference/configuration/yb-tserver/) with multiple disks can reduce disk write contention, thereby increasing throughput. Disks with higher IOPS and better throughput also improve write performance.
 
-- **Enable packed columns** to increase the throughput by more than two times. Enable packed columns on the YugabyteDB cluster by setting the YB-TServer GFlag `ysql_enable_packed_row` to true.
+- **Enable packed rows** to increase the throughput by more than two times. Enable packed rows on the YugabyteDB cluster by setting the YB-TServer GFlag `ysql_enable_packed_row` to true.
 
 - **Configure the host machine's disk** with higher IOPS and better throughput to improve the performance of the splitter, which splits the large data file into smaller splits of 20000 rows. Splitter performance depends on the host machine's disk.
 
@@ -98,7 +98,7 @@ As more optimizations are introduced, average throughput increases. The followin
 | 24 parallel jobs (default) | 3 node [RF](../../architecture/docdb-replication/replication/#replication-factor) 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=24 | ~80% | 44014 rows/sec |
 | Increase jobs<br>(1 per core) | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~95% | 47696 rows/sec |
 | Add nodes | 6 Node RF 3 cluster,<br> c5.4x large (16 cores 32GB) <br> 4 EBS Type gp3 disks per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~80% | 86547 rows/sec |
-| Enabling packed columns | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48<br>YB-TServer GFlag: `ysql_enable_packed_row` = `true` | ~95% | 134048 rows/sec |
+| Enabling packed rows | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48<br>YB-TServer GFlag: `ysql_enable_packed_row` = `true` | ~95% | 134048 rows/sec |
 
 {{< note title="Note" >}}
 

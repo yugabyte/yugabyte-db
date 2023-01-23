@@ -24,7 +24,7 @@ YugabyteDB Voyager manages the entire lifecycle of a database migration, includi
 
 - Free and completely open source.
 - Supports widely used databases for migration and doesn't require changes to the [source databases](#source-databases) in most cases.
-- Supports all YugabyteDB products (YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.) as the [target database](#target-database).
+- Supports all YugabyteDB products (YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later) as the [target database](#target-database).
 - Provides a unified [CLI](reference/yb-voyager-cli/) experience for all different source databases.
 - Auto-tuneable based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
 - Monitor the import status, and expected time for data export and import to complete using progress bars.

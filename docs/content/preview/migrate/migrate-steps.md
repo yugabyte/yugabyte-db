@@ -314,4 +314,16 @@ Refer to [import schema](../reference/yb-voyager-cli/#import-schema) for details
 
 After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
-Refer to [Verify a migration](../../manage/data-migration/bulk-import-ysql/#verify-a-migration) to validate queries and ensure a successful migration.
+{{< warning title = "Caveat associated with rows reported by import data status" >}}
+
+Suppose you have a scenario where,
+
+- [import data](#import-data) or [import data file](#import-data-file) command fails.
+- To resolve this issue , you delete some of the rows from the split files.
+- After retrying, the import data command completes successfully.
+
+In this scenario, [import data status](#import-data-status) command reports incorrect imported row count; because it doesn't take into account the deleted rows.
+
+For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
+
+{{< /warning >}}

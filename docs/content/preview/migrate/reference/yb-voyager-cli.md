@@ -63,10 +63,10 @@ The valid *arguments* for export schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
-| [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. |
-| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. |
+| [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. Oracle migrations only.|
+| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. Oracle migrations only.|
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
 | [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
@@ -115,7 +115,7 @@ The valid *arguments* for analyze schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--output-format](#output-format) <format> | One of `html`, `txt`, `json`, or `xml`. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
@@ -145,10 +145,10 @@ The valid *arguments* for export data are described in the following table:
 | [--disable-pb](#disable-pb) | Hide progress bars. |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
-| [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier |
-| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. |
+| [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. Oracle migrations only. |
+| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. Oracle migrations only.|
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
@@ -195,7 +195,7 @@ The valid *arguments* for export data status are described in the following tabl
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
 | [--verbose](#verbose) | Display extra information in the output. |
@@ -223,17 +223,11 @@ The valid *arguments* for import schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --continue-on-error |
-| --exclude-object-list |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
-| --ignore-exist |
-| --object-list string |
 |  [--post-import-data](#post-import-data) | Imports indexes and triggers in the target YugabyteDB database after data import is complete. |
-| --refresh-mviews |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
 | [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
-| --straight-order |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
@@ -248,6 +242,13 @@ The valid *arguments* for import schema are described in the following table:
 | [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
+<!-- To do : document the following arguments with description
+--continue-on-error
+--exclude-object-list
+--ignore-exist
+--object-list string
+--refresh-mviews
+--straight-order -->
 #### Example
 
 ```sh
@@ -274,12 +275,10 @@ The valid *arguments* for import data are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
-| --continue-on-error |
 | [--disable-pb](#disable-pb) | Hide progress bars. |
-| --enable-upsert |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
@@ -290,16 +289,19 @@ The valid *arguments* for import data are described in the following table:
 | [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
 | [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
 | [--target-db-user](#target-db-user) <username> | Username of the target database. |
-| --target-endpoints |
 | [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --use-public-ip |
 | [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
+<!-- To do : document the following arguments with description
+| --continue-on-error |
+| --enable-upsert |
+| --target-endpoints |
+| --use-public-ip | -->
 #### Example
 
 ```sh
@@ -327,18 +329,16 @@ The valid *arguments* for import data file are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
-| --continue-on-error |
-| [--data-dir](#data-dir) <path> | |
-| [--delimiter](#delimiter) |
+| [--data-dir](#data-dir) <path> | Path to the directory containing the data files to import. |
+| [--delimiter](#delimiter) | Default: comma (,); can be changed to '\t' (tab), pipe(|), or any other character. |
 | [--disable-pb](#disable-pb) | Hide progress bars. |
-| --enable-upsert |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [--file-opts](#file-opts) <string> | Comma-separated string options for CSV file format. |
 | [--file-table-map](#file-table-map) <filename1:tablename1> | Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database. |
 | [--format](#format) <format> | One of `CSV` or `text` format of the data file. |
 | [--has-header](#has-header) | Applies only to CSV file type. |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
@@ -349,15 +349,19 @@ The valid *arguments* for import data file are described in the following table:
 | [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
 | [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
 | [--target-db-user](#target-db-user) <username> | Username of the target database. |
-| --target-endpoints |
 | [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --use-public-ip |
 | [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
+
+<!-- To do : document the following arguments with description
+| --continue-on-error |
+| --enable-upsert |
+| --target-endpoints |
+| --use-public-ip | -->
 
 #### Example
 
@@ -392,7 +396,7 @@ The valid *arguments* for import data status are described in the following tabl
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory containing the data files to export. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--send-diagnostics](#send-diagnostics) | Sends diagnostics information to Yugabyte. |
 | [--verbose](#verbose) | Displays extra information in the output. |
@@ -558,11 +562,11 @@ The `--post-import-data` argument assumes that data import is already done and i
 
 ### --oracle-db-sid
 
-Oracle System Identifier (SID) you can use while exporting data from Oracle instances.
+Oracle System Identifier (SID) you can use while exporting data from Oracle instances. Oracle migrations only.
 
 ### --oracle-home
 
-Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema.
+Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.
 
 ### --use-orafce
 
