@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     identifier: create-multi-zone-universe-kubernetes
     parent: create-deployments
-    weight: 30
+    weight: 20
 type: docs
 ---
 
