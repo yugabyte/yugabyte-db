@@ -1023,7 +1023,7 @@ bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
-bool yb_bypass_cond_recheck = true;
+bool yb_bypass_cond_recheck = false;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 

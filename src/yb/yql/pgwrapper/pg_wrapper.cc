@@ -139,7 +139,7 @@ DEFINE_RUNTIME_PG_FLAG(int32, log_min_duration_statement, -1,
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true,
     "Push supported expressions from ysql down to DocDB for evaluation.");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false, false,
     "Bypass index condition recheck at the YSQL layer if the condition was pushed down.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,
