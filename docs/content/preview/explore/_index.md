@@ -352,6 +352,7 @@ The `-Dspring.datasource` flag enables [topology-aware load balancing](../driver
   </div>
 
 <div id="anywhereworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
+
 You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:
 
 ```sh
@@ -366,7 +367,7 @@ scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem test.txt ec2-user@123
 
 You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:
 
-1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the set up. 
+1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the setup. 
 
 2. Start the application against a running YugabyteDB Anywhere universe by executing the following commands in the terminal:
 
@@ -393,15 +394,15 @@ You can launch the application from your YugabyteDB Anywhere instance by using t
 
    Replace the following:
 
-   - `<node_ip>` - IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName >Nodes** in YugabyteDB Anywhere. 
+   - `<node_ip>` - The IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName >Nodes** in YugabyteDB Anywhere. 
 
-   - `<dbname>` - the name of the database you are connecting to (the default is yugabyte).
+   - `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
 
-   - `<dbuser>` and `<dbpassword>` - the user name and password for the YugabyteDB database.
+   - `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database.
 
    - `<port>` - 5433.
 
-   - `<aws.regions.zones>` - the zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName >Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
+   - `<aws.regions.zones>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName >Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
 
      ```sh
      -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
@@ -430,7 +431,7 @@ In the local environment, you would need to execute the following:
 
 
 
-To view the application UI, navigate to <http://localhost:8080>.
+To view the application UI, navigate to `http://<machine_ip_or_dns>:8080` (for example, `http://localhost:8080`).
 
 ### Start a read and write workload
 
