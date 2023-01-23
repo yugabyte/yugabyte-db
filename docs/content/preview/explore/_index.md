@@ -249,8 +249,8 @@ ycqlsh>
 
 
   <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
-To run the examples in YugabyteDB Anywhere, create a single- or multi-node universe by following instructions provided in [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
 
+To run the examples in YugabyteDB Anywhere, create a single- or multi-node universe by following instructions provided in [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
 
   </div>
 
