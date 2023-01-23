@@ -19,6 +19,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+
 import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
@@ -47,7 +49,8 @@ public class ProviderTest extends FakeDBApplication {
   public void testNullConfig() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
     assertNotNull(provider.uuid);
-    assertTrue(provider.getUnmaskedConfig().isEmpty());
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
+    assertTrue(envVars.isEmpty());
   }
 
   @Test
@@ -55,9 +58,9 @@ public class ProviderTest extends FakeDBApplication {
     Provider provider =
         Provider.create(
             defaultCustomer.uuid, Common.CloudType.aws, "Amazon", ImmutableMap.of("Foo", "Bar"));
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
     assertNotNull(provider.uuid);
-    assertNotNull(
-        provider.getUnmaskedConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+    assertNotNull(envVars.toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 
   @Test
@@ -78,9 +81,11 @@ public class ProviderTest extends FakeDBApplication {
             Common.CloudType.aws,
             "Amazon",
             ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
     assertNotNull(provider.uuid);
-    assertEquals("Ba********ar", provider.getMaskedConfig().get("AWS_ACCESS_KEY_ID"));
-    assertEquals("BarBarBarBar", provider.getUnmaskedConfig().get("AWS_ACCESS_KEY_ID"));
+    assertEquals("BarBarBarBar", envVars.get("AWS_ACCESS_KEY_ID"));
+    CloudInfoInterface.mayBeMassageResponse(provider);
+    assertEquals("Ba********ar", provider.config.get("AWS_ACCESS_KEY_ID"));
   }
 
   @Test
@@ -90,10 +95,12 @@ public class ProviderTest extends FakeDBApplication {
             defaultCustomer.uuid,
             Common.CloudType.aws,
             "Amazon",
-            ImmutableMap.of("AWS_ACCESS_ID", "BarBarBarBar"));
+            ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
     assertNotNull(provider.uuid);
-    assertEquals("BarBarBarBar", provider.getMaskedConfig().get("AWS_ACCESS_ID"));
-    assertEquals("BarBarBarBar", provider.getUnmaskedConfig().get("AWS_ACCESS_ID"));
+    assertEquals("BarBarBarBar", envVars.get("AWS_ACCESS_KEY_ID"));
+    CloudInfoInterface.mayBeMassageResponse(provider);
+    assertEquals("Ba********ar", provider.config.get("AWS_ACCESS_KEY_ID"));
   }
 
   @Test

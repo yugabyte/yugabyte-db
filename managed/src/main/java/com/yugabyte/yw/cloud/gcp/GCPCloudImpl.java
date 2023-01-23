@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.cloud.gcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
@@ -12,12 +13,15 @@ import com.google.api.services.compute.Compute;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.yugabyte.yw.cloud.CloudAPI;
-import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang.StringUtils;
+import play.libs.Json;
+
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.ByteArrayInputStream;
 import java.util.List;
@@ -30,12 +34,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class GCPCloudImpl implements CloudAPI {
 
-  public static final String PROJECT_ID_PROPERTY = "project_id";
-  public static final String CLIENT_EMAIL_PROPERTY = "client_email";
+  public static final String PROJECT_ID_PROPERTY = "gce_project";
   public static final String CUSTOM_GCE_NETWORK_PROPERTY = "CUSTOM_GCE_NETWORK";
-  public static final String GCE_HOST_PROJECT_PROPERTY = "GCE_HOST_PROJECT";
   public static final String GCE_PROJECT_PROPERTY = "GCE_PROJECT";
-  public static final String GCE_EMAIL_PROPERTY = "GCE_EMAIL";
   public static final String GOOGLE_APPLICATION_CREDENTIALS_PROPERTY =
       "GOOGLE_APPLICATION_CREDENTIALS";
 
@@ -60,17 +61,20 @@ public class GCPCloudImpl implements CloudAPI {
 
   // Basic validation to make sure that the credentials work with GCP.
   @Override
-  public boolean isValidCreds(Map<String, String> config, String region) {
-    String projectId = config.get(PROJECT_ID_PROPERTY);
+  public boolean isValidCreds(Provider provider, String region) {
+    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+    String projectId = gcpCloudInfo.getGceProject();
     if (StringUtils.isBlank(projectId)) {
       log.error("Project ID is not set, skipping validation");
       // TODO validate for service account.
       return true;
     }
     try {
-      ObjectMapper mapper = new ObjectMapper();
+      ObjectMapper mapper = Json.mapper();
+      JsonNode gcpCredentials = gcpCloudInfo.gceApplicationCredentials;
       GoogleCredentials credentials =
-          GoogleCredentials.fromStream(new ByteArrayInputStream(mapper.writeValueAsBytes(config)));
+          GoogleCredentials.fromStream(
+              new ByteArrayInputStream(mapper.writeValueAsBytes(gcpCredentials)));
       HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credentials);
       HttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
       // Create Compute Engine object for listing instances.

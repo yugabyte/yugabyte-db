@@ -92,7 +92,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.slf4j.Logger;
@@ -119,6 +119,8 @@ public class NodeManager extends DevopsBase {
   public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
   public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
   public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
+
+  public static final String YUGABYTE_USER = "yugabyte";
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -680,7 +682,7 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--http_remote_download");
           ybServerPackage = releaseMetadata.http.paths.x86_64;
           subcommand.add("--http_package_checksum");
-          subcommand.add(releaseMetadata.http.paths.x86_64_checksum);
+          subcommand.add(releaseMetadata.http.paths.x86_64Checksum);
         } else {
           ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
         }
@@ -1422,7 +1424,8 @@ public class NodeManager extends DevopsBase {
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
             String ybImage =
-                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+                Optional.ofNullable(taskParam.machineImage)
+                    .orElse(taskParam.getRegion().getYbImage());
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
@@ -1506,7 +1509,8 @@ public class NodeManager extends DevopsBase {
           // gcp uses machine_image for ansible preprovision.yml
           if (cloudType.equals(Common.CloudType.gcp)) {
             String ybImage =
-                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+                Optional.ofNullable(taskParam.machineImage)
+                    .orElse(taskParam.getRegion().getYbImage());
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);

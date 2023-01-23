@@ -176,22 +176,18 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   public void key() {
     assertEquals(
         NOT_FOUND,
-        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
-            .status());
+        assertPlatformException(() -> getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)).status());
     String newInterval = "2 days";
-    assertEquals(OK, setGCInterval(newInterval, defaultUniverse.universeUUID).status());
+    assertEquals(OK, setGCInterval(newInterval, GLOBAL_SCOPE_UUID).status());
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);
-    Duration duration =
-        runtimeConfigFactory.forUniverse(defaultUniverse).getDuration(GC_CHECK_INTERVAL_KEY);
+    Duration duration = runtimeConfigFactory.globalRuntimeConf().getDuration(GC_CHECK_INTERVAL_KEY);
     assertEquals(24 * 60 * 2, duration.toMinutes());
-    assertEquals(
-        newInterval, contentAsString(getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY)));
-    assertEquals(OK, deleteKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY).status());
+    assertEquals(newInterval, contentAsString(getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)));
+    assertEquals(OK, deleteKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY).status());
     assertEquals(
         NOT_FOUND,
-        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
-            .status());
+        assertPlatformException(() -> getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)).status());
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {
@@ -436,14 +432,13 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             return GC_CHECK_INTERVAL_KEY;
           }
 
-          public void processUniverse(Universe universe) {
+          public void processGlobal() {
             throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Some error");
           }
         });
     assertEquals(
         INTERNAL_SERVER_ERROR,
-        assertPlatformException(() -> setGCInterval(newInterval, defaultUniverse.universeUUID))
-            .status());
+        assertPlatformException(() -> setGCInterval(newInterval, GLOBAL_SCOPE_UUID)).status());
     assertEquals(
         NOT_FOUND,
         assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))

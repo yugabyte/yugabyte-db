@@ -2,55 +2,19 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) YugaByte, Inc.
 
-import json
-import requests
-from pprint import pprint
+import upgrade_base
 
 # ==================================================================================================
 # --- Constants
 # ==================================================================================================
 
-# Base url endpoint to make requests to platform. Consists of "platform address + /api/v1"
-BASE_URL = "http://localhost:9000/api/v1"
-
-# To identify the customer UUID for this API call, see the "Get Session Info" section at
-# https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/
-#   create-universe.ipynb
-CUSTOMER_UUID = "f33e3c9b-75ab-4c30-80ad-cba85646ea39"
-
-# To identify the universe uuid for a given universe, use the the example at
-# https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/
-#   list-universes.ipynb
-# to list all universes and filter by name
-UNIVERSE_UUID = "3ab4f152-2799-4167-8ea0-e7e71dc952f0"
-
-# Platform api key to be set
-X_AUTH_YW_API_TOKEN = "5e8d9e2e-894d-405d-8731-fdc2111e8d57"
-
-DEFAULT_HEADERS = {"Content-Type": "application/json", "X-AUTH-YW-API-TOKEN": X_AUTH_YW_API_TOKEN}
-
-THIRD_PARTY_SW_UPGRADE_URL = BASE_URL + \
-    "/customers/{customer_uuid}/universes/{universe_uuid}/upgrade/thirdparty_software"
-
+THIRD_PARTY_SW_UPGRADE_URL = f"/api/v1/customers/{upgrade_base.CUSTOMER_UUID}" \
+                             f"/universes/{upgrade_base.UNIVERSE_UUID}/upgrade/thirdparty_software"
 
 # ==================================================================================================
 # --- Api request
 # ==================================================================================================
 
+universe_details = upgrade_base.get_base_params()
 
-task_params = {
-    "universeUUID": UNIVERSE_UUID,
-    "sleepAfterMasterRestartMillis": 0,
-    "sleepAfterTServerRestartMillis": 0,
-}
-
-pprint(task_params)
-print("-----\n\n\n")
-
-# This response includes a task UUID that represents an asynchronous operation. In order to wait
-# for this operation to complete
-response = requests.post(THIRD_PARTY_SW_UPGRADE_URL
-                         .format(universe_uuid=UNIVERSE_UUID, customer_uuid=CUSTOMER_UUID),
-                         headers=DEFAULT_HEADERS, data=json.dumps(task_params, indent=3))
-response_json = response.json()
-print(response_json)
+upgrade_base.run_upgrade(THIRD_PARTY_SW_UPGRADE_URL, universe_details)

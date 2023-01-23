@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import org.yb.perf_advisor.Utils;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -353,8 +354,11 @@ public class QueryHelper {
 
   private boolean isExcluded(String queryStatement, Config config) {
     final List<String> excludedQueries = config.getStringList("yb.query_stats.excluded_queries");
+    final List<String> excludedPerfAdvisorQueries = Utils.getScriptQueryStatements();
     return excludedQueries.contains(queryStatement)
-        || queryStatement.contains(SLOW_QUERY_STATS_UNLIMITED_SQL);
+        || queryStatement.contains(SLOW_QUERY_STATS_UNLIMITED_SQL)
+        || queryStatement.contains(LIST_USER_DATABASES_SQL)
+        || excludedPerfAdvisorQueries.contains(queryStatement);
   }
 
   private void concatArrayNodes(ArrayNode destination, JsonNode source) {

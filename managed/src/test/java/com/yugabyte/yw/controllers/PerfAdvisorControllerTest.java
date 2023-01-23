@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.forms.PerfAdvisorSettingsFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -281,6 +282,54 @@ public class PerfAdvisorControllerTest extends FakeDBApplication {
     assertThat(response.getTotalCount(), equalTo(3));
     assertThat(response.getEntities(), hasSize(2));
     assertThat(response.getEntities(), contains(info2, info3));
+  }
+
+  @Test
+  public void testUpdateAndGetSettingsRecommendation() {
+    PerfAdvisorSettingsFormData settings =
+        new PerfAdvisorSettingsFormData()
+            .setEnabled(true)
+            .setRunFrequencyMins(10)
+            .setConnectionSkewThreshold(60.0)
+            .setConnectionSkewMinConnections(100)
+            .setConnectionSkewIntervalMins(5)
+            .setCpuSkewThreshold(65.0)
+            .setCpuSkewMinUsage(55.0)
+            .setCpuSkewIntervalMins(6)
+            .setCpuUsageThreshold(55.0)
+            .setCpuUsageIntervalMins(7)
+            .setQuerySkewThreshold(70.0)
+            .setQuerySkewMinQueries(200)
+            .setQuerySkewIntervalMins(8)
+            .setRejectedConnThreshold(9)
+            .setRejectedConnIntervalMins(15);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/universes/"
+                + universe.getUniverseUUID()
+                + "/perf_advisor_settings",
+            authToken,
+            Json.toJson(settings));
+    assertThat(result.status(), equalTo(OK));
+
+    result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/universes/"
+                + universe.getUniverseUUID()
+                + "/perf_advisor_settings",
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode json = Json.parse(contentAsString(result));
+    PerfAdvisorSettingsFormData updated = Json.fromJson(json, PerfAdvisorSettingsFormData.class);
+
+    assertThat(updated, equalTo(settings));
   }
 
   private PerformanceRecommendation createTestRecommendation() {

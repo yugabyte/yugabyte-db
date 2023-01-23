@@ -636,6 +636,8 @@ void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
 
 void YBCStopSysTablePrefetching();
 
+bool YBCIsSysTablePrefetchingStarted();
+
 void YBCRegisterSysTableForPrefetching(
     YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid);
 

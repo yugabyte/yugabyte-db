@@ -756,7 +756,7 @@ Status DoUpdateCDCConsumerOpId(
 }
 
 bool UpdateCheckpointRequired(
-    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id) {
+    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id, bool* force_update) {
   switch (record.source_type) {
     case XCLUSTER:
       return true;
@@ -765,12 +765,24 @@ bool UpdateCheckpointRequired(
       if (cdc_sdk_op_id.write_id() == 0) {
         return true;
       }
-      return cdc_sdk_op_id.write_id() == -1 && cdc_sdk_op_id.key().empty() &&
-             cdc_sdk_op_id.snapshot_time() != 0;
+      if (cdc_sdk_op_id.write_id() == -1) {
+        // CDC should do a force update of checkpoint in cdc_state table as a part snapshot
+        // initialization, so that it can restrict intents and WALS GC if concurrent DML operations
+        // are running as well as UpdatePeersAndMetrics will not GC the intents and WALS for the
+        // FOLLOWERS.
+        if (cdc_sdk_op_id.key().empty() && cdc_sdk_op_id.snapshot_time() == 0) {
+          *force_update = true;
+        }
+        // CDC should update the stream active time in cdc_state table, during snapshot operation to
+        // avoid stream expiry.
+        return true;
+      }
+      break;
 
     default:
       return false;
   }
+  return false;
 }
 
 bool GetFromOpId(const GetChangesRequestPB* req, OpId* op_id, CDCSDKCheckpointPB* cdc_sdk_op_id) {
@@ -1165,13 +1177,11 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   OpId checkpoint;
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
   bool set_latest_entry = req.bootstrap();
-
+  const string err_message = strings::Substitute(
+      "Unable to get the latest entry op id from "
+      "peer $0 and tablet $1 because its log object hasn't been initialized",
+      tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
   if (set_latest_entry) {
-    const string err_message = strings::Substitute(
-        "Unable to get the latest entry op id from "
-        "peer $0 and tablet $1 because its log object hasn't been initialized",
-        tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
-
     // CDC will keep sending log init failure until FLAGS_TEST_cdc_log_init_failure_timeout_seconds
     // is expired.
     auto cdc_log_init_failure_timeout_seconds =
@@ -1190,16 +1200,23 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
     if (!tablet_peer->log_available()) {
       return STATUS(ServiceUnavailable, err_message, CDCError(CDCErrorPB::LEADER_NOT_READY));
     }
-
     checkpoint = tablet_peer->log()->GetLatestEntryOpId();
-    auto result = tablet_peer->LeaderSafeTime();
-    if (!result.ok()) {
-      LOG(WARNING) << "Could not find the leader safe time successfully";
-    } else {
-      cdc_sdk_safe_time = *result;
-    }
   } else {
     checkpoint = OpId::FromPB(req.checkpoint().op_id());
+  }
+
+  if (!tablet_peer->log_available()) {
+    return STATUS(ServiceUnavailable, err_message, CDCError(CDCErrorPB::LEADER_NOT_READY));
+  }
+  auto result = tablet_peer->LeaderSafeTime();
+  if (!result.ok()) {
+    LOG(WARNING) << "Could not find the leader safe time successfully";
+  } else {
+    cdc_sdk_safe_time = *result;
+  }
+
+  // If bootstrap is false and valid cdcsdk_safe_time is set, than set the input safe_time.
+  if (!set_latest_entry && HybridTime::FromPB(req.cdc_sdk_safe_time()) != HybridTime::kInvalid) {
     cdc_sdk_safe_time = HybridTime::FromPB(req.cdc_sdk_safe_time());
   }
   auto session = client()->NewSession();
@@ -1708,14 +1725,28 @@ void CDCServiceImpl::GetChanges(
                  : 0);
 
   if (record.checkpoint_type == IMPLICIT) {
-    if (UpdateCheckpointRequired(record, cdc_sdk_op_id)) {
+    bool force_update = false;
+    OpId snapshot_op_id = OpId::Invalid();
+    // If snapshot operation or before image is enabled, don't allow compaction.
+    HybridTime cdc_sdk_safe_time =
+        record.record_type == CDCRecordType::ALL || cdc_sdk_op_id.write_id() == -1
+            ? HybridTime::FromPB(resp->safe_hybrid_time())
+            : HybridTime::kInvalid;
+    if (UpdateCheckpointRequired(record, cdc_sdk_op_id, &force_update)) {
+      // This is the snapshot bootstrap operation, so taking the checkpoint from the resp.
+      if (force_update) {
+        snapshot_op_id =
+            OpId(resp->cdc_sdk_checkpoint().term(), resp->cdc_sdk_checkpoint().index());
+        LOG(INFO) << "Snapshot bootstrapping is initiated for tablet_id: " << req->tablet_id()
+                  << " with stream_id: " << stream_id
+                  << ", forcefully update the checkpoint: " << snapshot_op_id
+                  << " and cdcsdk safe time: " << cdc_sdk_safe_time;
+      }
       RPC_STATUS_RETURN_ERROR(
           UpdateCheckpointAndActiveTime(
-              producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), op_id, session,
-              last_record_hybrid_time, record.source_type, false,
-              record.record_type == CDCRecordType::ALL
-                  ? HybridTime::FromPB(resp->safe_hybrid_time())
-                  : HybridTime::kInvalid),
+              producer_tablet, OpId::FromPB(resp->checkpoint().op_id()),
+              force_update ? snapshot_op_id : op_id, session, last_record_hybrid_time,
+              record.source_type, force_update, cdc_sdk_safe_time),
           resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     }
 

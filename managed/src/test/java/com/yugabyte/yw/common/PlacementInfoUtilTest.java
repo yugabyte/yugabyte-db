@@ -46,6 +46,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
@@ -84,7 +85,7 @@ import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -1438,15 +1439,18 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     config.put("KUBECONFIG", "az1");
     az1.updateConfig(config);
     az1.save();
-    expectedConfigs.put(az1.uuid, az1.getUnmaskedConfig());
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(az1);
+    expectedConfigs.put(az1.uuid, envVars);
     config.put("KUBECONFIG", "az2");
     az2.updateConfig(config);
     az2.save();
-    expectedConfigs.put(az2.uuid, az2.getUnmaskedConfig());
+    envVars = CloudInfoInterface.fetchEnvVars(az2);
+    expectedConfigs.put(az2.uuid, envVars);
     config.put("KUBECONFIG", "az3");
     az3.updateConfig(config);
     az3.save();
-    expectedConfigs.put(az3.uuid, az3.getUnmaskedConfig());
+    envVars = CloudInfoInterface.fetchEnvVars(az3);
+    expectedConfigs.put(az3.uuid, envVars);
 
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
@@ -1828,6 +1832,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
   @Test
   public void testGetKubernetesConfigPerPod() {
+    testData.clear();
+    testData.add(new TestData(Common.CloudType.kubernetes));
     PlacementInfo pi = new PlacementInfo();
     List<AvailabilityZone> azs =
         ImmutableList.of(testData.get(0).az1, testData.get(0).az2, testData.get(0).az3);

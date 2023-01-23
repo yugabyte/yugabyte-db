@@ -11,10 +11,10 @@ import React, { FC, useState } from 'react';
 import { DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { withRouter } from 'react-router';
 import { useSelector } from 'react-redux';
-
+import { BackupList, Restore } from '..';
 import { YBTabsPanel } from '../../panels';
-import { BackupList } from '..';
 import { ScheduledBackup } from '../scheduled/ScheduledBackup';
+import { BackupAndRestoreBanner } from '../restore/BackupAndRestoreBanner';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
@@ -53,75 +53,83 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
   const [showThrottleParametersModal, setShowThrottleParametersModal] = useState(false);
 
   return (
-    <YBTabsPanel id="backup-tab-panel">
-      <Tab eventKey="backupList" title="Backups" unmountOnExit>
-        <BackupList allowTakingBackup universeUUID={uuid} />
-        <BackupAdvancedRestore
-          onHide={() => {
-            setShowAdvancedRestore(false);
-          }}
-          visible={showAdvancedRestore}
+    <>
+      <BackupAndRestoreBanner />
+      <BackupAdvancedRestore
+        onHide={() => {
+          setShowAdvancedRestore(false);
+        }}
+        visible={showAdvancedRestore}
+        currentUniverseUUID={uuid}
+      />
+      {YBCInstalled && (
+        <BackupThrottleParameters
+          visible={showThrottleParametersModal}
+          onHide={() => setShowThrottleParametersModal(false)}
           currentUniverseUUID={uuid}
         />
-        {YBCInstalled && (
-          <BackupThrottleParameters
-            visible={showThrottleParametersModal}
-            onHide={() => setShowThrottleParametersModal(false)}
-            currentUniverseUUID={uuid}
-          />
-        )}
-      </Tab>
-      <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
-        <ScheduledBackup universeUUID={uuid} />
-      </Tab>
-      {enablePITR && (
-        <Tab eventKey="point-in-time-recovery" title="Point-in-time Recovery" unmountOnExit>
-          <PointInTimeRecovery universeUUID={uuid} />
-        </Tab>
       )}
-      <Tab
-        tabClassName="advanced_configs"
-        title={
-          <DropdownButton
-            pullRight
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            title={
-              <span>
-                <i className="fa fa-gear" />
-                Advanced
-              </span>
-            }
-            id="advanced_config_but"
-          >
-            <MenuItem
+      <YBTabsPanel id="backup-tab-panel" defaultTab="backupList">
+        <Tab eventKey="backupList" title="Backups" unmountOnExit>
+          <BackupList allowTakingBackup universeUUID={uuid} />
+        </Tab>
+        <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
+          <ScheduledBackup universeUUID={uuid} />
+        </Tab>
+        {enablePITR && (
+          <Tab eventKey="point-in-time-recovery" title="Point-in-time Recovery" unmountOnExit>
+            <PointInTimeRecovery universeUUID={uuid} />
+          </Tab>
+        )}
+        {(featureFlags.test.enableRestore || featureFlags.released.enableRestore) && (
+          <Tab eventKey="restore" title="Restore History" unmountOnExit>
+            <Restore type="UNIVERSE_LEVEL" universeUUID={uuid} />
+          </Tab>
+        )}
+        <Tab
+          tabClassName="advanced_configs"
+          title={
+            <DropdownButton
+              pullRight
               onClick={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
-                if (currentUniverse?.data?.universeDetails?.universePaused) return;
-                setShowAdvancedRestore(true);
               }}
-              disabled={currentUniverse?.data?.universeDetails?.universePaused}
+              title={
+                <span>
+                  <i className="fa fa-gear" />
+                  Advanced
+                </span>
+              }
+              id="advanced_config_but"
             >
-              Advanced Restore
-            </MenuItem>
-            {YBCInstalled && (
               <MenuItem
                 onClick={(e) => {
                   e.stopPropagation();
                   if (currentUniverse?.data?.universeDetails?.universePaused) return;
-                  setShowThrottleParametersModal(true);
+                  setShowAdvancedRestore(true);
                 }}
                 disabled={currentUniverse?.data?.universeDetails?.universePaused}
               >
-                Configure Throttle Parameters
+                Advanced Restore
               </MenuItem>
-            )}
-          </DropdownButton>
-        }
-      ></Tab>
-    </YBTabsPanel>
+              {YBCInstalled && (
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (currentUniverse?.data?.universeDetails?.universePaused) return;
+                    setShowThrottleParametersModal(true);
+                  }}
+                  disabled={currentUniverse?.data?.universeDetails?.universePaused}
+                >
+                  Configure Throttle Parameters
+                </MenuItem>
+              )}
+            </DropdownButton>
+          }
+        ></Tab>
+      </YBTabsPanel>
+    </>
   );
 };
 

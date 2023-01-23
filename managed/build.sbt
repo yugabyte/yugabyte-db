@@ -133,6 +133,7 @@ libraryDependencies ++= Seq(
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
+  "org.apache.commons" % "commons-csv" % "1.9.0",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
@@ -165,9 +166,9 @@ libraryDependencies ++= Seq(
   "org.pac4j" % "pac4j-oidc" % "3.7.0" exclude("commons-io" , "commons-io"),
   "com.typesafe.play" %% "play-json" % "2.6.14",
   "commons-validator" % "commons-validator" % "1.7",
-  "org.apache.velocity" % "velocity" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
+  "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
@@ -177,6 +178,7 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-storage" % "2.2.1",
   "com.google.cloud" % "google-cloud-kms" % "2.4.4",
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
+  "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
   "io.kamon" %% "kamon-bundle" % "2.2.2",
@@ -432,8 +434,8 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b13"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.37-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b14"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.38-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b18"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -448,6 +450,10 @@ dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
+dependencyOverrides +=  "com.fasterxml.jackson.core" % "jackson-databind" % "2.13.4.2"
+
+excludeDependencies += "org.eclipse.jetty" % "jetty-io"
+excludeDependencies += "org.eclipse.jetty" % "jetty-server"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 

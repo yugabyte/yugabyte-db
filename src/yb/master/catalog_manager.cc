@@ -109,8 +109,8 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/auto_flags_orchestrator.h"
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_loaders.h"
@@ -136,6 +136,23 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
+#include "yb/master/yql_aggregates_vtable.h"
+#include "yb/master/yql_auth_resource_role_permissions_index.h"
+#include "yb/master/yql_auth_role_permissions_vtable.h"
+#include "yb/master/yql_auth_roles_vtable.h"
+#include "yb/master/yql_columns_vtable.h"
+#include "yb/master/yql_empty_vtable.h"
+#include "yb/master/yql_functions_vtable.h"
+#include "yb/master/yql_indexes_vtable.h"
+#include "yb/master/yql_keyspaces_vtable.h"
+#include "yb/master/yql_local_vtable.h"
+#include "yb/master/yql_partitions_vtable.h"
+#include "yb/master/yql_peers_vtable.h"
+#include "yb/master/yql_size_estimates_vtable.h"
+#include "yb/master/yql_tables_vtable.h"
+#include "yb/master/yql_triggers_vtable.h"
+#include "yb/master/yql_types_vtable.h"
+#include "yb/master/yql_views_vtable.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
@@ -183,8 +200,6 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
-
-#include "yb/vtables/yql_all_vtables.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -331,6 +346,10 @@ DEFINE_RUNTIME_bool(enable_transactional_ddl_gc, true,
 TAG_FLAG(enable_transactional_ddl_gc, hidden);
 
 DECLARE_bool(ysql_ddl_rollback_enabled);
+
+DEFINE_test_flag(bool, disable_ysql_ddl_txn_verification, false,
+    "Simulates a condition where the background process that checks whether the YSQL transaction "
+    "was a success or a failure is indefinitely delayed");
 
 // TODO: should this be a test flag?
 DEFINE_RUNTIME_bool(hide_pg_catalog_table_creation_logs, false,
@@ -525,6 +544,11 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
                            "The number of tablet servers that have not responded or done a "
                            "heartbeat in the time interval defined by the gflag "
                            "FLAGS_tserver_unresponsive_timeout_ms.");
+
+DEFINE_test_flag(int32, delay_ysql_ddl_rollback_secs, 0,
+                 "Number of seconds to sleep before rolling back a failed ddl transaction");
+
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 namespace master {
@@ -1543,45 +1567,45 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
   RETURN_NOT_OK(PrepareSysCatalogTable(term));
 
   // Create the required system tables here.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::PeersVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<PeersVTable>(
       kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::LocalVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<LocalVTable>(
       kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLKeyspacesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable>(
       kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLTablesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable>(
       kSystemSchemaTablesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLColumnsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLColumnsVTable>(
       kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLSizeEstimatesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLSizeEstimatesVTable>(
       kSystemSizeEstimatesTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
 
   // Empty tables.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAggregatesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAggregatesVTable>(
       kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLFunctionsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLFunctionsVTable>(
       kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLIndexesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLIndexesVTable>(
       kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLTriggersVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTriggersVTable>(
       kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLViewsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLViewsVTable>(
       kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::QLTypesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<QLTypesVTable>(
       kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLPartitionsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLPartitionsVTable>(
       kSystemPartitionsTableName, kSystemNamespaceName, kSystemNamespaceId, term)));
 
   // System auth tables.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAuthRolesVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolesVTable>(
       kSystemAuthRolesTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId, term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAuthRolePermissionsVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolePermissionsVTable>(
       kSystemAuthRolePermissionsTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId,
       term)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<yb::vtables::YQLAuthResourceRolePermissionsIndexVTable>(
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthResourceRolePermissionsIndexVTable>(
       kSystemAuthResourceRolePermissionsIndexTableName, kSystemAuthNamespaceName,
       kSystemAuthNamespaceId, term)));
 
@@ -1659,7 +1683,7 @@ Status CatalogManager::PrepareSystemTableTemplate(const TableName& table_name,
                                                   const NamespaceName& namespace_name,
                                                   const NamespaceId& namespace_id,
                                                   int64_t term) {
-  yb::vtables::YQLVirtualTable* vtable = new T(table_name, namespace_name, master_);
+  YQLVirtualTable* vtable = new T(table_name, namespace_name, master_);
   return PrepareSystemTable(
       table_name, namespace_name, namespace_id, vtable->schema(), term, vtable);
 }
@@ -1669,8 +1693,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                           const NamespaceId& namespace_id,
                                           const Schema& schema,
                                           int64_t term,
-                                          yb::vtables::YQLVirtualTable* vtable) {
-  std::unique_ptr<yb::vtables::YQLVirtualTable> yql_storage(vtable);
+                                          YQLVirtualTable* vtable) {
+  std::unique_ptr<YQLVirtualTable> yql_storage(vtable);
 
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
                                                  std::make_pair(namespace_id, table_name));
@@ -1891,13 +1915,15 @@ bool CatalogManager::IsInitialized() const {
   return state_ == kRunning;
 }
 
-// TODO - delete this API after HandleReportedTablet() usage is removed.
 Status CatalogManager::CheckIsLeaderAndReady() const {
-  std::lock_guard<simple_spinlock> l(state_lock_);
-  if (PREDICT_FALSE(state_ != kRunning)) {
-    return STATUS_SUBSTITUTE(ServiceUnavailable,
-        "Catalog manager is shutting down. State: $0", state_);
+  {
+    std::lock_guard<simple_spinlock> l(state_lock_);
+    if (PREDICT_FALSE(state_ != kRunning)) {
+      return STATUS_SUBSTITUTE(ServiceUnavailable,
+          "Catalog manager is shutting down. State: $0", state_);
+    }
   }
+
   string uuid = master_->fs_manager()->uuid();
   if (master_->opts().IsShellMode()) {
     // Consensus and other internal fields should not be checked when is shell mode.
@@ -1913,10 +1939,14 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
     return STATUS_SUBSTITUTE(IllegalState,
         "Not the leader. Local UUID: $0, Consensus state: $1", uuid, cstate.ShortDebugString());
   }
-  if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
-    return STATUS_SUBSTITUTE(ServiceUnavailable,
-        "Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
-        leader_ready_term_, cstate.current_term());
+
+  {
+    std::lock_guard<simple_spinlock> l(state_lock_);
+    if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
+      return STATUS_SUBSTITUTE(ServiceUnavailable,
+          "Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
+          leader_ready_term_, cstate.current_term());
+    }
   }
   return Status::OK();
 }
@@ -2083,7 +2113,9 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
     const scoped_refptr<const TableInfo>& table) const {
   {
     auto table_lock = table->LockForRead();
-    if (table_lock->pb.has_replication_info()) {
+    // Check that the replication info is present and is valid (could be set to invalid null value
+    // due to restore issue, see #15698).
+    if (IsReplicationInfoSet(table_lock->pb.replication_info())) {
       return table_lock->pb.replication_info();
     }
   }
@@ -2134,7 +2166,7 @@ Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicat
   return tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
 }
 
-bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
+bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const {
   const auto& live_placement_info = replication_info.live_replicas();
   if (!(live_placement_info.placement_blocks().empty() && live_placement_info.num_replicas() <= 0 &&
         live_placement_info.placement_uuid().empty()) ||
@@ -2146,7 +2178,8 @@ bool CatalogManager::IsReplicationInfoSet(const ReplicationInfoPB& replication_i
   return false;
 }
 
-Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
+Status CatalogManager::ValidateTableReplicationInfo(
+    const ReplicationInfoPB& replication_info) const {
   if (!IsReplicationInfoSet(replication_info)) {
     return STATUS(InvalidArgument, "No replication info set.");
   }
@@ -4822,7 +4855,7 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   if (DCHECK_IS_ON() &&
       result &&
       IsYcqlTable(*table) &&
-      yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
+      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
       FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
@@ -6585,6 +6618,20 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
 void CatalogManager::ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>& table,
                                                  const TransactionMetadata& txn) {
+  // Add this transaction to the map containining all the transactions yet to be
+  // verified.
+  {
+    LockGuard lock(ddl_txn_verifier_mutex_);
+    ddl_txn_id_to_table_map_[txn.transaction_id].push_back(table);
+  }
+
+  if (FLAGS_TEST_disable_ysql_ddl_txn_verification) {
+    LOG(INFO) << "Skip scheduling table " << table->ToString() << " for transaction verification "
+              << "as TEST_disable_ysql_ddl_txn_verification is set";
+    return;
+  }
+
+  // Schedule transaction verification.
   auto l = table->LockForRead();
   LOG(INFO) << "Enqueuing table for DDL transaction Verification: " << table->name()
             << " id: " << table->id() << " schema version: " << l->pb.version();
@@ -6615,28 +6662,59 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table
                                                   bool success) {
   DCHECK(!txn_id_pb.empty());
   DCHECK(table);
-  const string& id = "table id: " + table->id();
-  auto txn = VERIFY_RESULT(FullyDecodeTransactionId(txn_id_pb));
+  const auto& table_id = table->id();
+  const auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn_id_pb));
+  bool table_present = false;
+  {
+    LockGuard lock(ddl_txn_verifier_mutex_);
+    const auto iter = ddl_txn_id_to_table_map_.find(txn_id);
+    if (iter == ddl_txn_id_to_table_map_.end()) {
+      LOG(INFO) << "DDL transaction " << txn_id << " for table " << table->ToString()
+                << " is already verified, ignoring";
+      return Status::OK();
+    }
+
+    auto& tables = iter->second;
+    auto removed_elements_iter = std::remove_if(tables.begin(), tables.end(),
+        [&table_id](const scoped_refptr<TableInfo>& table) {
+      return table->id() == table_id;
+    });
+    if (removed_elements_iter != tables.end()) {
+      tables.erase(removed_elements_iter, tables.end());
+      table_present = true;
+      if (tables.empty()) {
+        ddl_txn_id_to_table_map_.erase(iter);
+      }
+    }
+  }
+  if (!table_present) {
+    LOG(INFO) << "DDL transaction " << txn_id << " for table " << table->ToString()
+              << " is already verified, ignoring";
+    return Status::OK();
+  }
+  return YsqlDdlTxnCompleteCallbackInternal(table.get(), txn_id, success);
+}
+
+Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(TableInfo *table,
+                                                          const TransactionId& txn_id,
+                                                          bool success) {
+  if (FLAGS_TEST_delay_ysql_ddl_rollback_secs > 0) {
+    LOG(INFO) << "YsqlDdlTxnCompleteCallbackInternal: Sleep for "
+              << FLAGS_TEST_delay_ysql_ddl_rollback_secs << " seconds";
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_ysql_ddl_rollback_secs));
+  }
+  const auto id = "table id: " + table->id();
   auto l = table->LockForWrite();
   LOG(INFO) << "YsqlDdlTxnCompleteCallback for " << id
-            << " for transaction " << txn
+            << " for transaction " << txn_id
             << ": Success: " << (success ? "true" : "false")
             << " ysql_ddl_txn_verifier_state: "
             << l->ysql_ddl_txn_verifier_state().DebugString();
 
-  if (!l->has_ysql_ddl_txn_verifier_state()) {
-    // The table no longer has any DDL state to clean up. It was probably cleared by
-    // another thread, nothing to do.
-    LOG(INFO) << "YsqlDdlTxnCompleteCallback was invoked but no ysql transaction "
-              << "verification state found for " << id << " , ignoring";
-    return Status::OK();
-  }
-
-  if (txn_id_pb != l->pb_transaction_id()) {
-    // Now the table has transaction state for a different transaction.
-    // Do nothing.
-    LOG(INFO) << "YsqlDdlTxnCompleteCallback was invoked for transaction " << txn << " but the "
-              << "schema contains state for a different transaction";
+  if (!VERIFY_RESULT(l->is_being_modified_by_ddl_transaction(txn_id))) {
+    // Transaction verification completed for this table.
+    LOG(INFO) << "Verification of transaction " << txn_id << " for " << id
+              << " is already complete, ignoring";
     return Status::OK();
   }
 
@@ -6669,7 +6747,8 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table
 
   auto& table_pb = l.mutable_data()->pb;
   if (!success && l->ysql_ddl_txn_verifier_state().contains_alter_table_op()) {
-    LOG(INFO) << "Alter transaction " << txn << " failed, rolling back its schema changes";
+    LOG(INFO) << "Alter transaction " << txn_id << " for table " << table->ToString()
+              << " failed, rolling back its schema changes";
     std::vector<DdlLogEntry> ddl_log_entries;
     ddl_log_entries.emplace_back(
         master_->clock()->Now(),
@@ -12132,13 +12211,13 @@ Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tab
 }
 
 void CatalogManager::RebuildYQLSystemPartitions() {
-  if (yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
-      yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
+  if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
+      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.IsInitializedAndIsLeader()) {
       if (system_partitions_tablet_ != nullptr) {
         Status s;
-        if (yb::vtables::YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {
+        if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {
           // If we are not generating the vtable on changes, then we need to do a full refresh.
           s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
         } else {
@@ -12270,8 +12349,8 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
   }), "Failed to submit update table task");
 }
 
-const yb::vtables::YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
-  return down_cast<const yb::vtables::YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
+const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
+  return down_cast<const YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
 }
 
 void CatalogManager::InitializeTableLoadState(
@@ -12536,7 +12615,48 @@ Status CatalogManager::PromoteAutoFlags(
 
   resp->set_new_config_version(new_config_version);
   resp->set_non_runtime_flags_promoted(non_runtime_flags_promoted);
+  return Status::OK();
+}
 
+Status CatalogManager::ReportYsqlDdlTxnStatus(const ReportYsqlDdlTxnStatusRequestPB* req,
+                                              ReportYsqlDdlTxnStatusResponsePB* resp,
+                                              rpc::RpcContext* rpc) {
+  DCHECK(req);
+  const auto& req_txn = req->transaction_id();
+  SCHECK(!req_txn.empty(), IllegalState,
+      "Received ReportYsqlDdlTxnStatus request without transaction id");
+  auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req_txn));
+
+  const auto is_committed = req->is_committed();
+  LOG(INFO) << "Received ReportYsqlDdlTxnStatus request for transaction " << txn
+            << ". Status: " << (is_committed ? "Success" : "Aborted");
+  {
+    SharedLock lock(ddl_txn_verifier_mutex_);
+    const auto iter = ddl_txn_id_to_table_map_.find(txn);
+    if (iter == ddl_txn_id_to_table_map_.end()) {
+      // Transaction not found in the list of transactions to be verified. Ideally this means that
+      // the YB-Master background task somehow got to it before PG backend sent this report. However
+      // it is possible to receive this report BEFORE we added the transaction to the map if:
+      // 1. The transaction failed before performing any DocDB schema change.
+      // 2. Transaction failed and this report arrived in the small window between schema change
+      //    initiation and scheduling the verification task.
+      // We have to do nothing in case of (1). In case of (2), it is safe to do nothing as the
+      // background task will take care of it. This is not optimal but (2) is expected to be very
+      // rare.
+      LOG(INFO) << "DDL transaction " << txn << " not found in list of transactions to be "
+                << "verified, nothing to do";
+      return Status::OK();
+    }
+    for (const auto& table : iter->second) {
+      // Submit this table for transaction verification.
+      LOG(INFO) << "Enqueuing table " << table->ToString()
+                << " for verification of DDL transaction: " << txn;
+      WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc([this, table, req_txn, is_committed]() {
+        WARN_NOT_OK(YsqlDdlTxnCompleteCallback(table, req_txn, is_committed),
+                    "Transaction verification failed for table " + table->ToString());
+      }), "Could not submit YsqlDdlTxnCompleteCallback to thread pool");
+    }
+  }
   return Status::OK();
 }
 

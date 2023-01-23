@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -52,6 +53,7 @@ import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
@@ -441,8 +443,7 @@ public class UniverseCRUDHandler {
     }
     boolean cloudEnabled =
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
-    boolean isAuthEnforced =
-        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.universe.auth.is_enforced");
+    boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
 
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
@@ -1000,8 +1001,7 @@ public class UniverseCRUDHandler {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(addOnCluster.userIntent.provider));
     boolean cloudEnabled =
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
-    boolean isAuthEnforced =
-        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.universe.auth.is_enforced");
+    boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.code);
     addOnCluster.validate(!cloudEnabled, isAuthEnforced);
 
@@ -1077,8 +1077,7 @@ public class UniverseCRUDHandler {
         Provider.getOrBadRequest(UUID.fromString(readOnlyCluster.userIntent.provider));
     boolean cloudEnabled =
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
-    boolean isAuthEnforced =
-        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.universe.auth.is_enforced");
+    boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.code);
     readOnlyCluster.validate(!cloudEnabled, isAuthEnforced);
 
@@ -1251,7 +1250,8 @@ public class UniverseCRUDHandler {
     boolean isNamespaceSet = false;
     for (Region r : Region.getByProvider(providerToCheck.uuid)) {
       for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
-        if (az.getUnmaskedConfig().containsKey("KUBENAMESPACE")) {
+        Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
+        if (zoneConfig.containsKey("KUBENAMESPACE")) {
           isNamespaceSet = true;
         }
       }

@@ -87,7 +87,7 @@ To create a 1-node cluster with a replication factor (RF) of 1, run the followin
 
 ```sh
 docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
- yugabytedb/yugabyte:2.15.2.0-b87 bin/yugabyted start\
+ yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start\
  --daemon=false
 ```
 

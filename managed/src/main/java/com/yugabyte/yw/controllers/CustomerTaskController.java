@@ -11,7 +11,8 @@ import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -42,7 +43,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
@@ -54,7 +55,7 @@ import play.mvc.Result;
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerTaskController extends AuthenticatedController {
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
   @Inject private Commissioner commissioner;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
@@ -154,7 +155,8 @@ public class CustomerTaskController extends AuthenticatedController {
     List<CustomerTask> customerTaskList =
         customerTaskQuery
             .setMaxRows(
-                runtimeConfigFactory.globalRuntimeConf().getInt(CUSTOMER_TASK_DB_QUERY_LIMIT))
+                confGetter.getConfForScope(
+                    Customer.getOrBadRequest(customerUUID), CustomerConfKeys.taskDbQueryLimit))
             .orderBy("create_time desc")
             .findPagedList()
             .getList();

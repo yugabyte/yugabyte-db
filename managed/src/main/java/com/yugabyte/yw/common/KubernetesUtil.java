@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.isMultiAZ;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -32,11 +33,14 @@ public class KubernetesUtil {
   public static Map<UUID, Map<String, String>> getConfigPerAZ(PlacementInfo pi) {
     Map<UUID, Map<String, String>> azToConfig = new HashMap<>();
     for (PlacementCloud pc : pi.cloudList) {
-      Map<String, String> cloudConfig = Provider.get(pc.uuid).getUnmaskedConfig();
+      Provider provider = Provider.getOrBadRequest(pc.uuid);
+      Map<String, String> cloudConfig = CloudInfoInterface.fetchEnvVars(provider);
       for (PlacementRegion pr : pc.regionList) {
-        Map<String, String> regionConfig = Region.get(pr.uuid).getUnmaskedConfig();
+        Region region = Region.getOrBadRequest(pr.uuid);
+        Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(region);
         for (PlacementAZ pa : pr.azList) {
-          Map<String, String> zoneConfig = AvailabilityZone.get(pa.uuid).getUnmaskedConfig();
+          AvailabilityZone az = AvailabilityZone.getOrBadRequest(pa.uuid);
+          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
           if (cloudConfig.containsKey("KUBECONFIG")) {
             azToConfig.put(pa.uuid, cloudConfig);
           } else if (regionConfig.containsKey("KUBECONFIG")) {
@@ -191,8 +195,8 @@ public class KubernetesUtil {
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
     for (Map.Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
-      AvailabilityZone az = AvailabilityZone.get(entry.getKey());
-      Map<String, String> azConfig = az.getUnmaskedConfig();
+      AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
+      Map<String, String> azConfig = CloudInfoInterface.fetchEnvVars(az);
       String namespace =
           getKubernetesNamespace(
               isMultiAZ,
@@ -225,7 +229,8 @@ public class KubernetesUtil {
     for (PlacementCloud pc : pi.cloudList) {
       for (PlacementRegion pr : pc.regionList) {
         for (PlacementAZ pa : pr.azList) {
-          Map<String, String> config = AvailabilityZone.get(pa.uuid).getUnmaskedConfig();
+          AvailabilityZone az = AvailabilityZone.getOrBadRequest(pa.uuid);
+          Map<String, String> config = CloudInfoInterface.fetchEnvVars(az);
           if (config.containsKey("KUBE_DOMAIN")) {
             azToDomain.put(pa.uuid, config.get("KUBE_DOMAIN"));
           } else {

@@ -200,8 +200,8 @@ class PgClient::Impl {
       partitions->keys = {PartitionKey(), keys[keys.size() / 2]};
       static auto key_printer = [](const auto& key) { return Slice(key).ToDebugHexString(); };
       LOG(INFO) << "Partitions for " << table_id << " are joined."
-                << " source: " << ToString(keys, key_printer)
-                << " result: " << ToString(partitions->keys, key_printer);
+                << " source: " << yb::ToString(keys, key_printer)
+                << " result: " << yb::ToString(partitions->keys, key_printer);
     } else {
       partitions->keys.assign(keys.begin(), keys.end());
     }
@@ -212,11 +212,13 @@ class PgClient::Impl {
     return result;
   }
 
-  Status FinishTransaction(Commit commit, DdlMode ddl_mode) {
+  Status FinishTransaction(Commit commit, DdlType ddl_type) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_commit(commit);
-    req.set_ddl_mode(ddl_mode);
+    req.set_ddl_mode(ddl_type != DdlType::NonDdl);
+    req.set_has_docdb_schema_changes(ddl_type == DdlType::DdlWithDocdbSchemaChanges);
+
     tserver::PgFinishTransactionResponsePB resp;
 
     RETURN_NOT_OK(proxy_->FinishTransaction(req, &resp, PrepareController()));
@@ -638,8 +640,8 @@ Result<PgTableDescPtr> PgClient::OpenTable(
   return impl_->OpenTable(table_id, reopen, invalidate_cache_time);
 }
 
-Status PgClient::FinishTransaction(Commit commit, DdlMode ddl_mode) {
-  return impl_->FinishTransaction(commit, ddl_mode);
+Status PgClient::FinishTransaction(Commit commit, DdlType ddl_type) {
+  return impl_->FinishTransaction(commit, ddl_type);
 }
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {

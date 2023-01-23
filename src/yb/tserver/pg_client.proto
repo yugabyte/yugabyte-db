@@ -256,6 +256,8 @@ message PgFinishTransactionRequestPB {
   uint64 session_id = 1;
   bool commit = 2;
   bool ddl_mode = 3;
+  // This transaction contains changes to the DocDB schema protobufs.
+  bool has_docdb_schema_changes = 4;
 }
 
 message PgFinishTransactionResponsePB {

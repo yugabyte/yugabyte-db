@@ -149,6 +149,9 @@ typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeM
 
 constexpr int32_t kInvalidClusterConfigVersion = 0;
 
+using DdlTxnIdToTablesMap =
+  std::unordered_map<TransactionId, std::vector<scoped_refptr<TableInfo>>, TransactionIdHash>;
+
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
 //
@@ -363,7 +366,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<NamespaceId> GetTableNamespaceId(TableId table_id) EXCLUDES(mutex_);
 
   void ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>& table,
-                                   const TransactionMetadata& txn);
+                                   const TransactionMetadata& txn)
+                                   EXCLUDES(ddl_txn_verifier_mutex_);
 
   Status YsqlTableSchemaChecker(scoped_refptr<TableInfo> table,
                                 const std::string& txn_id_pb,
@@ -372,6 +376,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table,
                                     const std::string& txn_id_pb,
                                     bool success);
+
+  Status YsqlDdlTxnCompleteCallbackInternal(
+      TableInfo *table, const TransactionId& txn_id, bool success);
 
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
@@ -1025,6 +1032,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
 
+  Status ReportYsqlDdlTxnStatus(
+      const ReportYsqlDdlTxnStatusRequestPB* req,
+      ReportYsqlDdlTxnStatusResponsePB* resp,
+      rpc::RpcContext* rpc);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1114,7 +1126,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                             const NamespaceId& namespace_id,
                             const Schema& schema,
                             int64_t term,
-                            yb::vtables::YQLVirtualTable* vtable) REQUIRES(mutex_);
+                            YQLVirtualTable* vtable) REQUIRES(mutex_);
 
   Status PrepareNamespace(YQLDatabase db_type,
                           const NamespaceName& name,
@@ -1909,9 +1921,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const PlacementBlockPB& placement_block,
       const TSDescriptorVector& ts_descs);
 
-  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const;
 
-  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) const;
 
   // Return the id of the tablespace associated with a transaction status table, if any.
   boost::optional<TablespaceId> GetTransactionStatusTableTablespace(
@@ -1983,7 +1995,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
 
-  const yb::vtables::YQLPartitionsVTable& GetYqlPartitionsVtable() const;
+  const YQLPartitionsVTable& GetYqlPartitionsVtable() const;
 
   void InitializeTableLoadState(
       const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);
@@ -2031,6 +2043,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::atomic<bool> tablespace_bg_task_running_;
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
+
+  // Guards ddl_txn_id_to_table_map_ below.
+  mutable MutexType ddl_txn_verifier_mutex_;
+
+  // This map stores the transaction ids of all the DDL transactions undergoing verification.
+  // For each transaction, it also stores pointers to the table info objects of the tables affected
+  // by that transaction.
+  DdlTxnIdToTablesMap ddl_txn_id_to_table_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
 
   ServerRegistrationPB server_registration_;
 
