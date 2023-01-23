@@ -32,6 +32,12 @@ static dshash_parameters dsh_params = {
 };
 #endif
 
+/*
+ * Returns the shared memory area size for storing the query texts.
+ * USE_DYNAMIC_HASH also creates the hash table in the same memory space,
+ * so add the required bucket memory size to the query text area size
+ */
+
 static Size
 pgsm_query_area_size(void)
 {
@@ -42,7 +48,9 @@ pgsm_query_area_size(void)
 	#endif
 	return MAXALIGN(sz);
 }
-
+/*
+ * Total shared memory area required by pgsm
+ */
 Size
 pgsm_ShmemSize(void)
 {
@@ -56,6 +64,12 @@ pgsm_ShmemSize(void)
     return MAXALIGN(sz);
 }
 
+/*
+ * Returns the shared memory area size for storing the query texts and pgsm
+ * shared state structure,
+ * Moreover, for USE_DYNAMIC_HASH, both the hash table and raw query text area
+ * get allocated as a single shared memory chunk.
+ */
 static Size
 pgsm_get_shared_area_size(void)
 {
@@ -105,13 +119,16 @@ pgss_startup(void)
 
 		pgss->hash_handle = pgsm_create_bucket_hash(pgss,dsa);
 
+		/* If overflow is enabled, set the DSA size to unlimited,
+		 * and allow the DSA to grow beyond the shared memory space
+		 * into the swap area*/
 		if (PGSM_OVERFLOW_TARGET == OVERFLOW_TARGET_DISK)
 			dsa_set_size_limit(dsa, -1);
 
 		pgsmStateLocal.shared_pgssState = pgss;
 		/*
-		* Postmaster will never access these again, thus free the local
-		* dsa/dshash references.
+		* Postmaster will never access the dsa again, thus free it's local
+		* references.
 		*/
         dsa_detach(dsa);
 	}
@@ -129,6 +146,9 @@ pgss_startup(void)
 	on_shmem_exit(pgss_shmem_shutdown, (Datum) 0);
 }
 
+/*
+ * Create the classic or dshahs hash table for storing the query statistics.
+ */
 static PGSM_HASH_TABLE_HANDLE
 pgsm_create_bucket_hash(pgssSharedState *pgss, dsa_area *dsa)
 {
@@ -151,6 +171,15 @@ pgsm_create_bucket_hash(pgssSharedState *pgss, dsa_area *dsa)
 	return bucket_hash;
 }
 
+/*
+ * Attach to a DSA area created by the postmaster, in the case of 
+ * USE_DYNAMIC_HASH, also attach the local dshash handle to
+ * the dshash created by the postmaster.
+ *
+ * Note: The dsa area and dshash for the process may be mapped at a
+ * different virtual address in this process.
+ *
+ */
 void
 pgsm_attach_shmem(void)
 {
@@ -158,10 +187,17 @@ pgsm_attach_shmem(void)
 	if (pgsmStateLocal.dsa)
 		return;
 
+	/*
+	 * We want the dsa to remain valid throughout the lifecycle of this process.
+	 * so switch to TopMemoryContext before attaching
+	 */
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	pgsmStateLocal.dsa = dsa_attach_in_place(pgsmStateLocal.shared_pgssState->raw_dsa_area,
                                            NULL);
+	/* pin the attached area to keep the area attached until end of
+	 * session or explicit detach.
+	 */
 	dsa_pin_mapping(pgsmStateLocal.dsa);
 
 #if USE_DYNAMIC_HASH
@@ -447,7 +483,10 @@ IsHashInitialize(void)
 	return (pgsmStateLocal.shared_pgssState != NULL);
 }
 
-/* hash function port based on USE_DYNAMIC_HASH */
+/*
+ * pgsm_* functions are just wrapper functions over the hash table standard
+ * API and call the appropriate hash table function based on USE_DYNAMIC_HASH
+ */
 
 void *
 pgsm_hash_find_or_insert(PGSM_HASH_TABLE *shared_hash, pgssHashKey *key, bool* found)

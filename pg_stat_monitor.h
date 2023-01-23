@@ -107,6 +107,19 @@
 /* Update this if need a enum GUC with more options. */
 #define MAX_ENUM_OPTIONS 6
 
+/*
+ * API for disabling error capture ereport(ERROR,..) by PGSM's error capture hook
+ * pgsm_emit_log_hook()
+ * 
+ * Use these macros as follows:
+ * 		 	PGSM_DISABLE_ERROR_CAPUTRE();
+ * 			{
+ * 				... code that might throw ereport(ERROR) ...
+ * 			}PGSM_END_DISABLE_ERROR_CAPTURE();
+ * 
+ * These macros can be used to error recursion if the error gets
+ * thrown from within the function called from pgsm_emit_log_hook()
+ */
 extern volatile bool __pgsm_do_not_capture_error;
 #define PGSM_DISABLE_ERROR_CAPUTRE() \
 	do { \
@@ -119,6 +132,27 @@ extern volatile bool __pgsm_do_not_capture_error;
 #define PGSM_ERROR_CAPTURE_ENABLED \
 	__pgsm_do_not_capture_error == false
 
+/*
+ * pg_stat_monitor uses the hash structure to store all query statistics
+ * except the query text, which gets stored out of line in the raw DSA area.
+ * Enabling USE_DYNAMIC_HASH uses the dshash for storing the query statistics
+ * that get created in the DSA area and can grow to any size.
+ *
+ * The only issue with using the dshash is that the newly created hash entries
+ * are explicitly locked by dshash, and its caller is required to release the lock.
+ * That works well as long as we do not want to swallow the errors thrown from
+ * dshash function. Since the lightweight locks acquired internally by dshash
+ * automatically get released by error.
+ * But throwing an error from pg_stat_monitor would mean erroring out the user query,
+ * which is not acceptable for any stat collector extension.
+ *
+ * Moreover, some of the pg_stat_monitor functions perform the sequence scan on the
+ * hash table, while the sequence scan support for dshash table is only available
+ * for PG 15 and onwards.
+ * So until we figure out the way to release the locks acquired internally by dshash
+ * in case of an error while ignoring the error at the same time, we will keep using
+ * the classic shared memory hash table.
+ */
 #ifdef USE_DYNAMIC_HASH
 	#define	PGSM_HASH_TABLE	dshash_table
 	#define	PGSM_HASH_TABLE_HANDLE	dshash_table_handle
@@ -355,28 +389,23 @@ typedef struct pgssSharedState
 	TimestampTz	bucket_start_time[MAX_BUCKETS]; /* start time of the bucket */
 	LWLock	   	*errors_lock;	/* protects errors hashtable
 								 * search/modification */
-	/*
-	 * These variables are used when pgsm_overflow_target is ON.
-	 *
-	 * overflow is set to true when the query buffer overflows.
-	 *
-	 * n_bucket_cycles counts the number of times we changed bucket since the
-	 * query buffer overflowed. When it reaches pgsm_max_buckets we remove the
-	 * dump file, also reset the counter.
-	 *
-	 * This allows us to avoid having a large file on disk that would also
-	 * slowdown queries to the pg_stat_monitor view.
-	 */
-	size_t		n_bucket_cycles;
 	int         hash_tranche_id;
-	void        *raw_dsa_area;
+	void        *raw_dsa_area;	/* DSA area pointer to store query texts.
+								 * dshash also lives in this memory when
+								 * USE_DYNAMIC_HASH is enabled */
 	PGSM_HASH_TABLE_HANDLE hash_handle;
+								 /* hash table handle. can be either
+								  * classic shared memory hash or dshash
+								  * (if we are using USE_DYNAMIC_HASH)
+								  */
 } pgssSharedState;
 
 typedef struct pgsmLocalState
 {
 	pgssSharedState *shared_pgssState;
-	dsa_area   *dsa;
+	dsa_area   		*dsa;	/* local dsa area for backend attached to the
+							 * dsa area created by postmaster at startup.
+							 */
 	PGSM_HASH_TABLE *shared_hash;
 }pgsmLocalState;
 

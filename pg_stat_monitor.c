@@ -1327,16 +1327,20 @@ pgss_update_entry(pgssEntry *entry,
 												strlen(nested_query_txts[exec_nested_level - 1]): 0;
 				e->counters.info.parentid = nested_queryids[exec_nested_level - 1];
 				e->counters.info.parent_query = InvalidDsaPointer;
+				/* If we have a parent query, store it in the raw dsa area */
 				if (parent_query_len > 0)
 				{
 					char		*qry_buff;
 					dsa_area	*query_dsa_area = get_dsa_area_for_query_text();
+					/* Use dsa_allocate_extended with DSA_ALLOC_NO_OOM flag, as we don't want to get an
+					 * error if memory allocation fails.*/
 					dsa_pointer qry = dsa_allocate_extended(query_dsa_area, parent_query_len+1, DSA_ALLOC_NO_OOM | DSA_ALLOC_ZERO);
 					if (DsaPointerIsValid(qry))
 					{
 						qry_buff = dsa_get_address(query_dsa_area, qry);
 						memcpy(qry_buff, nested_query_txts[exec_nested_level - 1], parent_query_len);
 						qry_buff[parent_query_len] = 0;
+						/* store the dsa pointer for parent query text */
 						e->counters.info.parent_query = qry;
 					}
 				}
@@ -1633,6 +1637,7 @@ pgss_store(uint64 queryid,
 				pfree(norm_query);
 			return;
 		}
+		/* Get the memory address from DSA pointer and copy the query text in local variable */
 		query_buff = dsa_get_address(query_dsa_area, dsa_query_pointer);
 		memcpy(query_buff, norm_query ? norm_query : query, query_len);
 		/* OK to create a new hashtable entry */
