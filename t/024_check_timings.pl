@@ -1,4 +1,3 @@
-
 #!/usr/bin/perl
 
 use strict;
@@ -15,9 +14,9 @@ use pgsm;
 PGSM::setup_files_dir(basename($0));
 
 if ($PGSM::PG_MAJOR_VERSION <= 12)
-{                                                                               
+{
     plan skip_all => "pg_stat_monitor test cases for versions 12 and below.";
-}                                                                               
+}
 
 # CREATE new PostgreSQL node and do initdb
 my $node = PGSM->pgsm_init_pg();
@@ -27,7 +26,7 @@ my $pgdata = $node->data_dir;
 $node->append_conf('postgresql.conf', "shared_preload_libraries = 'pg_stat_statements,pg_stat_monitor'");
 # Set bucket duration to 3600 seconds so bucket doesn't change.
 $node->append_conf('postgresql.conf', "pg_stat_statements.track_utility = off");
-$node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_bucket_time = 1800");
+$node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_bucket_time = 36000");
 $node->append_conf('postgresql.conf', "track_io_timing = on");
 $node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_track_utility = no");
 $node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_normalized_query = yes"); 
@@ -60,17 +59,12 @@ PGSM::append_to_file($stdout);
 ok($cmdret == 0, "Print PGSM EXTENSION Settings");
 PGSM::append_to_file($stdout);
 
-# CREATE example database and run pgbench init
-# ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'CREATE database example;', extra_params => ['-a']);
-# ok($cmdret == 0, "CREATE Database example");
-# PGSM::append_to_file($stdout);
-
 my $port = $node->port;
 
-my $out = system ("pgbench -i -s 100 -p $port postgres");
+my $out = system ("pgbench -i -s 20 -p $port postgres");
 ok($cmdret == 0, "Perform pgbench init");
 
-$out = system ("pgbench -c 10 -j 2 -t 10000 -p $port postgres");
+$out = system ("pgbench -c 10 -j 2 -t 2500 -p $port postgres");
 ok($cmdret == 0, "Run pgbench");
 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', "DELETE FROM pgbench_accounts WHERE aid % 9 = 1;", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
@@ -82,124 +76,122 @@ ok($cmdret == 0, "Run pgbench");
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT substr(query,0,130) AS query, calls, rows, total_exec_time,min_exec_time,max_exec_time,mean_exec_time,stddev_exec_time FROM pg_stat_statements WHERE query LIKE \'%bench%\' ORDER BY query,calls DESC;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 PGSM::append_to_debug_file($stdout);
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT substr(query,0,130) AS query, calls, rows_retrieved, total_exec_time, min_exec_time, max_exec_time, mean_exec_time,stddev_exec_time, cpu_user_time, cpu_sys_time FROM pg_stat_monitor WHERE query LIKE \'%bench%\' ORDER BY query,calls DESC;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT substr(query,0,130) AS query, calls, rows, total_exec_time, min_exec_time, max_exec_time, mean_exec_time,stddev_exec_time, cpu_user_time, cpu_sys_time FROM pg_stat_monitor WHERE query LIKE \'%bench%\' ORDER BY query,calls DESC;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 PGSM::append_to_debug_file($stdout);
-PGSM::append_to_debug_file("--------------");
 
 # Compare values for query 'DELETE FROM pgbench_accounts WHERE $1 = $2' 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.total_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.total_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: total_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.min_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.min_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: min_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.max_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.max_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: max_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.mean_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.mean_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: mean_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.stddev_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.stddev_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: stddev_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.cpu_user_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.cpu_user_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: cpu_user_time should not be 0.");
  
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.cpu_sys_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.cpu_sys_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%DELETE FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: cpu_sys_time should not be 0.");
 
-
 # Compare values for query 'INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)' 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.total_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.total_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: total_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.min_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.min_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: min_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.max_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.max_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: max_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.mean_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.mean_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: mean_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.stddev_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.stddev_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: stddev_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.cpu_user_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.cpu_user_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: cpu_user_time should not be 0.");
  
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.cpu_sys_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.cpu_sys_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: cpu_sys_time should not be 0.");
 
 # Compare values for query 'SELECT abalance FROM pgbench_accounts WHERE aid = $1' 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.total_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.total_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: total_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.min_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.min_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: min_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.max_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.max_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: max_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.mean_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.mean_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: mean_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.stddev_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.stddev_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: stddev_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.cpu_user_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.cpu_user_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: cpu_user_time should not be 0.");
  
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.cpu_sys_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.cpu_sys_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%SELECT abalance FROM pgbench_accounts%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: cpu_sys_time should not be 0.");
 
 # Compare values for query 'UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2' 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.total_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.total_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: total_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.min_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.min_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: min_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.max_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.max_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: max_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.mean_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.mean_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: mean_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.stddev_exec_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.stddev_exec_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: stddev_exec_time should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.cpu_user_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.cpu_user_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: cpu_user_time should not be 0.");
  
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.cpu_sys_time != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT SUM(PGSM.cpu_sys_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%UPDATE pgbench_accounts SET abalance%\' GROUP BY query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: cpu_sys_time should not be 0.");
 
