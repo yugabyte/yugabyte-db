@@ -210,6 +210,9 @@ yugaware:
   service:
     # other values…
     annotations:
+      # used by builtin load balancer controller of Kubernetes
+      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+      # required if using AWS load balancer controller
       service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
 ```
 
@@ -223,9 +226,16 @@ tls:
   hostname: "yba.example.com"
 ```
 
-<!-- TODO: move things from the following section to this page -->
-<!-- https://docs.yugabyte.com/preview/yugabyte-platform/troubleshoot/install-upgrade-yp-issues/#configure-load-balancer-for-helm-charts  -->
-<!-- it was added as part of PLAT-3570 -->
+Similarly, if you want to access YugabyteDB Anywhere from multiple domains or you have a complex reverse-proxy setup, you can add those domains to CORS configuration, as follows:
+
+```yaml
+# yba-values.yaml
+yugaware:
+  # other values…
+  additionAllowedCorsOrigins:
+  - "yba-east.example.com"
+  - "yba-test.example.com"
+```
 
 ### Configure TLS
 
