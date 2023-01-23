@@ -21,7 +21,7 @@ import com.yugabyte.yw.models.helpers.NodeID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.ByteArrayInputStream;
 import java.util.List;

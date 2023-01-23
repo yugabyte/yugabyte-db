@@ -366,20 +366,13 @@ public class TestCollectionTypes extends BaseCQLTest {
     String update_template = "UPDATE " + tableName + " SET %s = %s WHERE h = 1 and r = 1";
 
     //-------------------------------- Testing Map Update ------------------------------------\\
-    String update_stmt1 = String.format(update_template, "vm", "{11 : 'abcd', 12 : 'efgh'}");
+    String update_stmt1 =
+        String.format(update_template, "vm", "{11 : 'abcd', 12 : 'efgh', 13: 'xyza', 14: 'pqrs'}");
     session.execute(update_stmt1);
 
     // checking update result
-    row = runSelect(select_stmt1).next();
-    assertEquals(1, row.getInt(0));
-    assertEquals(1, row.getInt(1));
-    // Checking Map Value
-    map_value = row.getMap(2, Integer.class, String.class);
-    assertEquals(2, map_value.size());
-    assertTrue(map_value.containsKey(11));
-    assertEquals("abcd", map_value.get(11));
-    assertTrue(map_value.containsKey(12));
-    assertEquals("efgh", map_value.get(12));
+    assertQuery(select_stmt1,
+        "Row[1, 1, {11=abcd, 12=efgh, 13=xyza, 14=pqrs}, [a, b, c], [1.5, 2.0, 3.5]]");
 
     //-------------------------------- Testing Set Update ------------------------------------\\
     String update_stmt2 = String.format(update_template, "vs", "{'x', 'y'}");
@@ -394,23 +387,46 @@ public class TestCollectionTypes extends BaseCQLTest {
     assertTrue(set_value.contains("y"));
 
     //-------------------------------- Testing List Update -----------------------------------\\
-    String update_stmt3 = String.format(update_template, "vl", "[2, 2.5, 3.0]");
+    String update_stmt3 = String.format(update_template, "vl", "[2, 2.5, 3.0, 3.5, 4.0, 4.5]");
     session.execute(update_stmt3);
     // checking update result
     row = runSelect(select_stmt1).next();
     assertEquals(1, row.getInt(0));
     assertEquals(1, row.getInt(1));
     list_value = row.getList(4, Double.class);
-    assertEquals(3, list_value.size());
+    assertEquals(6, list_value.size());
     assertEquals(2.0, list_value.get(0), 0.0 /* delta */);
     assertEquals(2.5, list_value.get(1), 0.0 /* delta */);
     assertEquals(3.0, list_value.get(2), 0.0 /* delta */);
+    assertEquals(3.5, list_value.get(3), 0.0 /* delta */);
+    assertEquals(4.0, list_value.get(4), 0.0 /* delta */);
+    assertEquals(4.5, list_value.get(5), 0.0 /* delta */);
 
     //------------------------------------------------------------------------------------------
     // Testing Delete -- basic functionality
     //------------------------------------------------------------------------------------------
 
-    // collections cannot be primary keys so not much to be checked here -- just plain delete
+    String delete_template = "DELETE %s FROM " + tableName + " WHERE h = 1 and r = 1";
+
+    //-------------------------------- Testing Map Delete ------------------------------------\\
+    String delete_stmt1 = String.format(delete_template, "vm[11], vm[13]");
+    session.execute(delete_stmt1);
+    assertQuery(String.format("SELECT * from %s where h = 1 and r = 1", tableName),
+        "Row[1, 1, {12=efgh, 14=pqrs}, [x, y], [2.0, 2.5, 3.0, 3.5, 4.0, 4.5]]");
+
+    //-------------------------------- Testing List Delete ------------------------------------\\
+    String delete_stmt2 = String.format(delete_template, "vl[2], vl[4]");
+    session.execute(delete_stmt2);
+    assertQuery(String.format("SELECT * from %s where h = 1 and r = 1", tableName),
+        "Row[1, 1, {12=efgh, 14=pqrs}, [x, y], [2.0, 2.5, 3.5, 4.5]]");
+
+    // 3.5 and 4.5 should now be at index 2 and 3 respectively after the previous statement.
+    String delete_stmt3 = String.format(delete_template, "vl[2], vl[3]");
+    session.execute(delete_stmt3);
+    assertQuery(String.format("SELECT * from %s where h = 1 and r = 1", tableName),
+        "Row[1, 1, {12=efgh, 14=pqrs}, [x, y], [2.0, 2.5]]");
+
+    //-------------------------------- Testing Basic Delete ------------------------------------\\
     String delete_stmt = "DELETE FROM " + tableName + " WHERE h = 1 and r = 2";
     session.execute(delete_stmt);
 
@@ -672,6 +688,9 @@ public class TestCollectionTypes extends BaseCQLTest {
     map_input.put(4, "x");
     map_input.put(5, "y");
     map_input.put(6, "z");
+    map_input.put(7, "a");
+    map_input.put(8, "b");
+    map_input.put(9, "c");
     set_input.clear();
     set_input.add("f");
     set_input.add("e");
@@ -680,6 +699,9 @@ public class TestCollectionTypes extends BaseCQLTest {
     list_input.add(2.0);
     list_input.add(3.0);
     list_input.add(4.0);
+    list_input.add(5.0);
+    list_input.add(6.0);
+    list_input.add(7.0);
 
     //--------------------------- Testing Update By Position ---------------------------------\\
     // updating the values
@@ -726,7 +748,38 @@ public class TestCollectionTypes extends BaseCQLTest {
     assertEquals(list_input, row.getList(4, Double.class));
 
     //------------------------------------------------------------------------------------------
-    // SELECT and DELETE statements do not require additional tests for binds because
+    // Testing Delete with Bind
+    //------------------------------------------------------------------------------------------
+
+    //--------------------------- Testing Delete By Position ---------------------------------\\
+    String delete_stmt = "DELETE vm[?], vl[?] FROM " + tableName + " WHERE h = ? AND r = ?;";
+    session.execute(delete_stmt, 4, 1, 1, 1);
+    assertQuery(String.format("SELECT * from %s where h = 1 and r = 1", tableName),
+        "Row[1, 1, {5=y, 6=z, 7=a, 8=b, 9=c}, [d, e, f], [2.0, 4.0, 5.0, 6.0, 7.0]]");
+
+    //----------------------------- Testing Delete By Name -----------------------------------\\
+    session.execute(delete_stmt, new HashMap<String, Object>() {{
+        put("key(vm)", 6);
+        put("idx(vl)", 1);
+        put("h", 1);
+        put("r", 1);
+      }});
+    assertQuery(String.format("SELECT * from %s where h = 1 and r = 1", tableName),
+        "Row[1, 1, {5=y, 7=a, 8=b, 9=c}, [d, e, f], [2.0, 5.0, 6.0, 7.0]]");
+
+    //--------------------------- Testing Delete By Named Markers -----------------------------\\
+    String del_stmt2 = "DELETE vm[:mk], vl[:li] FROM " + tableName + " WHERE h = :hv AND r = :rv;";
+    session.execute(del_stmt2, new HashMap<String, Object>() {{
+        put("mk", 8);
+        put("li", 2);
+        put("hv", 1);
+        put("rv", 1);
+      }});
+    assertQuery(String.format("SELECT * from %s where h = 1 and r = 1", tableName),
+        "Row[1, 1, {5=y, 7=a, 9=c}, [d, e, f], [2.0, 5.0, 7.0]]");
+
+    //------------------------------------------------------------------------------------------
+    // SELECT statements do not require additional tests for binds because
     // collections cannot be primary keys and do not support comparison operations
     //------------------------------------------------------------------------------------------
   }

@@ -1162,7 +1162,7 @@ class PTSubscriptedColumn : public PTOperator0 {
     return name_;
   }
 
-  // Access function for name.
+  // Access function for args.
   const PTExprListNode::SharedPtr& args() const {
     return args_;
   }

@@ -80,7 +80,8 @@ You can shut down the local cluster you created as follows:
 ```sh
 ./bin/yugabyted destroy \
                 --base_dir=/tmp/ybd1
-
+./bin/yugabyted destroy \
+                --base_dir=/tmp/ybd2
 ./bin/yugabyted destroy \
                 --base_dir=/tmp/ybd3
 ```

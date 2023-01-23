@@ -79,6 +79,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -111,6 +112,8 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(log_inject_latency);
@@ -128,6 +131,9 @@ DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
 DECLARE_bool(TEST_force_master_lookup_all_tablets);
 DECLARE_double(TEST_simulate_lookup_timeout_probability);
+
+DECLARE_bool(ysql_legacy_colocated_database_creation);
+DECLARE_int32(pgsql_proxy_webserver_port);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
@@ -755,7 +761,7 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
 }
 
 TEST_F(ClientTest, TestListTables) {
-  auto tables = ASSERT_RESULT(client_->ListTables());
+  auto tables = ASSERT_RESULT(client_->ListTables("", true));
   std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
     return n1.ToString() < n2.ToString();
   });
@@ -2640,10 +2646,129 @@ TEST_F(ClientTest, RefreshPartitions) {
   LOG(INFO) << "num_lookups_done: " << num_lookups_done;
 }
 
+class ColocationClientTest: public ClientTest {
+ public:
+  void SetUp() override {
+    YBMiniClusterTestBase::SetUp();
+
+    FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
+    FLAGS_ysql_legacy_colocated_database_creation = false;
+
+    // Reduce the TS<->Master heartbeat interval
+    FLAGS_heartbeat_interval_ms = 10;
+
+    // Start minicluster and wait for tablet servers to connect to master.
+    master::SetDefaultInitialSysCatalogSnapshotFlags();
+    auto opts = MiniClusterOptions();
+    opts.num_tablet_servers = 3;
+    opts.num_masters = NumMasters();
+    cluster_.reset(new MiniCluster(opts));
+    ASSERT_OK(cluster_->StartSync());
+    ASSERT_OK(WaitForInitDb(cluster_.get()));
+
+    // Connect to the cluster.
+    ASSERT_OK(InitClient());
+
+    // Initialize Postgres.
+    ASSERT_OK(InitPostgres());
+  }
+
+  void DoTearDown() override {
+    client_.reset();
+    if (cluster_) {
+      if (pg_supervisor_) {
+        pg_supervisor_->Stop();
+      }
+      cluster_->Shutdown();
+      cluster_.reset();
+    }
+  }
+
+  Status InitPostgres() {
+    auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
+    auto port = cluster_->AllocateFreePort();
+    pgwrapper::PgProcessConf pg_process_conf =
+        VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
+            AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
+            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
+            pg_ts->server()->GetSharedMemoryFd()));
+    pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
+    pg_process_conf.force_disable_log_file = true;
+    FLAGS_pgsql_proxy_webserver_port = cluster_->AllocateFreePort();
+
+    LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
+              << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+              << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+    pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf,
+                                                               nullptr /* tserver */);
+    RETURN_NOT_OK(pg_supervisor_->Start());
+
+    pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+    return Status::OK();
+  }
+
+  Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname = "yugabyte") {
+    return pgwrapper::PGConnBuilder({
+      .host = pg_host_port_.host(),
+      .port = pg_host_port_.port(),
+      .dbname = dbname
+    }).Connect();
+  }
+
+ protected:
+  std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
+  HostPort pg_host_port_;
+};
+
 // There should be only one lookup RPC asking for colocated tables tablet locations.
 // When we ask for tablet lookup for other tables colocated with the first one we asked, MetaCache
 // should be able to respond without sending RPCs to master again.
-TEST_F(ClientTest, ColocatedTablesLookupTablet) {
+TEST_F(ColocationClientTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablesLookupTablet)) {
+  const auto kTabletLookupTimeout = 10s;
+  const auto kNumTables = 10;
+
+  auto conn = ASSERT_RESULT(ConnectToDB());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", kPgsqlKeyspaceName));
+  conn = ASSERT_RESULT(ConnectToDB(kPgsqlKeyspaceName));
+  auto res = ASSERT_RESULT(conn.FetchFormat(
+                                    "SELECT oid FROM pg_database WHERE datname = '$0'",
+                                    kPgsqlKeyspaceName));
+  uint32_t database_oid = ASSERT_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
+
+  std::vector<TableId> table_ids;
+  for (auto i = 0; i < kNumTables; ++i) {
+    const auto name = Format("table_$0", i);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key BIGINT PRIMARY KEY, value BIGINT)", name));
+    res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_class WHERE relname = '$0'", name));
+    uint32_t table_oid = ASSERT_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
+    table_ids.push_back(GetPgsqlTableId(database_oid, table_oid));
+  }
+
+  const auto lookup_serial_start = client::internal::TEST_GetLookupSerial();
+
+  TabletId colocated_tablet_id;
+  for (const auto& table_id : table_ids) {
+    auto table = ASSERT_RESULT(client_->OpenTable(table_id));
+    auto tablet = ASSERT_RESULT(client_->LookupTabletByKeyFuture(
+        table, /* partition_key =*/ "",
+        CoarseMonoClock::now() + kTabletLookupTimeout).get());
+    const auto tablet_id = tablet->tablet_id();
+    if (colocated_tablet_id.empty()) {
+      colocated_tablet_id = tablet_id;
+    } else {
+      ASSERT_EQ(tablet_id, colocated_tablet_id);
+    }
+  }
+
+  const auto lookup_serial_stop = client::internal::TEST_GetLookupSerial();
+  ASSERT_EQ(lookup_serial_stop, lookup_serial_start + 1);
+}
+
+// There should be only one lookup RPC asking for legacy colocated database colocated tables tablet
+// locations. When we ask for tablet lookup for other tables colocated with the first one we asked,
+// MetaCache should be able to respond without sending RPCs to master again.
+TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
+  FLAGS_ysql_legacy_colocated_database_creation = true;
   const auto kTabletLookupTimeout = 10s;
   const auto kNumTables = 10;
 

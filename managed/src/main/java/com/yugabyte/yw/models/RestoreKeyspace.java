@@ -3,24 +3,17 @@
 package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
 import com.yugabyte.yw.common.BackupUtil;
-import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.forms.RestoreBackupParams;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.Query;
 import io.ebean.annotation.CreatedTimestamp;
-import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
@@ -28,17 +21,15 @@ import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 import java.util.Optional;
+import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
-import javax.persistence.Id;
-import io.ebean.annotation.EnumValue;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
+import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
 import play.libs.Json;
 
 @ApiModel(description = "Keyspace level restores")

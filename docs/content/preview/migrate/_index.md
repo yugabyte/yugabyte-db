@@ -11,14 +11,13 @@ menu:
   preview:
     identifier: voyager
     parent: migrate
-cascade:
-  unversioned: true
-  beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 ---
 
 YugabyteDB Voyager is a powerful open-source data migration engine that accelerates cloud native adoption by removing barriers to moving applications to the public or private cloud. It helps you migrate databases to YugabyteDB quickly and securely.
 
 YugabyteDB Voyager manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration, and data-migration, using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line utility.
+
+![Voyager Architecture](/images/migrate/voyager_architecture.png)
 
 ## Features
 

@@ -17,6 +17,8 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler.RunResult;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.RuntimeConfService;
@@ -88,6 +90,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   @Inject private PerformanceRecommendationService performanceRecommendationService;
   @Inject private StateChangeAuditInfoService stateChangeAuditInfoService;
   @Inject private RuntimeConfService runtimeConfService;
+
+  @Inject private PerfAdvisorScheduler perfAdvisorScheduler;
 
   @ApiOperation(
       value = "Get performance recommendation details",
@@ -405,6 +409,30 @@ public class PerfAdvisorController extends AuthenticatedController {
             ActionType.Update,
             request().body().asJson());
     return YBPSuccess.empty();
+  }
+
+  @ApiOperation(value = "Start performance advisor run for universe", response = YBPSuccess.class)
+  public Result runPerfAdvisor(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (!customer.getCustomerId().equals(universe.customerId)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
+    }
+
+    RunResult result = perfAdvisorScheduler.runPerfAdvisor(universe);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            TargetType.PerformanceAdvisorRun,
+            null,
+            ActionType.Create,
+            request().body().asJson());
+    if (result.isStarted()) {
+      return YBPSuccess.empty();
+    } else {
+      throw new PlatformServiceException(PRECONDITION_FAILED, result.getFailureReason());
+    }
   }
 
   private <T> T convertException(Callable<T> operation, String operationName) {

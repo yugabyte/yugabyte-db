@@ -406,6 +406,10 @@ class YBClient::Data {
   // It does not take replication factor into account
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id, CoarseTimePoint deadline);
 
+  // Provide the status of the transaction to YB-Master.
+  Status ReportYsqlDdlTxnStatus(
+      const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline);
+
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
   template <class ProxyClass, class ReqClass, class RespClass>

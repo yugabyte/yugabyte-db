@@ -1,4 +1,4 @@
----
+<!---
 title: xCluster replication (2+ regions) in YCQL
 headerTitle: xCluster (2+ regions)
 linkTitle: xCluster (2+ regions)
@@ -14,7 +14,7 @@ menu:
     parent: explore-multi-region-deployments
     weight: 720
 type: docs
----
+--->
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 

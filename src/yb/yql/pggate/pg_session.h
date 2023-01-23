@@ -326,6 +326,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void ResetHasWriteOperationsInDdlMode();
   bool HasWriteOperationsInDdlMode() const;
 
+  void SetDdlHasSyscatalogChanges();
+
   Result<bool> CheckIfPitrActive();
 
   void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);

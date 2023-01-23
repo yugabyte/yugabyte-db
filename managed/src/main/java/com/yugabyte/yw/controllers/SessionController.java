@@ -22,13 +22,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.LdapUtil;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -36,12 +35,12 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
+import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -65,7 +64,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.text.ParseException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -80,11 +78,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.apache.directory.api.ldap.model.exception.LdapException;
-import org.pac4j.core.profile.CommonProfile;
-import org.pac4j.core.profile.ProfileManager;
-import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.java.Secure;
-import org.pac4j.play.store.PlaySessionStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Configuration;
@@ -92,7 +86,6 @@ import play.Environment;
 import play.data.Form;
 import play.libs.Json;
 import play.libs.ws.WSClient;
-import play.libs.ws.WSRequest;
 import play.mvc.Http;
 import play.mvc.Http.Cookie;
 import play.mvc.Result;
@@ -115,7 +108,7 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private Environment environment;
 
-  @Inject private PlaySessionStore playSessionStore;
+  @Inject public ThirdPartyLoginHandler thirdPartyLoginHandler;
 
   @Inject private PasswordPolicyService passwordPolicyService;
 
@@ -149,15 +142,6 @@ public class SessionController extends AbstractPlatformController {
             runtimeConfigFactory.globalRuntimeConf().getValue(Util.LIVE_QUERY_TIMEOUTS));
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.apiHelper = new ApiHelper(wsClient);
-  }
-
-  private CommonProfile getProfile() {
-    final PlayWebContext context = new PlayWebContext(ctx(), playSessionStore);
-    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
-    return profileManager
-        .get(true)
-        .orElseThrow(
-            () -> new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to get profile"));
   }
 
   @ApiModel(description = "Session information")
@@ -198,7 +182,6 @@ public class SessionController extends AbstractPlatformController {
 
   @Data
   static class CustomerCountResp {
-
     final int count;
   }
 
@@ -396,57 +379,24 @@ public class SessionController extends AbstractPlatformController {
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @Secure(clients = "OidcClient")
   public Result thirdPartyLogin() {
-    CommonProfile profile = getProfile();
-    String emailAttr =
-        runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
-    String email;
-    String originUrl = request().getQueryString("orig_url");
-    String redirectTo = originUrl != null ? originUrl : "/";
+    String email = thirdPartyLoginHandler.getEmailFromCtx(ctx());
+    Users user = thirdPartyLoginHandler.findUserByEmailOrUnauthorizedErr(ctx(), email);
+    thirdPartyLoginHandler.onLoginSuccess(ctx(), user);
 
-    if (emailAttr.equals("")) {
-      email = profile.getEmail();
-    } else {
-      email = (String) profile.getAttribute(emailAttr);
-    }
-    Users user = Users.getByEmail(email.toLowerCase());
-    if (user == null) {
-      final PlayWebContext context = new PlayWebContext(ctx(), playSessionStore);
-      final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
-      profileManager.logout();
-      playSessionStore.destroySession(context);
-    } else {
-      Customer cust = Customer.get(user.customerUUID);
-      ctx().args.put("customer", cust);
-      ctx().args.put("user", userService.getUserWithFeatures(cust, user));
-      response()
-          .setCookie(
-              Http.Cookie.builder("customerId", cust.uuid.toString())
-                  .withSecure(ctx().request().secure())
-                  .build());
-      response()
-          .setCookie(
-              Http.Cookie.builder("userId", user.uuid.toString())
-                  .withSecure(ctx().request().secure())
-                  .build());
-      ctx().args.put("isAudited", true);
-      Audit.create(
-          user,
-          request().path(),
-          request().method(),
-          Audit.TargetType.User,
-          user.uuid.toString(),
-          Audit.ActionType.Login,
-          null,
-          null,
-          null,
-          request().remoteAddress());
-    }
+    ctx().args.put("isAudited", true);
+    Audit.create(
+        user,
+        request().path(),
+        request().method(),
+        Audit.TargetType.User,
+        user.uuid.toString(),
+        Audit.ActionType.Login,
+        null,
+        null,
+        null,
+        request().remoteAddress());
 
-    if (environment.isDev()) {
-      return redirect("http://localhost:3000" + redirectTo);
-    } else {
-      return redirect(redirectTo);
-    }
+    return thirdPartyLoginHandler.redirectTo(request().getQueryString("orig_url"));
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
