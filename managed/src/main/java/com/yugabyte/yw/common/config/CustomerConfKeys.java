@@ -50,4 +50,15 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "todo",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.BETA));
+
+  public static final ConfKeyInfo<Duration> perfRecommendationRetentionDuration =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cleanup.rec_retention_duration",
+          ScopeType.CUSTOMER,
+          "Perf Recommendation Collection Retention Duration",
+          "Conf key that represents the duration of time the perf-advisor recommendation is valid. "
+              + "Once this duration is exceeded, the recommendation entry is marked"
+              + " as stale and deleted.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
