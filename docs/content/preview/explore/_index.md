@@ -54,21 +54,21 @@ You can run examples using a universe set up on your local machine or in a cloud
     <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
-      Use a local universe
+      Local
     </a>
   </li>
   <li >
     <a href="#cloud" class="nav-link" id="cloud-tab" data-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Use a cloud universe
+      YugabyteDB Managed
     </a>
   </li>
   <li>
     <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
-      Use YugabyteDB Anywhere
+      YugabyteDB Anywhere
     </a>
   </li>
 </ul>
@@ -76,10 +76,11 @@ You can run examples using a universe set up on your local machine or in a cloud
 
 
 
-<div class="tab-content">
 
+<div class="tab-content">
   <div id="cloud" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
-To run the examples in YugabyteDB Managed, create a single- or multi-node universe (which is referred to as cluster in YugabyteDB Managed).<br><br>
+
+To run the examples in YugabyteDB Managed, create a single- or multi-node universe (which is referred to as cluster in YugabyteDB Managed).
 
 {{< tabpane text=true >}}
 
@@ -282,24 +283,25 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
     <a href="#localworkload" class="nav-link active" id="local-tab" data-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
-      Use a local universe
+      Local
     </a>
   </li>  
   <li >
     <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Use a cloud universe
+      YugabyteDB Managed
     </a>
   </li>
   <li>
     <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
-      Use YugabyteDB Anywhere
+      YugabyteDB Anywhere
     </a>
   </li>
 </ul>
+
 
 <div class="tab-content">
   <div id="cloudworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
@@ -322,10 +324,10 @@ java -Dnode=<host name> \
 ```
 
 Replace the following:
-- `<host name>` - the host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
-- `<dbname>` - the name of the database you are connecting to (the default is yugabyte).
-- `<dbuser>` and `<dbpassword>` - the username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
-- `<cloud.region.zone>` - the zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
+- `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+- `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
+- `<dbuser>` and `<dbpassword>` - The username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
+- `<cloud.region.zone>` - The zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
 
     ```sh
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-2a,aws.us-east-1.us-east-3a
@@ -357,13 +359,13 @@ The `-Dspring.datasource` flag enables [topology-aware load balancing](../driver
 You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:
 
 ```sh
-scp -i <path_to_your_pem_file> <jar_file_name> ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
+scp -i <path_to_your_pem_file> yb-workload-sim-0.0.2.jar ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
 ```
 
 For example:
 
 ```sh
-scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem test.txt ec2-user@123.456.789.2XS:/tmp/
+scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.2.jar ec2-user@123.456.789.2XS:/tmp/
 ```
 
 You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:
@@ -395,7 +397,7 @@ You can launch the application from your YugabyteDB Anywhere instance by using t
 
    Replace the following:
 
-   - `<node_ip>` - The IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName >Nodes** in YugabyteDB Anywhere. 
+   - `<node_ip>` - The IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName > Nodes** in YugabyteDB Anywhere. 
 
    - `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
 
@@ -403,13 +405,13 @@ You can launch the application from your YugabyteDB Anywhere instance by using t
 
    - `<port>` - 5433.
 
-   - `<aws.regions.zones>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName >Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
+   - `<aws.regions.zones>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
 
      ```sh
      -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
      ```
 
-The preceding instructions are applicable to a YSQL workload. To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.2.jar` command :
+The preceding instructions are applicable to a YSQL workload. To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.2.jar` command:
 
 ```sh
 -Dworkload=genericCassandraWorkload \
