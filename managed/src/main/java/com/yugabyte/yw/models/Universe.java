@@ -739,7 +739,7 @@ public class Universe extends Model {
     UniverseDefinitionTaskParams details = this.getUniverseDetails();
     if (details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
       // This means there must be a root CA associated with it.
-      if (details.rootAndClientRootCASame) {
+      if (details.rootAndClientRootCASame && details.rootCA != null) {
         return CertificateInfo.get(details.rootCA).certificate;
       }
       return CertificateInfo.get(details.getClientRootCA()).certificate;
@@ -929,6 +929,7 @@ public class Universe extends Model {
    * @return the host (private_ip) and port of the current master leader in the universe or null if
    *     not found
    */
+  @JsonIgnore
   public HostAndPort getMasterLeader() {
     final String masterAddresses = getMasterAddresses();
     final String cert = getCertificateNodetoNode();
@@ -948,6 +949,7 @@ public class Universe extends Model {
    *
    * @return NodeDetails of the master leader
    */
+  @JsonIgnore
   public NodeDetails getMasterLeaderNode() {
     return getNodeByPrivateIP(getMasterLeaderHostText());
   }
@@ -958,6 +960,7 @@ public class Universe extends Model {
    * @return a String of the private_ip of the current master leader in the universe or an empty
    *     string if not found
    */
+  @JsonIgnore
   public String getMasterLeaderHostText() {
     final HostAndPort masterLeader = getMasterLeader();
     if (masterLeader == null) return "";

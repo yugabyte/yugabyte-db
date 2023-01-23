@@ -139,6 +139,10 @@ public class CertificateHelper {
         CERT_PATH + "/ca.key.pem", storagePath, customerUUID.toString(), caCertUUID.toString());
   }
 
+  public static String getCADirPath(String storagePath, UUID customerUUID, UUID caCertUUID) {
+    return String.format(CERT_PATH, storagePath, customerUUID.toString(), caCertUUID.toString());
+  }
+
   private static String generateUniqueRootCALabel(String nodePrefix, CertConfigType certType) {
 
     // Default the cert label with node prefix.

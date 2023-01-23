@@ -30,7 +30,6 @@ import com.yugabyte.yw.models.helpers.provider.region.DefaultRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
-
 import play.libs.Json;
 
 public interface CloudInfoInterface {
