@@ -2561,6 +2561,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Creates a task to upgrade desired ybc version on a universe.
+   *
+   * @param universeUUID universe on which ybc need to be upgraded
+   * @param ybcVersion desired ybc version
+   * @param validateOnlyMasterLeader flag to check only if master leader node's ybc is upgraded or
+   *     not
+   */
+  public SubTaskGroup createUpgradeYbcTaskOnK8s(UUID universeUUID, String ybcSoftwareVersion) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpgradeYbc", executor);
+    InstallYbcSoftwareOnK8s task = createTask(InstallYbcSoftwareOnK8s.class);
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.universeUUID = universeUUID;
+    params.ybcSoftwareVersion = ybcSoftwareVersion;
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Creates a task to install xxhash on the DB nodes from third-party packages.
    *
    * @param universe universe on which xxhash needs to be installed

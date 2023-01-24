@@ -278,6 +278,9 @@ public class CustomerTask extends Model {
     @EnumValue("InstallYbcSoftware")
     InstallYbcSoftware,
 
+    @EnumValue("InstallYbcSoftwareOnK8s")
+    InstallYbcSoftwareOnK8s,
+
     @EnumValue("UpgradeUniverseYbc")
     UpgradeUniverseYbc,
 
@@ -408,6 +411,8 @@ public class CustomerTask extends Model {
           return completed ? "Ran API Triggered Hooks" : "Running API Triggered Hooks";
         case InstallYbcSoftware:
           return completed ? "Installed Ybc" : "Installing Ybc";
+        case InstallYbcSoftwareOnK8s:
+          return completed ? "Installed Ybc on K8S" : "Installing Ybc on K8S";
         case UpgradeUniverseYbc:
           return completed ? "Upgraded Ybc" : "Upgrading Ybc";
         case DisableYbc:

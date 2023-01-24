@@ -173,6 +173,7 @@ public class UniverseControllerRequestBinder {
     if (universe.isYbcEnabled()) {
       result.installYbc = true;
       result.enableYbc = true;
+      result.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
     }
     return result;
   }

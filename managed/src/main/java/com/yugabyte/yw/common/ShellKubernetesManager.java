@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -380,6 +381,50 @@ public class ShellKubernetesManager extends KubernetesManager {
           response.isSuccess() && waitForPVCExpand(universeUUID, config, namespace, pvcName);
     }
     return patchSuccess;
+  }
+
+  @Override
+  public void copyFileToPod(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      String srcFilePath,
+      String destFilePath) {
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "cp",
+            srcFilePath,
+            String.format("%s/%s:%s", namespace, podName, destFilePath),
+            String.format("--container=%s", containerName));
+    execCommand(config, commandList, true)
+        .processErrors(
+            String.format("Unable to copy file from: %s to %s", srcFilePath, destFilePath));
+  }
+
+  @Override
+  public void performYbcAction(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      List<String> commandArgs) {
+    List<String> commandList =
+        new LinkedList<String>(
+            Arrays.asList(
+                "kubectl",
+                "exec",
+                podName,
+                "--namespace",
+                namespace,
+                "--container",
+                containerName,
+                "--"));
+    commandList.addAll(commandArgs);
+    execCommand(config, commandList, true)
+        .processErrors(
+            String.format("Unable to run the command: %s", String.join(" ", commandArgs)));
   }
 
   // Ref: https://kubernetes.io/blog/2022/05/05/volume-expansion-ga/

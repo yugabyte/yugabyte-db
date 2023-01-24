@@ -64,7 +64,13 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
           createUniverseSetTlsParamsTask();
           // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(getUniverse(), userIntent.ybSoftwareVersion, true, true);
+          createUpgradeTask(
+              getUniverse(),
+              userIntent.ybSoftwareVersion,
+              true,
+              true,
+              getUniverse().isYbcEnabled(),
+              getUniverse().getUniverseDetails().ybcSoftwareVersion);
         });
   }
 

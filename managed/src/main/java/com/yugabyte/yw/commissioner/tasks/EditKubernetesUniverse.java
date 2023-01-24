@@ -274,7 +274,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           masterAddresses,
           newPlacement,
-          curPlacement);
+          curPlacement,
+          taskParams().enableYbc);
+
+      if (taskParams().enableYbc) {
+        installYbcOnThePods(
+            universe.name, tserversToAdd, isReadOnlyCluster, taskParams().ybcSoftwareVersion);
+        createWaitForYbcServerTask(tserversToAdd);
+      }
     }
 
     // Update the blacklist servers on master leader.
@@ -432,6 +439,27 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
+  public void startNewPods(
+      String universeName,
+      Set<NodeDetails> podsToAdd,
+      ServerType serverType,
+      PlacementInfo activeZones,
+      boolean isReadOnlyCluster,
+      String masterAddresses,
+      KubernetesPlacement newPlacement,
+      KubernetesPlacement currPlacement) {
+    startNewPods(
+        universeName,
+        podsToAdd,
+        serverType,
+        activeZones,
+        isReadOnlyCluster,
+        masterAddresses,
+        newPlacement,
+        currPlacement,
+        false);
+  }
+
   /*
   Starts up the new pods as requested by the user.
   */
@@ -443,7 +471,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean isReadOnlyCluster,
       String masterAddresses,
       KubernetesPlacement newPlacement,
-      KubernetesPlacement currPlacement) {
+      KubernetesPlacement currPlacement,
+      boolean enableYbc) {
     createPodsTask(
         universeName,
         newPlacement,
@@ -451,7 +480,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         currPlacement,
         serverType,
         activeZones,
-        isReadOnlyCluster);
+        isReadOnlyCluster,
+        enableYbc);
 
     createSingleKubernetesExecutorTask(
         universeName,
