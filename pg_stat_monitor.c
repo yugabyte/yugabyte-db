@@ -299,9 +299,9 @@ _PG_init(void)
 
 			if (b_count != hist_bucket_count_user)
 				ereport(WARNING,
-						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("pg_stat_monitor: Histogram buckets are overlapping."),
-						errdetail("Histogram bucket size is set to %d [not including outlier buckets].", hist_bucket_count_user));
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("pg_stat_monitor: Histogram buckets are overlapping."),
+						 errdetail("Histogram bucket size is set to %d [not including outlier buckets].", hist_bucket_count_user)));
 		}
 	}
 
