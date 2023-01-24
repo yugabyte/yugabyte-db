@@ -95,6 +95,11 @@ class RWOperationCounter {
   std::string resource_name() const {
     return resource_name_;
   }
+
+  uint64_t TEST_GetDisableCount() const;
+
+  bool TEST_IsStopped() const;
+
  private:
   Status WaitForOpsToFinish(
       const CoarseTimePoint& start_time, const CoarseTimePoint& deadline);
