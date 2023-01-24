@@ -3094,5 +3094,68 @@ TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
+TEST_P(TwoDCYsqlTest, DeletingDatabaseContainingReplicatedTable) {
+  constexpr int kNTabletsPerTable = 1;
+  const int num_tables = 3;
+
+  auto tables = ASSERT_RESULT(SetUpWithParams({1, 1}, {1, 1}, 1));
+  // Additional namespaces.
+  const string kNamespaceName2 = "test_namespace2";
+
+  // Create the additional databases.
+  auto producer_db_2 = CreateDatabase(&producer_cluster_, kNamespaceName2, false);
+  auto consumer_db_2 = CreateDatabase(&consumer_cluster_, kNamespaceName2, false);
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<YBTableName> producer_table_names;
+  std::vector<YBTableName> consumer_table_names;
+
+  auto create_tables = [this, &producer_tables](
+                           const string namespace_name, Cluster& cluster,
+                           bool is_replicated_producer, std::vector<YBTableName>& table_names) {
+    for (int i = 0; i < num_tables; i++) {
+      auto table = ASSERT_RESULT(CreateYsqlTable(
+          &cluster, namespace_name, Format("test_schema_$0", i), Format("test_table_$0", i),
+          boost::none /* tablegroup */, kNTabletsPerTable));
+      // For now, only replicate the second table for test_namespace.
+      if (is_replicated_producer && i == 1) {
+        std::shared_ptr<client::YBTable> yb_table;
+        ASSERT_OK(producer_client()->OpenTable(table, &yb_table));
+        producer_tables.push_back(yb_table);
+      }
+    }
+  };
+  // Create the tables in the producer test_namespace database that will contain some replicated
+  // tables.
+  create_tables(kNamespaceName, producer_cluster_, true, producer_table_names);
+  // Create non replicated tables in the producer's test_namespace2 database. This is done to
+  // ensure that its deletion isn't affected by other producer databases that are a part of
+  // replication.
+  create_tables(kNamespaceName2, producer_cluster_, false, producer_table_names);
+  // Create non replicated tables in the consumer's test_namespace3 database. This is done to
+  // ensure that its deletion isn't affected by other consumer databases that are a part of
+  // replication.
+  create_tables(kNamespaceName2, consumer_cluster_, false, consumer_table_names);
+  // Create tables in the consumer's test_namesapce database, only have the second table be
+  // replicated.
+  create_tables(kNamespaceName, consumer_cluster_, false, consumer_table_names);
+
+  // Setup universe replication for the tables.
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
+  master::IsSetupUniverseReplicationDoneResponsePB is_resp;
+  ASSERT_OK(WaitForSetupUniverseReplication(
+      consumer_cluster(), consumer_client(), kUniverseId, &is_resp));
+
+  ASSERT_NOK(producer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
+  ASSERT_NOK(consumer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
+  ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
+  ASSERT_OK(consumer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
+
+  ASSERT_OK(DeleteUniverseReplication());
+
+  ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
+  ASSERT_OK(consumer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
+}
+
 } // namespace enterprise
 } // namespace yb

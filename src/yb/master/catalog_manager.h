@@ -1627,6 +1627,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<SnapshotScheduleId> FindCoveringScheduleForObject(
       SysRowEntryType type, const std::string& object_id);
 
+  // Checks if the database being deleted contains any replicated tables.
+  Status CheckIfDatabaseHasReplication(const scoped_refptr<NamespaceInfo>& database);
+
   Status DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
                            DeleteNamespaceResponsePB* resp,
                            rpc::RpcContext* rpc);
