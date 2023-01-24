@@ -93,9 +93,11 @@ The application must use the same connection URL to create every connection it n
 
 ### Topology-aware connection load balancing
 
-For a database deployment that spans multiple regions, evenly distributing requests across all database nodes may not be optimal. With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial for client applications that need to connect to the geographically nearest regions and zones for lower latency.
+For a database deployment that spans multiple regions, evenly distributing requests across all database nodes may not be optimal. With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial in the following situations:
 
-If the cluster has a [preferred region](../../admin/yb-admin/#set-preferred-zones) (where all the tablet leaders are hosted) assigned, for best performance set the topology keys to a zone in the same region.
+- For connecting to the geographically nearest regions and zones for lower latency and fewer network hops. Typically you would co-locate applications in the regions where your cluster is located. Topology balancing allows you to target only regions where the applications are hosted.
+
+- The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the shard leaders are hosted. In this case, for best performance you want your application to target the preferred locations.
 
 You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style).
 
