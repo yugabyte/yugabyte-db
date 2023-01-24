@@ -273,7 +273,7 @@ YB Workload Simulator requires Java 11 or later installed on your computer. {{% 
 Download the YB Workload Simulator JAR file using the following command:
 
 ```sh
-wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.2/yb-workload-sim-0.0.2.jar
+wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.3/yb-workload-sim-0.0.3.jar
 ```
 
 ## Use the application
@@ -319,7 +319,7 @@ java -Dnode=<host name> \
     -Dssl=true \
     -Dsslmode=verify-full \
     -Dsslrootcert=<path-to-cluster-certificate> \
-    -jar ./yb-workload-sim-0.0.2.jar
+    -jar ./yb-workload-sim-0.0.3.jar
 ```
 
 
@@ -344,7 +344,7 @@ To start the application against a running local universe, use the following com
 java -jar \
     -Dnode=127.0.0.1 \
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a \
-    ./yb-workload-sim-0.0.2.jar
+    ./yb-workload-sim-0.0.3.jar
 ```
 
 The `-Dnode` flag specifies the IP address of the node to which to connect.
@@ -358,13 +358,13 @@ The `-Dspring.datasource` flag enables [topology-aware load balancing](../driver
 You start by moving the YB Workload Simulator JAR file from your local directory to the YugabyteDB Anywhere instance on AWS EC2, as follows:
 
 ```sh
-scp -i <path_to_your_pem_file> yb-workload-sim-0.0.2.jar ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
+scp -i <path_to_your_pem_file> yb-workload-sim-0.0.3.jar ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
 ```
 
 For example:
 
 ```sh
-scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.2.jar ec2-user@123.456.789.2XS:/tmp/
+scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.3.jar ec2-user@123.456.789.2XS:/tmp/
 ```
 
 You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:
@@ -391,7 +391,7 @@ You can launch the application from your YugabyteDB Anywhere instance by using t
          -Dspring.datasource.hikari.data-source-properties.topologyKeys=<aws.regions.zones> \
          -DloggingDir="/tmp/logs" \
          -DXmx=32g \
-         -jar ./yb-workload-sim-0.0.2.jar
+         -jar ./yb-workload-sim-0.0.3.jar
    ```
 
    Replace the following:
@@ -410,7 +410,7 @@ You can launch the application from your YugabyteDB Anywhere instance by using t
      -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
      ```
 
-The preceding instructions are applicable to a YSQL workload. To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.2.jar` command:
+The preceding instructions are applicable to a YSQL workload. To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.3.jar` command:
 
 ```sh
 -Dworkload=genericCassandraWorkload \
