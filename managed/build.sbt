@@ -388,6 +388,7 @@ runPlatform := {
 libraryDependencies += "org.yb" % "yb-client" % "0.8.17.2-SNAPSHOT"
 
 libraryDependencies ++= Seq(
+  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
