@@ -43,8 +43,6 @@ PG_MODULE_MAGIC;
 
 #define PGSM_TEXT_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "pg_stat_monitor_query"
 
-#define roundf(x,d) ((floor(((x)*pow(10,d))+.5))/pow(10,d))
-
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
 
 #define _snprintf(_str_dst, _str_src, _len, _max_len)\
@@ -2047,23 +2045,23 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.calls.calls);
 
 		/* total_time at column number 17 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.time.total_time, 4));
+		values[i++] = Float8GetDatumFast(tmp.time.total_time);
 
 		/* min_time at column number 18 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.time.min_time, 4));
+		values[i++] = Float8GetDatumFast(tmp.time.min_time);
 
 		/* max_time at column number 19 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.time.max_time, 4));
+		values[i++] = Float8GetDatumFast(tmp.time.max_time);
 
 		/* mean_time at column number 20 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.time.mean_time, 4));
+		values[i++] = Float8GetDatumFast(tmp.time.mean_time);
 		if (tmp.calls.calls > 1)
 			stddev = sqrt(tmp.time.sum_var_time / tmp.calls.calls);
 		else
 			stddev = 0.0;
 
 		/* calls at column number 21 */
-		values[i++] = Float8GetDatumFast(roundf(stddev, 4));
+		values[i++] = Float8GetDatumFast(stddev);
 
 		/* calls at column number 22 */
 		values[i++] = Int64GetDatumFast(tmp.calls.rows);
@@ -2079,23 +2077,23 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.plancalls.calls);
 
 		/* total_time at column number 24 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.plantime.total_time, 4));
+		values[i++] = Float8GetDatumFast(tmp.plantime.total_time);
 
 		/* min_time at column number 25 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.plantime.min_time, 4));
+		values[i++] = Float8GetDatumFast(tmp.plantime.min_time);
 
 		/* max_time at column number 26 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.plantime.max_time, 4));
+		values[i++] = Float8GetDatumFast(tmp.plantime.max_time);
 
 		/* mean_time at column number 27 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.plantime.mean_time, 4));
+		values[i++] = Float8GetDatumFast(tmp.plantime.mean_time);
 		if (tmp.plancalls.calls > 1)
 			stddev = sqrt(tmp.plantime.sum_var_time / tmp.plancalls.calls);
 		else
 			stddev = 0.0;
 
 		/* calls at column number 28 */
-		values[i++] = Float8GetDatumFast(roundf(stddev, 4));
+		values[i++] = Float8GetDatumFast(stddev);
 
 		/* blocks are from column number 29 - 40 */
 		values[i++] = Int64GetDatumFast(tmp.blocks.shared_blks_hit);
@@ -2108,23 +2106,23 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.blocks.local_blks_written);
 		values[i++] = Int64GetDatumFast(tmp.blocks.temp_blks_read);
 		values[i++] = Int64GetDatumFast(tmp.blocks.temp_blks_written);
-		values[i++] = Float8GetDatumFast(roundf(tmp.blocks.blk_read_time, 4));
-		values[i++] = Float8GetDatumFast(roundf(tmp.blocks.blk_write_time, 4));
+		values[i++] = Float8GetDatumFast(tmp.blocks.blk_read_time);
+		values[i++] = Float8GetDatumFast(tmp.blocks.blk_write_time);
 
 		if (api_version >= PGSM_V2_0)
 		{
-			values[i++] = Float8GetDatumFast(roundf(tmp.blocks.temp_blk_read_time, 4));
-			values[i++] = Float8GetDatumFast(roundf(tmp.blocks.temp_blk_write_time, 4));
+			values[i++] = Float8GetDatumFast(tmp.blocks.temp_blk_read_time);
+			values[i++] = Float8GetDatumFast(tmp.blocks.temp_blk_write_time);
 		}
 
 		/* resp_calls at column number 41 */
 		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, hist_bucket_count_total);
 
 		/* utime at column number 42 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.sysinfo.utime, 4));
+		values[i++] = Float8GetDatumFast(tmp.sysinfo.utime);
 
 		/* stime at column number 43 */
-		values[i++] = Float8GetDatumFast(roundf(tmp.sysinfo.stime, 4));
+		values[i++] = Float8GetDatumFast(tmp.sysinfo.stime);
 		{
 			char		buf[256];
 			Datum		wal_bytes;
@@ -2154,13 +2152,13 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			if (api_version >= PGSM_V2_0)
 			{
 				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_functions);
-				values[i++] = Float8GetDatumFast(roundf(tmp.jitinfo.jit_generation_time, 4));
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_generation_time);
 				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_inlining_count);
-				values[i++] = Float8GetDatumFast(roundf(tmp.jitinfo.jit_inlining_time, 4));
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_inlining_time);
 				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_optimization_count);
-				values[i++] = Float8GetDatumFast(roundf(tmp.jitinfo.jit_optimization_time, 4));
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_optimization_time);
 				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_emission_count);
-				values[i++] = Float8GetDatumFast(roundf(tmp.jitinfo.jit_emission_time, 4));
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_emission_time);
 			}
 
 		}
