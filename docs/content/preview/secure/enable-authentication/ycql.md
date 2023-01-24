@@ -139,7 +139,7 @@ You should see the following output.
 
 #### Reset password for a superuser
 
-By default, superusers cannot reset a password, and to enable this feature, use the [`ycql-allow-non-authenticated-password-reset`](./../../reference/configuration/yb-tserver/#ycql-allow-non-authenticated-password-reset) YB-TServer GFlag in conjunction with the [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) YB-TServer GFlag.
+By default, superusers cannot reset a password, and to enable this feature, use the [`ycql-allow-non-authenticated-password-reset`](../../../reference/configuration/yb-tserver/#ycql-allow-non-authenticated-password-reset) YB-TServer GFlag in conjunction with the [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) YB-TServer GFlag.
 
 The following example describes the steps to reset a password for the admin superuser created in the [Create a superuser](#create-a-superuser) step.
 
@@ -155,7 +155,7 @@ The following example describes the steps to reset a password for the admin supe
 1. Change the password using `ycqlsh` as follows:
 
     ```cql
-    cassandra@ycqlsh> ALTER ROLE admin WITH PASSWORD = `updatedPWD`
+    cassandra@ycqlsh> ALTER ROLE admin WITH PASSWORD = <updatedPassword>
     ```
 
 1. Set `use_cassandra_authentication` to `true` and `ycql_allow_non_authenticated_password_reset` to `false` as follows:
@@ -170,7 +170,7 @@ The following example describes the steps to reset a password for the admin supe
 1. Login to `ycqlsh` with the updated password as follows:
 
     ```sh
-    ./bin/ycqlsh -u admin -p 'updatedPWD'
+    ./bin/ycqlsh -u admin -p <updatedPassword>
     ```
 
 ## Connect using non-default credentials
