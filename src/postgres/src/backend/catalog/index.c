@@ -258,14 +258,6 @@ index_check_primary_key(Relation heapRel,
 		attform = (Form_pg_attribute) GETSTRUCT(atttuple);
 
 		if (!attform->attnotnull)
-			/* YB_TODO(ena@yugabyte)
-			 *
-			 * - The following code is removed as Postgres 13 raise error in this case.
-			 * - Check if it is still needed, and implement accordingly.
-
-			 cmd->yb_is_add_primary_key = true;
-
-			 */
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("primary key column \"%s\" is not marked NOT NULL",
