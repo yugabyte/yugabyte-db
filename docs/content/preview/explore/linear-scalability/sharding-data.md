@@ -399,4 +399,3 @@ If you are done experimenting, run the following commands to shut down the local
 ./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd6
 ```
-
