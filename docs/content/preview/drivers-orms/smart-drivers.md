@@ -91,9 +91,15 @@ After the connection is established with a node, if that node fails, then the re
 
 The application must use the same connection URL to create every connection it needs, so that the distribution happens equally.
 
+Note that the nodes in the cluster must be accessible. If, for example, the cluster has multiple regions deployed in separate VPCs, your application would need access to all the regions, typically via peering.
+
 ### Topology-aware connection load balancing
 
-With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial for client applications that need to connect to the geographically nearest regions and zones for lower latency. If no servers are available, the request may return with a failure.
+For a database deployment that spans multiple regions, evenly distributing requests across all database nodes may not be optimal. With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial in the following situations:
+
+- For connecting to the geographically nearest regions and zones for lower latency and fewer network hops. Typically you would co-locate applications in the regions where your cluster is located. Topology balancing allows you to target only regions where the applications are hosted.
+
+- The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the shard leaders are hosted. In this case, for best performance you want your application to target the preferred locations.
 
 You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style).
 
@@ -103,6 +109,8 @@ For example, using the Go driver, you would set the parameters as follows:
 "postgres://username:password@localhost:5433/database_name?load_balance=true& \
     topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
 ```
+
+If no servers are available, the request may return with a failure.
 
 You still need to specify load balance as true to enable the topology-aware connection load balancing.
 
@@ -114,9 +122,11 @@ Smart drivers can be configured with popular pooling solutions such as Hikari an
 
 [YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
 
-For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
+When connecting using an upstream driver, you connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
-If you are using a smart driver with topology awareness, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
+If you are using a smart driver, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
+
+YugabyteDB Managed clusters also support topology-aware load balancing. If the cluster has a [preferred region](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
 
 Applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
