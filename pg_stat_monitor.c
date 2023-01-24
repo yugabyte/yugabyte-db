@@ -711,11 +711,16 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		 */
 		InstrEndLoop(queryDesc->totaltime);
 
+		sys_info.utime = 0;
+		sys_info.stime = 0;
+
 		if (getrusage(RUSAGE_SELF, &rusage_end) != 0)
 			elog(DEBUG1, "pg_stat_monitor: failed to execute getrusage");
-
-		sys_info.utime = time_diff(rusage_end.ru_utime, rusage_start.ru_utime);
-		sys_info.stime = time_diff(rusage_end.ru_stime, rusage_start.ru_stime);
+		else
+		{
+			sys_info.utime = time_diff(rusage_end.ru_utime, rusage_start.ru_utime);
+			sys_info.stime = time_diff(rusage_end.ru_stime, rusage_start.ru_stime);
+		}
 
 		pgss_store(queryId,		/* query id */
 				   queryDesc->sourceText,	/* query text */
@@ -1030,13 +1035,18 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 			PG_RE_THROW();
 		}
 
+		sys_info.utime = 0;
+		sys_info.stime = 0;
+
 		PG_END_TRY();
 
 		if (getrusage(RUSAGE_SELF, &rusage_end) != 0)
 			elog(DEBUG1, "pg_stat_monitor: failed to execute getrusage");
-
-		sys_info.utime = time_diff(rusage_end.ru_utime, rusage_start.ru_utime);
-		sys_info.stime = time_diff(rusage_end.ru_stime, rusage_start.ru_stime);
+		else
+		{
+			sys_info.utime = time_diff(rusage_end.ru_utime, rusage_start.ru_utime);
+			sys_info.stime = time_diff(rusage_end.ru_stime, rusage_start.ru_stime);
+		}
 
 		INSTR_TIME_SET_CURRENT(duration);
 		INSTR_TIME_SUBTRACT(duration, start);
