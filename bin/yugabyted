@@ -2630,7 +2630,8 @@ class ControlScript(object):
         home_dir = os.path.expanduser("~")
         default_base_dir = os.path.join(home_dir, "var")
         default_conf_path = os.path.join(default_base_dir, "conf", "{}.conf".format(SCRIPT_NAME))
-        base_dir = os.path.abspath(args.base_dir) if args.base_dir else default_base_dir
+        base_dir = os.path.abspath(os.path.expanduser(args.base_dir)) if args.base_dir \
+            else default_base_dir
         base_dir_conf = ''
         if args.base_dir:
             base_dir_conf = os.path.join(base_dir, "conf", "{}.conf".format(SCRIPT_NAME))
@@ -2639,7 +2640,7 @@ class ControlScript(object):
 
         self.conf_file = args.config or base_dir_conf or \
                          Configs.get_brew_config() or default_conf_path
-        self.conf_file = os.path.abspath(os.path.realpath(self.conf_file))
+        self.conf_file = os.path.realpath(os.path.expanduser(self.conf_file))
 
         conf_dir = os.path.dirname(self.conf_file)
         if not os.path.isdir(conf_dir):
@@ -2653,6 +2654,8 @@ class ControlScript(object):
                 setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
 
         if args.data_dir is not None:
+            args.data_dir = os.path.expanduser(args.data_dir)
+
             config_data_dir = self.configs.saved_data.get("data_dir")
             if (config_data_dir and os.path.exists(config_data_dir) and
                     config_data_dir != args.data_dir):
@@ -2662,6 +2665,8 @@ class ControlScript(object):
                     "Data directory already exists at {}.".format(config_data_dir))
 
         if args.log_dir is not None:
+            args.log_dir = os.path.expanduser(args.log_dir)
+
             config_log_dir = self.configs.saved_data.get("log_dir")
             if (config_log_dir and os.path.exists(config_log_dir) and
                     config_log_dir != args.log_dir):
@@ -2709,6 +2714,8 @@ class ControlScript(object):
                     "node."+args.advertise_address+".key"]
 
         if args.certs_dir is not None:
+            args.certs_dir = os.path.expanduser(args.certs_path)
+
             if not os.path.exists(args.certs_dir):
                 # Case Scenario: When the directory provided by the user through
                 # --certs_dir flag in CLI does not exists.
@@ -3517,6 +3524,11 @@ class Configs(object):
             except ValueError as e:
                 Output.log_error_and_exit(
                     "Failed to read config file {}: {}".format(config_file, str(e)))
+
+        paths = ["data_dir", "log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
+        for k, v in configs.saved_data.items():
+            if v is not None and k in paths:
+                configs.saved_data[k] = os.path.expanduser(v)
 
         return configs
 
