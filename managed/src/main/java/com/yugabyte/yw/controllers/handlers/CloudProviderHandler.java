@@ -48,24 +48,24 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
-import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.FileData;
-import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -114,6 +114,7 @@ public class CloudProviderHandler {
   @Inject private DnsManager dnsManager;
   @Inject private Environment environment;
   @Inject private CloudAPI.Factory cloudAPIFactory;
+  @Inject private ProviderValidator providerValidator;
   @Inject private KubernetesManagerFactory kubernetesManagerFactory;
   @Inject private Configuration appConfig;
   @Inject private Config config;
@@ -164,13 +165,24 @@ public class CloudProviderHandler {
       Common.CloudType providerCode,
       String providerName,
       Provider reqProvider,
-      String anyProviderRegion) {
+      boolean validate) {
     Provider existentProvider = Provider.get(customer.uuid, providerName, providerCode);
     if (existentProvider != null) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Provider with the name %s already exists", providerName));
     }
-
+    // TODO: Remove this code once the validators are added for all cloud provider.
+    CloudAPI cloudAPI = cloudAPIFactory.get(providerCode.toString());
+    if (validate
+        && cloudAPI != null
+        && !cloudAPI.isValidCreds(reqProvider, getFirstRegionCode(reqProvider))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Invalid %s Credentials.", providerCode.toString().toUpperCase()));
+    }
+    if (validate) {
+      providerValidator.validate(reqProvider);
+    }
     Provider provider =
         Provider.create(customer.uuid, providerCode, providerName, reqProvider.details);
     maybeUpdateVPC(provider);
@@ -186,7 +198,7 @@ public class CloudProviderHandler {
           // TODO: make instance types more multi-tenant friendly...
         }
       } else {
-        maybeUpdateCloudProviderConfig(provider, providerConfig, anyProviderRegion);
+        maybeUpdateCloudProviderConfig(provider, providerConfig);
       }
     }
     provider.save();
@@ -715,19 +727,18 @@ public class CloudProviderHandler {
   }
 
   public UUID editProvider(
-      Customer customer, Provider provider, Provider editProviderReq, String anyProviderRegion) {
+      Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     return providerEditRestrictionManager.tryEditProvider(
-        provider.uuid,
-        () -> doEditProvider(customer, provider, editProviderReq, anyProviderRegion));
+        provider.uuid, () -> doEditProvider(customer, provider, editProviderReq, validate));
   }
 
   private UUID doEditProvider(
-      Customer customer, Provider provider, Provider editProviderReq, String anyProviderRegion) {
+      Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     provider.setVersion(editProviderReq.getVersion());
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     boolean providerDataUpdated =
-        updateProviderData(customer, provider, editProviderReq, anyProviderRegion, regionsToAdd);
+        updateProviderData(customer, provider, editProviderReq, regionsToAdd, validate);
     UUID taskUUID = maybeAddRegions(customer, editProviderReq, provider, regionsToAdd);
     if (!providerDataUpdated && taskUUID == null) {
       throw new PlatformServiceException(
@@ -741,25 +752,34 @@ public class CloudProviderHandler {
       Customer customer,
       Provider provider,
       Provider editProviderReq,
-      String anyProviderRegion,
-      Set<Region> regionsToAdd) {
+      Set<Region> regionsToAdd,
+      boolean validate) {
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(editProviderReq);
     Map<String, String> existingConfigMap = CloudInfoInterface.fetchEnvVars(provider);
     boolean updatedProviderDetails = false;
     boolean updatedProviderConfig = false;
+    // TODO: Remove this code once the validators are added for all cloud provider.
+    CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
+    if (validate
+        && cloudAPI != null
+        && !cloudAPI.isValidCreds(editProviderReq, getFirstRegionCode(editProviderReq))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Invalid %s Credentials.", provider.code.toUpperCase()));
+    }
+    if (validate) {
+      providerValidator.validate(editProviderReq);
+    }
     if (!provider.details.equals(editProviderReq.details)) {
       updatedProviderDetails = true;
       provider.details = editProviderReq.details;
     }
     if (!existingConfigMap.equals(providerConfig)) {
       provider.details.cloudInfo = editProviderReq.details.cloudInfo;
-      updatedProviderConfig =
-          maybeUpdateCloudProviderConfig(provider, providerConfig, anyProviderRegion);
+      updatedProviderConfig = maybeUpdateCloudProviderConfig(provider, providerConfig);
     }
     boolean updatedKubeConfig = maybeUpdateKubeConfig(provider, providerConfig);
     boolean providerDataUpdated =
         updatedProviderConfig || updatedKubeConfig || updatedProviderDetails;
-
     provider.save();
     return providerDataUpdated;
   }
@@ -867,14 +887,9 @@ public class CloudProviderHandler {
   }
 
   private boolean maybeUpdateCloudProviderConfig(
-      Provider provider, Map<String, String> providerConfig, String anyProviderRegion) {
+      Provider provider, Map<String, String> providerConfig) {
     if (MapUtils.isEmpty(providerConfig)) {
       return false;
-    }
-    CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
-    if (cloudAPI != null && !cloudAPI.isValidCreds(provider, anyProviderRegion)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, String.format("Invalid %s Credentials.", provider.code.toUpperCase()));
     }
     switch (provider.getCloudCode()) {
       case aws:
@@ -1005,5 +1020,12 @@ public class CloudProviderHandler {
       }
     }
     return schedule;
+  }
+
+  private static String getFirstRegionCode(Provider provider) {
+    for (Region r : provider.regions) {
+      return r.code;
+    }
+    return null;
   }
 }

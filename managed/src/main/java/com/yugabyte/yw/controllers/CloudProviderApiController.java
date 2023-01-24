@@ -28,7 +28,6 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -115,7 +114,7 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true,
           paramType = "body"))
-  public Result edit(UUID customerUUID, UUID providerUUID) {
+  public Result edit(UUID customerUUID, UUID providerUUID, boolean validate) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
@@ -130,8 +129,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     JsonNode requestBody = request().body().asJson();
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
-        cloudProviderHandler.editProvider(
-            customer, provider, editProviderReq, getFirstRegionCode(provider));
+        cloudProviderHandler.editProvider(customer, provider, editProviderReq, validate);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -149,7 +147,7 @@ public class CloudProviderApiController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
-  public Result create(UUID customerUUID) {
+  public Result create(UUID customerUUID, boolean validate) {
     JsonNode requestBody = request().body().asJson();
     Provider reqProvider =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
@@ -162,11 +160,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     } else {
       providerEbean =
           cloudProviderHandler.createProvider(
-              customer,
-              providerCode,
-              reqProvider.name,
-              reqProvider,
-              getFirstRegionCode(reqProvider));
+              customer, providerCode, reqProvider.name, reqProvider, validate);
     }
 
     if (providerCode.isRequiresBootstrap()) {
@@ -304,13 +298,6 @@ public class CloudProviderApiController extends AuthenticatedController {
             .filter(schedule -> (schedule.getOwnerUUID().equals(providerUUID)))
             .collect(Collectors.toList());
     return PlatformResults.withData(accessKeyRotationSchedules);
-  }
-
-  private static String getFirstRegionCode(Provider provider) {
-    for (Region r : provider.regions) {
-      return r.code;
-    }
-    return null;
   }
 
   @ApiOperation(
