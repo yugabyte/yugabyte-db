@@ -48,14 +48,16 @@ jobs:
     build_type: debug
     release_artifact: false
 
-  - os: mac11.6
+  - os: mac12
     compiler: clang
     build_type: debug
+    architecture: x86_64
     release_artifact: false
 
-  - os: mac11.6
+  - os: mac12
     compiler: clang
     build_type: release
+    architecture: x86_64
     release_artifact: true
 
   - os: ubuntu20.04
