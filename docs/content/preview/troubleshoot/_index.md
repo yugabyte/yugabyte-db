@@ -8,7 +8,14 @@ menu:
   preview:
     identifier: troubleshoot
     parent: launch-and-manage
+aliases:
+  - /stable/troubleshoot
+  - /v2.14/troubleshoot
+  - /v2.12/troubleshoot
+  - /v2.8/troubleshoot
 type: indexpage
+cascade:
+  unversioned: true
 ---
 
 Typically, troubleshooting involves a number of steps that are rather consistent regardless of the particular situation. These steps include the following:
