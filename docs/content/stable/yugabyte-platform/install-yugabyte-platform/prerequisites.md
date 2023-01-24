@@ -98,4 +98,4 @@ In addition, ensure the following:
 - Core dumps are enabled and configured on the underlying Kubernetes node. For details, see [Specify ulimit and remember the location of core dumps](../prepare-environment/kubernetes#specify-ulimit-and-remember-the-location-of-core-dumps).
 - You have the kube-state-metrics add-on version 1.9 in your Kubernetes cluster. For more information, see [Install kube-state-metrics](../prepare-environment/kubernetes#install-kube-state-metrics).
 - A load balancer controller is available in your Kubernetes cluster.
-- A StorageClass is available with the SSD and `WaitForFirstConsumer` preferably set to `allowVolumeExpansion`. For more information, see [Control placement of YugabyteDB Anywhere pod](../install-software/kubernetes/#control-placement-of-yugabytedb-anywhere-pod).
+- A StorageClass is available with the SSD and `WaitForFirstConsumer` preferably set to `allowVolumeExpansion`. For more information, see [Storage class considerations](../prepare-environment/kubernetes/#storage-class-considerations).
