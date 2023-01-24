@@ -2876,6 +2876,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 				notnullcmd->subtype = AT_SetNotNull;
 				notnullcmd->name = pstrdup(key);
+				notnullcmd->yb_is_add_primary_key = true;
 				notnullcmds = lappend(notnullcmds, notnullcmd);
 			}
 		}
