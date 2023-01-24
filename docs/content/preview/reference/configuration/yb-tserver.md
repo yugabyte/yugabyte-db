@@ -630,6 +630,12 @@ Set this flag to `true` to enable audit logging for the universe.
 
 For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
 
+##### --ycql-allow-non-authenticated-password-reset
+
+Set this flag to `true` to enable a superuser to reset a password.
+
+Deafult: `false`
+
 ### YEDIS
 
 The following flags support the use of the YEDIS API:
