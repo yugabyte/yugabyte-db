@@ -34,6 +34,7 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/operation_counter.h"
+#include "yb/docdb/doc_read_context.h"
 
 namespace yb {
 namespace docdb {
@@ -53,17 +54,22 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
                      RWOperationCounter* pending_op_counter = nullptr);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
+                     const std::shared_ptr<DocReadContext>& doc_read_context,
+                     const TransactionOperationContext& txn_op_context,
+                     const DocDB& doc_db,
+                     CoarseTimePoint deadline,
+                     const ReadHybridTime& read_time,
+                     RWOperationCounter* pending_op_counter = nullptr);
+
+  DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      std::reference_wrapper<const DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr)
-      : DocRowwiseIterator(
-            *projection, doc_read_context, txn_op_context, doc_db, deadline,
-            read_time, pending_op_counter) {
-    projection_owner_ = std::move(projection);
-  }
+                     RWOperationCounter* pending_op_counter = nullptr);
+
+  void SetupProjectionSubkeys();
 
   virtual ~DocRowwiseIterator();
 
@@ -148,10 +154,12 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   const Schema& projection_;
   // Used to maintain ownership of projection_.
   // Separate field is used since ownership could be optional.
-  std::unique_ptr<Schema> projection_owner_;
+  const std::unique_ptr<Schema> projection_owner_;
 
   // The schema for all columns, not just the columns we're scanning.
   const DocReadContext& doc_read_context_;
+  // Used to maintain ownership of doc_read_context_.
+  const std::shared_ptr<DocReadContext> doc_read_context_user_;
 
   const TransactionOperationContext txn_op_context_;
 

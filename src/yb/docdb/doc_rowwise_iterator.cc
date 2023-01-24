@@ -86,10 +86,57 @@ DocRowwiseIterator::DocRowwiseIterator(
       has_bound_key_(false),
       pending_op_(pending_op_counter),
       done_(false) {
-  projection_subkeys_.reserve(projection.num_columns() + 1);
+  SetupProjectionSubkeys();
+}
+
+DocRowwiseIterator::DocRowwiseIterator(
+    std::unique_ptr<Schema> projection,
+    std::reference_wrapper<const DocReadContext> doc_read_context,
+    const TransactionOperationContext& txn_op_context,
+    const DocDB& doc_db,
+    CoarseTimePoint deadline,
+    const ReadHybridTime& read_time,
+    RWOperationCounter* pending_op_counter)
+    : projection_(*projection),
+      projection_owner_(std::move(projection)),
+      doc_read_context_(doc_read_context),
+      txn_op_context_(txn_op_context),
+      deadline_(deadline),
+      read_time_(read_time),
+      doc_db_(doc_db),
+      has_bound_key_(false),
+      pending_op_(pending_op_counter),
+      done_(false) {
+  SetupProjectionSubkeys();
+}
+
+DocRowwiseIterator::DocRowwiseIterator(
+    std::unique_ptr<Schema> projection,
+    const std::shared_ptr<DocReadContext>& doc_read_context,
+    const TransactionOperationContext& txn_op_context,
+    const DocDB& doc_db,
+    CoarseTimePoint deadline,
+    const ReadHybridTime& read_time,
+    RWOperationCounter* pending_op_counter)
+    : projection_(*projection),
+      projection_owner_(std::move(projection)),
+      doc_read_context_(*doc_read_context),
+      doc_read_context_user_(doc_read_context),
+      txn_op_context_(txn_op_context),
+      deadline_(deadline),
+      read_time_(read_time),
+      doc_db_(doc_db),
+      has_bound_key_(false),
+      pending_op_(pending_op_counter),
+      done_(false) {
+  SetupProjectionSubkeys();
+}
+
+void DocRowwiseIterator::SetupProjectionSubkeys() {
+  projection_subkeys_.reserve(projection_.num_columns() + 1);
   projection_subkeys_.push_back(KeyEntryValue::kLivenessColumn);
-  for (size_t i = projection_.num_key_columns(); i < projection.num_columns(); i++) {
-    projection_subkeys_.push_back(KeyEntryValue::MakeColumnId(projection.column_id(i)));
+  for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
+    projection_subkeys_.push_back(KeyEntryValue::MakeColumnId(projection_.column_id(i)));
   }
   std::sort(projection_subkeys_.begin(), projection_subkeys_.end());
 }
