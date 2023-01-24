@@ -233,6 +233,11 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Wait for new tablet servers to be responsive.
         createWaitForServersTasks(nodeSet, ServerType.TSERVER)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+        // [PLAT-5637] Wait for postgres server to be healthy if YSQL is enabled.
+        if (userIntent.enableYSQL)
+          createWaitForServersTasks(nodeSet, ServerType.YSQLSERVER)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       if (universe.isYbcEnabled()) {

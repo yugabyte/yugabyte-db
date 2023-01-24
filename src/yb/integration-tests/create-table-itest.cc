@@ -326,7 +326,8 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
   ASSERT_OK(
       client_->CreateNamespace("colocation_test", boost::none /* db */, "" /* creator */,
                                "" /* ns_id */, "" /* src_ns_id */,
-                               boost::none /* next_pg_oid */, nullptr /* txn */, true));
+                               boost::none /* next_pg_oid */, nullptr /* txn */,
+                               true /* colocated */));
 
   {
     string ns_id;

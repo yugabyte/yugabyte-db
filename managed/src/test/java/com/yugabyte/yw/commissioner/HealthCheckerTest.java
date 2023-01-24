@@ -41,7 +41,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;

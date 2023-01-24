@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: reference-voyager
     parent: voyager
-    weight: 104
+    weight: 105
 ---
 
 <div class="row">

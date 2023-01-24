@@ -33,7 +33,14 @@ import play.libs.Json;
 @Getter
 public class ConfDataType<T> {
   static ConfDataType<Duration> DurationType =
-      new ConfDataType<>("Duration", Duration.class, Config::getDuration, Duration::parse);
+      new ConfDataType<>(
+          "Duration",
+          Duration.class,
+          Config::getDuration,
+          (s) -> {
+            Config c = ConfigFactory.parseString("duration = " + s);
+            return c.getDuration("duration");
+          });
   static ConfDataType<Double> DoubleType =
       new ConfDataType<>("Double", Double.class, Config::getDouble, Double::parseDouble);
   static ConfDataType<String> StringType =
@@ -43,7 +50,14 @@ public class ConfDataType<T> {
   static ConfDataType<Boolean> BooleanType =
       new ConfDataType<>("Boolean", Boolean.class, Config::getBoolean, ConfDataType::parseBoolean);
   static ConfDataType<Period> PeriodType =
-      new ConfDataType<>("Period", Period.class, Config::getPeriod, Period::parse);
+      new ConfDataType<>(
+          "Period",
+          Period.class,
+          Config::getPeriod,
+          (s) -> {
+            Config c = ConfigFactory.parseString("period = " + s);
+            return c.getPeriod("period");
+          });
   static ConfDataType<Integer> IntegerType =
       new ConfDataType<>("Integer", Integer.class, Config::getInt, Integer::parseInt);
   static ConfDataType<List> StringListType =

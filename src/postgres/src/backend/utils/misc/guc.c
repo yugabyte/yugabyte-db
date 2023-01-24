@@ -2089,6 +2089,15 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_bypass_cond_recheck", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("If true then condition rechecking is bypassed at YSQL if the condition is bound to DocDB."),
+			NULL
+		},
+		&yb_bypass_cond_recheck,
+		false,
+		NULL, NULL, NULL
+	},
 
     {
 		{"yb_enable_upsert_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,

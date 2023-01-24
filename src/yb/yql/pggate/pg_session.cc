@@ -735,6 +735,10 @@ bool PgSession::HasWriteOperationsInDdlMode() const {
   return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
 }
 
+void PgSession::SetDdlHasSyscatalogChanges() {
+  pg_txn_manager_->SetDdlHasSyscatalogChanges();
+}
+
 Status PgSession::ValidatePlacement(const std::string& placement_info) {
   tserver::PgValidatePlacementRequestPB req;
 

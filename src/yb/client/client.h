@@ -750,6 +750,9 @@ class YBClient {
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
 
+  // Provide the completion status of 'txn' to the YB-Master.
+  Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
+
   Result<bool> CheckIfPitrActive();
 
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,

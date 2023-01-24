@@ -413,11 +413,27 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                  const SchemaVersion version,
                  const TableId& table_id = "");
 
+  void SetSchemaUnlocked(const Schema& schema,
+                 const IndexMap& index_map,
+                 const std::vector<DeletedColumn>& deleted_cols,
+                 const SchemaVersion version,
+                 const TableId& table_id = "") REQUIRES(data_mutex_);
+
   void SetPartitionSchema(const PartitionSchema& partition_schema);
 
   void SetTableName(
       const std::string& namespace_name, const std::string& table_name,
       const TableId& table_id = "");
+
+  void SetTableNameUnlocked(
+      const std::string& namespace_name, const std::string& table_name,
+      const TableId& table_id = "") REQUIRES(data_mutex_);
+
+  void SetSchemaAndTableName(
+      const Schema& schema, const IndexMap& index_map,
+      const std::vector<DeletedColumn>& deleted_cols,
+      const SchemaVersion version, const std::string& namespace_name,
+      const std::string& table_name, const TableId& table_id = "");
 
   void AddTable(const std::string& table_id,
                 const std::string& namespace_name,
