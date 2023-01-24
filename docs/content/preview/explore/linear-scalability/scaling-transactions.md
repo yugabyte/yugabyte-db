@@ -1,5 +1,5 @@
 ---
-title: Scaling transactions
+YugabyteDB Managedtitle: Scaling transactions
 headerTitle: Scaling concurrent transactions
 linkTitle: Scaling concurrent transactions
 description: Scaling concurrent transactions in YugabyteDB.
@@ -21,16 +21,23 @@ This document demonstrates how YugabyteDB can scale seamlessly while running a r
   <li>
     <a href="../scaling-transactions/" class="nav-link active">
       <img src="/icons/database.svg" alt="Server Icon">
-      Use a local universe
+      Local
     </a>
   </li>
   <li>
     <a href="../scaling-transactions-cloud/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Use a cloud cluster
+      YugabyteDB Managed
+    </a>
+  </li>
+  <li>
+    <a href="../scaling-transactions-yba/" class="nav-link">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
     </a>
   </li>
 </ul>
+
 
 
 {{% explore-setup-multi %}}
@@ -71,9 +78,9 @@ Navigate to the [simulation application UI](http://127.0.0.1:8000/) to see the n
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-graph.png)
 
-## Remove node and observe linear scale in
+## Remove node and observe linear scale-in
 
-Remove the recently added node from the cluster, as follows:
+Remove the recently added node from the universe, as follows:
 
 ```sh
 ./bin/yugabyted stop \
