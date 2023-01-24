@@ -558,6 +558,21 @@ public abstract class KubernetesManager {
       String newDiskSize,
       boolean newNamingStyle);
 
+  public abstract void copyFileToPod(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      String srcFilePath,
+      String destFilePath);
+
+  public abstract void performYbcAction(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      List<String> commandArgs);
+
   // Get the name of StorageClass used for master/tserver PVCs.
   public abstract String getStorageClassName(
       Map<String, String> config,

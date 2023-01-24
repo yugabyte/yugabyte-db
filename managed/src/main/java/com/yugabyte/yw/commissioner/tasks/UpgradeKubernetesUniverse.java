@@ -20,11 +20,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -107,7 +110,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
                 universe,
                 pi,
                 cluster.clusterType == ClusterType.ASYNC,
-                masterAddresses);
+                masterAddresses,
+                taskParams().enableYbc,
+                taskParams().ybcSoftwareVersion);
 
             if (taskParams().upgradeSystemCatalog) {
               createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
@@ -127,7 +132,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
                 universe,
                 pi,
                 cluster.clusterType == ClusterType.ASYNC,
-                masterAddresses);
+                masterAddresses,
+                taskParams().enableYbc,
+                taskParams().ybcSoftwareVersion);
             break;
         }
       }
@@ -172,7 +179,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       Universe universe,
       PlacementInfo pi,
       boolean isReadOnlyCluster,
-      String masterAddresses) {
+      String masterAddresses,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
     String ybSoftwareVersion = null;
     boolean masterChanged = false;
     boolean tserverChanged = false;
@@ -243,7 +252,28 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           false /* master change is false since it has already been upgraded.*/,
           tserverChanged,
           newNamingStyle,
-          isReadOnlyCluster);
+          isReadOnlyCluster,
+          CommandType.HELM_UPGRADE,
+          enableYbc,
+          ybcSoftwareVersion);
+
+      if (enableYbc) {
+        if (isReadOnlyCluster) {
+          Set<NodeDetails> replicaTservers =
+              new HashSet<NodeDetails>(
+                  universe.getNodesInCluster(taskParams().getReadOnlyClusters().get(0).uuid));
+          installYbcOnThePods(universe.name, replicaTservers, true, ybcSoftwareVersion);
+          performYbcAction(replicaTservers, true, "stop");
+          createWaitForYbcServerTask(replicaTservers);
+        } else {
+          Set<NodeDetails> primaryTservers =
+              new HashSet<NodeDetails>(
+                  universe.getNodesInCluster(taskParams().getPrimaryCluster().uuid));
+          installYbcOnThePods(universe.name, primaryTservers, false, ybcSoftwareVersion);
+          performYbcAction(primaryTservers, true, "stop");
+          createWaitForYbcServerTask(primaryTservers);
+        }
+      }
 
       createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
     }

@@ -32,7 +32,13 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
           // Create Kubernetes Upgrade Task
-          createUpgradeTask(getUniverse(), taskParams().ybSoftwareVersion, true, true);
+          createUpgradeTask(
+              getUniverse(),
+              taskParams().ybSoftwareVersion,
+              true,
+              true,
+              taskParams().enableYbc,
+              taskParams().ybcSoftwareVersion);
           if (taskParams().upgradeSystemCatalog) {
             // Run YSQL upgrade on the universe
             createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
@@ -41,6 +47,10 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Mark the final software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
+          if (taskParams().enableYbc) {
+            createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+                .setSubTaskGroupType(getTaskSubGroupType());
+          }
         });
   }
 }

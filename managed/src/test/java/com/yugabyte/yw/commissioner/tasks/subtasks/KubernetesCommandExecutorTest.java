@@ -326,6 +326,10 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
 
+    Map<String, Object> ybcOverrides = new HashMap<>();
+    ybcOverrides.put("enabled", false);
+    expectedOverrides.put("ybc", ybcOverrides);
+
     Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(defaultRegion);
     Map<String, String> azConfig = CloudInfoInterface.fetchEnvVars(defaultAZ);
 
