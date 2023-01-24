@@ -14304,6 +14304,12 @@
           "required" : true,
           "type" : "string"
         }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "validate",
+          "required" : false,
+          "type" : "boolean"
+        }, {
           "in" : "body",
           "name" : "CreateProviderRequest",
           "required" : true,
@@ -14660,6 +14666,12 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "validate",
+          "required" : false,
+          "type" : "boolean"
         }, {
           "description" : "edit provider form data",
           "in" : "body",
