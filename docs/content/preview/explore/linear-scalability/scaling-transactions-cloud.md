@@ -21,13 +21,19 @@ This document demonstrates how YugabyteDB can scale seamlessly while running a r
   <li>
     <a href="../scaling-transactions/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
-      Use a local cluster
+      Local
     </a>
   </li>
   <li>
     <a href="../scaling-transactions-cloud/" class="nav-link active">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Use a cloud cluster
+      YugabyteDB Managed
+    </a>
+  </li>
+  <li>
+    <a href="../scaling-transactions-yba/" class="nav-link">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
     </a>
   </li>
 </ul>
@@ -83,7 +89,7 @@ Alternatively, you can navigate to the [simulation application UI](http://127.0.
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-graph-cloud.png)
 
-## Remove node and observe linear scale in
+## Remove node and observe linear scale-in
 
 You can remove a node from the cluster in YugabyteDB Managed as follows:
 
