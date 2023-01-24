@@ -1,6 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 import React, { Component } from 'react';
-import { Button, OverlayTrigger, Tooltip, DropdownButton, MenuItem } from 'react-bootstrap';
+import {
+  Button,
+  OverlayTrigger,
+  Tooltip,
+  DropdownButton,
+  MenuItem
+} from 'react-bootstrap';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
 import moment from 'moment';
@@ -56,19 +62,15 @@ export default class MetricsPanel extends Component {
       operations,
       metricType
     } = this.props;
-    const metric =
-      metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES
-        ? _.cloneDeep(this.props.metric)
-        : this.props.metric;
+    const metric = (metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES)
+      ? _.cloneDeep(this.props.metric) : this.props.metric;
     if (isNonEmptyObject(metric)) {
       const layoutHeight = this.props.height || DEFAULT_HEIGHT;
       const layoutWidth =
         this.props.width ||
         this.getGraphWidth(this.props.containerWidth || DEFAULT_CONTAINER_WIDTH);
       if (metricOperation || this.props.operations.length) {
-        const matchingMetricOperation = metricOperation
-          ? metricOperation
-          : this.state.focusedButton ?? operations[0];
+        const matchingMetricOperation = metricOperation ? metricOperation : (this.state.focusedButton ?? operations[0]);
         metric.data = metric.data.filter((dataItem) => dataItem.name === matchingMetricOperation);
       }
       metric.data.forEach((dataItem, i) => {
@@ -90,20 +92,17 @@ export default class MetricsPanel extends Component {
         // To avoid the legend overlapping plot, we allow the option to abbreviate trace names if:
         // - received truthy shouldAbbreviateTraceName AND
         // - trace name longer than the max name legnth
-        const shouldAbbreviate =
-          shouldAbbreviateTraceName && dataItem['name'].length > MAX_NAME_LENGTH;
+        const shouldAbbreviate = shouldAbbreviateTraceName && dataItem['name'].length > MAX_NAME_LENGTH;
         if (shouldAbbreviate && !metricMeasure === MetricMeasure.OUTLIER) {
           dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
           // Legend name from outlier should be based on instance name in case of outliers
         } else if (metricMeasure === MetricMeasure.OUTLIER) {
           dataItem['name'] = dataItem['instanceName']
-            ? dataItem['instanceName'] +
-              (this.state.isItemInDropdown ? ' (' + dataItem['name'] + ')' : '')
+            ? dataItem['instanceName'] + (this.state.isItemInDropdown ? ' (' + dataItem['name'] + ')' : '')
             : MetricConsts.NODE_AVERAGE;
         } else if (metricType === MetricTypes.OUTLIER_TABLES) {
-          dataItem['name'] = dataItem['namespaceName']
-            ? `${dataItem['namespaceName']}.${dataItem['tableName']}`
-            : dataItem['tableName'];
+          dataItem['name'] = dataItem['namespaceName'] ?
+            `${dataItem['namespaceName']}.${dataItem['tableName']}` : dataItem['tableName'];
         }
         // Only show upto first 8 traces in the legend
         if (i >= 8) {
@@ -134,19 +133,11 @@ export default class MetricsPanel extends Component {
       let max = 0;
       metric.data.forEach(function (data) {
         if (metricType === MetricTypes.OUTLIER_TABLES && data?.namespaceName) {
-          data.hovertemplate =
-            '%{data.namespaceName}.%{data.fullname}: %{y} at %{x} <extra></extra>';
+          data.hovertemplate = '%{data.namespaceName}.%{data.fullname}: %{y} at %{x} <extra></extra>';
         } else {
           data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
         }
-
         if (data.y) {
-          if (data.name === MetricConsts.NODE_AVERAGE) {
-            data.line = {
-              dash: 'dot',
-              width: 2
-            };
-          }
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;
             if (y > max) max = y;
@@ -217,37 +208,12 @@ export default class MetricsPanel extends Component {
         metric.layout.xaxis = { range: [0, 2] };
         metric.layout.yaxis = { range: [0, 2] };
       }
-      Plotly.newPlot(metricKey, metric.data, metric.layout, {
-        displayModeBar: false
-      });
+      Plotly.newPlot(metricKey, metric.data, metric.layout, { displayModeBar: false });
     }
-  };
-
-  onLegendClick = () => {
-    const metricChartElement = document.getElementById(this.props.metricKey);
-    let selectedCurveNumber = '';
-    let selectedCurveOpacity = 1;
-    metricChartElement?.on('plotly_legendclick', (data) => {
-      const fullData = data?.fullData;
-      const fullDataLength = fullData?.length;
-      const curveNumber = data?.curveNumber;
-
-      if (fullDataLength >= curveNumber && fullData[curveNumber]) {
-        selectedCurveNumber = curveNumber;
-        selectedCurveOpacity = fullData[curveNumber]?.opacity;
-        selectedCurveOpacity = selectedCurveOpacity === 1 ? 0.4 : 1;
-      }
-
-      const update = { opacity: selectedCurveOpacity };
-      Plotly.restyle(this.props.metricKey, update, [selectedCurveNumber]);
-      return false;
-    });
   };
 
   componentDidMount() {
     this.plotGraph();
-    this.onLegendClick();
-
     const outlierButtonsWidth = this.outlierButtonsRef.current?.offsetWidth;
     this.setState({
       outlierButtonsWidth: outlierButtonsWidth
@@ -277,21 +243,17 @@ export default class MetricsPanel extends Component {
         }
         // Re-plot graph
         this.plotGraph();
-        this.onLegendClick();
       }
     }
   }
 
   loadDataByMetricOperation(metricOperation, isItemInDropdown) {
-    this.setState(
-      {
-        focusedButton: metricOperation,
-        isItemInDropdown: isItemInDropdown
-      },
-      () => {
-        this.plotGraph(metricOperation);
-      }
-    );
+    this.setState({
+      focusedButton: metricOperation,
+      isItemInDropdown: isItemInDropdown
+    }, () => {
+      this.plotGraph(metricOperation);
+    });
   }
 
   getGraphWidth(containerWidth) {
@@ -301,15 +263,15 @@ export default class MetricsPanel extends Component {
   }
 
   getClassName(idx, metricOperationsDisplayedLength, metricOperationsDropdownLength) {
-    let className = 'outlier-chart-button';
+    let className = "outlier-chart-button";
     if (this.props.operations?.length === 1) {
-      className = 'outlier-chart-button__only';
+      className = "outlier-chart-button__only";
     } else if (idx === 0) {
-      className = 'outlier-chart-button__first';
+      className = "outlier-chart-button__first";
     } else if (idx === metricOperationsDisplayedLength - 1 && metricOperationsDropdownLength >= 1) {
-      className = 'outlier-chart-button__penultimate';
+      className = "outlier-chart-button__penultimate";
     } else if (idx === metricOperationsDisplayedLength - 1 && !metricOperationsDropdownLength) {
-      className = 'outlier-chart-button__last';
+      className = "outlier-chart-button__last";
     }
     return className;
   }
@@ -362,13 +324,10 @@ export default class MetricsPanel extends Component {
                   )}
                   key={idx}
                   active={operation === focusedButton}
-                  onClick={() => this.loadDataByMetricOperation(operation, false)}
-                >
-                  {operation}
-                </Button>
-              );
-            })}
-          {showDropdown && metricOperationsDropdown.length >= 1 && (
+                  onClick={() => this.loadDataByMetricOperation(operation, false)}>{operation}</Button>);
+            })
+          }
+          {showDropdown && metricOperationsDropdown.length >= 1 &&
             <DropdownButton
               id="outlier-dropdown"
               className="btn btn-default outlier-dropdown"
@@ -376,20 +335,17 @@ export default class MetricsPanel extends Component {
               title="..."
               noCaret
             >
-              {metricOperationsDropdown.map((operation, idx) => {
-                return (
-                  <MenuItem
+              {
+                metricOperationsDropdown.map((operation, idx) => {
+                  return (<MenuItem
                     // className='outlier-button'
                     key={idx}
                     active={operation === focusedButton}
-                    onClick={() => this.loadDataByMetricOperation(operation, true)}
-                  >
-                    {operation}
-                  </MenuItem>
-                );
-              })}
+                    onClick={() => this.loadDataByMetricOperation(operation, true)}>{operation}</MenuItem>);
+                })
+              }
             </DropdownButton>
-          )}
+          }
         </span>
         {prometheusQueryEnabled && isNonEmptyArray(this.props.metric?.directURLs) ? (
           <OverlayTrigger placement="top" overlay={tooltip}>
