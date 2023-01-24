@@ -57,6 +57,8 @@ public class RuntimeConfService extends AuthenticatedController {
 
   private final RuntimeConfigChangeNotifier changeNotifier;
 
+  private final Map<String, ConfKeyInfo<?>> keyMetaData;
+
   @Inject
   public RuntimeConfService(
       SettableRuntimeConfigFactory settableRuntimeConfigFactory,
@@ -71,6 +73,7 @@ public class RuntimeConfService extends AuthenticatedController {
                 .getStringList(INCLUDED_OBJECTS_KEY));
     this.preChangeNotifier = preChangeNotifier;
     this.changeNotifier = changeNotifier;
+    this.keyMetaData = keyMetaData;
     this.mutableKeys = buildMutableKeysSet();
   }
 
@@ -79,6 +82,7 @@ public class RuntimeConfService extends AuthenticatedController {
     List<String> included = config.getStringList("runtime_config.included_paths");
     List<String> excluded = config.getStringList("runtime_config.excluded_paths");
     return Streams.concat(
+            keyMetaData.keySet().stream(),
             mutableObjects.stream(),
             config
                 .entrySet()
