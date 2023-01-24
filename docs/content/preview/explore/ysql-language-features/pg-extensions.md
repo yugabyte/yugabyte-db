@@ -251,7 +251,7 @@ yugabyte=# create role test_role password '12test_role12';
 ERROR:  password must not contain user name
 ```
 
-The passwordcheck extension only works for passwords that are provided in plain text. See the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html) for more information.
+The passwordcheck extension only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
 
 ### pgcrypto example
 
