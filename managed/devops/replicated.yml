@@ -85,6 +85,10 @@ custom_requirements:
         cluster: false
         dir: /var/lib/replicated
 cmds:
+  - name: get_docker_gateway_ip
+    cmd: raw
+    args:
+      - 'ip route show default | grep default | cut -d " " -f3'
   - name: dbpass_cmd
     cmd: random
     args:
@@ -222,7 +226,7 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.39.0
+        version: v2.41.0
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
@@ -632,7 +636,6 @@ config:
       - name: support_origin_url
         title: Support Origin URL
         type: text
-        value: ""
         default: http://localhost
         test_proc:
           run_on_save: true
@@ -712,8 +715,9 @@ config:
       - name: docker_gateway
         title: Docker Gateway IP Address
         type: text
-        value: ""
-        default: 172.17.0.1
+        default_cmd:
+          name: get_docker_gateway_ip
+          value_at: 0
 
   - name: metrics
     title: Metrics config
@@ -722,7 +726,6 @@ config:
       - name: prometheus_external_port
         title: Metrics port
         type: text
-        value: ""
         default: "9090"
       - name: prometheus_retention
         title: Amount of time to retain the metrics, default to 15 days

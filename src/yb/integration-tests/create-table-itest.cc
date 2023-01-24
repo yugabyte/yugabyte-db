@@ -326,7 +326,8 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
   ASSERT_OK(
       client_->CreateNamespace("colocation_test", boost::none /* db */, "" /* creator */,
                                "" /* ns_id */, "" /* src_ns_id */,
-                               boost::none /* next_pg_oid */, nullptr /* txn */, true));
+                               boost::none /* next_pg_oid */, nullptr /* txn */,
+                               true /* colocated */));
 
   {
     string ns_id;
@@ -480,7 +481,11 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest))
 
   // Since this is just for testing purposes, we do not bother generating a valid PgsqlTablegroupId
   ASSERT_OK(
-      client_->CreateTablegroup(namespace_name, namespace_id, tablegroup_id, tablespace_id));
+      client_->CreateTablegroup(namespace_name,
+                                namespace_id,
+                                tablegroup_id,
+                                tablespace_id,
+                                nullptr /* txn */));
 
   // Now want to ensure that the newly created tablegroup shows up in the list.
   auto exists = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));

@@ -12,6 +12,8 @@ Options:
     Show usage.
   -d, --destination
     Directory into which the binary should be copied.
+  -l, --local
+    Generate pre-release packages in /opt/yugabyte/node-agent/releases.
 EOT
 }
 
@@ -23,6 +25,8 @@ export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 readonly node_agent_home=$( cd "${BASH_SOURCE%/*}" && pwd )
 
 destination=""
+local=""
+pre_release=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -32,13 +36,22 @@ while [ $# -gt 0 ]; do
     -d|--destination)
       destination="$2"
       shift
+    ;;
+    -l|--local)
+      local="true"
+    ;;
   esac
   shift
 done
 
-if [[ ! -d $destination ]]; then
+if [[ "$local" == "true" ]]; then
+  pre_release="--pre_release"
+  if [[ ! -d $destination ]]; then
+    destination="/opt/yugabyte/node-agent/releases"
+  fi
+elif [[ ! -d $destination ]]; then
   fatal "No destination directory found ('$destination')"
 fi
 
 activate_virtualenv
-$node_agent_home/yb_release.py --source_dir $node_agent_home --destination $destination
+$node_agent_home/yb_release.py --source_dir $node_agent_home --destination $destination $pre_release

@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -137,14 +138,14 @@ public class UpgradeUniverseHandler {
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
-      userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
-      userIntent.tserverGFlags = trimFlags(userIntent.tserverGFlags);
+      userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
+      userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
       requestParams.masterGFlags = userIntent.masterGFlags;
       requestParams.tserverGFlags = userIntent.tserverGFlags;
     } else {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      requestParams.masterGFlags = trimFlags(requestParams.masterGFlags);
-      requestParams.tserverGFlags = trimFlags((requestParams.tserverGFlags));
+      requestParams.masterGFlags = GFlagsUtil.trimFlags(requestParams.masterGFlags);
+      requestParams.tserverGFlags = GFlagsUtil.trimFlags((requestParams.tserverGFlags));
     }
 
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
@@ -473,16 +474,6 @@ public class UpgradeUniverseHandler {
         universe.universeUUID,
         universe.name);
     return taskUUID;
-  }
-
-  private Map<String, String> trimFlags(Map<String, String> data) {
-    Map<String, String> trimData = new HashMap<>();
-    for (Map.Entry<String, String> intent : data.entrySet()) {
-      String key = intent.getKey();
-      String value = intent.getValue();
-      trimData.put(key.trim(), value.trim());
-    }
-    return trimData;
   }
 
   private void checkHelmChartExists(String ybSoftwareVersion) {

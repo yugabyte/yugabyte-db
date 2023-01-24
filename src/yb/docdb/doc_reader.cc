@@ -642,7 +642,7 @@ class DocDBTableReader::GetHelper : public DocDBTableReader::GetHelperBase {
         return true;
       }
       if (reader_.table_type_ == TableType::PGSQL_TABLE_TYPE) {
-        return false;
+        return true;
       }
     }
 
@@ -751,7 +751,7 @@ class DocDBTableReader::FlatGetHelper : public DocDBTableReader::GetHelperBase {
         return true;
       }
       if (reader_.table_type_ == TableType::PGSQL_TABLE_TYPE) {
-        return false;
+        return true;
       }
     }
 

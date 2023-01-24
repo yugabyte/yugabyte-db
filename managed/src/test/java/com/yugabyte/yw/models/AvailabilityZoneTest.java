@@ -15,6 +15,9 @@ import static org.junit.Assert.assertTrue;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+
+import java.util.Map;
 import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
@@ -94,7 +97,8 @@ public class AvailabilityZoneTest extends FakeDBApplication {
     AvailabilityZone az =
         AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
     assertNotNull(az.uuid);
-    assertTrue(az.getUnmaskedConfig().isEmpty());
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(az);
+    assertTrue(envVars.isEmpty());
   }
 
   @Test
@@ -103,7 +107,8 @@ public class AvailabilityZoneTest extends FakeDBApplication {
         AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
     az.updateConfig(ImmutableMap.of("Foo", "Bar"));
     az.save();
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(az);
     assertNotNull(az.uuid);
-    assertNotNull(az.getUnmaskedConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+    assertNotNull(envVars.toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 }

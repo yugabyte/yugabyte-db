@@ -605,6 +605,7 @@ class PgApiImpl {
 
   void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
   void StopSysTablePrefetching();
+  bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
 
   // RPC stats for EXPLAIN ANALYZE

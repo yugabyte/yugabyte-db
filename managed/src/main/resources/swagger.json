@@ -1,6 +1,51 @@
 {
   "consumes" : [ "application/json" ],
   "definitions" : {
+    "AWSCloudInfo" : {
+      "properties" : {
+        "awsAccessKeyID" : {
+          "type" : "string"
+        },
+        "awsAccessKeySecret" : {
+          "type" : "string"
+        },
+        "awsHostedZoneId" : {
+          "type" : "string"
+        },
+        "awsHostedZoneName" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AWSRegionCloudInfo" : {
+      "properties" : {
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnet" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "The AMI to be used in this region.",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AZCloudInfo" : {
+      "properties" : {
+        "kubernetes" : {
+          "$ref" : "#/definitions/KubernetesRegionInfo"
+        }
+      },
+      "type" : "object"
+    },
     "AccessKey" : {
       "description" : "Access key for the cloud provider. This helps to authenticate the user and get access to the provider.",
       "properties" : {
@@ -26,6 +71,26 @@
         }
       },
       "required" : [ "idKey", "keyInfo" ],
+      "type" : "object"
+    },
+    "AccessKeyFormData" : {
+      "properties" : {
+        "expirationThresholdDays" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "keyCode" : {
+          "type" : "string"
+        },
+        "keyContent" : {
+          "type" : "string"
+        },
+        "keyType" : {
+          "enum" : [ "PUBLIC", "PRIVATE" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "keyCode", "keyContent", "keyType" ],
       "type" : "object"
     },
     "AccessKeyId" : {
@@ -1013,7 +1078,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -1052,7 +1117,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -1139,6 +1204,9 @@
           "description" : "AZ configuration values",
           "type" : "object"
         },
+        "details" : {
+          "$ref" : "#/definitions/AvailabilityZoneDetails"
+        },
         "kubeconfigPath" : {
           "description" : "Path to Kubernetes configuration file",
           "readOnly" : true,
@@ -1181,7 +1249,7 @@
           "type" : "string"
         },
         "secondarySubnet" : {
-          "description" : "AZ subnet",
+          "description" : "AZ secondary subnet",
           "type" : "string"
         },
         "subnet" : {
@@ -1190,6 +1258,28 @@
         }
       },
       "required" : [ "code", "name" ],
+      "type" : "object"
+    },
+    "AvailabilityZoneDetails" : {
+      "properties" : {
+        "cloudInfo" : {
+          "$ref" : "#/definitions/AZCloudInfo"
+        }
+      },
+      "type" : "object"
+    },
+    "AvailabilityZoneEditData" : {
+      "description" : "Model used to edit an availability zone",
+      "properties" : {
+        "secondarySubnet" : {
+          "description" : "AZ secondary subnet",
+          "type" : "string"
+        },
+        "subnet" : {
+          "description" : "AZ subnet",
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "AvailabilityZoneFormData" : {
@@ -1203,6 +1293,44 @@
         }
       },
       "required" : [ "availabilityZones" ],
+      "type" : "object"
+    },
+    "AzureCloudInfo" : {
+      "properties" : {
+        "azuClientId" : {
+          "type" : "string"
+        },
+        "azuClientSecret" : {
+          "type" : "string"
+        },
+        "azuHostedZoneId" : {
+          "type" : "string"
+        },
+        "azuRG" : {
+          "type" : "string"
+        },
+        "azuSubscriptionId" : {
+          "type" : "string"
+        },
+        "azuTenantId" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AzureRegionCloudInfo" : {
+      "properties" : {
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnet" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "The AMI to be used in this region.",
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "Backup" : {
@@ -1581,6 +1709,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -1660,7 +1791,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
+      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "BackupResp" : {
@@ -1938,6 +2069,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2065,7 +2199,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "BootstarpBackupParams" : {
@@ -2174,6 +2308,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2238,7 +2375,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "s3Bucket", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "s3Bucket", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "BundleDetails" : {
@@ -2482,6 +2619,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2590,7 +2730,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "ClientCertParams" : {
@@ -2608,6 +2748,26 @@
         }
       },
       "required" : [ "certExpiry", "certStart", "username" ],
+      "type" : "object"
+    },
+    "CloudInfo" : {
+      "properties" : {
+        "aws" : {
+          "$ref" : "#/definitions/AWSCloudInfo"
+        },
+        "azu" : {
+          "$ref" : "#/definitions/AzureCloudInfo"
+        },
+        "gcp" : {
+          "$ref" : "#/definitions/GCPCloudInfo"
+        },
+        "kubernetes" : {
+          "$ref" : "#/definitions/KubernetesInfo"
+        },
+        "onprem" : {
+          "$ref" : "#/definitions/OnPremCloudInfo"
+        }
+      },
       "type" : "object"
     },
     "CloudSpecificInfo" : {
@@ -2928,9 +3088,16 @@
         "scope" : {
           "enum" : [ "GLOBAL", "CUSTOMER", "UNIVERSE", "PROVIDER" ],
           "type" : "string"
+        },
+        "tags" : {
+          "items" : {
+            "enum" : [ "PUBLIC", "INTERNAL", "YBM", "BETA", "UIDriven" ],
+            "type" : "string"
+          },
+          "type" : "array"
         }
       },
-      "required" : [ "dataType", "displayName", "helpTxt", "key", "scope" ],
+      "required" : [ "dataType", "displayName", "helpTxt", "key", "scope", "tags" ],
       "type" : "object"
     },
     "ConfigEntry" : {
@@ -3020,6 +3187,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -3067,7 +3237,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "CreateTablespaceParams" : {
@@ -3522,6 +3692,60 @@
       },
       "type" : "object"
     },
+    "DatabaseSecurityFormData" : {
+      "properties" : {
+        "dbName" : {
+          "type" : "string"
+        },
+        "ycqlAdminPassword" : {
+          "type" : "string"
+        },
+        "ycqlAdminUsername" : {
+          "type" : "string"
+        },
+        "ycqlCurrAdminPassword" : {
+          "type" : "string"
+        },
+        "ysqlAdminPassword" : {
+          "type" : "string"
+        },
+        "ysqlAdminUsername" : {
+          "type" : "string"
+        },
+        "ysqlCurrAdminPassword" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "dbName", "ycqlAdminPassword", "ycqlAdminUsername", "ycqlCurrAdminPassword", "ysqlAdminPassword", "ysqlAdminUsername", "ysqlCurrAdminPassword" ],
+      "type" : "object"
+    },
+    "DatabaseUserFormData" : {
+      "properties" : {
+        "dbName" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        },
+        "username" : {
+          "type" : "string"
+        },
+        "ycqlAdminPassword" : {
+          "type" : "string"
+        },
+        "ycqlAdminUsername" : {
+          "type" : "string"
+        },
+        "ysqlAdminPassword" : {
+          "type" : "string"
+        },
+        "ysqlAdminUsername" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "dbName", "password", "username", "ycqlAdminPassword", "ycqlAdminUsername", "ysqlAdminPassword", "ysqlAdminUsername" ],
+      "type" : "object"
+    },
     "DeviceInfo" : {
       "description" : "Device information",
       "properties" : {
@@ -3667,6 +3891,39 @@
       },
       "type" : "object"
     },
+    "GCPCloudInfo" : {
+      "properties" : {
+        "customGceNetwork" : {
+          "type" : "string"
+        },
+        "gceApplicationCredentialsPath" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "gceProject" : {
+          "type" : "string"
+        },
+        "useHostCredentials" : {
+          "type" : "boolean"
+        },
+        "useHostVPC" : {
+          "type" : "boolean"
+        },
+        "ybFirewallTags" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "GCPRegionCloudInfo" : {
+      "properties" : {
+        "ybImage" : {
+          "description" : "The AMI to be used in this region.",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "GCSLocation" : {
       "properties" : {
         "paths" : {
@@ -3787,6 +4044,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -3895,7 +4155,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
       "type" : "object"
     },
     "HashedTimestampColumnFinderResponse" : {
@@ -4242,6 +4502,44 @@
       "required" : [ "allTables", "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
       "type" : "object"
     },
+    "KubernetesInfo" : {
+      "properties" : {
+        "kubeConfig" : {
+          "type" : "string"
+        },
+        "kubeConfigContent" : {
+          "type" : "string"
+        },
+        "kubeConfigName" : {
+          "type" : "string"
+        },
+        "kubernetesImagePullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesImageRegistry" : {
+          "type" : "string"
+        },
+        "kubernetesProvider" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecret" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretContent" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesServiceAccount" : {
+          "type" : "string"
+        },
+        "kubernetesStorageClass" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "KubernetesOverrideError" : {
       "properties" : {
         "errorString" : {
@@ -4372,6 +4670,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -4477,7 +4778,57 @@
           "type" : "string"
         }
       },
-      "required" : [ "azOverrides", "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeOverrides", "upgradeOption" ],
+      "required" : [ "azOverrides", "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeOverrides", "upgradeOption" ],
+      "type" : "object"
+    },
+    "KubernetesRegionInfo" : {
+      "properties" : {
+        "kubeConfig" : {
+          "type" : "string"
+        },
+        "kubeConfigContent" : {
+          "type" : "string"
+        },
+        "kubeConfigName" : {
+          "type" : "string"
+        },
+        "kubeDomain" : {
+          "type" : "string"
+        },
+        "kubeNamespace" : {
+          "type" : "string"
+        },
+        "kubePodAddressTemplate" : {
+          "type" : "string"
+        },
+        "kubernetesImagePullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesImageRegistry" : {
+          "type" : "string"
+        },
+        "kubernetesProvider" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecret" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretContent" : {
+          "type" : "string"
+        },
+        "kubernetesPullSecretName" : {
+          "type" : "string"
+        },
+        "kubernetesServiceAccount" : {
+          "type" : "string"
+        },
+        "kubernetesStorageClass" : {
+          "type" : "string"
+        },
+        "overrides" : {
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "LogData" : {
@@ -4704,6 +5055,11 @@
             "type" : "string"
           },
           "type" : "array"
+        },
+        "serverType" : {
+          "description" : "Server type",
+          "enum" : [ "MASTER", "TSERVER", "CONTROLLER", "YQLSERVER", "YSQLSERVER", "REDISSERVER", "EITHER" ],
+          "type" : "string"
         },
         "start" : {
           "description" : "Start time",
@@ -4941,6 +5297,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -5068,7 +5427,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "NamespaceInfoResp" : {
@@ -5568,6 +5927,14 @@
       "required" : [ "node", "numDelete", "numInsert", "numSelect", "numUpdate" ],
       "type" : "object"
     },
+    "OnPremCloudInfo" : {
+      "properties" : {
+        "ybHomeDir" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "Package" : {
       "properties" : {
         "arch" : {
@@ -5582,11 +5949,19 @@
     },
     "PackagePaths" : {
       "properties" : {
+        "helmChart" : {
+          "description" : "Path to the Helm chart package",
+          "type" : "string"
+        },
+        "helmChartChecksum" : {
+          "description" : "Checksum for the Helm chart package",
+          "type" : "string"
+        },
         "x86_64" : {
           "description" : "Path to x86_64 package",
           "type" : "string"
         },
-        "x86_64_checksum" : {
+        "x86_64Checksum" : {
           "description" : "Checksum for x86_64 package",
           "type" : "string"
         }
@@ -5622,6 +5997,99 @@
       "required" : [ "buildNumber" ],
       "type" : "object"
     },
+    "PerfAdvisorSettingsFormData" : {
+      "properties" : {
+        "connectionSkewIntervalMins" : {
+          "description" : "Perf advisor connection skew check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "connectionSkewMinConnections" : {
+          "description" : "Perf advisor connection skew min connections",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "connectionSkewThreshold" : {
+          "description" : "Perf advisor connection skew threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "cpuSkewIntervalMins" : {
+          "description" : "Perf advisor cpu skew check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "cpuSkewMinUsage" : {
+          "description" : "Perf advisor cpu skew min cpu usage",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "cpuSkewThreshold" : {
+          "description" : "Perf advisor cpu skew threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "cpuUsageIntervalMins" : {
+          "description" : "Perf advisor CPU usage check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "cpuUsageThreshold" : {
+          "description" : "Perf advisor CPU usage threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "enabled" : {
+          "description" : "Enable/disable perf advisor runs for the universe",
+          "type" : "boolean"
+        },
+        "querySkewIntervalMins" : {
+          "description" : "Perf advisor query skew check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "querySkewMinQueries" : {
+          "description" : "Perf advisor query skew min queries",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "querySkewThreshold" : {
+          "description" : "Perf advisor query skew threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "rejectedConnIntervalMins" : {
+          "description" : "Perf advisor rejected connections check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "rejectedConnThreshold" : {
+          "description" : "Perf advisor rejected connections threshold",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "runFrequencyMins" : {
+          "description" : "Perf advisor runs frequency, in minutes",
+          "format" : "int32",
+          "minimum" : 5,
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "PerformanceRecommendation" : {
       "properties" : {
         "customerId" : {
@@ -5638,6 +6106,9 @@
         "id" : {
           "format" : "uuid",
           "type" : "string"
+        },
+        "isStale" : {
+          "type" : "boolean"
         },
         "new" : {
           "type" : "boolean"
@@ -5667,7 +6138,7 @@
           "type" : "integer"
         },
         "recommendationType" : {
-          "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE" ],
+          "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE", "REJECTED_CONNECTIONS" ],
           "type" : "string"
         },
         "stateChangeAuditInfoList" : {
@@ -5681,7 +6152,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerId", "entityNames", "entityType", "id", "new", "observation", "recommendation", "recommendationInfo", "recommendationPriority", "recommendationState", "recommendationTimestamp", "recommendationType", "stateChangeAuditInfoList", "universeId" ],
+      "required" : [ "customerId", "entityNames", "entityType", "id", "isStale", "new", "observation", "recommendation", "recommendationInfo", "recommendationPriority", "recommendationState", "recommendationTimestamp", "recommendationType", "stateChangeAuditInfoList", "universeId" ],
       "type" : "object"
     },
     "PerformanceRecommendationFilter" : {
@@ -5697,6 +6168,9 @@
           },
           "type" : "array",
           "uniqueItems" : true
+        },
+        "isStale" : {
+          "type" : "boolean"
         },
         "priorities" : {
           "items" : {
@@ -5716,7 +6190,7 @@
         },
         "types" : {
           "items" : {
-            "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE" ],
+            "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE", "REJECTED_CONNECTIONS" ],
             "type" : "string"
           },
           "type" : "array",
@@ -5727,7 +6201,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerId", "ids", "priorities", "states", "types", "universeId" ],
+      "required" : [ "customerId", "ids", "isStale", "priorities", "states", "types", "universeId" ],
       "type" : "object"
     },
     "PerformanceRecommendationPagedQuery" : {
@@ -5994,6 +6468,12 @@
           "readOnly" : true,
           "type" : "boolean"
         },
+        "allKeys" : {
+          "items" : {
+            "$ref" : "#/definitions/AccessKey"
+          },
+          "type" : "array"
+        },
         "code" : {
           "description" : "Provider cloud code",
           "type" : "string"
@@ -6020,12 +6500,6 @@
           "type" : "string"
         },
         "hostVpcRegion" : {
-          "type" : "string"
-        },
-        "hostedZoneId" : {
-          "type" : "string"
-        },
-        "hostedZoneName" : {
           "type" : "string"
         },
         "keyPairName" : {
@@ -6059,13 +6533,16 @@
           "type" : "integer"
         }
       },
-      "required" : [ "details", "regions" ],
+      "required" : [ "allKeys", "regions" ],
       "type" : "object"
     },
     "ProviderDetails" : {
       "properties" : {
         "airGapInstall" : {
           "type" : "boolean"
+        },
+        "cloudInfo" : {
+          "$ref" : "#/definitions/CloudInfo"
         },
         "installNodeExporter" : {
           "type" : "boolean"
@@ -6142,10 +6619,6 @@
           "readOnly" : true,
           "type" : "boolean"
         },
-        "architecture" : {
-          "enum" : [ "x86_64", "aarch64" ],
-          "type" : "string"
-        },
         "code" : {
           "description" : "Cloud provider region code",
           "example" : "us-west-2",
@@ -6156,6 +6629,9 @@
             "type" : "string"
           },
           "type" : "object"
+        },
+        "details" : {
+          "$ref" : "#/definitions/RegionDetails"
         },
         "latitude" : {
           "description" : "The region's latitude",
@@ -6177,21 +6653,10 @@
           "readOnly" : true,
           "type" : "string"
         },
-        "securityGroupId" : {
-          "type" : "string"
-        },
         "uuid" : {
           "description" : "Region UUID",
           "format" : "uuid",
           "readOnly" : true,
-          "type" : "string"
-        },
-        "vnetName" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "description" : "The AMI to be used in this region.",
-          "example" : "TODO",
           "type" : "string"
         },
         "zones" : {
@@ -6202,6 +6667,31 @@
         }
       },
       "required" : [ "zones" ],
+      "type" : "object"
+    },
+    "RegionCloudInfo" : {
+      "properties" : {
+        "aws" : {
+          "$ref" : "#/definitions/AWSRegionCloudInfo"
+        },
+        "azu" : {
+          "$ref" : "#/definitions/AzureRegionCloudInfo"
+        },
+        "gcp" : {
+          "$ref" : "#/definitions/GCPRegionCloudInfo"
+        },
+        "kubernetes" : {
+          "$ref" : "#/definitions/KubernetesRegionInfo"
+        }
+      },
+      "type" : "object"
+    },
+    "RegionDetails" : {
+      "properties" : {
+        "cloudInfo" : {
+          "$ref" : "#/definitions/RegionCloudInfo"
+        }
+      },
       "type" : "object"
     },
     "RegionEditFormData" : {
@@ -6421,6 +6911,12 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
+        "masterGFlags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
         "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
@@ -6447,6 +6943,9 @@
           "type" : "boolean"
         },
         "platformUrl" : {
+          "type" : "string"
+        },
+        "platformVersion" : {
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -6495,6 +6994,12 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "tserverGFlags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
         },
         "universePaused" : {
           "type" : "boolean"
@@ -6551,7 +7056,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
       "type" : "object"
     },
     "RestartBootstrapParams" : {
@@ -6670,6 +7175,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -6772,7 +7280,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "RestoreApiFilter" : {
@@ -6944,6 +7452,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "prefixUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -7008,7 +7519,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
+      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "platformVersion", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
       "type" : "object"
     },
     "RestoreKeyspace" : {
@@ -7237,6 +7748,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -7289,7 +7803,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "RunQueryFormData" : {
@@ -7683,6 +8197,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -7791,7 +8308,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "StateChangeAuditInfo" : {
@@ -8076,6 +8593,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8178,7 +8698,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TableDefinitionTaskParams" : {
@@ -8240,6 +8760,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8298,7 +8821,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tableDetails", "tableType", "tableUUID" ],
+      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tableDetails", "tableType", "tableUUID" ],
       "type" : "object"
     },
     "TableDetails" : {
@@ -8530,6 +9053,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8632,7 +9158,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TlsToggleParams" : {
@@ -8746,6 +9272,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8848,7 +9377,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TriggerHealthCheckResult" : {
@@ -8971,6 +9500,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9072,7 +9604,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParams" : {
@@ -9177,6 +9709,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9275,7 +9810,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParamsResp" : {
@@ -9380,6 +9915,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9478,7 +10016,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDetailSubset" : {
@@ -9775,6 +10313,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9877,7 +10418,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "UserIntent" : {
@@ -10331,6 +10872,9 @@
         "platformUrl" : {
           "type" : "string"
         },
+        "platformVersion" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -10436,7 +10980,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "ValidationResult" : {
@@ -13923,8 +14467,8 @@
         "tags" : [ "Access Keys" ]
       },
       "post" : {
-        "description" : "",
-        "operationId" : "create_accesskey",
+        "description" : "UNSTABLE - This API will undergo changes in future.",
+        "operationId" : "createAccesskey",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -13937,6 +14481,13 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "AccessKeyFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AccessKeyFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -13949,7 +14500,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create an access key",
+        "summary" : "Create/Upload an access key for onprem Provider region",
         "tags" : [ "Access Keys" ]
       }
     },
@@ -14690,7 +15241,7 @@
           "name" : "azFormData",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/AvailabilityZoneEditData"
           }
         } ],
         "responses" : {
@@ -16258,6 +16809,14 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "description" : "The database user to create",
+          "in" : "body",
+          "name" : "DatabaseUserFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/DatabaseUserFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -16773,6 +17332,75 @@
         "tags" : [ "Universe management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/perf_advisor_settings" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PerfAdvisorSettingsFormData"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get universe performance advisor settings",
+        "tags" : [ "Performance Advisor" ]
+      },
+      "post" : {
+        "description" : "",
+        "operationId" : "updateSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "PerformanceAdvisorSettingsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/PerfAdvisorSettingsFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update universe performance advisor settings",
+        "tags" : [ "Performance Advisor" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/pitr" : {
       "post" : {
         "description" : "",
@@ -17209,6 +17837,38 @@
         } ],
         "summary" : "Get slow queries for a universe",
         "tags" : [ "Universe information" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/start_manually" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "runPerfAdvisor",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Start performance advisor run for universe",
+        "tags" : [ "Performance Advisor" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/status" : {
@@ -17973,6 +18633,14 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "description" : "The database credentials",
+          "in" : "body",
+          "name" : "DatabaseSecurityFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/DatabaseSecurityFormData"
+          }
         } ],
         "responses" : {
           "200" : {

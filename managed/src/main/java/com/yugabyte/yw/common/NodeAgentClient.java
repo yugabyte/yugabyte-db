@@ -3,8 +3,9 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.base.Stopwatch;
-import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
@@ -79,7 +80,7 @@ public class NodeAgentClient {
   public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
 
   // Cache of the channels for re-use.
-  private final Cache<ChannelConfig, ManagedChannel> cachedChannels;
+  private final LoadingCache<ChannelConfig, ManagedChannel> cachedChannels;
 
   private final Config appConfig;
   private final ChannelFactory channelFactory;
@@ -96,7 +97,23 @@ public class NodeAgentClient {
             ? config -> ChannelFactory.getDefaultChannel(config)
             : channelFactory;
     this.cachedChannels =
-        CacheBuilder.newBuilder().expireAfterAccess(10, TimeUnit.MINUTES).maximumSize(100).build();
+        CacheBuilder.newBuilder()
+            .removalListener(
+                n -> {
+                  ManagedChannel channel = (ManagedChannel) n.getValue();
+                  if (!channel.isShutdown() && !channel.isTerminated()) {
+                    channel.shutdown();
+                  }
+                })
+            .expireAfterAccess(10, TimeUnit.MINUTES)
+            .maximumSize(100)
+            .build(
+                new CacheLoader<ChannelConfig, ManagedChannel>() {
+                  @Override
+                  public ManagedChannel load(ChannelConfig config) {
+                    return NodeAgentClient.this.channelFactory.get(config);
+                  }
+                });
   }
 
   @Builder
@@ -381,7 +398,7 @@ public class NodeAgentClient {
       builder.certPath(certPath);
     }
     try {
-      return cachedChannels.get(builder.build(), () -> channelFactory.get(builder.build()));
+      return cachedChannels.get(builder.build());
     } catch (ExecutionException e) {
       throw new RuntimeException(e.getCause());
     }

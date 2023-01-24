@@ -13,10 +13,7 @@ import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
-import java.util.Optional;
 import java.util.concurrent.CancellationException;
-import com.fasterxml.jackson.databind.JsonNode;
-import play.libs.Json;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 

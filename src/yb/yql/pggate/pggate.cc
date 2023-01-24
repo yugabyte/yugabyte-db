@@ -700,6 +700,9 @@ Status PgApiImpl::NewCreateTablegroup(const char *database_name,
                                       const PgOid tablegroup_oid,
                                       const PgOid tablespace_oid,
                                       PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Tablegroup is being created outside of DDL mode");
   auto stmt = std::make_unique<PgCreateTablegroup>(pg_session_, database_name,
                                                    database_oid, tablegroup_oid, tablespace_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
@@ -796,6 +799,7 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
@@ -867,6 +871,7 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
   return pg_stmt->Exec();
 }
@@ -1065,7 +1070,7 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_TABLE)) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTable*>(handle)->Exec();
 }
 
@@ -1849,6 +1854,10 @@ void PgApiImpl::StopSysTablePrefetching() {
   } else {
     pg_sys_table_prefetcher_.reset();
   }
+}
+
+bool PgApiImpl::IsSysTablePrefetchingStarted() const {
+  return static_cast<bool>(pg_sys_table_prefetcher_);
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(

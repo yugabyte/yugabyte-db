@@ -93,7 +93,7 @@ Status PromoteAutoFlag(const AutoFlagDescription& flag_desc) {
   SCHECK(
       !res.empty(),
       InvalidArgument,
-      Format("Failed to set AutoFlag $0 to target value $1", flag_desc.name, flag_desc.target_val));
+      "Failed to set AutoFlag $0 to target value $1", flag_desc.name, flag_desc.target_val);
   return Status::OK();
 }
 }  // namespace
@@ -117,6 +117,10 @@ Status PromoteAllAutoFlags() {
 bool IsFlagPromoted(
     const gflags::CommandLineFlagInfo& flag, const AutoFlagDescription& auto_flag_desc) {
   return flag.default_value == auto_flag_desc.target_val;
+}
+
+const char* AutoFlagValueAsString(bool value) {
+  return value ? "true" : "false";
 }
 
 }  // namespace yb

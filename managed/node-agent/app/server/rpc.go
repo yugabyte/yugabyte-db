@@ -42,10 +42,13 @@ func NewRPCServer(ctx context.Context, addr string, isTLS bool) (*RPCServer, err
 			util.FileLogger().Errorf("Error in loading TLS credentials: %s", err)
 			return nil, err
 		}
-		authenticator := Authenticator{util.CurrentConfig()}
+		authenticator := &Authenticator{util.CurrentConfig()}
 		serverOpts = append(serverOpts, grpc.Creds(tlsCredentials))
-		serverOpts = append(serverOpts, grpc.UnaryInterceptor(authenticator.UnaryInterceptor()))
-		serverOpts = append(serverOpts, grpc.StreamInterceptor(authenticator.StreamInterceptor()))
+		serverOpts = append(serverOpts, UnaryPanicHandler(authenticator.UnaryInterceptor()))
+		serverOpts = append(serverOpts, StreamPanicHandler(authenticator.StreamInterceptor()))
+	} else {
+		serverOpts = append(serverOpts, UnaryPanicHandler(nil))
+		serverOpts = append(serverOpts, StreamPanicHandler(nil))
 	}
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
