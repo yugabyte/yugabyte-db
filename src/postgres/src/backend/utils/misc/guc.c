@@ -2095,7 +2095,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_bypass_cond_recheck,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 

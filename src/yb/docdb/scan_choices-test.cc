@@ -94,6 +94,8 @@ class ScanChoicesTest : public YBTest {
   void SetupCondition(PgsqlConditionPB *cond_ptr, const std::vector<TestCondition> &conds);
   void InitializeScanChoicesInstance(const Schema &schema, PgsqlConditionPB &cond);
 
+  bool IsScanChoicesFinished();
+  void AdjustForRangeConstraints();
   void CheckOptions(const std::vector<std::vector<OptionRange>> &expected);
   void CheckSkipTargetsUpTo(
       const Schema &schema,
@@ -203,20 +205,96 @@ void ScanChoicesTest::InitializeScanChoicesInstance(const Schema &schema, PgsqlC
   choices_ = std::unique_ptr<HybridScanChoices>(down_cast<HybridScanChoices *>(base_choices));
 }
 
+bool ScanChoicesTest::IsScanChoicesFinished() {
+  return choices_->FinishedWithScanChoices() ||
+      choices_->current_scan_target_ >= choices_->upper_doc_key_;
+}
+
+// Utility function to help the test iterate past a range option that originate from a
+// non-trivial range constraint. Suppose we had range options
+// {[2,2]*, [3,3]}, {[4,9]*}, {[5,5]*} with the active ones marked by * and
+// current_scan_target_ is {2,4,+Inf} which is expected to be the result of
+// SkipTargetsUpTo({2,4,5}) followed by a DoneWithCurrentTarget(). In this case,
+// for the purposes of the option iteration in CheckOption, we want to iterate to the next
+// set of active options. Usually, in the real world, we will invoke SkipTargetsUpTo on a higher
+// row from the associated table such as {2,9,5} in order to trigger the move to the next set of
+// active options but we have no such table in this test file.
+// So in order to emulate that behavior, this function adjusts a given current_scan_target_ that
+// might contain a +Inf as a result of a range constraint and activates the next set of options.
+// In the given example, this function would take the current_scan_target_ value of {2,4,+Inf},
+// produce {2,9,5} and invoke SkipTargetsUpTo + DoneWithCurrentTargets to move on to the next set
+// of active options.
+void ScanChoicesTest::AdjustForRangeConstraints() {
+  if (IsScanChoicesFinished()) {
+    return;
+  }
+
+  EXPECT_FALSE(choices_->FinishedWithScanChoices());
+  const auto &cur_target = choices_->current_scan_target_;
+  DocKeyDecoder decoder(cur_target);
+  EXPECT_OK(decoder.DecodeToRangeGroup());
+  KeyEntryValue cur_val;
+  // The size of the dockey we have found so far that does not need adjustment
+  size_t valid_size = 0;
+
+  // Size of the dockey we have read so far
+  size_t prev_size = 0;
+  for (size_t i = 0; i < current_schema_->num_range_key_columns(); i++) {
+    EXPECT_OK(decoder.DecodeKeyEntryValue(&cur_val));
+    if (cur_val.IsInfinity()) {
+      KeyBytes new_target;
+      new_target.Reset(Slice(cur_target.data().AsSlice().data(),
+          cur_target.data().AsSlice().data() + valid_size));
+      ASSERT_GE(i, 1);
+
+      auto cur_opts = choices_->TEST_GetCurrentOptions();
+      auto is_inclusive = cur_opts[i - 1].upper_inclusive();
+      for (size_t j = i - 1; j < current_schema_->num_range_key_columns(); j++) {
+        cur_opts[j].upper().AppendToKey(&new_target);
+      }
+
+      EXPECT_OK(choices_->SkipTargetsUpTo(new_target));
+      // We don't have to invoke DoneWithCurrentTarget to move on to the next set of options
+      // if the upper bound we adjusted to was non-inclusive. SkipTargetsUpTo should've shifted
+      // the set of active options in this case.
+      if (is_inclusive && !IsScanChoicesFinished()) {
+        EXPECT_OK(choices_->DoneWithCurrentTarget());
+      }
+      return;
+    }
+    valid_size = prev_size;
+    prev_size += cur_val.ToKeyBytes().size();
+  }
+}
+
 // Validate the list of options that choices_ iterates over and the given expected list
 void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &expected) {
   auto expected_it = expected.begin();
   KeyBytes target;
+  std::vector<KeyEntryValue> target_vals;
+  // We don't test for backwards scan yet
+  ASSERT_TRUE(choices_->is_forward_scan_);
 
-  while (!choices_->FinishedWithScanChoices()) {
+  while (!IsScanChoicesFinished()) {
     auto cur_opts = choices_->TEST_GetCurrentOptions();
+    EXPECT_NE(expected_it, expected.end());
     AssertChoicesEqual(*expected_it, cur_opts);
     for (auto opt : cur_opts) {
-      opt.upper().AppendToKey(&target);
+      // We don't support testing for (a,b) options where a and b are finite
+      // values as of now.
+      ASSERT_TRUE((opt.lower_inclusive() || opt.upper_inclusive()) ||
+                  opt.upper().type() == KeyEntryType::kHighest);
+      if (opt.lower_inclusive()) {
+        opt.lower().AppendToKey(&target);
+      } else {
+        opt.upper().AppendToKey(&target);
+      }
     }
     EXPECT_OK(choices_->SkipTargetsUpTo(target));
-    EXPECT_OK(choices_->DoneWithCurrentTarget());
-    EXPECT_NE(expected_it, expected.end());
+    if (!IsScanChoicesFinished()) {
+      EXPECT_OK(choices_->DoneWithCurrentTarget());
+    }
+    AdjustForRangeConstraints();
     expected_it++;
     target.Clear();
   }
