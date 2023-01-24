@@ -30,7 +30,7 @@ public class WaitForYbcServer extends UniverseTaskBase {
 
   @Inject YbcClientService ybcService;
 
-  private int MAX_NUM_RETRIES = 5;
+  private int MAX_NUM_RETRIES = 10;
 
   @Inject
   protected WaitForYbcServer(BaseTaskDependencies baseTaskDependencies) {
@@ -65,28 +65,37 @@ public class WaitForYbcServer extends UniverseTaskBase {
                 .collect(Collectors.toSet());
     String errMsg = "";
 
+    log.info("Universe uuid: {}, ybcPort: {} to be used", universe.universeUUID, ybcPort);
     for (NodeDetails node : nodeDetailsSet) {
       String nodeIp = node.cloudInfo.private_ip;
+      log.info("Node IP: {} to connect to YBC", nodeIp);
+
       try {
         client = ybcService.getNewClient(nodeIp, ybcPort, certFile);
         if (client == null) {
           throw new Exception("Could not create Ybc client.");
         }
-
+        log.info("Node IP: {} Client created", nodeIp);
         long seqNum = rand.nextInt();
         PingRequest pingReq = PingRequest.newBuilder().setSequence(seqNum).build();
         int numTries = 0;
         do {
+          log.info("Node IP: {} Making a ping request", nodeIp);
           PingResponse pingResp = client.ping(pingReq);
           if (pingResp != null && pingResp.getSequence() == seqNum) {
+            log.info("Node IP: {} Ping successful", nodeIp);
             break;
           } else if (pingResp == null) {
             numTries++;
+            log.info("Node IP: {} Ping not complete. Sleeping for 30s", nodeIp);
+            Thread.sleep(30000L);
             if (numTries <= MAX_NUM_RETRIES) {
+              log.info("Node IP: {} Ping not complete. Continuing", nodeIp);
               continue;
             }
           }
           if (numTries > MAX_NUM_RETRIES) {
+            log.info("Node IP: {} Ping failed. Exceeded max retries", nodeIp);
             errMsg = String.format("Exceeded max retries: %s", MAX_NUM_RETRIES);
             isYbcConfigured = false;
             break;

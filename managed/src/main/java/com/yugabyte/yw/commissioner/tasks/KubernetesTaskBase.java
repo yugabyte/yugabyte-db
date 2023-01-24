@@ -77,7 +77,25 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         null,
         null,
         new PlacementInfo(),
-        isReadOnlyCluster);
+        isReadOnlyCluster,
+        false);
+  }
+
+  public void createPodsTask(
+      String universeName,
+      KubernetesPlacement placement,
+      String masterAddresses,
+      boolean isReadOnlyCluster,
+      boolean enableYbc) {
+    createPodsTask(
+        universeName,
+        placement,
+        masterAddresses,
+        null,
+        null,
+        new PlacementInfo(),
+        isReadOnlyCluster,
+        enableYbc);
   }
 
   public void createPodsTask(
@@ -87,7 +105,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement currPlacement,
       ServerType serverType,
       PlacementInfo activeZones,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      boolean enableYbc) {
     String ybSoftwareVersion;
     Cluster primaryCluster;
     if (isReadOnlyCluster) {
@@ -229,7 +248,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 tserverPartition,
                 universeOverrides,
                 azOverrides,
-                isReadOnlyCluster));
+                isReadOnlyCluster,
+                enableYbc));
 
         // When adding masters, the number of tservers will be still the same as before.
         // They get added later.
@@ -281,7 +301,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 config,
                 universeOverrides,
                 azOverrides,
-                isReadOnlyCluster));
+                isReadOnlyCluster,
+                enableYbc));
 
         // Add zone to active configs.
         PlacementInfoUtil.addPlacementZone(azUUID, activeZones);
@@ -292,6 +313,40 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(applySecrets);
     getRunnableTask().addSubTaskGroup(helmInstalls);
     getRunnableTask().addSubTaskGroup(podsWait);
+  }
+
+  public void installYbcOnThePods(
+      String universeName,
+      Set<NodeDetails> servers,
+      boolean isReadOnlyCluster,
+      String ybcSoftwareVersion) {
+    SubTaskGroup ybcUpload =
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCommandExecutor.CommandType.COPY_PACKAGE.getSubTaskGroupName(), executor);
+    createKubernetesYbcExecutorTask(
+        ybcUpload,
+        universeName,
+        KubernetesCommandExecutor.CommandType.COPY_PACKAGE,
+        servers,
+        isReadOnlyCluster,
+        ybcSoftwareVersion);
+    getRunnableTask().addSubTaskGroup(ybcUpload);
+  }
+
+  public void performYbcAction(
+      Set<NodeDetails> servers, boolean isReadOnlyCluster, String command) {
+    SubTaskGroup ybcAction =
+        getTaskExecutor()
+            .createSubTaskGroup(
+                KubernetesCommandExecutor.CommandType.YBC_ACTION.getSubTaskGroupName(), executor);
+    createKubernetesYbcExecutorTask(
+        ybcAction,
+        KubernetesCommandExecutor.CommandType.YBC_ACTION,
+        servers,
+        isReadOnlyCluster,
+        command);
+    getRunnableTask().addSubTaskGroup(ybcAction);
   }
 
   /*
@@ -344,6 +399,42 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean newNamingStyle,
       boolean isReadOnlyCluster,
       CommandType commandType) {
+    upgradePodsTask(
+        universeName,
+        newPlacement,
+        masterAddresses,
+        currPlacement,
+        serverType,
+        softwareVersion,
+        waitTime,
+        universeOverridesStr,
+        azsOverrides,
+        masterChanged,
+        tserverChanged,
+        newNamingStyle,
+        isReadOnlyCluster,
+        commandType,
+        false,
+        null);
+  }
+
+  public void upgradePodsTask(
+      String universeName,
+      KubernetesPlacement newPlacement,
+      String masterAddresses,
+      KubernetesPlacement currPlacement,
+      ServerType serverType,
+      String softwareVersion,
+      int waitTime,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean masterChanged,
+      boolean tserverChanged,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      CommandType commandType,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -482,7 +573,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             azOverrides,
             isReadOnlyCluster,
             podName,
-            null);
+            null,
+            false,
+            enableYbc,
+            ybcSoftwareVersion);
 
         createKubernetesWaitForPodTask(
             universeName,
@@ -756,7 +850,69 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         universeName, commandType, null, az, null, null, config, null, null, isReadOnlyCluster);
   }
 
-  // Create the Kubernetes Executor task for the helm deployments. (USED)
+  // Create Kubernetes Executor task for copying YBC package and conf file to the pod
+  public void createKubernetesYbcExecutorTask(
+      SubTaskGroup subTaskGroup,
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      Set<NodeDetails> servers,
+      boolean isReadOnlyCluster,
+      String ybcSoftwareVersion) {
+    for (NodeDetails node : servers) {
+      KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      if (primaryCluster == null) {
+        primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      }
+      params.commandType = commandType;
+      params.universeUUID = taskParams().universeUUID;
+      params.ybcServerName = node.nodeName;
+      params.ybcSoftwareVersion = ybcSoftwareVersion;
+      params.providerUUID =
+          isReadOnlyCluster
+              ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
+              : UUID.fromString(primaryCluster.userIntent.provider);
+      KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+  }
+
+  // Create Kubernetes Executor task for perform ybc
+  public void createKubernetesYbcExecutorTask(
+      SubTaskGroup subTaskGroup,
+      KubernetesCommandExecutor.CommandType commandType,
+      Set<NodeDetails> servers,
+      boolean isReadOnlyCluster,
+      String command) {
+    for (NodeDetails node : servers) {
+      KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      if (primaryCluster == null) {
+        primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      }
+      if (isReadOnlyCluster && readOnlyClusters.size() == 0) {
+        readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
+      }
+      params.commandType = commandType;
+      params.universeUUID = taskParams().universeUUID;
+      params.ybcServerName = node.nodeName;
+      params.providerUUID =
+          isReadOnlyCluster
+              ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)
+              : UUID.fromString(primaryCluster.userIntent.provider);
+      params.command = command;
+      KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+  }
+
   public KubernetesCommandExecutor createKubernetesExecutorTask(
       String universeName,
       CommandType commandType,
@@ -781,7 +937,38 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         0 /* tserver partition */,
         universeOverrides,
         azOverrides,
-        isReadOnlyCluster);
+        isReadOnlyCluster,
+        false);
+  }
+
+  // Create the Kubernetes Executor task for the helm deployments. (USED)
+  public KubernetesCommandExecutor createKubernetesExecutorTask(
+      String universeName,
+      CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      boolean enableYbc) {
+    return createKubernetesExecutorTaskForServerType(
+        universeName,
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        ServerType.EITHER,
+        config,
+        0 /* master partition */,
+        0 /* tserver partition */,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        enableYbc);
   }
 
   // Create and return the Kubernetes Executor task for deployment of a k8s universe.
@@ -798,7 +985,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int tserverPartition,
       Map<String, Object> universeOverrides,
       Map<String, Object> azOverrides,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      boolean enableYbc) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
@@ -850,6 +1038,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.enableClientToNodeEncrypt = primaryCluster.userIntent.enableClientToNodeEncrypt;
     params.serverType = serverType;
     params.isReadOnlyCluster = isReadOnlyCluster;
+    params.enableYbc = enableYbc;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;
@@ -918,7 +1107,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         isReadOnlyCluster,
         podName,
         newDiskSize,
-        false);
+        false,
+        false,
+        null);
   }
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
@@ -939,6 +1130,47 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String podName,
       String newDiskSize,
       boolean ignoreErrors) {
+    createSingleKubernetesExecutorTaskForServerType(
+        universeName,
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        serverType,
+        config,
+        masterPartition,
+        tserverPartition,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        podName,
+        newDiskSize,
+        ignoreErrors,
+        false,
+        null);
+  }
+
+  // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
+  public void createSingleKubernetesExecutorTaskForServerType(
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      int masterPartition,
+      int tserverPartition,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      String podName,
+      String newDiskSize,
+      boolean ignoreErrors,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor()
             .createSubTaskGroup(commandType.getSubTaskGroupName(), executor, ignoreErrors);
@@ -996,6 +1228,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.podName = podName;
     params.newDiskSize = newDiskSize;
+    params.enableYbc = enableYbc;
+    params.ybcSoftwareVersion = ybcSoftwareVersion;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

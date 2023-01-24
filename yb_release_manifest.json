@@ -51,7 +51,8 @@
       "bin/print_stacks.sh",
       "bin/yb-check-failed-tablets.sh",
       "scripts/k8s_preflight.py",
-      "scripts/k8s_parent.py"
+      "scripts/k8s_parent.py",
+      "scripts/k8s_ybc_parent.py"
     ],
     "www": ["www/*"]
   },
