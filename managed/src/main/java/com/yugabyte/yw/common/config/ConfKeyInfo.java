@@ -27,17 +27,17 @@ public class ConfKeyInfo<T> {
   final ConfDataType<T> dataType;
 
   final List<ConfKeyTags> tags;
-}
 
-enum ConfKeyTags {
-  // Keys Visible on the UI
-  PUBLIC,
-  // Keys hidden from the UI
-  INTERNAL,
-  // YBM Keys
-  YBM,
-  // Keys for which we dont have metadata yet
-  BETA,
-  // Keys with dedicated UI
-  UIDriven
+  public enum ConfKeyTags {
+    // Keys Visible on the UI
+    PUBLIC,
+    // Keys hidden from the UI
+    INTERNAL,
+    // YBM Keys
+    YBM,
+    // Keys for which we dont have metadata yet
+    BETA,
+    // Keys with dedicated UI
+    UIDriven
+  }
 }

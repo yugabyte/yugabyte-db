@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 
 public class ProviderConfKeys extends RuntimeConfigKeysModule {
