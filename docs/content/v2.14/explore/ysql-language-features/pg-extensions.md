@@ -34,7 +34,7 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | [Example](#file-fdw-example) |
 | [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
 | [hstore](https://www.postgresql.org/docs/11/hstore.html) | Pre-bundled | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value. | |
-| [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html)| Pre-bundled | Checks users' passwords whenever they are set with CREATE ROLE or ALTER ROLE. | [Example](#passwordcheck-example) |
+| [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) | Pre-bundled | Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. | [Example](#passwordcheck-example) |
 | [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html)| Pre-bundled | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
 | [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html) | Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
 | [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) | Pre-bundled | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. | |
@@ -204,6 +204,25 @@ To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_li
 --ysql_pg_conf_csv="shared_preload_libraries=passwordcheck"
 ```
 
+You can customize the following passwordcheck parameters:
+
+| Parameter | Description | Default |
+| :--- | :--- | :--- |
+| minimum_length | Minimum password length. | 8 |
+| maximum_length | Maximum password length. | 15 |
+| restrict_lower | Passwords must include a lowercase character. | true |
+| restrict_upper | Passwords must include an uppercase character. | true |
+| restrict_numbers | Passwords must include a number. | true |
+| restrict_special | Passwords must include a special character. | true |
+| special_chars | The set of special characters. | <code>!@#$%^&*()_+{}\|\<\>?=</code> |
+
+You can change passwordcheck parameters using a `SET` statement. For example, to increase the maximum length allowed and not require numbers, execute the following commands:
+
+```sql
+SET passwordcheck.maximum_length TO 20;
+SET passwordcheck.restrict_numbers TO false;
+```
+
 When enabled, if a password is considered too weak, it's rejected with an error. For example:
 
 ```sql
@@ -229,6 +248,8 @@ yugabyte=# create role test_role password '123test_role123';
 ```output
 ERROR:  password must not contain user name
 ```
+
+The passwordcheck extension only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
 
 ### pgcrypto example
 

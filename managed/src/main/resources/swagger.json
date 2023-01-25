@@ -4783,6 +4783,12 @@
     },
     "KubernetesRegionInfo" : {
       "properties" : {
+        "certManagerClusterIssuer" : {
+          "type" : "string"
+        },
+        "certManagerIssuer" : {
+          "type" : "string"
+        },
         "kubeConfig" : {
           "type" : "string"
         },
@@ -6157,6 +6163,10 @@
     },
     "PerformanceRecommendationFilter" : {
       "properties" : {
+        "createdInstantBefore" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
         "customerId" : {
           "format" : "uuid",
           "type" : "string"
@@ -6201,7 +6211,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerId", "ids", "isStale", "priorities", "states", "types", "universeId" ],
+      "required" : [ "createdInstantBefore", "customerId", "ids", "isStale", "priorities", "states", "types", "universeId" ],
       "type" : "object"
     },
     "PerformanceRecommendationPagedQuery" : {
