@@ -38,6 +38,7 @@ Maintenance operations, including database upgrades, certificate rotations, and 
 
 - Avoid scheduling during [scheduled backups](../backup-clusters/).
 - Schedule the window for low traffic periods to reduce the impact of rolling updates.
+- If you have a [staging environment](../../cloud-basics/create-clusters-overview/#staging-cluster), schedule the maintenance windows for the staging and production cluster so that you can validate updates against your applications in your pre-production environment _before_ updating your production cluster.
 
 ## Set the cluster maintenance window schedule
 
