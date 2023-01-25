@@ -18,11 +18,14 @@
 #include <unordered_set>
 #include <vector>
 
+#include <boost/none.hpp>
 #include <boost/optional/optional_io.hpp>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/partition.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_path.h"
@@ -143,17 +146,20 @@ Status CreateProjection(
 }
 
 void AddIntent(
-    const std::string& encoded_key, WaitPolicy wait_policy, LWKeyValueWriteBatchPB *out) {
+    const std::string& encoded_key, boost::optional<WaitPolicy> wait_policy,
+    LWKeyValueWriteBatchPB *out) {
   auto* pair = out->add_read_pairs();
   pair->dup_key(encoded_key);
   pair->dup_value(Slice(&ValueEntryTypeAsChar::kNullLow, 1));
-  // Since we don't batch read RPCs that lock rows, we can get away with using a singular
-  // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
-  // wait policies field.
-  out->set_wait_policy(wait_policy);
+  if (wait_policy) {
+    // Since we don't batch read RPCs that lock rows, we can get away with using a singular
+    // wait_policy field. Once we start batching read requests (issue #2495), we will need a
+    // repeated wait policies field.
+    out->set_wait_policy(wait_policy.value());
+  }
 }
 
-Status AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
+Status AddIntent(const PgsqlExpressionPB& ybctid, boost::optional<WaitPolicy> wait_policy,
                  LWKeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");
@@ -1592,14 +1598,20 @@ Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
 }
 
 Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
+  boost::optional<WaitPolicy> wait_policy = boost::none;
+  if (request_.has_row_mark_type() && IsValidRowMarkType(request_.row_mark_type())) {
+    DCHECK(request_.has_wait_policy());
+    wait_policy = request_.wait_policy();
+  }
+
   if (request_.batch_arguments_size() > 0) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
-      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), request_.wait_policy(), out));
+      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), wait_policy, out));
     }
   } else {
     auto doc_key = VERIFY_RESULT(FetchDocKey(schema, request_));
-    AddIntent(doc_key.Encode().ToStringBuffer(), request_.wait_policy(), out);
+    AddIntent(doc_key.Encode().ToStringBuffer(), wait_policy, out);
   }
   return Status::OK();
 }
