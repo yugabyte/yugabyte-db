@@ -59,6 +59,7 @@ namespace tserver {
     (DropDatabase) \
     (DropTable) \
     (DropTablegroup) \
+    (FetchSequenceTuple) \
     (FinishTransaction) \
     (InsertSequenceTuple) \
     (ReadSequenceTuple) \

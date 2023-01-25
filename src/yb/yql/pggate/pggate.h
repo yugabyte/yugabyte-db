@@ -178,6 +178,17 @@ class PgApiImpl {
                                      bool is_called,
                                      bool* skipped);
 
+  Status FetchSequenceTuple(int64_t db_oid,
+                            int64_t seq_oid,
+                            uint64_t ysql_catalog_version,
+                            uint32_t fetch_count,
+                            int64_t inc_by,
+                            int64_t min_value,
+                            int64_t max_value,
+                            bool cycle,
+                            int64_t *first_value,
+                            int64_t *last_value);
+
   Status ReadSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,

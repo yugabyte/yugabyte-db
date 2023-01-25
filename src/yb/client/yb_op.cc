@@ -964,6 +964,11 @@ std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
   return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED);
 }
 
+std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewFetchSequence(
+    const std::shared_ptr<YBTable>& table) {
+  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_FETCH_SEQUENCE);
+}
+
 std::string YBPgsqlWriteOp::ToString() const {
   return Format(
       "PGSQL_WRITE $0$1$2", request_->ShortDebugString(),

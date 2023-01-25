@@ -560,6 +560,23 @@ Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
   return Status::OK();
 }
 
+Status PgApiImpl::FetchSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     uint32_t fetch_count,
+                                     int64_t inc_by,
+                                     int64_t min_value,
+                                     int64_t max_value,
+                                     bool cycle,
+                                     int64_t *first_value,
+                                     int64_t *last_value) {
+  auto res = VERIFY_RESULT(pg_session_->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, fetch_count, inc_by, min_value, max_value, cycle));
+  *first_value = res.first;
+  *last_value = res.second;
+  return Status::OK();
+}
+
 Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
                                     int64_t seq_oid,
                                     uint64_t ysql_catalog_version,

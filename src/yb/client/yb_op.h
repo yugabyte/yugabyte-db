@@ -508,6 +508,7 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   static std::unique_ptr<YBPgsqlWriteOp> NewUpdate(const YBTablePtr& table);
   static std::unique_ptr<YBPgsqlWriteOp> NewDelete(const YBTablePtr& table);
   static std::unique_ptr<YBPgsqlWriteOp> NewTruncateColocated(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewFetchSequence(const YBTablePtr& table);
 
  protected:
   virtual Type type() const override { return PGSQL_WRITE; }

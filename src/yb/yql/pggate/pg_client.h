@@ -117,6 +117,15 @@ class PgClient {
                                    boost::optional<int64_t> expected_last_val,
                                    boost::optional<bool> expected_is_called);
 
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle);
+
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
                                                      uint64_t ysql_catalog_version);

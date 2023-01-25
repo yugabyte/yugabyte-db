@@ -460,6 +460,15 @@ extern bool yb_make_next_ddl_statement_nonbreaking;
  */
 extern bool yb_plpgsql_disable_prefetch_in_for_query;
 
+/*
+ * Allow nextval() to fetch the value range and advance the sequence value in a
+ * single operation.
+ * If disabled, nextval() reads sequence value first, advances it and apply the
+ * new value, which may fail due to concurrent modification and has to be
+ * retried.
+ */
+extern bool yb_enable_sequence_pushdown;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

@@ -65,6 +65,7 @@ service PgClientService {
 
   rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB) returns (PgInsertSequenceTupleResponsePB);
   rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB) returns (PgUpdateSequenceTupleResponsePB);
+  rpc FetchSequenceTuple(PgFetchSequenceTupleRequestPB) returns (PgFetchSequenceTupleResponsePB);
   rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB);
   rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
   rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
@@ -476,6 +477,25 @@ message PgUpdateSequenceTupleRequestPB {
 message PgUpdateSequenceTupleResponsePB {
   AppStatusPB status = 1;
   bool skipped = 2;
+}
+
+message PgFetchSequenceTupleRequestPB {
+  uint64 session_id = 1;
+  int64 db_oid = 2;
+  int64 seq_oid = 3;
+  uint64 ysql_catalog_version = 4;
+  uint64 ysql_db_catalog_version = 10;
+  uint32 fetch_count = 5;
+  int64 inc_by = 6;
+  int64 min_value = 7;
+  int64 max_value = 8;
+  bool cycle = 9;
+}
+
+message PgFetchSequenceTupleResponsePB {
+  AppStatusPB status = 1;
+  int64 first_value = 2;
+  int64 last_value = 3;
 }
 
 message PgReadSequenceTupleRequestPB {

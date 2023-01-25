@@ -306,6 +306,32 @@ class PgClient::Impl {
     return resp.skipped();
   }
 
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle) {
+    tserver::PgFetchSequenceTupleRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_db_oid(db_oid);
+    req.set_seq_oid(seq_oid);
+    req.set_ysql_catalog_version(ysql_catalog_version);
+    req.set_fetch_count(fetch_count);
+    req.set_inc_by(inc_by);
+    req.set_min_value(min_value);
+    req.set_max_value(max_value);
+    req.set_cycle(cycle);
+
+    tserver::PgFetchSequenceTupleResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->FetchSequenceTuple(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return std::make_pair(resp.first_value(), resp.last_value());
+  }
+
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
                                                      uint64_t ysql_catalog_version) {
@@ -694,6 +720,19 @@ Result<bool> PgClient::UpdateSequenceTuple(int64_t db_oid,
       db_oid, seq_oid, ysql_catalog_version, last_val, is_called, expected_last_val,
       expected_is_called);
 }
+
+Result<std::pair<int64_t, int64_t>> PgClient::FetchSequenceTuple(int64_t db_oid,
+                                                                 int64_t seq_oid,
+                                                                 uint64_t ysql_catalog_version,
+                                                                 uint32_t fetch_count,
+                                                                 int64_t inc_by,
+                                                                 int64_t min_value,
+                                                                 int64_t max_value,
+                                                                 bool cycle) {
+  return impl_->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, fetch_count, inc_by, min_value, max_value, cycle);
+}
+
 
 Result<std::pair<int64_t, bool>> PgClient::ReadSequenceTuple(int64_t db_oid,
                                                              int64_t seq_oid,
