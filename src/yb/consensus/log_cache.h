@@ -78,8 +78,6 @@ class ReplicateMsg;
 struct ReadOpsResult {
   ReplicateMsgs messages;
   OpId preceding_op;
-  SchemaPB header_schema;
-  uint32_t header_schema_version;
   HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   int64_t read_from_disk_size = 0;
 };

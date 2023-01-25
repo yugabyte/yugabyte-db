@@ -4031,17 +4031,13 @@ void CDCServiceImpl::IsBootstrapRequired(
     int64_t next_index = op_id.index + 1;
     consensus::ReplicateMsgs replicates;
     int64_t starting_op_segment_seq_num;
-    yb::SchemaPB schema;
-    uint32_t schema_version;
 
     auto log_result = log->GetLogReader()->ReadReplicatesInRange(
         next_index,
         next_index,
         0,
         &replicates,
-        &starting_op_segment_seq_num,
-        &schema,
-        &schema_version);
+        &starting_op_segment_seq_num);
 
     // TODO: We should limit this to the specific Status error associated with missing logs.
     bool missing_logs = !log_result.ok();
