@@ -16,11 +16,9 @@ menu:
 type: docs
 ---
 
-YugabyteDB can be deployed in a globally distributed manner to serve application queries from the region closest to the end users with low latencies as well as to survive any outages to ensure high availability.
+YugabyteDB can be deployed in a globally distributed manner to serve application queries from the region closest to end users with low latencies, as well as to survive any outages to ensure high availability.
 
-In a synchronized multi-region cluster, the nodes of the cluster are deployed in different regions rather than in different availability zones of the same region.
-
-![Single cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-2.png)
+In a synchronized multi-region cluster, a minimum of 3 nodes are spread across 3 regions with a replication factor (RF) of 3.
 
 This deployment provides the following advantages:
 
@@ -100,18 +98,14 @@ Start a 3-node cluster with a replication factor (RF) of `3`, and each replica p
 1. After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster as follows:
 
     ```sh
-    ./bin/yugabyted configure data_placement --fault_tolerance=region
+    ./bin/yugabyted configure data_placement --base_dir=/tmp/ybd1 --fault_tolerance=region
     ```
 
 The [configure](../../../reference/configuration/yugabyted/#configure) command determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If three or more regions are available in the cluster, `configure` configures the cluster to survive at least one region failure. Otherwise, it outputs a warning message. The command can be executed on any node where you already started YugabyteDB.
 
 ## Review the deployment
 
-In this deployment, the YB-Masters are each placed in a separate region to allow them to survive the loss of a region. You can view the masters on the [dashboard](http://localhost:7000/), as per the following illustration:
-
-![Multi-zone cluster YB-Masters](/images/ce/online-reconfig-multi-zone-masters.png)
-
-You can view the tablet servers on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
+In this deployment, the YB-Masters are each placed in a separate region to allow them to survive the loss of a region. You can view the tablet servers on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
 ![Multi-zone cluster YB-TServers](/images/ce/online-reconfig-multi-zone-tservers.png)
 
@@ -132,7 +126,7 @@ For best performance as well as lower data transfer costs, you want to minimize 
 - Use the same cloud provider as your application.
 - Locate your cluster in the same region as your application.
 
-To further improve performance, designate the region closest to your client as the preferred region for all the tablet leaders. The preferred region handles all read and write requests from clients. For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction and, as a result, improve performance.
+To further improve performance, you can designate the region closest to your client as the preferred region for all the tablet leaders. This places all the leaders in the preferred region, and as a result, the preferred region handles all read and write requests from clients. For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction.
 
 The following command sets the preferred zone to `aws.us-west-2.us-west-2a`:
 
@@ -145,13 +139,13 @@ $ ./bin/yb-admin \
 
 You should see the read and write load on the [tablet servers page](http://localhost:7000/tablet-servers) move to the preferred region, as per the following illustration:
 
-![Multi-zone cluster load](/images/ce/online-reconfig-multi-zone-load.png)
+![Multi-zone cluster load](/images/ce/online-reconfig-multi-zone-pref-load.png)
 
 When complete, the load is handled exclusively by the preferred region.
 
 ## Clean up
 
-Optionally, you can shutdown the local cluster created in Step 1, as follows:
+Optionally, you can shutdown the local cluster as follows:
 
 ```sh
 ./bin/yugabyted destroy --base_dir=/tmp/ybd1
