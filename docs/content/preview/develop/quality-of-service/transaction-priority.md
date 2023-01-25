@@ -39,9 +39,11 @@ Currently, transaction priorities work in the following scenarios:
 * Only applies for transactions using [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy.
 * Only conflict resolution is prioritized, not resource consumption as a part.
 
+{{< /note >}}
+
 ## Examples
 
-Let's create a [YugabyteDB cluster](../../../quick-start/), and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
+Create a [YugabyteDB cluster](../../../quick-start/), and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Managed" >}}
 You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which can be used to do the steps below.
@@ -50,7 +52,7 @@ You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick
 
 ### Transaction priority between concurrent operations
 
-Let's create an example scenario of an accounts table, and insert a row into as follows:
+Consider an example scenario of an accounts table, create the accounts table, and insert a row into as follows:
 
 ```sql
 create table account
@@ -65,7 +67,7 @@ insert into account values
   ('kevin','checking', 500);
 ```
 
-Now, we're going to perform a deposit and a withdrawal at the same time. Also, assume we want to give higher priority to deposit transactions (when compared to withdrawals). To simulate this, we're going to perform two operations concurrently - a withdrawal in one session, and a deposit from a separate session. The deposit transaction starts after the withdrawal is initiated, but occurs before the withdrawal is completed from a separate session. This is shown below.
+To set a transaction priority for concurrent transactions, perform a deposit and a withdrawal at the same time and set a higher priority to deposit transactions. To simulate this, perform the two operations concurrently - a withdrawal in one session, and a deposit from another. The deposit transaction starts after the withdrawal is initiated, but occurs before the withdrawal is completed from a separate session as demonstrated in the following table:
 
 <table style="margin:0 5px;">
   <tr>
@@ -218,7 +220,7 @@ The `yb_get_current_transaction_priority` function shows the transaction priorit
     (1 row)
     ```
 
-   As seen from the resulting _High priority transaction_ value above, it is randomly chosen between the lower and upper bound.
+   As seen from the resulting _High priority transaction_ value in the preceding example, the transaction priority is randomly chosen between the lower and upper bound.
 
 1. In the final transaction block, set `yb_transaction_priority_upper_bound` and `yb_transaction_priority_lower_bound` to be 1, and perform the same `SELECT ... FOR UPDATE` query as the previous one. This transaction type is of the highest priority.
 
