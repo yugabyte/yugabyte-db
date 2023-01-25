@@ -966,6 +966,11 @@ YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewDelete(const YBTablePtr& table, rpc::Sideca
   return NewYBPgsqlWriteOp(table, sidecars, PgsqlWriteRequestPB::PGSQL_DELETE);
 }
 
+YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewFetchSequence(const std::shared_ptr<YBTable>& table,
+                                                   rpc::Sidecars* sidecars) {
+  return NewYBPgsqlWriteOp(table, sidecars, PgsqlWriteRequestPB::PGSQL_FETCH_SEQUENCE);
+}
+
 std::string YBPgsqlWriteOp::ToString() const {
   return Format(
       "PGSQL_WRITE $0$1$2", request_->ShortDebugString(),
