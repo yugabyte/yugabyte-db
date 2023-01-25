@@ -101,6 +101,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "if YSQL catalog upgrade will be performed in single or multi connection mode."
               + "Single connection mode makes it work even on tiny DB nodes.",
           ConfDataType.BooleanType);
+  public static final ConfKeyInfo<Boolean> ybEditWaitForLeadersOnPreferred =
+      new ConfKeyInfo<>(
+          "yb.edit.wait_for_leaders_on_preferred",
+          ScopeType.UNIVERSE,
+          "YB Edit Wait For Leaders On Preferred Only",
+          "Controls whether we perform the createWaitForLeadersOnPreferredOnly subtask"
+              + "in editUniverse",
+          ConfDataType.BooleanType);
   public static final ConfKeyInfo<String> ybNumReleasesToKeepDefault =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_default",
