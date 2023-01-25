@@ -4783,6 +4783,12 @@
     },
     "KubernetesRegionInfo" : {
       "properties" : {
+        "certManagerClusterIssuer" : {
+          "type" : "string"
+        },
+        "certManagerIssuer" : {
+          "type" : "string"
+        },
         "kubeConfig" : {
           "type" : "string"
         },

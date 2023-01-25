@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -28,7 +29,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(JUnitParamsRunner.class)
-public class UpgradeUniverseHandlerTest {
+public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   private static final String DEFAULT_INSTANCE_TYPE = "type1";
   private static final String NEW_INSTANCE_TYPE = "type2";
   private UpgradeUniverseHandler handler;
