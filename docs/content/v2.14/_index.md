@@ -18,7 +18,7 @@ resources:
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
-    title="Get Started locally on your Laptop"
+    title="Get started locally on your laptop"
     description="Download and install YugabyteDB on your laptop, create a cluster, and build a sample application."
     buttonText="Quick Start"
     buttonUrl="/v2.14/quick-start/"
@@ -38,7 +38,7 @@ resources:
 
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
-    title="Build a Hello world application"
+    title="Build a Hello World application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
     buttonText="Build"
     buttonUrl="/v2.14/quick-start/build-apps/"
