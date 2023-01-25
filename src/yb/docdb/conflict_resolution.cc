@@ -1217,6 +1217,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
   DCHECK(hybrid_time.is_valid());
   TRACE_FUNC();
 
+  VLOG_WITH_FUNC(3) << "conflict_management_policy=" << conflict_management_policy;
   auto context = std::make_unique<TransactionConflictResolverContext>(
       doc_ops, write_batch, hybrid_time, read_time, conflicts_metric,
       conflict_management_policy);
@@ -1253,6 +1254,8 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  WaitQueue* wait_queue,
                                  ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
+  VLOG_WITH_FUNC(3) << "conflict_management_policy=" << conflict_management_policy;
+
   auto context = std::make_unique<OperationConflictResolverContext>(
       &doc_ops, resolution_ht, conflicts_metric, conflict_management_policy);
   auto request_scope = VERIFY_RESULT(RequestScope::Create(status_manager));
