@@ -105,6 +105,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "Single connection mode makes it work even on tiny DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybEditWaitForLeadersOnPreferred =
+      new ConfKeyInfo<>(
+          "yb.edit.wait_for_leaders_on_preferred",
+          ScopeType.UNIVERSE,
+          "YB Edit Wait For Leaders On Preferred Only",
+          "Controls whether we perform the createWaitForLeadersOnPreferredOnly subtask"
+              + "in editUniverse",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> ybNumReleasesToKeepDefault =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_default",
