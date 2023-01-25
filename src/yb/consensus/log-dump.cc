@@ -156,7 +156,6 @@ void PrintIdOnly(const LogEntryPB& entry) {
 }
 
 Status PrintDecodedWriteRequestPB(const string& indent,
-                                  const Schema& tablet_schema,
                                   const tablet::WritePB& write) {
   cout << indent << "write {" << endl;
   if (write.has_write_batch()) {
@@ -194,7 +193,6 @@ Status PrintDecodedWriteRequestPB(const string& indent,
 }
 
 Status PrintDecodedTransactionStatePB(const string& indent,
-                                      const Schema& tablet_schema,
                                       const tablet::TransactionStatePB& update) {
   cout << indent << "update_transaction {" << endl;
   if (update.has_transaction_id()) {
@@ -246,7 +244,7 @@ Status PrintDecodedTransactionStatePB(const string& indent,
   return Status::OK();
 }
 
-Status PrintDecoded(const LogEntryPB& entry, const Schema& tablet_schema) {
+Status PrintDecoded(const LogEntryPB& entry) {
   cout << "replicate {" << endl;
   PrintIdOnly(entry);
 
@@ -256,10 +254,9 @@ Status PrintDecoded(const LogEntryPB& entry, const Schema& tablet_schema) {
 
     const ReplicateMsg& replicate = entry.replicate();
     if (replicate.op_type() == consensus::WRITE_OP) {
-      RETURN_NOT_OK(PrintDecodedWriteRequestPB(indent, tablet_schema, replicate.write()));
+      RETURN_NOT_OK(PrintDecodedWriteRequestPB(indent, replicate.write()));
     } else if (replicate.op_type() == consensus::UPDATE_TRANSACTION_OP) {
-      RETURN_NOT_OK(PrintDecodedTransactionStatePB(indent, tablet_schema,
-                                                   replicate.transaction_state()));
+      RETURN_NOT_OK(PrintDecodedTransactionStatePB(indent, replicate.transaction_state()));
     } else {
       cout << indent << replicate.ShortDebugString() << endl;
     }
@@ -280,9 +277,6 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
 
   if (print_type == DONT_PRINT) return Status::OK();
 
-  Schema tablet_schema;
-  RETURN_NOT_OK(SchemaFromPB(segment->header().schema(), &tablet_schema));
-
   for (const auto& lw_entry : read_entries.entries) {
     auto entry = lw_entry->ToGoogleProtobuf();
     if (print_type == PRINT_PB) {
@@ -292,7 +286,7 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
 
       cout << "Entry:\n" << entry.DebugString();
     } else if (print_type == PRINT_DECODED) {
-      RETURN_NOT_OK(PrintDecoded(entry, tablet_schema));
+      RETURN_NOT_OK(PrintDecoded(entry));
     } else if (print_type == PRINT_ID) {
       PrintIdOnly(entry);
     }
@@ -357,7 +351,7 @@ Status FilterLogSegment(const string& segment_path) {
   Schema tablet_schema;
   const auto& segment_header = segment->header();
 
-  RETURN_NOT_OK(SchemaFromPB(segment->header().schema(), &tablet_schema));
+  RETURN_NOT_OK(SchemaFromPB(segment->header().deprecated_schema(), &tablet_schema));
 
   auto log_options = LogOptions();
   log_options.env = env;
@@ -420,7 +414,7 @@ Status FilterLogSegment(const string& segment_path) {
       output_wal_dir,
       "log-dump-tool",
       tablet_schema,
-      segment_header.schema_version(),
+      segment_header.deprecated_schema_version(),
       /* table_metric_entity */ nullptr,
       /* tablet_metric_entity */ nullptr,
       log_thread_pool.get(),
