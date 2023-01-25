@@ -192,9 +192,6 @@ void Messenger::Shutdown() {
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
 
-    DCHECK(rpc_services_.empty()) << "Unregister RPC services before shutting down Messenger";
-    rpc_services_.clear();
-
     acceptor.swap(acceptor_);
 
     for (const auto& reactor : reactors_) {
@@ -225,6 +222,10 @@ void Messenger::Shutdown() {
         << "Scheduled tasks is not empty after messenger shutdown: "
         << yb::ToString(scheduled_tasks_);
   }
+
+  // Safe to clear only after reactors have been shutdown as there may be CleanupHooks which access
+  // data owned by the services.
+  rpc_services_.clear();
 }
 
 Status Messenger::ListenAddress(
@@ -434,7 +435,6 @@ void Messenger::UnregisterAllServices() {
     p.second->CompleteShutdown();
   }
 
-  rpc_services_.clear();
   rpc_endpoints_.clear();
 }
 
