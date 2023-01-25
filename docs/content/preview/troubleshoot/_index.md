@@ -8,11 +8,6 @@ menu:
   preview:
     identifier: troubleshoot
     parent: launch-and-manage
-aliases:
-  - /stable/troubleshoot
-  - /v2.14/troubleshoot
-  - /v2.12/troubleshoot
-  - /v2.8/troubleshoot
 type: indexpage
 cascade:
   unversioned: true
@@ -22,9 +17,9 @@ Typically, troubleshooting involves a number of steps that are rather consistent
 
 1. Verify that YugabyteDB is running: you need to ensure that the expected YugabyteDB processes are running on the current node. At a minimum, the YB-TServer process must be running to be able to connect to the node with a client or application.
 
-   Additionally, depending on the setup, you might expect a YB-Master process to run on this node.
+    Additionally, depending on the setup, you might expect a YB-Master process to run on this node.
 
-   For more information, see [Check processes](../troubleshoot/nodes/check-processes/).
+    For more information, see [Check processes](../troubleshoot/nodes/check-processes/).
 
 2. Check [cluster-level issues](../troubleshoot/cluster/) and their solutions.
 

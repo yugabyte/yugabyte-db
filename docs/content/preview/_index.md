@@ -18,7 +18,7 @@ resources:
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
-    title="Get Started locally on your Laptop"
+    title="Get started locally on your laptop"
     description="Download and install YugabyteDB on your laptop, create a cluster, and build a sample application."
     buttonText="Quick Start"
     buttonUrl="/preview/quick-start/"
@@ -38,7 +38,7 @@ resources:
 
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
-    title="Build a Hello world application"
+    title="Build a Hello World application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
     buttonText="Build"
     buttonUrl="/preview/develop/build-apps/"
@@ -87,164 +87,3 @@ resources:
 {{< /sections/3-boxes >}}
 
 <div class="row">
-
-<!--
- <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="benchmark/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Benchmark</div>
-      </div>
-      <div class="body">
-        Run performance, correctness, and data density benchmarks
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="reference/drivers/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/reference/connectors/ecosystem-integrations.png" aria-hidden="true" />
-        <div class="title">Drivers and ORMs</div>
-      </div>
-      <div class="body">
-        Drivers for powering applications with YugabyteDB
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="admin/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/admin.png" aria-hidden="true" />
-        <div class="title">CLI reference</div>
-      </div>
-      <div class="body">
-        Admin commands and utilities reference.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="reference/configuration">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/reference/configuration/sample_apps.png" aria-hidden="true" />
-        <div class="title">Configuration reference</div>
-      </div>
-      <div class="body">
-        Configure YB-TServer and YB-Master services.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="reference/connectors/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/reference/connectors/ecosystem-integrations.png" aria-hidden="true" />
-        <div class="title">Connectors</div>
-      </div>
-      <div class="body">
-        Connectors for integrating with YugabyteDB
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="tools/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="articles">6 chapters</div>
-        <div class="title">Third party tools</div>
-      </div>
-      <div class="body">
-        GUI tools for developing and managing YugabyteDB databases
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="sample-data/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/sample-data/s_s1-sampledata-3x.png" aria-hidden="true" />
-        <div class="articles">4 chapters</div>
-        <div class="title">Sample datasets</div>
-      </div>
-      <div class="body">
-        Sample datasets for use with YugabyteDB
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="releases/whats-new">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Releases</div>
-      </div>
-      <div class="body">
-        What's new in the latest and current stable releases
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="releases/earlier-releases/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Earlier releases</div>
-      </div>
-      <div class="body">
-        Release notes for current and earlier releases
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="comparisons/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/comparisons.png" aria-hidden="true" />
-        <div class="title">Comparisons</div>
-      </div>
-      <div class="body">
-        Comparisons with common operational databases
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="faq/general">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/introduction/core_features.png" aria-hidden="true" />
-        <div class="title">FAQs</div>
-      </div>
-      <div class="body">
-        Frequently asked questions about YugabyteDB, operations, API compatibility, and YugabyteDB Anywhere
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="/preview/contribute/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/introduction.png" aria-hidden="true" />
-        <div class="title">Get involved</div>
-      </div>
-      <div class="body">
-        Learn how you can become a contributor.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6">
-    <a class="section-link icon-offset" href="/preview/contribute/core-database/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/introduction.png" aria-hidden="true" />
-        <div class="title">Core database</div>
-      </div>
-      <div class="body">
-        Contribute to the core database
-      </div>
-    </a>
-  </div> -->
-
-</div>

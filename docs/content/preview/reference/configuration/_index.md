@@ -3,7 +3,7 @@ title: YugabyteDB configuration reference
 headerTitle: Configuration
 linkTitle: Configuration
 description: YugabyteDB configuration reference for core database services, including yb-tserver, yb-master, and yugabyted.
-headcontent: Configure core database services.
+headcontent: Configure core database services
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -45,7 +45,7 @@ type: indexpage
         <div class="title">yugabyted</div>
       </div>
       <div class="body">
-        Use the yugabyted utility to launch and manage local test clusters.
+        Use the yugabyted utility to launch and manage local clusters.
       </div>
     </a>
   </div>
