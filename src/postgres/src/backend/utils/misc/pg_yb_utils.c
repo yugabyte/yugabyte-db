@@ -1027,6 +1027,7 @@ bool yb_enable_optimizer_statistics = false;
 bool yb_bypass_cond_recheck = false;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
+bool yb_enable_sequence_pushdown = true;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
