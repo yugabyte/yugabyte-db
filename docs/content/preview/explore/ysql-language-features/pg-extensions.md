@@ -225,8 +225,6 @@ SET passwordcheck.maximum_length TO 20;
 SET passwordcheck.restrict_numbers TO false;
 ```
 
-The passwordcheck extension only works with plain text. For production deployments, it is recommended to [enable SCRAM-SHA-256 password authentication](../../../secure/authentication/password-authentication/).
-
 When enabled, if a password is considered too weak, it's rejected with an error. For example:
 
 ```sql
@@ -252,6 +250,8 @@ yugabyte=# create role test_role password '12test_role12';
 ```output
 ERROR:  password must not contain user name
 ```
+
+The passwordcheck extension only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
 
 ### pgcrypto example
 
