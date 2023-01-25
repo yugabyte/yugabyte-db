@@ -44,7 +44,7 @@ If WAL writes are slow, then writes experience higher latency which creates a na
 
 ### Limited disk IOPS or bandwidth
 
-In many cloud environments, the disk IOPS and network bandwidth are rate-throttled. Holistically, if there are such disk constraints (limits on IOPS and bandwidth), it results in a back-pressure across all disk writes in the system and would manifest as one of the preceding conditions.
+In many cloud environments, disk IOPS and network bandwidth are rate-limited. Such disk constraints (limits on IOPS and bandwidth) result in a back-pressure across all disk writes in the system, and manifest as one of the preceding conditions.
 
 ## Write throttling triggers
 
