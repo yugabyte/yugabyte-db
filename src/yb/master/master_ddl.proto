@@ -633,6 +633,18 @@ message GetUDTypeInfoResponsePB {
   optional UDTypeInfoPB udtype = 2;
 }
 
+message ReportYsqlDdlTxnStatusRequestPB {
+  // The transaction whose status is being reported.
+  optional bytes transaction_id = 1;
+
+  // Whether the above transaction is committed or aborted.
+  optional bool is_committed = 2;
+}
+
+message ReportYsqlDdlTxnStatusResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterDdl {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -681,4 +693,7 @@ service MasterDdl {
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
   rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);
   rpc GetUDTypeInfo(GetUDTypeInfoRequestPB) returns (GetUDTypeInfoResponsePB);
+
+  rpc ReportYsqlDdlTxnStatus(ReportYsqlDdlTxnStatusRequestPB) returns
+      (ReportYsqlDdlTxnStatusResponsePB);
 }

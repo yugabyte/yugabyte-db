@@ -20,20 +20,19 @@
 #include "yb/docdb/doc_read_context.h"
 
 #include "yb/master/sys_catalog_constants.h"
-
-#include "yb/vtables/yql_virtual_table.h"
+#include "yb/master/yql_virtual_table.h"
 
 namespace yb {
 namespace master {
 
-SystemTablet::SystemTablet(
-    const Schema& schema, std::unique_ptr<yb::vtables::YQLVirtualTable> yql_virtual_table,
-    const TabletId& tablet_id)
-    : log_prefix_(Format("T $0: ", tablet_id)),  // Don't have UUID here to log in T XX P YY format.
-      doc_read_context_(
-          std::make_shared<docdb::DocReadContext>(log_prefix_, schema, kSysCatalogSchemaVersion)),
+SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable> yql_virtual_table,
+                           const TabletId& tablet_id)
+    : log_prefix_(Format("T $0: ", tablet_id)), // Don't have UUID here to log in T XX P YY format.
+      doc_read_context_(std::make_shared<docdb::DocReadContext>(
+          log_prefix_, schema, kSysCatalogSchemaVersion)),
       yql_virtual_table_(std::move(yql_virtual_table)),
-      tablet_id_(tablet_id) {}
+      tablet_id_(tablet_id) {
+}
 
 docdb::DocReadContextPtr SystemTablet::GetDocReadContext(const std::string& table_id) const {
   // table_id is ignored. It should match the system table's id.

@@ -11,6 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Stopwatch;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import javax.inject.Inject;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
 
@@ -28,7 +30,7 @@ public class WaitForServer extends ServerSubTaskBase {
 
   private final YsqlQueryExecutor ysqlQueryExecutor;
 
-  private final long POSTGRES_STATUS_RETRY_SLEEP_TIME = 60000;
+  private final long POSTGRES_STATUS_RETRY_SLEEP_TIME_MILLIS = 60000;
 
   @Inject
   protected WaitForServer(
@@ -65,13 +67,18 @@ public class WaitForServer extends ServerSubTaskBase {
       } else if (taskParams().serverType.equals(ServerType.YSQLSERVER)) {
         Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
         NodeDetails node = universe.getNode(taskParams().nodeName);
-        ret = false;
-        long retriesCount =
-            (taskParams().serverWaitTimeoutMs + POSTGRES_STATUS_RETRY_SLEEP_TIME - 1)
-                / POSTGRES_STATUS_RETRY_SLEEP_TIME;
-        while (retriesCount > 0 && !ret) {
-          ret = checkPostgresStatus(universe, node);
-          retriesCount--;
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        while (true) {
+          log.info("Check if postgres server is healthy on node {}", node.nodeName);
+          ret = checkPostgresStatus(universe);
+          if (ret
+              || stopwatch.elapsed().compareTo(Duration.ofMillis(taskParams().serverWaitTimeoutMs))
+                  > 0) break;
+          try {
+            Thread.sleep(POSTGRES_STATUS_RETRY_SLEEP_TIME_MILLIS);
+          } catch (InterruptedException ex) {
+            throw new RuntimeException(ex);
+          }
         }
       } else {
         ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
@@ -91,7 +98,7 @@ public class WaitForServer extends ServerSubTaskBase {
         (System.currentTimeMillis() - startMs));
   }
 
-  private boolean checkPostgresStatus(Universe universe, NodeDetails node) {
+  private boolean checkPostgresStatus(Universe universe) {
     RunQueryFormData runQueryFormData = new RunQueryFormData();
     runQueryFormData.query = "SELECT version()";
     runQueryFormData.db_name = "system_platform";
