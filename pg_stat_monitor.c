@@ -295,7 +295,7 @@ _PG_init(void)
 			* for max outlier queries. However, for min, bucket should only be added
 			* if the minimum value provided by user is greater than 0
 			*/
-			hist_bucket_count_total = (hist_bucket_count_user + 1 + (int)(hist_bucket_min > 0));
+			hist_bucket_count_total = (hist_bucket_count_user + (int)(hist_bucket_max < INT_MAX) + (int)(hist_bucket_min > 0));
 
 			if (b_count != hist_bucket_count_user)
 				ereport(WARNING,
@@ -3340,7 +3340,7 @@ histogram_bucket_timings(int index, int64 *b_start, int64 *b_end)
 		*b_end = q_min;
 		return;
 	}
-	else if (index == (b_count - 1))
+	else if (index == (b_count - 1) && q_max < INT_MAX)
 	{
 		*b_start = q_max;
 		*b_end = -1;
@@ -3355,8 +3355,8 @@ histogram_bucket_timings(int index, int64 *b_start, int64 *b_end)
 	bucket_size = log(q_max - q_min) / (double) b_count_user;
 
 	/* Can't do exp(0) as that returns 1. So handling the case of first entry specifically */
-	*b_start = q_min + ((index == 0 || (index == 1 && q_min > 0)) ? 0 : exp(bucket_size * (index - 1)));
-	*b_end = q_min + exp(bucket_size * index);
+	*b_start = q_min + ((index == 0 || (index == 1 && q_min > 0)) ? 0 : exp(bucket_size * (index - 1 + (q_min == 0))));
+	*b_end = q_min + exp(bucket_size * (index + (q_min == 0)));
 }
 
 /*
@@ -3405,16 +3405,16 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 
 		if (index == 0)
 		{
-			snprintf(text_str, MAX_STRING_LEN, "(%ld - %ld)}", b_start, b_end);
+			snprintf(text_str, MAX_STRING_LEN, "{{%ld - %ld}", b_start, b_end);
 		}
 		else if (index == (b_count - 1))
 		{
-			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%ld - ...)}", text_str, b_start);
+			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%ld - ...}}", text_str, b_start);
 			snprintf(text_str, MAX_STRING_LEN, "%s", tmp_str);
 		}
 		else
 		{
-			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%ld - %ld)}", text_str, b_start, b_end);
+			snprintf(tmp_str, MAX_STRING_LEN, "%s, (%ld - %ld}", text_str, b_start, b_end);
 			snprintf(text_str, MAX_STRING_LEN, "%s", tmp_str);
 		}
 	}
