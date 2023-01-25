@@ -27,8 +27,6 @@ cascade:
   unversioned: true
 ---
 
-Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
-
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Sign up to create a Sandbox cluster"
@@ -42,8 +40,8 @@ Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (
   >}}
 
   {{< sections/bottom-image-box
-    title="Deploy on dedicated clusters"
-    description="Deploy single- and multi-region production clusters across multiple availability zones and regions."
+    title="Deploy dedicated clusters"
+    description="Deploy single- and multi-region production clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS)."
     buttonText="Learn more"
     buttonUrl="cloud-basics/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
