@@ -44,15 +44,19 @@
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_auth_members.h"
+#include "catalog/pg_cast.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
@@ -1922,6 +1926,8 @@ YBIsDBConnectionValid()
 void
 YBPreloadRelCache()
 {
+	bool prefetch_additional_tables = *YBCGetGFlags()->ysql_catalog_preload_additional_tables;
+
 	/*
 	 * During the cache loading process postgres reads the data from multiple sys tables.
 	 * It is reasonable to prefetch all these tables in one shot.
@@ -1941,6 +1947,11 @@ YBPreloadRelCache()
 	YbRegisterSysTableForPrefetching(TypeRelationId);                  // pg_type
 	YbRegisterSysTableForPrefetching(NamespaceRelationId);             // pg_namespace
 	YbRegisterSysTableForPrefetching(AuthIdRelationId);                // pg_authid
+	if (prefetch_additional_tables)
+	{
+		YbRegisterSysTableForPrefetching(CastRelationId);                  // pg_cast
+		YbRegisterSysTableForPrefetching(AccessMethodOperatorRelationId);  // pg_amop
+	}
 
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 	{
@@ -1980,6 +1991,12 @@ YBPreloadRelCache()
 	YBPreloadCatalogCache(TYPEOID, TYPENAMENSP);        // pg_type
 	YBPreloadCatalogCache(NAMESPACEOID, NAMESPACENAME); // pg_namespace
 	YBPreloadCatalogCache(AUTHOID, AUTHNAME);           // pg_authid
+	if (prefetch_additional_tables)
+	{
+		YBPreloadCatalogCache(AMOPOPID, AMOPSTRATEGY);      // pg_amop
+		YBPreloadCatalogCache(AMPROCNUM, -1);               // pg_amproc
+		YBPreloadCatalogCache(CASTSOURCETARGET, -1);        // pg_cast
+	}
 
 	YBLoadRelationsResult relations_result = YBLoadRelations();
 
@@ -2001,7 +2018,6 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
-		YbRegisterSysTableForPrefetching(ProcedureRelationId); // pg_proc
 		YbRegisterSysTableForPrefetching(InheritsRelationId);  // pg_inherits
 	}
 
@@ -2010,7 +2026,6 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
-		YBPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
 		YBPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}
 
@@ -6454,6 +6469,16 @@ load_relcache_init_file(bool shared)
 				magic;
 	int			i;
 	uint64      ybc_stored_cache_version = 0;
+
+	/*
+	 * YB mode uses local-tserver prefetching instead of relcache file.
+	 * TODO: either put this under a GUC variable or remove the old code
+	 * below.
+	 */
+	if (IsYugaByteEnabled() &&
+		*YBCGetGFlags()->ysql_catalog_preload_additional_tables &&
+		!YBIsDBCatalogVersionMode())
+		return false;
 
 	RelCacheInitFileName(initfilename, shared);
 

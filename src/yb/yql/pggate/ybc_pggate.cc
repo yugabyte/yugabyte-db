@@ -83,6 +83,10 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 TAG_FLAG(ysql_enable_profile, advanced);
 TAG_FLAG(ysql_enable_profile, hidden);
 
+DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
+            "If true, YB catalog preloads additional tables upon "
+            "connection creation and cache refresh.");
+
 namespace yb {
 namespace pggate {
 
@@ -1262,18 +1266,19 @@ uint64_t YBCGetSharedAuthKey() {
 
 const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
-      .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
-      .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
-      .ysql_disable_server_file_access         = &FLAGS_ysql_disable_server_file_access,
-      .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
-      .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
-      .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
-      .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
-      .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
-      .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
-      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching,
-      .ysql_enable_profile                     = &FLAGS_ysql_enable_profile
+      .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
+      .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
+      .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
+      .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
+      .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
+      .ysql_max_read_restart_attempts           = &FLAGS_ysql_max_read_restart_attempts,
+      .ysql_max_write_restart_attempts          = &FLAGS_ysql_max_write_restart_attempts,
+      .ysql_output_buffer_size                  = &FLAGS_ysql_output_buffer_size,
+      .ysql_sequence_cache_minval               = &FLAGS_ysql_sequence_cache_minval,
+      .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
+      .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
+      .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
+      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile
   };
   return &accessor;
 }

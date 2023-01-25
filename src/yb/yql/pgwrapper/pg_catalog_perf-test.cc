@@ -157,7 +157,7 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithPartit
     }
   }
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 6);
+  ASSERT_EQ(cache_refresh_rpc_count, 4);
 }
 
 // Test checks number of RPC to a master caused by the first INSERT stmt into a table with primary
