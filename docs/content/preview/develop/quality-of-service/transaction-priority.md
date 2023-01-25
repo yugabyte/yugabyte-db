@@ -52,7 +52,7 @@ You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick
 
 ### Transaction priority between concurrent operations
 
-Consider an example scenario of an accounts table, create the accounts table, and insert a row into as follows:
+Consider an example scenario of an maintaining a bank account. Create the accounts table, and insert a row into as follows:
 
 ```sql
 create table account
@@ -239,3 +239,7 @@ The `yb_get_current_transaction_priority` function shows the transaction priorit
     Highest priority transaction
     (1 row)
     ```
+
+## Learn more
+
+* [Transaction priorities](../../../architecture/transactions/transaction-priorities/)

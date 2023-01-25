@@ -17,7 +17,7 @@ type: docs
 YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a *higher priority* transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the *lower priority* transaction is aborted. This behavior can be achieved by setting the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins. To view the transaction priority of the active transaction in current session, run `SHOW yb_transaction_priority` inside the transaction block. If `SHOW yb_transaction_priority` is run outside a transaction block, it will output 0.
 
 | Flag | Valid Range | Description |
-| --- | --- | --- |
+| :--- | :---------- | :---------- |
 | `yb_transaction_priority_lower_bound` | Any value between 0 and 1, lower than the upper bound | Minimum transaction priority for transactions run in this session |
 | `yb_transaction_priority_upper_bound` | Any value between 0 and 1, higher than the lower bound | Maximum transaction priority for transactions run in this session |
 | `yb_transaction_priority` (read-only) | Displays the priority type: Normal, High or Highest. For Normal and High priority transaction, a numerical value is also shown for the transaction's priority. |
@@ -37,7 +37,7 @@ It is possible to set the priority of a transaction using the two session variab
 
 ## Examples
 
-Let's create a [YugabyteDB cluster](../../../quick-start/), and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
+Create a [YugabyteDB cluster](../../../quick-start/), and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Managed" >}}
 You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which can be used to do the steps below.
@@ -46,7 +46,7 @@ You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick
 
 ### Transaction priority between concurrent operations
 
-Let's create an example scenario of an accounts table, and insert a row into as follows:
+Consider an example scenario of an maintaining a bank account. Create the accounts table, and insert a row into as follows:
 
 ```sql
 create table account
@@ -61,7 +61,7 @@ insert into account values
   ('kevin','checking', 500);
 ```
 
-Now, we're going to perform a deposit and a withdrawal at the same time. Also, assume we want to give higher priority to deposit transactions (when compared to withdrawals). To simulate this, we're going to perform two operations concurrently - a withdrawal in one session, and a deposit from a separate session. The deposit transaction starts after the withdrawal is initiated, but occurs before the withdrawal is completed from a separate session. This is shown below.
+To set a transaction priority for concurrent transactions, perform a deposit and a withdrawal at the same time and set a higher priority to deposit transactions. To simulate this, perform the two operations concurrently - a withdrawal in one session, and a deposit from another. The deposit transaction starts after the withdrawal is initiated, but occurs before the withdrawal is completed from a separate session as demonstrated in the following table:
 
 <table style="margin:0 5px;">
   <tr>
