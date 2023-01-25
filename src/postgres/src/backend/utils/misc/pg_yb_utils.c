@@ -42,7 +42,6 @@
 #include "executor/ybcExpr.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_am.h"
-#include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_auth_members.h"
@@ -1283,6 +1282,8 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		//   sed 's/,//g' | while read s; do echo -e "\t\tcase $s:"; done
 		// All T_Create... tags from nodes.h:
 
+		case T_CreateDomainStmt:
+		case T_CreateEnumStmt:
 		case T_YbCreateProfileStmt:
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
@@ -1326,12 +1327,10 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			*is_breaking_catalog_change = false;
 			break;
 		}
-		case T_CompositeTypeStmt: // Create (composite) type
+		case T_CompositeTypeStmt: // CREATE TYPE
 		case T_CreateAmStmt:
 		case T_CreateCastStmt:
 		case T_CreateConversionStmt:
-		case T_CreateDomainStmt: // Create (domain) type
-		case T_CreateEnumStmt: // Create (enum) type
 		case T_CreateEventTrigStmt:
 		case T_CreateExtensionStmt:
 		case T_CreateFdwStmt:
@@ -1343,7 +1342,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreatePLangStmt:
 		case T_CreatePolicyStmt:
 		case T_CreatePublicationStmt:
-		case T_CreateRangeStmt: // Create (range) type
+		case T_CreateRangeStmt:
 		case T_CreateReplicationSlotCmd:
 		case T_CreateRoleStmt:
 		case T_CreateSchemaStmt:
@@ -2922,9 +2921,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case TypeRelationId:                              // pg_type
 			sys_table_index_id = TypeNameNspIndexId;
 			break;
-		case AccessMethodOperatorRelationId:              // pg_amop
-			sys_table_index_id = AccessMethodOperatorIndexId;
-			break;
+
 		case CastRelationId:        switch_fallthrough(); // pg_cast
 		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
 		case ProcedureRelationId:   break;                // pg_proc
