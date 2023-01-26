@@ -153,7 +153,7 @@ By default, a load balancer is created to enable access to YugabyteDB Anywhere. 
 
 #### Disable the load balancer
 
-To access YugabyteDB Anywhere by other means, such as port-forward, other gateway or ingress solutions, and so on, you can disable the load balancer by changing the service type to `ClusterIP`, as follows:
+To access YugabyteDB Anywhere by other means, such as port-forwarding, different gateway or ingress solutions, and so on, you can disable the load balancer by changing the service type to `ClusterIP`, as follows:
 
 ```yaml
 # yba-values.yaml
@@ -173,7 +173,7 @@ tls:
 
 For more information, see [Set DNS name](#set-dns-name).
 
-Use the kubectl port-forward command to access the interface locally, as follows:
+Use the kubectl `port-forward` command to access the interface locally, as follows:
 
 ```sh
 # For TLS. Available at https://localhost:8080
@@ -254,7 +254,7 @@ tls:
 
 The Helm chart will create a self-signed certificate for you.
 
-#### Use custom a TLS certificate
+#### Use a custom TLS certificate
 
 You can use a custom TLS certificate instead of using the default self-signed certificate. Set the value of `certificate` and `key` to the base64-encoded string value of the certificate and the key, as follows:
 
