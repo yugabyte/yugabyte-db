@@ -4,13 +4,9 @@ headerTitle: Synchronous replication (3+ regions)
 linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions.
 headcontent: Distribute data across regions
-aliases:
-  - /preview/explore/global-distribution-linux/
-  - /preview/explore/global-distribution/macos
-  - /preview/explore/global-distribution/linux
 menu:
   preview:
-    identifier: explore-multi-region-deployments-sync-replication-1-ysql
+    identifier: explore-multi-region-deployments-sync-replication-2-cloud
     parent: explore-multi-region-deployments
     weight: 710
 type: docs
@@ -28,87 +24,30 @@ This deployment provides the following advantages:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../synchronous-replication-cloud/" class="nav-link">
+    <a href="../synchronous-replication-cloud/" class="nav-link active">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
       Use a cloud cluster
     </a>
   </li>
   <li>
-    <a href="../synchronous-replication-ysql/" class="nav-link active">
+    <a href="../synchronous-replication-ysql/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
       Use a local cluster
     </a>
   </li>
 </ul>
 
-This example simulates AWS regions on a local machine.
-
-If you have a previously running local cluster, destroy it.
-
 {{< note title="Setup for POCs" >}}
 
-The steps can also be used for deploying clusters in any public cloud, private data center, or in separate VMs. The only differences are as follows:
-
-- You don't need to specify the `--advertise_address` or `--base_dir` flags.
-- You don't need to configure loopback addresses.
-- Replace the IP addresses in the commands with the corresponding IP addresses of your nodes.
+To use uniform and topology-aware load balancing features of smart drivers with YugabyteDB Managed clusters, the application must be hosted in a peered application VPC.
 
 {{< /note >}}
 
-## Create a synchronized multi-region cluster
+## Create a replicate across regions cluster
 
-Start a 3-node cluster with a replication factor (RF) of `3`, and each replica placed in different AWS regions (`us-west-2`, `us-east-1`, `ap-northeast-1`) as follows:
+Before you can create a multi-region cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../../../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-1. Create a single node cluster as follows:
-
-    ```sh
-    ./bin/yugabyted start \
-                    --advertise_address 127.0.0.1 \
-                    --base_dir=/tmp/ybd1 \
-                    --cloud_location aws.us-west-2.us-west-2a \
-                    --fault_tolerance region
-    ```
-
-1. When creating a local cluster on MacOS, the additional nodes need loopback addresses configured:
-
-    ```sh
-    sudo ifconfig lo0 alias 127.0.0.2
-    sudo ifconfig lo0 alias 127.0.0.3
-    ```
-
-1. Join two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` when the third node is added.
-
-    ```sh
-    ./bin/yugabyted start \
-                    --advertise_address 127.0.0.2 \
-                    --base_dir=/tmp/ybd2 \
-                    --cloud_location aws.us-east-1.us-east-1a \
-                    --fault_tolerance region \
-                    --join 127.0.0.1
-    ```
-
-    ```sh
-    ./bin/yugabyted start \
-                    --advertise_address 127.0.0.3 \
-                    --base_dir=/tmp/ybd3 \
-                    --cloud_location aws.ap-northeast-1.ap-northeast-1a \
-                    --fault_tolerance region \
-                    --join 127.0.0.1
-    ```
-
-1. After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster as follows:
-
-    ```sh
-    ./bin/yugabyted configure data_placement --base_dir=/tmp/ybd1 --fault_tolerance=region
-    ```
-
-The [configure](../../../reference/configuration/yugabyted/#configure) command determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If three or more regions are available in the cluster, `configure` configures the cluster to survive at least one region failure. Otherwise, it outputs a warning message. The command can be executed on any node where you already started YugabyteDB.
-
-## Review the deployment
-
-In this deployment, the YB-Masters are each placed in a separate region to allow them to survive the loss of a region. You can view the tablet servers on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
-
-![Multi-zone cluster YB-TServers](/images/ce/online-reconfig-multi-zone-tservers.png)
+To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/).
 
 ## Start a workload
 
@@ -157,16 +96,6 @@ You should see the read and write load on the [tablet servers page](http://local
 When complete, the load is handled exclusively by the preferred region.
 
 Note that cross-region latencies are unavoidable in the write path, given the need to ensure region-level automatic failover and repair.
-
-## Clean up
-
-Optionally, you can shutdown the local cluster as follows:
-
-```sh
-./bin/yugabyted destroy --base_dir=/tmp/ybd1
-./bin/yugabyted destroy --base_dir=/tmp/ybd2
-./bin/yugabyted destroy --base_dir=/tmp/ybd3
-```
 
 ## Learn more
 
