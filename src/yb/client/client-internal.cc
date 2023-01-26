@@ -665,8 +665,15 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
   IsDeleteTableDoneResponsePB resp;
   req.set_table_id(table_id);
 
-  RETURN_NOT_OK(SyncLeaderMasterRpc(
-      deadline, req, &resp, "IsDeleteTableDone", &master::MasterDdlProxy::IsDeleteTableDoneAsync));
+  const auto status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsDeleteTableDone", &master::MasterDdlProxy::IsDeleteTableDoneAsync);
+  if (resp.has_error()) {
+    // Set 'retry' variable in 'RetryFunc()' function into FALSE to stop the retry loop.
+    // 'RetryFunc()' is called from 'WaitForDeleteTableToFinish()'.
+    *delete_in_progress = false; // Do not retry on error.
+  }
+
+  RETURN_NOT_OK(status);
   *delete_in_progress = !resp.done();
   return Status::OK();
 }
