@@ -114,6 +114,9 @@ DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_bool(TEST_xcluster_disable_replication_transaction_status_table);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
+DECLARE_bool(TEST_cdc_skip_replication_poll);
+DECLARE_int32(rpc_workers_limit);
+DECLARE_int32(tablet_server_svc_queue_length);
 
 namespace yb {
 
@@ -962,6 +965,42 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
   ASSERT_OK(consumer_cluster()->CompactTablets());
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+class TwoDCYSqlTestStressTest : public TwoDCYSqlTestConsistentTransactionsTest {
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    FLAGS_rpc_workers_limit = 8;
+    FLAGS_tablet_server_svc_queue_length = 10;
+    TwoDCYSqlTestConsistentTransactionsTest::SetUp();
+  }
+};
+
+TEST_F(TwoDCYSqlTestStressTest, ApplyTranasctionThrottling) {
+  // After a boostrap or a network partition, it is possible that there many unreplicated
+  // transactions that the consumer receives at once. Specifically, the consumer's
+  // coordinator must commit and then apply many transactions at once. Ensure that there is
+  // sufficient throttling on the coordinator to prevent RPC bottlenecks in this situation.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  // Pause replication to allow unreplicated data to accumulate.
+  FLAGS_TEST_cdc_skip_replication_poll = true;
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+  auto table_name_str =  GetCompleteTableName(producer_table->name());
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  int key = 0;
+  int step = 10;
+  // Write 30s worth of transactions.
+  auto now = CoarseMonoClock::Now();
+  while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "insert into $0 values(generate_series($1, $2))", table_name_str, key, key + step - 1));
+    key += step;
+  }
+  // Enable replication and ensure that the coordinator can handle 30s worth of data all at once.
+  FLAGS_TEST_cdc_skip_replication_poll = false;
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
