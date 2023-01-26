@@ -1568,6 +1568,14 @@ TEST_F(ClientTest, TestDeleteTable) {
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(10, rows.size());
 
+  // Wait for DeleteTable on a living table, this is illegal.
+  {
+    Status s = client_->WaitForDeleteTableToFinish(client_table_->id(),
+                                                   CoarseMonoClock::Now() + 2s);
+    ASSERT_TRUE(s.IsIllegalState()) << s;
+    ASSERT_STR_CONTAINS(s.message().ToBuffer(), "The object was NOT deleted");
+  }
+
   // Remove the table
   // NOTE that it returns when the operation is completed on the master side
   string tablet_id = GetFirstTabletId(client_table_.get());
