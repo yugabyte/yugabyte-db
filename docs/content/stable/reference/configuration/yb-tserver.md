@@ -22,7 +22,7 @@ yb-tserver [ flags ]
 ### Example
 
 ```sh
-$ ./bin/yb-tserver \
+./bin/yb-tserver \
 --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
 --rpc_bind_addresses 172.151.17.130 \
 --enable_ysql \
@@ -31,10 +31,10 @@ $ ./bin/yb-tserver \
 
 ### Online help
 
-To display the online help, run `yb-tserver --help` from the YugabyteDB home directory.
+To display the online help, run `yb-tserver --help` from the YugabyteDB home directory:
 
 ```sh
-$ ./bin/yb-tserver --help
+./bin/yb-tserver --help
 ```
 
 ##### --help
@@ -44,8 +44,6 @@ Displays help on all flags.
 ##### --helpon
 
 Displays help on modules named by the specified flag value.
-
----
 
 ## General flags
 
@@ -65,11 +63,7 @@ Required.
 
 Default: `127.0.0.1:7100`
 
-{{< note title="Note" >}}
-
 The number of comma-separated values should match the total number of YB-Master servers (or the replication factor).
-
-{{< /note >}}
 
 ##### --fs_data_dirs
 
@@ -83,7 +77,7 @@ Changing the value of this flag after the cluster has already been created is no
 
 Specifies a comma-separated list of directories, where `yb-tserver` will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
-Default: Same value as `--fs_data_dirs`
+Default: The same value as `--fs_data_dirs`
 
 ##### --max_clock_skew_usec
 
@@ -93,19 +87,21 @@ Default: `500000` (500,000 µs = 500ms)
 
 ##### --rpc_bind_addresses
 
-Specifies the comma-separated list of the network interface addresses to bind to for RPC connections:
+Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
 
-- Typically, the value is set to the private IP address of the host on which the server is running. When using the default, or explicitly setting the value to `0.0.0.0:9100`, the server will listen on all available network interfaces.
+The values must match on all [`yb-master`](../yb-master/#rpc-bind-addresses) and `yb-tserver` configurations.
 
-- The values must match on all [`yb-master`](../yb-master/#rpc-bind-addresses) and `yb-tserver` configurations.
+Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/tserver/conf/server.conf`. For example:
 
-Default: `0.0.0.0:9100`
+```sh
+egrep -i rpc /home/yugabyte/tserver/conf/server.conf
+--rpc_bind_addresses=172.161.x.x:9100
+```
 
-{{< note title="Note" >}}
+Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) flag is set correctly if the following applies:
 
-In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, and uses the default) or in cases involving public IP addresses, make sure that [`server_broadcast_addresses`](#server-broadcast-addresses) is correctly set.
-
-{{< /note >}}
+- `rpc_bind_addresses` is set to `0.0.0.0`
+- `rpc_bind_addresses` involves public IP addresses such as, for example, `0.0.0.0:9100`, which instructs the server to listen on all available network interfaces.
 
 ##### --server_broadcast_addresses
 
@@ -125,20 +121,16 @@ Specifies the duration, in milliseconds, until a cached DNS resolution expires. 
 
 Default: `60000` (1 minute)
 
-{{< note title="Note" >}}
-
 If you change this value from the default, be sure to add the identical value to all YB-Master and YB-TServer configurations.
-
-{{< /note >}}
 
 ##### --use_private_ip
 
-Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration flags](#placement-flags).
+Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never`, `zone`, `cloud`, and `region`. Based on the values of the [geo-distribution flags](#geo-distribution-flags).
 
 Valid values for the policy are:
 
-- `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
+- `never` — Always use [`--server_broadcast_addresses`](#server-broadcast-addresses).
+- `zone` — Use the private IP inside a zone; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 Default: `never`
@@ -169,17 +161,15 @@ Default: `""`
 
 ##### --webserver_authentication_domain
 
-Domain used for .htpasswd authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
+Domain used for `.htpasswd` authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
 
 Default: `""`
 
 ##### --webserver_password_file
 
-Location of .htpasswd file containing usernames and hashed passwords, for authentication to the web server.
+Location of the `.htpasswd` file containing usernames and hashed passwords, for authentication to the web server.
 
 Default: `""`
-
----
 
 ## Logging flags
 
@@ -187,7 +177,7 @@ Default: `""`
 
 The directory to write `yb-tserver` log files.
 
-Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
+Default: The same as [`--fs_data_dirs`](#fs-data-dirs)
 
 ##### --logtostderr
 
@@ -219,8 +209,6 @@ Stop attempting to log to disk if the disk is full.
 
 Default: `false`
 
----
-
 ## Raft flags
 
 For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-tserver` configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
@@ -231,11 +219,7 @@ The duration, in seconds, after which a follower is considered to be failed beca
 
 Default: `900` (15 minutes)
 
-{{< note title="Important" >}}
-
 The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
-
-{{< /note >}}
 
 ##### --leader_failure_max_missed_heartbeat_periods
 
@@ -258,6 +242,7 @@ Default: `2000`
 ##### --max_stale_read_bound_time_ms
 
 Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+
 In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
 
 Default: `10000` (10 seconds)
@@ -270,21 +255,17 @@ Default: `500`
 
 ### Write ahead log (WAL) flags
 
-{{< note title="Note" >}}
-
 Ensure that values used for the write ahead log (WAL) in `yb-tserver` configurations match the values for `yb-master` configurations.
-
-{{< /note >}}
 
 ##### --fs_wal_dirs
 
 The directory where the `yb-tserver` retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
 
-Default: Same as `--fs_data_dirs`
+Default: The same as `--fs_data_dirs`
 
 ##### --durable_wal_write
 
-If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-mas) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
+If set to `false`, the writes to the WAL are synchronized to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
 Default: `false`
 
@@ -318,8 +299,6 @@ The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reach
 
 Default: `64`
 
----
-
 ## Sharding flags
 
 ##### --yb_num_shards_per_tserver
@@ -328,17 +307,9 @@ The number of shards per YB-TServer for each YCQL table when a user table is cre
 
 Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `4`. For three or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
 
-{{< note title="Important" >}}
-
 This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
 
-{{< /note >}}
-
-{{< note title="Note" >}}
-
 On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
-
-{{< /note >}}
 
 ##### --ysql_num_shards_per_tserver
 
@@ -346,17 +317,9 @@ The number of shards per YB-TServer for each YSQL table when a user table is cre
 
 Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `2`. For servers with three or four CPU cores, the default value is `4`. Beyond four cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
 
-{{< note title="Important" >}}
-
 This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
 
-{{< /note >}}
-
-{{< note title="Note" >}}
-
 On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
-
-{{< /note >}}
 
 ##### --cleanup_split_tablets_interval_sec
 
@@ -366,15 +329,47 @@ Default: `60`
 
 ##### --post_split_trigger_compaction_pool_max_threads
 
-The maximum number of threads allowed for post-split compactions (i.e. compactions that remove irrelevant data from new tablets after splits).
-
-Default: `1`
+Deprecated. Use [`full_compaction_pool_max_threads`](#full-compaction-pool-max-threads).
 
 ##### --post_split_trigger_compaction_pool_max_queue_size
 
-The maximum number of post-split compaction tasks that can be queued simultaneously (compactions that remove irrelevant data from new tablets after splits).
+Deprecated. Use [`full_compaction_pool_max_queue_size`](#full-compaction-pool-max-queue-size).
 
-Default: `16`
+##### --full_compaction_pool_max_threads
+
+The maximum number of threads allowed for full compactions triggered internally by YugabyteDB. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+Default: `1`
+
+##### --full_compaction_pool_max_queue_size
+
+The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+Default: `200`
+
+##### --scheduled_full_compaction_frequency_hours
+
+The frequency with which full compactions should be scheduled on tablets. A value of 0 (zero) indicates that the feature is disabled. Recommended value is 720 hours (30 days) or greater.
+
+Note: this feature is currently in beta.
+
+Default: `0`
+
+##### --scheduled_full_compaction_jitter_factor_percentage
+
+Percentage of [`scheduled_full_compaction_frequency_hours`](#scheduled-full-compaction-frequency-hours) to be used as maximum jitter when determining full compaction schedule per tablet. Must be a value between 0 and 100. Jitter is random amount of time (ranging from 0 to maximum jitter) introduced to prevent many tablets from being scheduled for full compactions at the same time.
+
+Jitter is deterministically computed when scheduling a compaction as a function of the tablet-id and the last full compaction time. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time. If no data is available about the tablet's last full compaction, then the jitter is instead used to schedule a full compaction as soon as possible while still preventing too many simultaneous full compactions.
+
+For example, if `scheduled_full_compaction_frequency_hours` is 720 hours (30 days), and `scheduled_full_compaction_jitter_factor_percentage` is 33 percent, each tablet's compaction schedule can range from 482 to 720 hours, and will be pseudorandomly generated again after each full compaction.
+
+Default: `33`
+
+##### --scheduled_full_compaction_check_interval_min
+
+The interval at which the scheduled full compaction task checks for tablets that are eligible for compaction, in minutes. 0 indicates that the background task is fully disabled.
+
+Default: `15`
 
 ##### --automatic_compaction_extra_priority
 
@@ -382,11 +377,9 @@ Assigns an extra priority to automatic (minor) compactions when automatic tablet
 
 Default: `50`
 
----
-
 ## Geo-distribution flags
 
-Settings related to managing geo-distributed clusters.
+Settings related to managing geo-distributed clusters:
 
 ##### --placement_zone
 
@@ -436,8 +429,6 @@ If true, local transactions using transaction status tables other than `system.t
 
 Default: `true`
 
----
-
 ## xCluster flags
 
 Settings related to managing xClusters.
@@ -448,25 +439,19 @@ The RPC queue size of the xCluster service. Should match the size of [tablet_ser
 
 Default: `5000`
 
----
-
 ## API flags
 
 ### YSQL
 
-The following flags support the use of the [YSQL API](../../../api/ysql/).
+The following flags support the use of the [YSQL API](../../../api/ysql/):
 
 ##### --enable_ysql
-
-{{< note title="Note" >}}
-
-Ensure that `enable_ysql` values in `yb-tserver` configurations match the values in `yb-master` configurations.
-
-{{< /note >}}
 
 Enables the YSQL API.
 
 Default: `true`
+
+Ensure that `enable_ysql` values in `yb-tserver` configurations match the values in `yb-master` configurations.
 
 ##### --ysql_enable_auth
 
@@ -562,7 +547,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the tserver gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -602,19 +587,19 @@ Specifies the lowest YSQL message level to log.
 
 ##### --temp_file_limit
 
- Specifies the amount of disk space used for temp files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
+Specifies the amount of disk space used for temp files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
 
- Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
+Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
 
- You can remove the limit (set the size to unlimited) using `SET temp_file_limit=-1`.
+You can remove the limit (set the size to unlimited) using `SET temp_file_limit=-1`.
 
- Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes), and `xGB` (in gigabytes).
+Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes), and `xGB` (in gigabytes).
 
- Default: `1GB`
+Default: `1GB`
 
 ### YCQL
 
-The following flags support the use of the [YCQL API](../../../api/ycql/).
+The following flags support the use of the [YCQL API](../../../api/ycql/):
 
 ##### --use_cassandra_authentication
 
@@ -662,7 +647,7 @@ For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/
 
 ### YEDIS
 
-The following flags support the use of the YEDIS API.
+The following flags support the use of the YEDIS API:
 
 ##### --redis_proxy_bind_address
 
@@ -676,11 +661,9 @@ Specifies the port for monitoring YEDIS metrics.
 
 Default: `11000`
 
----
-
 ## Performance flags
 
-Use the following two flags to select the SSTable compression type.
+Use the following two flags to select the SSTable compression type:
 
 ##### --enable_ondisk_compression
 
@@ -694,13 +677,9 @@ Change the SSTable compression type. The valid compression types are `Snappy`, `
 
 Default: `Snappy`
 
-{{< note title="Note" >}}
-
 If you select an invalid option, the cluster will not come up.
 
 If you change this flag, the change takes effect after you restart the cluster nodes.
-
-{{< /note >}}
 
 Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
 
@@ -710,11 +689,7 @@ Key-value encoding to use for regular data blocks in RocksDB. Possible options: 
 
 Default: `shared_prefix`
 
-{{< note title="Note" >}}
-
 Only change this flag to `three_shared_parts` after you migrate the whole cluster to the YugabyteDB version that supports it.
-
-{{< /note >}}
 
 ##### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
@@ -746,11 +721,9 @@ Rate control across all tablets being remote bootstrapped from or to this proces
 
 Default: `256MB` (256 MB/second)
 
----
-
 ## Network compression flags
 
-Use the following two gflags to configure RPC compression.
+Use the following two flags to configure RPC compression:
 
 ##### --enable_stream_compression
 
@@ -762,26 +735,25 @@ Default: `true`
 
 Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
 
-- 0: No compression (default value)
-- 1: Gzip
-- 2: Snappy
-- 3: LZ4
+0: No compression (default value)
+
+1: Gzip
+
+2: Snappy
+
+3: LZ4
 
 In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead.
 
-{{< note title="Upgrade notes" >}}
-
 To upgrade from an older version that doesn't support RPC compression (such as 2.4), to a newer version that does (such as 2.6), you need to do the following:
 
-1. Rolling restart to upgrade YugabyteDB to a version that supports compression.
+- Rolling restart to upgrade YugabyteDB to a version that supports compression.
 
-1. Rolling restart to enable compression, on both master and tserver, by setting `enable_stream_compression=true`.
+- Rolling restart to enable compression, on both YB-Master and YB-TServer, by setting `enable_stream_compression=true`.
 
-    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
+  Note that you can omit this step if the YugabyteDB version you are upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and later (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
 
-1. Rolling restart to set the compression algorithm to use, on both master and tserver, such as by setting `stream_compression_algo=3`.
-
-{{< /note >}}
+- Rolling restart to set the compression algorithm to use, on both YB-Master and YB-TServer, such as by setting `stream_compression_algo=3`.
 
 ## Security flags
 
@@ -883,8 +855,6 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
----
-
 ## Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
@@ -933,7 +903,7 @@ Default: `60`
 
 ##### --cdc_checkpoint_opid_interval_ms
 
-The number of seconds for which the client can go down and the intents will be retained. This basically means that if a client has not updated the checkpoint for this interval, the intents would be garbage collected.
+The number of seconds for which the client can go down and the intents will be retained. This means that if a client has not updated the checkpoint for this interval, the intents would be garbage collected.
 
 Default: `60000`
 
@@ -955,9 +925,9 @@ Stop retaining logs if the space available for the logs falls below this limit, 
 
 Default: `102400`
 
-##### --stream_truncate_record
+##### --enable_delete_truncate_cdcsdk_table
 
-Enable streaming of TRUNCATE record for a table on which CDC is active.
+By default, TRUNCATE commands on tables on which CDCSDK stream is active will fail. Changing the value of this flag from `false` to `true` will enable truncating the tables part of the CDCSDK stream.
 
 Default: `false`
 
@@ -972,8 +942,6 @@ Default: `14400000` (4 hours)
 Enable each local peer to update its own log checkpoint instead of the leader updating all peers.
 
 Default: `false`
-
----
 
 ## File expiration based on TTL flags
 
@@ -1005,23 +973,23 @@ Default: `48`
 
 ##### --file_expiration_ignore_value_ttl
 
-When set to true, ignores any value-level TTL metadata when determining file expiration. Useful in situations where some SST files are missing the necessary value-level metadata (in case of upgrade, for instance).
-
-{{< warning title="Warning">}}
-Use of this flag can potentially result in expiration of live data - use at your discretion.
-{{< /warning >}}
+When set to true, ignores any value-level TTL metadata when determining file expiration. Helpful in situations where some SST files are missing the necessary value-level metadata (in case of upgrade, for instance).
 
 Default: `false`
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in expiration of live data. Use at your discretion.
+{{< /warning >}}
 
 ##### --file_expiration_value_ttl_overrides_table_ttl
 
-When set to true, allows files to expire purely based on their value-level TTL expiration time (even if it is lower than the table TTL). This is useful for times where a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL will still be used.
-
-{{< warning title="Warning">}}
-Use of this flag can potentially result in expiration of live data - use at your discretion.
-{{< /warning >}}
+When set to true, allows files to expire purely based on their value-level TTL expiration time (even if it is lower than the table TTL). This is helpful for situations where a file needs to expire earlier than its table-level TTL would allow. If no value-level TTL metadata is available, then table-level TTL will still be used.
 
 Default: `false`
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in expiration of live data. Use at your discretion.
+{{< /warning >}}
 
 ## PostgreSQL logging options
 

@@ -1305,7 +1305,40 @@ SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1
 -- d. test deparsing rowmarked relations as subqueries
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM "S 1"."T 3" WHERE c1 = 50) t1 INNER JOIN (SELECT t2.c1, t3.c1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t2 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t3 ON (t2.c1 = t3.c1) WHERE t2.c1 IS NULL OR t2.c1 IS NOT NULL) ss(a, b) ON (TRUE) ORDER BY t1.c1, ss.a, ss.b FOR UPDATE OF t1;
-ERROR:  cache lookup failed for attribute -8 of relation 16414
+                                                                                                                                                                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ LockRows
+   Output: "T 3".c1, ft4.c1, ft5.c1, "T 3".ybctid, ft4.*, ft5.*
+   ->  Nested Loop
+         Output: "T 3".c1, ft4.c1, ft5.c1, "T 3".ybctid, ft4.*, ft5.*
+         ->  Foreign Scan
+               Output: ft4.c1, ft4.*, ft5.c1, ft5.*
+               Relations: (public.ft4) FULL JOIN (public.ft5)
+               Remote SQL: SELECT s8.c1, s8.c2, s9.c1, s9.c2 FROM ((SELECT c1, ROW(c1, c2, c3) FROM "S 1"."T 3" WHERE ((c1 >= 50)) AND ((c1 <= 60))) s8(c1, c2) FULL JOIN (SELECT c1, ROW(c1, c2, c3) FROM "S 1"."T 4" WHERE ((c1 >= 50)) AND ((c1 <= 60))) s9(c1, c2) ON (((s8.c1 = s9.c1)))) WHERE (((s8.c1 IS NULL) OR (s8.c1 IS NOT NULL))) ORDER BY s8.c1 ASC NULLS LAST, s9.c1 ASC NULLS LAST
+               ->  Sort
+                     Output: ft4.c1, ft4.*, ft5.c1, ft5.*
+                     Sort Key: ft4.c1, ft5.c1
+                     ->  Hash Full Join
+                           Output: ft4.c1, ft4.*, ft5.c1, ft5.*
+                           Hash Cond: (ft4.c1 = ft5.c1)
+                           Filter: ((ft4.c1 IS NULL) OR (ft4.c1 IS NOT NULL))
+                           ->  Foreign Scan on public.ft4
+                                 Output: ft4.c1, ft4.*
+                                 Remote Filter: ((ft4.c1 >= 50) AND (ft4.c1 <= 60))
+                                 Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3" WHERE ((c1 >= 50)) AND ((c1 <= 60))
+                           ->  Hash
+                                 Output: ft5.c1, ft5.*
+                                 ->  Foreign Scan on public.ft5
+                                       Output: ft5.c1, ft5.*
+                                       Remote Filter: ((ft5.c1 >= 50) AND (ft5.c1 <= 60))
+                                       Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 4" WHERE ((c1 >= 50)) AND ((c1 <= 60))
+         ->  Materialize
+               Output: "T 3".c1, "T 3".ybctid
+               ->  Index Scan using t3_pkey on "S 1"."T 3"
+                     Output: "T 3".c1, "T 3".ybctid
+                     Index Cond: ("T 3".c1 = 50)
+(30 rows)
+
 SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM "S 1"."T 3" WHERE c1 = 50) t1 INNER JOIN (SELECT t2.c1, t3.c1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t2 FULL JOIN (SELECT c1 FROM ft5 WHERE c1 between 50 and 60) t3 ON (t2.c1 = t3.c1) WHERE t2.c1 IS NULL OR t2.c1 IS NOT NULL) ss(a, b) ON (TRUE) ORDER BY t1.c1, ss.a, ss.b FOR UPDATE OF t1;
  c1 | a  | b
 ----+----+----

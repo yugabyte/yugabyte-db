@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
@@ -106,11 +107,17 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
 
       List<NodeDetails> nodeList = Collections.singletonList(node);
+      createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createSetupServerTasks(nodeList, p -> p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
       createConfigureServerTasks(
               nodeList, params -> params.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+
+      // Copy the source root certificate to the node.
+      createTransferXClusterCertsCopyTasks(
+          Collections.singleton(node), getUniverse(), SubTaskGroupType.InstallingSoftware);
 
       processTypes.forEach(
           processType -> {

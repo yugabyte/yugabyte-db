@@ -2,12 +2,16 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
-import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
+import com.yugabyte.yw.forms.AvailabilityZoneData;
+import com.yugabyte.yw.forms.AvailabilityZoneEditData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -52,9 +56,9 @@ public class AvailabilityZoneController extends AuthenticatedController {
   }
 
   /**
-   * POST endpoint for creating new region(s)
+   * POST endpoint for creating new zone(s)
    *
-   * @return JSON response of newly created region(s)
+   * @return JSON response of newly created zone(s)
    */
   @ApiOperation(
       value = "Create an availability zone",
@@ -75,10 +79,11 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
     List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
     Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
-    List<String> createdAvailabilityZonesUUID = new ArrayList<String>();
+    List<String> createdAvailabilityZonesUUID = new ArrayList<>();
     for (AvailabilityZoneData azData : azDataList) {
       AvailabilityZone az =
-          AvailabilityZone.createOrThrow(region, azData.code, azData.name, azData.subnet);
+          AvailabilityZone.createOrThrow(
+              region, azData.code, azData.name, azData.subnet, azData.secondarySubnet);
       availabilityZones.put(az.code, az);
       createdAvailabilityZonesUUID.add(az.uuid.toString());
     }
@@ -92,13 +97,63 @@ public class AvailabilityZoneController extends AuthenticatedController {
     return PlatformResults.withData(availabilityZones);
   }
 
+  private void failDueToAZInUse(long nodeCount, String action) {
+    throw new PlatformServiceException(
+        FORBIDDEN,
+        String.format(
+            "There %s %d node%s in this AZ, cannot %s",
+            nodeCount > 1 ? "are" : "is", nodeCount, nodeCount > 1 ? "s" : "", action));
+  }
+
   /**
-   * DELETE endpoint for deleting a existing availability zone.
+   * PUT endpoint for editing an availability zone
+   *
+   * @return JSON response of the modified zone
+   */
+  @ApiOperation(
+      value = "Modify an availability zone",
+      response = AvailabilityZone.class,
+      nickname = "editAZ")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "azFormData",
+          value = "Availability zone edit form data",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.AvailabilityZoneEditData",
+          required = true))
+  public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID zoneUUID) {
+    Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    AvailabilityZoneEditData azData =
+        formFactory.getFormDataOrBadRequest(AvailabilityZoneEditData.class).get();
+    AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
+
+    long nodeCount = az.getNodeCount();
+    if (nodeCount > 0) {
+      failDueToAZInUse(nodeCount, "modify");
+    }
+
+    az.subnet = azData.subnet;
+    az.secondarySubnet = azData.secondarySubnet;
+
+    az.update();
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AvailabilityZone,
+            az.uuid.toString(),
+            Audit.ActionType.Edit,
+            Json.toJson(azData));
+    return PlatformResults.withData(az);
+  }
+
+  /**
+   * DELETE endpoint for deleting an existing availability zone.
    *
    * @param providerUUID Provider UUID
    * @param regionUUID Region UUID
    * @param azUUID AvailabilityZone UUID
-   * @return JSON response on whether or not delete region was successful or not.
+   * @return empty response
    */
   @ApiOperation(
       value = "Delete an availability zone",
@@ -107,8 +162,20 @@ public class AvailabilityZoneController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);
-    az.setActiveFlag(false);
-    az.update();
+
+    if (Provider.getOrBadRequest(customerUUID, providerUUID).getCloudCode()
+        == Common.CloudType.onprem) {
+      az.setActiveFlag(false);
+      az.update();
+    } else {
+      long nodeCount = az.getNodeCount();
+      if (nodeCount > 0) {
+        failDueToAZInUse(nodeCount, "delete");
+      }
+
+      az.delete();
+    }
+
     auditService()
         .createAuditEntryWithReqBody(
             ctx(), Audit.TargetType.AvailabilityZone, az.uuid.toString(), Audit.ActionType.Delete);

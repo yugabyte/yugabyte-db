@@ -404,12 +404,18 @@ function(add_executable name)
   endif()
 
   if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
-    # Link every executable with gperftools's tcmalloc static library.
-    # The other relevant library, libprofiler, will be linked by the libraries that need it.
+    # Link every executable with the tcmalloc static library.
+    # If using Google TCMalloc, Abseil is also required, and will be linked by the libraries that
+    # need it.
+    # If using gperftools TCMalloc, libprofiler is also required, and will be linked by the
+    # libraries that need it.
     #
     # We need to ensure that all symbols from the tcmalloc library are retained. This is done
     # differently depending on the OS.
     target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
+    if("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
+      target_link_libraries(${name} absl)
+    endif()
   endif()
 
   yb_process_pch(${name})
@@ -915,6 +921,11 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
   )
 
   add_custom_target("${output_exe_name}" ALL DEPENDS "${output_executable_path}")
+  foreach(symlink_name IN LISTS symlink_as_names)
+    # For each symlinked executable name (yb-master, yb-tserver) create an alias target that will
+    # cause the LTO executable to be built.
+    add_custom_target("${symlink_name}" DEPENDS "${output_executable_path}")
+  endforeach()
 
   # We need to build the corresponding non-LTO executable first, such as yb-master or yb-tserver.
   add_dependencies("${output_exe_name}" "${dynamic_exe_name}")

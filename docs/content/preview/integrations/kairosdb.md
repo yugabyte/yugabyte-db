@@ -4,7 +4,7 @@ linkTitle: KairosDB
 description: Use KairosDB with YCQL API
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: kairosdb
     parent: integrations
     weight: 571

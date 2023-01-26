@@ -459,8 +459,13 @@ typedef struct ResultRelInfo
 	/* partition check expression state */
 	ExprState  *ri_PartitionCheckExpr;
 
-	/* relation descriptor for root partitioned table */
-	Relation	ri_PartitionRoot;
+	/*
+	 * RootResultRelInfo gives the target relation mentioned in the query, if
+	 * it's a partitioned table. It is not set if the target relation
+	 * mentioned in the query is an inherited table, nor when tuple routing is
+	 * not needed.
+	 */
+	struct ResultRelInfo *ri_RootResultRelInfo;
 
 	/* true if ready for tuple routing */
 	bool		ri_PartitionReadyForRouting;
@@ -1849,9 +1854,11 @@ typedef struct YbBatchedNestLoopState
 	JoinState	js;				/* its first field is NodeTag */
 	TupleTableSlot *nl_NullInnerTupleSlot;
 
+	bool bnl_outerdone;
+	NLBatchStatus bnl_currentstatus;
+
 	/* State for tuplestore batch strategy */
 	Tuplestorestate *bnl_tupleStoreState;
-	NLBatchStatus bnl_currentstatus;
 	List *bnl_batchMatchedInfo;
 	int bnl_batchTupNo;
 

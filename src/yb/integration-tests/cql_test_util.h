@@ -134,6 +134,8 @@ class CassandraResult {
   std::string RenderToString(const std::string& line_separator = ";",
                              const std::string& value_separator = ",") const;
 
+  bool HasMorePages() const;
+
   const CassResult* get() const { return cass_result_.get(); }
 
  private:
@@ -315,6 +317,7 @@ class CppCassandraDriver {
   Result<CassandraSession> CreateSession();
 
   void EnableTLS(const std::vector<std::string>& ca_certs);
+  void SetCredentials(const std::string& username, const std::string& password);
 
  private:
   CassCluster* cass_cluster_ = nullptr;

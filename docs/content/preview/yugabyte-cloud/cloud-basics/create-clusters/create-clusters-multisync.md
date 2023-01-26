@@ -28,16 +28,22 @@ Multi-region replicated clusters include the following features:
 
 ## Preferred region
 
-You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients. In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
+You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients.
 
-Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred.
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](../../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred region.
 
 When no region is preferred, YugabyteDB Managed distributes requests equally across regions. You can set or change the preferred region after cluster creation.
+
+Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
+
+You can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
+
+In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
 ## Prerequisites
 
 - Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Create a VPC in AWS](../../cloud-vpcs/cloud-add-vpc-aws/#create-a-vpc) or [Create a VPC in GCP](../../cloud-vpcs/cloud-add-vpc-gcp/#create-a-vpc).
-- Multi-region clusters do not expose any publicly-accessible IP addresses. As a result, you can only connect to multi-region clusters from applications that reside on a peered network, and the peering connection must be Active. Refer to [Peering connections](../../cloud-vpcs/cloud-add-peering).
+- By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect to multi-region clusters from applications that reside on a peered network, and the peering connection must be Active. Refer to [Peering connections](../../cloud-vpcs/cloud-add-peering).
 - Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a multi-region replicated cluster
@@ -48,6 +54,7 @@ The **Create Cluster** wizard has the following pages:
 
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
+1. [Network Access](#network-access)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
@@ -79,6 +86,8 @@ Set **Data Distribution** to **Replicate across regions**.
 Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+
+{{% includeMarkdown "network-access.md" %}}
 
 ### Database Credentials
 

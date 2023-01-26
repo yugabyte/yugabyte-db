@@ -903,7 +903,8 @@ typedef enum
 {
 	WAIT_EVENT_BASE_BACKUP_THROTTLE = PG_WAIT_TIMEOUT,
 	WAIT_EVENT_PG_SLEEP,
-	WAIT_EVENT_RECOVERY_APPLY_DELAY
+	WAIT_EVENT_RECOVERY_APPLY_DELAY,
+	WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF
 } WaitEventTimeout;
 
 /* ----------
@@ -1359,6 +1360,29 @@ pgstat_report_wait_start(uint32 wait_event_info)
 }
 
 /* ----------
+ * pgstat_report_wait_end_for_proc(PGPROC *proc) -
+ *
+ *	Called to report end of a wait for a specific process.
+ *
+ * NB: this *must* be able to survive being called before MyProc has been
+ * initialized.
+ * ----------
+ */
+static inline void
+pgstat_report_wait_end_for_proc(volatile PGPROC *proc)
+{
+	if (!pgstat_track_activities || !proc)
+		return;
+
+	/*
+	 * Since this is a four-byte field which is always read and written as
+	 * four-bytes, updates are atomic.
+	 */
+	proc->wait_event_info = 0;
+}
+
+
+/* ----------
  * pgstat_report_wait_end() -
  *
  *	Called to report end of a wait.
@@ -1370,16 +1394,7 @@ pgstat_report_wait_start(uint32 wait_event_info)
 static inline void
 pgstat_report_wait_end(void)
 {
-	volatile PGPROC *proc = MyProc;
-
-	if (!pgstat_track_activities || !proc)
-		return;
-
-	/*
-	 * Since this is a four-byte field which is always read and written as
-	 * four-bytes, updates are atomic.
-	 */
-	proc->wait_event_info = 0;
+	return pgstat_report_wait_end_for_proc(MyProc);
 }
 
 /* nontransactional event counts are simple enough to inline */

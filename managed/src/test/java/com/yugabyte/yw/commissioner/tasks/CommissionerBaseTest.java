@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.BackupUtil;
@@ -54,7 +55,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
-import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
@@ -105,13 +106,16 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected GFlagsValidation mockGFlagsValidation;
   protected BackupUtil mockBackupUtil;
 
-  @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
+  protected BaseTaskDependencies mockBaseTaskDependencies =
+      Mockito.mock(BaseTaskDependencies.class);
 
   protected Customer defaultCustomer;
   protected Provider defaultProvider;
   protected Provider gcpProvider;
   protected Provider onPremProvider;
+  protected Provider kubernetesProvider;
   protected SettableRuntimeConfigFactory factory;
+  protected RuntimeConfGetter confGetter;
 
   protected Commissioner commissioner;
 
@@ -123,6 +127,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
     onPremProvider = ModelFactory.onpremProvider(defaultCustomer);
+    kubernetesProvider = ModelFactory.kubernetesProvider(defaultCustomer);
     metricService = app.injector().instanceOf(MetricService.class);
     alertService = app.injector().instanceOf(AlertService.class);
     alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);
@@ -132,6 +137,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
     factory.globalRuntimeConf().setValue(ENABLE_CUSTOM_HOOKS_PATH, "true");
     factory.globalRuntimeConf().setValue(ENABLE_SUDO_PATH, "true");
 
@@ -145,6 +151,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getTableManagerYb()).thenReturn(mockTableManagerYb);
     when(mockBaseTaskDependencies.getMetricService()).thenReturn(metricService);
     when(mockBaseTaskDependencies.getRuntimeConfigFactory()).thenReturn(configFactory);
+    when(mockBaseTaskDependencies.getConfGetter()).thenReturn(confGetter);
     when(mockBaseTaskDependencies.getAlertConfigurationService())
         .thenReturn(alertConfigurationService);
     when(mockBaseTaskDependencies.getExecutorFactory())

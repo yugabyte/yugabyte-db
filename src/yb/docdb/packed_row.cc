@@ -187,7 +187,8 @@ Result<bool> RowPacker::DoAddValue(ColumnId column_id, const Value& value, ssize
     } else {
       RSTATUS_DCHECK(
           prev_size + column_data.size == result_.size(), Corruption,
-          "Wrong encoded size: $0 vs $1", result_.size() - prev_size, column_data.size);
+          "Wrong encoded size: $0, column: $1, value: $2",
+          result_.size() - prev_size, column_data, value);
     }
 
     if (column_data.id == column_id) {
@@ -202,7 +203,11 @@ Result<Slice> RowPacker::Complete() {
   // In case of concurrent schema change YSQL does not send recently added columns.
   // Fill them with NULLs to keep the same behaviour like we have w/o packed row.
   while (idx_ < packing_.columns()) {
-    RETURN_NOT_OK(AddValue(packing_.column_packing_data(idx_).id, Slice(), 0));
+    const auto& packing_data = packing_.column_packing_data(idx_);
+    RSTATUS_DCHECK(
+        packing_data.nullable, InvalidArgument, "Non nullable column $0 was not specified",
+        packing_data);
+    RETURN_NOT_OK(AddValue(packing_data.id, Slice(), 0));
   }
   RSTATUS_DCHECK_EQ(
       varlen_write_pos_, prefix_end_, InvalidArgument, "Not all varlen columns packed");

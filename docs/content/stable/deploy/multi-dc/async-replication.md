@@ -1,8 +1,9 @@
 ---
 title: Deploy to two universes with xCluster replication
-headerTitle: xCluster replication
-linkTitle: xCluster replication
+headerTitle: xCluster deployment
+linkTitle: xCluster
 description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
+headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
 menu:
   stable:
     parent: multi-dc
@@ -11,9 +12,9 @@ menu:
 type: docs
 ---
 
-You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) xCluster replication between universes (also known as data centers).
+Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
 
-For information on two data center (2DC) deployment architecture and replication scenarios, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/).
+For information on xCluster deployment architecture and replication scenarios, see [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
 ## Set up universes
 
@@ -133,6 +134,27 @@ Replication lag is computed at the tablet level as follows:
 *hybrid_clock_time* is the hybrid clock timestamp on the source's tablet-server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the source.
 
 To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's T-Server. For information on how to set up the node exporter and Prometheus manually, see [Prometheus integration](../../../explore/observability/prometheus-integration/macos/).
+
+### Replication status
+
+You can use `yb-admin` to return the current replication status. The `get_replication_status` command returns the replication status for all *consumer-side* replication streams. An empty `errors` field means the replication stream is healthy.
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 \
+    get_replication_status
+```
+
+```output
+statuses {
+  table_id: "03ee1455f2134d5b914dd499ccad4377"
+  stream_id: "53441ad2dd9f4e44a76dccab74d0a2ac"
+  errors {
+    error: REPLICATION_MISSING_OP_ID
+    error_detail: "Unable to find expected op id on the producer"
+  }
+}
+```
 
 ## Set up replication with TLS
 
@@ -357,9 +379,9 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 ## Bootstrap a target universe
 
 You can set up xCluster replication for the following purposes:
+
 * Enabling replication on a table that has existing data.
 * Catching up an existing stream where the target has fallen too far behind.
-
 
 To ensure that the WALs are still available, you need to perform the following steps within the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) gflag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
 

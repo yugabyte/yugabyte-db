@@ -72,11 +72,22 @@ class WriteBuffer {
     return blocks_.front().data();
   }
 
+  Slice FirstBlockSlice() const;
+
+  void AppendTo(std::string* out) const;
   void AssignTo(std::string* out) const;
   void AssignTo(size_t begin, size_t end, std::string* out) const;
+
+  void AppendTo(faststring* out) const;
+  void AssignTo(faststring* out) const;
+
   std::string ToBuffer() const;
   std::string ToBuffer(size_t begin, size_t end) const;
   RefCntSlice ExtractContinuousBlock(size_t begin, size_t end) const;
+
+  RefCntSlice ToContinuousBlock() const {
+    return ExtractContinuousBlock(0, size());
+  }
 
   void CopyTo(size_t begin, size_t end, std::byte* out) const;
 
@@ -87,6 +98,8 @@ class WriteBuffer {
  private:
   const char* CopyToLastBlock(const char* data, const char* end);
   void ShrinkLastBlock();
+  template <class Out>
+  void DoAppendTo(Out* out) const;
 
   class Block {
    public:

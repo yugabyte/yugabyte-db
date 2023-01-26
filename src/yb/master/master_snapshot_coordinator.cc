@@ -92,7 +92,7 @@ namespace {
 
 YB_DEFINE_ENUM(Bound, (kFirst)(kLast));
 
-void SubmitWrite(
+Status SubmitWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term,
     SnapshotCoordinatorContext* context,
     const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
@@ -104,14 +104,14 @@ void SubmitWrite(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
   }
   *query->operation().AllocateRequest()->mutable_write_batch() = std::move(write_batch);
-  context->Submit(query.release()->PrepareSubmit(), leader_term);
+  return context->Submit(query.release()->PrepareSubmit(), leader_term);
 }
 
 Status SynchronizedWrite(
     docdb::KeyValueWriteBatchPB&& write_batch, int64_t leader_term, CoarseTimePoint deadline,
     SnapshotCoordinatorContext* context) {
   auto synchronizer = std::make_shared<Synchronizer>();
-  SubmitWrite(std::move(write_batch), leader_term, context, synchronizer);
+  RETURN_NOT_OK(SubmitWrite(std::move(write_batch), leader_term, context, synchronizer));
   return synchronizer->WaitUntil(ToSteady(deadline));
 }
 
@@ -162,6 +162,47 @@ auto MakeDoneCallback(
   };
 }
 
+bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
+  return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
+          entry.state() == master::SysSnapshotEntryPB::CREATING) &&
+         HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at;
+}
+
+Result<TxnSnapshotId> FindSnapshotSuitableForRestoreAt(
+    const SnapshotScheduleInfoPB& schedule, HybridTime restore_at) {
+  if (schedule.snapshots().empty()) {
+    return STATUS(NotFound, "Schedule does not have any snapshots.");
+  }
+  std::vector<std::reference_wrapper<const SnapshotInfoPB>> snapshots(
+      schedule.snapshots().begin(), schedule.snapshots().end());
+  // Don't rely on the implementation sorting the snapshots by creation time.
+  std::sort(
+      snapshots.begin(), snapshots.end(), [](const SnapshotInfoPB& lhs, const SnapshotInfoPB& rhs) {
+        return HybridTime::FromPB(lhs.entry().snapshot_hybrid_time()) <
+               HybridTime::FromPB(rhs.entry().snapshot_hybrid_time());
+      });
+  if (restore_at < HybridTime::FromPB(snapshots[0].get().entry().snapshot_hybrid_time())) {
+    const auto& earliest_snapshot = snapshots[0];
+    return STATUS_FORMAT(
+        IllegalState,
+        "Trying to restore to $0 which is earlier than the configured retention. "
+        "Not allowed. Earliest snapshot that can be used is $1 and was taken at $2.",
+        restore_at, TryFullyDecodeTxnSnapshotId(earliest_snapshot.get().id()),
+        HybridTime::FromPB(earliest_snapshot.get().entry().snapshot_hybrid_time()));
+  }
+  // Return the id of the oldest valid snapshot created before the restore_at time.
+  auto it = std::find_if(
+      snapshots.begin(), snapshots.end(), [&restore_at](const SnapshotInfoPB& snapshot) {
+        return SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at);
+      });
+  if (it != snapshots.end()) {
+    return FullyDecodeTxnSnapshotId(it->get().id());
+  }
+  return STATUS_FORMAT(
+      NotFound,
+      "The schedule does not have any valid snapshots created after the restore at time.");
+}
+
 } // namespace
 
 class MasterSnapshotCoordinator::Impl {
@@ -173,10 +214,10 @@ class MasterSnapshotCoordinator::Impl {
       const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline) {
     auto synchronizer = std::make_shared<Synchronizer>();
     auto snapshot_id = TxnSnapshotId::GenerateRandom();
-    SubmitCreate(
+    RETURN_NOT_OK(SubmitCreate(
         entries, imported, SnapshotScheduleId::Nil(), HybridTime::kInvalid, snapshot_id,
         leader_term,
-        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
+        tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer)));
     RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
 
     return snapshot_id;
@@ -264,10 +305,11 @@ class MasterSnapshotCoordinator::Impl {
       snapshot_empty = (**emplace_result.first).Empty();
     }
 
-    RETURN_NOT_OK(operation.tablet()->ApplyOperation(
+    auto tablet = VERIFY_RESULT(operation.tablet_safe());
+    RETURN_NOT_OK(tablet->ApplyOperation(
         operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
     if (sys_catalog_snapshot_data) {
-      RETURN_NOT_OK(operation.tablet()->snapshots().Create(*sys_catalog_snapshot_data));
+      RETURN_NOT_OK(tablet->snapshots().Create(*sys_catalog_snapshot_data));
     }
 
     ExecuteOperations(operations, leader_term);
@@ -411,7 +453,7 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     auto synchronizer = std::make_shared<Synchronizer>();
-    SubmitDelete(snapshot_id, leader_term, synchronizer);
+    RETURN_NOT_OK(SubmitDelete(snapshot_id, leader_term, synchronizer));
     return synchronizer->WaitUntil(ToSteady(deadline));
   }
 
@@ -436,11 +478,12 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
+    auto tablet = VERIFY_RESULT(operation.tablet_safe());
     if (delete_sys_catalog_snapshot) {
-      RETURN_NOT_OK(operation.tablet()->snapshots().Delete(operation));
+      RETURN_NOT_OK(tablet->snapshots().Delete(operation));
     }
 
-    RETURN_NOT_OK(operation.tablet()->ApplyOperation(
+    RETURN_NOT_OK(tablet->ApplyOperation(
         operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
 
     ExecuteOperations(operations, leader_term);
@@ -636,43 +679,22 @@ class MasterSnapshotCoordinator::Impl {
     return result;
   }
 
-  bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
-    return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
-            entry.state() == master::SysSnapshotEntryPB::CREATING) &&
-           HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
-           HybridTime::FromPB(entry.previous_snapshot_hybrid_time()) < restore_at;
-  }
-
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
       CoarseTimePoint deadline) {
     while (CoarseMonoClock::now() < deadline) {
       ListSnapshotSchedulesResponsePB resp;
-      auto last_snapshot_time = HybridTime::kMin;
-
       RETURN_NOT_OK_PREPEND(ListSnapshotSchedules(schedule_id, &resp),
                             "Failed to list snapshot schedules");
       if (resp.schedules().size() < 1) {
         return STATUS_FORMAT(InvalidArgument, "Unknown schedule: $0", schedule_id);
       }
-
-      for (const auto& snapshot : resp.schedules()[0].snapshots()) {
-        auto snapshot_hybrid_time = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
-        last_snapshot_time = std::max(last_snapshot_time, snapshot_hybrid_time);
-
-        if (SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at)) {
-          return VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
-        }
+      auto snapshot_result = FindSnapshotSuitableForRestoreAt(resp.schedules()[0], restore_at);
+      if (snapshot_result.ok()) {
+        return *snapshot_result;
+      } else if (!snapshot_result.status().IsNotFound()) {
+        return snapshot_result;
       }
-      if (last_snapshot_time > restore_at) {
-        auto& earliest_snapshot = resp.schedules()[0].snapshots()[0];
-        return STATUS_FORMAT(
-            IllegalState, "Trying to restore to $0 which is earlier than the configured retention. "
-            "Not allowed. Earliest snapshot that can be used is $1 and was taken at $2.",
-            restore_at, TryFullyDecodeTxnSnapshotId(earliest_snapshot.id()),
-            HybridTime::FromPB(earliest_snapshot.entry().snapshot_hybrid_time()));
-      }
-
       auto snapshot_id = CreateForSchedule(schedule_id, leader_term, deadline);
       if (!snapshot_id.ok() &&
           MasterError(snapshot_id.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
@@ -1347,7 +1369,11 @@ class MasterSnapshotCoordinator::Impl {
 
   void PollSchedulesComplete(const PollSchedulesData& data, int64_t leader_term) EXCLUDES(mutex_) {
     for (const auto& id : data.delete_snapshots) {
-      SubmitDelete(id, leader_term, nullptr);
+      Status submit_status = SubmitDelete(id, leader_term, /* synchronizer */ nullptr);
+      // TODO(submit_error): is this sufficient to handle this error?
+      LOG_IF(DFATAL, !submit_status.ok())
+          << "Failed to submit delete operation for snapshot " << id << ". "
+          << submit_status;
     }
     for (const auto& operation : data.schedule_operations) {
       switch (operation.type) {
@@ -1429,7 +1455,9 @@ class MasterSnapshotCoordinator::Impl {
       CleanupObjectAborted(id, map);
     });
 
-    context_.Submit(query.release()->PrepareSubmit(), leader_term);
+    Status submit_status = context_.Submit(query.release()->PrepareSubmit(), leader_term);
+    LOG_IF(DFATAL, !submit_status.ok())
+        << "Failed to submit cleanup operation: " << submit_status;
   }
 
   Status ExecuteScheduleOperation(
@@ -1442,7 +1470,7 @@ class MasterSnapshotCoordinator::Impl {
       CreateSnapshotAborted(entries.status(), operation.schedule_id, operation.snapshot_id);
       return entries.status();
     }
-    SubmitCreate(
+    return SubmitCreate(
         *entries, /* imported= */ false, operation.schedule_id,
         operation.previous_snapshot_hybrid_time, operation.snapshot_id, leader_term,
         [this, schedule_id = operation.schedule_id, snapshot_id = operation.snapshot_id,
@@ -1456,7 +1484,6 @@ class MasterSnapshotCoordinator::Impl {
             locked_synchronizer->StatusCB(status);
           }
         });
-    return Status::OK();
   }
 
   void CreateSnapshotAborted(
@@ -1472,7 +1499,7 @@ class MasterSnapshotCoordinator::Impl {
     (**it).SnapshotFinished(snapshot_id, status);
   }
 
-  void SubmitCreate(
+  Status SubmitCreate(
       const SysRowEntries& entries, bool imported, const SnapshotScheduleId& schedule_id,
       HybridTime previous_snapshot_hybrid_time, TxnSnapshotId snapshot_id, int64_t leader_term,
       tablet::OperationCompletionCallback completion_clbk) {
@@ -1512,11 +1539,11 @@ class MasterSnapshotCoordinator::Impl {
 
     operation->set_completion_callback(std::move(completion_clbk));
 
-    context_.Submit(std::move(operation), leader_term);
+    return context_.Submit(std::move(operation), leader_term);
   }
 
-  void SubmitDelete(const TxnSnapshotId& snapshot_id, int64_t leader_term,
-                    const std::shared_ptr<Synchronizer>& synchronizer) {
+  Status SubmitDelete(const TxnSnapshotId& snapshot_id, int64_t leader_term,
+                      const std::shared_ptr<Synchronizer>& synchronizer) {
     auto operation = std::make_unique<tablet::SnapshotOperation>(nullptr);
     auto request = operation->AllocateRequest();
 
@@ -1535,7 +1562,7 @@ class MasterSnapshotCoordinator::Impl {
           }
         });
 
-    context_.Submit(std::move(operation), leader_term);
+    return context_.Submit(std::move(operation), leader_term);
   }
 
   Status SubmitRestore(
@@ -1556,7 +1583,7 @@ class MasterSnapshotCoordinator::Impl {
     operation->set_completion_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
 
-    context_.Submit(std::move(operation), leader_term);
+    RETURN_NOT_OK(context_.Submit(std::move(operation), leader_term));
 
     return synchronizer->Wait();
   }
@@ -1605,7 +1632,10 @@ class MasterSnapshotCoordinator::Impl {
     }
     lock->unlock();
 
-    SubmitWrite(std::move(write_batch), leader_term, &context_);
+    Status submit_status = SubmitWrite(std::move(write_batch), leader_term, &context_);
+    // TODO(submit_error): is this sufficient to handle this error?
+    LOG_IF(DFATAL, !submit_status.ok())
+        << "Failed to submit snapshot update operation: " << submit_status;
   };
 
   void FinishRestoration(RestorationState* restoration, int64_t leader_term) REQUIRES(mutex_) {
@@ -1637,16 +1667,21 @@ class MasterSnapshotCoordinator::Impl {
         docdb::KeyValueWriteBatchPB write_batch;
         schedule->mutable_options().add_restoration_times(
             last_restorations_update_ht_.ToUint64());
-        Status s = schedule->StoreToWriteBatch(&write_batch);
-        if (s.ok()) {
-          SubmitWrite(std::move(write_batch), leader_term, &context_);
+        Status store_to_write_batch_status = schedule->StoreToWriteBatch(&write_batch);
+        if (store_to_write_batch_status.ok()) {
+          Status submit_status = SubmitWrite(std::move(write_batch), leader_term, &context_);
+          if (!submit_status.ok()) {
+            // TODO(submit_error): is this sufficient to handle this error?
+            LOG(DFATAL) << "Failed to submit schedule update operation: " << submit_status;
+            return;
+          }
         } else {
           LOG(INFO) << "Unable to prepare write batch for schedule "
-                    << schedule->id();
+                    << schedule->id() << ": " << store_to_write_batch_status;
         }
       } else {
         LOG(INFO) << "Snapshot Schedule with id " << restoration->schedule_id()
-                  << " not found";
+                  << " not found" << ": " << schedule.status();
       }
     }
 
@@ -1674,7 +1709,12 @@ class MasterSnapshotCoordinator::Impl {
       LOG(DFATAL) << "Failed to prepare write batch for snapshot: " << status;
       return;
     }
-    SubmitWrite(std::move(write_batch), leader_term, &context_);
+    status = SubmitWrite(std::move(write_batch), leader_term, &context_);
+    if (!status.ok()) {
+      // TODO(submit_error): is this sufficient to handle this error?
+      LOG(DFATAL) << "Failed to submit snapshot operation: " << status;
+      return;
+    }
 
     // Resume index backfill for restored tables.
     // They are actually resumed by the catalog manager bg tasks thread.
@@ -1765,7 +1805,7 @@ class MasterSnapshotCoordinator::Impl {
               << " entry to sys catalog";
     docdb::KeyValueWriteBatchPB write_batch;
     RETURN_NOT_OK(restoration->StoreToWriteBatch(&write_batch));
-    SubmitWrite(std::move(write_batch), leader_term, &context_);
+    RETURN_NOT_OK(SubmitWrite(std::move(write_batch), leader_term, &context_));
     return Status::OK();
   }
 

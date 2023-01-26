@@ -11,7 +11,7 @@ menu:
   preview_faq:
     identifier: comparisons
     parent: comparisons-home
-    weight: 2710
+    weight: 100
 type: indexpage
 ---
 

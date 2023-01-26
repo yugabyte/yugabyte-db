@@ -431,7 +431,8 @@ class YBClient {
   Status CreateTablegroup(const std::string& namespace_name,
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
-                          const std::string& tablespace_id);
+                          const std::string& tablespace_id,
+                          const TransactionMetadata* txn);
 
   Status DeleteTablegroup(const std::string& tablegroup_id);
 
@@ -488,9 +489,8 @@ class YBClient {
   Status DeleteUDType(const std::string &namespace_name, const std::string &type_name);
 
   // Retrieve a (user-defined) type by name.
-  Status GetUDType(const std::string &namespace_name,
-                   const std::string &type_name,
-                   std::shared_ptr<QLType> *ql_type);
+  Result<std::shared_ptr<QLType>> GetUDType(
+        const std::string &namespace_name, const std::string &type_name);
 
   // CDC Stream related methods.
 
@@ -561,7 +561,7 @@ class YBClient {
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-      GetTableLocationsCallback callback);
+      PartitionsOnly partitions_only, GetTableLocationsCallback callback);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
@@ -749,6 +749,9 @@ class YBClient {
 
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
+
+  // Provide the completion status of 'txn' to the YB-Master.
+  Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
 
   Result<bool> CheckIfPitrActive();
 

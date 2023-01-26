@@ -13,6 +13,7 @@
 
 #include "yb/docdb/wait_queue.h"
 
+#include <chrono>
 #include <future>
 #include <memory>
 
@@ -60,11 +61,11 @@ DEFINE_UNKNOWN_uint64(force_single_shard_waiter_retry_ms, 30000,
 
 METRIC_DEFINE_coarse_histogram(
     tablet, wait_queue_pending_time_waiting, "Wait Queue - Still Waiting Time",
-    yb::MetricUnit::kMilliseconds,
+    yb::MetricUnit::kMicroseconds,
     "The amount of time a still-waiting transaction has been in the wait queue");
 METRIC_DEFINE_coarse_histogram(
     tablet, wait_queue_finished_waiting_latency, "Wait Queue - Total Waiting Time",
-    yb::MetricUnit::kMilliseconds,
+    yb::MetricUnit::kMicroseconds,
     "The amount of time an unblocked transaction spent in the wait queue");
 METRIC_DEFINE_coarse_histogram(
     tablet, wait_queue_blockers_per_waiter, "Wait Queue - Blockers per Waiter",
@@ -140,8 +141,8 @@ Result<ResolutionStatus> UnwrapResult(const Result<TransactionStatusResult>& res
   }
 }
 
-inline auto GetMillis(CoarseMonoClock::Duration duration) {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+inline auto GetMicros(CoarseMonoClock::Duration duration) {
+  return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
 }
 
 // Data for an active transaction which is waiting on some number of other transactions with which
@@ -184,7 +185,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
           << "be rare.";
       return;
     }
-    finished_waiting_latency_->Increment(GetMillis(CoarseMonoClock::Now() - created_at));
+    finished_waiting_latency_->Increment(GetMicros(CoarseMonoClock::Now() - created_at));
     if (!status.ok()) {
       unlocked_ = std::nullopt;
       callback(status);
@@ -458,11 +459,13 @@ class WaitQueue::Impl {
       } else {
         waiter_status_[waiter_txn_id] = waiter_data;
       }
-    }
 
-    DCHECK(waiter_data);
-    for (auto [blocker, _] : waiter_data->blockers) {
-      blocker->AddWaiter(waiter_data);
+      // We must add waiters to blockers while holding the wait queue mutex. Otherwise, we may
+      // end up removing blockers from blocker_status_ during Poll() after we've already added them
+      // to waiter_data.
+      for (auto [blocker, _] : waiter_data->blockers) {
+        blocker->AddWaiter(waiter_data);
+      }
     }
 
     return Status::OK();
@@ -523,7 +526,7 @@ class WaitQueue::Impl {
       auto duration = CoarseMonoClock::Now() - waiter->created_at;
       auto seconds = duration / 1s;
       VLOG_WITH_PREFIX_AND_FUNC(4) << waiter->id << " waiting for " << seconds << " seconds";
-      pending_time_waiting_->Increment(GetMillis(duration));
+      pending_time_waiting_->Increment(GetMicros(duration));
       auto transaction_id = waiter->id;
       StatusRequest request {
         .id = &transaction_id,
@@ -745,22 +748,29 @@ class WaitQueue::Impl {
       return;
     }
 
-    auto res = 0ul;
-
+    // We cannot use the passed in waiter_data here as it may have been replaced in waiter_status_
+    // by a new WaiterData instance for the same transaction. Such a situation would indicate that
+    // the previous request had returned to the caller and a new request for the same transaction
+    // was now waiting. In this situation, we would want to signal the new waiter.
+    WaiterDataPtr found_waiter = nullptr;
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
-      res = waiter_status_.erase(waiter_data->id);
+      auto it = waiter_status_.find(waiter_data->id);
+      if (it != waiter_status_.end()) {
+        found_waiter = it->second;
+        waiter_status_.erase(it);
+      }
     }
 
-    LOG_IF(WARNING, res != 1)
+    LOG_IF(WARNING, !found_waiter)
       << "Tried to invoke callback on waiter which has already been removed. "
       << "This should be rare but is not an error otherwise.";
 
     // Note -- it's important that we remove the waiter from waiter_status_ before invoking it's
     // callback. Otherwise, the callback will re-run conflict resolution, end up back in the wait
     // queue, and attempt to reuse the WaiterData still present in waiter_status_.
-    if (res == 1) {
-      waiter_data->InvokeCallback(status);
+    if (found_waiter) {
+      found_waiter->InvokeCallback(status);
     }
   }
 

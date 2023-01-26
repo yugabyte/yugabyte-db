@@ -159,8 +159,10 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse }) => {
       <div className="selection-area">
         <span className="title">Select what you want to include in the support bundle</span>
         {selectionOptions.map((selectionOption, index) => (
+          // eslint-disable-next-line react/jsx-key
           <div className="selection-option">
             <YBCheckBox
+              // eslint-disable-next-line react/no-array-index-key
               key={`${selectionOptionsValue[index]}${index}selectionOption`}
               onClick={() => {
                 if (index === 0) {

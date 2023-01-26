@@ -1,17 +1,13 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.BackupUtil.TABLE_TYPE_TO_YQL_DATABASE_MAP;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 
-import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import lombok.extern.slf4j.Slf4j;
-import java.lang.StringBuilder;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -25,7 +21,6 @@ import org.yb.client.ListSnapshotsResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.YBClient;
-import org.yb.CommonTypes.YQLDatabase;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Slf4j

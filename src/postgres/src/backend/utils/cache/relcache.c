@@ -44,15 +44,19 @@
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_auth_members.h"
+#include "catalog/pg_cast.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
@@ -66,7 +70,6 @@
 #include "catalog/pg_type.h"
 #include "catalog/schemapg.h"
 #include "catalog/storage.h"
-#include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
 #include "commands/policy.h"
 #include "commands/trigger.h"
@@ -98,6 +101,9 @@
 
 #include "pg_yb_utils.h"
 #include "access/yb_scan.h"
+#include "catalog/yb_catalog_version.h"
+#include "catalog/pg_yb_profile.h"
+#include "catalog/pg_yb_role_profile.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -114,6 +120,9 @@ static const FormData_pg_attribute Desc_pg_auth_members[Natts_pg_auth_members] =
 static const FormData_pg_attribute Desc_pg_index[Natts_pg_index] = {Schema_pg_index};
 static const FormData_pg_attribute Desc_pg_shseclabel[Natts_pg_shseclabel] = {Schema_pg_shseclabel};
 static const FormData_pg_attribute Desc_pg_subscription[Natts_pg_subscription] = {Schema_pg_subscription};
+
+static const FormData_pg_attribute Desc_pg_yb_profile[Natts_pg_yb_profile] = {Schema_pg_yb_profile};
+static const FormData_pg_attribute Desc_pg_yb_role_profile[Natts_pg_yb_role_profile] = {Schema_pg_yb_role_profile};
 
 /*
  *		Hash tables that index the relation cache
@@ -1901,22 +1910,25 @@ YBIsDBConnectionValid()
 	 *   the MyDatabaseId DB is dropped these read operations will fail due to "Not found" error.
 	 */
 
+	bool result = false;
 	PG_TRY();
 	{
 		const char *dbname = get_database_name(MyDatabaseId);
-		return (dbname != NULL && get_database_oid(dbname, true) == MyDatabaseId);
+		result = (dbname != NULL && get_database_oid(dbname, true) == MyDatabaseId);
 	}
 	PG_CATCH();
 	{
 		FlushErrorState();
 	}
 	PG_END_TRY();
-	return false;
+	return result;
 }
 
 void
 YBPreloadRelCache()
 {
+	bool prefetch_additional_tables = *YBCGetGFlags()->ysql_catalog_preload_additional_tables;
+
 	/*
 	 * During the cache loading process postgres reads the data from multiple sys tables.
 	 * It is reasonable to prefetch all these tables in one shot.
@@ -1936,6 +1948,17 @@ YBPreloadRelCache()
 	YbRegisterSysTableForPrefetching(TypeRelationId);                  // pg_type
 	YbRegisterSysTableForPrefetching(NamespaceRelationId);             // pg_namespace
 	YbRegisterSysTableForPrefetching(AuthIdRelationId);                // pg_authid
+	if (prefetch_additional_tables)
+	{
+		YbRegisterSysTableForPrefetching(CastRelationId);                  // pg_cast
+		YbRegisterSysTableForPrefetching(AccessMethodOperatorRelationId);  // pg_amop
+	}
+
+	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
+	{
+		YbRegisterSysTableForPrefetching(YbProfileRelationId);         // yb_pg_profile
+		YbRegisterSysTableForPrefetching(YbRoleProfileRelationId);     // yb_pg_role_profile
+	}
 
 	if (!YBIsDBConnectionValid())
 		ereport(FATAL,
@@ -1969,6 +1992,12 @@ YBPreloadRelCache()
 	YbPreloadCatalogCache(TYPEOID, TYPENAMENSP);        // pg_type
 	YbPreloadCatalogCache(NAMESPACEOID, NAMESPACENAME); // pg_namespace
 	YbPreloadCatalogCache(AUTHOID, AUTHNAME);           // pg_authid
+	if (prefetch_additional_tables)
+	{
+		YbPreloadCatalogCache(AMOPOPID, AMOPSTRATEGY);      // pg_amop
+		YbPreloadCatalogCache(AMPROCNUM, -1);               // pg_amproc
+		YbPreloadCatalogCache(CASTSOURCETARGET, -1);        // pg_cast
+	}
 
 	YBLoadRelationsResult relations_result = YBLoadRelations();
 
@@ -1990,7 +2019,6 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
-		YbRegisterSysTableForPrefetching(ProcedureRelationId); // pg_proc
 		YbRegisterSysTableForPrefetching(InheritsRelationId);  // pg_inherits
 	}
 
@@ -1999,7 +2027,6 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
-		YbPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
 		YbPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}
 
@@ -4106,6 +4133,8 @@ RelationBuildLocalRelation(const char *relname,
 		case AttributeRelationId:
 		case ProcedureRelationId:
 		case TypeRelationId:
+		case YbProfileRelationId:
+		case YbRoleProfileRelationId:
 			nailit = true;
 			break;
 		default:
@@ -4506,8 +4535,15 @@ RelationCacheInitializePhase2(void)
 				  false, Natts_pg_shseclabel, Desc_pg_shseclabel);
 		formrdesc("pg_subscription", SubscriptionRelation_Rowtype_Id, true,
 				  true, Natts_pg_subscription, Desc_pg_subscription);
+		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
+		{
+			formrdesc("pg_yb_profile", YbProfileRelation_Rowtype_Id, true,
+					true, Natts_pg_yb_profile, Desc_pg_yb_profile);
+			formrdesc("pg_yb_role_profile", YbRoleProfileRelation_Rowtype_Id, true,
+					true, Natts_pg_yb_role_profile, Desc_pg_yb_role_profile);
+		}
 
-#define NUM_CRITICAL_SHARED_RELS	5	/* fix if you change list above */
+#define NUM_CRITICAL_SHARED_RELS    (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist ? 7 : 5)   /* fix if you change list above */
 	}
 
 	MemoryContextSwitchTo(oldcxt);
@@ -6447,6 +6483,16 @@ load_relcache_init_file(bool shared)
 	 * correct init file name for the to-be-resolved MyDatabaseId.
 	 */
 	if (shared && YBIsDBCatalogVersionMode())
+		return false;
+
+	/*
+	 * YB mode uses local-tserver prefetching instead of relcache file.
+	 * TODO: either put this under a GUC variable or remove the old code
+	 * below.
+	 */
+	if (IsYugaByteEnabled() &&
+		*YBCGetGFlags()->ysql_catalog_preload_additional_tables &&
+		!YBIsDBCatalogVersionMode())
 		return false;
 
 	RelCacheInitFileName(initfilename, shared);

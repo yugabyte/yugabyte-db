@@ -1,9 +1,9 @@
 ---
-title: Horizontal Scalability
-headerTitle: Horizontal Scalability
+title: Horizontal scalability
+headerTitle: Horizontal scalability
 linkTitle: Horizontal scalability
-description: Horizontal Scalability in YugabyteDB.
-headcontent: Horizontal Scalability in YugabyteDB.
+description: Horizontal scalability in YugabyteDB.
+headcontent: Dynamically add and remove nodes in a running cluster
 image: /images/section_icons/explore/linear_scalability.png
 menu:
   stable:
@@ -12,7 +12,8 @@ menu:
     weight: 220
 type: indexpage
 ---
-A YugabyteDB cluster can be scaled horizontally (to increase the aggregate vCPUs, memory and disk in the database cluster) by dynamically adding nodes to a running cluster, or by increasing the number of pods in the `yb-tserver` StatefulSet in the case of Kubernetes deployments.
+
+A YugabyteDB cluster can be scaled horizontally (to increase the aggregate vCPUs, memory, and disk in the database cluster) by dynamically adding nodes to a running cluster, or by increasing the number of pods in the `yb-tserver` StatefulSet in the case of Kubernetes deployments.
 
 A YugabyteDB cluster is scaled out so that it can handle:
 
@@ -20,24 +21,18 @@ A YugabyteDB cluster is scaled out so that it can handle:
 * Higher number of concurrent client connections
 * Larger datasets
 
-{{< note title="Note" >}}
-
-A YugabyteDB cluster can be dynamically *scaled out* by adding nodes (or increasing the number of pods in the case of Kubernetes). It can also be *scaled in* dynamically by draining all the data from existing cluster nodes (or pods), and subsequently removing them from the cluster.
-
-{{</note >}}
+A YugabyteDB cluster can also be *scaled in* dynamically by draining all the data from existing cluster nodes (or pods), and subsequently removing them from the cluster.
 
 ### How scalability works
 
-Every table in YugabyteDB is transparently sharded using the primary key of the table, each of these shards are called *tablets*. Each tablet consists of a set of rows in a table. In YugabyteDB, tables are automatically split into tablets. This is done at time of creating the table if possible. Tablets can also be split dynamically.
+Every table in YugabyteDB is transparently sharded using the primary key of the table, and each of these shards are called *tablets*. Each tablet consists of a set of rows in a table. In YugabyteDB, tables are automatically split into tablets. This is done when creating the table if possible. Tablets can also be split dynamically.
 
-The table below summarizes the support for scalability and sharding across YSQL and YCQL APIs.
+The following table summarizes the support for scalability and sharding across YSQL and YCQL APIs.
 
-| <span style="font-size:20px;">Property</span> | <span style="font-size:20px;">YSQL</span> | <span style="font-size:20px;">YCQL</span> | <span style="font-size:20px;">Comments</span> |
-|--------------------------------------------------|-------------|----------|----------|
-| <span style="font-size:16px;">[Scale transactions per sec](scaling-transactions/)</span> | <span style="font-size:16px;">Yes</span> | <span style="font-size:16px;">Yes</span> | Scale out the cluster to handle a higher number of concurrent transactions per second. |
-| <span style="font-size:16px;">[Data distribution support](sharding-data/)</span> | <span style="font-size:16px;">Hash sharding, <br/>  Range sharding</span>  | <span style="font-size:16px;">Hash sharding</span> | Sharding is used to distributed data across nodes of clusters. <br/> Tables can be pre-split at creation time, and dynamically split at runtime. |
-
-The various features are explained in these sections:
+| Property | YSQL | YCQL | Comments |
+| :------- | :--- | :--- | :------- |
+| [Scale transactions per sec](scaling-transactions/) | Yes | Yes | Scale out the cluster to handle a higher number of concurrent transactions per second. |
+| [Data distribution support](sharding-data/) | Hash sharding<br/>Range sharding | Hash sharding | Sharding is used to distribute data across nodes of clusters.<br/>Tables can be pre-split at creation time, and dynamically split at runtime. |
 
 <div class="row">
 

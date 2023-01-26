@@ -28,6 +28,8 @@ To view your cluster tablespaces, you can enter the following command:
 SELECT * FROM pg_tablespace;
 ```
 
+Note that data pinned to a single region via tablespaces is not replicated to other regions, and remains subject to the fault tolerance of the cluster (Node- or Availability Zone-level).
+
 For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
 
 ## Features
@@ -55,6 +57,7 @@ The **Create Cluster** wizard has the following pages:
 
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
+1. [Network Access](#network-access)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
@@ -94,6 +97,8 @@ To add additional regions to the cluster, click **Add Region**.
 Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+
+{{% includeMarkdown "network-access.md" %}}
 
 ### Database Credentials
 

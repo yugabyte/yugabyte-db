@@ -32,7 +32,7 @@ export default class UserProfileForm extends Component {
 
   handleRefreshApiToken = (e) => {
     const { refreshApiToken } = this.props;
-    const authToken = Cookies.get('authToken') || localStorage.getItem('authToken');
+    const authToken = Cookies.get('authToken') ?? localStorage.getItem('authToken');
     e.stopPropagation();
     e.preventDefault();
     refreshApiToken({ 'X-AUTH-TOKEN': authToken });

@@ -224,6 +224,12 @@ Default: `900` (15 minutes)
 
 The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
 
+##### --evict_failed_followers
+
+Failed followers will be evicted from the Raft group and the data will be re-replicated.
+
+Default: `true`
+
 ##### --leader_failure_max_missed_heartbeat_periods
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
@@ -431,6 +437,14 @@ Enables YSQL authentication.
 When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte`.
 
 Default: `false`
+
+<!-- ##### --ysql_enable_profile
+
+Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
+
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
+
+Default: `false` -->
 
 ##### --pgsql_proxy_bind_address
 
@@ -913,6 +927,12 @@ Default: `14400000` (4 hours)
 Enable each local peer to update its own log checkpoint instead of the leader updating all peers.
 
 Default: `false`
+
+##### --cdcsdk_table_processing_limit_per_run
+
+Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
+
+Default: `2`
 
 ## File expiration based on TTL flags
 

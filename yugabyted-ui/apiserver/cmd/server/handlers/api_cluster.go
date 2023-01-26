@@ -163,7 +163,10 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         }
 
         // Use the session from the context.
-        session := c.Session
+        session, err := c.GetSession()
+        if err != nil {
+            return ctx.String(http.StatusInternalServerError, err.Error())
+        }
         averageCpu := float64(0)
         totalDiskGb := float64(0)
         freeDiskGb := float64(0)

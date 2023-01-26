@@ -97,7 +97,7 @@ struct TableHolder {
 
 class PgsqlReadOpWithPgTable : private TableHolder, public PgsqlReadOp {
  public:
-  explicit PgsqlReadOpWithPgTable(Arena* arena, const PgTableDescPtr& descr, bool is_region_local)
+  PgsqlReadOpWithPgTable(ThreadSafeArena* arena, const PgTableDescPtr& descr, bool is_region_local)
       : TableHolder(descr), PgsqlReadOp(arena, *table_, is_region_local) {}
 
   PgTable& table() {
@@ -241,7 +241,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     return a.table_id < b.table_id;
   });
 
-  auto arena = std::make_shared<Arena>();
+  auto arena = std::make_shared<ThreadSafeArena>();
 
   PrecastRequestSender precast_sender;
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
@@ -564,6 +564,25 @@ Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
   return Status::OK();
 }
 
+Status PgApiImpl::FetchSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     bool is_db_catalog_version_mode,
+                                     uint32_t fetch_count,
+                                     int64_t inc_by,
+                                     int64_t min_value,
+                                     int64_t max_value,
+                                     bool cycle,
+                                     int64_t *first_value,
+                                     int64_t *last_value) {
+  auto res = VERIFY_RESULT(pg_session_->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      min_value, max_value, cycle));
+  *first_value = res.first;
+  *last_value = res.second;
+  return Status::OK();
+}
+
 Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
                                     int64_t seq_oid,
                                     uint64_t ysql_catalog_version,
@@ -700,6 +719,9 @@ Status PgApiImpl::NewCreateTablegroup(const char *database_name,
                                       const PgOid tablegroup_oid,
                                       const PgOid tablespace_oid,
                                       PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Tablegroup is being created outside of DDL mode");
   auto stmt = std::make_unique<PgCreateTablegroup>(pg_session_, database_name,
                                                    database_oid, tablegroup_oid, tablespace_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
@@ -796,6 +818,7 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
@@ -867,6 +890,7 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
   return pg_stmt->Exec();
 }
@@ -1065,7 +1089,7 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_TABLE)) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTable*>(handle)->Exec();
 }
 
@@ -1110,9 +1134,9 @@ Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
                                                               end_inclusive);
 }
 
-Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, int attr_num, int n_attr_values,
-    PgExpr **attr_values) {
-  return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
+Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, YBCPgExpr lhs, int n_attr_values,
+                                      PgExpr **attr_values) {
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(lhs, n_attr_values, attr_values);
 }
 
 Status PgApiImpl::DmlAddRowUpperBound(YBCPgStatement handle,
@@ -1194,7 +1218,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
             expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());
           } else {
             const YBCPgCollationInfo& collation_info = attr->collation_info;
-            Arena arena;
+            ThreadSafeArena arena;
             PgConstant value(
                 &arena, attr->type_entity, collation_info.collate_is_valid_non_c,
                 collation_info.sortkey, attr->datum, false);
@@ -1681,6 +1705,22 @@ void PgApiImpl::GetAndResetOperationFlushRpcStats(uint64_t* count,
   pg_session_->GetAndResetOperationFlushRpcStats(count, wait_time);
 }
 
+// Tuple Expression -----------------------------------------------------------------------------
+Status PgApiImpl::NewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    const YBCPgExpr *elems, YBCPgExpr *expr_handle) {
+  if (!stmt) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  *expr_handle = stmt->arena().NewObject<PgTupleExpr>(
+      &stmt->arena(), tuple_type_entity, type_attrs, num_elems, elems);
+
+  return Status::OK();
+}
+
 // Transaction Control -----------------------------------------------------------------------------
 Status PgApiImpl::BeginTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
@@ -1833,6 +1873,10 @@ void PgApiImpl::StopSysTablePrefetching() {
   } else {
     pg_sys_table_prefetcher_.reset();
   }
+}
+
+bool PgApiImpl::IsSysTablePrefetchingStarted() const {
+  return static_cast<bool>(pg_sys_table_prefetcher_);
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(

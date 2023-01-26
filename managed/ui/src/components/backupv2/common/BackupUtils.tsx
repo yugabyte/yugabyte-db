@@ -13,8 +13,11 @@ import { useSelector } from 'react-redux';
 import { keyBy, mapValues } from 'lodash';
 import { Backup_Options_Type, IBackup, IStorageConfig, IUniverse } from './IBackup';
 import { Backup_States } from '../common/IBackup';
+import { Alert } from 'react-bootstrap';
 import { TableType } from '../../../redesign/helpers/dtos';
 import './BackupUtils.scss';
+
+export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
 
 /**
  * Calculates the difference between two dates
@@ -136,6 +139,13 @@ export const PARALLEL_THREADS_RANGE = {
   MAX: 100
 };
 
+export const BACKUP_IN_PROGRESS_MSG = <Alert bsStyle="success">Backup is in progress.</Alert>;
+export const RESTORE_IN_PROGRESS_MSG = (
+  <Alert bsStyle="info">
+    Restore is in progress. No cluster configuration changes can be done when restore is in
+    progress.
+  </Alert>
+);
 export const convertBackupToFormValues = (backup: IBackup, storage_config: IStorageConfig) => {
   const formValues = {
     use_cron_expression: false,

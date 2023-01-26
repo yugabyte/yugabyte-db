@@ -59,16 +59,14 @@ public class AnsibleSetupServer extends NodeTaskBase {
   @Override
   public void run() {
     Provider p = taskParams().getProvider();
-    List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     boolean skipProvision = false;
 
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     taskParams().useSystemd =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
-    // For now we will skipProvision if it's set in accessKeys.
-    if (p.code.equals(Common.CloudType.onprem.name()) && accessKeys.size() > 0) {
-      skipProvision = accessKeys.get(0).getKeyInfo().skipProvisioning;
+    if (p.code.equals(Common.CloudType.onprem.name())) {
+      skipProvision = p.details.skipProvisioning;
     }
 
     if (skipProvision) {

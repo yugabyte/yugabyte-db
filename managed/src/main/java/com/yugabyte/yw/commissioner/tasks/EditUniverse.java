@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -297,6 +298,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           true /* isShell */,
           false /* ignore node status check */,
           ignoreUseCustomImageConfig);
+
+      // Copy the source root certificate to the provisioned nodes.
+      createTransferXClusterCertsCopyTasks(
+          nodesToProvision, universe, SubTaskGroupType.Provisioning);
     }
 
     Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
@@ -352,7 +357,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start tservers on all nodes.
-      createStartTserverProcessTasks(newTservers);
+      createStartTserverProcessTasks(newTservers, userIntent.enableYSQL);
 
       if (universe.isYbcEnabled()) {
         createStartYbcProcessTasks(
@@ -371,12 +376,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
-
-    if (!removeMasters.isEmpty() || !newMasters.isEmpty()) {
-      // Update placement info on master leader.
-      createPlacementInfoTask(null /* additional blacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-    }
+    // Update placement info on master leader.
+    createPlacementInfoTask(null /* additional blacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     if (!newTservers.isEmpty()
         || !newMasters.isEmpty()
@@ -396,7 +398,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
-      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.waitForLbForAddedNodes)
           && !newTservers.isEmpty()) {
         // If only tservers are added, wait for load to balance across all tservers.
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
@@ -405,12 +407,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Add new nodes to load balancer.
     createManageLoadBalancerTasks(
-        createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null));
+        createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null, null));
 
-    if (cluster.clusterType == ClusterType.PRIMARY
-        && PlacementInfoUtil.didAffinitizedLeadersChange(
-            universe.getUniverseDetails().getPrimaryCluster().placementInfo,
-            cluster.placementInfo)) {
+    if (cluster.clusterType == ClusterType.PRIMARY) {
       createWaitForLeadersOnPreferredOnlyTask();
     }
 
@@ -489,7 +488,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     if (!nodesToBeRemoved.isEmpty()) {
       // Remove nodes from load balancer.
       createManageLoadBalancerTasks(
-          createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), nodesToBeRemoved));
+          createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), nodesToBeRemoved, null));
 
       // Set the node states to Removing.
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)

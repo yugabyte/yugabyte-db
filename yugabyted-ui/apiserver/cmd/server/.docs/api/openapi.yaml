@@ -381,6 +381,32 @@ paths:
       summary: Get YugabyteDB version
       tags:
       - cluster-info
+  /is_load_balancer_idle:
+    get:
+      description: Check if cluster load balancer is idle
+      operationId: getIsLoadBalancerIdle
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Is_load_balancer_idle'
+          description: Is load balancer idle
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Check if cluster load balancer is idle
+      tags:
+      - cluster-info
 components:
   requestBodies:
     ClusterSpec:
@@ -1033,16 +1059,21 @@ components:
         local_blks_written:
           type: integer
         max_time:
+          format: double
           type: number
         mean_time:
+          format: double
           type: number
         min_time:
+          format: double
           type: number
         rows:
           type: integer
         stddev_time:
+          format: double
           type: number
         total_time:
+          format: double
           type: number
       title: Slow Query Response YSQL Query Item
       type: object
@@ -1165,23 +1196,42 @@ components:
     NodeData:
       description: Node data
       example:
+        is_master_up: true
         is_master: true
         is_tserver: true
         is_node_up: true
         name: name
+        host: host
+        is_bootstrapping: true
         cloud_info:
           cloud: cloud
           zone: zone
           region: region
         metrics:
+          system_tablets_total: 0
+          system_tablets_leaders: 0
+          write_ops_per_sec: 5.637376656633329
+          ram_provisioned_bytes: 0
+          time_since_hb_sec: 2.3021358869347655
+          active_connections:
+            ysql: 0
+            ycql: 0
+          total_sst_file_size_bytes: 6
           uncompressed_sst_file_size_bytes: 1
           read_ops_per_sec: 5.962133916683182
+          user_tablets_leaders: 0
+          ram_used_bytes: 0
           memory_used_bytes: 0
-          write_ops_per_sec: 5.637376656633329
-          total_sst_file_size_bytes: 6
+          uptime_seconds: 0
+          user_tablets_total: 0
+          disk_provisioned_bytes: 0
+          master_uptime_us: 0
         software_version: software_version
       properties:
         name:
+          nullable: false
+          type: string
+        host:
           nullable: false
           type: string
         is_node_up:
@@ -1189,6 +1239,10 @@ components:
         is_master:
           type: boolean
         is_tserver:
+          type: boolean
+        is_master_up:
+          type: boolean
+        is_bootstrapping:
           type: boolean
         metrics:
           $ref: '#/components/schemas/NodeData_metrics'
@@ -1198,7 +1252,10 @@ components:
           type: string
       required:
       - cloud_info
+      - host
+      - is_bootstrapping
       - is_master
+      - is_master_up
       - is_node_up
       - is_tserver
       - metrics
@@ -1406,35 +1463,67 @@ components:
     Cluster_Nodes_Response:
       example:
         data:
-        - is_master: true
+        - is_master_up: true
+          is_master: true
           is_tserver: true
           is_node_up: true
           name: name
+          host: host
+          is_bootstrapping: true
           cloud_info:
             cloud: cloud
             zone: zone
             region: region
           metrics:
+            system_tablets_total: 0
+            system_tablets_leaders: 0
+            write_ops_per_sec: 5.637376656633329
+            ram_provisioned_bytes: 0
+            time_since_hb_sec: 2.3021358869347655
+            active_connections:
+              ysql: 0
+              ycql: 0
+            total_sst_file_size_bytes: 6
             uncompressed_sst_file_size_bytes: 1
             read_ops_per_sec: 5.962133916683182
+            user_tablets_leaders: 0
+            ram_used_bytes: 0
             memory_used_bytes: 0
-            write_ops_per_sec: 5.637376656633329
-            total_sst_file_size_bytes: 6
+            uptime_seconds: 0
+            user_tablets_total: 0
+            disk_provisioned_bytes: 0
+            master_uptime_us: 0
           software_version: software_version
-        - is_master: true
+        - is_master_up: true
+          is_master: true
           is_tserver: true
           is_node_up: true
           name: name
+          host: host
+          is_bootstrapping: true
           cloud_info:
             cloud: cloud
             zone: zone
             region: region
           metrics:
+            system_tablets_total: 0
+            system_tablets_leaders: 0
+            write_ops_per_sec: 5.637376656633329
+            ram_provisioned_bytes: 0
+            time_since_hb_sec: 2.3021358869347655
+            active_connections:
+              ysql: 0
+              ycql: 0
+            total_sst_file_size_bytes: 6
             uncompressed_sst_file_size_bytes: 1
             read_ops_per_sec: 5.962133916683182
+            user_tablets_leaders: 0
+            ram_used_bytes: 0
             memory_used_bytes: 0
-            write_ops_per_sec: 5.637376656633329
-            total_sst_file_size_bytes: 6
+            uptime_seconds: 0
+            user_tablets_total: 0
+            disk_provisioned_bytes: 0
+            master_uptime_us: 0
           software_version: software_version
       properties:
         data:
@@ -1542,6 +1631,17 @@ components:
       - data
       title: Cluster tablet list response
       type: object
+    Is_load_balancer_idle:
+      description: Is load balancer idle
+      example:
+        is_idle: true
+      properties:
+        is_idle:
+          type: boolean
+      required:
+      - is_idle
+      title: Is load balancer idle
+      type: object
     ApiError_error:
       properties:
         detail:
@@ -1551,13 +1651,45 @@ components:
           description: Error code
           type: integer
       type: object
+    NodeData_metrics_active_connections:
+      example:
+        ysql: 0
+        ycql: 0
+      properties:
+        ysql:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        ycql:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+      required:
+      - ycql
+      - ysql
+      type: object
     NodeData_metrics:
       example:
+        system_tablets_total: 0
+        system_tablets_leaders: 0
+        write_ops_per_sec: 5.637376656633329
+        ram_provisioned_bytes: 0
+        time_since_hb_sec: 2.3021358869347655
+        active_connections:
+          ysql: 0
+          ycql: 0
+        total_sst_file_size_bytes: 6
         uncompressed_sst_file_size_bytes: 1
         read_ops_per_sec: 5.962133916683182
+        user_tablets_leaders: 0
+        ram_used_bytes: 0
         memory_used_bytes: 0
-        write_ops_per_sec: 5.637376656633329
-        total_sst_file_size_bytes: 6
+        uptime_seconds: 0
+        user_tablets_total: 0
+        disk_provisioned_bytes: 0
+        master_uptime_us: 0
       properties:
         memory_used_bytes:
           default: 0
@@ -1581,11 +1713,73 @@ components:
           default: 0
           format: double
           type: number
+        time_since_hb_sec:
+          default: 0
+          format: double
+          type: number
+        uptime_seconds:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        user_tablets_total:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        user_tablets_leaders:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        system_tablets_total:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        system_tablets_leaders:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        active_connections:
+          $ref: '#/components/schemas/NodeData_metrics_active_connections'
+        master_uptime_us:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        ram_used_bytes:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        ram_provisioned_bytes:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        disk_provisioned_bytes:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
       required:
+      - active_connections
+      - disk_provisioned_bytes
+      - master_uptime_us
       - memory_used_bytes
+      - ram_provisioned_bytes
+      - ram_used_bytes
       - read_ops_per_sec
+      - system_tablets_leaders
+      - system_tablets_total
+      - time_since_hb_sec
       - total_sst_file_size_bytes
       - uncompressed_sst_file_size_bytes
+      - uptime_seconds
+      - user_tablets_leaders
+      - user_tablets_total
       - write_ops_per_sec
       type: object
     NodeData_cloud_info:

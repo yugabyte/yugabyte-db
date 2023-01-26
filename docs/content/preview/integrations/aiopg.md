@@ -3,7 +3,7 @@ title: YSQL Aiopg
 linkTitle: YSQL Aiopg
 description: Build a sample Python application with aiopg that uses YSQL
 menu:
-  preview:
+  preview_integrations:
     identifier: ysql-aiopg
     parent: integrations
     weight: 571

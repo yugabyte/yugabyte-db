@@ -12,6 +12,7 @@ import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.BiMap;
@@ -31,19 +32,17 @@ import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
 import com.yugabyte.yw.models.CommonBackupInfo;
 import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.Universe;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
@@ -63,7 +62,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
@@ -111,12 +110,13 @@ public class BackupUtil {
   public static final List<TaskType> BACKUP_TASK_TYPES =
       ImmutableList.of(TaskType.CreateBackup, TaskType.BackupUniverse, TaskType.MultiTableBackup);
 
-  public static Map<TableType, YQLDatabase> TABLE_TYPE_TO_YQL_DATABASE_MAP;
+  public static BiMap<TableType, YQLDatabase> TABLE_TYPE_TO_YQL_DATABASE_MAP;
 
   static {
-    TABLE_TYPE_TO_YQL_DATABASE_MAP = new HashMap<>();
+    TABLE_TYPE_TO_YQL_DATABASE_MAP = HashBiMap.create();
     TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.YQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_CQL);
     TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.PGSQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_PGSQL);
+    TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.REDIS_TABLE_TYPE, YQLDatabase.YQL_DATABASE_REDIS);
   }
 
   public enum ApiType {
@@ -389,7 +389,9 @@ public class BackupUtil {
       JsonNode backupScriptResponse) {
     ObjectMapper objectMapper = new ObjectMapper();
     List<RegionLocations> regionLocations = new ArrayList<>();
-    Map<String, Object> locations = objectMapper.convertValue(backupScriptResponse, Map.class);
+    Map<String, Object> locations =
+        objectMapper.convertValue(
+            backupScriptResponse, new TypeReference<Map<String, Object>>() {});
     for (Entry<String, Object> entry : locations.entrySet()) {
       if (!(entry.getKey().equals(SNAPSHOT_URL_FIELD)
           || entry.getKey().equals(BACKUP_SIZE_FIELD))) {
@@ -522,7 +524,7 @@ public class BackupUtil {
   }
 
   public void validateRestoreOverwrites(
-      List<BackupStorageInfo> backupStorageInfos, Universe universe)
+      List<BackupStorageInfo> backupStorageInfos, Universe universe, Backup.BackupCategory category)
       throws PlatformServiceException {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     for (BackupStorageInfo backupInfo : backupStorageInfos) {
@@ -543,7 +545,8 @@ public class BackupUtil {
                     "Keyspace %s contains tables with same names, overwriting data is not allowed",
                     backupInfo.keyspace));
           }
-        } else {
+        } else if (category.equals(Backup.BackupCategory.YB_BACKUP_SCRIPT)
+            && backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
           List<TableInfo> tableInfos =
               tableInfoList
                   .parallelStream()
@@ -697,6 +700,13 @@ public class BackupUtil {
     return keyspaceRegionLocations;
   }
 
+  public static String getKeyspaceFromStorageLocation(String storageLocation) {
+    String[] splitArray = storageLocation.split("/");
+    String keyspaceString = splitArray[(splitArray).length - 1];
+    splitArray = keyspaceString.split("-");
+    return splitArray[(splitArray).length - 1];
+  }
+
   public static boolean checkInProgressIncrementalBackup(Backup backup) {
     return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
         .stream()
@@ -709,5 +719,9 @@ public class BackupUtil {
 
   public static boolean checkIfUniverseExists(Backup backup) {
     return Universe.maybeGet(backup.universeUUID).isPresent();
+  }
+
+  public static boolean checkIfUniverseExists(UUID universeUUID) {
+    return Universe.maybeGet(universeUUID).isPresent();
   }
 }

@@ -86,6 +86,7 @@ class PgsqlWriteOperation :
   Status ApplyUpdate(const DocOperationApplyData& data);
   Status ApplyDelete(const DocOperationApplyData& data, const bool is_persist_needed);
   Status ApplyTruncateColocated(const DocOperationApplyData& data);
+  Status ApplyFetchSequence(const DocOperationApplyData& data);
 
   Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);
@@ -207,11 +208,8 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  Status SetPagingStateIfNecessary(
+  Status SetPagingState(
       YQLRowwiseIteratorIf* iter,
-      size_t fetched_rows,
-      const size_t row_count_limit,
-      const bool scan_time_exceeded,
       const Schema& schema,
       const ReadHybridTime& read_time,
       bool* has_paging_state);

@@ -4,10 +4,13 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.YbcManager;
-import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
+import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.RestoreKeyspace;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
 import java.util.concurrent.CancellationException;
@@ -32,6 +35,7 @@ public class RestoreBackup extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Restore restore = null;
     try {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
@@ -47,10 +51,11 @@ public class RestoreBackup extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
       }
 
-      createAllRestoreSubtasks(
-          taskParams(),
-          UserTaskDetails.SubTaskGroupType.RestoringBackup,
-          taskParams().category.equals(BackupCategory.YB_CONTROLLER));
+      restore =
+          createAllRestoreSubtasks(
+              taskParams(),
+              UserTaskDetails.SubTaskGroupType.RestoringBackup,
+              taskParams().category.equals(BackupCategory.YB_CONTROLLER));
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
@@ -59,11 +64,20 @@ public class RestoreBackup extends UniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
       unlockUniverseForUpdate();
+      restore.update(taskUUID, Restore.State.Completed);
     } catch (CancellationException ce) {
       unlockUniverseForUpdate(false);
+      // Aborted
+      if (restore != null) {
+        restore.update(taskUUID, Restore.State.Aborted);
+        RestoreKeyspace.update(restore, TaskInfo.State.Aborted);
+      }
       throw ce;
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      if (restore != null) {
+        restore.update(taskUUID, Restore.State.Failed);
+      }
       unlockUniverseForUpdate();
       throw t;
     } finally {
@@ -77,7 +91,6 @@ public class RestoreBackup extends UniverseTaskBase {
         getRunnableTask().runSubTasks();
       }
     }
-
     log.info("Finished {} task.", getName());
   }
 

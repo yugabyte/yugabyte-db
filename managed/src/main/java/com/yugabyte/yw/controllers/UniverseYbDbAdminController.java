@@ -18,6 +18,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
+import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
@@ -46,6 +47,13 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
       value = "Set a universe's database credentials",
       nickname = "setDatabaseCredentials",
       response = YBPSuccess.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "DatabaseSecurityFormData",
+          value = "The database credentials",
+          required = true,
+          dataType = "com.yugabyte.yw.forms.DatabaseSecurityFormData",
+          paramType = "body"))
   public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -66,9 +74,78 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      value = "Drop a database user for a universe",
+      nickname = "dropUserInDB",
+      response = YBPSuccess.class,
+      hidden = true)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "DatabaseUserDropFormData",
+          value = "The database user to drop",
+          required = true,
+          dataType = "com.yugabyte.yw.forms.DatabaseUserDropFormData",
+          paramType = "body"))
+  public Result dropUserInDB(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    DatabaseUserDropFormData data =
+        formFactory.getFormDataOrBadRequest(DatabaseUserDropFormData.class).get();
+
+    universeYbDbAdminHandler.dropUser(customer, universe, data);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.DropUserInDB,
+            Json.toJson(data));
+    return withMessage("Deleted user in DB.");
+  }
+
+  @ApiOperation(
+      value = "Create a restricted user for a universe",
+      nickname = "createRestrictedUserInDB",
+      response = YBPSuccess.class,
+      hidden = true)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "DatabaseUserFormData",
+          value = "The database user to create",
+          required = true,
+          dataType = "com.yugabyte.yw.forms.DatabaseUserFormData",
+          paramType = "body"))
+  public Result createRestrictedUserInDB(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    DatabaseUserFormData data =
+        formFactory.getFormDataOrBadRequest(DatabaseUserFormData.class).get();
+
+    universeYbDbAdminHandler.createRestrictedUser(customer, universe, data);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.CreateRestrictedUserInDB,
+            Json.toJson(data));
+    return withMessage("Created restricted user in DB.");
+  }
+
+  @ApiOperation(
       value = "Create a database user for a universe",
       nickname = "createUserInDB",
       response = YBPSuccess.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "DatabaseUserFormData",
+          value = "The database user to create",
+          required = true,
+          dataType = "com.yugabyte.yw.forms.DatabaseUserFormData",
+          paramType = "body"))
   public Result createUserInDB(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);

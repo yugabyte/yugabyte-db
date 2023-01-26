@@ -140,7 +140,16 @@ public class Audit extends Model {
     NodeAgent,
 
     @EnumValue("CustomerLicense")
-    CustomerLicense
+    CustomerLicense,
+
+    @EnumValue("PerformanceRecommendation")
+    PerformanceRecommendation,
+
+    @EnumValue("PerformanceAdvisorSettings")
+    PerformanceAdvisorSettings,
+
+    @EnumValue("PerformanceAdvisorRun")
+    PerformanceAdvisorRun
   }
 
   public enum ActionType {
@@ -225,6 +234,9 @@ public class Audit extends Model {
     @EnumValue("Update Options")
     UpdateOptions,
 
+    @EnumValue("Update Load Balancer Config")
+    UpdateLoadBalancerConfig,
+
     @EnumValue("Refresh Pricing")
     RefreshPricing,
 
@@ -290,6 +302,12 @@ public class Audit extends Model {
 
     @EnumValue("Create User in DB")
     CreateUserInDB,
+
+    @EnumValue("Create Restricted User in DB")
+    CreateRestrictedUserInDB,
+
+    @EnumValue("Drop User in DB")
+    DropUserInDB,
 
     @EnumValue("Set Universe Helm3 Compatible")
     SetHelm3Compatible,
@@ -616,6 +634,14 @@ public class Audit extends Model {
     return this.taskUUID;
   }
 
+  @ApiModelProperty(value = "User IP Address", accessMode = READ_ONLY)
+  @Column(nullable = true)
+  private String userAddress;
+
+  public String getUserAddress() {
+    return this.userAddress;
+  }
+
   public Audit() {
     this.timestamp = new Date();
   }
@@ -636,7 +662,8 @@ public class Audit extends Model {
       ActionType action,
       JsonNode body,
       UUID taskUUID,
-      JsonNode details) {
+      JsonNode details,
+      String userAddress) {
     Audit entry = new Audit();
     entry.customerUUID = user.customerUUID;
     entry.userUUID = user.uuid;
@@ -649,6 +676,7 @@ public class Audit extends Model {
     entry.taskUUID = taskUUID;
     entry.payload = body;
     entry.additionalDetails = details;
+    entry.userAddress = userAddress;
     entry.save();
     return entry;
   }

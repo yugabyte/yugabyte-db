@@ -662,23 +662,30 @@ class GoogleCloudAdmin():
         body = {
             "sizeGb": args.volume_size
         }
-        print("Got instance info: " + str(instance_info))
         for disk in instance_info['disks']:
+            # The source is the complete URL of the disk, with the last
+            # component being the name.
+            disk_name = self.get_disk_name(disk)
             # Bootdisk should be ignored.
-            if disk['index'] != 0:
-                # The source is the complete URL of the disk, with the last
-                # component being the name.
-                disk_name = self.get_disk_name(disk)
-                print("Updating disk " + disk_name)
+            # GCP does not allow disk resize to same volume size.
+            if disk['index'] != 0 and int(disk["diskSizeGb"]) != args.volume_size:
+                logging.info(
+                    "Instance %s's volume %s changed to %s",
+                    instance, disk_name, args.volume_size)
                 operation = self.compute.disks().resize(project=self.project,
                                                         zone=zone,
                                                         disk=disk_name,
                                                         body=body).execute()
                 self.waiter.wait(operation, zone=zone)
+            elif disk['index'] != 0:
+                logging.info(
+                    "Instance %s's volume %s has not changed from %s",
+                    instance, disk["deviceName"], disk["diskSizeGb"])
 
     def change_instance_type(self, zone, instance_name, newInstanceType):
+        new_machine_type = f"zones/{zone}/machineTypes/{newInstanceType}"
         body = {
-            "machineType": "zones/" + zone + "/machineTypes/" + newInstanceType
+            "machineType": new_machine_type
         }
         operation = self.compute.instances().setMachineType(project=self.project,
                                                             zone=zone,

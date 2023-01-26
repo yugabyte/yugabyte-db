@@ -111,8 +111,9 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 //  Raft group metadata
 // ============================================================================
 
-TableInfo::TableInfo()
-    : doc_read_context(new docdb::DocReadContext(log_prefix)),
+TableInfo::TableInfo(const std::string& log_prefix_, PrivateTag)
+    : log_prefix(log_prefix_),
+      doc_read_context(new docdb::DocReadContext(log_prefix)),
       index_map(std::make_unique<IndexMap>()) {
 }
 
@@ -181,14 +182,21 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 
 TableInfo::~TableInfo() = default;
 
-Status TableInfo::LoadFromPB(
+Result<TableInfoPtr> TableInfo::LoadFromPB(
     const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb) {
+  Primary primary(primary_table_id == pb.table_id());
+  auto log_prefix = MakeTableInfoLogPrefix(tablet_log_prefix, primary, pb.table_id());
+  auto result = std::make_shared<TableInfo>(log_prefix, PrivateTag());
+  RETURN_NOT_OK(result->DoLoadFromPB(primary, pb));
+  return result;
+}
+
+Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   table_id = pb.table_id();
   namespace_name = pb.namespace_name();
   namespace_id = pb.namespace_id();
   table_name = pb.table_name();
   table_type = pb.table_type();
-  Primary primary(primary_table_id == table_id);
   cotable_id = VERIFY_RESULT(ParseCotableId(primary, table_id));
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
@@ -209,8 +217,6 @@ Status TableInfo::LoadFromPB(
     RETURN_NOT_OK(DeletedColumn::FromPB(deleted_col, &col));
     deleted_cols.push_back(col);
   }
-
-  log_prefix = MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id);
 
   return Status::OK();
 }
@@ -319,19 +325,15 @@ Status KvStoreInfo::LoadTablesFromPB(
     const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id) {
   tables.clear();
   for (const auto& table_pb : pbs) {
-    const TableId table_id = table_pb.table_id();
-    TableInfoPtr& table_info =
-        tables.emplace(table_id, std::make_shared<TableInfo>()).first->second;
-
-    RETURN_NOT_OK(table_info->LoadFromPB(tablet_log_prefix, primary_table_id, table_pb));
+    TableInfoPtr table_info = VERIFY_RESULT(TableInfo::LoadFromPB(
+        tablet_log_prefix, primary_table_id, table_pb));
+    tables.emplace(table_info->table_id, table_info);
 
     const Schema& schema = table_info->schema();
-    if (table_id != primary_table_id) {
-      if (schema.table_properties().is_ysql_catalog_table()) {
-        // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
-        // to set cotable ID.
-        table_info->doc_read_context->schema.set_cotable_id(table_info->cotable_id);
-      }
+    if (!table_info->primary() && schema.table_properties().is_ysql_catalog_table()) {
+      // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
+      // to set cotable ID.
+      table_info->doc_read_context->schema.set_cotable_id(table_info->cotable_id);
     }
     if (schema.has_colocation_id()) {
       colocation_to_table.emplace(schema.colocation_id(), table_info);
@@ -712,11 +714,12 @@ RaftGroupMetadata::RaftGroupMetadata(
 RaftGroupMetadata::~RaftGroupMetadata() {
 }
 
-RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id)
+RaftGroupMetadata::RaftGroupMetadata(FsManager* fs_manager, const RaftGroupId& raft_group_id)
     : state_(kNotLoadedYet),
       raft_group_id_(std::move(raft_group_id)),
       kv_store_(KvStoreId(raft_group_id_)),
-      fs_manager_(fs_manager) {
+      fs_manager_(fs_manager),
+      log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())) {
 }
 
 Status RaftGroupMetadata::LoadFromDisk() {
@@ -941,8 +944,17 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const std::vector<DeletedColumn>& deleted_cols,
                                   const SchemaVersion version,
                                   const TableId& table_id) {
-  DCHECK(schema.has_column_ids());
   std::lock_guard<MutexType> lock(data_mutex_);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, table_id);
+}
+
+void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
+                                  const IndexMap& index_map,
+                                  const std::vector<DeletedColumn>& deleted_cols,
+                                  const SchemaVersion version,
+                                  const TableId& table_id) {
+  DCHECK(data_mutex_.is_locked());
+  DCHECK(schema.has_column_ids());
   TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
   auto it = kv_store_.tables.find(target_table_id);
   CHECK(it != kv_store_.tables.end());
@@ -994,12 +1006,28 @@ void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_sche
 void RaftGroupMetadata::SetTableName(
     const string& namespace_name, const string& table_name, const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
+  SetTableNameUnlocked(namespace_name, table_name, table_id);
+}
+
+void RaftGroupMetadata::SetTableNameUnlocked(
+    const string& namespace_name, const string& table_name, const TableId& table_id) {
+  DCHECK(data_mutex_.is_locked());
   auto& tables = kv_store_.tables;
   auto& id = table_id.empty() ? primary_table_id_ : table_id;
   auto it = tables.find(id);
   DCHECK(it != tables.end());
   it->second->namespace_name = namespace_name;
   it->second->table_name = table_name;
+}
+
+void RaftGroupMetadata::SetSchemaAndTableName(
+    const Schema& schema, const IndexMap& index_map,
+    const std::vector<DeletedColumn>& deleted_cols,
+    const SchemaVersion version, const std::string& namespace_name,
+    const std::string& table_name, const TableId& table_id) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, table_id);
+  SetTableNameUnlocked(namespace_name, table_name, table_id);
 }
 
 void RaftGroupMetadata::AddTable(const std::string& table_id,

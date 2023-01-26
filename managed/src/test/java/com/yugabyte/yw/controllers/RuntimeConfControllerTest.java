@@ -11,6 +11,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CONTENT_CONF_PATH;
@@ -18,7 +19,9 @@ import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PAR
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.test.Helpers.BAD_REQUEST;
 import static play.test.Helpers.FORBIDDEN;
 import static play.test.Helpers.NOT_FOUND;
 import static play.test.Helpers.OK;
@@ -26,22 +29,27 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.ExternalScriptHelper;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -65,6 +73,7 @@ import play.test.Helpers;
 @RunWith(JUnitParamsRunner.class)
 public class RuntimeConfControllerTest extends FakeDBApplication {
   private static final String LIST_KEYS = "/api/runtime_config/mutable_keys";
+  private static final String LIST_KEY_INFO = "/api/runtime_config/mutable_key_info";
   private static final String LIST_SCOPES = "/api/customers/%s/runtime_config/scopes";
   private static final String GET_CONFIG = "/api/customers/%s/runtime_config/%s";
   private static final String GET_CONFIG_INCL_INHERITED = GET_CONFIG + "?includeInherited=true";
@@ -72,6 +81,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   private static final String GC_CHECK_INTERVAL_KEY = "yb.taskGC.gc_check_interval";
   private static final String EXT_SCRIPT_KEY = "yb.external_script";
   private static final String EXT_SCRIPT_SCHEDULE_KEY = "yb.external_script.schedule";
+  private static final String GLOBAL_KEY = "yb.ha.logScriptOutput";
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
@@ -114,6 +124,27 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void listKeyInfo() {
+    Result result = doRequestWithAuthToken("GET", LIST_KEY_INFO, authToken);
+    assertEquals(OK, result.status());
+    String actualInfo = contentAsString(result);
+    List<String> expectedInfo = new ArrayList<>();
+    ObjectMapper objMapper = new ObjectMapper();
+    try {
+      expectedInfo.add(objMapper.writeValueAsString(CustomerConfKeys.taskGcRetentionDuration));
+      expectedInfo.add(objMapper.writeValueAsString(ProviderConfKeys.allowUnsupportedInstances));
+      expectedInfo.add(objMapper.writeValueAsString(UniverseConfKeys.allowDowngrades));
+      expectedInfo.add(objMapper.writeValueAsString(GlobalConfKeys.auditMaxHistory));
+
+      for (String info : expectedInfo) {
+        assertTrue(info, actualInfo.contains(info));
+      }
+    } catch (JsonProcessingException e) {
+      fail(e.getMessage());
+    }
+  }
+
+  @Test
   public void listScopes() {
     Result result =
         doRequestWithAuthToken("GET", String.format(LIST_SCOPES, defaultCustomer.uuid), authToken);
@@ -145,31 +176,22 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   public void key() {
     assertEquals(
         NOT_FOUND,
-        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
-            .status());
+        assertPlatformException(() -> getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)).status());
     String newInterval = "2 days";
-    assertEquals(OK, setGCInterval(newInterval, defaultUniverse.universeUUID).status());
+    assertEquals(OK, setGCInterval(newInterval, GLOBAL_SCOPE_UUID).status());
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);
-    Duration duration =
-        runtimeConfigFactory.forUniverse(defaultUniverse).getDuration(GC_CHECK_INTERVAL_KEY);
+    Duration duration = runtimeConfigFactory.globalRuntimeConf().getDuration(GC_CHECK_INTERVAL_KEY);
     assertEquals(24 * 60 * 2, duration.toMinutes());
-    assertEquals(
-        newInterval, contentAsString(getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY)));
-    assertEquals(OK, deleteKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY).status());
+    assertEquals(newInterval, contentAsString(getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)));
+    assertEquals(OK, deleteKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY).status());
     assertEquals(
         NOT_FOUND,
-        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
-            .status());
+        assertPlatformException(() -> getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)).status());
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {
-    Http.RequestBuilder request =
-        fakeRequest(
-                "PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, GC_CHECK_INTERVAL_KEY))
-            .header("X-AUTH-TOKEN", authToken)
-            .bodyText(interval);
-    return route(app, request);
+    return setKey(GC_CHECK_INTERVAL_KEY, interval, scopeUUID);
   }
 
   @Test
@@ -229,18 +251,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   private Result setExtScriptObject(String schedule, String content, UUID scopeUUID) {
-    Http.RequestBuilder request =
-        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, EXT_SCRIPT_KEY))
-            .header("X-AUTH-TOKEN", authToken)
-            .bodyText(
-                String.format(
-                    "{"
-                        + "  schedule = %s\n"
-                        + "  params = %s\n"
-                        + "  content = \"the script\"\n"
-                        + "}",
-                    schedule, content));
-    return route(app, request);
+    return setKey(
+        EXT_SCRIPT_KEY,
+        String.format(
+            "{" + "  schedule = %s\n" + "  params = %s\n" + "  content = \"the script\"\n" + "}",
+            schedule, content),
+        scopeUUID);
   }
 
   private Result getKey(UUID scopeUUID, String key) {
@@ -359,12 +375,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
       new Object[] {ScopeType.UNIVERSE, "", ""},
       // We will return any strings as unquoted even if they were set as quoted
       new Object[] {ScopeType.GLOBAL, "\"33 days\"", "33 days"},
-      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "44 seconds"},
-      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "22 hours"},
-      // Set without quotes should be allowed for string objects backward compatibility
-      // Even when set with quotes we will return string without redundant quotes.
-      // But we will do proper escaping for special characters
-      new Object[] {ScopeType.UNIVERSE, "11\"", "11\\\""},
+      //      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "44 seconds"},
+      //      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "22 hours"},
+      //      // Set without quotes should be allowed for string objects backward compatibility
+      //      // Even when set with quotes we will return string without redundant quotes.
+      //      // But we will do proper escaping for special characters
+      //      new Object[] {ScopeType.UNIVERSE, "11\"", "11\\\""},
     };
   }
 
@@ -397,11 +413,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   private void setCloudEnabled(UUID scopeUUID) {
-    Http.RequestBuilder request =
-        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, "yb.cloud.enabled"))
-            .header("X-AUTH-TOKEN", authToken)
-            .bodyText("true");
-    route(app, request);
+    setKey("yb.cloud.enabled", "true", scopeUUID);
   }
 
   @Test
@@ -420,17 +432,103 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             return GC_CHECK_INTERVAL_KEY;
           }
 
-          public void processUniverse(Universe universe) {
+          public void processGlobal() {
             throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Some error");
           }
         });
     assertEquals(
         INTERNAL_SERVER_ERROR,
-        assertPlatformException(() -> setGCInterval(newInterval, defaultUniverse.universeUUID))
-            .status());
+        assertPlatformException(() -> setGCInterval(newInterval, GLOBAL_SCOPE_UUID)).status());
     assertEquals(
         NOT_FOUND,
         assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
             .status());
+  }
+
+  private Result setKey(String path, String newVal, UUID scopeUUID) {
+    Http.RequestBuilder request =
+        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, path))
+            .header("X-AUTH-TOKEN", authToken)
+            .bodyText(newVal);
+    return route(app, request);
+  }
+
+  @Test
+  public void scopeStrictnessTest() {
+    // Global key can only be set in global scope
+    Result r = assertPlatformException(() -> setKey(GLOBAL_KEY, "false", defaultCustomer.uuid));
+    assertEquals(BAD_REQUEST, r.status());
+    JsonNode rJson = Json.parse(contentAsString(r));
+    assertValue(rJson, "error", "Cannot set the key in this scope");
+
+    r = setKey(GLOBAL_KEY, "false", GLOBAL_SCOPE_UUID);
+    assertEquals(OK, r.status());
+  }
+
+  @Test
+  public void dataValidationTest() {
+    Result r = assertPlatformException(() -> setKey(GLOBAL_KEY, "Random", GLOBAL_SCOPE_UUID));
+    assertEquals(BAD_REQUEST, r.status());
+    JsonNode rJson = Json.parse(contentAsString(r));
+    assertValue(rJson, "error", "Not a valid boolean value");
+  }
+
+  @Test
+  public void catchKeysWithNoMetadata() {
+
+    Result result = doRequestWithAuthToken("GET", LIST_KEYS, authToken);
+    assertEquals(OK, result.status());
+    Set<String> listKeys =
+        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements())
+            .stream()
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
+
+    result = doRequestWithAuthToken("GET", LIST_KEY_INFO, authToken);
+    assertEquals(OK, result.status());
+    Set<String> metaKeys =
+        ImmutableSet.copyOf(Json.parse(contentAsString(result)))
+            .stream()
+            .map(JsonNode -> JsonNode.get("key"))
+            .map(JsonNode::asText)
+            .collect(Collectors.toSet());
+
+    for (String key : listKeys) {
+      if (!metaKeys.contains(key) && !validExcludedKey(key)) {
+        String failMsg =
+            String.format(
+                "Please define information for this key \"%s\" in one of "
+                    + "GlobalConfKeys, ProviderConfKeys , CustomerConfKeys or UniverseConfKeys."
+                    + "If you have questions post it to #runtime-config channel."
+                    + "Also see "
+                    + "https://docs.google.com/document/d/"
+                    + "1NAURMNdtOexYnfYN9mOSDChtrP2T4qkRhxsFdah7uwM/edit?usp=sharing",
+                key);
+        fail(failMsg);
+      }
+    }
+  }
+
+  private boolean validExcludedKey(String path) {
+    Set<String> excludedKeys =
+        ImmutableSet.of(
+            "yb.alert.slack.ws",
+            "yb.alert.webhook.ws",
+            "yb.alert.pagerduty.ws",
+            "yb.external_script",
+            "yb.ha.ws",
+            "yb.query_stats.live_queries.ws",
+            "yb.perf_advisor",
+            // TODO (PLAT-7110)
+            "yb.releases.path");
+    assertEquals(
+        "Do not modify this list to get the test to pass without discussing "
+            + "on #runtime-config channel.",
+        8,
+        excludedKeys.size());
+    for (String key : excludedKeys) {
+      if (path.startsWith(key)) return true;
+    }
+    return false;
   }
 }

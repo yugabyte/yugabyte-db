@@ -4,14 +4,18 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
-import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.NodeAgentPoller;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RecommendationGarbageCollector;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
@@ -31,7 +35,6 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
-import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -52,6 +55,8 @@ import play.Logger;
 @Singleton
 public class AppInit {
 
+  private static final long MAX_APP_INITIALIZATION_TIME = 30;
+
   @Inject
   public AppInit(
       Environment environment,
@@ -65,6 +70,7 @@ public class AppInit {
       PitrConfigPoller pitrConfigPoller,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
+      RefreshKmsService refreshKmsService,
       BackupGarbageCollector backupGC,
       PerfAdvisorScheduler perfAdvisorScheduler,
       PlatformReplicationManager replicationManager,
@@ -82,8 +88,10 @@ public class AppInit {
       ShellLogsManager shellLogsManager,
       Config config,
       SupportBundleCleanup supportBundleCleanup,
-      NodeAgentHandler nodeAgentHandler,
-      YbcUpgrade ybcUpgrade)
+      NodeAgentPoller nodeAgentPoller,
+      YbcUpgrade ybcUpgrade,
+      RecommendationGarbageCollector perfRecGC,
+      @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
 
@@ -204,14 +212,16 @@ public class AppInit {
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
       alertsGC.start();
+      perfRecGC.start();
 
       setUniverseKey.start();
+      // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
+      refreshKmsService.start();
 
       // Schedule garbage collection of backups
       backupGC.start();
 
-      // Schedule perf advisor data retrieval
-      // perfAdvisorScheduler.start();
+      perfAdvisorScheduler.start();
 
       // Cleanup old support bundles
       supportBundleCleanup.start();
@@ -227,13 +237,21 @@ public class AppInit {
       queryAlerts.start();
       healthChecker.initialize();
       shellLogsManager.startLogsGC();
-      nodeAgentHandler.init();
+      nodeAgentPoller.init();
       pitrConfigPoller.start();
 
       ybcUpgrade.start();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
+
+      Long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
+      String elapsedStr = String.valueOf(elapsed);
+      if (elapsed > MAX_APP_INITIALIZATION_TIME) {
+        Logger.warn("Completed initialization in " + elapsedStr + " seconds.");
+      } else {
+        Logger.info("Completed initialization in " + elapsedStr + " seconds.");
+      }
 
       Logger.info("AppInit completed");
     }

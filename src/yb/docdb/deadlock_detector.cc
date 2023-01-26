@@ -55,7 +55,7 @@ METRIC_DEFINE_coarse_histogram(
     tablet, deadlock_size, "Deadlock size", yb::MetricUnit::kTransactions,
     "The number of transactions involved in detected deadlocks");
 METRIC_DEFINE_coarse_histogram(
-    tablet, deadlock_probe_latency, "Deadlock probe latency", yb::MetricUnit::kMilliseconds,
+    tablet, deadlock_probe_latency, "Deadlock probe latency", yb::MetricUnit::kMicroseconds,
     "The time it takes to complete the probe from a waiting transaction to all of its blockers.");
 METRIC_DEFINE_gauge_uint64(
     tablet, deadlock_detector_waiters, "Num Waiting Txns", yb::MetricUnit::kTransactions,
@@ -307,7 +307,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     LOG_IF(DFATAL, !did_send_response_)
         << "Invoking callback without checking that it was not already invoked.";
     if (probe_latency_) {
-      probe_latency_->Increment(std::chrono::duration_cast<std::chrono::milliseconds>(
+      probe_latency_->Increment(std::chrono::duration_cast<std::chrono::microseconds>(
           CoarseMonoClock::Now() - sent_at_).count());
     }
     callback_(s, resp);

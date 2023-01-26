@@ -13,18 +13,19 @@ type: docs
 
 For on-premises deployments of YugabyteDB universes, you need to import nodes that can be managed by YugabyteDB Anywhere.
 
-## Ports
+## Prepare ports
 
 The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the YugabyteDB Anywhere node):
 
-* 7100 - Master RPC
-* 9100 - TServer RPC
+* 7100 - YB-Master RPC
+* 9100 - YB-TServer RPC
+* 18018 - YB Controller
 
 The following ports must be exposed for intra-cluster communication, and you should expose these ports to administrators or users monitoring the system, as these ports provide diagnostic troubleshooting and metrics:
 
 * 9300 - Prometheus metrics
-* 7000 - Master HTTP endpoint
-* 9000 - TServer HTTP endpoint
+* 7000 - YB-Master HTTP endpoint
+* 9000 - YB-TServer HTTP endpoint
 * 11000 - YEDIS API
 * 12000 - YCQL API
 * 13000 - YSQL API
@@ -40,7 +41,7 @@ For more information on ports used by YugabyteDB, refer to [Default ports](../..
 
 ## Prepare nodes
 
-You can prepare nodes for on premises deployment, as follows:
+You can prepare nodes for on-premises deployment, as follows:
 
 1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/preview/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/preview/deploy/checklist/#running-on-public-clouds).
 1. Install the prerequisites and verify the system resource limits, as described in [system configuration](/preview/deploy/manual-deployment/system-config).

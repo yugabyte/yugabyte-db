@@ -16,8 +16,8 @@ import {
   getPrimaryCluster,
   getReadOnlyCluster,
   nodeComparisonFunction
-} from '../../../utils/UniverseUtils';
-import { hasLiveNodes } from '../../../utils/UniverseUtils';
+, hasLiveNodes } from '../../../utils/UniverseUtils';
+
 import { YBLoading } from '../../common/indicators';
 
 export default class NodeDetails extends Component {

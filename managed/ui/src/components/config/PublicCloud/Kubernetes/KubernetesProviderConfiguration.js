@@ -79,7 +79,7 @@ class KubernetesProviderConfiguration extends Component {
           configPath: providerData.config['KUBECONFIG'],
           namespace: providerData.config['KUBECONFIG_NAMESPACE'],
           serviceAccount: providerData.config['KUBECONFIG_SERVICE_ACCOUNT'],
-          type: providerTypeMetadata && providerTypeMetadata.name
+          type: providerTypeMetadata?.name
         };
       })
       .filter(Boolean);

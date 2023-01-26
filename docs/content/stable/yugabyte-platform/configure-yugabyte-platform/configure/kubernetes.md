@@ -1,10 +1,10 @@
 ---
-title: Configure Kubernetes
+title: Configure YugabyteDB Overview
 headerTitle: Overview
 linkTitle: Overview
-description: Configuring YugabyteDB Anywhere on Kubernetes
+description: Configure YugabyteDB Anywhere on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Configuring YugabyteDB Anywhere on Kubernetes
+headcontent: Configure YugabyteDB Anywhere on Kubernetes
 menu:
   stable_yugabyte-platform:
     identifier: configure-4-k8s
@@ -39,7 +39,7 @@ For overview of how to configure database nodes, select one of the following clo
 
   <li>
     <a href="../kubernetes/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

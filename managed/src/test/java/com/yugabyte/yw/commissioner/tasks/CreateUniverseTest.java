@@ -14,7 +14,9 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static play.libs.Json.newObject;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -26,6 +28,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -60,6 +63,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
           TaskType.WaitForServer,
+          TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.UpdatePlacementInfo,
@@ -77,6 +81,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl, // tserver
           TaskType.WaitForServer,
+          TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.UpdatePlacementInfo,
@@ -285,7 +290,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     intent.numNodes = 1;
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            UniverseDefinitionTaskParams.ClusterType.ASYNC, intent, 1, null);
+            UniverseDefinitionTaskParams.ClusterType.ASYNC,
+            intent,
+            1,
+            null,
+            Collections.emptyList());
     Universe updated =
         Universe.saveDetails(
             defaultUniverse.universeUUID,

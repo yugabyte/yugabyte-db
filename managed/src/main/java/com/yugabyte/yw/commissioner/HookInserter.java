@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.typesafe.config.Config;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.utils.NaturalOrderComparator;
@@ -39,7 +39,7 @@ public class HookInserter {
       AbstractTaskBase task,
       UniverseTaskParams universeParams,
       Collection<NodeDetails> nodes) {
-    if (!task.runtimeConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH)) return;
+    if (!task.confGetter.getGlobalConf(GlobalConfKeys.enableCustomHooks)) return;
     List<Pair<Hook, Collection<NodeDetails>>> executionPlan =
         getExecutionPlan(trigger, universeParams, task.runtimeConfigFactory, nodes);
 

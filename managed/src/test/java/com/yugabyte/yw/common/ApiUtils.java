@@ -115,9 +115,26 @@ public class ApiUtils {
       final String nodePrefix,
       final boolean setMasters,
       final boolean updateInProgress) {
+    AvailableNodeTracker mockNodeTracker =
+        new AvailableNodeTracker(userIntent, Collections.emptyList()) {
+          @Override
+          public void acquire(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+            super.acquire(zoneId, serverType);
+          }
+
+          @Override
+          public int getAvailableForZone(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+            return Integer.MAX_VALUE;
+          }
+        };
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+            ClusterType.PRIMARY,
+            userIntent,
+            userIntent.replicationFactor,
+            null,
+            Collections.emptyList(),
+            mockNodeTracker);
     return mockUniverseUpdater(userIntent, nodePrefix, setMasters, updateInProgress, placementInfo);
   }
 

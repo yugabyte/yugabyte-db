@@ -448,6 +448,12 @@ extern bool yb_enable_expression_pushdown;
 extern bool yb_enable_optimizer_statistics;
 
 /*
+ * If true then condition rechecking is bypassed at YSQL if the condition is
+ * bound to DocDB.
+ */
+extern bool yb_bypass_cond_recheck;
+
+/*
  * Enables nonbreaking DDL mode in which a DDL statement is not considered as
  * a "breaking catalog change" and therefore will not cause running transactions
  * to abort.
@@ -464,6 +470,15 @@ extern bool yb_make_next_ddl_statement_nonbreaking;
  * issued in later invocations.
  */
 extern bool yb_plpgsql_disable_prefetch_in_for_query;
+
+/*
+ * Allow nextval() to fetch the value range and advance the sequence value in a
+ * single operation.
+ * If disabled, nextval() reads sequence value first, advances it and apply the
+ * new value, which may fail due to concurrent modification and has to be
+ * retried.
+ */
+extern bool yb_enable_sequence_pushdown;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.

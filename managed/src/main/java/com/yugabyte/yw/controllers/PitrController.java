@@ -5,21 +5,18 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.BackupUtil.ApiType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
-import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.Collections;
-import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
@@ -34,7 +31,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.SnapshotInfo;
 import org.yb.client.YBClient;
 import org.yb.CommonTypes.TableType;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
@@ -46,6 +42,8 @@ import play.mvc.Result;
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class PitrController extends AuthenticatedController {
+
+  public static final String PITR_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
 
   Commissioner commissioner;
   YBClientService ybClientService;
@@ -78,16 +76,19 @@ public class PitrController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot enable PITR when the universe is in paused state");
     }
+
+    checkCompatibleYbVersion(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     CreatePitrConfigParams taskParams = parseJsonAndValidate(CreatePitrConfigParams.class);
 
     if (taskParams.retentionPeriodInSeconds <= 0L) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config retention period can't be less than 1 second");
+          BAD_REQUEST, "PITR Config retention period cannot be less than 1 second");
     }
 
     if (taskParams.retentionPeriodInSeconds <= taskParams.intervalInSeconds) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config interval can't be less than retention period");
+          BAD_REQUEST, "PITR Config interval cannot be less than retention period");
     }
 
     TableType type = BackupUtil.API_TYPE_TO_TABLE_TYPE_MAP.get(ApiType.valueOf(tableType));
@@ -139,6 +140,8 @@ public class PitrController extends AuthenticatedController {
     ListSnapshotSchedulesResponse scheduleResp;
     List<SnapshotScheduleInfo> scheduleInfoList = null;
 
+    checkCompatibleYbVersion(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     if (universe.getUniverseDetails().universePaused) {
       pitrConfigList = PitrConfig.getByUniverseUUID(universeUUID);
       long currentTimeMillis = System.currentTimeMillis();
@@ -197,6 +200,9 @@ public class PitrController extends AuthenticatedController {
   public Result restore(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    checkCompatibleYbVersion(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot perform PITR when the universe is in paused state");
@@ -260,6 +266,9 @@ public class PitrController extends AuthenticatedController {
 
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    checkCompatibleYbVersion(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot delete PITR config when the universe is in paused state");
@@ -303,5 +312,14 @@ public class PitrController extends AuthenticatedController {
             Audit.ActionType.DeletePitrConfig,
             Json.toJson(pitrConfigUUID));
     return YBPSuccess.empty();
+  }
+
+  private void checkCompatibleYbVersion(String ybVersion) {
+    if (Util.compareYbVersions(ybVersion, PITR_COMPATIBLE_DB_VERSION, true) < 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "PITR feature not supported on universe DB version lower than "
+              + PITR_COMPATIBLE_DB_VERSION);
+    }
   }
 }

@@ -75,3 +75,18 @@ func TestExecutorCancel(t *testing.T) {
 		t.Fatalf("Expected Canceled status")
 	}
 }
+
+func TestExecutorPanic(t *testing.T) {
+	ctx := context.Background()
+	instance := GetInstance(ctx)
+	future, err := instance.SubmitTask(ctx, func(ctx context.Context) (any, error) {
+		panic("Panic")
+	})
+	if err != nil {
+		t.Fatalf("Submitting task to the executor failed - %s", err.Error())
+	}
+	_, err = future.Get()
+	if err == nil {
+		t.Fatalf("Expected Failure")
+	}
+}

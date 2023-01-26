@@ -11,6 +11,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -64,10 +65,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       Cluster primaryCluster = taskParams().getPrimaryCluster();
+      boolean isYSQLEnabled = primaryCluster.userIntent.enableYSQL;
       boolean isYCQLAuthEnabled =
           primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth;
-      boolean isYSQLAuthEnabled =
-          primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth;
+      boolean isYSQLAuthEnabled = isYSQLEnabled && primaryCluster.userIntent.enableYSQLAuth;
 
       // Store the passwords in the temporary variables first.
       // DB does not store the actual passwords.
@@ -164,7 +165,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createStartMasterProcessTasks(newMasters);
 
       // Start tservers on tserver nodes.
-      createStartTserverProcessTasks(newTservers);
+      createStartTserverProcessTasks(newTservers, isYSQLEnabled);
 
       // Set the node state to live.
       createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Live)
@@ -182,7 +183,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Create Load Balancer map to add nodes to load balancer
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =
-          createLoadBalancerMap(taskParams(), null, null);
+          createLoadBalancerMap(taskParams(), null, null, null);
       createManageLoadBalancerTasks(loadBalancerMap);
 
       // Run all the tasks.
@@ -197,6 +198,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       if (universe != null && universe.getUniverseDetails().updateSucceeded) {
         log.debug("Removing passwords for {}", universe.universeUUID);
         passwordStore.invalidate(universe.universeUUID);
+        if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")
+            && taskParams().overridePrebuiltAmiDBVersion) {
+          universe.updateConfig(
+              ImmutableMap.of(Universe.USE_CUSTOM_IMAGE, Boolean.toString(false)));
+          universe.save();
+        }
       }
     }
     log.info("Finished {} task.", getName());

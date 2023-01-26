@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -63,15 +64,19 @@ public class Commissioner {
   // A map of task UUIDs to latches for currently paused tasks.
   private final Map<UUID, CountDownLatch> pauseLatches = new ConcurrentHashMap<>();
 
+  private final ProviderEditRestrictionManager providerEditRestrictionManager;
+
   @Inject
   public Commissioner(
       ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
-      TaskExecutor taskExecutor) {
+      TaskExecutor taskExecutor,
+      ProviderEditRestrictionManager providerEditRestrictionManager) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
+    this.providerEditRestrictionManager = providerEditRestrictionManager;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
@@ -111,6 +116,7 @@ public class Commissioner {
       taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
       // Add the consumer to handle before task if available.
       taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
+      onTaskCreated(taskRunnable, taskParams);
       UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
       // Add this task to our queue.
       runningTasks.put(taskUUID, taskRunnable);
@@ -119,11 +125,24 @@ public class Commissioner {
       if (taskRunnable != null) {
         // Destroy the task initialization in case of failure.
         taskRunnable.task.terminate();
+        TaskInfo taskInfo = taskRunnable.taskInfo;
+        if (taskInfo.getTaskState() != TaskInfo.State.Failure) {
+          taskInfo.setTaskState(TaskInfo.State.Failure);
+          taskInfo.save();
+        }
       }
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
       LOG.error(msg, t);
+      if (t instanceof PlatformServiceException) {
+        throw t;
+      }
       throw new RuntimeException(msg, t);
     }
+  }
+
+  private void onTaskCreated(RunnableTask taskRunnable, ITaskParams taskParams) {
+    providerEditRestrictionManager.onTaskCreated(
+        taskRunnable.getTaskUUID(), taskRunnable.task, taskParams);
   }
 
   /**
@@ -279,23 +298,23 @@ public class Commissioner {
 
   // Returns the TaskExecutionListener instance.
   private TaskExecutionListener getTaskExecutionListener() {
-    TaskExecutionListener listener = null;
-    Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
-    if (beforeTaskConsumer != null) {
-      listener =
-          new TaskExecutionListener() {
-            @Override
-            public void beforeTask(TaskInfo taskInfo) {
-              LOG.info("About to execute task {}", taskInfo);
+    final Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
+    TaskExecutionListener listener =
+        new TaskExecutionListener() {
+          @Override
+          public void beforeTask(TaskInfo taskInfo) {
+            LOG.info("About to execute task {}", taskInfo);
+            if (beforeTaskConsumer != null) {
               beforeTaskConsumer.accept(taskInfo);
             }
+          }
 
-            @Override
-            public void afterTask(TaskInfo taskInfo, Throwable t) {
-              LOG.info("Task {} is completed", taskInfo);
-            }
-          };
-    }
+          @Override
+          public void afterTask(TaskInfo taskInfo, Throwable t) {
+            LOG.info("Task {} is completed", taskInfo);
+            providerEditRestrictionManager.onTaskFinished(taskInfo.getTaskUUID());
+          }
+        };
     return listener;
   }
 

@@ -121,7 +121,7 @@ axios.interceptors.response.use(
     if (isUnauthorised && !isAllowedUrl) {
       //redirect to users current page
       const searchParam = new URLSearchParams(window.location.search);
-      const location = searchParam.get('orig_url') || window.location.pathname;
+      const location = searchParam.get('orig_url') ?? window.location.pathname;
       browserHistory.push(
         location && !['/', '/login'].includes(location) ? `/login?orig_url=${location}` : '/login'
       );
@@ -133,11 +133,11 @@ axios.interceptors.response.use(
 function validateSession(store, replacePath, callback) {
   // Attempt to route to dashboard if tokens and cUUID exists or if insecure mode is on.
   // Otherwise, go to login/register.
-  const userId = Cookies.get('userId') || localStorage.getItem('userId');
-  const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
+  const userId = Cookies.get('userId') ?? localStorage.getItem('userId');
+  const customerId = Cookies.get('customerId') ?? localStorage.getItem('customerId');
   const searchParam = new URLSearchParams(window.location.search);
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
-    const location = searchParam.get('orig_url') || window.location.pathname;
+    const location = searchParam.get('orig_url') ?? window.location.pathname;
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
         store.dispatch(insecureLoginResponse(response));
@@ -145,6 +145,7 @@ function validateSession(store, replacePath, callback) {
         localStorage.setItem('customerId', response.payload.data.customerUUID);
         localStorage.setItem('userId', response.payload.data.userUUID);
         // Show the intro modal if OSS version
+        // eslint-disable-next-line eqeqeq
         if (localStorage.getItem('__yb_new_user__') == null) {
           localStorage.setItem('__yb_new_user__', true);
         }
@@ -205,6 +206,7 @@ function validateSession(store, replacePath, callback) {
   callback();
 }
 
+// eslint-disable-next-line react/display-name
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
     const params = nextState?.location?.query;

@@ -127,6 +127,18 @@ YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  bool is_called,
                                  bool* skipped);
 
+YBCStatus YBCFetchSequenceTuple(int64_t db_oid,
+                                int64_t seq_oid,
+                                uint64_t ysql_catalog_version,
+                                bool is_db_catalog_version_mode,
+                                uint32_t fetch_count,
+                                int64_t inc_by,
+                                int64_t min_value,
+                                int64_t max_value,
+                                bool cycle,
+                                int64_t *first_value,
+                                int64_t *last_value);
+
 YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
@@ -379,8 +391,11 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num,
                                         bool start_inclusive,
                                         YBCPgExpr attr_value_end,
                                         bool end_inclusive);
-YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
-    YBCPgExpr *attr_values);
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
+                                   YBCPgExpr lhs,
+                                   int n_attr_values,
+                                   YBCPgExpr *attr_values);
+
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
 YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
@@ -570,6 +585,11 @@ YBCStatus YBCPgNewOperator(
     bool collate_is_valid_non_c, YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
+YBCStatus YBCPgNewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    YBCPgExpr *elems, YBCPgExpr *expr_handle);
+
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
                             bool is_null, size_t *type_size);
 
@@ -627,6 +647,8 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* 
 void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
 
 void YBCStopSysTablePrefetching();
+
+bool YBCIsSysTablePrefetchingStarted();
 
 void YBCRegisterSysTableForPrefetching(
     YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid);

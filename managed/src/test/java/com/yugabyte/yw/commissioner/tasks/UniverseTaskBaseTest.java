@@ -188,6 +188,14 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     return placementInfo;
   }
 
+  private Set<NodeDetails> getAllNodes(LoadBalancerConfig lbConfig) {
+    Set<NodeDetails> allNodes = new HashSet<>();
+    for (Set<NodeDetails> nodes : lbConfig.getAzNodes().values()) {
+      allNodes.addAll(nodes);
+    }
+    return allNodes;
+  }
+
   @Test
   // @formatter:off
   @Parameters({
@@ -247,7 +255,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     }
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
     Optional<Boolean> optional =
-        universeTaskBase.instanceExists(
+        UniverseTaskBase.instanceExists(
             taskParams,
             ImmutableMap.of(
                 "universe_uuid",
@@ -282,7 +290,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     }
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
     Optional<Boolean> optional =
-        universeTaskBase.instanceExists(
+        UniverseTaskBase.instanceExists(
             taskParams,
             ImmutableMap.of("universe_uuid", "blah", "node_uuid", taskParams.nodeUuid.toString()));
     assertEquals(true, optional.isPresent());
@@ -298,7 +306,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     ShellResponse response = new ShellResponse();
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
     Optional<Boolean> optional =
-        universeTaskBase.instanceExists(
+        UniverseTaskBase.instanceExists(
             taskParams,
             ImmutableMap.of(
                 "universe_uuid",
@@ -346,7 +354,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
         universeTaskBase.createLoadBalancerMap(
-            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster1)), null);
+            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster1)), null, null);
     // Check only lb1 exists
     assertThat(lbMap, aMapWithSize(1));
     assertThat(lbMap.keySet(), everyItem(hasProperty("lbName", equalTo("lb1"))));
@@ -354,24 +362,32 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
       Set<NodeDetails> expectedNodes = new HashSet<>(nodes1);
       expectedNodes.add(nodes2.get(0));
-      assertThat(lbConfig.getAllNodes(), containsInAnyOrder(expectedNodes.toArray()));
+      assertThat(getAllNodes(lbConfig), containsInAnyOrder(expectedNodes.toArray()));
     }
-    // Test retrieve all nodes
+    // Test retrieve all nodes by nodesToAdd
+    lbMap = universeTaskBase.createLoadBalancerMap(taskParams, null, null, new HashSet<>(allNodes));
+    assertEquals(2, lbMap.size());
+    Set<NodeDetails> returnedNodes = new HashSet<>();
+    for (LoadBalancerConfig lbConfig : lbMap.values()) {
+      returnedNodes.addAll(getAllNodes(lbConfig));
+    }
+    assertThat(returnedNodes, containsInAnyOrder(allNodes.toArray()));
+    // Test retrieve all nodes without nodesToAdd
     lbMap =
         universeTaskBase.createLoadBalancerMap(
-            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster2)), null);
+            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster2)), null, null);
     assertEquals(2, lbMap.size());
-    Set<NodeDetails> nodes = new HashSet<>();
+    returnedNodes = new HashSet<>();
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
-      nodes.addAll(lbConfig.getAllNodes());
+      returnedNodes.addAll(getAllNodes(lbConfig));
     }
-    assertThat(nodes, containsInAnyOrder(allNodes.toArray()));
+    assertThat(returnedNodes, containsInAnyOrder(allNodes.toArray()));
     // Test null cluster (default to all clusters)
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMapDefault =
-        universeTaskBase.createLoadBalancerMap(taskParams, null, null);
-    nodes = new HashSet<>();
+        universeTaskBase.createLoadBalancerMap(taskParams, null, null, null);
+    returnedNodes = new HashSet<>();
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
-      nodes.addAll(lbConfig.getAllNodes());
+      returnedNodes.addAll(getAllNodes(lbConfig));
     }
     assertThat(lbMapDefault, equalTo(lbMap));
   }
@@ -420,7 +436,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     // Test
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
-        universeTaskBase.generateLoadBalancerMap(taskParams, taskParams.clusters, nodesToIgnore);
+        universeTaskBase.generateLoadBalancerMap(
+            taskParams, taskParams.clusters, nodesToIgnore, null);
     // Check number of LBs
     assertThat(lbMap, aMapWithSize(numLBs));
     // Check AZs/nodes
@@ -459,10 +476,13 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
         universeTaskBase.generateLoadBalancerMap(
-            taskParams, taskParams.clusters, new HashSet<>(nodes));
+            taskParams, taskParams.clusters, new HashSet<>(nodes), null);
     assertThat(lbMap, anEmptyMap());
     // Test no clusters
-    lbMap = universeTaskBase.generateLoadBalancerMap(taskParams, null, null);
+    lbMap = universeTaskBase.generateLoadBalancerMap(taskParams, null, null, null);
+    assertThat(lbMap, anEmptyMap());
+    // Test no clusters and add all nodes
+    lbMap = universeTaskBase.generateLoadBalancerMap(taskParams, null, null, new HashSet<>(nodes));
     assertThat(lbMap, anEmptyMap());
   }
 

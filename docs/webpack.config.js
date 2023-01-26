@@ -3,7 +3,8 @@ const path = require('path');
 const config = {
   context: path.join(__dirname, 'src'),
   entry: {
-    site: ['./index.js'],
+    site: './index.js',
+    search: './algolia-search.js',
   },
   output: {
     path: path.join(__dirname, 'static/js'),

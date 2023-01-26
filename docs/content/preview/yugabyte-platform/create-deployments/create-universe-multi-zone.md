@@ -21,7 +21,7 @@ Generic</a>
 
   <li>
     <a href="../create-universe-multi-zone-kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

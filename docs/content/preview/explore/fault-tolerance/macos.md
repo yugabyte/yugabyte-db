@@ -1,8 +1,9 @@
 ---
 title: Explore fault tolerance
-headerTitle: Fault tolerance
-linkTitle: Fault tolerance
+headerTitle: Continuous availability
+linkTitle: Continuous availability
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB database cluster.
+headcontent: Highly available and fault tolerant
 aliases:
   - /explore/fault-tolerance/
   - /preview/explore/fault-tolerance/
@@ -17,74 +18,75 @@ menu:
 type: docs
 ---
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. You create YSQL tables with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster remains available for both reads and writes even if one node fails. However, if another node fails (bringing the number of failures to two), writes become unavailable on the cluster to preserve data consistency.
+YugabyteDB is able to continuously serve requests in the event of planned or unplanned outages, such as system upgrades or node, availability zone, and regional outages.
 
-{{< note title="Setup" >}}
+YugabyteDB provides this [high availability](../../../architecture/core-functions/high-availability/) (HA) by replicating data across [fault domains](../../../architecture/docdb-replication/replication/#fault-domains). If a fault domain experiences a failure, an active replica is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
 
-Local multi-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
+This is reflected in both the recovery point objective (RPO) and recovery time objective (RTO) for YugabyteDB clusters:
 
-{{< /note >}}
+- The RPO for the tablets in a YugabyteDB cluster is 0, meaning no data is lost in the failover to another fault domain.
+- The RTO for a zone outage is ~3 seconds, which is the time window for completing the failover and becoming operational out of the remaining fault domains.
 
-## Run the sample key-value app
+<img src="/images/architecture/replication/rpo-vs-rto-zone-outage.png"/>
 
-Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) using the following command:
+The benefits of continuous availability extend to performing maintenance and database upgrades. You can maintain and [upgrade your cluster](../../../manage/upgrade-deployment/) to a newer version of YugabyteDB by performing a rolling upgrade; that is, bringing each node down in turn, upgrading the software, and starting it up again, with zero downtime for the cluster as a whole.
 
-```sh
-wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
-```
+## Example
 
-Run the `SqlInserts` workload against the local cluster using the following command:
+This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. In this scenario, you create a cluster with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the cluster remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable on the cluster to preserve data consistency.
 
-```sh
-java -jar ./yb-sample-apps.jar --workload SqlInserts \
-                               --nodes 127.0.0.1:5433 \
-                               --num_threads_write 1 \
-                               --num_threads_read 4
-```
+The tutorial uses the YB Workload Simulator application, which uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a cluster, and re-balances connections when a node fails.
 
-The `SqlInserts` workload prints some statistics while running as follows:
+{{% explore-setup-multi %}}
 
-```output
-32001 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4508.59 ops/sec (0.88 ms/op), 121328 total ops  |  Write: 658.11 ops/sec (1.51 ms/op), 18154 total ops  |  Uptime: 30024 ms | ...
-37006 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4342.41 ops/sec (0.92 ms/op), 143061 total ops  |  Write: 635.59 ops/sec (1.58 ms/op), 21335 total ops  |  Uptime: 35029 ms | ...
-```
+Follow the setup instructions to start a three-node cluster, connect the YB Workload Simulator application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
-For more information about the output of the workload applications, refer to [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
+### Observe even load across all nodes
 
-## Observe even load across all nodes
+To view a table of per-node statistics for the cluster, navigate to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The following illustration shows the total read and write IOPS per node. Note that both the reads and the writes are roughly the same across all the nodes, indicating uniform load across the nodes.
 
-You can check a lot of the per-node statistics by browsing to [tablet-servers](http://127.0.0.1:7000/tablet-servers). The total read and write IOPS per node are demonstrated by the following illustration:
+![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance-evenly-distributed.png)
 
-![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance_evenly_distributed.png)
+To view the latency and throughput on the cluster while the workload is running, navigate to the [simulation application UI](http://127.0.0.1:8000/).
 
-Note how both the reads and the writes are roughly the same across all the nodes, indicating uniform usage across the nodes.
+![Latency and throughput with 3 nodes](/images/ce/fault-tolerance-latency-throughput.png)
 
-## Remove a node and observe continuous write availability
+### Stop a node and observe continuous write availability
 
-Remove a node from the cluster using the following command:
+Stop one of the nodes to simulate the loss of a zone as follows:
 
 ```sh
-./bin/yugabyted stop \
-                  --base_dir=/tmp/ybd3
+$ ./bin/yugabyted stop --base_dir=/tmp/ybd2
 ```
 
-Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the status update.
+Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update.
 
-The `Time since heartbeat` value for that node will keep increasing. When the number reaches 60s (1 minute), YugabyteDB changes the status of the removed node from `ALIVE` to `DEAD`. Note that at this time the cluster is running in an under-replicated state for some subset of tablets.
+The `Time since heartbeat` value for that node starts to increase. When that number reaches 60s (1 minute), YugabyteDB changes the status of that node from ALIVE to DEAD. Observe the load (tablets) and IOPS getting moved off the removed node and redistributed to the other nodes.
 
-![Read and write IOPS with 3rd node dead](/images/ce/fault_tolerance_dead_node.png)
+![Read and write IOPS with one node stopped](/images/ce/fault-tolerance-dead-node.png)
 
-## Clean up
+With the loss of the node, which also represents the loss of an entire fault domain, the cluster is now in an under-replicated state.
 
-Optionally, you can shut down the local cluster you created as follows:
+Navigate to the [simulation application UI](http://127.0.0.1:8000/) to see the node removed from the network diagram when it is stopped. Note that it may take about 60s (1 minute) to display the updated network diagram. You can also notice a spike and drop in the latency and throughput, both of which resume immediately.
+
+![Latency and throughput graph after dropping a node](/images/ce/fault-tolerance-latency-stoppednode.png)
+
+Despite the loss of an entire fault domain, there is no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
+
+### Clean up
+
+You can shut down the local cluster you created as follows:
 
 ```sh
 ./bin/yugabyted destroy \
                 --base_dir=/tmp/ybd1
-
 ./bin/yugabyted destroy \
                 --base_dir=/tmp/ybd2
-
 ./bin/yugabyted destroy \
                 --base_dir=/tmp/ybd3
 ```
+
+## Learn more
+
+- YugabyteDB Friday Tech Talk: [Continuous Availability with YugabyteDB](https://www.youtube.com/watch?v=4PpiOMcq-j8)
+- [Synchronous replication](../../../architecture/docdb-replication/replication/)

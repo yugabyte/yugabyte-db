@@ -163,6 +163,14 @@ message PgsqlSamplingStatePB {
   optional uint64 rand_state = 6;
 }
 
+message PgsqlFetchSequenceParamsPB {
+  optional uint32 fetch_count = 1;
+  optional int64 inc_by = 2;
+  optional int64 min_value = 3;
+  optional int64 max_value = 4;
+  optional bool cycle = 5;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Data Writing Instructions - INSERT, UPDATE, DELETE, colocated TRUNCATE.
 //--------------------------------------------------------------------------------------------------
@@ -176,6 +184,7 @@ message PgsqlWriteRequestPB {
     PGSQL_DELETE = 3;
     PGSQL_UPSERT = 4;
     PGSQL_TRUNCATE_COLOCATED = 5;
+    PGSQL_FETCH_SEQUENCE = 6;
   }
 
   // Client info
@@ -269,6 +278,8 @@ message PgsqlWriteRequestPB {
 
   // Used only in pg client.
   optional bytes partition_key = 22;
+
+  optional PgsqlFetchSequenceParamsPB fetch_sequence_params = 25;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -406,6 +417,10 @@ message PgsqlReadRequestPB {
 
   // Reading distinct columns?
   optional bool distinct = 11 [default = false];
+
+  // Current only used on SELECT DISTINCT scan. If the value is greater than 0, use the specified
+  // prefix length to scan the table.
+  optional uint64 prefix_length = 39 [default = 0];
 
   // Flag for reading aggregate values.
   optional bool is_aggregate = 12 [default = false];

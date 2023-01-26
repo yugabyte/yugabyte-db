@@ -35,6 +35,28 @@ export enum CloudType {
   other = 'other'
 }
 
+// PublicCloudConstants.java
+export enum StorageType {
+  IO1 = 'IO1',
+  GP2 = 'GP2',
+  GP3 = 'GP3',
+  Scratch = 'Scratch',
+  Persistent = 'Persistent',
+  StandardSSD_LRS = 'StandardSSD_LRS',
+  Premium_LRS = 'Premium_LRS',
+  UltraSSD_LRS = 'UltraSSD_LRS'
+}
+
+export interface DeviceInfo {
+  volumeSize: number;
+  numVolumes: number;
+  diskIops: number | null;
+  throughput: number | null;
+  storageClass: 'standard'; // hardcoded in DeviceInfo.java
+  mountPoints: string | null;
+  storageType: StorageType | null;
+}
+
 // UniverseTaskParams.java
 export interface CommunicationPorts {
   masterHttpPort: number;
@@ -123,28 +145,6 @@ export interface EncryptionAtRestConfig {
   type?: 'DATA_KEY' | 'CMK';
 }
 
-// PublicCloudConstants.java
-export enum StorageType {
-  IO1 = 'IO1',
-  GP2 = 'GP2',
-  GP3 = 'GP3',
-  Scratch = 'Scratch',
-  Persistent = 'Persistent',
-  StandardSSD_LRS = 'StandardSSD_LRS',
-  Premium_LRS = 'Premium_LRS',
-  UltraSSD_LRS = 'UltraSSD_LRS'
-}
-
-export interface DeviceInfo {
-  volumeSize: number;
-  numVolumes: number;
-  diskIops: number | null;
-  throughput: number | null;
-  storageClass: 'standard'; // hardcoded in DeviceInfo.java
-  mountPoints: string | null;
-  storageType: StorageType | null;
-}
-
 // NodeDetails.java
 export enum NodeState {
   ToBeAdded = 'ToBeAdded',
@@ -218,6 +218,12 @@ export interface Universe {
   universeDetails: UniverseDetails;
   universeUUID: string;
   version: number;
+}
+
+export enum TableType {
+  YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
+  REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
+  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
 }
 
 export interface YBTable {
@@ -354,12 +360,6 @@ export interface HAReplicationSchedule {
   is_running: boolean;
 }
 
-export enum TableType {
-  YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
-  REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
-  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
-}
-
 export const TableTypeLabel: Record<TableType, string> = {
   YQL_TABLE_TYPE: 'YCQL',
   PGSQL_TABLE_TYPE: 'YSQL',
@@ -462,6 +462,10 @@ export interface RunTimeConfigData {
   configKey: string;
   configValue: string;
   isConfigInherited: boolean;
+  displayName: string;
+  helpTxt: string;
+  type: string;
+  scope: string;
 }
 
 export enum RunTimeConfigScope {

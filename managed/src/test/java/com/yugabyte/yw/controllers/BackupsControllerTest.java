@@ -11,7 +11,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.models.CustomerTask.TaskType.Restore;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
@@ -32,6 +31,7 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -49,11 +49,14 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -100,6 +103,37 @@ public class BackupsControllerTest extends FakeDBApplication {
     backupTableParams.customerUuid = defaultCustomer.uuid;
     defaultBackup = Backup.create(defaultCustomer.uuid, backupTableParams);
     defaultBackup.setTaskUUID(taskUUID);
+
+    RestoreBackupParams restoreBackupParams = new RestoreBackupParams();
+    restoreBackupParams.customerUUID = defaultCustomer.uuid;
+    restoreBackupParams.universeUUID = defaultUniverse.universeUUID;
+    restoreBackupParams.storageConfigUUID = customerConfig.configUUID;
+    restoreBackupParams.backupStorageInfoList = new ArrayList<BackupStorageInfo>();
+    BackupStorageInfo storageInfo = new BackupStorageInfo();
+    storageInfo.storageLocation = defaultBackup.getBackupInfo().storageLocation;
+    storageInfo.keyspace = defaultBackup.getBackupInfo().getKeyspace();
+    restoreBackupParams.backupStorageInfoList.add(storageInfo);
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode bodyJson = mapper.valueToTree(restoreBackupParams);
+    TaskInfo taskInfo = new TaskInfo(TaskType.RestoreBackup);
+    taskInfo.setTaskDetails(bodyJson);
+    taskInfo.setOwner("");
+    UUID restoreTaskUUID = UUID.randomUUID();
+    taskInfo.setTaskUUID(restoreTaskUUID);
+    taskInfo.save();
+
+    TaskInfo taskInfoSub = new TaskInfo(TaskType.RestoreBackupYb);
+    taskInfoSub.setTaskDetails(bodyJson);
+    taskInfoSub.setOwner("");
+    UUID taskUUIDSub = UUID.randomUUID();
+    taskInfoSub.setTaskUUID(taskUUIDSub);
+    taskInfoSub.setParentUuid(restoreTaskUUID);
+    taskInfoSub.setPosition(1);
+    taskInfoSub.save();
+    Restore restore = Restore.create(restoreTaskUUID, restoreBackupParams);
+
+    restore.setState(Restore.State.Created);
+    restore.save();
   }
 
   private JsonNode listBackups(UUID universeUUID) {
@@ -696,7 +730,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
-    assertEquals(Restore, ct.getType());
+    assertEquals(CustomerTask.TaskType.Restore, ct.getType());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
@@ -749,7 +783,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
-    assertEquals(Restore, ct.getType());
+    assertEquals(CustomerTask.TaskType.Restore, ct.getType());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
@@ -829,7 +863,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
-    assertEquals(Restore, ct.getType());
+    assertEquals(CustomerTask.TaskType.Restore, ct.getType());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
@@ -954,7 +988,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
-    assertEquals(Restore, ct.getType());
+    assertEquals(CustomerTask.TaskType.Restore, ct.getType());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
@@ -1644,5 +1678,243 @@ public class BackupsControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(json.get("taskUUID").size(), 0);
     assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  private Result getPagedRestoreList(UUID customerUUID, JsonNode body) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "POST";
+    String url = "/api/customers/" + customerUUID + "/restore/page";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, body);
+  }
+
+  @Test
+  public void testGetPagedRestoreList() {
+    RestoreBackupParams restoreBackupParams = new RestoreBackupParams();
+    restoreBackupParams.customerUUID = defaultCustomer.uuid;
+    restoreBackupParams.universeUUID = defaultUniverse.universeUUID;
+    restoreBackupParams.storageConfigUUID = customerConfig.configUUID;
+    restoreBackupParams.backupStorageInfoList = new ArrayList<BackupStorageInfo>();
+    BackupStorageInfo storageInfo = new BackupStorageInfo();
+    storageInfo.storageLocation = defaultBackup.getBackupInfo().storageLocation;
+    storageInfo.keyspace = defaultBackup.getBackupInfo().getKeyspace();
+    restoreBackupParams.backupStorageInfoList.add(storageInfo);
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode bodyJson = mapper.valueToTree(restoreBackupParams);
+    TaskInfo taskInfo = new TaskInfo(TaskType.RestoreBackup);
+    taskInfo.setTaskDetails(bodyJson);
+    taskInfo.setOwner("");
+    taskInfo.setTaskState(TaskInfo.State.Success);
+    UUID taskUUID = UUID.randomUUID();
+    taskInfo.setTaskUUID(taskUUID);
+    taskInfo.save();
+
+    TaskInfo taskInfoSub = new TaskInfo(TaskType.RestoreBackupYb);
+    taskInfoSub.setTaskDetails(bodyJson);
+    taskInfoSub.setOwner("");
+    UUID taskUUIDSub = UUID.randomUUID();
+    taskInfoSub.setTaskUUID(taskUUIDSub);
+    taskInfoSub.setParentUuid(taskUUID);
+    taskInfoSub.setPosition(1);
+    taskInfoSub.setTaskState(TaskInfo.State.Success);
+    taskInfoSub.save();
+
+    Restore restore = Restore.create(taskUUID, restoreBackupParams);
+    restore.setState(Restore.State.Completed);
+    restore.save();
+
+    ObjectNode bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set("filter", Json.newObject());
+    Result result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    JsonNode restoreJson = Json.parse(contentAsString(result));
+    ArrayNode response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(2, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+
+    bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set("filter", Json.newObject().set("states", Json.newArray().add("Completed")));
+    result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    restoreJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(1, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+
+    bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set("filter", Json.newObject().set("states", Json.newArray().add("Created")));
+    result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    restoreJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(1, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+
+    bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set(
+        "filter", Json.newObject().set("states", Json.newArray().add("Created").add("Completed")));
+    result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    restoreJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(2, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+
+    bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set("filter", Json.newObject().set("states", Json.newArray().add("Failed")));
+    result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    restoreJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(0, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testGetPagedRestoreListWithUniversesFilter() {
+    RestoreBackupParams restoreBackupParams = new RestoreBackupParams();
+    restoreBackupParams.customerUUID = defaultCustomer.uuid;
+    Universe universe =
+        ModelFactory.createUniverse(
+            "restore-universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getCustomerId(),
+            CloudType.aws);
+
+    restoreBackupParams.universeUUID = universe.universeUUID;
+    restoreBackupParams.storageConfigUUID = customerConfig.configUUID;
+    restoreBackupParams.backupStorageInfoList = new ArrayList<BackupStorageInfo>();
+    BackupStorageInfo storageInfo = new BackupStorageInfo();
+    storageInfo.storageLocation = defaultBackup.getBackupInfo().storageLocation;
+    storageInfo.keyspace = defaultBackup.getBackupInfo().getKeyspace();
+    restoreBackupParams.backupStorageInfoList.add(storageInfo);
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode bodyJson = mapper.valueToTree(restoreBackupParams);
+    TaskInfo taskInfo = new TaskInfo(TaskType.RestoreBackup);
+    taskInfo.setTaskDetails(bodyJson);
+    taskInfo.setOwner("");
+    taskInfo.setTaskState(TaskInfo.State.Success);
+    UUID taskUUID = UUID.randomUUID();
+    taskInfo.setTaskUUID(taskUUID);
+    taskInfo.save();
+
+    TaskInfo taskInfoSub = new TaskInfo(TaskType.RestoreBackupYb);
+    taskInfoSub.setTaskDetails(bodyJson);
+    taskInfoSub.setOwner("");
+    UUID taskUUIDSub = UUID.randomUUID();
+    taskInfoSub.setTaskUUID(taskUUIDSub);
+    taskInfoSub.setParentUuid(taskUUID);
+    taskInfoSub.setPosition(1);
+    taskInfoSub.setTaskState(TaskInfo.State.Success);
+    taskInfoSub.save();
+
+    Restore restore = Restore.create(taskUUID, restoreBackupParams);
+
+    ObjectNode bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set(
+        "filter",
+        Json.newObject().set("sourceUniverseNameList", Json.newArray().add(defaultUniverse.name)));
+    Result result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    JsonNode restoreJson = Json.parse(contentAsString(result));
+    ArrayNode response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(2, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+
+    bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set(
+        "filter", Json.newObject().set("sourceUniverseNameList", Json.newArray().add("NewTest")));
+    result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    restoreJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(0, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+
+    bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set(
+        "filter",
+        Json.newObject()
+            .set(
+                "sourceUniverseNameList",
+                Json.newArray().add(defaultUniverse.name).add(universe.name)));
+    result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    restoreJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(2, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+
+    bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set(
+        "filter",
+        Json.newObject()
+            .set("universeUUIDList", Json.newArray().add(defaultUniverse.universeUUID.toString())));
+    result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    restoreJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(1, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+
+    bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set(
+        "filter",
+        Json.newObject()
+            .set(
+                "universeUUIDList",
+                Json.newArray()
+                    .add(defaultUniverse.universeUUID.toString())
+                    .add(universe.universeUUID.toString())));
+    result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    restoreJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(2, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
+
+    bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "DESC");
+    bodyJson3.put("sortBy", "createTime");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set(
+        "filter",
+        Json.newObject()
+            .set("universeUUIDList", Json.newArray().add(UUID.randomUUID().toString())));
+    result = getPagedRestoreList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    restoreJson = Json.parse(contentAsString(result));
+    response = (ArrayNode) restoreJson.get("entities");
+    assertEquals(0, response.size());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 }

@@ -228,7 +228,7 @@ public class UniverseResp {
       UUID certUUID =
           universe.getUniverseDetails().rootAndClientRootCASame
               ? universe.getUniverseDetails().rootCA
-              : universe.getUniverseDetails().clientRootCA;
+              : universe.getUniverseDetails().getClientRootCA();
       if (certUUID == null) {
         log.warn("CertUUID cannot be null when TLS is enabled");
       }

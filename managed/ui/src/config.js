@@ -8,7 +8,7 @@ export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
 // set auth cookies for API host domain and redirect to API host root instead of localhost:3000/
 // Need to manually set "userId", "customerId" and "PLAY_SESSION" cookies for localhost:3000
 export const ROOT_URL =
-  process.env.REACT_APP_YUGAWARE_API_URL ||
+  process.env.REACT_APP_YUGAWARE_API_URL ??
   (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v1' : '/api/v1');
 
 // Allow requests made to endpoints in ‘routes’ file.
@@ -22,7 +22,7 @@ export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
 // get SSO flag from global config loaded in index.html before UI app started
 export const USE_SSO = _.get(window, 'YB_Platform_Config.use_oauth', false);
 
-export const isSSOLogin = () => Cookies.get('apiToken') || localStorage.getItem('apiToken');
+export const isSSOLogin = () => Cookies.get('apiToken') ?? localStorage.getItem('apiToken');
 
 export const isSSOEnabled = () => _.get(window, 'YB_Platform_Config.use_oauth', false);
 
@@ -54,6 +54,7 @@ export const REGION_METADATA = [
   { code: 'eu-west-1', name: 'Europe (Ireland)', latitude: 53, longitude: -9 },
   { code: 'eu-west-2', name: 'Europe (London)', latitude: 51, longitude: 0 },
   { code: 'eu-west-3', name: 'Europe (Paris)', latitude: 48, longitude: 3 },
+  { code: 'eu-west-4', name: 'Europe (Amsterdam)', latitude: 52, longitude: 5 },
   { code: 'eu-central-1', name: 'Europe (Frankfurt)', latitude: 50, longitude: 9 },
   { code: 'ap-southeast-1', name: 'Asia Pacific (Singapore)', latitude: 5, longitude: 104 },
   { code: 'ap-southeast-2', name: 'Asia Pacific (Sydney)', latitude: -34, longitude: 151 },

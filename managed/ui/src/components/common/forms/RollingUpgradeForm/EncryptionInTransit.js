@@ -15,6 +15,8 @@ import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { useDispatch, useSelector } from 'react-redux';
 import { getPrimaryCluster, getReadOnlyCluster } from '../../../../utils/UniverseUtils';
 import { updateTLS } from '../../../../actions/customers';
+import { YBBanner, YBBannerVariant } from '../../descriptors';
+
 import './EncryptionInTransit.scss';
 
 const CLIENT_TO_NODE_ROTATE_MSG =
@@ -106,7 +108,7 @@ function getEncryptionComponent(
           </Col>
         </Row>
       )}
-      {status && status[inputName] && (
+      {status?.[inputName] && (
         <Alert key={status[inputName]} variant="warning" bsStyle="warning">
           {status[inputName]}
         </Alert>
@@ -139,8 +141,8 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     clientRootCA: universeDetails.clientRootCA
       ? universeDetails.clientRootCA
       : universeDetails.rootAndClientRootCASame
-        ? universeDetails.rootCA
-        : CREATE_NEW_CERTIFICATE,
+      ? universeDetails.rootCA
+      : CREATE_NEW_CERTIFICATE,
     createNewRootCA: false,
     createNewClientRootCA: false,
     rootAndClientRootCASame: universeDetails.rootAndClientRootCASame,
@@ -198,7 +200,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
 
     if (formValues.rootAndClientRootCASame) {
       if (formValues.enableNodeToNodeEncrypt && formValues.enableClientToNodeEncrypt) {
-        formValues['clientRootCA'] = formValues['rootCA'];
+        formValues['clientRootCA'] = null;
         formValues['createNewClientRootCA'] = false;
       }
     }
@@ -222,6 +224,9 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     });
   };
 
+  const universeHasXClusterConfig =
+    universeDetails.sourceXClusterConfigs.length > 0 ||
+    universeDetails.targetXClusterConfigs.length > 0;
   return (
     <YBModalForm
       visible={visible}
@@ -241,6 +246,22 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
 
         return (
           <div className="encryption-in-transit">
+            {universeHasXClusterConfig && (
+              <YBBanner variant={YBBannerVariant.WARNING} showBannerIcon={false}>
+                <b>{`Warning! `}</b>
+                <p>
+                  This universe is involved in one or more xCluster configurations. Toggling TLS on
+                  this universe will break the xCluster replication.
+                </p>
+                <p>
+                  To enable replication again after toggling TLS on this universe, you must:
+                  <ol>
+                    <li>Toggle TLS on all other participating universes.</li>
+                    <li>Restart all affected xCluster configurations.</li>
+                  </ol>
+                </p>
+              </YBBanner>
+            )}
             <Row className="enable-universe">
               <Col lg={10}>
                 <div className="form-item-custom-label">

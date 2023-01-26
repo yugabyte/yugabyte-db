@@ -67,7 +67,7 @@ struct PerformData {
   rpc::RpcController controller;
   PerformCallback callback;
 
-  explicit PerformData(Arena* arena) : resp(arena) {
+  explicit PerformData(ThreadSafeArena* arena) : resp(arena) {
   }
 
   Status Process() {
@@ -132,7 +132,7 @@ class PgClient::Impl {
     auto future = create_session_promise_.get_future();
     Heartbeat(true);
     session_id_ = VERIFY_RESULT(future.get());
-    LOG_WITH_PREFIX(INFO) << "Session id acquired";
+    LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
     return Status::OK();
   }
@@ -200,8 +200,8 @@ class PgClient::Impl {
       partitions->keys = {PartitionKey(), keys[keys.size() / 2]};
       static auto key_printer = [](const auto& key) { return Slice(key).ToDebugHexString(); };
       LOG(INFO) << "Partitions for " << table_id << " are joined."
-                << " source: " << ToString(keys, key_printer)
-                << " result: " << ToString(partitions->keys, key_printer);
+                << " source: " << yb::ToString(keys, key_printer)
+                << " result: " << yb::ToString(partitions->keys, key_printer);
     } else {
       partitions->keys.assign(keys.begin(), keys.end());
     }
@@ -212,11 +212,13 @@ class PgClient::Impl {
     return result;
   }
 
-  Status FinishTransaction(Commit commit, DdlMode ddl_mode) {
+  Status FinishTransaction(Commit commit, DdlType ddl_type) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_commit(commit);
-    req.set_ddl_mode(ddl_mode);
+    req.set_ddl_mode(ddl_type != DdlType::NonDdl);
+    req.set_has_docdb_schema_changes(ddl_type == DdlType::DdlWithDocdbSchemaChanges);
+
     tserver::PgFinishTransactionResponsePB resp;
 
     RETURN_NOT_OK(proxy_->FinishTransaction(req, &resp, PrepareController()));
@@ -319,6 +321,38 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->UpdateSequenceTuple(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.skipped();
+  }
+
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         bool is_db_catalog_version_mode,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle) {
+    tserver::PgFetchSequenceTupleRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_db_oid(db_oid);
+    req.set_seq_oid(seq_oid);
+    if (is_db_catalog_version_mode) {
+      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      req.set_ysql_db_catalog_version(ysql_catalog_version);
+    } else {
+      req.set_ysql_catalog_version(ysql_catalog_version);
+    }
+    req.set_fetch_count(fetch_count);
+    req.set_inc_by(inc_by);
+    req.set_min_value(min_value);
+    req.set_max_value(max_value);
+    req.set_cycle(cycle);
+
+    tserver::PgFetchSequenceTupleResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->FetchSequenceTuple(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return std::make_pair(resp.first_value(), resp.last_value());
   }
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
@@ -576,7 +610,7 @@ class PgClient::Impl {
 
  private:
   std::string LogPrefix() const {
-    return Format("S $0: ", session_id_);
+    return Format("Session id $0: ", session_id_);
   }
 
   rpc::RpcController* SetupController(
@@ -638,8 +672,8 @@ Result<PgTableDescPtr> PgClient::OpenTable(
   return impl_->OpenTable(table_id, reopen, invalidate_cache_time);
 }
 
-Status PgClient::FinishTransaction(Commit commit, DdlMode ddl_mode) {
-  return impl_->FinishTransaction(commit, ddl_mode);
+Status PgClient::FinishTransaction(Commit commit, DdlType ddl_type) {
+  return impl_->FinishTransaction(commit, ddl_type);
 }
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
@@ -722,6 +756,21 @@ Result<bool> PgClient::UpdateSequenceTuple(int64_t db_oid,
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
       expected_last_val, expected_is_called);
 }
+
+Result<std::pair<int64_t, int64_t>> PgClient::FetchSequenceTuple(int64_t db_oid,
+                                                                 int64_t seq_oid,
+                                                                 uint64_t ysql_catalog_version,
+                                                                 bool is_db_catalog_version_mode,
+                                                                 uint32_t fetch_count,
+                                                                 int64_t inc_by,
+                                                                 int64_t min_value,
+                                                                 int64_t max_value,
+                                                                 bool cycle) {
+  return impl_->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      min_value, max_value, cycle);
+}
+
 
 Result<std::pair<int64_t, bool>> PgClient::ReadSequenceTuple(int64_t db_oid,
                                                              int64_t seq_oid,

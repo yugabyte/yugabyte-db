@@ -58,7 +58,21 @@
           "ModalKeyValue": "Config Value",
           "ModelEditConfigTitle": "Edit Configuration",
           "ModelResetConfigTitle": "Reset Configuration",
-          "ShowOverridenConfigs": "Show overriden configs"
+          "ShowOverridenConfigs": "Show Overriden Configs",
+          "EditConfigWarningMessage": "Value not changed",
+          "SelectProvider": "Select Provider:",
+          "SelectUniverse": "Select Universe:",
+          "SelectCustomer": "Select Customer:",
+          "UniverseConfigError": "There are no universes configured",
+          "ProviderConfigError": "There are no providers configured",
+          "CustomerConfigError": "There are no customers configured",
+          "GenericConfigError": "Please try again",
+          "BytesTooltipMessage": "<value><unit> where <unit> can be one of ['K', 'M'], Example: 10M",
+          "DurationTooltipMessage": "<value> <unit> where <unit> can be one of ['minutes', 'hours', 'days', 'seconds'], Example: 10 minutes",
+          "IntegerTooltipMessage": "Example: 30",
+          "LongTooltipMessage": "Example: 716800",
+          "StringTooltipMessage": "Example: total_time",
+          "StringListTooltipMessage": "['foo', 'bar']"
         }
       }
     }

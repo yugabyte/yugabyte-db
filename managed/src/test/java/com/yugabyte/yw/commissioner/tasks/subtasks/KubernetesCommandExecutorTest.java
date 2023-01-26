@@ -35,6 +35,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -113,8 +114,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-    // TODO(bhavin192): shouldn't this be a Kubernetes provider?
-    defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    defaultProvider = ModelFactory.kubernetesProvider(defaultCustomer);
     defaultRegion =
         Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     defaultAZ = AvailabilityZone.createOrThrow(defaultRegion, "az-1", "PlacementAZ 1", "subnet-1");
@@ -174,6 +174,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
     params.config = config;
+    params.universeName = defaultUniverse.name;
     params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
     params.universeUUID = defaultUniverse.universeUUID;
     if (setNamespace) {
@@ -194,6 +195,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
     params.universeUUID = defaultUniverse.universeUUID;
     params.config = config;
+    params.universeName = defaultUniverse.name;
     params.placementInfo = placementInfo;
     kubernetesCommandExecutor.initialize(params);
     return kubernetesCommandExecutor;
@@ -206,7 +208,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       expectedOverrides = yaml.load(app.resourceAsStream("k8s-expose-all.yml"));
     }
     double burstVal = 1.2;
-    Map<String, String> config = defaultProvider.getUnmaskedConfig();
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(defaultProvider);
 
     Map<String, Object> storageOverrides =
         (Map<String, Object>) expectedOverrides.getOrDefault("storage", new HashMap<>());
@@ -324,8 +326,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
 
-    Map<String, String> azConfig = defaultAZ.getUnmaskedConfig();
-    Map<String, String> regionConfig = defaultRegion.getUnmaskedConfig();
+    Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(defaultRegion);
+    Map<String, String> azConfig = CloudInfoInterface.fetchEnvVars(defaultAZ);
 
     String overridesYAML = null;
     if (!azConfig.containsKey("OVERRIDES")) {

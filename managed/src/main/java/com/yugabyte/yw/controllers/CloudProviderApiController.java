@@ -10,22 +10,12 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.common.AccessKeyRotationUtil;
-import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
@@ -35,17 +25,22 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RotateAccessKeyFormData;
 import com.yugabyte.yw.forms.ScheduledAccessKeyRotateFormData;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.helpers.TimeUnit;
 import com.yugabyte.yw.models.Schedule;
-
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Result;
@@ -57,8 +52,6 @@ import play.mvc.Result;
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
-  @Inject private AccessManager accessManager;
-  @Inject private AccessKeyRotationUtil accessKeyRotationUtil;
 
   @ApiOperation(
       value = "List cloud providers",
@@ -67,13 +60,17 @@ public class CloudProviderApiController extends AuthenticatedController {
       nickname = "getListOfProviders")
   public Result list(UUID customerUUID, String name, String code) {
     CloudType providerCode = code == null ? null : CloudType.valueOf(code);
-    return PlatformResults.withData(Provider.getAll(customerUUID, name, providerCode));
+    List<Provider> providers = Provider.getAll(customerUUID, name, providerCode);
+    providers.forEach(CloudInfoInterface::mayBeMassageResponse);
+    return PlatformResults.withData(providers);
   }
 
   @ApiOperation(value = "Get a cloud provider", response = Provider.class, nickname = "getProvider")
   public Result index(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return PlatformResults.withData(Provider.getOrBadRequest(customerUUID, providerUUID));
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    CloudInfoInterface.mayBeMassageResponse(provider);
+    return PlatformResults.withData(provider);
   }
 
   @ApiOperation(
@@ -121,8 +118,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result edit(UUID customerUUID, UUID providerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    Provider editProviderReq =
-        formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
+    JsonNode requestBody = request().body().asJson();
+    Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
         cloudProviderHandler.editProvider(
             customer, provider, editProviderReq, getFirstRegionCode(provider));
@@ -147,8 +144,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result patch(UUID customerUUID, UUID providerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    Provider editProviderReq =
-        formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
+    JsonNode requestBody = request().body().asJson();
+    Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     cloudProviderHandler.mergeProviderConfig(provider, editProviderReq);
     cloudProviderHandler.editProvider(
         customer, provider, editProviderReq, getFirstRegionCode(provider));
@@ -171,10 +168,10 @@ public class CloudProviderApiController extends AuthenticatedController {
           required = true))
   public Result create(UUID customerUUID) {
     JsonNode requestBody = request().body().asJson();
-    Provider reqProvider = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
+    Provider reqProvider =
+        formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.customerUUID = customerUUID;
-
     CloudType providerCode = CloudType.valueOf(reqProvider.code);
     Provider providerEbean;
     if (providerCode.equals(CloudType.kubernetes)) {
@@ -185,7 +182,7 @@ public class CloudProviderApiController extends AuthenticatedController {
               customer,
               providerCode,
               reqProvider.name,
-              reqProvider.getUnmaskedConfig(),
+              reqProvider,
               getFirstRegionCode(reqProvider));
     }
 
@@ -246,14 +243,12 @@ public class CloudProviderApiController extends AuthenticatedController {
                 .collect(Collectors.toList())
             : params.universeUUIDs;
 
-    // fail if provider is a manually provisioned one
-    accessKeyRotationUtil.failManuallyProvisioned(providerUUID, newKeyCode);
-    // create access key rotation task for each of the universes
     Map<UUID, UUID> tasks =
-        accessManager.rotateAccessKey(customerUUID, providerUUID, universeUUIDs, newKeyCode);
+        cloudProviderHandler.rotateAccessKeys(
+            customerUUID, providerUUID, universeUUIDs, newKeyCode);
 
     // contains taskUUID and resourceUUID (universeUUID) for each universe
-    List<YBPTask> tasksResponseList = new ArrayList<YBPTask>();
+    List<YBPTask> tasksResponseList = new ArrayList<>();
     tasks.forEach(
         (universeUUID, taskUUID) -> {
           tasksResponseList.add(new YBPTask(taskUUID, universeUUID));
@@ -293,25 +288,9 @@ public class CloudProviderApiController extends AuthenticatedController {
                 .map(universe -> universe.universeUUID)
                 .collect(Collectors.toList())
             : params.universeUUIDs;
-    // fail if provider is a manually provisioned one
-    accessKeyRotationUtil.failManuallyProvisioned(providerUUID, null /* newKeyCode*/);
-    // fail if a universe is already in scheduled rotation, ask to edit schedule instead
-    accessKeyRotationUtil.failUniverseAlreadyInRotation(customerUUID, providerUUID, universeUUIDs);
-    long schedulingFrequency = accessKeyRotationUtil.convertDaysToMillis(schedulingFrequencyDays);
-    TimeUnit frequencyTimeUnit = TimeUnit.DAYS;
-    ScheduledAccessKeyRotateParams taskParams =
-        new ScheduledAccessKeyRotateParams(
-            customerUUID, providerUUID, universeUUIDs, rotateAllUniverses);
     Schedule schedule =
-        Schedule.create(
-            customerUUID,
-            providerUUID,
-            taskParams,
-            TaskType.CreateAndRotateAccessKey,
-            schedulingFrequency,
-            null,
-            frequencyTimeUnit,
-            null);
+        cloudProviderHandler.scheduleAccessKeysRotation(
+            customerUUID, providerUUID, universeUUIDs, schedulingFrequencyDays, rotateAllUniverses);
     UUID scheduleUUID = schedule.getScheduleUUID();
     log.info(
         "Created access key rotation schedule for customer {}, schedule uuid = {}.",
@@ -365,40 +344,12 @@ public class CloudProviderApiController extends AuthenticatedController {
       UUID customerUUID, UUID providerUUID, UUID scheduleUUID) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
-
-    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
-    if (!schedule.getOwnerUUID().equals(providerUUID)) {
-      throw new PlatformServiceException(BAD_REQUEST, "Schedule is not owned by this provider");
-    } else if (!schedule.getTaskType().equals(TaskType.CreateAndRotateAccessKey)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "This schedule is not for access key rotation");
-    }
-
     EditAccessKeyRotationScheduleParams params =
         parseJsonAndValidate(EditAccessKeyRotationScheduleParams.class);
-    if (params.status.equals(Schedule.State.Paused)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "State paused is an internal state and cannot be specified by the user");
-    } else if (params.status.equals(Schedule.State.Stopped)) {
-      schedule.stopSchedule();
-    } else if (params.status.equals(Schedule.State.Active)) {
-      if (params.schedulingFrequencyDays == 0) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Frequency cannot be null, specify frequency in days!");
-      } else if (schedule.getStatus().equals(Schedule.State.Active) && schedule.getRunningState()) {
-        throw new PlatformServiceException(CONFLICT, "Cannot edit schedule as it is running.");
-      } else {
-        ScheduledAccessKeyRotateParams taskParams =
-            Json.fromJson(schedule.getTaskParams(), ScheduledAccessKeyRotateParams.class);
-        // fail if a universe is already in active scheduled rotation,
-        // and activating this schedule causes conflict
-        accessKeyRotationUtil.failUniverseAlreadyInRotation(
-            customerUUID, providerUUID, taskParams.getUniverseUUIDs());
-        long schedulingFrequency =
-            accessKeyRotationUtil.convertDaysToMillis(params.schedulingFrequencyDays);
-        schedule.updateFrequency(schedulingFrequency);
-      }
-    }
+
+    Schedule schedule =
+        cloudProviderHandler.editAccessKeyRotationSchedule(
+            customerUUID, providerUUID, scheduleUUID, params);
 
     auditService()
         .createAuditEntryWithReqBody(

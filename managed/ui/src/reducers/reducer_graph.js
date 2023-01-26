@@ -24,12 +24,13 @@ const INITIAL_STATE = {
 
 export default function (state = INITIAL_STATE, action) {
   switch (action.type) {
-    case CHANGE_GRAPH_QUERY_PERIOD:
+    case CHANGE_GRAPH_QUERY_PERIOD: {
       const filters = { ...action.payload };
       return { ...state, graphFilter: filters };
-    case RESET_GRAPH_QUERY_PERIOD:
+    }
+    case RESET_GRAPH_QUERY_PERIOD: 
       return { ...state, graphFilter: null };
-    case QUERY_METRICS:
+    case QUERY_METRICS: 
       return { ...state, loading: true };
     case QUERY_METRICS_SUCCESS: {
       const metricData = state.metrics;
@@ -39,9 +40,8 @@ export default function (state = INITIAL_STATE, action) {
       };
       return { ...state, metrics: metricData, loading: false };
     }
-    case SELECTED_METRIC_TYPE_TAB: {
+    case SELECTED_METRIC_TYPE_TAB:
       return { ...state, tabName: action.tabName };
-    }
     case QUERY_METRICS_FAILURE: {
       const metricData = state.metrics;
       metricData[action.panelType] = { error: true };
@@ -56,8 +56,9 @@ export default function (state = INITIAL_STATE, action) {
         panelType: null,
         graphFilter: DEFAULT_GRAPH_FILTER
       };
-    case TOGGLE_PROMETHEUS_QUERY:
+    case TOGGLE_PROMETHEUS_QUERY: {
       return { ...state, prometheusQueryEnabled: !state.prometheusQueryEnabled };
+    }
     default:
       return state;
   }

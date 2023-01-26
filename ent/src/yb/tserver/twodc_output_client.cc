@@ -48,6 +48,9 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
     "Whether or not to fail after processing a replicated split_op on the consumer.");
 
+DEFINE_test_flag(bool, xcluster_disable_replication_transaction_status_table, false,
+                 "Whether or not to disable replication of txn status table.");
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -288,6 +291,12 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
         local_client_->client->OpenTable(consumer_tablet_info_.table_id, &table_));
   }
 
+  if (PREDICT_FALSE(FLAGS_TEST_xcluster_disable_replication_transaction_status_table) &&
+      table_->table_type() == client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    HANDLE_ERROR_AND_RETURN_IF_NOT_OK(
+        STATUS(TryAgain, "Failing ApplyChanges for transaction status table for test"));
+  }
+
   twodc_resp_copy_ = *poller_resp;
   timeout_ms_ = MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
   // Using this future as a barrier to get all the tablets before processing.  Ordered iteration
@@ -336,10 +345,9 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
                                       "1 to 1 tablet mapping for the transaction status table.");
            break;
         default: {
-          auto partition_hash_key = PartitionSchema::EncodeMultiColumnHashValue(
-              VERIFY_RESULT(CheckedStoInt<uint16_t>(record.key(0).key())));
+          std::string partition_key = record.key(0).key();
           auto tablet_result = local_client_->client->LookupTabletByKeyFuture(
-              table_, partition_hash_key, CoarseMonoClock::now() + timeout_ms_).get();
+              table_, partition_key, CoarseMonoClock::now() + timeout_ms_).get();
           RETURN_NOT_OK(ProcessRecordForTablet(record, tablet_result));
           break;
         }
@@ -539,11 +547,8 @@ Status TwoDCOutputClient::ProcessRecordForTabletRange(
     const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets) {
   RETURN_NOT_OK(tablets);
 
-  auto filtered_tablets_result = client::FilterTabletsByHashPartitionKeyRange(
+  auto filtered_tablets = client::FilterTabletsByKeyRange(
       *tablets, record.partition().partition_key_start(), record.partition().partition_key_end());
-  RETURN_NOT_OK(filtered_tablets_result);
-
-  auto filtered_tablets = *filtered_tablets_result;
   if (filtered_tablets.empty()) {
     table_->MarkPartitionsAsStale();
     return STATUS(TryAgain, "No tablets found for key range, refreshing partitions to try again.");
@@ -702,8 +707,13 @@ void TwoDCOutputClient::DoWriteCDCRecordDone(
 }
 
 void TwoDCOutputClient::HandleError(const Status& s) {
-  LOG(ERROR) << "Error while applying replicated record: " << s
-             << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+  if (s.IsTryAgain()) {
+    LOG(WARNING) << "Retrying applying replicated record for consumer tablet: "
+                 << consumer_tablet_info_.tablet_id << ", reason: " << s;
+  } else {
+    LOG(ERROR) << "Error while applying replicated record: " << s
+               << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+  }
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     error_status_ = s;

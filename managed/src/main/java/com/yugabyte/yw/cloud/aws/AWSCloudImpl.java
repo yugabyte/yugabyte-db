@@ -39,6 +39,7 @@ import com.amazonaws.services.elasticloadbalancingv2.model.TargetTypeEnum;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
+import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.amazonaws.services.kms.model.DisableKeyRequest;
 import com.amazonaws.services.kms.model.ScheduleKeyDeletionRequest;
 import com.amazonaws.services.kms.model.Tag;
@@ -46,8 +47,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
@@ -75,7 +79,8 @@ public class AWSCloudImpl implements CloudAPI {
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
 
   public AmazonElasticLoadBalancing getELBClient(Provider provider, String regionCode) {
-    return getELBClientInternal(provider.getUnmaskedConfig(), regionCode);
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+    return getELBClientInternal(config, regionCode);
   }
 
   private AmazonElasticLoadBalancing getELBClientInternal(
@@ -89,7 +94,8 @@ public class AWSCloudImpl implements CloudAPI {
 
   // TODO use aws sdk 2.x and switch to async
   public AmazonEC2 getEC2Client(Provider provider, String regionCode) {
-    return getEC2ClientInternal(provider.getUnmaskedConfig(), regionCode);
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+    return getEC2ClientInternal(config, regionCode);
   }
 
   private AmazonEC2 getEC2ClientInternal(Map<String, String> config, String regionCode) {
@@ -157,7 +163,8 @@ public class AWSCloudImpl implements CloudAPI {
   }
 
   @Override
-  public boolean isValidCreds(Map<String, String> config, String region) {
+  public boolean isValidCreds(Provider provider, String region) {
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     try {
       AmazonEC2 ec2Client = getEC2ClientInternal(config, region);
       DryRunResult<DescribeInstancesRequest> dryRunResult =
@@ -176,42 +183,64 @@ public class AWSCloudImpl implements CloudAPI {
   @Override
   public boolean isValidCredsKms(ObjectNode config, UUID customerUUID) {
     try {
-      AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
-      // Create a key.
-      String keyDescription =
-          "Fake key to test the authenticity of the credentials. It is scheduled to be deleted. "
-              + "DO NOT USE.";
-      ObjectNode keyPolicy = Json.newObject().put("Version", "2012-10-17");
-      ObjectNode keyPolicyStatement = Json.newObject();
-      keyPolicyStatement.put("Effect", "Allow");
-      keyPolicyStatement.put("Resource", "*");
-      ArrayNode keyPolicyActions =
-          Json.newArray()
-              .add("kms:Create*")
-              .add("kms:Put*")
-              .add("kms:DisableKey")
-              .add("kms:ScheduleKeyDeletion");
-      keyPolicyStatement.set("Principal", Json.newObject().put("AWS", "*"));
-      keyPolicyStatement.set("Action", keyPolicyActions);
-      keyPolicy.set("Statement", Json.newArray().add(keyPolicyStatement));
-      CreateKeyRequest keyReq =
-          new CreateKeyRequest()
-              .withDescription(keyDescription)
-              .withPolicy(new ObjectMapper().writeValueAsString(keyPolicy))
-              .withTags(
-                  new Tag().withTagKey("customer-uuid").withTagValue(customerUUID.toString()),
-                  new Tag().withTagKey("usage").withTagValue("validate-aws-key-authenticity"),
-                  new Tag().withTagKey("status").withTagValue("deleted"));
-      CreateKeyResult result = kmsClient.createKey(keyReq);
-      // Disable and schedule the key for deletion. The minimum waiting period for deletion is 7
-      // days on AWS.
-      String keyArn = result.getKeyMetadata().getArn();
-      DisableKeyRequest req = new DisableKeyRequest().withKeyId(keyArn);
-      kmsClient.disableKey(req);
-      ScheduleKeyDeletionRequest scheduleKeyDeletionRequest =
-          new ScheduleKeyDeletionRequest().withKeyId(keyArn).withPendingWindowInDays(7);
-      kmsClient.scheduleKeyDeletion(scheduleKeyDeletionRequest);
-      return true;
+      if (config.has(AwsKmsAuthConfigField.CMK_ID.fieldName)) {
+        String cmkId = config.get(AwsKmsAuthConfigField.CMK_ID.fieldName).asText();
+        AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
+
+        // Test if key exists
+        DescribeKeyResult describeKeyResult = AwsEARServiceUtil.describeKey(config, cmkId);
+
+        // Test if GenerateDataKeyWithoutPlaintext permission exists
+        byte[] randomEncryptedBytes =
+            AwsEARServiceUtil.generateDataKey(null, config, cmkId, "AES", 256);
+
+        // Test if Decrypt permission exists
+        byte[] decryptedBytes =
+            AwsEARServiceUtil.decryptUniverseKey(null, randomEncryptedBytes, config);
+
+        if (decryptedBytes != null && decryptedBytes.length > 0) {
+          return true;
+        } else {
+          return false;
+        }
+      } else {
+        AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
+        // Create a key.
+        String keyDescription =
+            "Fake key to test the authenticity of the credentials. It is scheduled to be deleted. "
+                + "DO NOT USE.";
+        ObjectNode keyPolicy = Json.newObject().put("Version", "2012-10-17");
+        ObjectNode keyPolicyStatement = Json.newObject();
+        keyPolicyStatement.put("Effect", "Allow");
+        keyPolicyStatement.put("Resource", "*");
+        ArrayNode keyPolicyActions =
+            Json.newArray()
+                .add("kms:Create*")
+                .add("kms:Put*")
+                .add("kms:DisableKey")
+                .add("kms:ScheduleKeyDeletion");
+        keyPolicyStatement.set("Principal", Json.newObject().put("AWS", "*"));
+        keyPolicyStatement.set("Action", keyPolicyActions);
+        keyPolicy.set("Statement", Json.newArray().add(keyPolicyStatement));
+        CreateKeyRequest keyReq =
+            new CreateKeyRequest()
+                .withDescription(keyDescription)
+                .withPolicy(new ObjectMapper().writeValueAsString(keyPolicy))
+                .withTags(
+                    new Tag().withTagKey("customer-uuid").withTagValue(customerUUID.toString()),
+                    new Tag().withTagKey("usage").withTagValue("validate-aws-key-authenticity"),
+                    new Tag().withTagKey("status").withTagValue("deleted"));
+        CreateKeyResult result = kmsClient.createKey(keyReq);
+        // Disable and schedule the key for deletion. The minimum waiting period for deletion is 7
+        // days on AWS.
+        String keyArn = result.getKeyMetadata().getArn();
+        DisableKeyRequest req = new DisableKeyRequest().withKeyId(keyArn);
+        kmsClient.disableKey(req);
+        ScheduleKeyDeletionRequest scheduleKeyDeletionRequest =
+            new ScheduleKeyDeletionRequest().withKeyId(keyArn).withPendingWindowInDays(7);
+        kmsClient.scheduleKeyDeletion(scheduleKeyDeletionRequest);
+        return true;
+      }
     } catch (Exception e) {
       LOG.error(e.getMessage());
       return false;
@@ -400,7 +429,7 @@ public class AWSCloudImpl implements CloudAPI {
         Listener listener = getListenerByPort(lbClient, lbName, port);
         // If no listener exists for a port, create target group and listener
         // else check target group settings and add/remove nodes from target group
-        String targetGroupName = "tg-" + UUID.randomUUID();
+        String targetGroupName = "tg-" + UUID.randomUUID().toString().substring(0, 29);
         if (listener == null) {
           String targetGroupArn =
               createNodeGroup(lbClient, lbName, targetGroupName, protocol, port, instanceIDs);
@@ -586,10 +615,15 @@ public class AWSCloudImpl implements CloudAPI {
    */
   private List<String> getInstanceIDs(
       AmazonEC2 ec2Client, List<String> nodeNames, List<NodeID> nodeIDs) throws Exception {
+    if (CollectionUtils.isEmpty(nodeNames) || CollectionUtils.isEmpty(nodeIDs)) {
+      return new ArrayList<>();
+    }
     // Get instances by node name
     Filter filterName = new Filter("tag:Name").withValues(nodeNames);
+    List<String> states = ImmutableList.of("pending", "running", "stopping", "stopped");
+    Filter filterState = new Filter("instance-state-name").withValues(states);
     DescribeInstancesRequest instanceRequest =
-        new DescribeInstancesRequest().withFilters(filterName);
+        new DescribeInstancesRequest().withFilters(filterName, filterState);
     List<Reservation> reservations = ec2Client.describeInstances(instanceRequest).getReservations();
     // Filter by matching nodeUUIDs and older nodes missing UUID
     Map<NodeID, List<String>> nodeToInstances = new HashMap<>();

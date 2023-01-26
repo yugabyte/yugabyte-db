@@ -139,6 +139,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, log_min_duration_statement, -1,
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true,
     "Push supported expressions from ysql down to DocDB for evaluation.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false, false,
+    "Bypass index condition recheck at the YSQL layer if the condition was pushed down.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,
     "Delay in milliseconds between stages of online index build. Set high to give online "
     "transactions more time to complete.");
@@ -150,6 +153,10 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
 DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_state_change, "",
     "Block the given index state change from proceeding. Valid names are indisready, getsafetime,"
     " and indisvalid. For testing purposes.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_sequence_pushdown, kLocalVolatile, false, true,
+    "Allow nextval() to fetch the value range and advance the sequence value "
+    "in a single operation");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
@@ -668,6 +675,12 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
   proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
+#ifdef OS_MACOSX
+  // Postmaster with NLS support fails to start on Mac unless LC_ALL is properly set
+  if (getenv("LC_ALL") == nullptr) {
+    proc->SetEnv("LC_ALL", "en_US.UTF-8");
+  }
+#endif
   if (yb_enabled) {
     proc->SetEnv("YB_ENABLED_IN_POSTGRES", "1");
     proc->SetEnv("FLAGS_pggate_master_addresses", conf_.master_addresses);

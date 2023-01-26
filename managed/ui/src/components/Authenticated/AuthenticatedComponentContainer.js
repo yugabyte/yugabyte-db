@@ -5,7 +5,8 @@ import AuthenticatedComponent from './AuthenticatedComponent';
 import {
   fetchUniverseList,
   fetchUniverseListResponse,
-  resetUniverseList
+  resetUniverseList,
+  setUniverseMetrics
 } from '../../actions/universe';
 import {
   getProviderList,
@@ -35,6 +36,8 @@ import {
   fetchYugaWareVersionResponse,
   fetchCustomerConfigs,
   fetchCustomerConfigsResponse,
+  fetchRunTimeConfigsKeyInfo,
+  fetchRunTimeConfigsKeyInfoResponse,
   getTlsCertificates,
   getTlsCertificatesResponse,
   insecureLogin,
@@ -48,7 +51,7 @@ import {
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure
 } from '../../actions/tasks';
-import { setUniverseMetrics } from '../../actions/universe';
+
 import { queryMetrics } from '../../actions/graph';
 import Cookies from 'js-cookie';
 
@@ -125,11 +128,13 @@ const mapDispatchToProps = (dispatch) => {
     getProviderListItems: () => {
       dispatch(getProviderList()).then((response) => {
         if (response.payload.status === 200) {
-          Promise.all(response.payload.data.map((provider) => {
-            return dispatch(listAccessKeys(provider.uuid)).then((response) => {
-              dispatch(listAccessKeysResponse(response.payload));
-            });
-          })).then(() => {
+          Promise.all(
+            response.payload.data.map((provider) => {
+              return dispatch(listAccessKeys(provider.uuid)).then((response) => {
+                dispatch(listAccessKeysResponse(response.payload));
+              });
+            })
+          ).then(() => {
             dispatch(listAccessKeysReqCompleted());
           });
         }
@@ -170,8 +175,14 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
+    fetchRuntimeConfigKeyInfo: () => {
+      dispatch(fetchRunTimeConfigsKeyInfo()).then((response) => {
+        dispatch(fetchRunTimeConfigsKeyInfoResponse(response.payload));
+      });
+    },
+
     fetchUser: () => {
-      const userId = Cookies.get('userId') || localStorage.getItem('userId');
+      const userId = Cookies.get('userId') ?? localStorage.getItem('userId');
       dispatch(fetchUser(userId)).then((userResponse) => {
         if (userResponse.payload.status === 200) {
           dispatch(fetchUserSuccess(userResponse));

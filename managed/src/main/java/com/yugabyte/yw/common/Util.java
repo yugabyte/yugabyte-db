@@ -4,12 +4,14 @@ package com.yugabyte.yw.common;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
@@ -19,7 +21,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -30,6 +31,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -40,6 +42,8 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
@@ -61,11 +65,13 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import lombok.Getter;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -114,6 +120,8 @@ public class Util {
 
   public static final String K8S_POD_FQDN_TEMPLATE =
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
+
+  public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
 
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
       ImmutableMap.<String, Long>builder()
@@ -439,7 +447,17 @@ public class Util {
   // positive integer if v1 is newer than v2, a negative integer if v1
   // is older than v2.
   public static int compareYbVersions(String v1, String v2, boolean suppressFormatError) {
-    Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
+    // After the second dash, a user can add anything, and it will be ignored.
+    String[] v1Parts = v1.split("-", 3);
+    if (v1Parts.length > 2) {
+      v1 = v1Parts[0] + "-" + v1Parts[1];
+    }
+    String[] v2Parts = v2.split("-", 3);
+    if (v2Parts.length > 2) {
+      v2 = v2Parts[0] + "-" + v2Parts[1];
+    }
+
+    Pattern versionPattern = Pattern.compile(YBA_VERSION_REGEX);
     Matcher v1Matcher = versionPattern.matcher(v1);
     Matcher v2Matcher = versionPattern.matcher(v2);
 
@@ -489,6 +507,20 @@ public class Util {
     }
 
     throw new RuntimeException("Unable to parse YB version strings");
+  }
+
+  public static void ensureYbVersionFormatValidOrThrow(String ybVersion) {
+    // Phony comparison to check the version format.
+    compareYbVersions(ybVersion, "0.0.0.0-b0", false /* suppressFormatError */);
+  }
+
+  public static boolean isYbVersionFormatValid(String ybVersion) {
+    try {
+      ensureYbVersionFormatValidOrThrow(ybVersion);
+      return true;
+    } catch (Exception ignore) {
+      return false;
+    }
   }
 
   public static String escapeSingleQuotesOnly(String src) {
@@ -601,11 +633,23 @@ public class Util {
     return Hex.encodeHexString(bytes);
   }
 
-  // TODO(bhavin192): Helm allows the release name to be 53 characters
-  // long, and with new naming style this becomes 43 for our case.
-  // Sanitize helm release name.
-  public static String sanitizeHelmReleaseName(String name) {
-    return sanitizeKubernetesNamespace(name, 0);
+  // Converts input string to base36 string of length 4.
+  // return string will contain characters a-z, 0-9.
+  public static String base36hash(String inputStr) {
+    int hashCode = inputStr.hashCode();
+    byte[] bytes = new byte[4];
+    char[] chars = new char[4];
+    for (int i = 0; i < bytes.length; i++) {
+      // 1 byte.
+      int val = hashCode & 0xFF;
+      if (val >= 0 && val <= 9) {
+        chars[i] = (char) ('0' + val);
+      } else {
+        chars[i] = (char) ('a' + (val - 10) % 26);
+      }
+      hashCode >>= 8;
+    }
+    return new String(chars);
   }
 
   // Sanitize kubernetes namespace name. Additional suffix length can be reserved.
@@ -636,6 +680,7 @@ public class Util {
     try {
       new ObjectMapper().treeToValue(jsonNode, toValueType);
     } catch (JsonProcessingException e) {
+      LOG.info(e.getMessage());
       return false;
     }
     return true;
@@ -670,17 +715,8 @@ public class Util {
   public static boolean isOnPremManualProvisioning(Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
-      boolean manualProvisioning = false;
-      try {
-        AccessKey accessKey =
-            AccessKey.getOrBadRequest(
-                UUID.fromString(userIntent.provider), userIntent.accessKeyCode);
-        AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-        manualProvisioning = keyInfo.skipProvisioning;
-      } catch (PlatformServiceException ex) {
-        // no access code
-      }
-      return manualProvisioning;
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      return provider.details.skipProvisioning;
     }
     return false;
   }
@@ -823,5 +859,39 @@ public class Util {
           isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
     }
     return isKubernetesUniverse;
+  }
+
+  public static String getYbcNodeIp(Universe universe) {
+    HostAndPort hostPort = universe.getMasterLeader();
+    String nodeIp = hostPort.getHost();
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes) {
+      List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+      if (CollectionUtils.isNotEmpty(nodeList)) {
+        nodeIp = nodeList.get(0).cloudInfo.private_ip;
+      }
+    }
+    return nodeIp;
+  }
+
+  public static String computeFileChecksum(Path filePath, String checksumAlgorithm)
+      throws Exception {
+    checksumAlgorithm = checksumAlgorithm.toUpperCase();
+    if (checksumAlgorithm.equals("SHA1")) {
+      checksumAlgorithm = "SHA-1";
+    } else if (checksumAlgorithm.equals("SHA256")) {
+      checksumAlgorithm = "SHA-256";
+    }
+    MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
+    try (DigestInputStream dis =
+        new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
+      while (dis.read() != -1) ; // Empty loop to clear the data
+      md = dis.getMessageDigest();
+      // Convert the digest to String.
+      StringBuilder result = new StringBuilder();
+      for (byte b : md.digest()) {
+        result.append(String.format("%02x", b));
+      }
+      return result.toString().toLowerCase();
+    }
   }
 }

@@ -195,7 +195,9 @@ public class VaultAccessor {
       long maxttl = vault.auth().lookupSelf().getCreationTTL();
       if ((ttl * TTL_EXPIRY_PERCENT_FACTOR) < maxttl) {
         vault.auth().renewSelf();
-        LOG.info("Token {} is renewed as it has passed 90% of its expiry window", token);
+        LOG.info(
+            "Token {} is renewed as it has passed {}0% of its expiry window",
+            token, TTL_EXPIRY_PERCENT_FACTOR);
       } else LOG.debug("Not need to renew token {} for now", token);
 
     } catch (VaultException e) {

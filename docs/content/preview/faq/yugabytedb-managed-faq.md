@@ -2,7 +2,6 @@
 title: YugabyteDB Managed FAQ
 linkTitle: YugabyteDB Managed FAQ
 description: YugabyteDB Managed frequently asked questions.
-headcontent: Frequently asked questions about YugabyteDB-as-a-Service
 image: /images/section_icons/index/quick_start.png
 aliases:
   - /preview/yugabyte-cloud/cloud-faq/
@@ -10,11 +9,55 @@ menu:
   preview_faq:
     identifier: yugabytedb-managed-faq
     parent: faq
-    weight: 2775
+    weight: 60
 type: docs
 rightNav:
+  hideH3: true
   hideH4: true
 ---
+
+### Contents
+
+##### YugabyteDB Managed
+
+- [What is YugabyteDB Managed?](#what-is-yugabytedb-managed)
+- [How is YugabyteDB Managed priced?](#how-is-yugabytedb-managed-priced)
+- [What regions in AWS and GCP are available?](#what-regions-in-aws-and-gcp-are-available)
+
+##### Clusters
+
+- [What are the differences between Sandbox and Dedicated clusters?](#what-are-the-differences-between-sandbox-and-dedicated-clusters)
+- [What can I do if I run out of resources on my Sandbox cluster?](#what-can-i-do-if-i-run-out-of-resources-on-my-sandbox-cluster)
+- [Can I migrate my Sandbox to a Dedicated cluster?](#can-i-migrate-my-sandbox-to-a-dedicated-cluster)
+- [What is the upgrade policy for clusters?](#what-is-the-upgrade-policy-for-clusters)
+
+##### YugabyteDB
+
+- [What version of YugabyteDB does my cluster run on?](#what-version-of-yugabytedb-does-my-cluster-run-on)
+- [Can I test YugabyteDB locally?](#can-i-test-yugabytedb-locally)
+
+##### Support
+
+- [Is support included in the base price?](#is-support-included-in-the-base-price)
+- [Where can I find the support policy and SLA?](#where-can-i-find-the-support-policy-and-sla)
+- [How do I check the status of YugabyteDB Managed?](#how-do-i-check-the-status-of-yugabytedb-managed)
+
+##### Security
+
+- [How secure is my cluster?](#how-secure-is-my-cluster)
+
+##### Cluster management
+
+- [What cluster configurations can I create?](#what-cluster-configurations-can-i-create)
+- [How do I connect to my cluster?](#how-do-i-connect-to-my-cluster)
+- [Why is my Sandbox cluster paused?](#why-is-my-sandbox-cluster-paused)
+- [How do I keep my Sandbox cluster from being paused or deleted?](#how-do-i-keep-my-sandbox-cluster-from-being-paused-or-deleted)
+- [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
+
+##### Backups
+
+- [How are clusters backed up?](#how-are-clusters-backed-up)
+- [Can I download backups?](#can-i-download-backups)
 
 ## YugabyteDB Managed
 
@@ -106,7 +149,7 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series.
 
-By default, new Dedicated clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. You can choose the preview track when you create the cluster.
+By default, new Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. You can choose the preview track when you create the cluster.
 
 Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either preview or stable).
 
@@ -150,13 +193,16 @@ YugabyteDB Managed uses a shared responsibility model for security. For more inf
 
 ### What cluster configurations can I create?
 
-Using YugabyteDB Managed, you can create single region clusters that can be deployed across multiple and single availability zones.
+Using YugabyteDB Managed, you can create single- and multi-region clusters that can be deployed across multiple and single availability zones.
 
-The Fault Tolerance of a cluster determines how resilient the cluster is to node and availability zone failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in YugabyteDB Managed:
+The Fault Tolerance of a cluster determines how resilient the cluster is to failures and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in YugabyteDB Managed:
 
-- **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of an availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
-- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
+- **Region Level** - a minimum of 3 nodes spread across 3 regions with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of an region failure. This configuration provides the maximum protection for a region failure. For horizontal scaling, nodes are scaled in increments of 3.
+- **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of an availability zone failure. This configuration provides the protection for a data center failure. For horizontal scaling, nodes are scaled in increments of 3.
+- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
+
+For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
 For multi-region deployments, you can deploy a variety of topologies, including synchronously replicated, geo-level partitioned, cross-cluster, and read replicas. For more information, refer to [Topologies](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 

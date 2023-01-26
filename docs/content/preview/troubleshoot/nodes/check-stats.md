@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-There are some system statistics that might help with troublshooting.
+There are some system statistics that might help with troubleshooting.
 
 ## Host resource usage
 

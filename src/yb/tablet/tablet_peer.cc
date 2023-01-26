@@ -710,14 +710,14 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   }
 }
 
-void TabletPeer::SubmitUpdateTransaction(
+Status TabletPeer::SubmitUpdateTransaction(
     std::unique_ptr<UpdateTxnOperation> operation, int64_t term) {
-  // TODO: safely handle the case when tablet is not set.
-  // https://github.com/yugabyte/yugabyte-db/issues/14597
-  if (!operation->tablet()) {
-    operation->SetTablet(CHECK_RESULT(shared_tablet_safe()));
+  if (!operation->tablet_is_set()) {
+    auto tablet = VERIFY_RESULT(shared_tablet_safe());
+    operation->SetTablet(tablet);
   }
   Submit(std::move(operation), term);
+  return Status::OK();
 }
 
 HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
@@ -821,7 +821,7 @@ Result<TabletPtr> TabletPeer::shared_tablet_safe() const {
     return tablet_ptr;
   return STATUS_FORMAT(
       IllegalState,
-      "Tablet object $0 has already been destroyed",
+      "Tablet object $0 has already been deallocated",
       tablet_id_);
 }
 
@@ -1029,6 +1029,23 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
+Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() const {
+  if (VERIFY_RESULT(shared_tablet_safe())->table_type() ==
+      TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
+    // earliest required log record. This will be the CREATED\PENDING log record of the oldest
+    // active transaction.
+    auto index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+    if (index > 0) {
+      index--;
+    }
+    // Term does not matter, so can be set to 0.
+    return OpId(0, index);
+  }
+
+  return GetLatestLogEntryOpId();
+}
+
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
   int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
@@ -1096,6 +1113,10 @@ Status TabletPeer::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
   return Status::OK();
 }
 
+HybridTime TabletPeer::get_cdc_sdk_safe_time() {
+  return meta_->cdc_sdk_safe_time();
+}
+
 OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
   return meta_->cdc_sdk_min_checkpoint_op_id();
 }
@@ -1160,10 +1181,6 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
     const HybridTime& cdc_sdk_safe_time) {
-  if (cdc_sdk_op_id == OpId::Invalid()) {
-    return Status::OK();
-  }
-
   RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
   RETURN_NOT_OK(set_cdc_sdk_safe_time(cdc_sdk_safe_time));
 

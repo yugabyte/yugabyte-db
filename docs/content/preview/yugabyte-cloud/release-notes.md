@@ -16,6 +16,35 @@ On this page:
 
 ## Releases
 
+### January 18, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.0](../../releases/release-notes/v2.16/#v2.16.0.1) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### January 13, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.6](../../releases/release-notes/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### December 21, 2022
+
+**New Features**
+
+- Ability to add IP addresses to the cluster IP allow list during cluster creation. The **Create Cluster** wizard includes the new **Network Access** page to configure connectivity for your cluster. Automatically detect and add your current IP address or the addresses of any peered VPC to the cluster.
+- Ability to connect to clusters deployed in VPCs from public IP addresses. For clusters deployed in VPCs, enable **Public Access** on the **Settings** tab to connect from addresses outside the peered network. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.14.5 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### December 12, 2022
+
+**New Features**
+
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis) generally available. Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+
 ### November 28, 2022
 
 **New Features**
@@ -310,10 +339,7 @@ The following **AWS regions** are available:
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
 - **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
 - **Read replicas**
-  - The replication factor for a read replica region can't be changed after creation.
-  - The sum of the replication factor for all read replicas of a cluster can't be greater than 7.
   - Read replicas currently need to use the same instance type as the Primary cluster.
-  - Because the free storage allowance for read replicas is calculated by month, deleting a read replica before the end of the current month can result in minor billing discrepancies.
   - For clusters in AWS, removed read replicas can't be added back to the same region if the cluster has other read replicas. To add a read replica back to the same region, first remove all the read replicas and then add them all back.
 
 ### Known issues in Cloud Shell

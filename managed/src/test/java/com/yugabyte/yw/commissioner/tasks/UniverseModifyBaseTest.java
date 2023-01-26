@@ -3,8 +3,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
+import static play.libs.Json.newObject;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -100,7 +100,14 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-
+    doAnswer(
+            inv -> {
+              ObjectNode res = newObject();
+              res.put("response", "success");
+              return res;
+            })
+        .when(mockYsqlQueryExecutor)
+        .executeQueryInNodeShell(any(), any(), any());
     // Create hooks
     hook1 =
         Hook.create(
@@ -169,7 +176,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     return result;
   }
 
-  protected void createOnpremInstance(AvailabilityZone zone) {
+  protected NodeInstance createOnpremInstance(AvailabilityZone zone) {
     NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
     nodeData.ip = "fake_ip_" + zone.region.code;
     nodeData.region = zone.region.code;
@@ -177,6 +184,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     nodeData.instanceType = ApiUtils.UTIL_INST_TYPE;
     NodeInstance node = NodeInstance.create(zone.uuid, nodeData);
     node.save();
+    return node;
   }
 
   protected Universe createUniverseForProviderWithReadReplica(

@@ -20,6 +20,7 @@ import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { BackupDetails } from './BackupDetails';
 import {
+  BACKUP_REFETCH_INTERVAL,
   BACKUP_STATUS_OPTIONS,
   CALDENDAR_ICON,
   convertArrayToMap,
@@ -42,7 +43,9 @@ import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const momentLocalizer = require('react-widgets-moment');
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -52,7 +55,7 @@ momentLocalizer(moment);
 const DEFAULT_SORT_COLUMN = 'createTime';
 const DEFAULT_SORT_DIRECTION = 'DESC';
 
-const TIME_RANGE_OPTIONS = [
+export const TIME_RANGE_OPTIONS = [
   {
     value: [1, 'days'],
     label: 'Last 24 hrs'
@@ -107,7 +110,7 @@ const MORE_FILTER_OPTIONS = [
   }
 ];
 
-const DEFAULT_TIME_STATE: TIME_RANGE_STATE = {
+export const DEFAULT_TIME_STATE: TIME_RANGE_STATE = {
   startTime: null,
   endTime: null,
   label: null
@@ -130,6 +133,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
   const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
+  const [isRestoreEntireBackup, setRestoreEntireBackup] = useState(false);
 
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
   const [status, setStatus] = useState<any[]>([BACKUP_STATUS_OPTIONS[0]]);
@@ -182,7 +186,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         storage_config_uuid
       ),
     {
-      refetchInterval: 1000 * 20,
+      refetchInterval: BACKUP_REFETCH_INTERVAL,
       onSuccess(resp) {
         if (showDetails) {
           setShowDetails(
@@ -222,7 +226,9 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     return (
       searchText.length !== 0 ||
       status[0].value !== null ||
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       timeRange.startTime ||
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       timeRange.endTime ||
       moreFilters.length > 0
     );
@@ -265,6 +271,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             ) {
               return;
             }
+            setRestoreEntireBackup(true);
             setRestoreDetails(row);
             setShowRestoreModal(true);
           }}
@@ -586,6 +593,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowDeleteModal(true);
         }}
         onRestore={(customDetails?: IBackup) => {
+          setRestoreEntireBackup(customDetails ? false : true);
           setRestoreDetails(customDetails ?? showDetails);
           setShowRestoreModal(true);
         }}
@@ -604,6 +612,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         <BackupRestoreModal
           backup_details={restoreDetails}
           visible={showRestoreModal}
+          isRestoreEntireBackup={isRestoreEntireBackup}
           onHide={() => {
             setShowRestoreModal(false);
           }}

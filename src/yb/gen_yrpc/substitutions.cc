@@ -205,7 +205,7 @@ Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field
   result.emplace_back(
       "field_stored_type",
       field->is_repeated()
-          ? Format(IsMessage(field) ? message_type_format : "::yb::MCVector<$0>", field_type)
+          ? Format(IsMessage(field) ? message_type_format : "::yb::ArenaVector<$0>", field_type)
           : field_type);
   result.emplace_back("field_type", field_type);
   result.emplace_back("nonlw_field_type", MapFieldType(field, Lightweight::kFalse));

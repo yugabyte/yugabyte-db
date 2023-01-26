@@ -42,6 +42,7 @@
 #include "executor/ybcExpr.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_auth_members.h"
@@ -65,6 +66,8 @@
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_type.h"
+#include "catalog/pg_yb_profile.h"
+#include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/variable.h"
@@ -1021,8 +1024,10 @@ bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
+bool yb_bypass_cond_recheck = false;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
+bool yb_enable_sequence_pushdown = true;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1297,8 +1302,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		//   sed 's/,//g' | while read s; do echo -e "\t\tcase $s:"; done
 		// All T_Create... tags from nodes.h:
 
-		case T_CreateDomainStmt:
-		case T_CreateEnumStmt:
+		case T_YbCreateProfileStmt:
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
@@ -1341,10 +1345,12 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			*is_breaking_catalog_change = false;
 			break;
 		}
-		case T_CompositeTypeStmt: // CREATE TYPE
+		case T_CompositeTypeStmt: // Create (composite) type
 		case T_CreateAmStmt:
 		case T_CreateCastStmt:
 		case T_CreateConversionStmt:
+		case T_CreateDomainStmt: // Create (domain) type
+		case T_CreateEnumStmt: // Create (enum) type
 		case T_CreateEventTrigStmt:
 		case T_CreateExtensionStmt:
 		case T_CreateFdwStmt:
@@ -1356,7 +1362,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreatePLangStmt:
 		case T_CreatePolicyStmt:
 		case T_CreatePublicationStmt:
-		case T_CreateRangeStmt:
+		case T_CreateRangeStmt: // Create (range) type
 		case T_CreateReplicationSlotCmd:
 		case T_CreateRoleStmt:
 		case T_CreateSchemaStmt:
@@ -1469,6 +1475,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_DropUserMappingStmt:
 			break;
 
+		case T_YbDropProfileStmt:
 		case T_DropStmt:
 			*is_breaking_catalog_change = false;
 			break;
@@ -2425,10 +2432,19 @@ yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
 }
 
+/*
+ * This PG function takes one optional bool input argument (legacy).
+ * If the input argument is not specified or its value is false, this function
+ * returns whether the current database is a colocated database.
+ * If the value of the input argument is true, this function returns whether the
+ * current database is a legacy colocated database.
+ */
 Datum
 yb_is_database_colocated(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_BOOL(MyDatabaseColocated);
+	if (!PG_GETARG_BOOL(0))
+		PG_RETURN_BOOL(MyDatabaseColocated);
+	PG_RETURN_BOOL(MyDatabaseColocated && MyColocatedDatabaseLegacy);
 }
 
 /*
@@ -2918,6 +2934,12 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case YBCatalogVersionRelationId:                    // pg_yb_catalog_version
 			db_id = TemplateDbOid;
 			break;
+		case YbProfileRelationId:							// pg_yb_profile
+			db_id = TemplateDbOid;
+			break;
+		case YbRoleProfileRelationId:					  // pg_yb_role_profile
+			db_id = TemplateDbOid;
+			break;
 
 		// MyDb tables
 		case AccessMethodProcedureRelationId:             // pg_amproc
@@ -2965,7 +2987,9 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case TypeRelationId:                              // pg_type
 			sys_table_index_id = TypeNameNspIndexId;
 			break;
-
+		case AccessMethodOperatorRelationId:              // pg_amop
+			sys_table_index_id = AccessMethodOperatorIndexId;
+			break;
 		case CastRelationId:        switch_fallthrough(); // pg_cast
 		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
 		case ProcedureRelationId:   break;                // pg_proc
@@ -2974,7 +2998,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		{
 			ereport(FATAL,
 			        (errcode(ERRCODE_INTERNAL_ERROR),
-			         errmsg("Sys table '%d' is not yet inteded for preloading", sys_table_id)));
+			         errmsg("Sys table '%d' is not yet intended for preloading", sys_table_id)));
 
 		}
 	}

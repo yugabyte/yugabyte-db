@@ -1033,7 +1033,7 @@ Status QLWriteOperation::ApplyUpsert(
 Status QLWriteOperation::ApplyDelete(
     const DocOperationApplyData& data, QLTableRow* existing_row, QLTableRow* new_row) {
   // We have three cases:
-  // 1. If non-key columns are specified, we delete only those columns.
+  // 1. If non-key columns are specified, we delete only those columns/subscripted columns.
   // 2. Otherwise, if range cols are missing, this must be a range delete.
   // 3. Otherwise, this is a normal delete.
   // Analyzer ensures these are the only cases before getting here (e.g. range deletes cannot
@@ -1045,14 +1045,19 @@ Status QLWriteOperation::ApplyDelete(
           << "column id missing: " << column_value.DebugString();
       const ColumnId column_id(column_value.column_id());
       const auto& column = VERIFY_RESULT_REF(doc_read_context_->schema.column_by_id(column_id));
-      const DocPath sub_path(
-          column.is_static() ?
-            encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
-          KeyEntryValue::MakeColumnId(column_id));
-      RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
-          data.read_time, data.deadline, request_.query_id(), user_timestamp()));
-      if (update_indexes_) {
-        new_row->MarkTombstoned(column_id);
+
+      if (!column_value.subscript_args().empty()) {
+        RETURN_NOT_OK(DeleteSubscriptedColumnElement(data, column, column_value, column_id));
+      } else {
+        const DocPath sub_path(
+            column.is_static() ?
+              encoded_hashed_doc_key_.as_slice() : encoded_pk_doc_key_.as_slice(),
+            KeyEntryValue::MakeColumnId(column_id));
+        RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
+            data.read_time, data.deadline, request_.query_id(), user_timestamp()));
+        if (update_indexes_) {
+          new_row->MarkTombstoned(column_id);
+        }
       }
     }
     if (update_indexes_) {
@@ -1123,6 +1128,49 @@ Status QLWriteOperation::ApplyDelete(
                             data.read_time, data.deadline));
     if (update_indexes_) {
       RETURN_NOT_OK(UpdateIndexes(*existing_row, *new_row));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status QLWriteOperation::DeleteSubscriptedColumnElement(
+    const DocOperationApplyData& data, const ColumnSchema& column_schema,
+    const QLColumnValuePB& column_value, ColumnId column_id) {
+  RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp()));
+
+  // Currently we only support two cases here: `DELETE map['key'] ..` and `DELETE list[index] ..`)
+  // Any other case should be rejected by the semantic analyser before getting here.
+  LOG_IF(DFATAL, column_value.subscript_args().size() != 1) << "Expected only one subscripted arg";
+  LOG_IF(DFATAL, !column_value.subscript_args(0).has_value()) << "An index must be a constant";
+  auto sub_path = MakeSubPath(column_schema, column_id);
+  switch (column_schema.type()->main()) {
+    case MAP: {
+      sub_path.AddSubKey(KeyEntryValue::FromQLValuePB(
+          column_value.subscript_args(0).value(), SortingType::kNotSpecified));
+      RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(
+          sub_path, data.read_time, data.deadline, request_.query_id(), user_timestamp()));
+      break;
+    }
+    case LIST: {
+      const MonoDelta default_ttl =
+          doc_read_context_->schema.table_properties().HasDefaultTimeToLive()
+              ? MonoDelta::FromMilliseconds(
+                    doc_read_context_->schema.table_properties().DefaultTimeToLive())
+              : MonoDelta::kMax;
+
+      const int target_cql_index = column_value.subscript_args(0).value().int32_value();
+      // Replace value at target_cql_index with a tombstone.
+      RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
+          sub_path, target_cql_index, ValueRef(ValueEntryType::kTombstone), data.read_time,
+          data.deadline, request_.query_id(), default_ttl, ValueControlFields::kMaxTtl));
+      break;
+    }
+    default: {
+      LOG(ERROR) << "Unexpected type for deleting subscripted column element: "
+                 << column_schema.type()->ToString();
+      return STATUS_FORMAT(InternalError,
+          "Unexpected type for deleting subscripted column element: $0", *column_schema.type());
     }
   }
 
@@ -1537,6 +1585,11 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   size_t num_rows_skipped = 0;
   size_t offset = 0;
+
+  // Read RPC for aggregates can't have a limit.
+  LOG_IF(DFATAL, request_.is_aggregate() && request_.has_limit()) << "QLRead request "
+      "for aggregates should not specify a limit: " << request_.ShortDebugString();
+
   if (request_.has_offset()) {
     offset = request_.offset();
   }

@@ -25,10 +25,10 @@ import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from '../../tables';
 import { QueriesViewer } from '../../queries';
 import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
-import { isKubernetesUniverse, isPausableUniverse } from '../../../utils/UniverseUtils';
+import { isKubernetesUniverse, isPausableUniverse , getPrimaryCluster , hasLiveNodes } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { getPrimaryCluster } from '../../../utils/UniverseUtils';
-import { hasLiveNodes } from '../../../utils/UniverseUtils';
+
+
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { UniverseHealthCheckList } from './compounds/UniverseHealthCheckList';
 import { UniverseTaskList } from './compounds/UniverseTaskList';
@@ -263,7 +263,7 @@ class UniverseDetail extends Component {
 
     const isTopKMetricsEnabled = runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === 'yb.metrics.ui.topk.enable'
-    ).value === 'true';
+    )?.value === 'true';
 
     const type =
       pathname.indexOf('edit') < 0

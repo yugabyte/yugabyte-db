@@ -2140,7 +2140,12 @@ show_expression(Node *node, const char *qlabel,
 											ancestors);
 
 	/* Deparse the expression */
-	exprstr = deparse_expression(node, context, useprefix, false);
+	if (YBCPgIsYugaByteEnabled())
+		exprstr =
+			yb_deparse_expression(node, context, useprefix, false,
+								  es->verbose);
+	else
+		exprstr = deparse_expression(node, context, useprefix, false);
 
 	/* And add to es->str */
 	ExplainPropertyText(qlabel, exprstr, es);
@@ -3259,7 +3264,7 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 	/* Should we explicitly label target relations? */
 	labeltargets = (mtstate->mt_nplans > 1 ||
 					(mtstate->mt_nplans == 1 &&
-					 mtstate->resultRelInfo->ri_RangeTableIndex != node->nominalRelation));
+					 mtstate->resultRelInfo[0].ri_RangeTableIndex != node->nominalRelation));
 
 	if (labeltargets)
 		ExplainOpenGroup("Target Tables", "Target Tables", false, es);

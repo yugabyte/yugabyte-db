@@ -56,7 +56,6 @@
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/atomic.h"
 
-#include "yb/rocksdb/db/auto_roll_logger.h"
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_job.h"
 #include "yb/rocksdb/db/compaction_picker.h"
@@ -114,7 +113,6 @@
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/task_metrics.h"
-#include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
 #include "yb/util/status_log.h"
@@ -4679,9 +4677,6 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
-  XFUNC_TEST("", "managed_new", managed_new1, xf_manage_new,
-             reinterpret_cast<DBImpl*>(this),
-             const_cast<ReadOptions*>(&read_options), is_snapshot_supported_);
   if (read_options.managed) {
     if ((read_options.tailing) || (read_options.snapshot != nullptr) ||
         (is_snapshot_supported_)) {
@@ -4780,9 +4775,6 @@ Status DBImpl::NewIterators(
   }
   iterators->clear();
   iterators->reserve(column_families.size());
-  XFUNC_TEST("", "managed_new", managed_new1, xf_manage_new,
-             reinterpret_cast<DBImpl*>(this),
-             const_cast<ReadOptions*>(&read_options), is_snapshot_supported_);
   if (read_options.managed) {
     if ((!read_options.tailing) && (read_options.snapshot == nullptr) &&
         (!is_snapshot_supported_)) {
@@ -4910,16 +4902,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   }
 
   Status status;
-
-  bool xfunc_attempted_write = false;
-  XFUNC_TEST("transaction", "transaction_xftest_write_impl",
-             xf_transaction_write1, xf_transaction_write, write_options,
-             db_options_, my_batch, callback, this, &status,
-             &xfunc_attempted_write);
-  if (xfunc_attempted_write) {
-    // Test already did the write
-    return status;
-  }
 
   PERF_TIMER_GUARD(write_pre_and_post_process_time);
   WriteThread::Writer w;

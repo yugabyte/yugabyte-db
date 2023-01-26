@@ -9,7 +9,7 @@ import uuid
 import warnings
 import logging
 import json
-from ybops.utils.remote_shell import RemoteShell, RpcRemoteShell
+from ybops.utils.remote_shell import RemoteShell
 
 warnings.filterwarnings("ignore")
 
@@ -31,6 +31,7 @@ def add_ssh_subparser(subparsers, command, parent):
                             required=True)
     ssh_parser.add_argument('--ip', type=str, help='IP address for ssh',
                             required=True)
+    ssh_parser.add_argument("--user", type=str, help='SSH user', default=YB_USERNAME)
     ssh_parser.add_argument('--port', type=int, help='Port number for ssh', default=22)
     ssh_parser.add_argument('--ssh2_enabled', action='store_true', default=False)
     return ssh_parser
@@ -39,6 +40,7 @@ def add_ssh_subparser(subparsers, command, parent):
 def add_rpc_subparser(subparsers, command, parent):
     rpc_parser = subparsers.add_parser(command, help='use rpc (is non k8s universe)',
                                        parents=[parent])
+    rpc_parser.add_argument("--user", type=str, help='RPC user', default=YB_USERNAME)
     rpc_parser.add_argument('--node_agent_ip', type=str, help='IP address for rpc',
                             required=True)
     rpc_parser.add_argument('--node_agent_port', type=int, help='Port number for rpc',
@@ -59,7 +61,7 @@ def add_run_command_subparser(subparsers, command, parent):
 
 def handle_run_command(args, client):
     kwargs = {}
-    if args.node_type == 'ssh':
+    if args.node_type == 'ssh' or args.node_type == 'rpc':
         kwargs['output_only'] = True
         if args.skip_cmd_logging:
             kwargs['skip_cmd_logging'] = True
@@ -274,7 +276,8 @@ def main():
     args = parse_args()
     if args.node_type == 'ssh':
         ssh_options = {
-            "ssh_user": YB_USERNAME,
+            "connection_type": "ssh",
+            "ssh_user": YB_USERNAME if args.user is None else args.user,
             "ssh_host": args.ip,
             "ssh_port": args.port,
             "private_key_file": args.key,
@@ -286,18 +289,19 @@ def main():
         except Exception as e:
             sys.exit("Failed to establish SSH connection to {}:{} - {}"
                      .format(args.ip, args.port, str(e)))
-
     elif args.node_type == 'rpc':
         rpc_options = {
-            "ip": args.node_agent_ip,
-            "port": args.node_agent_port,
-            "cert_path": args.node_agent_cert_path,
-            "auth_token": args.node_agent_auth_token
+            "connection_type": "rpc",
+            "node_agent_user":  YB_USERNAME if args.user is None else args.user,
+            "node_agent_ip": args.node_agent_ip,
+            "node_agent_port": args.node_agent_port,
+            "node_agent_cert_path": args.node_agent_cert_path,
+            "node_agent_auth_token": args.node_agent_auth_token
         }
         logging.info("Using RPC connection to {}:{}"
                      .format(args.node_agent_ip, args.node_agent_port))
         try:
-            client = RpcRemoteShell(rpc_options)
+            client = RemoteShell(rpc_options)
         except Exception as e:
             sys.exit("Failed to establish RPC connection to {}:{} - {}"
                      .format(args.node_agent_ip, args.node_agent_port, str(e)))

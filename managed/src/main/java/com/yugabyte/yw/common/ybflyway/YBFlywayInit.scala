@@ -125,8 +125,10 @@ class YBFlywayInit @Inject()(
 
   private def checkState(dbName: String): Unit = {
     flyways.get(dbName).foreach { flyway =>
+      val disabled: Boolean =
+        appConfiguration.getOptional[Boolean](s"db.$dbName.migration.disabled").contains(true)
       val pendingMigrations = flyway.info().pending
-      if (pendingMigrations.nonEmpty) {
+      if (!disabled && pendingMigrations.nonEmpty) {
         throw InvalidDatabaseRevision(
           dbName,
           pendingMigrations

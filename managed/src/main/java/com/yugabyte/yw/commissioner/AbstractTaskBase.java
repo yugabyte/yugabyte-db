@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -64,6 +66,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final Config config;
   protected final ConfigHelper configHelper;
   protected final RuntimeConfigFactory runtimeConfigFactory;
+  protected final RuntimeConfGetter confGetter;
   protected final MetricService metricService;
   protected final AlertConfigurationService alertConfigurationService;
   protected final YBClientService ybService;
@@ -80,6 +83,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.config = baseTaskDependencies.getConfig();
     this.configHelper = baseTaskDependencies.getConfigHelper();
     this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
+    this.confGetter = baseTaskDependencies.getConfGetter();
     this.metricService = baseTaskDependencies.getMetricService();
     this.alertConfigurationService = baseTaskDependencies.getAlertConfigurationService();
     this.ybService = baseTaskDependencies.getYbService();
@@ -193,8 +197,8 @@ public abstract class AbstractTaskBase implements ITask {
    * @param taskClass task class
    * @return Task instance with injected dependencies
    */
-  public static <T> T createTask(Class<T> taskClass) {
-    return Play.current().injector().instanceOf(taskClass);
+  public static <T extends ITask> T createTask(Class<T> taskClass) {
+    return Play.current().injector().instanceOf(TaskExecutor.class).createTask(taskClass);
   }
 
   public int getSleepMultiplier() {

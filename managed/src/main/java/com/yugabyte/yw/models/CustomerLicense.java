@@ -3,22 +3,20 @@
 package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.PlatformServiceException;
-
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
-import lombok.Getter;
-
-import java.io.File;
 import java.util.Date;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import lombok.Getter;
 import play.data.validation.Constraints;
 
 @Entity

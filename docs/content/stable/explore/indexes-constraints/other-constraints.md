@@ -20,6 +20,8 @@ type: docs
   </li>
 </ul>
 
+{{% explore-setup-single %}}
+
 ## CHECK Constraint
 
 The YSQL `CHECK` constraint allows you to constrain values in columns based on a boolean expression. The values are evaluated with regards to meeting a specific requirement before these values are inserted or updated; if they fail the check, YSQL rejects the changes and displays a constraint violation error.
@@ -122,5 +124,5 @@ YSQL provides a `NOT NULL` constraint as a means to control whether or not a col
 
 For additional information and examples, see the following:
 
-- [Defining NOT NULL Constraint](../../ysql-language-features/data-manipulation/#defining-not-null-constraint)
+- [Define NOT NULL constraint](../../ysql-language-features/data-manipulation/#define-not-null-constraint)
 - [Not-Null Constraints in PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-constraints.html#id-1.5.4.5.6)

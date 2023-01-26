@@ -3,7 +3,7 @@ title: Presto
 linkTitle: Presto
 description: Presto
 menu:
-  preview:
+  preview_integrations:
     identifier: presto
     parent: integrations
     weight: 571

@@ -78,6 +78,9 @@ const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 YB_STRONGLY_TYPED_BOOL(Primary);
 
 struct TableInfo {
+ private:
+  class PrivateTag {};
+ public:
   // Table id, name and type.
   std::string table_id;
   std::string namespace_name;
@@ -107,7 +110,8 @@ struct TableInfo {
   // We use the retention time from the primary table.
   uint32_t wal_retention_secs = 0;
 
-  TableInfo();
+  // Public ctor with private argument to allow std::make_shared, but prevent public usage.
+  TableInfo(const std::string& log_prefix, PrivateTag);
   TableInfo(const std::string& tablet_log_prefix,
             Primary primary,
             std::string table_id,
@@ -127,7 +131,7 @@ struct TableInfo {
   TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
   ~TableInfo();
 
-  Status LoadFromPB(
+  static Result<TableInfoPtr> LoadFromPB(
       const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
 
@@ -149,8 +153,14 @@ struct TableInfo {
     return log_prefix;
   }
 
+  bool primary() const {
+    return cotable_id.IsNil();
+  }
+
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
+ private:
+  Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -403,11 +413,27 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                  const SchemaVersion version,
                  const TableId& table_id = "");
 
+  void SetSchemaUnlocked(const Schema& schema,
+                 const IndexMap& index_map,
+                 const std::vector<DeletedColumn>& deleted_cols,
+                 const SchemaVersion version,
+                 const TableId& table_id = "") REQUIRES(data_mutex_);
+
   void SetPartitionSchema(const PartitionSchema& partition_schema);
 
   void SetTableName(
       const std::string& namespace_name, const std::string& table_name,
       const TableId& table_id = "");
+
+  void SetTableNameUnlocked(
+      const std::string& namespace_name, const std::string& table_name,
+      const TableId& table_id = "") REQUIRES(data_mutex_);
+
+  void SetSchemaAndTableName(
+      const Schema& schema, const IndexMap& index_map,
+      const std::vector<DeletedColumn>& deleted_cols,
+      const SchemaVersion version, const std::string& namespace_name,
+      const std::string& table_name, const TableId& table_id = "");
 
   void AddTable(const std::string& table_id,
                 const std::string& namespace_name,
@@ -565,7 +591,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const std::string& wal_dir);
 
   // Constructor for loading an existing Raft group.
-  RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id);
+  RaftGroupMetadata(FsManager* fs_manager, const RaftGroupId& raft_group_id);
 
   Status LoadFromDisk();
 

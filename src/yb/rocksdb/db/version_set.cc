@@ -76,6 +76,10 @@
 #include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/test_kill.h"
+#include "yb/util/flags.h"
+
+DEFINE_RUNTIME_bool(log_version_edits, false,
+                    "Log RocksDB version edits as they are being written");
 
 using std::unique_ptr;
 
@@ -3408,8 +3412,10 @@ Status AddEdit(const VersionEdit& edit, const DBOptions* db_options, log::Writer
     return STATUS(Corruption,
         "Unable to Encode VersionEdit:" + edit.DebugString(true));
   }
-  RLOG(InfoLogLevel::INFO_LEVEL, db_options->info_log,
-      "Writing version edit: %s\n", edit.DebugString().c_str());
+  if (FLAGS_log_version_edits) {
+    RLOG(InfoLogLevel::INFO_LEVEL, db_options->info_log,
+         "Writing version edit: %s\n", edit.DebugString().c_str());
+  }
   return log->AddRecord(record);
 }
 

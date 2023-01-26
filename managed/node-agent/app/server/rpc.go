@@ -6,12 +6,17 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"node-agent/app/task"
 	pb "node-agent/generated/service"
+	"node-agent/model"
 	"node-agent/util"
 	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -37,10 +42,13 @@ func NewRPCServer(ctx context.Context, addr string, isTLS bool) (*RPCServer, err
 			util.FileLogger().Errorf("Error in loading TLS credentials: %s", err)
 			return nil, err
 		}
-		authenticator := Authenticator{util.CurrentConfig()}
+		authenticator := &Authenticator{util.CurrentConfig()}
 		serverOpts = append(serverOpts, grpc.Creds(tlsCredentials))
-		serverOpts = append(serverOpts, grpc.UnaryInterceptor(authenticator.UnaryInterceptor()))
-		serverOpts = append(serverOpts, grpc.StreamInterceptor(authenticator.StreamInterceptor()))
+		serverOpts = append(serverOpts, UnaryPanicHandler(authenticator.UnaryInterceptor()))
+		serverOpts = append(serverOpts, StreamPanicHandler(authenticator.StreamInterceptor()))
+	} else {
+		serverOpts = append(serverOpts, UnaryPanicHandler(nil))
+		serverOpts = append(serverOpts, StreamPanicHandler(nil))
 	}
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -48,7 +56,11 @@ func NewRPCServer(ctx context.Context, addr string, isTLS bool) (*RPCServer, err
 		return nil, err
 	}
 	gServer := grpc.NewServer(serverOpts...)
-	server := &RPCServer{addr: listener.Addr(), gServer: gServer, isTLS: isTLS}
+	server := &RPCServer{
+		addr:    listener.Addr(),
+		gServer: gServer,
+		isTLS:   isTLS,
+	}
 	pb.RegisterNodeAgentServer(gServer, server)
 	go func() {
 		if err := gServer.Serve(listener); err != nil {
@@ -84,8 +96,14 @@ func (server *RPCServer) Stop() {
 
 // Ping handles ping request.
 func (s *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.PingResponse, error) {
-	util.FileLogger().Debugf("Received: %v", in.Data)
-	return &pb.PingResponse{Data: in.Data}, nil
+	util.FileLogger().Debugf("Received ping")
+	config := util.CurrentConfig()
+	return &pb.PingResponse{
+		ServerInfo: &pb.ServerInfo{
+			Version:       config.String(util.PlatformVersionKey),
+			RestartNeeded: config.Bool(util.NodeAgentRestartKey),
+		},
+	}, nil
 }
 
 // ExecuteCommand executes a command on the server.
@@ -95,7 +113,8 @@ func (s *RPCServer) ExecuteCommand(
 ) error {
 	var res *pb.ExecuteCommandResponse
 	cmd := req.GetCommand()
-	task := task.NewShellTask("RemoteCommand", cmd[0], cmd[1:])
+	username := req.GetUser()
+	task := task.NewShellTaskWithUser("RemoteCommand", username, cmd[0], cmd[1:])
 	out, err := task.Process(stream.Context())
 	if err == nil {
 		res = &pb.ExecuteCommandResponse{
@@ -105,9 +124,14 @@ func (s *RPCServer) ExecuteCommand(
 		}
 	} else {
 		util.FileLogger().Errorf("Error in running command: %s - %s", cmd, err.Error())
+		rc := 1
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			rc = exitErr.ExitCode()
+		}
 		res = &pb.ExecuteCommandResponse{
 			Data: &pb.ExecuteCommandResponse_Error{
 				Error: &pb.Error{
+					Code:    int32(rc),
 					Message: out,
 				},
 			},
@@ -130,12 +154,37 @@ func (s *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error {
 	}
 	fileInfo := req.GetFileInfo()
 	filename := fileInfo.GetFilename()
+	username := req.GetUser()
+	userAcc, err := user.Current()
+	if err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+	var uid, gid uint32
+	var changeOwner = false
+	if username != "" && userAcc.Username != username {
+		userAcc, uid, gid, err = util.UserInfo(username)
+		if err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+		util.FileLogger().Infof("Using user: %s, uid: %d, gid: %d",
+			userAcc.Username, uid, gid)
+		changeOwner = true
+	}
+	if !filepath.IsAbs(filename) {
+		filename = filepath.Join(userAcc.HomeDir, filename)
+	}
 	file, err := os.Create(filename)
 	if err != nil {
 		util.FileLogger().Errorf("Error in creating file %s - %s", filename, err.Error())
 		return status.Error(codes.Internal, err.Error())
 	}
 	defer file.Close()
+	if changeOwner {
+		err = file.Chown(int(uid), int(gid))
+		if err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+	}
 	writer := bufio.NewWriter(file)
 	defer writer.Flush()
 	for {
@@ -172,6 +221,23 @@ func (s *RPCServer) DownloadFile(
 ) error {
 	filename := in.GetFilename()
 	res := &pb.DownloadFileResponse{ChunkData: make([]byte, 1024)}
+	if !filepath.IsAbs(filename) {
+		username := in.GetUser()
+		userAcc, err := user.Current()
+		if err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+		var uid, gid uint32
+		if username != "" && userAcc.Username != username {
+			userAcc, uid, gid, err = util.UserInfo(username)
+			if err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
+			util.FileLogger().Infof("Using user: %s, uid: %d, gid: %d",
+				userAcc.Username, uid, gid)
+		}
+		filename = filepath.Join(userAcc.HomeDir, filename)
+	}
 	file, err := os.Open(filename)
 	if err != nil {
 		util.FileLogger().Errorf("Error in opening file %s - %s", filename, err.Error())
@@ -195,6 +261,26 @@ func (s *RPCServer) DownloadFile(
 		}
 	}
 	return nil
+}
+
+func (s *RPCServer) Update(
+	ctx context.Context,
+	in *pb.UpdateRequest,
+) (*pb.UpdateResponse, error) {
+	var err error
+	config := util.CurrentConfig()
+	state := in.GetState()
+	switch state {
+	case model.Upgrade.Name():
+		// Start the upgrade process as all the files are available.
+		err = HandleUpgradeState(ctx, config, in.GetUpgradeInfo())
+	case model.Upgraded.Name():
+		// Platform has confirmed that it has also rotated the cert and the key.
+		err = HandleUpgradedState(ctx, config)
+	default:
+		err = fmt.Errorf("Unhandled state - %s", state)
+	}
+	return &pb.UpdateResponse{}, err
 }
 
 /* End of gRPC methods. */

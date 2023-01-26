@@ -1077,14 +1077,16 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
 Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
                                   const std::string& tablegroup_id,
-                                  const std::string& tablespace_id) {
+                                  const std::string& tablespace_id,
+                                  const TransactionMetadata* txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->CreateTablegroup(this,
                                  deadline,
                                  namespace_name,
                                  namespace_id,
                                  tablegroup_id,
-                                 tablespace_id);
+                                 tablespace_id,
+                                 txn);
 }
 
 Status YBClient::DeleteTablegroup(const std::string& tablegroup_id) {
@@ -1126,9 +1128,8 @@ Result<bool> YBClient::TablegroupExists(const std::string& namespace_name,
   return false;
 }
 
-Status YBClient::GetUDType(const std::string& namespace_name,
-                           const std::string& type_name,
-                           std::shared_ptr<QLType>* ql_type) {
+Result<std::shared_ptr<QLType>> YBClient::GetUDType(
+    const std::string& namespace_name, const std::string& type_name) {
   // Setting up request.
   GetUDTypeInfoRequestPB req;
   req.mutable_type()->mutable_namespace_()->set_name(namespace_name);
@@ -1139,19 +1140,22 @@ Status YBClient::GetUDType(const std::string& namespace_name,
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetUDTypeInfo);
 
   // Filling in return values.
+  auto& udt = *resp.mutable_udtype();
   std::vector<string> field_names;
-  for (const auto& field_name : resp.udtype().field_names()) {
-    field_names.push_back(field_name);
+  field_names.reserve(udt.field_names().size());
+  for (auto& field_name : *udt.mutable_field_names()) {
+    field_names.push_back(std::move(field_name));
   }
 
   std::vector<shared_ptr<QLType>> field_types;
-  for (const auto& field_type : resp.udtype().field_types()) {
+  field_types.reserve(udt.field_types().size());
+  for (const auto& field_type : udt.field_types()) {
     field_types.push_back(QLType::FromQLTypePB(field_type));
   }
 
-  (*ql_type)->SetUDTypeFields(resp.udtype().id(), field_names, field_types);
-
-  return Status::OK();
+  return QLType::CreateUDType(
+      namespace_name, type_name,
+      std::move(*udt.mutable_id()), std::move(field_names), std::move(field_types));
 }
 
 Status YBClient::CreateRole(const RoleName& role_name,
@@ -1596,10 +1600,11 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-    GetTableLocationsCallback callback) {
+    PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetTableLocations(
-      this, table_id, max_tablets, require_tablets_running, deadline, std::move(callback));
+      this, table_id, max_tablets, require_tablets_running, partitions_only, deadline,
+      std::move(callback));
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
@@ -2049,6 +2054,11 @@ Status YBClient::ValidateReplicationInfo(const ReplicationInfoPB& replication_in
 Result<TableSizeInfo> YBClient::GetTableDiskSize(const TableId& table_id) {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
   return data_->GetTableDiskSize(table_id, deadline);
+}
+
+Status YBClient::ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed) {
+  auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
+  return data_->ReportYsqlDdlTxnStatus(txn, is_committed, deadline);
 }
 
 Result<bool> YBClient::CheckIfPitrActive() {

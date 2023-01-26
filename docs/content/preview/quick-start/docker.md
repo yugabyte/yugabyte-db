@@ -12,14 +12,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
-      <img src="/icons/cloud-icon.svg" alt="Icon">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
       Use a cloud cluster
     </a>
   </li>
   <li class="active">
     <a href="../../quick-start/" class="nav-link">
-             <img src="/icons/server-iconsvg.svg" alt="Icon">
-Use a local cluster
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use a local cluster
     </a>
   </li>
 </ul>
@@ -47,7 +47,7 @@ The local cluster setup on a single host is intended for development and learnin
   </li>
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -87,7 +87,7 @@ To create a 1-node cluster with a replication factor (RF) of 1, run the followin
 
 ```sh
 docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
- yugabytedb/yugabyte:2.15.2.0-b87 bin/yugabyted start\
+ yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start\
  --daemon=false
 ```
 

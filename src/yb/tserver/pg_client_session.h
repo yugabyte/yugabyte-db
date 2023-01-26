@@ -61,6 +61,7 @@ namespace tserver {
     (DropDatabase) \
     (DropTable) \
     (DropTablegroup) \
+    (FetchSequenceTuple) \
     (FinishTransaction) \
     (InsertSequenceTuple) \
     (ReadSequenceTuple) \
@@ -79,6 +80,11 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   struct UsedReadTime {
     simple_spinlock lock;
     ReadHybridTime value;
+  };
+
+  struct SessionData {
+    client::YBSessionPtr session;
+    client::YBTransactionPtr transaction;
   };
 
   using UsedReadTimePtr = std::weak_ptr<UsedReadTime>;
@@ -112,7 +118,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   Result<client::YBTransactionPtr> RestartTransaction(
       client::YBSession* session, client::YBTransaction* transaction);
 
-  Result<std::pair<client::YBSession*, UsedReadTimePtr>> SetupSession(
+  Result<std::pair<SessionData, PgClientSession::UsedReadTimePtr>> SetupSession(
       const PgPerformRequestPB& req, CoarseTimePoint deadline);
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
@@ -152,11 +158,6 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
     }
     return Status::OK();
   }
-
-  struct SessionData {
-    client::YBSessionPtr session;
-    client::YBTransactionPtr transaction;
-  };
 
   const uint64_t id_;
   client::YBClient& client_;

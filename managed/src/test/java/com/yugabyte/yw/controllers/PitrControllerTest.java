@@ -86,6 +86,10 @@ public class PitrControllerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.14.0.0-b111";
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
     Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
     auditService = new AuditService();
     pitrController = new PitrController(commissioner, mockService);
@@ -138,6 +142,25 @@ public class PitrControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreatePitrConfigWithIncompatibleUniverse() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.12.0.0-b111";
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("retentionPeriodInSeconds", 7 * 86400L);
+    bodyJson.put("intervalInSeconds", 86400L);
+    Result r =
+        assertPlatformException(
+            () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
   public void testCreatePitrConfigWithoutUniverse() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -182,7 +205,7 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
-    assertValue(resultJson, "error", "PITR Config retention period can't be less than 1 second");
+    assertValue(resultJson, "error", "PITR Config retention period cannot be less than 1 second");
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
@@ -198,7 +221,7 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> createPitrConfig(defaultUniverse.universeUUID, "YSQL", "yugabyte", bodyJson));
     JsonNode resultJson = Json.parse(contentAsString(r));
-    assertValue(resultJson, "error", "PITR Config interval can't be less than retention period");
+    assertValue(resultJson, "error", "PITR Config interval cannot be less than retention period");
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
@@ -460,6 +483,26 @@ public class PitrControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListPitrConfigsWithIncompatibleUniverse() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.12.0.0-b111";
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("retentionPeriodInSeconds", 7 * 86400L);
+    bodyJson.put("intervalInSeconds", 86400L);
+    Result r =
+        assertPlatformException(
+            () ->
+                pitrController.listPitrConfigs(defaultCustomer.uuid, defaultUniverse.universeUUID));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
   public void testDeletePitrConfig() throws Exception {
     List<SnapshotScheduleInfo> preScheduleInfoList = new ArrayList<>();
     List<UUID> postScheduleUUIDList = new ArrayList<>();
@@ -578,6 +621,23 @@ public class PitrControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeletePitrConfigWithIncompatibleUniverse() {
+    UUID scheduleUUID3 = UUID.randomUUID();
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.12.0.0-b111";
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+    Result r =
+        assertPlatformException(
+            () ->
+                pitrController.deletePitrConfig(
+                    defaultCustomer.uuid, defaultUniverse.universeUUID, scheduleUUID3));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
   public void testPerformPitr() throws Exception {
     List<SnapshotScheduleInfo> scheduleInfoList = new ArrayList<>();
     UUID fakeTaskUUID = UUID.randomUUID();
@@ -644,6 +704,27 @@ public class PitrControllerTest extends FakeDBApplication {
 
     UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
     details.universePaused = true;
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+
+    Result r =
+        assertPlatformException(
+            () -> performPitr(defaultUniverse.universeUUID, Json.toJson(params)));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testPerformPitrWithIncompatibleUniverse() throws Exception {
+    RestoreSnapshotScheduleParams params = new RestoreSnapshotScheduleParams();
+    params.universeUUID = defaultUniverse.universeUUID;
+    params.pitrConfigUUID = UUID.randomUUID();
+    params.restoreTimeInMillis = System.currentTimeMillis();
+
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.12.0.0-b111";
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
 

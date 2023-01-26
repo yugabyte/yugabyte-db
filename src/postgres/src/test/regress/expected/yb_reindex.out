@@ -533,10 +533,14 @@ SELECT i FROM ing WHERE j < -8 ORDER BY i;
          Index Cond: (j < '-8'::integer)
 (4 rows)
 
--- TODO(#12899): fix output
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
-ERROR:  Query error: Cannot decode value type kGroupEnd from the key encoding format: "!"
+ i
+----
+  9
+ 10
+(2 rows)
+
 EXPLAIN (costs off)
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j = -9;

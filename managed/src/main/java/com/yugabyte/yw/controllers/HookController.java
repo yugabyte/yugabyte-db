@@ -6,6 +6,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.RunApiTriggeredHooks;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.HookRequestData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -51,6 +53,7 @@ public class HookController extends AuthenticatedController {
 
   @Inject RuntimeConfigFactory rConfigFactory;
   @Inject Commissioner commissioner;
+  @Inject RuntimeConfGetter confGetter;
 
   @ApiOperation(
       value = "List all hooks",
@@ -70,7 +73,7 @@ public class HookController extends AuthenticatedController {
     verifyAuth(customer);
     Form<HookRequestData> formData = formFactory.getFormDataOrBadRequest(HookRequestData.class);
     HookRequestData form = formData.get();
-    boolean isSudoEnabled = rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_SUDO_PATH);
+    boolean isSudoEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableSudo);
     form.verify(customerUUID, true, isSudoEnabled);
 
     MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
@@ -122,7 +125,7 @@ public class HookController extends AuthenticatedController {
     verifyAuth(customer);
     Form<HookRequestData> formData = formFactory.getFormDataOrBadRequest(HookRequestData.class);
     HookRequestData form = formData.get();
-    boolean isSudoEnabled = rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_SUDO_PATH);
+    boolean isSudoEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableSudo);
 
     MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
     if (multiPartBody == null) {
@@ -160,7 +163,7 @@ public class HookController extends AuthenticatedController {
   public Result run(UUID customerUUID, UUID universeUUID, Boolean isRolling, UUID clusterUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     verifyAuth(customer);
-    if (!rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_API_HOOK_RUN_PATH)) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enabledApiTriggerHooks)) {
       throw new PlatformServiceException(
           UNAUTHORIZED,
           "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
@@ -215,7 +218,7 @@ public class HookController extends AuthenticatedController {
   }
 
   public void verifyAuth(Customer customer) {
-    if (!rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableCustomHooks))
       throw new PlatformServiceException(
           UNAUTHORIZED, "Custom hooks is not enabled on this Anywhere instance");
     boolean cloudEnabled = rConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");

@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.SdkClientException;
@@ -153,7 +153,7 @@ public class IAMTemporaryCredentialsProvider {
       String roleArn = null;
       AWSSecurityTokenService stsService =
           getStandardSTSClientWithoutCredentials(signingRegion, iamConfig.regionalSTS)
-              .withCredentials(new InstanceProfileCredentialsProvider(false))
+              .withCredentials(new EC2ContainerCredentialsProviderWrapper())
               .build();
 
       try {
@@ -165,7 +165,7 @@ public class IAMTemporaryCredentialsProvider {
         String role = arnSplit[arnSplit.length - 2];
         AmazonIdentityManagement iamClient =
             AmazonIdentityManagementClientBuilder.standard()
-                .withCredentials(new InstanceProfileCredentialsProvider(false))
+                .withCredentials(new EC2ContainerCredentialsProviderWrapper())
                 .build();
         Role iamRole = iamClient.getRole(new GetRoleRequest().withRoleName(role)).getRole();
         roleArn = iamRole.getArn();
@@ -300,7 +300,9 @@ public class IAMTemporaryCredentialsProvider {
 
     @Override
     public AWSCredentials getCredentialsOrFail() throws Exception {
-      return new EC2ContainerCredentialsProviderWrapper().getCredentials();
+      AWSCredentialsProvider ec2CredentialsProvider = new EC2ContainerCredentialsProviderWrapper();
+      ec2CredentialsProvider.refresh();
+      return ec2CredentialsProvider.getCredentials();
     }
   }
 

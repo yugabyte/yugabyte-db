@@ -1151,5 +1151,73 @@ TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
   ASSERT_EQ(count, 20);
 }
 
+// A simple smoke test to ensure it working and
+// nothing is broken by future changes.
+TEST_F(AdminCliTest, PromoteAutoFlags) {
+  BuildAndStart();
+  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
+
+  {
+    const auto status = CallAdmin("promote_auto_flags", "invalid");
+    ASSERT_NOK(status);
+    ASSERT_NE(
+        status.ToString().find("Invalid value provided for max_flags_class"), std::string::npos);
+  }
+
+  {
+    const auto status = CallAdmin("promote_auto_flags", "kExternal", "invalid");
+    ASSERT_NOK(status);
+    ASSERT_NE(
+        status.ToString().find("Invalid value provided for promote_non_runtime_flags"),
+        std::string::npos);
+  }
+
+  {
+    const auto status = CallAdmin("promote_auto_flags", "kExternal", "true", "invalid");
+    ASSERT_NOK(status);
+    ASSERT_NE(status.ToString().find("Invalid arguments for operation"), std::string::npos);
+  }
+
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kLocalVolatile", "false"));
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kLocalVolatile", "true"));
+
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kLocalPersisted", "false"));
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kLocalPersisted", "true"));
+
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kExternal", "false"));
+  ASSERT_OK(CallAdmin("promote_auto_flags", "kExternal", "true"));
+
+  auto result = ASSERT_RESULT(CallAdmin("promote_auto_flags", "kLocalVolatile", "false"));
+  ASSERT_NE(result.find("No new AutoFlags to promote"), std::string::npos);
+
+  result = ASSERT_RESULT(CallAdmin("promote_auto_flags", "kLocalVolatile", "false", "force"));
+  ASSERT_NE(result.find("New AutoFlags were promoted. Config version"), std::string::npos);
+}
+
+TEST_F(AdminCliTest, PrintArgumentExpressions) {
+  const auto namespace_expression = "<namespace>:\n [(ycql|ysql).]<namespace_name> (default ycql.)";
+  const auto table_expression = "<table>:\n <namespace> <table_name> | tableid.<table_id>";
+  const auto index_expression = "<index>:\n  <namespace> <index_name> | tableid.<index_id>";
+
+  BuildAndStart();
+  auto status = CallAdmin("delete_table");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(table_expression), std::string::npos);
+
+  status = CallAdmin("delete_namespace");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
+
+  status = CallAdmin("delete_index");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(index_expression), std::string::npos);
+
+  status = CallAdmin("add_universe_key_to_all_masters");
+  ASSERT_NOK(status);
+  ASSERT_EQ(status.ToString().find(namespace_expression), std::string::npos);
+  ASSERT_EQ(status.ToString().find(table_expression), std::string::npos);
+  ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
+}
+
 }  // namespace tools
 }  // namespace yb

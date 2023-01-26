@@ -33,7 +33,8 @@ YQLVTableIterator::YQLVTableIterator(
   Advance(false /* increment */);
 }
 
-Status YQLVTableIterator::DoNextRow(const Schema& projection, QLTableRow* table_row) {
+Status YQLVTableIterator::DoNextRow(
+    boost::optional<const Schema&> projection, QLTableRow* table_row) {
   if (vtable_index_ >= vtable_->row_count()) {
     return STATUS(NotFound, "No more rows left!");
   }

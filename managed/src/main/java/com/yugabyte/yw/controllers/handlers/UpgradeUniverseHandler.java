@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -48,7 +49,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YbcManager;
 
 @Slf4j
@@ -138,14 +138,14 @@ public class UpgradeUniverseHandler {
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
-      userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
-      userIntent.tserverGFlags = trimFlags(userIntent.tserverGFlags);
+      userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
+      userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
       requestParams.masterGFlags = userIntent.masterGFlags;
       requestParams.tserverGFlags = userIntent.tserverGFlags;
     } else {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      requestParams.masterGFlags = trimFlags(requestParams.masterGFlags);
-      requestParams.tserverGFlags = trimFlags((requestParams.tserverGFlags));
+      requestParams.masterGFlags = GFlagsUtil.trimFlags(requestParams.masterGFlags);
+      requestParams.tserverGFlags = GFlagsUtil.trimFlags((requestParams.tserverGFlags));
     }
 
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
@@ -322,9 +322,6 @@ public class UpgradeUniverseHandler {
 
     // Verify request params
     requestParams.verifyParams(universe);
-    if (requestParams.rootAndClientRootCASame == null) {
-      requestParams.rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
-    }
     requestParams.allowInsecure =
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
 
@@ -351,30 +348,30 @@ public class UpgradeUniverseHandler {
       // Setting the ClientRootCA to the already existing clientRootCA as we do not
       // support root certificate rotation through TLS upgrade.
       // There is a check for different new and existing root cert already.
-      if (universeDetails.clientRootCA == null) {
-        if (requestParams.clientRootCA == null) {
+      if (universeDetails.getClientRootCA() == null) {
+        if (requestParams.getClientRootCA() == null) {
           if (requestParams.rootCA != null && requestParams.rootAndClientRootCASame) {
             // Setting ClientRootCA to RootCA in case rootAndClientRootCA is true
-            requestParams.clientRootCA = requestParams.rootCA;
+            requestParams.setClientRootCA(requestParams.rootCA);
           } else {
             // Create self-signed clientRootCA in case it is not provided by the user
             // and rootCA and clientRootCA needs to be different
-            requestParams.clientRootCA =
+            requestParams.setClientRootCA(
                 CertificateHelper.createClientRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid);
+                    customer.uuid));
           }
         }
       } else {
-        requestParams.clientRootCA = universeDetails.clientRootCA;
+        requestParams.setClientRootCA(universeDetails.getClientRootCA());
       }
 
       // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
       // This is necessary to set to ensure backward compatibility as existing parts of
       // codebase uses rootCA for Client to Node Encryption
       if (requestParams.rootCA == null && requestParams.rootAndClientRootCASame) {
-        requestParams.rootCA = requestParams.clientRootCA;
+        requestParams.rootCA = requestParams.getClientRootCA();
       }
 
       // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
@@ -477,16 +474,6 @@ public class UpgradeUniverseHandler {
         universe.universeUUID,
         universe.name);
     return taskUUID;
-  }
-
-  private Map<String, String> trimFlags(Map<String, String> data) {
-    Map<String, String> trimData = new HashMap<>();
-    for (Map.Entry<String, String> intent : data.entrySet()) {
-      String key = intent.getKey();
-      String value = intent.getValue();
-      trimData.put(key.trim(), value.trim());
-    }
-    return trimData;
   }
 
   private void checkHelmChartExists(String ybSoftwareVersion) {

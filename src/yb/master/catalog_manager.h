@@ -149,6 +149,9 @@ typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeM
 
 constexpr int32_t kInvalidClusterConfigVersion = 0;
 
+using DdlTxnIdToTablesMap =
+  std::unordered_map<TransactionId, std::vector<scoped_refptr<TableInfo>>, TransactionIdHash>;
+
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
 //
@@ -363,7 +366,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<NamespaceId> GetTableNamespaceId(TableId table_id) EXCLUDES(mutex_);
 
   void ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>& table,
-                                   const TransactionMetadata& txn);
+                                   const TransactionMetadata& txn)
+                                   EXCLUDES(ddl_txn_verifier_mutex_);
 
   Status YsqlTableSchemaChecker(scoped_refptr<TableInfo> table,
                                 const std::string& txn_id_pb,
@@ -372,6 +376,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table,
                                     const std::string& txn_id_pb,
                                     bool success);
+
+  Status YsqlDdlTxnCompleteCallbackInternal(
+      TableInfo *table, const TransactionId& txn_id, bool success);
 
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
@@ -1025,6 +1032,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
 
+  Status ReportYsqlDdlTxnStatus(
+      const ReportYsqlDdlTxnStatusRequestPB* req,
+      ReportYsqlDdlTxnStatusResponsePB* resp,
+      rpc::RpcContext* rpc);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1192,6 +1204,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Add index info to the indexed table.
   Status AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
+                             CowWriteLock<PersistentTableInfo>* l_ptr,
                              const IndexInfoPB& index_info,
                              CreateTableResponsePB* resp);
 
@@ -1211,7 +1224,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status BuildLocationsForTablet(
       const scoped_refptr<TabletInfo>& tablet,
       TabletLocationsPB* locs_pb,
-      IncludeInactive include_inactive = IncludeInactive::kFalse);
+      IncludeInactive include_inactive = IncludeInactive::kFalse,
+      PartitionsOnly partitions_only = PartitionsOnly::kFalse);
 
   // Check whether the tservers in the current replica map differs from those in the cstate when
   // processing a tablet report. Ignore the roles reported by the cstate, just compare the
@@ -1907,9 +1921,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const PlacementBlockPB& placement_block,
       const TSDescriptorVector& ts_descs);
 
-  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) const;
 
-  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) const;
 
   // Return the id of the tablespace associated with a transaction status table, if any.
   boost::optional<TablespaceId> GetTransactionStatusTableTablespace(
@@ -1999,8 +2013,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status TryRemoveFromTablegroup(const TableId& table_id);
 
   // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
-  AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(
-    const std::string& ts_uuid) EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
+  AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(const std::string& ts_uuid)
+      EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
+
+  // Helper function for BuildLocationsForTablet to handle the special case of a system tablet.
+  Status BuildLocationsForSystemTablet(
+      const scoped_refptr<TabletInfo>& tablet,
+      TabletLocationsPB* locs_pb,
+      IncludeInactive include_inactive,
+      PartitionsOnly partitions_only);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
@@ -2022,6 +2043,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::atomic<bool> tablespace_bg_task_running_;
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
+
+  // Guards ddl_txn_id_to_table_map_ below.
+  mutable MutexType ddl_txn_verifier_mutex_;
+
+  // This map stores the transaction ids of all the DDL transactions undergoing verification.
+  // For each transaction, it also stores pointers to the table info objects of the tables affected
+  // by that transaction.
+  DdlTxnIdToTablesMap ddl_txn_id_to_table_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
 
   ServerRegistrationPB server_registration_;
 

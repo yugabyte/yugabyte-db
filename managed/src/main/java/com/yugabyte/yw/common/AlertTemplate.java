@@ -233,7 +233,7 @@ public enum AlertTemplate {
           + "up{export_type=\"node_export\",node_prefix=\"__nodePrefix__\"}[15m])"
           + ", \"exported_instance\", \"$1\", \"instance\", \"(.*)\") < 1 and on"
           + " (node_prefix, export_type, exported_instance) (min_over_time("
-          + "ybp_universe_node_function{node_prefix=\"__nodePrefix__\"}[15m]) == 1)) "
+          + "ybp_universe_node_process_status{node_prefix=\"__nodePrefix__\"}[1m]) == 1)) "
           + "{{ query_condition }} {{ query_threshold }}",
       "{{ $value | printf \\\"%.0f\\\" }} DB node(s) are down "
           + "for more than 15 minutes for universe '{{ $labels.source_name }}'.",
@@ -371,7 +371,7 @@ public enum AlertTemplate {
           + "up{export_type=~\"master_export|tserver_export\",node_prefix=\"__nodePrefix__\"}[15m])"
           + ", \"exported_instance\", \"$1\", \"instance\", \"(.*)\") < 1 and on"
           + " (node_prefix, export_type, exported_instance) (min_over_time("
-          + "ybp_universe_node_function{node_prefix=\"__nodePrefix__\"}[15m]) == 1)) "
+          + "ybp_universe_node_process_status{node_prefix=\"__nodePrefix__\"}[1m]) == 1)) "
           + "{{ query_condition }} {{ query_threshold }}",
       "{{ $value | printf \\\"%.0f\\\" }} DB Master/TServer instance(s) are down "
           + "for more than 15 minutes for universe '{{ $labels.source_name }}'.",

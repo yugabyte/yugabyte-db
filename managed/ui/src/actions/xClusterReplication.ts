@@ -225,6 +225,7 @@ export function fetchTaskUntilItCompletes(
       } else {
         setTimeout(retryTask, interval);
       }
+      // eslint-disable-next-line no-empty
     } catch {}
   }
   return retryTask();

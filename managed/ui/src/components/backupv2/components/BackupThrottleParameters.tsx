@@ -52,7 +52,11 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
     ['throttle_parameters', currentUniverseUUID],
     () => fetchThrottleParameters(currentUniverseUUID),
     {
-      enabled: visible
+      enabled: visible,
+      onError: () => {
+        toast.error('Unable to fetch throttle parameter configurations!.');
+        onHide();
+      }
     }
   );
 
@@ -93,8 +97,8 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
     ...throttleParameters!.data
   };
 
-  const max_buffers_allowed =
-    currentUniverseResources.numCores / currentUniverseResources.numNodes + 1;
+  const noOfCoresPerNode = currentUniverseResources.numCores / currentUniverseResources.numNodes;
+  const defaultBufferPerNode = noOfCoresPerNode / 2 + 1;
 
   const min_buffers_allowed = 1;
 
@@ -103,22 +107,22 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
       .required('Required')
       .typeError('Required')
       .min(min_buffers_allowed, 'Min limit is 1')
-      .max(max_buffers_allowed, `Max limit is ${max_buffers_allowed}`),
+      .max(noOfCoresPerNode, `Max limit is ${noOfCoresPerNode}`),
     per_upload_num_objects: Yup.number()
       .required('Required')
       .typeError('Required')
       .min(min_buffers_allowed, 'Min Limit is 1')
-      .max(max_buffers_allowed, `Max limit is ${max_buffers_allowed}`),
+      .max(noOfCoresPerNode, `Max limit is ${noOfCoresPerNode}`),
     max_concurrent_downloads: Yup.number()
       .required('Required')
       .typeError('Required')
       .min(min_buffers_allowed, 'Min limit is 1')
-      .max(max_buffers_allowed, `Max limit is ${max_buffers_allowed}`),
+      .max(noOfCoresPerNode, `Max limit is ${noOfCoresPerNode}`),
     per_download_num_objects: Yup.number()
       .required('Required')
       .typeError('Required')
       .min(min_buffers_allowed, 'Min Limit is 1')
-      .max(max_buffers_allowed, `Max limit is ${max_buffers_allowed}`)
+      .max(noOfCoresPerNode, `Max limit is ${noOfCoresPerNode}`)
   });
 
   return (
@@ -164,7 +168,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                   </div>
                   <div>
                     For <b>faster</b> backups and restores, enter higher values.
-                    <YBTag type={YBTag_Types.YB_GRAY}>Max {max_buffers_allowed}</YBTag>
+                    <YBTag type={YBTag_Types.YB_GRAY}>Max {noOfCoresPerNode}</YBTag>
                   </div>
                   <div>
                     For <b>lower impact</b> on database performance, enter lower values.
@@ -195,7 +199,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                   <Row>
                     <Col lg={12} className="no-padding">
                       Number of buffers per upload per node{' '}
-                      <span className="text-secondary">- Default {max_buffers_allowed}</span>
+                      <span className="text-secondary">- Default {defaultBufferPerNode}</span>
                     </Col>
                     <Col lg={2} className="no-padding">
                       <Field
@@ -238,7 +242,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                   <Row>
                     <Col lg={12} className="no-padding">
                       Number of buffers per download per node{' '}
-                      <span className="text-secondary">- Default {max_buffers_allowed}</span>
+                      <span className="text-secondary">- Default {defaultBufferPerNode}</span>
                     </Col>
                     <Col lg={2} className="no-padding">
                       <Field
@@ -275,7 +279,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
           Number of parallel uploads (per node) = <b>2</b>
         </div>
         <div>
-          Number of buffers per upload (per node) = <b>{max_buffers_allowed}</b>
+          Number of buffers per upload (per node) = <b>{defaultBufferPerNode}</b>
         </div>
         <br />
         <h5>Restore</h5>
@@ -283,7 +287,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
           Number of parallel downloads (per node) = <b>2</b>
         </div>
         <div>
-          Number of buffers per download (per node) = <b>{max_buffers_allowed}</b>
+          Number of buffers per download (per node) = <b>{defaultBufferPerNode}</b>
         </div>
       </YBConfirmModal>
     </>

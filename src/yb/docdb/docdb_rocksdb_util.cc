@@ -23,6 +23,7 @@
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/value_type.h"
@@ -499,11 +500,10 @@ class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
       : rocksdb::FilteringIterator(iterator, arena_mode), hybrid_time_filter_(hybrid_time_filter) {}
 
  private:
-  bool Satisfied(Slice key) override {
-    auto user_key = rocksdb::ExtractUserKey(key);
+  bool Satisfied(Slice user_key) override {
     auto doc_ht = DocHybridTime::DecodeFromEnd(&user_key);
     if (!doc_ht.ok()) {
-      LOG(DFATAL) << "Unable to decode doc ht " << rocksdb::ExtractUserKey(key) << ": "
+      LOG(DFATAL) << "Unable to decode doc ht " << user_key << ": "
                   << doc_ht.status();
       return true;
     }

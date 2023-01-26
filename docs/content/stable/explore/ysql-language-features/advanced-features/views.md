@@ -13,11 +13,11 @@ type: docs
 
 This document describes how to create, use, and manage views in YSQL.
 
-## Overview
-
 Regular views allow you to present data in YugabyteDB tables by using a different variety of named queries. In essence, a view is a proxy for a complex query to which you assign a name. In YSQL, views do not store data. However, YSQL also supports materialized views which _do_ store the results of the query.
 
-## Creating Views
+{{% explore-setup-single %}}
+
+## Create views
 
 You create views based on the following syntax:
 
@@ -25,7 +25,7 @@ You create views based on the following syntax:
 CREATE VIEW view_name AS query_definition;
 ```
 
-*query_definition* can be a simple `SELECT` statement or a `SELECT` statement with joins.
+*query_definition* can be a basic `SELECT` statement or a `SELECT` statement with joins.
 
 Suppose you work with a database that includes the following table populated with data:
 
@@ -72,7 +72,7 @@ employee_no | name
 
 If you create a view based on multiple tables with joins, using this view in your queries would significantly simplify the process.
 
-## Modifying Views
+## Modify views
 
 You can modify the query based on which a view was created by combining the `CREATE VIEW` statement with `OR REPLACE`, as demonstrated by the following syntax:
 
@@ -104,7 +104,7 @@ The preceding query produces the following output:
  1222        | Bette Davis      | Sales
 ```
 
-## Deleting Views
+## Delete views
 
 You can remove (drop) an existing view by using the `DROP VIEW` statement, as demonstrated by the following syntax:
 
@@ -122,7 +122,7 @@ DROP VIEW IF EXISTS employees_view;
 
 You can also remove more than one view by providing a comma-separated list of view names.
 
-## Using Updatable Views
+## Use updatable views
 
 Some YSQL views are updatable. The defining query of such views (1) must have only one entry (either a table or another updatable view) in its `FROM` clause; and (2) cannot contain `DISTINCT`, `GROUP BY`, `HAVING`, `EXCEPT`, `INTERSECT`, or `LIMIT` clauses at the top level. In addition, the view's selection list cannot contain  window functions, set-returning or aggregate functions.
 
@@ -160,7 +160,7 @@ DELETE FROM employees_view
   WHERE employee_no = 1227;
 ```
 
-## Materialized Views
+## Materialized views
 
 Materialized views are relations that persist the results of a query. They can be created using the `CREATE MATERIALIZED VIEW` command, and their contents can be updated using the `REFRESH MATERIALIZED VIEW` command.
 
@@ -212,10 +212,13 @@ employee_no | name
 1224        | John Zimmerman
 1221        | John Smith
 1222        | Bette Davis
+1225        | Jane Doe
 ```
 
-For detailed documentation on materialized views please refer to the following links:
+## Read more
 
-- [`CREATE MATERIALIZED VIEW`](../../../../api/ysql/the-sql-language/statements/ddl_create_matview/)
-- [`REFRESH MATERIALIZED VIEW`](../../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/)
-- [`DROP MATERIALIZED VIEW`](../../../../api/ysql/the-sql-language/statements/ddl_drop_matview/)
+For detailed documentation on materialized views, refer to the following topics:
+
+- [CREATE MATERIALIZED VIEW](../../../../api/ysql/the-sql-language/statements/ddl_create_matview/)
+- [REFRESH MATERIALIZED VIEW](../../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/)
+- [DROP MATERIALIZED VIEW](../../../../api/ysql/the-sql-language/statements/ddl_drop_matview/)

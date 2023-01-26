@@ -82,6 +82,14 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
             "If true, disables read, write, and execute of local server files. "
             "File access can be re-enabled if set to false.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
+TAG_FLAG(ysql_enable_profile, advanced);
+TAG_FLAG(ysql_enable_profile, hidden);
+
+DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
+            "If true, YB catalog preloads additional tables upon "
+            "connection creation and cache refresh.");
+
 namespace yb {
 namespace pggate {
 
@@ -244,16 +252,16 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 }
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-#ifdef TCMALLOC_ENABLED
-    *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
+#if defined(YB_TCMALLOC_ENABLED)
+  *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
 #else
-    *consumption = 0;
+  *consumption = 0;
 #endif
   return YBCStatusOK();
 }
 
 YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
     *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
 #else
     *consumption = 0;
@@ -279,7 +287,7 @@ bool YBCTryMemRelease(int64_t bytes) {
 
 YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
   memset(desc, 0x0, sizeof(YbTcmallocStats));
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
   using mt = yb::MemTracker;
   desc->total_physical_bytes = mt::GetTCMallocProperty("generic.total_physical_bytes");
   desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
@@ -434,6 +442,22 @@ YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
   return ToYBCStatus(pgapi->UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
       last_val, is_called, skipped));
+}
+
+YBCStatus YBCFetchSequenceTuple(int64_t db_oid,
+                                int64_t seq_oid,
+                                uint64_t ysql_catalog_version,
+                                bool is_db_catalog_version_mode,
+                                uint32_t fetch_count,
+                                int64_t inc_by,
+                                int64_t min_value,
+                                int64_t max_value,
+                                bool cycle,
+                                int64_t *first_value,
+                                int64_t *last_value) {
+  return ToYBCStatus(pgapi->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      min_value, max_value, cycle, first_value, last_value));
 }
 
 YBCStatus YBCReadSequenceTuple(int64_t db_oid,
@@ -831,9 +855,9 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle,
                                                      end_inclusive));
 }
 
-YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
-    YBCPgExpr *attr_values) {
-  return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, YBCPgExpr lhs, int n_attr_values,
+                                   YBCPgExpr *attr_values) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, lhs, n_attr_values, attr_values));
 }
 
 YBCStatus YBCPgDmlBindHashCodes(
@@ -1093,6 +1117,14 @@ YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
   return ToYBCStatus(pgapi->OperatorAppendArg(op_handle, arg));
 }
 
+YBCStatus YBCPgNewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    YBCPgExpr *elems, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewTupleExpr(
+      stmt, tuple_type_entity, type_attrs, num_elems, elems, expr_handle));
+}
+
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
                             bool is_null, size_t *type_size) {
 
@@ -1307,21 +1339,23 @@ uint64_t YBCGetSharedAuthKey() {
 
 const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
-      .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
-      .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
-      .ysql_disable_server_file_access         = &FLAGS_ysql_disable_server_file_access,
-      .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
-      .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
-      .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
+      .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
+      .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
+      .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
+      .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
+      .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
+      .ysql_max_read_restart_attempts           = &FLAGS_ysql_max_read_restart_attempts,
+      .ysql_max_write_restart_attempts          = &FLAGS_ysql_max_write_restart_attempts,
       .ysql_num_databases_reserved_in_db_catalog_version_mode =
           &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
-      .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
-      .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
-      .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
-      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default,
-      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled,
-      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching
+      .ysql_output_buffer_size                  = &FLAGS_ysql_output_buffer_size,
+      .ysql_sequence_cache_minval               = &FLAGS_ysql_sequence_cache_minval,
+      .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
+      .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
+      .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
+      .ysql_ddl_rollback_enabled                = &FLAGS_ysql_ddl_rollback_enabled,
+      .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
+      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile
   };
   return &accessor;
 }
@@ -1435,6 +1469,10 @@ void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
 
 void YBCStopSysTablePrefetching() {
   pgapi->StopSysTablePrefetching();
+}
+
+bool YBCIsSysTablePrefetchingStarted() {
+  return pgapi->IsSysTablePrefetchingStarted();
 }
 
 void YBCRegisterSysTableForPrefetching(

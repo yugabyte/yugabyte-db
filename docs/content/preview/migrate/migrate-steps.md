@@ -2,7 +2,6 @@
 title: Migration steps
 linkTitle: Migration steps
 description: Run the steps to ensure a successful migration.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: migrate-steps
@@ -14,6 +13,8 @@ type: docs
 This page describes the steps to perform and verify a successful migration to YugabyteDB. Before proceeding with migration, ensure that you have completed the following steps:
 
 - [Install yb-voyager](../install-yb-voyager/#install-yb-voyager).
+- Check the [unsupported features](../known-issues/#unsupported-features) and [known issues](../known-issues/#known-issues).
+- Review [data modeling](../reference/data-modeling/) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
@@ -29,13 +30,13 @@ Prepare your source database by creating a new database user, and provide it wit
     </a>
   </li>
   <li>
-    <a href="#mysql" class="nav-link" id="mysql-tab" data-toggle="tab" role="tab" aria-controls="mysql" aria-selected="false">
+    <a href="#mysql" class="nav-link" id="mysql-tab" data-toggle="tab" role="tab" aria-controls="mysql" aria-selected="true">
       <i class="icon-mysql" aria-hidden="true"></i>
       MySQL
     </a>
   </li>
   <li>
-    <a href="#oracle" class="nav-link" id="oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="false">
+    <a href="#oracle" class="nav-link" id="oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
       Oracle
     </a>
@@ -54,14 +55,14 @@ Prepare your source database by creating a new database user, and provide it wit
   </div>
 </div>
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< note title="Connecting to Oracle instances" >}}
 You can use only one of the following arguments to connect to your Oracle instance.
 
-- [`--source-db-schema`](../yb-voyager-cli/#source-db-schema)
-- [`--oracle-db-sid`](../yb-voyager-cli/#oracle-db-sid)
-- [`--oracle-tns-alias`](../yb-voyager-cli/##ssl-connectivity)
+- [`--source-db-schema`](../reference/yb-voyager-cli/#source-db-schema)
+- [`--oracle-db-sid`](../reference/yb-voyager-cli/#oracle-db-sid)
+- [`--oracle-tns-alias`](../reference/yb-voyager-cli/#ssl-connectivity)
 {{< /note >}}
 
 ## Prepare the target database
@@ -93,7 +94,7 @@ Create a user with [`SUPERUSER`](../../api/ysql/the-sql-language/statements/dcl_
      GRANT yb_superuser TO ybvoyager;
      ```
 
-If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< warning title="Deleting the ybvoyager user" >}}
 
@@ -107,6 +108,25 @@ DROP USER ybvoyager;
 
 {{< /warning >}}
 
+## Create an export directory
+
+yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*.
+
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command in an environment variable.
+
+```sh
+mkdir $HOME/export-dir
+export EXPORT_DIR=$HOME/export-dir
+```
+
+The export directory has the following sub-directories and files:
+
+- `reports` directory contains the generated *Schema Analysis Report*.
+- `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
+- `data` directory contains TSV (Tab Separated Values) files that are passed to the COPY command on the target database.
+- `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
+- `yb-voyager.log` contains log messages.
+
 ## Migrate your database to YugabyteDB
 
 Proceed with schema and data migration using the following steps:
@@ -116,8 +136,6 @@ Proceed with schema and data migration using the following steps:
 To begin, export the schema from the source database. Once exported, analyze the schema and apply any necessary manual changes.
 
 #### Export schema
-
-<!-- To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../yb-voyager/yb-voyager-cli/#data-modeling). -->
 
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
@@ -146,13 +164,13 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
         --source-db-type <SOURCE_DB_TYPE> \
         --source-db-host <SOURCE_DB_HOST> \
         --source-db-user <SOURCE_DB_USER> \
-        --source-db-password <SOURCE_DB_PASSWORD> \
+        --source-db-password <SOURCE_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --source-db-name <SOURCE_DB_NAME> \
         --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
 
 ```
 
-Refer to [export schema](../yb-voyager-cli/#export-schema) for details about the arguments.
+Refer to [export schema](../reference/yb-voyager-cli/#export-schema) for details about the arguments.
 
 #### Analyze schema
 
@@ -167,7 +185,7 @@ yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 
 The above command generates a report file under the `EXPORT_DIR/reports/` directory.
 
-Refer to [analyze schema](../yb-voyager-cli/#analyze-schema) for details about the arguments.
+Refer to [analyze schema](../reference/yb-voyager-cli/#analyze-schema) for details about the arguments.
 
 #### Manually edit the schema
 
@@ -175,7 +193,7 @@ Fix all the issues listed in the generated schema analysis report by manually ed
 
 After making the manual changes, re-run the `yb-voyager analyze-schema` command. This generates a fresh report using your changes. Repeat these steps until the generated report contains no issues.
 
-To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../yb-voyager-cli/#data-modeling).
+To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../reference/data-modeling/).
 
 {{< note title="Manual schema changes" >}}
 
@@ -195,13 +213,13 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
         --source-db-type <SOURCE_DB_TYPE> \
         --source-db-host <SOURCE_DB_HOST> \
         --source-db-user <SOURCE_DB_USER> \
-        --source-db-password <SOURCE_DB_PASSWORD> \
+        --source-db-password <SOURCE_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --source-db-name <SOURCE_DB_NAME> \
         --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
 ```
 
 Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
-Refer to [export data](../yb-voyager-cli/#export-data) for details about the arguments.
+Refer to [export data](../reference/yb-voyager-cli/#export-data) for details about the arguments, and [export data status](../reference/yb-voyager-cli/#export-data-status) to track the status of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
@@ -223,12 +241,12 @@ An example invocation of the command is as follows:
 yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-host <TARGET_DB_HOST> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters..
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
 ```
 
-Refer to [import schema](../yb-voyager-cli/#import-schema) for details about the arguments.
+Refer to [import schema](../reference/yb-voyager-cli/#import-schema) for details about the arguments.
 
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
@@ -247,7 +265,7 @@ After you have successfully exported the source data and imported the schema in 
 yb-voyager import data --export-dir <EXPORT_DIR> \
         --target-db-host <TARGET_DB_HOST> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only.
         --parallel-jobs <NUMBER_OF_JOBS>
@@ -255,7 +273,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
 
 By default, yb-voyager creates C/2 connections where C is the total number of cores in the cluster. You can change the default number of connections using the `--parallel-jobs` argument. If yb-voyager fails to determine the number of cores in the cluster, it defaults to 2 connections per node.
 
-Refer to [import data](../yb-voyager-cli/#import-data) for details about the arguments.
+Refer to [import data](../reference/yb-voyager-cli/#import-data) for details about the arguments.
 
 yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
 
@@ -280,7 +298,7 @@ If all your data files are in CSV format and you have already created a schema i
 yb-voyager import data file --export-dir <EXPORT_DIR> \
         --target-db-host <TARGET_DB_HOST> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
         –-data-dir </path/to/files/dir/> \
@@ -289,7 +307,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
         –-has-header
 ```
 
-Refer to [import data file](../yb-voyager-cli/#import-data-file) for details about the arguments.
+Refer to [import data file](../reference/yb-voyager-cli/#import-data-file) for details about the arguments.
 
 ### Import indexes and triggers
 
@@ -300,17 +318,29 @@ Import indexes and triggers using the `import schema` command with an additional
 yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-host <TARGET_DB_HOST> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
         --post-import-data
 ```
 
-Refer to [import schema](../yb-voyager-cli/#import-schema) for details about the arguments.
+Refer to [import schema](../reference/yb-voyager-cli/#import-schema) for details about the arguments.
 
 ### Verify migration
 
 After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
-Refer to [Verify a migration](../../manage/data-migration/bulk-import-ysql/#verify-a-migration) to validate queries and ensure a successful migration.
+{{< warning title = "Caveat associated with rows reported by import data status" >}}
+
+Suppose you have a scenario where,
+
+- [import data](#import-data) or [import data file](#import-data-file) command fails.
+- To resolve this issue, you delete some of the rows from the split files.
+- After retrying, the import data command completes successfully.
+
+In this scenario, [import data status](#import-data-status) command reports incorrect imported row count; because it doesn't take into account the deleted rows.
+
+For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
+
+{{< /warning >}}

@@ -86,7 +86,7 @@ class OperationTrackerTest : public YBTest {
       return std::make_shared<consensus::ReplicateMsg>();
     }
 
-    Status Prepare() override { return Status::OK(); }
+    Status Prepare(IsLeaderSide is_leader_side) override { return Status::OK(); }
     void Start() override {}
     Status Apply() override {
       return Status::OK();

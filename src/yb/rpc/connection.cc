@@ -130,15 +130,18 @@ void Connection::Shutdown(const Status& status) {
   DCHECK(reactor_->IsCurrentThread());
 
   {
-    std::lock_guard<simple_spinlock> lock(outbound_data_queue_lock_);
-    outbound_data_being_processed_.swap(outbound_data_to_process_);
-    shutdown_status_ = status;
-  }
+    std::vector<OutboundDataPtr> outbound_data_being_processed;
+    {
+      std::lock_guard<simple_spinlock> lock(outbound_data_queue_lock_);
 
-  for (auto& call : outbound_data_being_processed_) {
-    call->Transferred(status, this);
+      outbound_data_being_processed.swap(outbound_data_to_process_);
+      shutdown_status_ = status;
+    }
+
+    for (auto& call : outbound_data_being_processed) {
+      call->Transferred(status, this);
+    }
   }
-  outbound_data_being_processed_.clear();
 
   context_->Shutdown(status);
   stream_->Shutdown(status);
@@ -458,7 +461,7 @@ void Connection::ProcessResponseQueue() {
   }
 
   if (!outbound_data_being_processed_.empty()) {
-    for (auto &call : outbound_data_being_processed_) {
+    for (auto& call : outbound_data_being_processed_) {
       DoQueueOutboundData(std::move(call), /* batch */ true);
     }
     outbound_data_being_processed_.clear();

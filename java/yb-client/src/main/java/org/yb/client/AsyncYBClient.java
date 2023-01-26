@@ -498,10 +498,12 @@ public class AsyncYBClient implements AutoCloseable {
                                                        String streamId, String tabletId,
                                                        long term,
                                                        long index,
-                                                       boolean initialCheckpoint) {
+                                                       boolean initialCheckpoint,
+                                                       boolean bootstrap,
+                                                       Long cdcsdkSafeTime) {
     checkIsClosed();
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
-      tabletId, term, index, initialCheckpoint);
+      tabletId, term, index, initialCheckpoint, bootstrap, cdcsdkSafeTime);
     Deferred<SetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
@@ -1379,6 +1381,17 @@ public class AsyncYBClient implements AutoCloseable {
       String nameFilter, boolean excludeSystemTables, String namespace) {
     ListTablesRequest rpc = new ListTablesRequest(
       this.masterTable, nameFilter, excludeSystemTables, namespace);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Get a list of namespaces of a given table type
+   * @param databaseType to fetch namespaces of the given databaseType
+   * @return a deferred that yields the list of table names
+   */
+  public Deferred<ListNamespacesResponse> getNamespacesList(YQLDatabase databaseType) {
+    ListNamespacesRequest rpc = new ListNamespacesRequest(this.masterTable, databaseType);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }

@@ -40,17 +40,21 @@ Regardless of the alert level, you create an alert as follows:
 
 - Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**, depending on the scope of the alert. Note that the scope of **Platform Alert** is YugabyteDB Anywhere.
 
-- Select a template to use, and then configure settings by completing the fields whose default values depend on the template, as per the following illustration:
+- Select a template to use, and then configure settings by completing the fields whose default values depend on the template, as per the following illustration:<br>
 
   ![Create alert](/images/yp/config-alerts2.png)
 
+  <br>
+
   Templates are available for alerts related to YugabyteDB Anywhere operations, YugabyteDB operations, as well as YSQL and YCQL performance. For supplemental information on templates, see [Templates reference](#templates-reference).
+
+  <br>
 
   Most of the template fields are self-explanatory. The following fields are of note:
 
-  - The **Active** field allows you to define the alert as initially active or inactive.
+  - The **Active** field allows you to define the alert as initially active or inactive.<br>
 
-  - The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached by the metric in order to trigger the alert.
+  - The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached by the metric in order to trigger the alert.<br>
 
   - The **Destination** field allows you to select one of the previously defined recipients of the alert. For more information, see [Define alert destinations](#define-alert-destinations).
 
@@ -354,17 +358,21 @@ aakra01@UCTDES01 ~ k exec yb-support-platform-yugaware-0 -c prometheus -n yb-pla
 
 ## Define notification channels
 
-In YugabyteDB Anywhere, a notification channel defines how an alert is issued (via an email, a Slack message, a webhook message, or a PagerDuty message) and who should receive it.
-
-You can create a new channel, as well as modify or delete an existing one as follows:
+In YugabyteDB Anywhere, a notification channel defines how an alert is issued (via an email, a Slack message, a webhook message, or a PagerDuty message) and who should receive it.<br>You can create a new channel, as well as modify or delete an existing one as follows:
 
 - Navigate to **Alert Configurations > Notification Channels**, as per the following illustration:
 
+  <br>
+
   ![Notification channel](/images/yp/config-alerts7.png)
 
-- To create a new channel, click **Add Channel** and then complete the **Create new alert channel** dialog shown in the following illustration:
+  <br>
+
+- To create a new channel, click **Add Channel** and then complete the **Create new alert channel** dialog shown in the following illustration:<br><br>
 
   ![New channel](/images/yp/config-alerts6.png)
+
+  <br>
 
   If you select **Email** as a notification delivery method, perform the following:
 
@@ -399,10 +407,10 @@ You can create a new channel, as well as modify or delete an existing one as fol
 
 When an alert is triggered, alert data is sent to a specific alert destination that consists of one or more channels. You can define a new destination for your alerts, view details of an existing destination, edit or delete an existing destination as follows:
 
-- Navigate to **Alert Configurations > Alert Destinations**, as per the following illustration:
+- Navigate to **Alert Configurations > Alert Destinations**, as per the following illustration: <br>
 
-  ![Destinations](/images/yp/config-alerts3.png)
-- To add a new alert destination, click **Add Destination** and then complete the form shown in the following illustration:
+  ![Destinations](/images/yp/config-alerts3.png)<br>
+- To add a new alert destination, click **Add Destination** and then complete the form shown in the following illustration:<br>
 
   ![Add destination](/images/yp/config-alerts4.png)
 
@@ -416,9 +424,9 @@ When an alert is triggered, alert data is sent to a specific alert destination t
 
 You can define parameters and fine-tune health check that YugabyteDB Anywhere performs on its universes, as follows:
 
-- Navigate to **Alert Configurations > Health** to open the **Alerting controls** view shown in the following illustration:
+- Navigate to **Alert Configurations > Health** to open the **Alerting controls** view shown in the following illustration:<br>
 
-  ![Health](/images/yp/config-alerts5.png)
+  ![Health](/images/yp/config-alerts5.png)<br>
 
 - Use the **Alert emails** field to define a comma-separated list of email addresses to which alerts are to be sent.
 
@@ -444,6 +452,6 @@ The preceding view allows you to do the following:
 
 - Mark the maintenance as completed, modify its parameters, or delete it by clicking **Action** and selecting one of the options.
 
-- Add a new maintenance period for all or only specific universes by clicking **Add Maintenance Window** and completing the fields shown in the following illustration:
+- Add a new maintenance period for all or only specific universes by clicking **Add Maintenance Window** and completing the fields shown in the following illustration:<br>
 
-  ![Maintenance](/images/yp/config-alerts10.png)
+  ![Maintenance](/images/yp/config-alerts10.png)<br><br>

@@ -56,7 +56,7 @@ class SnapshotOperation :
 
   static Status RejectionStatus(OpId rejected_op_id, consensus::OperationType op_type);
 
-  Status Prepare() override;
+  Status Prepare(IsLeaderSide is_leader_side) override;
 
  private:
   // Starts the TabletSnapshotOp operation by assigning it a timestamp.
@@ -64,8 +64,8 @@ class SnapshotOperation :
   Status DoAborted(const Status& status) override;
   Status Apply(int64_t leader_term, Status* complete_status);
 
-  void AddedAsPending() override;
-  void RemovedFromPending() override;
+  void AddedAsPending(const TabletPtr& tablet) override;
+  void RemovedFromPending(const TabletPtr& tablet) override;
 
   bool NeedOperationFilter() const;
 

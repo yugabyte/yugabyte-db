@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_index ::= CREATE [ UNIQUE ] INDEX [ [ IF NOT EXISTS ] name ]  
                  ON [ ONLY ] table_name ( index_elem [ , ... ] )  
                  [ INCLUDE ( column_name [ , ... ] ) ]  

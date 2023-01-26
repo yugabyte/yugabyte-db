@@ -1470,5 +1470,16 @@ Result<OpId> GetLastOpIdForReplica(
   return VERIFY_RESULT(GetLastOpIdForEachReplica(tablet_id, {replica}, opid_type, timeout))[0];
 }
 
+Status WaitForTabletIsDeletedOrHidden(
+    master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout) {
+  auto tablet_info = VERIFY_RESULT(catalog_manager->GetTabletInfo(tablet_id));
+  return LoggedWaitFor([&tablet_info] {
+      const auto tablet_lock = tablet_info->LockForRead();
+      return tablet_lock->is_deleted() || tablet_lock->is_hidden();
+    },
+    timeout,
+    Format("Wait for tablet is deleted or hidden: $0", tablet_id));
+}
+
 } // namespace itest
 } // namespace yb

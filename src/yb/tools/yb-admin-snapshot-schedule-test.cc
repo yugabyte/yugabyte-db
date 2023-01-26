@@ -1063,6 +1063,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
         for (const auto& tablet : resp.status_and_schema()) {
           if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()
               && tablet.tablet_status().table_name().find("colocated.parent") == string::npos
+              && tablet.tablet_status().table_name().find("colocation.parent") == string::npos
               && tablet.tablet_status().table_name().find("tablegroup.parent") == string::npos) {
             LOG(INFO) << "Tablet " << tablet.tablet_status().tablet_id() << " of table "
                       << tablet.tablet_status().table_name() << ", hidden status "
@@ -3207,8 +3208,7 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
   }
 
   std::vector<std::string> ExtraTSFlags() override {
-    return { "--vmodule=meta_cache=5,read_query=5,pg_client=5,client=5",
-             "--cleanup_split_tablets_interval_sec=1",
+    return { "--cleanup_split_tablets_interval_sec=1",
              "--leader_lease_duration_ms=6000",
              "--leader_failure_max_missed_heartbeat_periods=12",
              "--retryable_request_timeout_secs=5" };

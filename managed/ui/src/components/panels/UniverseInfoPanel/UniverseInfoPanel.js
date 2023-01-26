@@ -30,7 +30,7 @@ export default class UniverseInfoPanel extends Component {
       }
     } = this.props;
     const primaryCluster = getPrimaryCluster(clusters);
-    const userIntent = primaryCluster && primaryCluster.userIntent;
+    const userIntent = primaryCluster?.userIntent;
     const universeId = universeInfo.universeUUID;
     const formattedCreationDate = (
       <FormattedDate

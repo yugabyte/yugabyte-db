@@ -34,14 +34,6 @@
 // NOTE that if FLAGS_test_batches_snapshots is set, the test will have
 // different behavior. See comment of the flag for details.
 
-#ifndef GFLAGS
-#include <cstdio>
-int main() {
-  fprintf(stderr, "Please install gflags to run rocksdb tools\n");
-  return 1;
-}
-#else
-
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
@@ -57,14 +49,12 @@ int main() {
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/hdfs/env_hdfs.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
@@ -120,11 +110,6 @@ DEFINE_UNKNOWN_bool(test_batches_snapshots, false,
             "\t(c) Test snapshot and atomicity of batch writes");
 
 DEFINE_UNKNOWN_int32(threads, 32, "Number of concurrent threads to run.");
-
-DEFINE_UNKNOWN_int32(ttl, -1,
-             "Opens the db with this ttl value if this is not -1. "
-             "Carefully specify a large value such that verifications on "
-             "deleted values don't fail");
 
 DEFINE_UNKNOWN_int32(value_size_mult, 8,
              "Size of value will be this number times rand_int(1,3) bytes");
@@ -1901,9 +1886,6 @@ class StressTest {
     fprintf(stdout, "Number of threads         : %d\n", FLAGS_threads);
     fprintf(stdout, "Ops per thread            : %" PRIu64 "\n", FLAGS_ops_per_thread);
     std::string ttl_state("unused");
-    if (FLAGS_ttl > 0) {
-      ttl_state = NumberToString(FLAGS_ttl);
-    }
     fprintf(stdout, "Time to live(sec)         : %s\n", ttl_state.c_str());
     fprintf(stdout, "Read percentage           : %d%%\n", FLAGS_readpercent);
     fprintf(stdout, "Prefix percentage         : %d%%\n", FLAGS_prefixpercent);
@@ -2052,67 +2034,62 @@ class StressTest {
     fprintf(stdout, "DB path: [%s]\n", FLAGS_db.c_str());
 
     Status s;
-    if (FLAGS_ttl == -1) {
-      std::vector<std::string> existing_column_families;
-      s = DB::ListColumnFamilies(DBOptions(options_), FLAGS_db,
-                                 &existing_column_families);  // ignore errors
-      if (!s.ok()) {
-        // DB doesn't exist
-        assert(existing_column_families.empty());
-        assert(column_family_names_.empty());
-        column_family_names_.push_back(kDefaultColumnFamilyName);
-      } else if (column_family_names_.empty()) {
-        // this is the first call to the function Open()
-        column_family_names_ = existing_column_families;
-      } else {
-        // this is a reopen. just assert that existing column_family_names are
-        // equivalent to what we remember
-        auto sorted_cfn = column_family_names_;
-        sort(sorted_cfn.begin(), sorted_cfn.end());
-        sort(existing_column_families.begin(), existing_column_families.end());
-        if (sorted_cfn != existing_column_families) {
-          fprintf(stderr,
-                  "Expected column families differ from the existing:\n");
-          printf("Expected: {");
-          for (auto cf : sorted_cfn) {
-            printf("%s ", cf.c_str());
-          }
-          printf("}\n");
-          printf("Existing: {");
-          for (auto cf : existing_column_families) {
-            printf("%s ", cf.c_str());
-          }
-          printf("}\n");
-        }
-        assert(sorted_cfn == existing_column_families);
-      }
-      std::vector<ColumnFamilyDescriptor> cf_descriptors;
-      for (auto name : column_family_names_) {
-        if (name != kDefaultColumnFamilyName) {
-          new_column_family_name_ =
-              std::max(new_column_family_name_.load(), std::stoi(name) + 1);
-        }
-        cf_descriptors.emplace_back(name, ColumnFamilyOptions(options_));
-      }
-      while (cf_descriptors.size() < (size_t)FLAGS_column_families) {
-        std::string name = ToString(new_column_family_name_.load());
-        new_column_family_name_++;
-        cf_descriptors.emplace_back(name, ColumnFamilyOptions(options_));
-        column_family_names_.push_back(name);
-      }
-      options_.listeners.clear();
-      options_.listeners.emplace_back(
-          new DbStressListener(FLAGS_db, options_.db_paths));
-      options_.create_missing_column_families = true;
-      s = DB::Open(DBOptions(options_), FLAGS_db, cf_descriptors,
-                   &column_families_, &db_);
-      assert(!s.ok() || column_families_.size() ==
-                            static_cast<size_t>(FLAGS_column_families));
+
+    std::vector<std::string> existing_column_families;
+    s = DB::ListColumnFamilies(DBOptions(options_), FLAGS_db,
+                                &existing_column_families);  // ignore errors
+    if (!s.ok()) {
+      // DB doesn't exist
+      assert(existing_column_families.empty());
+      assert(column_family_names_.empty());
+      column_family_names_.push_back(kDefaultColumnFamilyName);
+    } else if (column_family_names_.empty()) {
+      // this is the first call to the function Open()
+      column_family_names_ = existing_column_families;
     } else {
-      DBWithTTL* db_with_ttl;
-      s = DBWithTTL::Open(options_, FLAGS_db, &db_with_ttl, FLAGS_ttl);
-      db_ = db_with_ttl;
+      // this is a reopen. just assert that existing column_family_names are
+      // equivalent to what we remember
+      auto sorted_cfn = column_family_names_;
+      sort(sorted_cfn.begin(), sorted_cfn.end());
+      sort(existing_column_families.begin(), existing_column_families.end());
+      if (sorted_cfn != existing_column_families) {
+        fprintf(stderr,
+                "Expected column families differ from the existing:\n");
+        printf("Expected: {");
+        for (auto cf : sorted_cfn) {
+          printf("%s ", cf.c_str());
+        }
+        printf("}\n");
+        printf("Existing: {");
+        for (auto cf : existing_column_families) {
+          printf("%s ", cf.c_str());
+        }
+        printf("}\n");
+      }
+      assert(sorted_cfn == existing_column_families);
     }
+    std::vector<ColumnFamilyDescriptor> cf_descriptors;
+    for (auto name : column_family_names_) {
+      if (name != kDefaultColumnFamilyName) {
+        new_column_family_name_ =
+            std::max(new_column_family_name_.load(), std::stoi(name) + 1);
+      }
+      cf_descriptors.emplace_back(name, ColumnFamilyOptions(options_));
+    }
+    while (cf_descriptors.size() < (size_t)FLAGS_column_families) {
+      std::string name = ToString(new_column_family_name_.load());
+      new_column_family_name_++;
+      cf_descriptors.emplace_back(name, ColumnFamilyOptions(options_));
+      column_family_names_.push_back(name);
+    }
+    options_.listeners.clear();
+    options_.listeners.emplace_back(
+        new DbStressListener(FLAGS_db, options_.db_paths));
+    options_.create_missing_column_families = true;
+    s = DB::Open(DBOptions(options_), FLAGS_db, cf_descriptors,
+                  &column_families_, &db_);
+    assert(!s.ok() || column_families_.size() ==
+                          static_cast<size_t>(FLAGS_column_families));
     if (!s.ok()) {
       fprintf(stderr, "open error: %s\n", s.ToString().c_str());
       exit(1);
@@ -2167,9 +2144,6 @@ int main(int argc, char** argv) {
   }
   FLAGS_compression_type_e =
     StringToCompressionType(FLAGS_compression_type.c_str());
-  if (!FLAGS_hdfs.empty()) {
-    FLAGS_env  = new rocksdb::HdfsEnv(FLAGS_hdfs);
-  }
   FLAGS_rep_factory = StringToRepFactory(FLAGS_memtablerep.c_str());
 
   // The number of background threads should be at least as much the
@@ -2225,5 +2199,3 @@ int main(int argc, char** argv) {
     return 1;
   }
 }
-
-#endif  // GFLAGS

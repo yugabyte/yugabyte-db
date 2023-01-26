@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.ArrayList;
@@ -28,7 +29,7 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 public class CloudQueryHelper extends DevopsBase {
@@ -70,7 +71,8 @@ public class CloudQueryHelper extends DevopsBase {
     if (p.code.equals("gcp")) {
       // TODO: ideally we shouldn't have this hardcoded string present in multiple
       // places.
-      String potentialGcpNetwork = p.getUnmaskedConfig().get("CUSTOM_GCE_NETWORK");
+      Map<String, String> config = CloudInfoInterface.fetchEnvVars(p);
+      String potentialGcpNetwork = config.get("CUSTOM_GCE_NETWORK");
       if (potentialGcpNetwork != null && !potentialGcpNetwork.isEmpty()) {
         commandArgs.add("--network");
         commandArgs.add(potentialGcpNetwork);
@@ -179,11 +181,11 @@ public class CloudQueryHelper extends DevopsBase {
 
   public String getImageArchitecture(Region region) {
 
-    if (StringUtils.isBlank(region.ybImage)) {
+    if (StringUtils.isBlank(region.getYbImage())) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "ybImage not set for region " + region.code);
     }
-    JsonNode result = queryImage(region.uuid, region.ybImage);
+    JsonNode result = queryImage(region.uuid, region.getYbImage());
 
     if (result.has("error")) {
       throw new PlatformServiceException(

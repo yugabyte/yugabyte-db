@@ -138,7 +138,7 @@ class RpcCallLWParamsImpl : public RpcCallLWParams {
   RpcCallLWParamsImpl() : req_(&arena_), resp_(&arena_) {}
 
  private:
-  Arena arena_;
+  ThreadSafeArena arena_;
   Req req_;
   Resp resp_;
 };

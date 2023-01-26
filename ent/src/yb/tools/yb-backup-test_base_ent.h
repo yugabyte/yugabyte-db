@@ -38,6 +38,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
 
   void SetUp() override;
 
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override;
+
   string GetTempDir(const string& subdir);
 
   Status RunBackupCommand(const vector<string>& args);
@@ -63,6 +65,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceWithHyphenBackupRestore(
       const string& backup_db, const string& restore_db);
+
+  void TestColocatedDBBackupRestore();
 
   client::TableHandle table_;
   TmpDirProvider tmp_dir_;

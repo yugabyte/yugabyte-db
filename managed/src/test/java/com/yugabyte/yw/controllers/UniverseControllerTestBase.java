@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -82,6 +83,8 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock RuntimeConfGetter mockConfGetter;
   @Mock protected play.Configuration mockAppConfig;
 
   private HealthChecker healthChecker;
@@ -128,6 +131,10 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
+    when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
+    when(mockRuntimeConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
+    when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
 
     return new GuiceApplicationBuilder()
         .disable(GuiceModule.class)

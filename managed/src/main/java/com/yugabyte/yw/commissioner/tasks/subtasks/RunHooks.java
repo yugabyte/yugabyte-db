@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.apache.commons.io.FileUtils;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -12,12 +11,12 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope.TriggerType;
-import javax.inject.Inject;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
 
 @Slf4j
 public class RunHooks extends NodeTaskBase {
@@ -77,6 +76,7 @@ public class RunHooks extends NodeTaskBase {
         Audit.ActionType.RunHook,
         body,
         this.userTaskUUID,
+        null,
         null);
 
     if (!hookFile.delete()) log.warn("Failed to delete hook file " + taskParams().hookPath);

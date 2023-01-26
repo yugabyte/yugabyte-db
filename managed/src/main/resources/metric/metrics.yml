@@ -1213,6 +1213,22 @@ tserver_spinlock_server:
         "spinlock_contention_time_irate": "SpinLock"
       ticksuffix: "&nbsp;sec"
 
+tserver_write_lock_latency:
+  metric: "write_lock_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Write Lock Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "write_lock_latency.avg": "Write Lock"
+      ticksuffix: "&nbsp;\u00B5s"
+
 tserver_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
   function: "rate|avg"
@@ -1766,7 +1782,7 @@ ysql_connections:
     export_type: "ysql_export"
     saved_name: "yb_ysqlserver_connection_total|yb_ysqlserver_active_connection_total"
   group_by: "saved_name"
-  panel_group: "YSQL Connections"
+  panel_group: "YSQL Ops & Latency"
   layout:
     title: "Total YSQL Connections"
     xaxis:
@@ -1775,6 +1791,24 @@ ysql_connections:
       alias:
         "yb_ysqlserver_active_connection_total": "Active"
         "yb_ysqlserver_connection_total": "Total"
+
+ysql_connections_per_sec:
+  metric: ""
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_new_connection_total|yb_ysqlserver_connection_over_limit_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Connections / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_new_connection_total": "New"
+        "yb_ysqlserver_connection_over_limit_total": "Rejected"
 
 ysql_server_advanced_rpc_per_second:
   metric: "rpc_irate_rps"
@@ -2097,18 +2131,22 @@ response_sizes:
   group_by: "service_method"
   panel_group: "YCQL Ops & Latency"
   layout:
-    title: "Response Size (bytes)"
+    title: "Response Size"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "ResponseSize": "Response Size"
-      ticksuffix: "&nbsp;\u00B5s"
+      ticksuffix: "&nbsp;B"
 
 tserver_rpc_queue_size_master:
-  metric: "rpcs_in_queue_yb_master_MasterService"
+  metric: ""
   function: "avg_over_time|avg"
   range: true
+  filters:
+    saved_name: "rpcs_in_queue_.*"
+    export_type: "master_export"
+  group_by: "saved_name"
   panel_group: "Master"
   layout:
     title: "RPC Queue Size"
@@ -2117,6 +2155,12 @@ tserver_rpc_queue_size_master:
     yaxis:
       alias:
         "rpcs_in_queue_yb_master_MasterService": "Master RPC"
+        "rpcs_in_queue_yb_master_MasterBackup": "MasterBackup"
+        "rpcs_in_queue_yb_consensus_ConsensusService": "Consensus"
+        "rpcs_in_queue_yb_server_GenericService": "Generic"
+        "rpcs_in_queue_yb_tserver_RemoteBootstrapService": "RemoteBootstrap"
+        "rpcs_in_queue_yb_tserver_TabletServerService": "TS RPC"
+        "rpcs_in_queue_yb_tserver_PgClientService": "PG Client"
 
 # Note that the aliases here encode all the possible services, because we're using a simple regex
 # for the saved_name filter.
@@ -2872,6 +2916,21 @@ table_read_rps:
     yaxis:
       alias:
         "ql_read_latency_count": "Read"
+
+table_write_lock_latency:
+  metric: "write_lock_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Lock Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "write_lock_latency.avg": "Write Lock"
+      ticksuffix: "&nbsp;\u00B5s"
 
 table_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"

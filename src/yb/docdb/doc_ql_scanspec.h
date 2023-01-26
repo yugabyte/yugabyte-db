@@ -22,10 +22,12 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bytes.h"
 
+#include "yb/util/col_group.h"
+
 namespace yb {
 namespace docdb {
 
-using Option = std::vector<KeyEntryValue>;  // an option in an IN/EQ clause
+using Option = KeyEntryValue;               // an option in an IN/EQ clause
 using OptionList = std::vector<Option>;     // all the options in an IN/EQ clause
 
 // DocDB variant of QL scanspec.
@@ -35,8 +37,8 @@ class DocQLScanSpec : public QLScanSpec {
   // Scan for the specified doc_key. If the doc_key specify a full primary key, the scan spec will
   // not include any static column for the primary key. If the static columns are needed, a separate
   // scan spec can be used to read just those static columns.
-  DocQLScanSpec(const Schema& schema, const DocKey& doc_key,
-      const rocksdb::QueryId query_id, const bool is_forward_scan = true);
+  DocQLScanSpec(const Schema& schema, const DocKey& doc_key, const rocksdb::QueryId query_id,
+      const bool is_forward_scan = true, const size_t prefix_length = 0);
 
   // Scan for the given hash key and a condition. If a start_doc_key is specified, the scan spec
   // will not include any static column for the start key. If the static columns are needed, a
@@ -53,7 +55,8 @@ class DocQLScanSpec : public QLScanSpec {
                 const QLConditionPB* req, const QLConditionPB* if_req,
                 rocksdb::QueryId query_id, bool is_forward_scan = true,
                 bool include_static_columns = false,
-                const DocKey& start_doc_key = DefaultStartDocKey());
+                const DocKey& start_doc_key = DefaultStartDocKey(),
+                const size_t prefix_length = 0);
 
   // Return the inclusive lower and upper bounds of the scan.
   Result<KeyBytes> LowerBound() const;
@@ -87,8 +90,12 @@ class DocQLScanSpec : public QLScanSpec {
     return range_bounds_indexes_;
   }
 
-  const std::vector<size_t> range_options_num_cols() const {
-    return range_options_num_cols_;
+  const ColGroupHolder range_options_groups() const {
+    return range_options_groups_;
+  }
+
+  const size_t prefix_length() const {
+    return prefix_length_;
   }
 
  private:
@@ -136,10 +143,12 @@ class DocQLScanSpec : public QLScanSpec {
   // Ids of columns that have range option filters such as c2 IN (1, 5, 6, 9).
   std::vector<ColumnId> range_options_indexes_;
 
-  // Stores the number of columns involved in a range option filter.
-  // For filter: A in (..) AND (C, D) in (...) AND E in (...) where A, B, C, D, E are
-  // range columns, range_options_num_cols_ will contain [1, 0, 2, 2, 1].
-  std::vector<size_t> range_options_num_cols_;
+  // Groups of range column indexes found from the filters.
+  // Eg: If we had an incoming filter of the form (r1, r3, r4) IN ((1,2,5), (5,4,3), ...)
+  // AND r2 <= 5
+  // where (r1,r2,r3,r4) is the primary key of this table, then
+  // range_options_groups_ would contain the groups {0,2,3} and {1}.
+  ColGroupHolder range_options_groups_;
 
   // Does the scan include static columns also?
   const bool include_static_columns_;
@@ -156,6 +165,8 @@ class DocQLScanSpec : public QLScanSpec {
 
   // Query ID of this scan.
   const rocksdb::QueryId query_id_;
+
+  size_t prefix_length_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(DocQLScanSpec);
 };

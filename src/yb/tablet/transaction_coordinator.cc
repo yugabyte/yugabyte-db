@@ -102,10 +102,6 @@ DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
 DEFINE_test_flag(bool, disable_apply_committed_transactions, false,
                  "Should we disable the apply of committed transactions.");
 
-DEFINE_RUNTIME_int32(max_external_transaction_retry_delay_ms, 5000,
-                     "The max amount of delay for sending a new apply external transaction "
-                     "request.");
-
 DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
@@ -125,8 +121,6 @@ std::chrono::microseconds GetTransactionTimeout() {
 
 namespace {
 
-constexpr uint32_t kInitialExternalTransactionRetryDelayMs = 100;
-
 struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
@@ -136,10 +130,6 @@ struct NotifyApplyingData {
   bool is_external;
   // Only for external/xcluster transactions. How long to wait before retrying a failed apply
   // transaction.
-  CoarseBackoffWaiter backoff_waiter = CoarseBackoffWaiter(
-    CoarseTimePoint::max(),
-    GetAtomicFlag(&FLAGS_max_external_transaction_retry_delay_ms) * 1ms,
-    kInitialExternalTransactionRetryDelayMs * 1ms);
   std::string ToString() const {
     return Format("{ tablet: $0 transaction: $1 commit_time: $2 sealed: $3 is_external $4}",
                   tablet, transaction, commit_time, sealed, is_external);
@@ -1329,6 +1319,32 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         1us * FLAGS_transaction_check_interval_usec * kTimeMultiplier);
   }
 
+  Result<bool> MaybeIgnoreIfTransactionInWrongState(
+      TransactionStatus request_txn_status, TransactionId transaction_id) {
+    auto it = managed_transactions_.find(transaction_id);
+    switch (request_txn_status) {
+      case TransactionStatus::CREATED:
+        // If the transaction is already present, then this CREATE record was already replicated at
+        // some point in the past, so we can ignore this record.
+        return it != managed_transactions_.end();
+      case TransactionStatus::COMMITTED:
+        // We ignore this COMMIT record if one of the following 2 conditions are met:
+        // 1. The transaction doesn't exist and we're seeing a COMMIT record without a previous
+        // CREATE. This means that at some time in the past, this transaction was already committed
+        // and cleaned up, so ignore this this record.
+        // 2. The transaction is present but not in CREATED or PENDING state. Because we only
+        // replicate CREATED and COMMITTED records, if a transaction is present but not in CREATED
+        // state, it must necessarily have already been committed.
+        return it == managed_transactions_.end() ||
+               (it->status() != TransactionStatus::CREATED &&
+                it->status() != TransactionStatus::PENDING);
+      default:
+        return STATUS(IllegalState, Format("Request for unsupported external transaction state $0",
+                                           request_txn_status));
+    }
+    return false;
+  }
+
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
     auto& state = *request->request();
     auto id = FullyDecodeTransactionId(state.transaction_id());
@@ -1336,6 +1352,18 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       LOG(WARNING) << "Failed to decode id from " << state.ShortDebugString() << ": " << id;
       request->CompleteWithStatus(id.status());
       return;
+    }
+
+    if (state.has_external_hybrid_time()) {
+      auto ignore_transaction_result =  MaybeIgnoreIfTransactionInWrongState(state.status(), *id);
+      if (!ignore_transaction_result.ok()) {
+        request->CompleteWithStatus(ignore_transaction_result.status());
+        return;
+      }
+      if (*ignore_transaction_result) {
+        request->CompleteWithStatus(Status::OK());
+        return;
+      }
     }
 
     PostponedLeaderActions actions;
@@ -1488,12 +1516,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
               return;
             }
             if (action.is_external && status.IsTryAgain()) {
-              auto new_action = action;
-              new_action.backoff_waiter.Wait();
               // We are trying to apply an external transaction on a tablet that is not caught up
-              // to commit_ht, keep retrying until it succeeds.
-              SendUpdateTransactionRequest(
-                  new_action, context_.clock().Now(), TransactionRpcDeadline());
+              // to commit_ht. Return and let the Poll loop take care of the retry.
               return;
             }
             LOG_WITH_PREFIX(WARNING)
@@ -1549,14 +1573,21 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
     if (!actions->notify_applying.empty()) {
       auto now = context_.clock().Now();
-      auto deadline = TransactionRpcDeadline();
       for (const auto& action : actions->notify_applying) {
+        auto deadline = action.is_external ?
+            ExternalTransactionRpcDeadline() : TransactionRpcDeadline();
         SendUpdateTransactionRequest(action, now, deadline);
       }
     }
 
     for (auto& update : actions->updates) {
-      context_.SubmitUpdateTransaction(std::move(update), actions->leader_term);
+      auto submit_status =
+          context_.SubmitUpdateTransaction(std::move(update), actions->leader_term);
+      if (!submit_status.ok()) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Could not submit transaction status update operation: "
+            << update->ToString() << ", status: " << submit_status;
+      }
     }
   }
 
@@ -1582,7 +1613,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
           << state.ShortDebugString();
       return STATUS_EC_FORMAT(
           Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
-          "Transaction $0 expired or aborted by a conflict", *id);
+          "Transaction $0 expired or aborted by a conflict", id);
     }
 
     if (deleting_.load(std::memory_order_acquire)) {

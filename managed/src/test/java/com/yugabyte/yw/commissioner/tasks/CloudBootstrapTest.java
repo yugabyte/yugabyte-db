@@ -75,7 +75,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     taskParams.destVpcId = DEST_VPC_ID;
     taskParams.sshPort = 12345;
     taskParams.airGapInstall = false;
-    taskParams.overrideKeyValidate = false;
+    taskParams.skipKeyPairValidate = false;
     return taskParams;
   }
 
@@ -255,9 +255,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       }
       // Check AMI info.
       if (customImageId) {
-        assertEquals(r.ybImage, metadata.customImageId);
+        assertEquals(r.getYbImage(), metadata.customImageId);
       } else {
-        assertEquals(r.ybImage, defaultImage);
+        assertEquals(r.getYbImage(), defaultImage);
       }
     }
   }

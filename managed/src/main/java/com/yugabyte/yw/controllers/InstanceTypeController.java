@@ -16,7 +16,8 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.InstanceTypeResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
@@ -62,7 +63,7 @@ public class InstanceTypeController extends AuthenticatedController {
     this.cloudAPIFactory = cloudAPIFactory;
   }
 
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject ConfigHelper configHelper;
 
@@ -92,9 +93,7 @@ public class InstanceTypeController extends AuthenticatedController {
                 provider,
                 config,
                 configHelper,
-                runtimeConfigFactory
-                    .forProvider(provider)
-                    .getBoolean("yb.internal.allow_unsupported_instances"))
+                confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances))
             .stream()
             .collect(toMap(it -> it.getInstanceTypeCode(), identity()));
 

@@ -19,7 +19,7 @@ YugabyteDB supports the PostgreSQL `pg_stat_activity` view to analyze live queri
 
 ## Supported fields
 
-At a `ysqlsh` prompt, run the following command to return the fields supported by pg_stat_activity:
+At a `ysqlsh` prompt, run the following meta-command to return the fields supported by pg_stat_activity:
 
 ```sql
 yugabyte=# \d pg_stat_activity
@@ -54,7 +54,7 @@ The following table describes the fields and their values:
 
 ### Get basic information
 
-The following query returns basic information about active Yugabyte processes.
+The following query returns basic information about active Yugabyte processes:
 
 ```sql
 yugabyte=# SELECT datname, pid, application_name, state, query
@@ -71,11 +71,11 @@ yugabyte=# SELECT datname, pid, application_name, state, query
 
 In this listing:
 
-* `datname` is the database connected to this process.
-* `pid` is the process ID.
-* `application_name` is the application connected to this process.
-* `state` is the operational condition of the process.
-* `query` is the latest query executed for this process.
+- `datname` is the database connected to this process.
+- `pid` is the process ID.
+- `application_name` is the application connected to this process.
+- `state` is the operational condition of the process.
+- `query` is the latest query executed for this process.
 
 ### Identify and terminate an open transaction
 

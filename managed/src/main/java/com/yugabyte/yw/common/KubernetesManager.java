@@ -59,12 +59,11 @@ public abstract class KubernetesManager {
       String ybSoftwareVersion,
       Map<String, String> config,
       UUID providerUUID,
-      String universePrefix,
+      String helmReleaseName,
       String namespace,
       String overridesFile) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
     List<String> commandList =
         ImmutableList.of(
             "helm",
@@ -80,7 +79,7 @@ public abstract class KubernetesManager {
             getTimeout(),
             "--wait");
     ShellResponse response = execCommand(config, commandList);
-    processHelmResponse(config, universePrefix, namespace, response);
+    processHelmResponse(config, helmReleaseName, namespace, response);
   }
   // Log a diff before applying helm upgrade.
   public void diff(Map<String, String> config, String inputYamlFilePath) {
@@ -95,11 +94,10 @@ public abstract class KubernetesManager {
   public String helmTemplate(
       String ybSoftwareVersion,
       Map<String, String> config,
-      String universePrefix,
+      String helmReleaseName,
       String namespace,
       String overridesFile) {
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
     Path tempOutputFile;
     try {
       tempOutputFile = Files.createTempFile("helm-template", ".output");
@@ -145,15 +143,14 @@ public abstract class KubernetesManager {
   public void helmUpgrade(
       String ybSoftwareVersion,
       Map<String, String> config,
-      String universePrefix,
+      String helmReleaseName,
       String namespace,
       String overridesFile) {
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
 
     // Capture the diff what is going to be upgraded.
     String helmTemplatePath =
-        helmTemplate(ybSoftwareVersion, config, universePrefix, namespace, overridesFile);
+        helmTemplate(ybSoftwareVersion, config, helmReleaseName, namespace, overridesFile);
     if (helmTemplatePath != null) {
       diff(config, helmTemplatePath);
     } else {
@@ -175,13 +172,11 @@ public abstract class KubernetesManager {
             getTimeout(),
             "--wait");
     ShellResponse response = execCommand(config, commandList);
-    processHelmResponse(config, universePrefix, namespace, response);
+    processHelmResponse(config, helmReleaseName, namespace, response);
   }
 
-  public void helmDelete(Map<String, String> config, String universePrefix, String namespace) {
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-    List<String> commandList =
-        ImmutableList.of("helm", "delete", helmReleaseName, "--debug", "-n", namespace);
+  public void helmDelete(Map<String, String> config, String helmReleaseName, String namespace) {
+    List<String> commandList = ImmutableList.of("helm", "delete", helmReleaseName, "-n", namespace);
     execCommand(config, commandList);
   }
 
@@ -204,6 +199,26 @@ public abstract class KubernetesManager {
   // It doesn't check if returnred keys are actually not present in chart templates.
   private Set<String> getUknownKeys(Map<String, Object> userMap, Map<String, Object> valuesMap) {
     return Sets.difference(userMap.keySet(), valuesMap.keySet());
+  }
+
+  // Returns values we applied. Excludes values.yaml entries unless they were overriden.
+  public String getOverridenHelmReleaseValues(
+      String namespace, String helmReleaseName, Map<String, String> config) {
+    List<String> commandList =
+        ImmutableList.of("helm", "get", "values", helmReleaseName, "-n", namespace, "-o", "yaml");
+    LOG.info(String.join(" ", commandList));
+    ShellResponse response = execCommand(config, commandList);
+    if (response != null) {
+      if (response.getCode() != ShellResponse.ERROR_CODE_SUCCESS) {
+        throw new RuntimeException(response.getMessage());
+      }
+      return response.getMessage();
+    }
+    LOG.error(
+        String.format(
+            "Helm get values response is null for helm release: %s in namespace: %s",
+            helmReleaseName, namespace));
+    throw new RuntimeException("Helm get values response is null");
   }
 
   private Set<String> getNullValueKeys(Map<String, String> userMap) {
@@ -520,13 +535,18 @@ public abstract class KubernetesManager {
   public abstract boolean expandPVC(
       Map<String, String> config,
       String namespace,
-      String universePrefix,
-      String appLabel,
-      String newDiskSize);
+      String helmReleaseName,
+      String appName,
+      String newDiskSize,
+      boolean newNamingStyle);
 
-  // Get the name of StorageClass used for master/tserver PVCs
+  // Get the name of StorageClass used for master/tserver PVCs.
   public abstract String getStorageClassName(
-      Map<String, String> config, String namespace, String universePrefix, boolean forMaster);
+      Map<String, String> config,
+      String namespace,
+      String universePrefix,
+      boolean forMaster,
+      boolean newNamingStyle);
 
   public abstract boolean storageClassAllowsExpansion(
       Map<String, String> config, String storageClassName);

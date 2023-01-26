@@ -5,7 +5,9 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -23,7 +25,6 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -43,6 +44,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject RuntimeConfGetter confGetter;
 
   /**
    * API that restarts all nodes in the universe. Supports rolling and non-rolling restart
@@ -299,7 +302,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
     // TODO yb.cloud.enabled is redundant here because many tests set it during runtime,
     // to enable this method in cloud. Clean it up later when the tests are fixed.
     if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")
-        && !runtimeConfigFactory.forUniverse(universe).getBoolean("yb.upgrade.vmImage")) {
+        && !confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeVmImage)) {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled.");
     }
 

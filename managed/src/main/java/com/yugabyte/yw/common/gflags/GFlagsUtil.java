@@ -22,10 +22,14 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +42,10 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVPrinter;
+import org.apache.commons.csv.CSVRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -264,21 +272,21 @@ public class GFlagsUtil {
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("server_address", node.cloudInfo.private_ip);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
-    ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
+    ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
+
+    ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
+    ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
+    ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
+    ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
+    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
     ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
     ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
     ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
     ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
     ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
     ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
-    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
-    ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
-    ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
-    if (node.isMaster) {
-      ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
-      ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
-    }
+
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
@@ -655,20 +663,41 @@ public class GFlagsUtil {
     }
   }
 
+  public static Map<String, String> trimFlags(Map<String, String> data) {
+    Map<String, String> trimData = new HashMap<>();
+    for (Map.Entry<String, String> intent : data.entrySet()) {
+      String key = intent.getKey();
+      String value = intent.getValue();
+      trimData.put(key.trim(), value.trim());
+    }
+    return trimData;
+  }
+
   private static void mergeCSVs(
       Map<String, String> userGFlags, Map<String, String> platformGFlags, String key) {
-    final String separator = ",";
     if (userGFlags.containsKey(key)) {
       String userValue = userGFlags.get(key);
-      Set<String> res =
-          Arrays.stream(userValue.split(separator))
-              .map(s -> s.trim())
-              .collect(Collectors.toCollection(LinkedHashSet::new));
-      String platformValue = platformGFlags.getOrDefault(key, "");
-      for (String plat : platformValue.split(separator)) {
-        res.add(plat);
+      try {
+        CSVParser userValueParser = new CSVParser(new StringReader(userValue), CSVFormat.DEFAULT);
+        CSVParser platformValuesParser =
+            new CSVParser(
+                new StringReader(platformGFlags.getOrDefault(key, "")), CSVFormat.DEFAULT);
+        Set<String> records = new LinkedHashSet<>();
+        StringWriter writer = new StringWriter();
+        CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT);
+        for (CSVRecord record : userValueParser) {
+          records.addAll(record.toList());
+        }
+        for (CSVRecord record : platformValuesParser) {
+          records.addAll(record.toList());
+        }
+        csvPrinter.printRecord(records);
+        csvPrinter.flush();
+        String result = writer.toString();
+        userGFlags.put(key, result.replaceAll("\n", "").replace("\r", ""));
+      } catch (IOException ignored) {
+        // can't really happen
       }
-      userGFlags.put(key, res.stream().collect(Collectors.joining(separator)));
     }
   }
 
