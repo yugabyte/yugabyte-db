@@ -403,6 +403,7 @@ dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integra
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 // TODO(Shashank): Remove these in Step 3:
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.13.4.2"
+dependencyOverrides += "net.sf.ehcache" % "ehcache" % "2.10.9.2"
 
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"
