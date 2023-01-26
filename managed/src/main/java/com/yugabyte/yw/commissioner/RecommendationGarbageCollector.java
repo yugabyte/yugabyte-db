@@ -7,16 +7,15 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
-import org.yb.perf_advisor.filters.PerformanceRecommendationFilter;
-import org.yb.perf_advisor.services.db.PerformanceRecommendationService;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Date;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.perf_advisor.filters.PerformanceRecommendationFilter;
+import org.yb.perf_advisor.services.db.PerformanceRecommendationService;
 
 @Singleton
 @Slf4j
@@ -100,11 +99,12 @@ public class RecommendationGarbageCollector {
     PerformanceRecommendationFilter filter =
         PerformanceRecommendationFilter.builder()
             .createdInstantBefore(createdInstantTimestamp)
+            .isStale(true)
             .build();
     NUM_RECOMMENDATION_GC_RUNS_COUNT.inc();
     try {
       int numRowsGCdInThisRun = this.performanceRecommendationService.delete(filter);
-      PURGED_PERF_RECOMMENDATION_COUNT.inc(numRowsGCdInThisRun);
+      PURGED_PERF_RECOMMENDATION_COUNT.labels(c.getUuid().toString()).inc(numRowsGCdInThisRun);
       log.info("Garbage collected {} rows", numRowsGCdInThisRun);
     } catch (Exception e) {
       log.error("Error deleting rows: {}", e);
@@ -113,7 +113,8 @@ public class RecommendationGarbageCollector {
   }
 
   /** The interval at which the gc checker will run. */
-  private Duration gcCheckInterval() {
+  @VisibleForTesting
+  Duration gcCheckInterval() {
     return confGetter.getStaticConf().getDuration("yb.perf_advisor.cleanup.gc_check_interval");
   }
 

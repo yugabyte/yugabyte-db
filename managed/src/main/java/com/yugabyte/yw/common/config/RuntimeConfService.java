@@ -139,7 +139,20 @@ public class RuntimeConfService extends AuthenticatedController {
     return maybeQuoted;
   }
 
-  public String getKey(UUID customerUUID, UUID scopeUUID, String path) {
+  public String getKeyOrBadRequest(UUID customerUUID, UUID scopeUUID, String path) {
+    return maybeGetKey(customerUUID, scopeUUID, path)
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    NOT_FOUND,
+                    String.format("Key %s is not defined in scope %s", path, scopeUUID)));
+  }
+
+  public String getKeyIfPresent(UUID customerUUID, UUID scopeUUID, String path) {
+    return maybeGetKey(customerUUID, scopeUUID, path).orElse(null);
+  }
+
+  public Optional<String> maybeGetKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
 
@@ -150,17 +163,24 @@ public class RuntimeConfService extends AuthenticatedController {
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
-    RuntimeConfigEntry runtimeConfigEntry = RuntimeConfigEntry.getOrBadRequest(scopeUUID, path);
+    Optional<RuntimeConfigEntry> runtimeConfigEntry = RuntimeConfigEntry.maybeGet(scopeUUID, path);
+    if (!runtimeConfigEntry.isPresent()) {
+      return Optional.empty();
+    }
 
-    String value = runtimeConfigEntry.getValue();
+    String value = runtimeConfigEntry.get().getValue();
     if (sensitiveKeys.contains(path)) {
       value = CommonUtils.getMaskedValue(path, value);
     }
-    return value;
+    return Optional.of(value);
   }
 
   @Transactional
   public void setKey(UUID customerUUID, UUID scopeUUID, String path, String value) {
+    if (!mutableKeys.contains(path)) {
+      throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
+    }
+
     String logValue = value;
     if (sensitiveKeys.contains(path)) {
       logValue = CommonUtils.getMaskedValue(path, logValue);
@@ -196,17 +216,10 @@ public class RuntimeConfService extends AuthenticatedController {
     preChangeNotifier.notifyListeners(scopeUUID, path, newValue);
   }
 
-  public void deleteKeyIfPresent(UUID customerUUID, UUID scopeUUID, String path) {
-    if (!mutableKeys.contains(path))
-      throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
-
-    getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).deleteEntryIfPresent(path);
-    postConfigChange(scopeUUID, path);
-  }
-
   public void deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
-    if (!mutableKeys.contains(path))
+    if (!mutableKeys.contains(path)) {
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
+    }
 
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).deleteEntry(path);
     postConfigChange(scopeUUID, path);

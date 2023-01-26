@@ -329,10 +329,11 @@ class Messenger : public ProxyContext {
   // Protects closing_, acceptor_pools_.
   mutable percpu_rwlock lock_;
 
-  bool closing_ = false;
+  std::atomic_bool closing_ = false;
 
   // RPC services that handle inbound requests.
   mutable RWOperationCounter rpc_services_counter_;
+  std::atomic_bool rpc_services_counter_stopped_ = false;
   std::unordered_multimap<std::string, RpcServicePtr> rpc_services_;
   RpcEndpointMap rpc_endpoints_;
 

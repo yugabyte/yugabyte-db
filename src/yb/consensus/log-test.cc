@@ -132,7 +132,7 @@ class LogTest : public LogTestBase {
     header.set_major_version(0);
     header.set_minor_version(0);
     header.set_unused_tablet_id(kTestTablet);
-    SchemaToPB(GetSimpleTestSchema(), header.mutable_schema());
+    SchemaToPB(GetSimpleTestSchema(), header.mutable_deprecated_schema());
 
     LogSegmentFooterPB footer;
     footer.set_num_entries(10);
@@ -717,11 +717,8 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   {
     ReplicateMsgs repls;
     int64_t starting_op_segment_seq_num;
-    yb::SchemaPB schema;
-    uint32_t schema_version;
     Status s = log_->GetLogReader()->ReadReplicatesInRange(
-      1, 2, LogReader::kNoSizeLimit, &repls, &starting_op_segment_seq_num,
-        &schema, &schema_version);
+      1, 2, LogReader::kNoSizeLimit, &repls, &starting_op_segment_seq_num);
     ASSERT_TRUE(s.IsNotFound()) << s.ToString();
   }
 
@@ -1115,15 +1112,12 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
       auto start_index = RandomUniformInt<int64_t>(gc_index, max_repl_index - 1);
       auto end_index = RandomUniformInt<int64_t>(start_index, max_repl_index);
       int64_t starting_op_segment_seq_num;
-      yb::SchemaPB schema;
-      uint32_t schema_version;
       {
         SCOPED_TRACE(Substitute("Reading $0-$1", start_index, end_index));
         consensus::ReplicateMsgs repls;
         ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index,
                                                 LogReader::kNoSizeLimit, &repls,
-                                                &starting_op_segment_seq_num,
-                                                &schema, &schema_version));
+                                                &starting_op_segment_seq_num));
         ASSERT_EQ(end_index - start_index + 1, repls.size());
         auto expected_index = start_index;
         for (const auto& repl : repls) {
@@ -1147,8 +1141,7 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
                                 start_index, end_index, size_limit));
         ReplicateMsgs repls;
         ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index, size_limit, &repls,
-                                                &starting_op_segment_seq_num,
-                                                &schema, &schema_version));
+                                                &starting_op_segment_seq_num));
         ASSERT_LE(repls.size(), end_index - start_index + 1);
         int total_size = 0;
         auto expected_index = start_index;
@@ -1191,12 +1184,9 @@ TEST_F(LogTest, TestReadReplicatesHighIndex) {
   auto* reader = log_->GetLogReader();
   ReplicateMsgs repls;
   int64_t starting_op_segment_seq_num;
-  yb::SchemaPB schema;
-  uint32_t schema_version;
   ASSERT_OK(reader->ReadReplicatesInRange(first_log_index, first_log_index + kSequenceLength - 1,
                                           LogReader::kNoSizeLimit, &repls,
-                                          &starting_op_segment_seq_num,
-                                          &schema, &schema_version));
+                                          &starting_op_segment_seq_num));
   ASSERT_EQ(kSequenceLength, repls.size());
 }
 

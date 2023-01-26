@@ -2143,6 +2143,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_sequence_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Allow nextval() to fetch the value range and advance "
+						 "the sequence value in a single operation."),
+			NULL
+		},
+		&yb_enable_sequence_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

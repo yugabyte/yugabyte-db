@@ -2378,10 +2378,8 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
     // Check that first log was garbage collected, so remote bootstrap will be required.
     consensus::ReplicateMsgs replicates;
     int64_t starting_op;
-    yb::SchemaPB schema;
-    uint32_t schema_version;
     return !tablet_peer->log()->GetLogReader()->ReadReplicatesInRange(
-        1, 2, 0, &replicates, &starting_op, &schema, &schema_version).ok();
+        1, 2, 0, &replicates, &starting_op).ok();
   }, MonoDelta::FromSeconds(30), "Logs cleaned"));
 
   auto leaders = ListTabletPeers(producer_cluster(), ListPeersFilter::kLeaders);
