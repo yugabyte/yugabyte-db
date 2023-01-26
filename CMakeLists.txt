@@ -808,7 +808,6 @@ add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
 add_subdirectory(src/yb/yql)
 add_subdirectory(src/yb/cdc)
-add_subdirectory(src/yb/vtables)
 
 include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
 

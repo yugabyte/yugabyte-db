@@ -1063,6 +1063,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
         for (const auto& tablet : resp.status_and_schema()) {
           if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()
               && tablet.tablet_status().table_name().find("colocated.parent") == string::npos
+              && tablet.tablet_status().table_name().find("colocation.parent") == string::npos
               && tablet.tablet_status().table_name().find("tablegroup.parent") == string::npos) {
             LOG(INFO) << "Tablet " << tablet.tablet_status().tablet_id() << " of table "
                       << tablet.tablet_status().table_name() << ", hidden status "

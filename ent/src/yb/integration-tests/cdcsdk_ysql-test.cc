@@ -131,6 +131,14 @@ using rpc::RpcController;
 namespace cdc {
 namespace enterprise {
 
+namespace {
+
+void DisableYsqlPackedRow() {
+  ASSERT_OK(SET_FLAG(ysql_enable_packed_row, false));
+}
+
+}
+
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 
@@ -1627,6 +1635,19 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  Status CreateSnapshot(const NamespaceName& ns) {
+    string tool_path = GetToolPath("../bin", "yb-admin");
+    vector<string> argv;
+    argv.push_back(tool_path);
+    argv.push_back("-master_addresses");
+    argv.push_back(AsString(test_cluster_.mini_cluster_->mini_master(0)->bound_rpc_addr()));
+    argv.push_back("create_database_snapshot");
+    argv.push_back(ns);
+    RETURN_NOT_OK(Subprocess::Call(argv));
+
+    return Status::OK();
+  }
+
   int CountEntriesInDocDB(std::vector<tablet::TabletPeerPtr> peers, const std::string& table_id) {
     int count = 0;
     for (const auto& peer : peers) {
@@ -1878,7 +1899,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKAddColumnsWithImplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -1943,7 +1964,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKAddColumnsWithExplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2015,7 +2036,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKDropColumnsWithRestartTServer(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2065,7 +2086,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKDropColumnsWithImplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2130,7 +2151,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKDropColumnsWithExplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2202,7 +2223,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKRenameColumnsWithImplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2266,7 +2287,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
     const uint32_t num_tablets = 1;
@@ -2338,7 +2359,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKMultipleAlterWithRestartTServer(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     // create table with 3 columns
     // insert some records.
@@ -2429,7 +2450,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKMultipleAlterWithTabletLeaderSwitch(bool packed_row) {
     const int num_tservers = 3;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     FLAGS_enable_load_balancing = false;
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     const uint32_t num_tablets = 1;
@@ -2511,7 +2532,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CDCSDKAlterWithSysCatalogCompaction(bool packed_row) {
     const int num_tservers = 1;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     const uint32_t num_tablets = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -2588,7 +2609,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool packed_row) {
     const int num_tservers = 3;
     FLAGS_enable_load_balancing = false;
-    FLAGS_ysql_enable_packed_row = packed_row;
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     FLAGS_cdc_max_stream_intent_records = 10;
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
     const uint32_t num_tablets = 1;
@@ -2905,6 +2926,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage))
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
+  DisableYsqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -4235,6 +4257,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTser
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserver)) {
+  DisableYsqlPackedRow();
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -4265,6 +4288,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserv
 TEST_F(
     CDCSDKYsqlTest,
     YB_DISABLE_TEST_IN_TSAN(TestCleanupMultiStreamDeleteSingleStreamSingleTserver)) {
+  DisableYsqlPackedRow();
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -6673,6 +6697,7 @@ TEST_F(
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWithTwoTabletSplits)) {
+  DisableYsqlPackedRow();
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_aborted_intent_cleanup_ms = 1000;
@@ -10147,6 +10172,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExpiredStreamWithCompaction))
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
+  DisableYsqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -10191,11 +10217,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWithBeforeImage)) {
   EnableVerboseLoggingForModule("cdc_service", 1);
   EnableVerboseLoggingForModule("cdcsdk_producer", 1);
+  DisableYsqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public", 3));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -10213,13 +10241,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
   uint32_t batch_range = 1000;
   int batch_count = 4;
   for (int idx = 0; idx < batch_count; idx++) {
-    ASSERT_OK(WriteRowsHelper(start_idx /* start */, end_idx /* end */, &test_cluster_, true));
+    ASSERT_OK(WriteRowsHelper(start_idx /* start */, end_idx /* end */, &test_cluster_, true, 3));
     start_idx = end_idx;
     end_idx += batch_range;
   }
 
   // Update all row where key is even
-  ASSERT_OK(conn.Execute("UPDATE test_table set value_1 = value_1 + 1 where key % 2 = 0"));
+  ASSERT_OK(conn.Execute("UPDATE test_table set col2 = col2 + 1 where col1 % 2 = 0"));
 
   bool first_get_changes = true;
   GetChangesResponsePB change_resp;
@@ -10243,8 +10271,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
     for (uint32_t i = 0; i < record_size; ++i) {
       const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
       if (record.row_message().op() == RowMessage::INSERT) {
-        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
-        ASSERT_EQ(record.row_message().old_tuple_size(), 2);
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 3);
         // Old tuples validations
         ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), 0);
         ASSERT_EQ(record.row_message().old_tuple(1).datum_int32(), 0);
@@ -10257,8 +10285,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTransactionUpdateRowsWit
         ASSERT_EQ(record.row_message().table(), kTableName);
         insert_count += 1;
       } else if (record.row_message().op() == RowMessage::UPDATE) {
-        ASSERT_EQ(record.row_message().new_tuple_size(), 2);
-        ASSERT_EQ(record.row_message().old_tuple_size(), 2);
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 3);
         // The old tuple key should match the new tuple key.
         ASSERT_EQ(
             record.row_message().old_tuple(0).datum_int32(),
@@ -10519,7 +10547,80 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveWithSnapshot)) {
     SleepFor(MonoDelta::FromSeconds(1));
   }
   ASSERT_EQ(count, 1000);
+}
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLeadershipChangeAndSnapshotAffectsCheckpoint)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_aborted_intent_cleanup_ms = 1000;
+  FLAGS_enable_load_balancing = false;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 1, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  SleepFor(MonoDelta::FromSeconds(10));
+
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 200 /* end */, &test_cluster_, true));
+
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint seen_record_count = 0;
+  seen_record_count += change_resp.cdc_sdk_proto_records_size();
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  seen_record_count += change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GE(seen_record_count, 200);
+
+  auto checkpoint_after_last_record =
+      OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index());
+
+  ASSERT_OK(CreateSnapshot(kNamespaceName));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto result = GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint());
+        if (!result.ok()) {
+          return false;
+        }
+        change_resp = *result;
+        auto checkpoint_after_snapshot =
+            OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index());
+        return (checkpoint_after_snapshot > checkpoint_after_last_record);
+      },
+      MonoDelta::FromSeconds(120),
+      "GetChanges did not see the record for snapshot"));
+
+  auto checkpoint_after_snapshot =
+      OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index());
+  ASSERT_GT(checkpoint_after_snapshot, checkpoint_after_last_record);
+
+  size_t first_leader_index = -1;
+  size_t first_follower_index = -1;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  auto checkpoint_after_leadership_change =
+      OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index());
+  ASSERT_GT(checkpoint_after_leadership_change, checkpoint_after_snapshot);
 }
 
 }  // namespace enterprise

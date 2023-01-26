@@ -217,6 +217,8 @@ DEFINE_UNKNOWN_bool(tablet_enable_ttl_file_filter, false,
             "Enables compaction to directly delete files that have expired based on TTL, "
             "rather than removing them via the normal compaction process.");
 
+DEFINE_UNKNOWN_bool(enable_schema_packing_gc, true, "Whether schema packing GC is enabled.");
+
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
@@ -376,6 +378,15 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
     }
 
+    if (FLAGS_enable_schema_packing_gc) {
+      OldSchemaGC();
+    }
+  }
+
+ private:
+  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion, UuidHash>;
+
+  void OldSchemaGC() {
     MinSchemaVersionMap table_id_to_min_schema_version;
     {
       auto scoped_read_operation = tablet_.CreateNonAbortableScopedRWOperation();
@@ -385,14 +396,11 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       }
 
       // Collect min schema version from all DB entries. I.e. stored in memory and flushed to disk.
-      FillMinSchemaVersion(db, &table_id_to_min_schema_version);
+      FillMinSchemaVersion(tablet_.regular_db_.get(), &table_id_to_min_schema_version);
       FillMinSchemaVersion(tablet_.intents_db_.get(), &table_id_to_min_schema_version);
     }
-    ERROR_NOT_OK(metadata.OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
+    ERROR_NOT_OK(tablet_.metadata()->OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
   }
-
- private:
-  using MinSchemaVersionMap = std::unordered_map<Uuid, SchemaVersion, UuidHash>;
 
   void FillMinSchemaVersion(rocksdb::DB* db, MinSchemaVersionMap* table_id_to_min_schema_version) {
     if (!db) {
@@ -730,8 +738,11 @@ Status Tablet::OpenKeyValueTablet() {
       metadata_.get());
 
   rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
-    if (mem_table_flush_filter_factory_) {
-      return mem_table_flush_filter_factory_();
+    {
+      std::lock_guard<std::mutex> lock(flush_filter_mutex_);
+      if (mem_table_flush_filter_factory_) {
+        return mem_table_flush_filter_factory_();
+      }
     }
     return rocksdb::MemTableFilter();
   });
@@ -2055,11 +2066,6 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   RSTATUS_DCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation->schema())), InvalidArgument,
                  "Schema keys cannot be altered");
 
-  // Abortable read/write operations could be long and they shouldn't access metadata_ without
-  // locks, so no need to wait for them here.
-  auto op_pause = PauseReadWriteOperations(Abortable::kFalse);
-  RETURN_NOT_OK(op_pause);
-
   // If the current version >= new version, there is nothing to do.
   if (current_table_info->schema_version >= operation->schema_version()) {
     LOG_WITH_PREFIX(INFO)
@@ -2082,12 +2088,11 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
     }
   }
 
-  metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
-                      operation->schema_version(), current_table_info->table_id);
   if (operation->has_new_table_name()) {
-    metadata_->SetTableName(
-        current_table_info->namespace_name, operation->new_table_name().ToBuffer(),
-        current_table_info->table_id);
+    metadata_->SetSchemaAndTableName(
+        *operation->schema(), operation->index_map(), deleted_cols,
+        operation->schema_version(), current_table_info->namespace_name,
+        operation->new_table_name().ToBuffer(), current_table_info->table_id);
     if (table_metrics_entity_) {
       table_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
       table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
@@ -2096,6 +2101,9 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
       tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
       tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
+  } else {
+    metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
+                         operation->schema_version(), current_table_info->table_id);
   }
 
   // Clear old index table metadata cache.

@@ -1,12 +1,10 @@
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import java.util.Date;
 import java.util.Set;
 import java.util.UUID;
-
-import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
-
 import lombok.Builder;
 import lombok.Value;
 

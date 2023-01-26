@@ -54,6 +54,10 @@
 
 using std::string;
 
+DEFINE_RUNTIME_bool(report_ysql_ddl_txn_status_to_master, false,
+                    "If set, at the end of DDL operation, the TServer will notify the YB-Master "
+                    "whether the DDL operation was committed or aborted");
+
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_ddl_rollback_enabled);
 
@@ -676,6 +680,12 @@ Status PgClientSession::FinishTransaction(
     VLOG_WITH_PREFIX_AND_FUNC(2) << "ddl: " << req.ddl_mode() << ", no running transaction";
     return Status::OK();
   }
+
+  const TransactionMetadata* metadata = nullptr;
+  if (FLAGS_report_ysql_ddl_txn_status_to_master && req.has_docdb_schema_changes()) {
+    metadata = VERIFY_RESULT(GetDdlTransactionMetadata(true, context->GetClientDeadline()));
+    LOG_IF(DFATAL, !metadata) << "metadata is required";
+  }
   const auto txn_value = std::move(txn);
   Session(kind)->SetTransaction(nullptr);
 
@@ -684,12 +694,26 @@ Status PgClientSession::FinishTransaction(
     VLOG_WITH_PREFIX_AND_FUNC(2)
         << "ddl: " << req.ddl_mode() << ", txn: " << txn_value->id()
         << ", commit: " << commit_status;
-    return commit_status;
+    // If commit_status is not ok, we cannot be sure whether the commit was successful or not. It
+    // is possible that the commit succeeded at the transaction coordinator but we failed to get
+    // the response back. Thus we will not report any status to the YB-Master in this case. It
+    // will run its background task to figure out whether the transaction succeeded or failed.
+    if (!commit_status.ok()) {
+      return commit_status;
+    }
+  } else {
+    VLOG_WITH_PREFIX_AND_FUNC(2)
+        << "ddl: " << req.ddl_mode() << ", txn: " << txn_value->id() << ", abort";
+    txn_value->Abort();
   }
 
-  VLOG_WITH_PREFIX_AND_FUNC(2)
-      << "ddl: " << req.ddl_mode() << ", txn: " << txn_value->id() << ", abort";
-  txn_value->Abort();
+  if (metadata) {
+    // If we failed to report the status of this DDL transaction, we can just log and ignore it,
+    // as the poller in the YB-Master will figure out the status of this transaction using the
+    // transaction status tablet and PG catalog.
+    ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
+                 "Sending ReportYsqlDdlTxnStatus call failed");
+  }
   return Status::OK();
 }
 

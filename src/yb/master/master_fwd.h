@@ -39,13 +39,6 @@ namespace yb {
 class HostPort;
 struct HostPortHash;
 
-namespace vtables {
-
-class YQLPartitionsVTable;
-class YQLVirtualTable;
-
-}  // namespace vtables
-
 namespace master {
 
 class TSDescriptor;
@@ -87,6 +80,8 @@ class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
 class XClusterSafeTimeService;
+class YQLPartitionsVTable;
+class YQLVirtualTable;
 class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;

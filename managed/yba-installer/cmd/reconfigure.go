@@ -46,5 +46,8 @@ var reconfigureCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(reconfigureCmd)
+	// Reconfigure must be run from installed yba-ctl
+	if common.RunFromInstalled() {
+		rootCmd.AddCommand(reconfigureCmd)
+	}
 }

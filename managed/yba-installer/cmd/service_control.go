@@ -1,6 +1,9 @@
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+)
 
 var startCmd = &cobra.Command{
 	Use: "start [serviceName]",
@@ -69,5 +72,8 @@ var restartCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(startCmd, stopCmd, restartCmd)
+	// Service control commands only work from the installed path
+	if common.RunFromInstalled() {
+		rootCmd.AddCommand(startCmd, stopCmd, restartCmd)
+	}
 }

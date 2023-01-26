@@ -1078,7 +1078,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -3088,9 +3088,16 @@
         "scope" : {
           "enum" : [ "GLOBAL", "CUSTOMER", "UNIVERSE", "PROVIDER" ],
           "type" : "string"
+        },
+        "tags" : {
+          "items" : {
+            "enum" : [ "PUBLIC", "INTERNAL", "YBM", "BETA", "UIDriven" ],
+            "type" : "string"
+          },
+          "type" : "array"
         }
       },
-      "required" : [ "dataType", "displayName", "helpTxt", "key", "scope" ],
+      "required" : [ "dataType", "displayName", "helpTxt", "key", "scope", "tags" ],
       "type" : "object"
     },
     "ConfigEntry" : {
@@ -3683,6 +3690,60 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "DatabaseSecurityFormData" : {
+      "properties" : {
+        "dbName" : {
+          "type" : "string"
+        },
+        "ycqlAdminPassword" : {
+          "type" : "string"
+        },
+        "ycqlAdminUsername" : {
+          "type" : "string"
+        },
+        "ycqlCurrAdminPassword" : {
+          "type" : "string"
+        },
+        "ysqlAdminPassword" : {
+          "type" : "string"
+        },
+        "ysqlAdminUsername" : {
+          "type" : "string"
+        },
+        "ysqlCurrAdminPassword" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "dbName", "ycqlAdminPassword", "ycqlAdminUsername", "ycqlCurrAdminPassword", "ysqlAdminPassword", "ysqlAdminUsername", "ysqlCurrAdminPassword" ],
+      "type" : "object"
+    },
+    "DatabaseUserFormData" : {
+      "properties" : {
+        "dbName" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        },
+        "username" : {
+          "type" : "string"
+        },
+        "ycqlAdminPassword" : {
+          "type" : "string"
+        },
+        "ycqlAdminUsername" : {
+          "type" : "string"
+        },
+        "ysqlAdminPassword" : {
+          "type" : "string"
+        },
+        "ysqlAdminUsername" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "dbName", "password", "username", "ycqlAdminPassword", "ycqlAdminUsername", "ysqlAdminPassword", "ysqlAdminUsername" ],
       "type" : "object"
     },
     "DeviceInfo" : {
@@ -4722,6 +4783,12 @@
     },
     "KubernetesRegionInfo" : {
       "properties" : {
+        "certManagerClusterIssuer" : {
+          "type" : "string"
+        },
+        "certManagerIssuer" : {
+          "type" : "string"
+        },
         "kubeConfig" : {
           "type" : "string"
         },
@@ -5888,11 +5955,19 @@
     },
     "PackagePaths" : {
       "properties" : {
+        "helmChart" : {
+          "description" : "Path to the Helm chart package",
+          "type" : "string"
+        },
+        "helmChartChecksum" : {
+          "description" : "Checksum for the Helm chart package",
+          "type" : "string"
+        },
         "x86_64" : {
           "description" : "Path to x86_64 package",
           "type" : "string"
         },
-        "x86_64_checksum" : {
+        "x86_64Checksum" : {
           "description" : "Checksum for x86_64 package",
           "type" : "string"
         }
@@ -6088,6 +6163,10 @@
     },
     "PerformanceRecommendationFilter" : {
       "properties" : {
+        "createdInstantBefore" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
         "customerId" : {
           "format" : "uuid",
           "type" : "string"
@@ -6132,7 +6211,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerId", "ids", "isStale", "priorities", "states", "types", "universeId" ],
+      "required" : [ "createdInstantBefore", "customerId", "ids", "isStale", "priorities", "states", "types", "universeId" ],
       "type" : "object"
     },
     "PerformanceRecommendationPagedQuery" : {
@@ -16740,6 +16819,14 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "description" : "The database user to create",
+          "in" : "body",
+          "name" : "DatabaseUserFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/DatabaseUserFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -18556,6 +18643,14 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "description" : "The database credentials",
+          "in" : "body",
+          "name" : "DatabaseSecurityFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/DatabaseSecurityFormData"
+          }
         } ],
         "responses" : {
           "200" : {

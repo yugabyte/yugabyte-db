@@ -1,7 +1,6 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.common.BackupUtil.RegionLocations;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;

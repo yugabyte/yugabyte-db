@@ -28,11 +28,11 @@ using std::string;
 namespace yb {
 namespace pggate {
 
-class PggateTestDelete : public PggateTest {
+class PggateTestUpdate : public PggateTest {
 };
 
-TEST_F(PggateTestDelete, TestDelete) {
-  CHECK_OK(Init("TestDelete"));
+TEST_F(PggateTestUpdate, TestUpdate) {
+  CHECK_OK(Init("TestUpdate"));
 
   const char *tabname = "basic_table";
   const YBCPgOid tab_oid = 3;
@@ -64,7 +64,7 @@ TEST_F(PggateTestDelete, TestDelete) {
                                                DataType::FLOAT, false, false));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "job", ++col_count,
                                                DataType::STRING, false, false));
-  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  ExecCreateTableTransaction(pg_stmt);
   pg_stmt = nullptr;
 
   // INSERT ----------------------------------------------------------------------------------------

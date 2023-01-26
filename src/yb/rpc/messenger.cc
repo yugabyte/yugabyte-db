@@ -174,6 +174,12 @@ MessengerBuilder &MessengerBuilder::UseDefaultConnectionContextFactory(
 // ------------------------------------------------------------------------------------------------
 
 void Messenger::Shutdown() {
+  bool expected = false;
+  if (!closing_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+  VLOG(1) << "shutting down messenger " << name_;
+
   ShutdownThreadPools();
   ShutdownAcceptor();
   UnregisterAllServices();
@@ -185,11 +191,6 @@ void Messenger::Shutdown() {
   std::unique_ptr<Acceptor> acceptor;
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
-    if (closing_) {
-      return;
-    }
-    VLOG(1) << "shutting down messenger " << name_;
-    closing_ = true;
 
     DCHECK(rpc_services_.empty()) << "Unregister RPC services before shutting down Messenger";
     rpc_services_.clear();
@@ -420,8 +421,11 @@ void Messenger::ShutdownThreadPools() {
 }
 
 void Messenger::UnregisterAllServices() {
-  CHECK_OK(rpc_services_counter_.DisableAndWaitForOps(CoarseTimePoint::max(), Stop::kTrue));
-  rpc_services_counter_.UnlockExclusiveOpMutex();
+  if (!rpc_services_counter_stopped_) {
+    CHECK_OK(rpc_services_counter_.DisableAndWaitForOps(CoarseTimePoint::max(), Stop::kTrue));
+    rpc_services_counter_.UnlockExclusiveOpMutex();
+    rpc_services_counter_stopped_ = true;
+  }
 
   for (const auto& p : rpc_services_) {
     p.second->StartShutdown();

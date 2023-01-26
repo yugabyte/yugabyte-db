@@ -67,7 +67,7 @@ TEST_F(PggateTestTableSize, YB_DISABLE_TEST_IN_TSAN(TestSimpleTable)) {
                                                DataType::FLOAT, false, false));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "job", ++col_count,
                                                DataType::STRING, false, false));
-  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  ExecCreateTableTransaction(pg_stmt);
 
   YBCPgDeleteStatement(pg_stmt);
 
@@ -181,7 +181,9 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
                                                DataType::INT64, true, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "id", ++col_count,
                                                DataType::INT32, false, true));
+  BeginDDLTransaction();
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  CommitDDLTransaction();
 
   YBCPgDeleteStatement(pg_stmt);
 
