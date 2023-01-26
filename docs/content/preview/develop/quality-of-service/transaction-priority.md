@@ -25,7 +25,7 @@ type: docs
 
 </ul>
 
-When using YugabyteDB with the [Fail-on-Conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy, higher priority transactions can abort lower priority transactions when conflicts occur. External applications may control the priority of individual transactions using the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is picked and used to compute a transaction priority for the transactions in that session as explained in detail in [Transaction Priorities](../../../architecture/transactions/transaction-priorities). To view the transaction priority of the active transaction in current session, use the `yb_get_current_transaction_priority` function.
+When using YugabyteDB with the [Fail-on-Conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy, higher priority transactions can abort lower priority transactions when conflicts occur. External applications may control the priority of individual transactions using the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is picked and used to compute a transaction priority for the transactions in that session as explained in detail in [Transaction Priorities](../../../architecture/transactions/transaction-priorities/). To view the transaction priority of the active transaction in current session, use the `yb_get_current_transaction_priority` function.
 
 | Flag | Valid Range | Description |
 | :--- | :---------- | :---------- |
@@ -36,7 +36,7 @@ When using YugabyteDB with the [Fail-on-Conflict](../../../architecture/transact
 Currently, transaction priorities work in the following scenarios:
 
 * Works with YSQL only, not supported for YCQL.
-* Only applies for transactions using [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy.
+* Only applies for transactions using [Fail-on-Conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy.
 * Only conflict resolution is prioritized, not resource consumption as a part.
 
 {{< /note >}}
@@ -171,7 +171,7 @@ yugabyte=> select * from account;
 
 ### Show transaction priority types
 
-The `yb_get_current_transaction_priority` function shows the transaction priority of the current transaction and the priority bucket the given priority belongs in. Transaction priority buckets are explained in detail in [Transaction Priorities](../../architecture/transactions/transaction-priorities.md). The following example demonstrates the usage of `yb_get_current_transaction_priority`.
+The `yb_get_current_transaction_priority` function shows the transaction priority of the current transaction and the priority bucket the given priority belongs in. Transaction priority buckets are explained in detail in [Transaction Priorities](../../../architecture/transactions/transaction-priorities/). The following example demonstrates the usage of `yb_get_current_transaction_priority`.
 
 1. From an active [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) shell, create a table as follows:
 
@@ -240,4 +240,4 @@ The `yb_get_current_transaction_priority` function shows the transaction priorit
     (1 row)
     ```
 
-For more information, see [Transaction priorities](../../../architecture/transactions/transaction-priorities/)
+For more information, see [Transaction priorities](../../../architecture/transactions/transaction-priorities/).
