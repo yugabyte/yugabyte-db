@@ -140,11 +140,13 @@ Suggested workaround is as follows:
 
 An example schema on the source database is as follows:
 
+```sql
 CREATE TABLE address (
   address_id int,
   add point,
   location GEOMETRY NOT NULL
 );
+```
 
 ---
 
