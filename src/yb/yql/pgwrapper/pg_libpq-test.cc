@@ -2077,18 +2077,15 @@ TEST_F_EX(
                     "Duplicate tablegroup");
 
   // Wait for cleanup thread to delete a table.
-  // TODO(alex): Replace with the commented piece once D22198 lands.
-  std::this_thread::sleep_for(6s);
-
-  //  // Since delete hasn't started initially, WaitForDeleteTableToFinish will error out.
-  //  const auto tg_parent_table_id = master::GetTablegroupParentTableId(next_tg_id);
-  //  ASSERT_OK(WaitFor(
-  //      [&client, &tg_parent_table_id] {
-  //        Status s = client->WaitForDeleteTableToFinish(tg_parent_table_id);
-  //        return s.ok();
-  //      },
-  //      30s,
-  //      "Wait for tablegroup cleanup"));
+  // Since delete hasn't started initially, WaitForDeleteTableToFinish will error out.
+  const auto tg_parent_table_id = master::GetTablegroupParentTableId(next_tg_id);
+  ASSERT_OK(WaitFor(
+      [&client, &tg_parent_table_id] {
+        Status s = client->WaitForDeleteTableToFinish(tg_parent_table_id);
+        return s.ok();
+      },
+      30s,
+      "Wait for tablegroup cleanup"));
 
   ASSERT_OK(conn.FetchFormat(set_next_tablegroup_oid_sql, next_tg_oid));
   ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg4"));
