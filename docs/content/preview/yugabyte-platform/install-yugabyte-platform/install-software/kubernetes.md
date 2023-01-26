@@ -171,7 +171,7 @@ tls:
   hostname: "localhost:8080"
 ```
 
-For more information, see [Set DNS name](#set-dns-name).
+For more information, see [Set a DNS name](#set-a-dns-name).
 
 Use the kubectl `port-forward` command to access the interface locally, as follows:
 
