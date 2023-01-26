@@ -2,8 +2,8 @@
 title: YugabyteDB configuration reference
 headerTitle: Configuration
 linkTitle: Configuration
-description: Configuration reference for core database services, including yb-tserver, yb-master, and yugabyted.
-headcontent: Configuration of the core database services.
+description: YugabyteDB configuration reference for core database services, including yb-tserver, yb-master, and yugabyted.
+headcontent: Configure core database services
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -21,7 +21,7 @@ type: indexpage
         <div class="title">yb-tserver</div>
       </div>
       <div class="body">
-        Configure yb-tserver to store and manages data for client applications.
+        Configure yb-tserver to store and manage data for client applications.
       </div>
     </a>
   </div>
@@ -45,7 +45,7 @@ type: indexpage
         <div class="title">yugabyted</div>
       </div>
       <div class="body">
-        Use the new yugabyted to develop and test local clusters.
+        Use the yugabyted utility to launch and manage local clusters.
       </div>
     </a>
   </div>
@@ -57,7 +57,7 @@ type: indexpage
         <div class="title">Default ports</div>
       </div>
       <div class="body">
-        Default ports for APIs, RPC and admin web servers.
+        Default ports for APIs, RPCs, and admin web servers.
       </div>
     </a>
   </div>
