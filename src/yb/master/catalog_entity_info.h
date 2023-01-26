@@ -387,6 +387,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return pb.mutable_schema();
   }
 
+  const std::string& state_name() const {
+    return SysTablesEntryPB_State_Name(pb.state());
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };
