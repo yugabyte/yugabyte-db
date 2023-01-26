@@ -7,6 +7,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"strings"
@@ -146,6 +147,10 @@ func (pg Postgres) Start() {
 
 // Stop stops the postgres process either via systemd or cron script.
 func (pg Postgres) Stop() {
+	if pg.Status().Status != common.StatusRunning {
+		log.Debug(pg.name + " is already stopped")
+		return
+	}
 
 	if common.HasSudoAccess() {
 
@@ -185,7 +190,6 @@ func (pg Postgres) Restart() {
 
 // Uninstall drops the yugaware DB and removes Postgres binaries.
 func (pg Postgres) Uninstall(removeData bool) {
-
 	pg.Stop()
 
 	if removeData {
@@ -200,21 +204,16 @@ func (pg Postgres) Uninstall(removeData bool) {
 	if common.HasSudoAccess() {
 		err := os.Remove(pg.SystemdFileLocation)
 		if err != nil {
-			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
-				err.Error(), pg.SystemdFileLocation))
+			pe := err.(*fs.PathError)
+			if !errors.Is(pe.Err, fs.ErrNotExist) {
+				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
+					err.Error(), pg.SystemdFileLocation))
+			}
 		}
 
 		// reload systemd daemon
 		common.RunBash(common.Systemctl, []string{"daemon-reload"})
 	}
-
-	// Remove conf/binary
-	err := common.RemoveAll(filepath.Dir(pg.PgBin))
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Error %s cleaning postgres binaries and conf %s",
-			err.Error(), filepath.Dir(pg.PgBin)))
-	}
-
 }
 
 func (pg Postgres) CreateBackup() {
@@ -408,7 +407,7 @@ func (pg Postgres) createYugawareDatabase() {
 
 	}
 
-	_, err := common.RunBash(command2, arg2)
+	_, err := common.RunBashNoLog(command2, arg2)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			// db already existing is fine because this may be a resumed failed install
