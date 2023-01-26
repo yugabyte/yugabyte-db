@@ -6354,7 +6354,9 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
       auto indexed_table = GetTableInfo(GetIndexedTableId(l->pb));
       if (indexed_table != nullptr &&
           indexed_table->AttachedYCQLIndexDeletionInProgress(req->table_id())) {
-        resp->set_done(true);
+        LOG(INFO) << "Servicing IsDeleteTableDone request for index id " << req->table_id()
+                  << " with backfill: deleting in state " << l->state_name();
+        resp->set_done(l->is_deleted() || l->is_hidden());
         return Status::OK();
       }
     }
