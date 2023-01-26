@@ -234,6 +234,11 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
   uint32_t current_version = l->pb.version();
   if (expected_version && *expected_version != current_version) {
     return STATUS(AlreadyPresent, "Table has already moved to a different version.");
+  } else if (!l->is_running()) {
+    LOG(WARNING) << __func__ << ": The table state is " << l->state_name() << " will stop backfill";
+    return STATUS_SUBSTITUTE(
+        IllegalState, "Table $0 is not in ALTERING or RUNNING state: $1",
+        table->ToString(), l->state_name());
   }
   l.mutable_data()->pb.clear_fully_applied_schema();
   l.mutable_data()->pb.clear_fully_applied_schema_version();
@@ -285,6 +290,12 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
       return STATUS_SUBSTITUTE(
           AlreadyPresent, "Schema was already updated to $0 before we got to it (expected $1).",
           indexed_table_pb.version(), *current_version);
+    } else if (!indexed_table_data.is_running()) {
+      LOG(WARNING) << __func__ << ": The table state is " << indexed_table_data.state_name()
+                   << " will stop backfill";
+      return STATUS_SUBSTITUTE(
+          IllegalState, "Table $0 is not in ALTERING or RUNNING state: $1",
+          indexed_table->ToString(), indexed_table_data.state_name());
     }
 
     CopySchemaDetailsToFullyApplied(&indexed_table_pb);
@@ -948,7 +959,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
       MultiStageAlterTable::UpdateIndexPermission(
           master_->catalog_manager_impl(), indexed_table_, permissions_to_set, boost::none),
       "Could not update permissions after backfill. "
-      "Possible that the master-leader has changed.");
+      "Possible that the master-leader has changed, or the table was deleted.");
   backfill_job_->SetState(
       all_success ? MonitoredTaskState::kComplete : MonitoredTaskState::kFailed);
   RETURN_NOT_OK(ClearCheckpointStateInTablets());
