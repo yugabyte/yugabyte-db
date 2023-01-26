@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import javax.validation.constraints.Min;
@@ -12,6 +14,7 @@ import lombok.experimental.Accessors;
 @ApiModel
 @Data
 @Accessors(chain = true)
+@JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class PerfAdvisorSettingsFormData {
 
   @ApiModelProperty(value = "Enable/disable perf advisor runs for the universe")
@@ -19,11 +22,11 @@ public class PerfAdvisorSettingsFormData {
 
   @Min(5)
   @ApiModelProperty(value = "Perf advisor runs frequency, in minutes")
-  private Integer runFrequencyMins;
+  private Integer universeFrequencyMins;
 
   @ApiModelProperty(value = "Perf advisor connection skew threshold")
   @Min(1)
-  private Double connectionSkewThreshold;
+  private Double connectionSkewThresholdPct;
 
   @ApiModelProperty(value = "Perf advisor connection skew min connections")
   @Min(1)
@@ -35,11 +38,11 @@ public class PerfAdvisorSettingsFormData {
 
   @ApiModelProperty(value = "Perf advisor cpu skew threshold")
   @Min(1)
-  private Double cpuSkewThreshold;
+  private Double cpuSkewThresholdPct;
 
   @ApiModelProperty(value = "Perf advisor cpu skew min cpu usage")
   @Min(1)
-  private Double cpuSkewMinUsage;
+  private Double cpuSkewMinUsagePct;
 
   @ApiModelProperty(value = "Perf advisor cpu skew check interval")
   @Min(1)
@@ -55,7 +58,7 @@ public class PerfAdvisorSettingsFormData {
 
   @ApiModelProperty(value = "Perf advisor query skew threshold")
   @Min(1)
-  private Double querySkewThreshold;
+  private Double querySkewThresholdPct;
 
   @ApiModelProperty(value = "Perf advisor query skew min queries")
   @Min(1)
