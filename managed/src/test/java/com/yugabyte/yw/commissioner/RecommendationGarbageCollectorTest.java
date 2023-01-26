@@ -1,38 +1,34 @@
 package com.yugabyte.yw.commissioner;
 
-import static com.yugabyte.yw.commissioner.RecommendationGarbageCollector.RECOMMENDATION_METRIC_NAME;
 import static com.yugabyte.yw.commissioner.RecommendationGarbageCollector.CUSTOMER_UUID_LABEL;
 import static com.yugabyte.yw.commissioner.RecommendationGarbageCollector.NUM_REC_GC_ERRORS;
 import static com.yugabyte.yw.commissioner.RecommendationGarbageCollector.NUM_REC_GC_RUNS;
+import static com.yugabyte.yw.commissioner.RecommendationGarbageCollector.RECOMMENDATION_METRIC_NAME;
 import static io.prometheus.client.CollectorRegistry.defaultRegistry;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyZeroInteractions;
-import static org.mockito.Mockito.when;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.spy;
 
-import com.typesafe.config.Config;
-import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.FakePerfAdvisorDBTest;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import java.time.Duration;
-import java.util.UUID;
-import junit.framework.TestCase;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.perf_advisor.filters.PerformanceRecommendationFilter;
-import org.yb.perf_advisor.services.db.PerformanceRecommendationService;
+import org.yb.perf_advisor.models.PerformanceRecommendation;
 
 @RunWith(MockitoJUnitRunner.class)
-public class RecommendationGarbageCollectorTest extends TestCase {
+public class RecommendationGarbageCollectorTest extends FakePerfAdvisorDBTest {
 
   private void checkCounters(
-      UUID customerUuid,
+      Customer customer,
       Double expectedNumRuns,
       Double expectedErrors,
       Double expectedPerfRecommendationGC) {
@@ -45,85 +41,85 @@ public class RecommendationGarbageCollectorTest extends TestCase {
         defaultRegistry.getSampleValue(
             getTotalCounterName(RECOMMENDATION_METRIC_NAME),
             new String[] {CUSTOMER_UUID_LABEL},
-            new String[] {customerUuid.toString()}));
+            new String[] {customer.getUuid().toString()}));
   }
 
-  @Mock PlatformScheduler mockPlatformScheduler;
-
-  @Mock PerformanceRecommendationService mockPerfRecService;
-
-  @Mock RuntimeConfigFactory mockRuntimeConfFactory;
-
-  @Mock Config mockAppConfig;
-
-  @Mock Customer mockCustomer;
-
-  @Mock RuntimeConfGetter mockConfGetter;
-
-  private RecommendationGarbageCollector RecommendationGarbageCollector;
+  private RecommendationGarbageCollector recommendationGarbageCollector;
 
   @Before
   public void setUp() {
-    when(mockRuntimeConfFactory.globalRuntimeConf()).thenReturn(mockAppConfig);
-    RecommendationGarbageCollector =
-        new RecommendationGarbageCollector(
-            mockPlatformScheduler, mockConfGetter, mockPerfRecService);
     defaultRegistry.clear();
     RecommendationGarbageCollector.registerMetrics();
+    recommendationGarbageCollector =
+        spy(app.injector().instanceOf(RecommendationGarbageCollector.class));
   }
 
   @Test
-  public void testStart_disabled() {
-    when(mockAppConfig.getDuration("yb.perf_advisor.cleanup.gc_check_interval"))
-        .thenReturn(Duration.ZERO);
-    RecommendationGarbageCollector.start();
-    verifyZeroInteractions(mockPlatformScheduler);
+  public void testStart_disabled() throws InterruptedException {
+    PerformanceRecommendation toClean = createRecommendationToClean(true);
+    Mockito.doReturn(Duration.ZERO).when(recommendationGarbageCollector).gcCheckInterval();
+    recommendationGarbageCollector.start();
+    Thread.sleep(200);
+
+    toClean = performanceRecommendationService.get(toClean.getId());
+    assertThat(toClean, notNullValue());
   }
 
   @Test
-  public void testStart_enabled() {
-    when(mockAppConfig.getDuration("yb.perf_advisor.cleanup.gc_check_interval"))
-        .thenReturn(Duration.ofDays(1));
-    RecommendationGarbageCollector.start();
-    verify(mockPlatformScheduler, times(1))
-        .schedule(any(), eq(Duration.ZERO), eq(Duration.ofDays(1)), any());
+  public void testStart_enabled() throws InterruptedException {
+    PerformanceRecommendation toClean = createRecommendationToClean(true);
+    Mockito.doReturn(Duration.ofMillis(100)).when(recommendationGarbageCollector).gcCheckInterval();
+    recommendationGarbageCollector.start();
+    Thread.sleep(200);
+
+    toClean = performanceRecommendationService.get(toClean.getId());
+    assertThat(toClean, nullValue());
   }
 
   @Test
-  public void testPurge_noneStale() {
-    UUID customerUuid = UUID.randomUUID();
+  public void testPurge_noneStale() throws InterruptedException {
+    PerformanceRecommendation toClean = createRecommendationToClean(false);
 
-    RecommendationGarbageCollector.checkCustomerAndPurgeRecs(mockCustomer);
+    recommendationGarbageCollector.checkCustomerAndPurgeRecs(customer);
 
-    checkCounters(customerUuid, 1.0, 0.0, 0.0);
+    toClean = performanceRecommendationService.get(toClean.getId());
+    assertThat(toClean, notNullValue());
+    checkCounters(customer, 1.0, 0.0, 0.0);
   }
 
   @Test
   public void testPurge() {
-    UUID customerUuid = UUID.randomUUID();
-    when(mockCustomer.getUuid()).thenReturn(customerUuid);
-    // Pretend we deleted 5 rows in all:
-    when(mockPerfRecService.delete((PerformanceRecommendationFilter) any())).thenReturn(5);
+    PerformanceRecommendation toClean = createRecommendationToClean(true);
 
-    RecommendationGarbageCollector.checkCustomerAndPurgeRecs(mockCustomer);
+    recommendationGarbageCollector.checkCustomerAndPurgeRecs(customer);
 
-    checkCounters(customerUuid, 1.0, 0.0, 4.0);
+    toClean = performanceRecommendationService.get(toClean.getId());
+    assertThat(toClean, nullValue());
+    checkCounters(customer, 1.0, 0.0, 1.0);
   }
 
-  // Test that if we do not delete when there are referential integrity issues; then we report such
-  // error in counter.
+  // Test that if delete fails we increment error counter
   @Test
   public void testPurge_invalidData() {
-    UUID customerUuid = UUID.randomUUID();
-    // Pretend we deleted 5 rows in all:
-    when(mockPerfRecService.delete((PerformanceRecommendationFilter) any())).thenReturn(0);
+    RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+    recommendationGarbageCollector = new RecommendationGarbageCollector(null, confGetter, null);
 
-    RecommendationGarbageCollector.checkCustomerAndPurgeRecs(mockCustomer);
+    recommendationGarbageCollector.checkCustomerAndPurgeRecs(customer);
 
-    checkCounters(customerUuid, 1.0, 1.0, 0.0);
+    checkCounters(customer, 1.0, 1.0, null);
   }
 
   private String getTotalCounterName(String name) {
     return name + "_total";
+  }
+
+  private PerformanceRecommendation createRecommendationToClean(boolean isStale) {
+    PerformanceRecommendation toClean = createTestRecommendation();
+    toClean = performanceRecommendationService.save(toClean);
+
+    toClean.setIsStale(isStale);
+    toClean.setRecommendationTimestamp(Instant.now().minus(31, ChronoUnit.DAYS));
+    perfAdvisorEbeanServer.save(toClean);
+    return toClean;
   }
 }
