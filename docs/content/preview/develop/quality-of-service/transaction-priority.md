@@ -46,7 +46,7 @@ Currently, transaction priorities work in the following scenarios:
 Create a [YugabyteDB universe](../../../quick-start/) and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Managed" >}}
-You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which can be used to do the steps below.
+You can create a free cluster with [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which you can use to do the steps that follow.
 
 {{< /tip >}}
 
@@ -220,7 +220,7 @@ The `yb_get_current_transaction_priority` function shows the transaction priorit
     (1 row)
     ```
 
-   As seen from the resulting _High priority transaction_ value in the preceding example, the transaction priority is randomly chosen between the lower and upper bound.
+   The transaction priority is randomly chosen between the lower and upper bound.
 
 1. In the final transaction block, set `yb_transaction_priority_upper_bound` and `yb_transaction_priority_lower_bound` to be 1, and perform the same `SELECT ... FOR UPDATE` query as the previous one. This transaction type is of the highest priority.
 
