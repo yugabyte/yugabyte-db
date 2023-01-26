@@ -102,7 +102,13 @@ DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
 DEFINE_test_flag(bool, disable_apply_committed_transactions, false,
                  "Should we disable the apply of committed transactions.");
 
+DEFINE_RUNTIME_uint32(external_transaction_apply_rpc_limit, 0,
+                      "Limit on the number of outstanding APPLY external transaction rpcs sent to "
+                      "involved tablets at a given time. If set to 0, the default is half "
+                      "--rpc_workers_limit.");
+
 DECLARE_bool(enable_deadlock_detection);
+DECLARE_int32(rpc_workers_limit);
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -117,6 +123,14 @@ std::chrono::microseconds GetTransactionTimeout() {
   return timeout >= static_cast<double>(std::chrono::microseconds::max().count())
       ? std::chrono::microseconds::max()
       : std::chrono::microseconds(static_cast<int64_t>(timeout));
+}
+
+uint32_t GetExternalTransactionApplyRpcLimit() {
+  auto limit = GetAtomicFlag(&FLAGS_external_transaction_apply_rpc_limit);
+  if (limit > 0) {
+    return limit;
+  }
+  return GetAtomicFlag(&FLAGS_rpc_workers_limit) / 2;
 }
 
 namespace {
@@ -1484,6 +1498,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
     VLOG_WITH_PREFIX(3) << "Notify applying: " << action.ToString();
 
+    if (action.is_external && ++num_outstanding_apply_external_transaction_rpcs_ >
+                              GetExternalTransactionApplyRpcLimit()) {
+      // We are at the limit for the number of outstanding apply RPCs, return here and let the Poll
+      // loop take care of retrying.
+      num_outstanding_apply_external_transaction_rpcs_--;
+      YB_LOG_EVERY_N_SECS(INFO, 5) << "Throttling external transaction apply rpcs, reached the "
+                                   << "threshold of " <<  GetExternalTransactionApplyRpcLimit();
+      return;
+    }
+
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(action.tablet);
     req.set_propagated_hybrid_time(now.ToUint64());
@@ -1512,12 +1536,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                const tserver::UpdateTransactionResponsePB& resp) {
             client::UpdateClock(resp, &context_);
             rpcs_.Unregister(handle);
-            if (status.ok()) {
-              return;
+            if (action.is_external) {
+              num_outstanding_apply_external_transaction_rpcs_--;
+              if (status.ok() || status.IsTryAgain()) {
+               // Either the apply was successful, or we are trying to apply an external transaction
+               // on a tablet that is not caught up to commit_ht. Return and let the Poll loop take
+               // care of the retry.
+                return;
+              }
             }
-            if (action.is_external && status.IsTryAgain()) {
-              // We are trying to apply an external transaction on a tablet that is not caught up
-              // to commit_ht. Return and let the Poll loop take care of the retry.
+            if (status.ok()) {
               return;
             }
             LOG_WITH_PREFIX(WARNING)
@@ -1741,6 +1769,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   ManagedTransactions managed_transactions_;
 
   std::atomic<bool> deleting_{false};
+  std::atomic<uint32_t> num_outstanding_apply_external_transaction_rpcs_;
   std::condition_variable last_transaction_finished_;
 
   // Actions that should be executed after mutex is unlocked.
