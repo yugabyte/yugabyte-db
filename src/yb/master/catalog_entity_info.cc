@@ -948,14 +948,16 @@ void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_i
   tablespace_id_for_table_creation_ = tablespace_id;
 }
 
-bool TableInfo::AttachedYCQLIndexDeletionInProgress(const std::string& index_table_id) const {
+bool TableInfo::AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const {
   auto l = LockForRead();
   const auto& indices = l->pb.indexes();
   const auto index_info_it = std::find_if(
       indices.begin(), indices.end(), [&index_table_id](const IndexInfoPB& index_info) {
         return index_info.table_id() == index_table_id;
       });
-  return index_info_it != indices.end() &&
+  return // If the index has been already detached from the table:
+         index_info_it == indices.end() ||
+         // OR if the index is in the deletion process - it's visible via the permissions:
          index_info_it->index_permissions() >=
              IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING;
 }
