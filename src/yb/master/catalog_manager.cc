@@ -5294,6 +5294,8 @@ Status CatalogManager::LaunchBackfillIndexForTable(
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
     DeleteTableResponsePB* resp) {
+  LOG(INFO) << "MarkIndexInfoFromTableForDeletion table " << indexed_table_id
+            << " index " << index_table_id << " multi_stage=" << multi_stage;
   // Lookup the indexed table and verify if it exists.
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
@@ -5326,6 +5328,7 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
 
 Status CatalogManager::DeleteIndexInfoFromTable(
     const TableId& indexed_table_id, const TableId& index_table_id) {
+  LOG(INFO) << "DeleteIndexInfoFromTable table " << indexed_table_id << " index " << index_table_id;
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
     LOG(WARNING) << "Indexed table " << indexed_table_id << " for index " << index_table_id
@@ -5824,8 +5827,8 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   auto l = table->LockForRead();
 
   if (!l->started_deleting() && !l->started_hiding()) {
-    LOG(WARNING) << "Servicing IsDeleteTableDone request for table id "
-                 << req->table_id() << ": NOT deleted";
+    LOG(WARNING) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
+                 << ": NOT deleted in state " << l->state_name();
     Status s = STATUS(IllegalState, "The object was NOT deleted", l->pb.state_msg());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
