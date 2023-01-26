@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RecommendationGarbageCollector;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -89,6 +90,7 @@ public class AppInit {
       SupportBundleCleanup supportBundleCleanup,
       NodeAgentPoller nodeAgentPoller,
       YbcUpgrade ybcUpgrade,
+      RecommendationGarbageCollector perfRecGC,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
@@ -210,6 +212,7 @@ public class AppInit {
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
       alertsGC.start();
+      perfRecGC.start();
 
       setUniverseKey.start();
       // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.

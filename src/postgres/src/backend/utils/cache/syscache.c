@@ -1033,6 +1033,9 @@ static int	SysCacheSupportingRelOidSize;
 
 static int	oid_compare(const void *a, const void *b);
 
+static void
+YbAddToCacheList(List **current_list, List **list_of_lists, HeapTuple ntp, bool continue_list);
+
 Bitmapset *
 YBSysTablePrimaryKey(Oid relid)
 {
@@ -1254,17 +1257,25 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 				HeapTuple       ltp        = (HeapTuple) llast(current_list);
 				Form_pg_rewrite ltp_struct = (Form_pg_rewrite) GETSTRUCT(ltp);
 				Form_pg_rewrite ntp_struct = (Form_pg_rewrite) GETSTRUCT(ntp);
-				if (ntp_struct->ev_class == ltp_struct->ev_class)
-				{
-					// This rule is for the same table as the last one, continuing the list
-					current_list  = lappend(current_list, ntp);
-				}
-				else
-				{
-					// This rule is for another table, changing current list
-					list_of_lists = lappend(list_of_lists, current_list);
-					current_list  = list_make1(ntp);
-				}
+				YbAddToCacheList(&current_list, &list_of_lists, ntp,
+								ntp_struct->ev_class == ltp_struct->ev_class);
+			}
+		}
+
+		/* 	Also add a cache list for AMOPOPID for lookup by operator only. */
+		if (cache_id  == AMOPOPID)
+		{
+			if (!current_list)
+			{
+				current_list = list_make1(ntp);
+			}
+			else
+			{
+				HeapTuple       ltp     = (HeapTuple) llast(current_list);
+				Form_pg_amop ltp_struct = (Form_pg_amop) GETSTRUCT(ltp);
+				Form_pg_amop ntp_struct = (Form_pg_amop) GETSTRUCT(ntp);
+				YbAddToCacheList(&current_list, &list_of_lists, ntp,
+								ntp_struct->amopopr == ltp_struct->amopopr);
 			}
 		}
 	}
@@ -1287,12 +1298,21 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 		{
 			SetCatCacheList(idx_cache, 1, current_list);
 		}
-		if (cache_id == RULERELNAME)
+		if (cache_id == RULERELNAME || cache_id == AMOPOPID)
 		{
 			SetCatCacheList(cache, 1, current_list);
 		}
 	}
 	list_free_deep(list_of_lists);
+
+	/* Done: mark cache(s) as loaded. */
+	if (!YBCIsInitDbModeEnvVarSet() &&
+		*YBCGetGFlags()->ysql_catalog_preload_additional_tables)
+	{
+		cache->yb_cc_is_fully_loaded = true;
+		if (idx_cache)
+			idx_cache->yb_cc_is_fully_loaded = true;
+	}
 }
 
 /*
@@ -2054,4 +2074,23 @@ oid_compare(const void *a, const void *b)
 	if (oa == ob)
 		return 0;
 	return (oa > ob) ? 1 : -1;
+}
+
+/*
+ * Helper function for preloading cache list for specific catalogs
+ */
+static void
+YbAddToCacheList(List **current_list, List **list_of_lists, HeapTuple ntp, bool continue_list)
+{
+	if (continue_list)
+	{
+		// This rule is for the same table as the last one, continuing the list
+		*current_list  = lappend(*current_list, ntp);
+	}
+	else
+	{
+		// This rule is for another table, changing current list
+		*list_of_lists = lappend(*list_of_lists, *current_list);
+		*current_list  = list_make1(ntp);
+	}
 }

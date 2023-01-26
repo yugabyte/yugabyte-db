@@ -11,8 +11,10 @@
 package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import java.time.Duration;
+import java.util.List;
 
 public class GlobalConfKeys extends RuntimeConfigKeysModule {
 
@@ -472,4 +474,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "TODO",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<List> tagList =
+      new ConfKeyInfo<>(
+          "yb.runtime_conf_ui.tag_filter",
+          ScopeType.GLOBAL,
+          "UI Tag Filters",
+          "List of tags to filter which keys are displayed",
+          ConfDataType.TagListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
