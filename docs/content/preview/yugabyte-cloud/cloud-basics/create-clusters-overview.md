@@ -141,12 +141,12 @@ Yugabyte manages upgrades for you. After you choose a track, database upgrades c
 
 Use a staging cluster for the following tasks:
 
-- Verifying [database updates](#database-updates).
+- Verifying your application is compatible with [database updates](#database-updates).
 - Ensuring your application correctly handles a rolling restart of the database without errors.
-- Testing new features. Use your staging environment to try out new database features while your production systems are still running a previous version.
+- Testing new features. Use your staging (aka development, testing, pre-production, or canary) environment to try out new database features while your production systems are still running a previous version.
 - Testing scaling operations and disaster recovery. Find out how your environment responds to a scaling operation, outages, or the loss of a node.
 
-Create a staging cluster and configure your pre-production (aka development, testing, staging, or canary) environment to connect to it. The staging cluster can be smaller than your production cluster, but ensure it has enough resources and capacity to handle a reasonable load. Sandbox clusters are too [resource-limited](../create-clusters/create-clusters-free/#limitations) for staging.
+Create a staging cluster and configure your staging environment to connect to it. The staging cluster can be smaller than your production cluster, but ensure it has enough resources and capacity to handle a reasonable load. Sandbox clusters are too [resource-limited](../create-clusters/create-clusters-free/#limitations) for staging.
 
 #### Database upgrades
 
@@ -154,7 +154,9 @@ Yugabyte tests every version in the stable branch for backwards compatibility. H
 
 When you are notified of an upcoming maintenance event, schedule the [maintenance windows](../../cloud-clusters/cloud-maintenance/) for the staging and production cluster so that you can validate updates against your applications in your pre-production environment _before_ upgrading your production cluster.
 
-If you identify a performance problem or regression with an update, contact {{% support-cloud %}}.
+You can also set an [exclusion period](../../cloud-clusters/cloud-maintenance/#set-a-maintenance-exclusion-period) for your production cluster to postpone upgrades while you conduct testing.
+
+If you identify a performance problem or regression with an update, set an exclusion period for your production cluster and contact {{% support-cloud %}}.
 
 ### Backups
 
