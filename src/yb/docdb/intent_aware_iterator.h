@@ -141,9 +141,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   Result<HybridTime> FindOldestRecord(const Slice& key_without_ht,
                                       HybridTime min_hybrid_time);
 
-  void SetUpperbound(const Slice& upperbound) override {
-    upperbound_ = upperbound;
-  }
+  // Set the upper bound for the iterator.
+  void SetUpperbound(const Slice& upperbound) override;
 
   void DebugDump();
 
@@ -239,9 +238,14 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // beyond the current regular key unnecessarily.
   Status SetIntentUpperbound();
 
-  // Resets the exclusive upperbound of the intent iterator to the beginning of the transaction
-  // metadata and reverse index region.
+  // Resets the exclusive upperbound of the intent iterator to its default value.
+  // - If we are using an upper bound for the regular RocksDB iterator, we will reuse the same upper
+  //   bound for the intent iterator.
+  // - If there is no upper bound for regular RocksDB (e.g. because we are scanning the entire
+  //   table), we will fall back to scanning the entire intents RocksDB.
   void ResetIntentUpperbound();
+
+  void DoSetIntentUpperBound(const Slice& intent_upper_bound);
 
   void SeekIntentIterIfNeeded();
 
@@ -293,8 +297,9 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // Upperbound for seek. If we see regular or intent record past this bound, it will be ignored.
   Slice upperbound_;
 
-  // Exclusive upperbound of the intent key.
+  // Buffer for holding the exclusive upper bound of the intent key.
   KeyBytes intent_upperbound_keybytes_;
+
   Slice intent_upperbound_;
 
   // Following fields contain information related to resolved suitable intent.
