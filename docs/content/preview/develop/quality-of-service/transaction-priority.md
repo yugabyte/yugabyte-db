@@ -43,7 +43,7 @@ Currently, transaction priorities work in the following scenarios:
 
 ## Examples
 
-Create a [YugabyteDB cluster](../../../quick-start/), and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
+Create a [YugabyteDB universe](../../../quick-start/) and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Managed" >}}
 You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which can be used to do the steps below.
@@ -52,7 +52,7 @@ You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick
 
 ### Transaction priority between concurrent operations
 
-Consider an example scenario of an maintaining a bank account. Create the accounts table, and insert a row into as follows:
+Consider an example scenario of an maintaining a bank account. Create the accounts table and insert rows into it, as follows:
 
 ```sql
 create table account
@@ -67,7 +67,7 @@ insert into account values
   ('kevin','checking', 500);
 ```
 
-To set a transaction priority for concurrent transactions, perform a deposit and a withdrawal at the same time and set a higher priority to deposit transactions. To simulate this, perform the two operations concurrently - a withdrawal in one session, and a deposit from another. The deposit transaction starts after the withdrawal is initiated, but occurs before the withdrawal is completed from a separate session as demonstrated in the following table:
+To set a transaction priority for concurrent transactions, perform a deposit and a withdrawal at the same time, and set a higher priority to deposit transactions. To simulate this, perform the two operations concurrently - a withdrawal in one session and a deposit in another session. The deposit transaction starts after the withdrawal has been initiated, but occurs before the withdrawal is completed from a separate session, as demonstrated in the following table:
 
 <table style="margin:0 5px;">
   <tr>
@@ -240,6 +240,4 @@ The `yb_get_current_transaction_priority` function shows the transaction priorit
     (1 row)
     ```
 
-## Learn more
-
-* [Transaction priorities](../../../architecture/transactions/transaction-priorities/)
+For more information, see [Transaction priorities](../../../architecture/transactions/transaction-priorities/)
