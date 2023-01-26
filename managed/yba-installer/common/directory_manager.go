@@ -66,6 +66,11 @@ func GetSoftwareRoot() string {
 	return dm.WorkingDirectory()
 }
 
+// GetSoftwareDir returns the path to the 'software' directory.
+func GetSoftwareDir() string {
+	return filepath.Join(dm.BaseInstall(), "software")
+}
+
 // GetActiveSymlink will return the symlink file name
 func GetActiveSymlink() string {
 	return dm.ActiveSymlink()
