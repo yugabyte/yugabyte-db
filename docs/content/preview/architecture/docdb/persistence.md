@@ -115,7 +115,7 @@ packed row format has the following benefits:
 * Lower storage footprint.
 * Efficient INSERTs, especially when a table has large number of columns.
 * Faster bulk ingestion.
-* Faster multi-column reads, as the reads now need to fetch fewer key value pairs.
+* Faster multi-column reads, as the reads need to fetch fewer key value pairs.
 * UDTs require application rewrite, and thus are not necessarily an option for everyone, like latency sensitive update workloads.
 
 The packed row format can be enabled using the following gflags.
