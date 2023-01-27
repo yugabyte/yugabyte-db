@@ -3,7 +3,6 @@ import { useQuery } from 'react-query';
 import { Controller, useFormContext } from 'react-hook-form';
 import { api, QUERY_KEY } from '../../../../helpers/api';
 import { SecurityConfigFormValue } from '../../steps/security/SecurityConfig';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import { KmsConfig } from '../../../../helpers/dtos';
 import { Select } from '../../../../uikit/Select/Select';
 import { ErrorMessage } from '../../../../uikit/ErrorMessage/ErrorMessage';
@@ -20,7 +19,10 @@ const FIELD_NAME = 'kmsConfig';
 const ERROR_NO_KMS = 'Key Management Service Config is required';
 
 export const KMSConfigField: FC<KMSConfigFieldProps> = ({ disabled }) => {
-  const { control, errors } = useFormContext<SecurityConfigFormValue>();
+  const {
+    control,
+    formState: { errors }
+  } = useFormContext<SecurityConfigFormValue>();
   const { data } = useQuery(QUERY_KEY.getKMSConfigs, api.getKMSConfigs);
   const kmsConfigs: KmsConfig[] = data || [];
 
@@ -40,7 +42,7 @@ export const KMSConfigField: FC<KMSConfigFieldProps> = ({ disabled }) => {
         control={control}
         name={FIELD_NAME}
         rules={{ validate }}
-        render={({ onChange, onBlur, value }: ControllerRenderProps<string | null>) => (
+        render={({ field }) => (
           <Select<KmsConfig>
             isSearchable
             isClearable={false}
@@ -48,9 +50,9 @@ export const KMSConfigField: FC<KMSConfigFieldProps> = ({ disabled }) => {
             className={errors[FIELD_NAME]?.message ? 'validation-error' : ''}
             getOptionLabel={getOptionLabel}
             getOptionValue={getOptionValue}
-            value={kmsConfigs.find((item) => item.metadata.configUUID === value) || null}
-            onBlur={onBlur}
-            onChange={(selection) => onChange((selection as KmsConfig).metadata.configUUID)}
+            value={kmsConfigs.find((item) => item.metadata.configUUID === field.value) || null}
+            onBlur={field.onBlur}
+            onChange={(selection) => field.onChange((selection as KmsConfig).metadata.configUUID)}
             options={kmsConfigs}
           />
         )}

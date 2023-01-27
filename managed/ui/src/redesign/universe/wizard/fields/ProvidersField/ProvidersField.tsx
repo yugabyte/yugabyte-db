@@ -2,11 +2,10 @@ import React, { FC } from 'react';
 import { useQuery } from 'react-query';
 import { Controller, useFormContext } from 'react-hook-form';
 import { Select } from '../../../../uikit/Select/Select';
-import { ErrorMessage } from '../../../../uikit/ErrorMessage/ErrorMessage';
+// import { ErrorMessage } from '../../../../uikit/ErrorMessage/ErrorMessage';
 import { api, QUERY_KEY } from '../../../../helpers/api';
 import { Provider } from '../../../../helpers/dtos';
 import { CloudConfigFormValue } from '../../steps/cloud/CloudConfig';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import './ProvidersField.scss';
 
 // simplified provider object with bare minimum fields needed in UI
@@ -24,7 +23,10 @@ interface ProvidersFieldProps {
 const FIELD_NAME = 'provider';
 
 export const ProvidersField: FC<ProvidersFieldProps> = ({ disabled }) => {
-  const { control, errors } = useFormContext<CloudConfigFormValue>();
+  const {
+    control
+    // formState: { errors }
+  } = useFormContext<CloudConfigFormValue>();
   const { data } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList);
   const providersList = data || [];
 
@@ -34,34 +36,34 @@ export const ProvidersField: FC<ProvidersFieldProps> = ({ disabled }) => {
         control={control}
         name={FIELD_NAME}
         rules={{ required: ERROR_NO_PROVIDER }}
-        render={({ onChange, onBlur, value }: ControllerRenderProps<ProviderUI | null>) => (
+        render={({ field }) => (
           <Select<Provider>
             isSearchable={false}
             isClearable
             isDisabled={disabled}
-            className={errors[FIELD_NAME]?.message ? 'validation-error' : ''}
+            // className={errors[FIELD_NAME]?.message ? 'validation-error' : ''}
             getOptionLabel={getOptionLabel}
             getOptionValue={getOptionValue}
-            value={providersList.find((provider) => provider.uuid === value?.uuid) || null}
-            onBlur={onBlur}
+            value={providersList.find((provider) => provider.uuid === field.value?.uuid) || null}
+            onBlur={field.onBlur}
             onChange={(provider) => {
               if (provider) {
                 // other fields watching for provider change by reference, thus trigger onChange() when provider really changed
-                if ((provider as Provider).uuid !== value?.uuid) {
-                  onChange({
+                if ((provider as Provider).uuid !== field.value?.uuid) {
+                  field.onChange({
                     uuid: (provider as Provider).uuid,
                     code: (provider as Provider).code
                   });
                 }
               } else {
-                onChange(null);
+                field.onChange(null);
               }
             }}
             options={providersList}
           />
         )}
       />
-      <ErrorMessage message={errors[FIELD_NAME]?.message} />
+      {/* <ErrorMessage message={errors[FIELD_NAME]?.message} /> */}
     </div>
   );
 };
