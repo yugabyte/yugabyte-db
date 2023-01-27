@@ -104,7 +104,7 @@ $body$;
 
 _Two-dimensional array of primitive scalar values_. This is sufficient to illustrate the semantics of the general multidimensional case. The function's signature (at the start of this section) shows that the to-be-replaced value and the replacement value are instances of `anyelement`. There is no overload where these two parameters accept instances of `anyarray`. This restriction is understood by picturing the internal representation as a linear ribbon of values, as was explained in [Synopsis](../../#synopsis). The replacement works by scanning along the ribbon, finding each occurrence in turn of the to-be-replaced value, and replacing it.
 
-Here is a postive illustration:
+Here is a positive illustration:
 ```plpgsql
 do $body$
 declare

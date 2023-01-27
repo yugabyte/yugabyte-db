@@ -158,7 +158,7 @@ And this is the second row. The readability was improved by adding some whitespa
 
 This example emphasizes the value of using the `array[]` constructor over using an array literal because it lets you use expressions like `chr()` within it.
 ```plpgsql
--- Don't create "type rt" if it's still there followng the previous examples.
+-- Don't create "type rt" if it's still there following the previous examples.
 create type rt as (f1 int, f2 text);
 create table t(k serial primary key, arr rt[]);
 

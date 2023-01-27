@@ -139,14 +139,14 @@ cur = conn.cursor()
 cur.execute('INSERT INTO employee VALUES (1, 'John', 35, 'Java')')
 ```
 
-<!-- For inserting data using JDBC clients, it is always a good pratice to use `java.sql.PreparedStatemet` for executing `INSERT` statements.
+<!-- For inserting data using JDBC clients, it is always a good practice to use `java.sql.PreparedStatement` for executing `INSERT` statements.
 
 ```java
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
-Statment stmt = conn.createStatement();
+Statement stmt = conn.createStatement();
 try {
 
-  PreparedStatement pstmt = connection.prepareStatement("INSERT INTO employees (id, name, age, langugage) VALUES (?, ?, ?, ?)");
+  PreparedStatement pstmt = connection.prepareStatement("INSERT INTO employees (id, name, age, language) VALUES (?, ?, ?, ?)");
   pstmt.setInt(1, 1);
   pstmt.setString(2, "John");
   pstmt.setInt(3, 35);

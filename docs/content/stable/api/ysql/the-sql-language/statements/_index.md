@@ -11,7 +11,7 @@ menu:
     weight: 100
 type: indexpage
 ---
-The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by catagory.
+The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by category.
 
 ## Data definition language (DDL)
 

@@ -95,7 +95,7 @@ yugabyte=# CREATE SEQUENCE s;
 ```
 
 ```
-CEATE SEQUENCE
+CREATE SEQUENCE
 ```
 
 Modify the increment value.
