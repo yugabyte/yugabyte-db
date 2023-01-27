@@ -305,6 +305,16 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status GetIndexBackfillProgress(
+      const PgGetIndexBackfillProgressRequestPB& req, PgGetIndexBackfillProgressResponsePB* resp,
+      rpc::RpcContext* context) {
+    std::vector<TableId> index_ids;
+    for (const auto& index_id : req.index_ids()) {
+      index_ids.emplace_back(PgObjectId::GetYbTableIdFromPB(index_id));
+    }
+    return client().GetIndexBackfillProgress(index_ids, resp->mutable_rows_processed_entries());
+  }
+
   Status ValidatePlacement(
       const PgValidatePlacementRequestPB& req, PgValidatePlacementResponsePB* resp,
       rpc::RpcContext* context) {

@@ -256,6 +256,10 @@ class YBClient {
   Status BackfillIndex(const TableId& table_id, bool wait = true,
                        CoarseTimePoint deadline = CoarseTimePoint());
 
+  Status GetIndexBackfillProgress(
+      const std::vector<TableId>& index_ids,
+      google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteTable(const YBTableName& table_name, bool wait = true);

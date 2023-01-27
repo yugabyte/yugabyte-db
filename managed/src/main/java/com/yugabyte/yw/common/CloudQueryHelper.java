@@ -16,7 +16,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.ArrayList;
@@ -71,8 +70,7 @@ public class CloudQueryHelper extends DevopsBase {
     if (p.code.equals("gcp")) {
       // TODO: ideally we shouldn't have this hardcoded string present in multiple
       // places.
-      Map<String, String> config = CloudInfoInterface.fetchEnvVars(p);
-      String potentialGcpNetwork = config.get("CUSTOM_GCE_NETWORK");
+      String potentialGcpNetwork = p.getUnmaskedConfig().get("CUSTOM_GCE_NETWORK");
       if (potentialGcpNetwork != null && !potentialGcpNetwork.isEmpty()) {
         commandArgs.add("--network");
         commandArgs.add(potentialGcpNetwork);
@@ -181,11 +179,11 @@ public class CloudQueryHelper extends DevopsBase {
 
   public String getImageArchitecture(Region region) {
 
-    if (StringUtils.isBlank(region.getYbImage())) {
+    if (StringUtils.isBlank(region.ybImage)) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "ybImage not set for region " + region.code);
     }
-    JsonNode result = queryImage(region.uuid, region.getYbImage());
+    JsonNode result = queryImage(region.uuid, region.ybImage);
 
     if (result.has("error")) {
       throw new PlatformServiceException(

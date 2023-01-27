@@ -16,7 +16,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -103,8 +102,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   private boolean isPodReady() {
     Map<String, String> config = taskParams().config;
     if (taskParams().config == null) {
-      Provider provider = Provider.getOrBadRequest(taskParams().providerUUID);
-      config = CloudInfoInterface.fetchEnvVars(provider);
+      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
 
     Pod podObject =

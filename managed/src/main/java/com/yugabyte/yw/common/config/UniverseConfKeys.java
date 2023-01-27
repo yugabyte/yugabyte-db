@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.List;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 
@@ -105,6 +106,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "Single connection mode makes it work even on tiny DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybEditWaitForLeadersOnPreferred =
+      new ConfKeyInfo<>(
+          "yb.edit.wait_for_leaders_on_preferred",
+          ScopeType.UNIVERSE,
+          "YB Edit Wait For Leaders On Preferred Only",
+          "Controls whether we perform the createWaitForLeadersOnPreferredOnly subtask"
+              + "in editUniverse",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> ybNumReleasesToKeepDefault =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_default",
@@ -497,5 +507,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Performance Advisor rejected connections interval mins",
           "Defines time interval for rejected connections recommendation check, in minutes",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<SkipCertValidationType> tlsSkipCertValidation =
+      new ConfKeyInfo<>(
+          "yb.tls.skip_cert_validation",
+          ScopeType.UNIVERSE,
+          "Skip TLS Cert Validation",
+          "Used to skip certificates validation for the configure phase."
+              + "Possible values - ALL, HOSTNAME, NONE",
+          ConfDataType.SkipCertValdationEnum,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -5560,6 +5560,8 @@ Status CatalogManager::LaunchBackfillIndexForTable(
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
     DeleteTableResponsePB* resp) {
+  LOG(INFO) << "MarkIndexInfoFromTableForDeletion table " << indexed_table_id
+            << " index " << index_table_id << " multi_stage=" << multi_stage;
   // Lookup the indexed table and verify if it exists.
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
@@ -5592,6 +5594,7 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
 
 Status CatalogManager::DeleteIndexInfoFromTable(
     const TableId& indexed_table_id, const TableId& index_table_id) {
+  LOG(INFO) << "DeleteIndexInfoFromTable table " << indexed_table_id << " index " << index_table_id;
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
     LOG(WARNING) << "Indexed table " << indexed_table_id << " for index " << index_table_id
@@ -5632,6 +5635,74 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   }
 
   LOG(WARNING) << "Index " << index_table_id << " not found in indexed table " << indexed_table_id;
+  return Status::OK();
+}
+
+Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
+                                                GetIndexBackfillProgressResponsePB* resp,
+                                                rpc::RpcContext* rpc) {
+  VLOG(1) << "Get Index Backfill Progress request " << req->ShortDebugString();
+
+  // Note: the caller expects the ordering of the indexes in the response PB to be the
+  // same as that in the request PB.
+  for (const auto& index_id : req->index_ids()) {
+    // Retrieve the number of rows processed by the backfill job.
+    // When the backfill job is live, the num_rows_processed field in the indexed table's
+    // BackfillJobPB would give us the desired information. For backfill jobs that haven't been
+    // created or have completed/failed (and been cleared) the num_rows_processed field in the
+    // IndexInfoPB would give us the desired information.
+    // The following cases are possible:
+    // 1) The index or the indexed table is not found: the information can't be determined so
+    //    we set the num_rows_processed to 0.
+    // 2) The backfill job hasn't been created: we use IndexInfoPB's num_rows_processed (in this
+    //    case the value of this field is the default value 0).
+    // 3) The backfill job is live: we use BackfillJobPB's num_rows_processed.
+    // 4) The backfill job was successful/unsuccessful and cleared after completion:
+    //    we use IndexInfoPB's num_rows_processed.
+    // Notes:
+    // a) We are safe from concurrency issues when reading the backfill state and
+    // the index info's num_rows_processed because the updation for these two fields happens
+    // within the same LockForWrite in BackfillTable::MarkIndexesAsDesired.
+    auto index_table = GetTableInfo(index_id);
+    if (index_table == nullptr) {
+      LOG_WITH_FUNC(INFO) << "Requested Index " << index_id << " not found";
+      // No backfill job can be found for this index - set the rows processed to 0.
+      resp->add_rows_processed_entries(0);
+      continue;
+    }
+
+    // Get indexed table's TableInfo.
+    auto indexed_table = GetTableInfo(index_table->indexed_table_id());
+    if (indexed_table == nullptr) {
+      LOG_WITH_FUNC(INFO) << "Indexed table for requested index " << index_id << " not found";
+      // No backfill job can be found for this index - set the rows processed to 0.
+      resp->add_rows_processed_entries(0);
+      continue;
+    }
+
+    auto l = indexed_table->LockForRead();
+    if (l->pb.backfill_jobs_size() >= 1) {
+      // Currently we do not support multiple backfill jobs, so there can only be one outstanding
+      // backfill job. So the first (and only) backfill job at the 0th index is the only
+      // live job we need to look at.
+      DCHECK_EQ(l->pb.backfill_jobs_size(), 1) << "Expected 1 in-progress backfill job. "
+          "Found: " << l->pb.backfill_jobs_size();
+      // Check if the desired index is being backfilled by the live backfill job.
+      const auto& backfill_job = l->pb.backfill_jobs(0);
+      if (backfill_job.backfill_state().find(index_id) != backfill_job.backfill_state().end()) {
+        resp->add_rows_processed_entries(backfill_job.num_rows_processed());
+        continue;
+      }
+    }
+    // Find the desired index's IndexInfoPB from the indexed table's TableInfo.
+    for (const auto& index_info_pb : l->pb.indexes()) {
+      if (index_info_pb.table_id() == index_id) {
+        resp->add_rows_processed_entries(index_info_pb.num_rows_processed_by_backfill_job());
+        break;
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -6168,8 +6239,8 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   auto l = table->LockForRead();
 
   if (!l->started_deleting() && !l->started_hiding()) {
-    LOG(WARNING) << "Servicing IsDeleteTableDone request for table id "
-                 << req->table_id() << ": NOT deleted";
+    LOG(WARNING) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
+                 << ": NOT deleted in state " << l->state_name();
     Status s = STATUS(IllegalState, "The object was NOT deleted", l->pb.state_msg());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }

@@ -2427,6 +2427,7 @@ Result<client::YBTablePtr> GetTable(
   // It is ok to have sync call here, because we use cache and it should not take too long.
   client::YBTablePtr index_table;
   bool cache_used_ignored = false;
+  DCHECK_ONLY_NOTNULL(metadata_cache.get());
   RETURN_NOT_OK(metadata_cache->GetTable(table_id, &index_table, &cache_used_ignored));
   return index_table;
 }
@@ -2594,8 +2595,6 @@ Status Tablet::FlushWriteIndexBatch(
     std::unordered_set<TableId>* failed_indexes) {
   if (!client_future_.valid()) {
     return STATUS_FORMAT(IllegalState, "Client future is not set up for $0", tablet_id());
-  } else if (!YBMetaDataCache()) {
-    return STATUS(IllegalState, "Table metadata cache is not present for index update");
   }
   std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill(deadline));
 
@@ -2607,6 +2606,7 @@ Status Tablet::FlushWriteIndexBatch(
 
   constexpr int kMaxNumRetries = 10;
   auto metadata_cache = YBMetaDataCache();
+  SCHECK(metadata_cache, IllegalState, "Table metadata cache is not present for index update");
 
   for (auto& pair : *index_requests) {
     client::YBTablePtr index_table =
