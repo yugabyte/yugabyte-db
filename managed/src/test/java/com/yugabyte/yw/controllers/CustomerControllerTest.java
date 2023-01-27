@@ -39,7 +39,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -602,7 +601,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
     params.put("nodePrefix", "demo");
-    Universe u1 = createUniverse("demo", customer.getCustomerId(), CloudType.kubernetes);
+    Universe u1 = createUniverse("demo", customer.getCustomerId());
     Provider provider =
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
@@ -649,7 +648,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
     params.put("nodePrefix", "demo");
-    Universe u1 = createUniverse("demo", customer.getCustomerId(), CloudType.kubernetes);
+    Universe u1 = createUniverse("demo", customer.getCustomerId());
     if (helmNewNamingStyle) {
       u1 =
           Universe.saveDetails(

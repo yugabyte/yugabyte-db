@@ -25,7 +25,6 @@ import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -509,13 +508,12 @@ public class MetricQueryHelper {
       for (Region r : Region.getByProvider(provider.uuid)) {
         for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
           boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
-          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
           namespaces.add(
               KubernetesUtil.getKubernetesNamespace(
                   isMultiAZ,
                   nodePrefix,
                   az.code,
-                  zoneConfig,
+                  az.getUnmaskedConfig(),
                   newNamingStyle,
                   cluster.clusterType == ClusterType.ASYNC));
         }

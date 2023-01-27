@@ -27,7 +27,6 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
@@ -291,9 +290,9 @@ public class AccessManagerTest extends FakeDBApplication {
   @Test
   public void testManageAddKeyCommandWithProviderConfig() {
     Map<String, String> config = new HashMap<>();
-    config.put("AWS_ACCESS_KEY_ID", "ACCESS-KEY");
-    config.put("AWS_SECRET_ACCESS_KEY", "ACCESS-SECRET");
-    CloudInfoInterface.setCloudProviderInfoFromConfig(defaultProvider, config);
+    config.put("accessKey", "ACCESS-KEY");
+    config.put("accessSecret", "ACCESS-SECRET");
+    defaultProvider.setConfig(config);
     defaultProvider.save();
 
     createTempFile(TMP_KEYS_PATH, "private.key", "test data");
@@ -704,7 +703,7 @@ public class AccessManagerTest extends FakeDBApplication {
       ObjectNode credentials = Json.newObject();
       credentials.put("foo", "bar");
       credentials.put("hello", "world");
-      String configFile = accessManager.createGCPCredentialsFile(defaultProvider.uuid, credentials);
+      String configFile = accessManager.createCredentialsFile(defaultProvider.uuid, credentials);
       assertEquals(
           "/tmp/yugaware_tests/amt/keys/" + defaultProvider.uuid + "/credentials.json", configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
@@ -721,7 +720,7 @@ public class AccessManagerTest extends FakeDBApplication {
     Map<String, String> inputConfig = new HashMap<>();
     inputConfig.put("foo", "bar");
     inputConfig.put("hello", "world");
-    accessManager.createGCPCredentialsFile(defaultProvider.uuid, Json.toJson(inputConfig));
+    accessManager.createCredentialsFile(defaultProvider.uuid, Json.toJson(inputConfig));
     Map<String, String> configMap = accessManager.readCredentialsFromFile(defaultProvider.uuid);
     assertEquals(inputConfig, configMap);
   }

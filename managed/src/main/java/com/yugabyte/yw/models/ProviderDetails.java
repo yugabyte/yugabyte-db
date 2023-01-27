@@ -10,33 +10,6 @@
 
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-
-import io.swagger.annotations.ApiModelProperty;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-
 import com.yugabyte.yw.models.AccessKey.MigratedKeyInfoFields;
-import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
-import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 
-@Data
-@EqualsAndHashCode(callSuper = false)
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class ProviderDetails extends MigratedKeyInfoFields {
-
-  @Data
-  @JsonInclude(JsonInclude.Include.NON_NULL)
-  public static class CloudInfo {
-    @ApiModelProperty public AWSCloudInfo aws;
-    @ApiModelProperty public AzureCloudInfo azu;
-    @ApiModelProperty public GCPCloudInfo gcp;
-    @ApiModelProperty public KubernetesInfo kubernetes;
-    @ApiModelProperty public OnPremCloudInfo onprem;
-  }
-
-  @ApiModelProperty public CloudInfo cloudInfo;
-}
+public class ProviderDetails extends MigratedKeyInfoFields {}

@@ -53,7 +53,6 @@ import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
@@ -1249,8 +1248,7 @@ public class UniverseCRUDHandler {
     boolean isNamespaceSet = false;
     for (Region r : Region.getByProvider(providerToCheck.uuid)) {
       for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
-        Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
-        if (zoneConfig.containsKey("KUBENAMESPACE")) {
+        if (az.getUnmaskedConfig().containsKey("KUBENAMESPACE")) {
           isNamespaceSet = true;
         }
       }
