@@ -131,7 +131,7 @@ The packed row format can be enabled using the following gflags.
 **ysql_enable_packed_row_for_colocated_table** - Whether packed row is enabled for colocated table in YSQL (false by default).
 
 ### Design aspects of packed row format
-
+Following are the design aspects of packed row format:
 * **Inserts**: Entire row is stored as a single key-value pair.
 * **Updates**:  If some column(s) are updated, then each such column update is stored as a key-value pair in DocDb (same as without packed rows). However If all non-key columns are updated, then the row is stored in the packed format as one single key-value pair. This scheme adopts the best of both worlds - efficient updates and efficient storage. 
 * **Select**: Scans need to construct the row from packed inserts as well as non-packed update(s) if any.
