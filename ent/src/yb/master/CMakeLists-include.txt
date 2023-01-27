@@ -28,6 +28,7 @@ set(MASTER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_rpc_tasks.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_consumer_registry_service.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/restore_sys_catalog_state.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/xcluster_catalog_manager.cc
   PARENT_SCOPE)
 
 set(MASTER_ADDITIONAL_TESTS
