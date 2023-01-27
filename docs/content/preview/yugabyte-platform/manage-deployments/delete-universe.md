@@ -18,4 +18,3 @@ To delete a universe via the YugabyteDB Anywhere UI, navigate to **Universes**, 
 For public clouds, such as Amazon Web Services (AWS) and Google Cloud Platform (GCP), the underlying compute instances are terminated after the database has been uninstalled from those nodes.
 
 For on-premises data centers, the underlying compute instances are no longer marked as `In Use`, which then opens those instances up to be reused for new universes.
-
