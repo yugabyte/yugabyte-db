@@ -25,7 +25,8 @@ const initialStateFeatureInTest = {
   enableDedicatedNodes: false,
   enableNotificationTemplates: false,
   enableRestore: false,
-  enablePrefillKubeConfig: false
+  enablePrefillKubeConfig: false,
+  enableNewUI: false
 };
 
 const initialStateFeatureReleased = {

@@ -10,7 +10,6 @@ import { api, QUERY_KEY } from '../../../../helpers/api';
 import { CloudType, InstanceType } from '../../../../helpers/dtos';
 import { InstanceConfigFormValue } from '../../steps/instance/InstanceConfig';
 import { WizardContext } from '../../UniverseWizard';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import { translate } from '../../../../uikit/I18n/I18n';
 import './InstanceTypeField.scss';
 
@@ -96,7 +95,12 @@ const ERROR_NO_INSTANCE_TYPE = 'Instance Type value is required';
 const FIELD_NAME = 'instanceType';
 
 export const InstanceTypeField: FC = () => {
-  const { control, errors, getValues, setValue } = useFormContext<InstanceConfigFormValue>();
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    setValue
+  } = useFormContext<InstanceConfigFormValue>();
   const { formData } = useContext(WizardContext);
   const { data } = useQuery(
     [QUERY_KEY.getInstanceTypes, formData.cloudConfig.provider?.uuid],
@@ -121,7 +125,7 @@ export const InstanceTypeField: FC = () => {
         control={control}
         name={FIELD_NAME}
         rules={{ required: ERROR_NO_INSTANCE_TYPE }}
-        render={({ onChange, onBlur, value }: ControllerRenderProps<string | null>) => (
+        render={({ field }) => (
           <Select<InstanceType>
             isSearchable
             isClearable={false}
@@ -131,11 +135,11 @@ export const InstanceTypeField: FC = () => {
             value={
               instanceTypes
                 .flatMap((item) => item.options)
-                .find((item) => item.instanceTypeCode === value) || null
+                .find((item) => item.instanceTypeCode === field.value) || null
             }
-            onBlur={onBlur}
+            onBlur={field.onBlur}
             onChange={(item) => {
-              onChange((item as InstanceType).instanceTypeCode);
+              field.onChange((item as InstanceType).instanceTypeCode);
             }}
             options={instanceTypes}
             formatGroupLabel={formatGroupLabel}
