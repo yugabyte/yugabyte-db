@@ -26,14 +26,21 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
 import com.yugabyte.yw.common.PlatformServiceException;
-
+import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import lombok.Getter;
 import play.libs.Json;
 
 @Getter
 public class ConfDataType<T> {
   static ConfDataType<Duration> DurationType =
-      new ConfDataType<>("Duration", Duration.class, Config::getDuration, Duration::parse);
+      new ConfDataType<>(
+          "Duration",
+          Duration.class,
+          Config::getDuration,
+          (s) -> {
+            Config c = ConfigFactory.parseString("duration = " + s);
+            return c.getDuration("duration");
+          });
   static ConfDataType<Double> DoubleType =
       new ConfDataType<>("Double", Double.class, Config::getDouble, Double::parseDouble);
   static ConfDataType<String> StringType =
@@ -43,7 +50,14 @@ public class ConfDataType<T> {
   static ConfDataType<Boolean> BooleanType =
       new ConfDataType<>("Boolean", Boolean.class, Config::getBoolean, ConfDataType::parseBoolean);
   static ConfDataType<Period> PeriodType =
-      new ConfDataType<>("Period", Period.class, Config::getPeriod, Period::parse);
+      new ConfDataType<>(
+          "Period",
+          Period.class,
+          Config::getPeriod,
+          (s) -> {
+            Config c = ConfigFactory.parseString("period = " + s);
+            return c.getPeriod("period");
+          });
   static ConfDataType<Integer> IntegerType =
       new ConfDataType<>("Integer", Integer.class, Config::getInt, Integer::parseInt);
   static ConfDataType<List> StringListType =
@@ -58,6 +72,9 @@ public class ConfDataType<T> {
             Config c = ConfigFactory.parseString("bytes = " + s);
             return c.getBytes("bytes");
           });
+  static ConfDataType<List> TagListType =
+      new ConfDataType<>(
+          "Tags List", List.class, Config::getStringList, ConfDataType::parseTagsList);
 
   static ConfDataType<VersionCheckMode> VersionCheckModeEnum =
       new ConfDataType<>(
@@ -115,6 +132,20 @@ public class ConfDataType<T> {
       return strList;
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, "Not a valid list of strings");
+    }
+  }
+
+  public static List<ConfKeyTags> parseTagsList(String s) {
+    try {
+      List<ConfKeyTags> tagList =
+          Json.mapper().readValue(s, new TypeReference<List<ConfKeyTags>>() {});
+      return tagList;
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Not a valid list of tags."
+              + "All possible tags are "
+              + "PUBLIC, UIDriven, BETA, INTERNAL, YBM");
     }
   }
 }

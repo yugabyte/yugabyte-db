@@ -22,41 +22,43 @@ There are several factors that slow down data-ingestion performance in any datab
 
 - **Trigger actions**. If triggers are defined on tables for every insert, then the corresponding trigger action (for each insert) is executed, which slows down ingestion.
 
-yb-voyager maximizes performance when migrating data into a newly created empty database in several ways:
+yb-voyager improves performance when migrating data into a newly created empty database in several ways:
 
-- Creates secondary indexes after the data import is complete. During the [import data](../migrate-steps/#import-data) phase, yb-voyager creates the secondary indexes after it completes data loading on all the tables. Then, it uses [Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) to update indexes after data is loaded. This is much faster than online index maintenance.
+- Creates secondary indexes after the data import is complete. During the [post-import data](../migrate-steps/#import-indexes-and-triggers) phase, yb-voyager creates the secondary indexes (except the unique indexes) after it completes data loading on all the tables. Then, it uses [Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) to update indexes after data is loaded. This is much faster than online index maintenance. (Unique indexes are created in the [import-schema](../migrate-steps/#import-schema) phase, to avoid any issues during import of schema because of foreign key dependencies on the index.)
 
-- Disables constraint checks. It's safe to disable all the constraint checks provided the data is from a reliable source. For maximum throughput, it is also preferable to not follow any order when populating tables. During the data import phase, yb-voyager disables all constraints, except for primary key violation errors.
+- Disables foreign key constraints during data import. However, other constraints like primary key constraints, check constraints, unique key constraints, and so on are not disabled. It's safe to disable some constraint checks as the data is from a reliable source. For maximum throughput, it is also preferable to not follow any order when populating tables.
+
+- Disables triggers also during the import data phase.
 
   {{< note title="Note" >}}
 
-yb-voyager only disables all the constraints in internal sessions to migrate data.
+yb-voyager only disables the constraint checks and triggers in the internal sessions it uses to migrate data.
 
   {{< /note >}}
 
-- Disables triggers during import to avoid unnecessarily repeating trigger actions in the new target database.
-
 ### Techniques to improve performance
 
-Use one or more of the following techniques to improve import performance:
+Use one or more of the following techniques to improve import data performance:
 
-- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to the number of nodes in the YugabyteDB cluster. Normally this is considered good default practice. However, if the target cluster runs on high resource machines with a large number of CPU cores, the default may result in underusing CPU resources.\
-\
-  Use the [-–parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set --parallel-jobs to the number of available cores in the entire cluster.\
-\
-  If CPU use is greater than 80%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
+- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to half of the total number of cores in the YugabyteDB cluster. Normally this is a good default value and should consume around 50-60% of CPU usage. However, if the target cluster shows high CPU utilisation, then you should lower the number of parallel jobs. Similarly, if the target cluster seems to be under-utilised, then it is recommended to stop the import, and restart it with a higher number of parallel jobs.
 
-- **Increase batch size**. If the [--batch-size](../yb-voyager-cli/#batch-size) (default is 100000) is too small, the import will run slower because the time spent importing data may be comparable or less than the time spent on other tasks, such as bookkeeping, setting up the client connection, and so on.
+  Use the [-–parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set `--parallel-jobs` to an appropriate value to override the default based on your cluster configuration and observation.
+
+  If CPU use is greater than 50-60%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
+
+   {{< note title="Note" >}}
+
+   If there are timeouts during import, restart the import with fewer parallel jobs.
+
+   {{< /note >}}
+
+- **Increase batch size**. The default [--batch-size](../reference/yb-voyager-cli/#batch-size) is 20000 or approximately 200 MB of data, depending on whichever is reached first while preparing the batch. Normally this is considered a good default value. However if the rows are too small, then you may consider increasing the batch size for greater throughput. Increasing the batch size to a very high value is not recommended as the whole batch is executed in one transaction.
 
 - **Add disks** to reduce disk write contention. YugabyteDB servers can be configured with one or multiple disk volumes to store tablet data. If all tablets are writing to a single disk, write contention can slow down the ingestion speed. Configuring the [YB-TServers](../../reference/configuration/yb-tserver/) with multiple disks can reduce disk write contention, thereby increasing throughput. Disks with higher IOPS and better throughput also improve write performance.
 
-- **Specify the number of table splits**:
+- **Enable packed rows** to increase the throughput by more than two times. Enable packed rows on the YugabyteDB cluster by setting the YB-TServer GFlag `ysql_enable_packed_row` to true.
 
-  - For larger tables and indexes that are [hash](../../architecture/docdb-sharding/sharding/#hash-sharding) sharded, specify the number of initial tablet splits as a part of the table DDL statement. This can help distribute the table data across multiple nodes right from the get go. Refer to [hash-sharded tables](../../architecture/docdb-sharding/tablet-splitting/#hash-sharded-tables) for an example of how to specify the number of tablets at table creation time.
-
-  - For larger tables and indexes that are [range](../../architecture/docdb-sharding/sharding/#range-sharding) sharded, if the value ranges of the primary key columns are known ahead of time, pre-split them at the time of creation. Refer to [range-sharded tables](../../architecture/docdb-sharding/tablet-splitting/#range-sharded-tables) for an example of how to specify the split points.
-
-- **Increase cluster size**. Write contention is reduced with larger cluster sizes.
+- **Configure the host machine's disk** with higher IOPS and better throughput to improve the performance of the splitter, which splits the large data file into smaller splits of 20000 rows. Splitter performance depends on the host machine's disk.
 
 {{< note title="Note" >}}
 
@@ -66,26 +68,26 @@ These performance optimizations apply whether you are importing data using the y
 
 ## Improve export performance
 
-By default, yb-voyager exports one table at a time. To improve data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can however negatively impact performance; a setting of '4' typically performs well.
+By default, yb-voyager exports four tables at a time. To improve data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can however negatively impact performance; a setting of '4' typically performs well.
 
 ## Test results
 
-yb-voyager was tested using varying configurations, including more parallel jobs, multiple disks, and a larger cluster. The tests were run using a 40MB CSV file with 120 million rows.
+yb-voyager was tested using varying configurations, including more parallel jobs, multiple disks, and a larger cluster. The tests were run using a 28GB CSV file with 350 million rows on YugabyteDB version 2.16.0.0-b90.
 
 The table schema for the test was as follows:
 
 ```sql
-CREATE TABLE topology_flat (
-    userid_fill uuid,
-    idtype_fill text,
-    userid uuid,
-    idtype text,
-    level int,
-    locationgroupid uuid,
-    locationid uuid,
-    parentid uuid,
-    attrs jsonb,
-    PRIMARY KEY (userid, level, locationgroupid, parentid, locationid)
+CREATE TABLE public.accounts (
+    block bigint NOT NULL,
+    address text NOT NULL,
+    dc_balance bigint DEFAULT 0 NOT NULL,
+    dc_nonce bigint DEFAULT 0 NOT NULL,
+    security_balance bigint DEFAULT 0 NOT NULL,
+    security_nonce bigint DEFAULT 0 NOT NULL,
+    balance bigint DEFAULT 0 NOT NULL,
+    nonce bigint DEFAULT 0 NOT NULL,
+    staked_balance bigint,
+    PRIMARY KEY (block, address)
 );
 ```
 
@@ -93,7 +95,13 @@ As more optimizations are introduced, average throughput increases. The followin
 
 | Run | Cluster configuration | yb-voyager flags | CPU usage | Average throughput |
 | :-- | :-------------------- | :--------------- | :-------- | :----------------- |
-| 3 parallel jobs | 3 node [RF](../../architecture/docdb-replication/replication/#replication-factor) 3 cluster, c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node, 3000 IOPS, 125 MiB bandwidth | batch-size=200k<br>parallel-jobs=3 | ~50% | 43K rows/sec |
-| Increase jobs<br>(1 per core) | 3 node RF 3 cluster, c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node, 3000 IOPS, 125 MiB bandwidth | batch-size=200k<br>parallel-jobs=48 | ~80% | 117K rows/sec |
-| Add disks | 3 node RF 3 cluster, c5.4x large (16 cores 32GB) <br> 4 EBS Type gp3 disks per node, 3000 IOPS, 125 MiB bandwidth | | ~90% | 193K rows/sec |
-| Add nodes | 6 Node RF 3 cluster, c5.4x large (16 cores 32GB) <br> 4 EBS Type gp3 disks per node, 3000 IOPS, 125 MiB bandwidth | | ~90% | 227K rows/sec |
+| 24 parallel jobs (default) | 3 node [RF](../../architecture/docdb-replication/replication/#replication-factor) 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=24 | ~80% | 44014 rows/sec |
+| Increase jobs<br>(1 per core) | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~95% | 47696 rows/sec |
+| Add nodes | 6 Node RF 3 cluster,<br> c5.4x large (16 cores 32GB) <br> 4 EBS Type gp3 disks per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48 | ~80% | 86547 rows/sec |
+| Enabling packed rows | 3 node RF 3 cluster,<br> c5.4x large (16 cores 32 GB) <br> 1 EBS Type gp3 disk per node,<br> 10000 IOPS,<br> 500 MiB bandwidth | batch-size=20k<br>parallel-jobs=48<br>YB-TServer GFlag: `ysql_enable_packed_row` = `true` | ~95% | 134048 rows/sec |
+
+{{< note title="Note" >}}
+
+With increased optimisations, the CPU usage also shoots up. Permitting the CPU usage beyond 60% may not be advisable as the database requires some cycles to do it's internal operations.
+
+{{< /note >}}

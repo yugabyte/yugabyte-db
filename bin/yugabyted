@@ -628,14 +628,12 @@ class ControlScript(object):
         advertise_ip = self.advertise_ip()
         master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
                                         self.configs.saved_data.get("master_rpc_port"))
-
         current_masters = self.get_all_masters()
         current_masters = [ master.split(':')[0] for master in current_masters ]
         leader_master = self.get_leader_master().split(':')[0]
 
         leader_master_http_endpoint = "{}:{}".format(leader_master,
                         self.configs.saved_data.get("master_webserver_port"))
-
         placement_locations = self.get_all_masters_locations(leader_master_http_endpoint)
 
         new_masters = self.get_new_valid_masters(current_masters,
@@ -850,8 +848,7 @@ class ControlScript(object):
 
     # Use the masters to check if encryption at rest is enabled.
     def is_encryption_at_rest_enabled(self):
-        masters = ",".join(self.get_all_masters())
-
+        masters = self.configs.saved_data.get("current_masters")
         result = YBAdminProxy.check_encryption(master_addrs=masters)
 
         if result is None:
@@ -868,7 +865,7 @@ class ControlScript(object):
         has_errors = False
 
         # Enable encryption at rest.
-        if self.configs.temp_data.get("enable"):
+        if self.configs.temp_data.get("enable_encrypt_at_rest"):
             Output.log("Trying to enable encryption at rest.")
 
             # Check whether the encryption at rest is already enabled.
@@ -1176,10 +1173,12 @@ class ControlScript(object):
         elif not self.wait_tserver():
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
-        universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
-        if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
-            self.configs.saved_data["universe_uuid"] = universe_uuid
-            self.configs.save_configs()
+        if not was_already_setup:
+            master_addresses = self.configs.saved_data.get("current_masters")
+            universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
+            if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
+                self.configs.saved_data["universe_uuid"] = universe_uuid
+                self.configs.save_configs()
 
         return None
 
@@ -1197,6 +1196,7 @@ class ControlScript(object):
             master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
         tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
         certs_dir = self.configs.saved_data.get("certs_dir")
+        was_already_setup = self.configs.saved_data.get("cluster_member", False)
 
         common_gflags = [
             "--stop_on_parent_termination",
@@ -1264,10 +1264,63 @@ class ControlScript(object):
                 "--start_redis_proxy=false",
             ]
 
-        if self.configs.saved_data.get("tserver_flags"):
+        tserver_flags = self.configs.saved_data.get("tserver_flags")
+
+        # If ysql_hba_conf_csv is present
+        # Extract the value of ysql_hba_conf_csv
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("ysql_hba_conf_csv") != -1:
+            ysql_hba_conf_csv_start_index = tserver_flags.find('ysql_hba_conf_csv')
+            ysql_hba_conf_csv_end_index = tserver_flags.find('}', ysql_hba_conf_csv_start_index) + 1
+            ysql_hba_conf_csv_flag = tserver_flags[ysql_hba_conf_csv_start_index:\
+                    ysql_hba_conf_csv_end_index]
+            ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[ysql_hba_conf_csv_flag.find("{")+1:-1]
+
+            # If the value was given through the config file
+            # remove the starting and ending quotes.
+            if ysql_hba_conf_csv_flag[0] == "'" and ysql_hba_conf_csv_flag[-1] == "'":
+                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
+            elif ysql_hba_conf_csv_flag[0] == '"' and ysql_hba_conf_csv_flag[-1] == '"':
+                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
+
+            # Remove the flag present in tserver_flags
+            if ysql_hba_conf_csv_start_index == 0:
+                tserver_flags = tserver_flags[ysql_hba_conf_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:ysql_hba_conf_csv_start_index-1] + \
+                    tserver_flags[ysql_hba_conf_csv_end_index:]
+
+            yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
+
+        # If ysql_pg_conf_csv is present
+        # Extract the value of ysql_pg_conf_csv given through CLI
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("ysql_pg_conf_csv") != -1:
+            ysql_pg_conf_csv_start_index = tserver_flags.find('ysql_pg_conf_csv')
+            ysql_pg_conf_csv_end_index = tserver_flags.find('}', ysql_pg_conf_csv_start_index) + 1
+            ysql_pg_conf_csv_flag = tserver_flags[ysql_pg_conf_csv_start_index:\
+                    ysql_pg_conf_csv_end_index]
+            ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[ysql_pg_conf_csv_flag.find("{")+1:-1]
+
+            # If the value was given through the config file
+            # remove the starting and ending quotes.
+            if ysql_pg_conf_csv_flag[0] == "'" and ysql_pg_conf_csv_flag[-1] == "'":
+                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
+            elif ysql_pg_conf_csv_flag[0] == '"' and ysql_pg_conf_csv_flag[-1] == '"':
+                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
+
+            # Remove the flag present in tserver_flags
+            if ysql_pg_conf_csv_start_index == 0:
+                tserver_flags = tserver_flags[ysql_pg_conf_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:ysql_pg_conf_csv_start_index-1] + \
+                    tserver_flags[ysql_pg_conf_csv_end_index:]
+
+            yb_tserver_cmd.extend(["--ysql_pg_conf_csv={}".format(ysql_pg_conf_csv_flag)])
+
+        if tserver_flags:
             yb_tserver_cmd.extend(
-                ["--{}".format(flag) for flag in \
-                    self.configs.saved_data.get("tserver_flags").split(",")])
+                ["--{}".format(flag) for flag in tserver_flags.split(",")])
 
         # Add authentication flags in tserver
         if self.configs.saved_data.get("secure"):
@@ -1310,6 +1363,7 @@ class ControlScript(object):
 
         is_first_run = True
         callhome_thread = None
+        masters_list_update_thread = None
         self.stop_callhome = False
         while True:
             should_callhome = False
@@ -1370,13 +1424,13 @@ class ControlScript(object):
                 if self.configs.saved_data.get("secure"):
                     Output.init_animation("Enabling Encryption in Transit and " +
                         "Password Authentication...")
-                    if not join_ip:
+                    if not join_ip and not was_already_setup:
                         alphadigits = string.ascii_letters + string.digits
                         new_password = ''.join(PASSWORD_GENNERATOR(alphadigits) for i in range(12))
                         self.update_db_passwords(new_password)
                         self.create_password_file()
                     Output.update_animation("Encryption in Transit and " +
-                        "Password Authentication enabled.")
+                        "Password Authentication enabled")
                 else:
                     Output.print_and_log(Output.make_yellow(Output.ANIMATION_WARNING +
                         " WARNING:") + " Cluster started in an insecure mode without " +
@@ -1399,7 +1453,7 @@ class ControlScript(object):
                         should_callhome = True
 
             if is_first_run:
-                if self.configs.temp_data.get("ui"):
+                if self.configs.saved_data.get("ui"):
                     yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
                         [
                             "-database_host={}".format(bind_ip)
@@ -1413,7 +1467,7 @@ class ControlScript(object):
                         "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
                         self.configs.saved_data.get("data_dir"))
 
-            if self.configs.temp_data.get("ui"):
+            if self.configs.saved_data.get("ui"):
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
                 should_callhome = should_callhome or was_started
 
@@ -1461,9 +1515,11 @@ class ControlScript(object):
                     callhome_thread.daemon = True
                     callhome_thread.start()
 
+                masters_list_update_thread = Thread(target=self.update_masters_list_loop)
+                masters_list_update_thread.daemon = True
+                masters_list_update_thread.start()
 
             is_first_run = False
-
             if should_callhome:
                 self.callhome()
 
@@ -1478,7 +1534,7 @@ class ControlScript(object):
         was_started = False
         err = None
 
-        if not self.configs.temp_data.get("ui"):
+        if not self.configs.saved_data.get("ui"):
             return (err, was_started)
 
         yugabyted_ui_process = self.processes.get("yugabyted-ui")
@@ -1487,7 +1543,7 @@ class ControlScript(object):
             if is_first_run:
                 Output.init_animation("Bringing up UI...")
 
-            # Start YW process.
+            # Start yugabyted UI process.
             if not yugabyted_ui_process.is_running():
                 if not is_first_run:
                     Output.log(
@@ -1514,7 +1570,7 @@ class ControlScript(object):
         was_started = False
         err = None
 
-        if not self.configs.temp_data.get("ui"):
+        if not self.configs.saved_data.get("ui"):
             return (err, was_started)
 
         yw_process = self.processes.get("yugaware")
@@ -1706,11 +1762,7 @@ class ControlScript(object):
         return not err and not ret_code and "play_evolutions" in out
 
     # Returns true if this master was found in the current list of masters
-    def wait_master(self):
-        join_ip = self.configs.saved_data.get("join")
-        master_ip = join_ip if join_ip else self.advertise_ip()
-        master_addr = "{}:{}".format(master_ip,
-                                     self.configs.saved_data.get("master_rpc_port"))
+    def wait_master(self, master_addr):
 
         if (not self.processes.get("master").is_running()):
             Output.log("Failed waiting for yb-master... process died.", logging.ERROR)
@@ -1721,6 +1773,18 @@ class ControlScript(object):
         if not cur_master_uuids:
             raise RetryableError()
         return master_uuid in cur_master_uuids
+
+    # Returns the current list of master UUIDs
+    def get_master_uuids(self, master_addr):
+
+        if (not self.processes.get("master").is_running()):
+            Output.log("Failed waiting for yb-master... process died.", logging.ERROR)
+            raise RuntimeError("process died unexpectedly.")
+
+        cur_master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addr) ]
+        if not cur_master_uuids:
+            raise RetryableError()
+        return cur_master_uuids
 
     # Use the masters we know (ourselves and the join target) to discover the full cluster.
     # Retry until timeout in case the masters we know are still coming up.
@@ -1735,9 +1799,17 @@ class ControlScript(object):
 
     # Use the masters we know (ourselves and the join target) to discover the full cluster.
     def get_all_masters(self):
+
+        current_masters = self.configs.saved_data.get("current_masters")
+
+        if current_masters:
+            all_masters = [ m[1] for m in YBAdminProxy.get_masters(current_masters) ]
+            Output.log("Got all masters: {}".format(all_masters))
+            if all_masters:
+                return all_masters
+
         join_ip = self.configs.saved_data.get("join")
         advertise_ip = self.advertise_ip()
-
         all_masters = None
         for master_ip in (join_ip, advertise_ip):
             if not master_ip:
@@ -1750,6 +1822,7 @@ class ControlScript(object):
                 return all_masters
 
         raise RetryableError()
+
 
     # Waits till the newly added master comes in the list of masters of cluster
     def wait_get_master(self, master, timeout=180):
@@ -1774,6 +1847,76 @@ class ControlScript(object):
             return True
 
         raise RetryableError()
+
+    # Get the current list of masters known to a tserver using api/v1/masters endpoint
+    # of the tserver. Use the node address given with the --join flag or use the
+    # advertise address if join flag is not provided.
+    def get_current_masters_from_api(self, tserverIp):
+        tserver_addr = "{}:{}".format(tserverIp,
+                            self.configs.saved_data.get("tserver_webserver_port"))
+        try:
+            tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
+            response = urlopen(Request(tserverMastersAPI))
+            jsonResponseFromTserver = json.load(response)
+            dictOfAllNodes = jsonResponseFromTserver.get("master_server_and_type")
+
+            currentMastersCSV = ""
+            lenOfMasters = len(dictOfAllNodes)
+            for node in dictOfAllNodes:
+                currentMastersCSV += node["master_server"]
+                lenOfMasters -= 1
+                if lenOfMasters > 0:
+                    currentMastersCSV += ","
+
+            Output.log("Tserver {} returned the following ".format(tserverIp) +
+                "set of the current masters {}.".format(currentMastersCSV),
+                    logging.DEBUG)
+
+            return currentMastersCSV
+
+        except HTTPError as http_err:
+            Output.log('HTTP error occurred while fetching current' +
+                    'masters from tserver: {}', http_err)
+            return ''
+        except Exception as err:
+            Output.log('Other error occurred while fetching current' +
+                    'masters from tserver: {}', err)
+            return ''
+
+    # Get the current master leader known to a tserver using api/v1/masters endpoint
+    # of the tserver. Use the node address given with the --join flag or use the
+    # advertise address if join flag is not provided.
+    def get_current_master_leader_from_api(self):
+
+        join_ip = self.configs.saved_data.get("join")
+        advertise_ip = self.advertise_ip()
+        tserver_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                        self.configs.saved_data.get("tserver_webserver_port"))
+
+        try:
+            tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
+            response = urlopen(Request(tserverMastersAPI))
+            jsonResponseFromTserver = json.load(response)
+            dictOfAllNodes = jsonResponseFromTserver.get("master_server_and_type")
+
+            masterLeader = ""
+            for node in dictOfAllNodes:
+                if node["is_leader"]:
+                    masterLeader = node["master_server"]
+                    break
+
+            Output.log("Tserver {} returned the following".format(tserver_addr) +
+                        "master leader {}.".format(masterLeader),
+                            logging.DEBUG)
+
+            return masterLeader
+
+        except HTTPError as http_err:
+            print('HTTP error occurred while fetching cloud location: {}', http_err)
+            return ''
+        except Exception as err:
+            print('Other error occurred while fetching cloud location: {}', err)
+            return ''
 
     # Waits till the newly removed master doesn't comes in the list of masters of cluster
     def wait_remove_master(self, master, timeout=180):
@@ -1800,6 +1943,14 @@ class ControlScript(object):
 
     # Get Leader master of the cluster
     def get_leader_master(self):
+
+        current_masters = self.configs.saved_data.get("current_masters")
+        if current_masters:
+            all_masters_info = YBAdminProxy.get_masters(current_masters)
+            for master_info in all_masters_info:
+                if master_info[2] == "LEADER":
+                    return master_info[1]
+
         join_ip = self.configs.saved_data.get("join")
         advertise_ip = self.advertise_ip()
         master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
@@ -2006,14 +2157,27 @@ class ControlScript(object):
     def setup_master(self, timeout=180):
         Output.log("Waiting for master")
         join_ip = self.configs.saved_data.get("join")
+        master_addrs = self.get_current_masters_from_api(join_ip)
+        # API didn't return any masters addresses, use join or advertise address
+        if not master_addrs:
+            join_ip = self.configs.saved_data.get("join")
+            master_ip = join_ip if join_ip else self.advertise_ip()
+            master_addrs = "{}:{}".format(master_ip,
+                                        self.configs.saved_data.get("master_rpc_port"))
+
+        # save the current known masters received from the get_current_masters_from_api()
+        self.configs.saved_data["current_masters"]= master_addrs
+
         try:
-            if retry_op(self.wait_master, timeout):
-                self.configs.saved_data["cluster_member"] = True
-                return True
-            # If wait_master returns False, it means the master is
+            master_uuids = retry_op_with_argument(self.get_master_uuids, master_addrs)
+            current_node_master_uuid = self.configs.saved_data.get("master_uuid")
+            # If False, it means the master is
             # not part of the current set of masters. If we have a
             # join_ip, let's try to add ourselves to it, otherwise
             # it is a hard failure.
+            if current_node_master_uuid in master_uuids:
+                self.configs.saved_data["cluster_member"] = True
+                return True
             if not join_ip:
                 return False
         except RuntimeError:
@@ -2023,10 +2187,12 @@ class ControlScript(object):
 
         # The master was not in the current list of masters
         # and we have a valid join_ip
+
         bind_ip = self.configs.saved_data.get("advertise_address")
-        master_addrs = "{}:{}".format(join_ip,
-                    self.configs.saved_data.get("master_rpc_port"))
-        master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addrs) ]
+        # master_addrs = "{}:{}".format(join_ip,
+        #             self.configs.saved_data.get("master_rpc_port"))
+        # master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addrs) ]
+
         if len(master_uuids) >= 3:
             # this is going to be a standalone shell master
             return True
@@ -2044,7 +2210,7 @@ class ControlScript(object):
                 return False
 
         try:
-            if retry_op(self.wait_master, timeout):
+            if retry_op_with_argument(self.get_master_uuids, master_addrs, timeout):
                 self.configs.saved_data["cluster_member"] = True
                 Output.log("Completed setup and wait for master.")
                 return True
@@ -2055,9 +2221,12 @@ class ControlScript(object):
         return False
 
     def is_tserver_up(self):
-        join_ip = self.configs.saved_data.get("join")
-        master_ip = join_ip if join_ip else self.advertise_ip()
-        master_addr = "{}:{}".format(master_ip,
+
+        master_addr = self.configs.saved_data.get("current_masters")
+        if not master_addr:
+            join_ip = self.configs.saved_data.get("join")
+            master_ip = join_ip if join_ip else self.advertise_ip()
+            master_addr = "{}:{}".format(master_ip,
                                      self.configs.saved_data.get("master_rpc_port"))
 
         if (not self.processes.get("master").is_running()
@@ -2092,17 +2261,18 @@ class ControlScript(object):
     def update_tserver_master_addrs(self):
         tserver_cmd = self.processes["tserver"].cmd
         master_flag = [ flag for flag in tserver_cmd if flag.find(TS_MASTER_ADDRS_FLAG) >= 0 ]
+        full_master_list = self.configs.saved_data.get("current_masters").split(",")
 
-        Output.log("Querying for all masters in cluster")
-        full_master_list = self.wait_get_all_masters(timeout=60)
         if not full_master_list:
-            Output.log("Unable to query for all masters list, keeping tserver flag: {}".format(
+            Output.log("Unable to get all masters list, keeping tserver flag: {}".format(
                 master_flag))
             return
-        my_master_ip = "{}:{}".format(
-            self.advertise_ip(), self.configs.saved_data.get("master_rpc_port"))
-        full_master_list = list(set(full_master_list + [ my_master_ip ]))
-        Output.log("Got full master addrs list: {}".format(full_master_list))
+
+        if len(full_master_list) < 3:
+            my_master_ip = "{}:{}".format(
+                self.advertise_ip(), self.configs.saved_data.get("master_rpc_port"))
+            full_master_list = list(set(full_master_list + [ my_master_ip ]))
+            Output.log("Got full master addrs list: {}".format(full_master_list))
 
         new_master_flag = "--{}={}".format(TS_MASTER_ADDRS_FLAG, ",".join(full_master_list))
         Output.log("Old master flag is: {} and new master flag is: {}".format(
@@ -2110,6 +2280,7 @@ class ControlScript(object):
         if master_flag:
             tserver_cmd.remove(master_flag[0])
         tserver_cmd += [new_master_flag]
+        self.configs.saved_data["current_masters"] = ",".join(full_master_list)
 
     def wait_yw_login(self, yw_proxy, timeout=180, insecure=False):
         Output.log("Attempting to log in...")
@@ -2127,11 +2298,22 @@ class ControlScript(object):
 
     # Returns pretty output table.
     def get_status_string(self):
+
         join_ip = self.configs.saved_data.get("join")
         advertise_ip = self.advertise_ip()
-        master_addrs = "{}:{}".format(join_ip if join_ip else advertise_ip,
-                                      self.configs.saved_data.get("master_rpc_port"))
-        master_web_addrs = "{}:{}".format(join_ip if join_ip else advertise_ip,
+        was_already_setup = self.configs.saved_data.get("cluster_member", False)
+
+        # It is possible that masters have changed, try to find the latest
+        # masters before computing the status string.
+        master_web_addrs_ip = join_ip
+        master_addrs = self.get_current_masters_from_api(join_ip)
+        if not master_addrs:
+            master_web_addrs_ip = advertise_ip
+            master_addrs = self.get_current_masters_from_api(advertise_ip)
+        self.configs.saved_data["current_masters"] = master_addrs
+        Output.log("Master address list updated, new list: {}".format(master_addrs))
+
+        master_web_addrs = "{}:{}".format(master_web_addrs_ip,
                                       self.configs.saved_data.get("master_webserver_port"))
 
         ycql_port = self.configs.saved_data.get("ycql_port")
@@ -2164,29 +2346,44 @@ class ControlScript(object):
             # In case of starting up via yugabyted, we have already given enough time to
             # the leader election
             # In case of manual start or some other route, we can have a smaller timeout
-            if self.wait_get_all_masters(timeout=10):
-                status = "Running."
+            status = ""
+            if was_already_setup:
+                if master_addrs:
+                    status = "Running."
             else:
-                status = "Status command timed out as YugabyteDB \"yb-master\" " + \
-                            "process is not responding."
+                if self.wait_get_all_masters(timeout=10):
+                    status = "Running."
+                else:
+                    status = "Status command timed out as YugabyteDB \"yb-master\" " + \
+                                "process is not responding."
+
             enabled_security_features = []
-            encryption_enabled = self.is_encryption_at_rest_enabled()
-            if encryption_enabled is None:
-                Output.log_error_and_exit(Output.ANIMATION_FAIL + " Error checking status of " +
-                    "encryption-at-rest.")
-
-            if encryption_enabled:
-                enabled_security_features.append("Encryption-at-rest")
-            if self.is_leader_master_secure(master_web_addrs):
-                enabled_security_features.append("Encryption-in-transit")
-            if self.configs.saved_data.get("ysql_enable_auth") and \
+            is_secure = self.configs.saved_data.get("secure")
+            if is_secure:
+                if self.configs.temp_data.get("yugabyted_cmd") == "status":
+                    encryption_enabled = self.is_encryption_at_rest_enabled()
+                    if encryption_enabled is None:
+                        Output.log("Error checking status of " +
+                            "encryption-at-rest.")
+                    if encryption_enabled:
+                        enabled_security_features.append("Encryption-at-rest")
+                if self.is_leader_master_secure(master_web_addrs):
+                    enabled_security_features.append("Encryption-in-transit")
+                if self.configs.saved_data.get("ysql_enable_auth") and \
                     self.configs.saved_data.get("use_cassandra_authentication"):
-                enabled_security_features.append("Password Authentication")
+                    enabled_security_features.append("Password Authentication")
 
+            rf = self.configs.temp_data.get("replication_factor")
+            if not rf and self.configs.temp_data.get("yugabyted_cmd") == "start":
+                Output.init_animation("Verifying data placement constraint " +
+                            "on the YugabyteDB Cluster...")
+                rf = YBAdminProxy.get_cluster_rf(master_addrs)
+                Output.update_animation("Data placement constraint successfully verified")
+            else:
+                rf = YBAdminProxy.get_cluster_rf(master_addrs)
             status_info = [
                 (Output.make_yellow("Status"), status),
-                (Output.make_yellow("Replication Factor"),
-                        YBAdminProxy.get_cluster_rf(master_addrs)),
+                (Output.make_yellow("Replication Factor"), rf),
             ]
 
             if enabled_security_features:
@@ -2214,11 +2411,21 @@ class ControlScript(object):
                                           self.configs.saved_data.get("yugabyted_ui_port"))
         yb_master_status = "http://{}:{}".format(advertise_ip,
                                           self.configs.saved_data.get("master_webserver_port"))
-
         console_desc = "Web console"
-        if self.configs.temp_data.get("ui"):
-            console_desc = "YugabyteDB UI"
-            status_info += [ (Output.make_yellow(console_desc), yugabyted_ui_status), ]
+        if self.configs.saved_data.get("ui"):
+            try:
+                response = urlopen(Request(yugabyted_ui_status))
+                if response.code == 200:
+                    console_desc = "YugabyteDB UI"
+                    status_info += [ (Output.make_yellow(console_desc), yugabyted_ui_status), ]
+                else:
+                    status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
+            except HTTPError as http_err:
+                Output.log('HTTP error occurred while fetching YugabyteDB UI {}', http_err)
+                status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
+            except Exception as err:
+                Output.log('HTTP error occurred while fetching YugabyteDB UI {}', err)
+                status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
         else:
             status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
 
@@ -2291,51 +2498,54 @@ class ControlScript(object):
                 Output.log("Callhome failed: " + str(e))
                 pass
 
+    # update the master address list every min for the first half hour, then every hour after.
+    def update_masters_list_loop(self):
+        num_times_cmd_executed = 0
+        initial_interval = 60
+        final_interval = 3600
+        try:
+            while True:
+                self.update_master_list_on_background_thread()
+                num_times_cmd_executed += 1
+                time.sleep(initial_interval
+                        if num_times_cmd_executed < 30 else final_interval)
+        except Exception as e:
+                Output.log("update_masters_list: " + str(e))
+                pass
+
+    def update_master_list_on_background_thread(self):
+
+        # global _global_current_list_of_masters
+        current_master_list = self.configs.saved_data.get("current_masters").split(",")
+        Output.log("thread-uml: current masters {}".format(current_master_list))
+
+        # thread for updating the master address list in the background
+        # First attempt for /masters using the --join flag
+        masters_csv = self.get_current_masters_from_api(self.configs.saved_data.get("join"))
+        if not masters_csv:
+            # second attempt for /masters using the --advertise_address flag
+            masters_csv = self.get_current_masters_from_api(self.advertise_ip())
+            if not masters_csv:
+                Output.log("thread-uml: Unable to query for all masters list, " +
+                    "keeping masters list: {}".format(current_master_list))
+                return
+
+        full_master_list = masters_csv.split(",")
+        # check if masters have changed since last refresh, if not return
+        if_any_new_masters = set(full_master_list).difference(current_master_list)
+        if if_any_new_masters:
+            self.configs.saved_data["current_masters"] = masters_csv
+            Output.log("thread-uml: master list updated, old list: {} ".format(
+                current_master_list) + "new list: {}".format(full_master_list))
+
+            # Persist the config if masters have changed
+            self.configs.save_configs()
+
+
     # Calls func after receiving certain exit signals.
     def set_signals(self, func):
         for sig in EXIT_SIGNALS:
             signal(sig, func)
-
-    # Download the yugabyted-ui binary. Return true if yugabyted ui binary
-    # is downloaded and extracted into bin directory. Otherwise returns false.
-    def download_extract_yugabyted_ui_binary(self):
-
-        url = None
-        fileName = None
-        if OS_NAME == "Linux":
-            url = 'https://github.com/yugabyte/yugabyte-db/releases/download/' + \
-                'v1.0.0-beta-yugabyted-ui/yugabyted-ui-1.0.0-linux-x86_64.tar.gz'
-            fileName = 'yugabyted-ui-1.0.0-linux-x86_64.tar.gz'
-        else:
-            url = 'https://github.com/yugabyte/yugabyte-db/releases/download/' + \
-                'v1.0.0-beta-yugabyted-ui/yugabyted-ui-1.0.0-darwin-x86_64.tar.gz'
-            fileName = 'yugabyted-ui-1.0.0-darwin-x86_64.tar.gz'
-
-        target_path = os.path.join(YUGABYTE_DIR, "bin")
-
-        try:
-            response = urlopen(url)
-            CHUNK_SIZE = 1 << 20
-            with open(fileName, 'wb') as f:
-                while True:
-                    chunk = response.read(CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-        except Exception as e:
-            Output.log("Failed to download Yugabyted UI binaries: {}".format(e), logging.ERROR)
-            return False
-
-        try:
-            tarFilePath = os.path.join(target_path, fileName)
-            file = tarfile.open(tarFilePath)
-            file.extractall(target_path)
-            file.close()
-        except Exception as e:
-            Output.log("Failed to extract Yugabyted UI binaries: {}".format(e), logging.ERROR)
-            return False
-
-        return True
 
     # Returns true if Java is installed. While Java 8+ is necessary for YW, we don't explicitly
     # check for it so that future version format changes (e.g. Java 1.4 to Java 5) won't give
@@ -2420,7 +2630,8 @@ class ControlScript(object):
         home_dir = os.path.expanduser("~")
         default_base_dir = os.path.join(home_dir, "var")
         default_conf_path = os.path.join(default_base_dir, "conf", "{}.conf".format(SCRIPT_NAME))
-        base_dir = os.path.abspath(args.base_dir) if args.base_dir else default_base_dir
+        base_dir = os.path.abspath(os.path.expanduser(args.base_dir)) if args.base_dir \
+            else default_base_dir
         base_dir_conf = ''
         if args.base_dir:
             base_dir_conf = os.path.join(base_dir, "conf", "{}.conf".format(SCRIPT_NAME))
@@ -2429,7 +2640,7 @@ class ControlScript(object):
 
         self.conf_file = args.config or base_dir_conf or \
                          Configs.get_brew_config() or default_conf_path
-        self.conf_file = os.path.abspath(os.path.realpath(self.conf_file))
+        self.conf_file = os.path.realpath(os.path.expanduser(self.conf_file))
 
         conf_dir = os.path.dirname(self.conf_file)
         if not os.path.isdir(conf_dir):
@@ -2443,6 +2654,8 @@ class ControlScript(object):
                 setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
 
         if args.data_dir is not None:
+            args.data_dir = os.path.expanduser(args.data_dir)
+
             config_data_dir = self.configs.saved_data.get("data_dir")
             if (config_data_dir and os.path.exists(config_data_dir) and
                     config_data_dir != args.data_dir):
@@ -2452,6 +2665,8 @@ class ControlScript(object):
                     "Data directory already exists at {}.".format(config_data_dir))
 
         if args.log_dir is not None:
+            args.log_dir = os.path.expanduser(args.log_dir)
+
             config_log_dir = self.configs.saved_data.get("log_dir")
             if (config_log_dir and os.path.exists(config_log_dir) and
                     config_log_dir != args.log_dir):
@@ -2499,6 +2714,8 @@ class ControlScript(object):
                     "node."+args.advertise_address+".key"]
 
         if args.certs_dir is not None:
+            args.certs_dir = os.path.expanduser(args.certs_path)
+
             if not os.path.exists(args.certs_dir):
                 # Case Scenario: When the directory provided by the user through
                 # --certs_dir flag in CLI does not exists.
@@ -2727,9 +2944,9 @@ class ControlScript(object):
                 Output.print_out(Output.make_red("ERROR") +
                     ": --enable and --disable flags cannot be used together.")
             elif args.enable:
-                self.configs.temp_data["enable"] = args.enable
+                self.configs.temp_data["enable_encrypt_at_rest"] = args.enable
             elif args.disable:
-                self.configs.temp_data["disable"] = args.disable
+                self.configs.temp_data["disable_encrypt_at_rest"] = args.disable
 
         if args.parser == "start":
             if args.cloud_location is not None:
@@ -2887,7 +3104,7 @@ class ControlScript(object):
             #     args.ui = False
 
             self.configs.temp_data["background"] = args.background
-            self.configs.temp_data["ui"] = args.ui
+            self.configs.saved_data["ui"] = args.ui
             self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
 
         if self.configs.saved_data.get("database_password") is not None:
@@ -3139,6 +3356,9 @@ class ControlScript(object):
 
         args = parser.parse_args()
         self.validate_and_set_parent_configs(args)
+        # Yugabyted command currently being processed is required for
+        # generating the status string.
+        self.configs.temp_data["yugabyted_cmd"] = args.parser
 
         log_dir = self.configs.saved_data.get("log_dir")
         if not os.path.exists(log_dir):
@@ -3270,20 +3490,21 @@ class Configs(object):
             "certs_dir": os.path.join(base_dir, "certs"),
             "ca_cert_file_path": "",
             "database_password": None,
+            "current_masters": "",
+            "ui": True,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
             "demo_db": DEFAULT_DEMO_DATABASE,
             "background": True,
-            "ui": True,
             "initial_scripts_dir": "",
             "collect_logs_stdout": False,
             "constraint_value": "",
-            "fault_tolerance": DEFAULT_FAULT_TOLERANCE,
             "replication_factor":"",
+            "fault_tolerance": DEFAULT_FAULT_TOLERANCE,
             "hostnames": "",
-            "enable": False,
-            "disable": False,
+            "enable_encrypt_at_rest": False,
+            "disable_encrypt_at_rest": False,
         }
         self.config_file = config_file
 
@@ -3303,6 +3524,11 @@ class Configs(object):
             except ValueError as e:
                 Output.log_error_and_exit(
                     "Failed to read config file {}: {}".format(config_file, str(e)))
+
+        paths = ["data_dir", "log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
+        for k, v in configs.saved_data.items():
+            if v is not None and k in paths:
+                configs.saved_data[k] = os.path.expanduser(v)
 
         return configs
 
@@ -3734,6 +3960,7 @@ class YBAdminProxy(object):
         cluster_config = YBAdminProxy.get_cluster_config(master_addrs)
         if cluster_config:
             if "replicationInfo" in cluster_config:
+
                 return cluster_config["replicationInfo"]["liveReplicas"]["numReplicas"]
             else:
                 return 1
@@ -3742,9 +3969,9 @@ class YBAdminProxy(object):
 
     # Returns the cluster config for this universe
     @staticmethod
-    def get_cluster_config(master_addrs):
+    def get_cluster_config(master_addrs, timeout=10):
         cmd = YBAdminProxy.cmd_args + ["--master_addresses", master_addrs, "get_universe_config"]
-        out, err, ret_code = run_process(cmd)
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if ret_code:
             return None
         try:

@@ -102,7 +102,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
 
       // Start the tservers in the clusters.
-      createStartTserverProcessTasks(newTservers);
+      createStartTserverProcessTasks(
+          newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL);
 
       // Start ybc process on all the nodes
       if (taskParams().enableYbc) {

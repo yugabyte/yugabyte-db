@@ -8,8 +8,27 @@
  */
 
 import React, { FC } from 'react';
-import { BackupList } from '..';
+import { Tab } from 'react-bootstrap';
+import { useSelector } from 'react-redux';
+import { BackupList, Restore } from '..';
+import { YBTabsPanel } from '../../panels';
+import './AccountLevelBackup.scss';
 
 export const AccountLevelBackup: FC = () => {
+  const featureFlags = useSelector((state: any) => state.featureFlags);
+
+  if (featureFlags.test.enableRestore || featureFlags.released.enableRestore) {
+    return (
+      <YBTabsPanel id="account-level-backup-tab-panel" defaultTab="backupList">
+        <Tab eventKey="backupList" title="Backups" unmountOnExit>
+          <BackupList />;
+        </Tab>
+        <Tab eventKey="restoreList" title="Restore History" unmountOnExit>
+          <Restore type="ACCOUNT_LEVEL" />;
+        </Tab>
+      </YBTabsPanel>
+    );
+  }
+
   return <BackupList />;
 };

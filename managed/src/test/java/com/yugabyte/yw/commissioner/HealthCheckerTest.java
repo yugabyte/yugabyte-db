@@ -14,7 +14,9 @@ import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertingData;
@@ -39,7 +41,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -110,6 +112,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Mock Config mockRuntimeConfig;
 
   @Mock RuntimeConfigFactory mockruntimeConfigFactory;
+  @Mock RuntimeConfGetter mockConfGetter;
   @Mock Config mockConfigUniverseScope;
   @Mock private NodeUniverseManager mockNodeUniverseManager;
 
@@ -127,9 +130,16 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     when(mockRuntimeConfig.getInt("yb.health.max_num_parallel_checks")).thenReturn(11);
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
-    when(mockConfigUniverseScope.getBoolean("yb.health.logOutput")).thenReturn(false);
-    when(mockConfigUniverseScope.getInt("yb.health.nodeCheckTimeoutSec")).thenReturn(1);
     when(mockConfigUniverseScope.getInt("yb.health.max_num_parallel_node_checks")).thenReturn(10);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.dbReadWriteTest)))
+        .thenReturn(true);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.healthLogOutput)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableTriggerAPI)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.nodeCheckTimeoutSec)))
+        .thenReturn(1);
     doAnswer(
             i -> {
               Runnable runnable = i.getArgument(0);
@@ -151,6 +161,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             mockEmailHelper,
             metricService,
             mockruntimeConfigFactory,
+            mockConfGetter,
             null,
             mockNodeUniverseManager,
             executorService,

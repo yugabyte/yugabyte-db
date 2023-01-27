@@ -27,8 +27,6 @@ cascade:
   unversioned: true
 ---
 
-Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
-
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Sign up to create a Sandbox cluster"
@@ -42,8 +40,8 @@ Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (
   >}}
 
   {{< sections/bottom-image-box
-    title="Deploy on dedicated clusters"
-    description="Deploy single- and multi-region production clusters across multiple availability zones and regions."
+    title="Deploy dedicated clusters"
+    description="Deploy single- and multi-region production clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS)."
     buttonText="Learn more"
     buttonUrl="cloud-basics/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
@@ -93,36 +91,36 @@ Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-	title="Manage your account"
-	linkText1="Add Users to your account"
-	linkUrl1="cloud-admin/manage-access/"
-	linkText2="Manage billing"
-	linkUrl2="cloud-admin/cloud-billing-profile/"
-	linkText3="Manage API keys"
-	linkUrl3="cloud-admin/cloud-admin-apikeys/"
+  title="Manage your account"
+  linkText1="Add Users to your account"
+  linkUrl1="cloud-admin/manage-access/"
+  linkText2="Manage billing"
+  linkUrl2="cloud-admin/cloud-billing-profile/"
+  linkText3="Manage API keys"
+  linkUrl3="cloud-admin/cloud-admin-apikeys/"
   >}}
 
   {{< sections/3-box-card
-	title="More Information"
-	linkText1="What's new"
-	linkUrl1="release-notes/"
-	linkText2="Troubleshoot"
-	linkUrl2="cloud-troubleshoot/"
-	linkText3="FAQ"
-	linkUrl3="../faq/yugabytedb-managed-faq/"
+  title="More Information"
+  linkText1="What's new"
+  linkUrl1="release-notes/"
+  linkText2="Troubleshoot"
+  linkUrl2="cloud-troubleshoot/"
+  linkText3="FAQ"
+  linkUrl3="../faq/yugabytedb-managed-faq/"
   >}}
 
   {{< sections/3-box-card
-	title="Support"
-	linkText1="Contact Support"
-	linkUrl1="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431"
-	linkTarget1="_blank"
-	linkText2="YugabyteDB Managed Status"
-	linkUrl2="https://status.yugabyte.cloud/"
+  title="Support"
+  linkText1="Contact Support"
+  linkUrl1="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431"
+  linkTarget1="_blank"
+  linkText2="YugabyteDB Managed Status"
+  linkUrl2="https://status.yugabyte.cloud/"
     linkTarget2="_blank"
-	linkText3="Join Our Community"
-	linkUrl3="https://communityinviter.com/apps/yugabyte-db/register"
-	linkTarget3="_blank"
+  linkText3="Join Our Community"
+  linkUrl3="https://communityinviter.com/apps/yugabyte-db/register"
+  linkTarget3="_blank"
   >}}
 {{< /sections/3-boxes >}}
 
@@ -130,30 +128,30 @@ Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-	title="Build Applications"
-	description="Start coding in your favorite programming language using these examples."
-	buttonText="Get Started"
-	buttonUrl="../develop/build-apps/"
+  title="Build Applications"
+  description="Start coding in your favorite programming language using these examples."
+  buttonText="Get Started"
+  buttonUrl="../develop/build-apps/"
   >}}
 
   {{< sections/3-box-card
-	title="Yugabyte University"
-	linkText1="YugabyteDB Managed Basics"
-	linkUrl1="https://university.yugabyte.com/courses/yugabytedb-managed-basics"
-	linkTarget1="_blank"
-	linkText2="Builder Workshops"
-	linkUrl2="https://university.yugabyte.com/collections/builder-workshop"
-	linkTarget2="_blank"
-	linkText3="YSQL Exercises: Basic queries"
-	linkUrl3="https://university.yugabyte.com/courses/ysql-exercises-simple-queries"
-	linkTarget3="_blank"
+  title="Yugabyte University"
+  linkText1="YugabyteDB Managed Basics"
+  linkUrl1="https://university.yugabyte.com/courses/yugabytedb-managed-basics"
+  linkTarget1="_blank"
+  linkText2="Builder Workshops"
+  linkUrl2="https://university.yugabyte.com/collections/builder-workshop"
+  linkTarget2="_blank"
+  linkText3="YSQL Exercises: Basic queries"
+  linkUrl3="https://university.yugabyte.com/courses/ysql-exercises-simple-queries"
+  linkTarget3="_blank"
   >}}
 
   {{< sections/3-box-card
-	title="Yugabyte Channel"
-	description="Learn how to create a cluster, use distributed SQL, build a sample application, and scale clusters."
-	buttonText="Watch"
-	buttonUrl="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc"
-	buttonTarget="_blank"
+  title="Yugabyte Channel"
+  description="Learn how to create a cluster, use distributed SQL, build a sample application, and scale clusters."
+  buttonText="Watch"
+  buttonUrl="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc"
+  buttonTarget="_blank"
   >}}
 {{< /sections/3-boxes >}}

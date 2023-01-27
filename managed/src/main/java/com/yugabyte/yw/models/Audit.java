@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
@@ -11,10 +14,10 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.data.validation.Constraints;
-
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import java.util.function.Consumer;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
@@ -23,16 +26,8 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.SequenceGenerator;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-import java.util.function.Consumer;
-
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.BAD_REQUEST;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.perf_advisor.models.PerformanceRecommendation;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Audit logging for requests and responses")
@@ -148,7 +143,13 @@ public class Audit extends Model {
     CustomerLicense,
 
     @EnumValue("PerformanceRecommendation")
-    PerformanceRecommendation
+    PerformanceRecommendation,
+
+    @EnumValue("PerformanceAdvisorSettings")
+    PerformanceAdvisorSettings,
+
+    @EnumValue("PerformanceAdvisorRun")
+    PerformanceAdvisorRun
   }
 
   public enum ActionType {
@@ -301,6 +302,12 @@ public class Audit extends Model {
 
     @EnumValue("Create User in DB")
     CreateUserInDB,
+
+    @EnumValue("Create Restricted User in DB")
+    CreateRestrictedUserInDB,
+
+    @EnumValue("Drop User in DB")
+    DropUserInDB,
 
     @EnumValue("Set Universe Helm3 Compatible")
     SetHelm3Compatible,

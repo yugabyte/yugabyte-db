@@ -174,7 +174,8 @@ class YBClient::Data {
                           const std::string& namespace_name,
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
-                          const std::string& tablespace_id);
+                          const std::string& tablespace_id,
+                          const TransactionMetadata* txn);
 
   Status DeleteTablegroup(YBClient* client,
                           CoarseTimePoint deadline,
@@ -318,8 +319,8 @@ class YBClient::Data {
 
   void GetTableLocations(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
-      RequireTabletsRunning require_tablets_running, CoarseTimePoint deadline,
-      GetTableLocationsCallback callback);
+      RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
+      CoarseTimePoint deadline, GetTableLocationsCallback callback);
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
@@ -404,6 +405,10 @@ class YBClient::Data {
   // Get disk size of table, calculated as WAL + SST file size.
   // It does not take replication factor into account
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id, CoarseTimePoint deadline);
+
+  // Provide the status of the transaction to YB-Master.
+  Status ReportYsqlDdlTxnStatus(
+      const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline);
 
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 

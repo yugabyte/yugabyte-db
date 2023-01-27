@@ -10,15 +10,10 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.annotation.EnumValue;
 import java.io.Serializable;
-import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Embeddable;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
 import lombok.Data;
-import play.libs.Json;
 
 @Embeddable
 @Data

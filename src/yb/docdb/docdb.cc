@@ -281,28 +281,6 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   return result;
 }
 
-Status SetDocOpQLErrorResponse(DocOperation* doc_op, string err_msg) {
-  switch (doc_op->OpType()) {
-    case DocOperation::Type::QL_WRITE_OPERATION: {
-      const auto &resp = down_cast<QLWriteOperation *>(doc_op)->response();
-      resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
-      resp->set_error_message(err_msg);
-      break;
-    }
-    case DocOperation::Type::PGSQL_WRITE_OPERATION: {
-      const auto &resp = down_cast<PgsqlWriteOperation *>(doc_op)->response();
-      resp->set_status(PgsqlResponsePB::PGSQL_STATUS_USAGE_ERROR);
-      resp->set_error_message(err_msg);
-      break;
-    }
-    default:
-      return STATUS_FORMAT(InternalError,
-                           "Invalid status (QLError) for doc operation %d",
-                           doc_op->OpType());
-  }
-  return Status::OK();
-}
-
 Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
@@ -317,18 +295,19 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   DocOperationApplyData data = {&doc_write_batch, deadline, read_time, restart_read_ht};
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     Status s = doc_op->Apply(data);
-    if (s.IsQLError()) {
-      string error_msg;
+    if (s.IsQLError() && doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION) {
+      std::string error_msg;
       if (ql::GetErrorCode(s) == ql::ErrorCode::CONDITION_NOT_SATISFIED) {
         // Generating the error message here because 'table_name'
         // is not available on the lower level - in doc_op->Apply().
         error_msg = Format("Condition on table $0 was not satisfied.", table_name);
       } else {
-        error_msg =  s.message().ToBuffer();
+        error_msg = s.message().ToBuffer();
       }
-
       // Ensure we set appropriate error in the response object for QL errors.
-      RETURN_NOT_OK(SetDocOpQLErrorResponse(doc_op.get(), error_msg));
+      const auto& resp = down_cast<QLWriteOperation*>(doc_op.get())->response();
+      resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
+      resp->set_error_message(std::move(error_msg));
       continue;
     }
 

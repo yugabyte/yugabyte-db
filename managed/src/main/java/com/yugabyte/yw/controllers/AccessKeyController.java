@@ -14,11 +14,14 @@ import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.File;
@@ -88,21 +91,31 @@ public class AccessKeyController extends AuthenticatedController {
     return PlatformResults.withData(accessKeys);
   }
 
+  // TODO: Move this endpoint under region since this api is per region
   @ApiOperation(
-      nickname = "create_accesskey",
-      value = "Create an access key",
+      nickname = "createAccesskey",
+      value = "Create/Upload an access key for onprem Provider region",
+      notes = "UNSTABLE - This API will undergo changes in future.",
       response = AccessKey.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "AccessKeyFormData",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.AccessKeyFormData",
+          required = true))
   public Result create(UUID customerUUID, UUID providerUUID) {
     final Provider provider = Provider.getOrBadRequest(providerUUID);
-    AccessKeyFormData formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class).get();
-    formData = accessManager.setOrValidateRequestDataWithExistingKey(formData, providerUUID);
-    AccessKeyFormData finalFormData = formData;
+    AccessKeyFormData formData =
+        formFactory
+            .getFormDataOrBadRequest(AccessKeyFormData.class)
+            .get()
+            .setOrValidateRequestDataWithExistingKey(provider);
     AccessKey accessKey =
         providerEditRestrictionManager.tryEditProvider(
             providerUUID,
             () -> {
               try {
-                return create(customerUUID, provider, finalFormData);
+                return create(customerUUID, provider, formData);
               } catch (IOException e) {
                 LOG.error("Failed to create access key", e);
                 throw new PlatformServiceException(
@@ -122,118 +135,110 @@ public class AccessKeyController extends AuthenticatedController {
 
   private AccessKey create(UUID customerUUID, Provider provider, AccessKeyFormData formData)
       throws IOException {
-    UUID regionUUID = formData.regionUUID;
-    Region region = Region.getOrBadRequest(customerUUID, provider.uuid, regionUUID);
-    String keyCode = formData.keyCode;
-    String keyContent = formData.keyContent;
-    AccessManager.KeyType keyType = formData.keyType;
-    String sshUser = formData.sshUser;
-    Integer sshPort = formData.sshPort;
-    boolean airGapInstall = formData.airGapInstall;
-    boolean skipProvisioning = formData.skipProvisioning;
-    boolean setUpChrony = formData.setUpChrony;
-    List<String> ntpServers = formData.ntpServers;
-    boolean showSetUpChrony = formData.showSetUpChrony;
-    boolean passwordlessSudoAccess = formData.passwordlessSudoAccess;
-    boolean installNodeExporter = formData.installNodeExporter;
-    Integer nodeExporterPort = formData.nodeExporterPort;
-    String nodeExporterUser = formData.nodeExporterUser;
-    Integer expirationThresholdDays = formData.expirationThresholdDays;
-    AccessKey accessKey;
-
     LOG.info(
-        "Creating access key {} for customer {}, provider {}.", keyCode, customerUUID, provider);
+        "Creating access key {} for customer {}, provider {}.",
+        formData.keyCode,
+        customerUUID,
+        provider.uuid);
+    List<Region> regionList = provider.regions;
+    if (regionList.isEmpty()) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Provider is in invalid state. No regions.");
+    }
+    Region region = regionList.get(0);
 
-    if (setUpChrony
+    if (formData.setUpChrony
         && region.provider.code.equals(onprem.name())
-        && (ntpServers == null || ntpServers.isEmpty())) {
+        && (formData.ntpServers == null || formData.ntpServers.isEmpty())) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "NTP servers not provided for on-premises provider for which chrony setup is desired");
     }
 
-    if (region.provider.code.equals(onprem.name()) && sshUser == null) {
+    if (region.provider.code.equals(onprem.name()) && formData.sshUser == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "sshUser cannot be null for onprem providers.");
     }
 
     // Check if a public/private key was uploaded as part of the request
     MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
+    AccessKey accessKey;
     if (multiPartBody != null) {
       FilePart<File> filePart = multiPartBody.getFile("keyFile");
       File uploadedFile = filePart.getFile();
-      if (keyType == null || uploadedFile == null) {
+      if (formData.keyType == null || uploadedFile == null) {
         throw new PlatformServiceException(BAD_REQUEST, "keyType and keyFile params required.");
       }
       accessKey =
           accessManager.uploadKeyFile(
               region.uuid,
               uploadedFile,
-              keyCode,
-              keyType,
-              sshUser,
-              sshPort,
-              airGapInstall,
-              skipProvisioning,
-              setUpChrony,
-              ntpServers,
-              showSetUpChrony);
-    } else if (keyContent != null && !keyContent.isEmpty()) {
-      if (keyType == null) {
+              formData.keyCode,
+              formData.keyType,
+              formData.sshUser,
+              formData.sshPort,
+              formData.airGapInstall,
+              formData.skipProvisioning,
+              formData.setUpChrony,
+              formData.ntpServers,
+              formData.showSetUpChrony);
+    } else if (formData.keyContent != null && !formData.keyContent.isEmpty()) {
+      if (formData.keyType == null) {
         throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
       }
       // Create temp file and fill with content
-      Path tempFile = Files.createTempFile(keyCode, keyType.getExtension());
-      Files.write(tempFile, keyContent.getBytes());
+      Path tempFile = Files.createTempFile(formData.keyCode, formData.keyType.getExtension());
+      Files.write(tempFile, formData.keyContent.getBytes());
 
       // Upload temp file to create the access key and return success/failure
       accessKey =
           accessManager.uploadKeyFile(
-              regionUUID,
+              region.uuid,
               tempFile.toFile(),
-              keyCode,
-              keyType,
-              sshUser,
-              sshPort,
-              airGapInstall,
-              skipProvisioning,
-              setUpChrony,
-              ntpServers,
-              showSetUpChrony);
+              formData.keyCode,
+              formData.keyType,
+              formData.sshUser,
+              formData.sshPort,
+              formData.airGapInstall,
+              formData.skipProvisioning,
+              formData.setUpChrony,
+              formData.ntpServers,
+              formData.showSetUpChrony);
     } else {
       accessKey =
           accessManager.addKey(
-              regionUUID,
-              keyCode,
+              region.uuid,
+              formData.keyCode,
               null,
-              sshUser,
-              sshPort,
-              airGapInstall,
-              skipProvisioning,
-              setUpChrony,
-              ntpServers,
-              showSetUpChrony);
+              formData.sshUser,
+              formData.sshPort,
+              formData.airGapInstall,
+              formData.skipProvisioning,
+              formData.setUpChrony,
+              formData.ntpServers,
+              formData.showSetUpChrony);
     }
 
     // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
-    // and create a preprovision script
+    // and create a pre-provision script
     if (region.provider.code.equals(onprem.name())) {
       templateManager.createProvisionTemplate(
           accessKey,
-          airGapInstall,
-          passwordlessSudoAccess,
-          installNodeExporter,
-          nodeExporterPort,
-          nodeExporterUser,
-          setUpChrony,
-          ntpServers);
+          formData.airGapInstall,
+          formData.passwordlessSudoAccess,
+          formData.installNodeExporter,
+          formData.nodeExporterPort,
+          formData.nodeExporterUser,
+          formData.setUpChrony,
+          formData.ntpServers);
     }
 
-    if (expirationThresholdDays != null) {
-      accessKey.updateExpirationDate(expirationThresholdDays);
+    if (formData.expirationThresholdDays != null) {
+      accessKey.updateExpirationDate(formData.expirationThresholdDays);
     }
 
-    accessKey.getKeyInfo().mergeFrom(provider.details);
+    KeyInfo keyInfo = accessKey.getKeyInfo();
+    keyInfo.mergeFrom(provider.details);
     return accessKey;
   }
 

@@ -183,6 +183,37 @@ TEST_F(CqlTest, TestUpdateListIndexAfterOverwrite) {
   EXPECT_EQ(res2, "[8, 11, 12]");
 }
 
+TEST_F(CqlTest, TestDeleteListIndex) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto cql = [&](const std::string query) { ASSERT_OK(session.ExecuteQuery(query)); };
+  cql("CREATE TABLE test(h INT, v LIST<INT>, PRIMARY KEY(h))");
+  cql("INSERT INTO test (h, v) VALUES (1, [1, 2, 3])");
+
+  cql("UPDATE test SET v = [4, 5, 6, 7, 8, 9, 10] where h = 1");
+  cql("DELETE v[1], v[4] FROM test WHERE h = 1");
+  ASSERT_EQ(ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM test")),
+      "1,[4, 6, 7, 9, 10]");
+
+  cql("DELETE v[3] FROM test WHERE h = 1");
+  ASSERT_EQ(ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM test")),
+      "1,[4, 6, 7, 10]");
+}
+
+TEST_F(CqlTest, TestDeleteMapKey) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto cql = [&](const std::string query) { ASSERT_OK(session.ExecuteQuery(query)); };
+  cql("CREATE TABLE test(h INT, m map<int, varchar>, PRIMARY KEY(h))");
+  cql("INSERT INTO test (h, m) VALUES (1,{12:'abcd', 13:'pqrs', 14:'xyzf', 21:'aqpr', 22:'xyab'})");
+
+  cql("DELETE m[13], m[21] FROM test WHERE h = 1");
+  ASSERT_EQ(ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM test")),
+      "1,{12 => abcd, 14 => xyzf, 22 => xyab}");
+
+  cql("DELETE m[14] FROM test WHERE h = 1");
+  ASSERT_EQ(ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM test")),
+      "1,{12 => abcd, 22 => xyab}");
+}
+
 TEST_F(CqlTest, Timeout) {
   FLAGS_client_read_write_timeout_ms = 5000 * kTimeMultiplier;
 

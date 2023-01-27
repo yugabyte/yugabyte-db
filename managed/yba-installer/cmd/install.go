@@ -1,6 +1,7 @@
 package cmd
 
 import (
+
 	"github.com/spf13/cobra"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
@@ -64,5 +65,9 @@ func init() {
 	installCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
 		[]string{}, "Preflight checks to skip")
 	installCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
-	rootCmd.AddCommand(installCmd)
+
+	// Install must be run from directory of yba version
+	if !common.RunFromInstalled() {
+		rootCmd.AddCommand(installCmd)
+	}
 }

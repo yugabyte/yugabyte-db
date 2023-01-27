@@ -15,15 +15,19 @@ import com.typesafe.config.ConfigRenderOptions;
 import com.typesafe.config.ConfigValue;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.ws.WSClient;
 
 @Slf4j
+@Singleton
 public class WSClientRefresher {
 
   private final CustomWsClientFactory customWsClientFactory;
   private final RuntimeConfigFactory runtimeConfigFactory;
-  private WSClient customWsClient = null;
+  private final Map<String, WSClient> customWsClients = new ConcurrentHashMap<>();
 
   @Inject
   public WSClientRefresher(
@@ -32,13 +36,13 @@ public class WSClientRefresher {
     this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
-  public synchronized void refreshWsClient(String ybWsConfigPath) {
-    ConfigValue ybWsOverrides = runtimeConfigFactory.globalRuntimeConf().getValue(ybWsConfigPath);
-    log.info(
-        "Creating ws client with config override: {}",
-        ybWsOverrides.render(ConfigRenderOptions.concise()));
-    closePreviousClient(customWsClient);
-    customWsClient = customWsClientFactory.forCustomConfig(ybWsOverrides);
+  public void refreshWsClient(String ybWsConfigPath) {
+    WSClient previousWsClient = customWsClients.put(ybWsConfigPath, newClient(ybWsConfigPath));
+    closePreviousClient(previousWsClient);
+  }
+
+  public WSClient getClient(String ybWsConfigPath) {
+    return customWsClients.computeIfAbsent(ybWsConfigPath, this::newClient);
   }
 
   private void closePreviousClient(WSClient previousWsClient) {
@@ -51,11 +55,12 @@ public class WSClientRefresher {
     }
   }
 
-  public synchronized WSClient getClient(String ybWsConfigPath) {
-    if (customWsClient == null) {
-      log.info("Creating customWsClient for first time");
-      refreshWsClient(ybWsConfigPath);
-    }
-    return customWsClient;
+  private WSClient newClient(String ybWsConfigPath) {
+    ConfigValue ybWsOverrides = runtimeConfigFactory.globalRuntimeConf().getValue(ybWsConfigPath);
+    log.info(
+        "Creating ws client with config override: {}",
+        ybWsOverrides.render(ConfigRenderOptions.concise()));
+
+    return customWsClientFactory.forCustomConfig(ybWsOverrides);
   }
 }

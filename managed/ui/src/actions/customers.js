@@ -112,6 +112,9 @@ export const FETCH_CUSTOMER_CONFIGS_RESPONSE = 'FETCH_CUSTOMER_CONFIGS_RESPONSE'
 export const FETCH_RUNTIME_CONFIGS = 'FETCH_RUNTIME_CONFIGS';
 export const FETCH_RUNTIME_CONFIGS_RESPONSE = 'FETCH_RUNTIME_CONFIGS_RESPONSE';
 
+export const FETCH_RUNTIME_CONFIGS_KEY_INFO = 'FETCH_RUNTIME_CONFIGS_KEY_INFO';
+export const FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE = 'FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE';
+
 export const SET_RUNTIME_CONFIG = 'SET_RUNTIME_CONFIG';
 export const SET_RUNTIME_CONFIG_RESPONSE = 'SET_RUNTIME_CONFIG_RESPONSE';
 
@@ -172,7 +175,7 @@ export const UPDATE_TLS = 'UPDATE_TLS';
 
 export const RESET_RUNTIME_CONFIGS = 'RESET_RUNTIME_CONFIGS';
 
-export const DEFAULT_RUNTIME_GLOBAL_SCOPE = "00000000-0000-0000-0000-000000000000";
+export const DEFAULT_RUNTIME_GLOBAL_SCOPE = '00000000-0000-0000-0000-000000000000';
 
 export function validateToken() {
   let cUUID = Cookies.get('customerId');
@@ -919,6 +922,21 @@ export function fetchRunTimeConfigs(
 export function fetchRunTimeConfigsResponse(response) {
   return {
     type: FETCH_RUNTIME_CONFIGS_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchRunTimeConfigsKeyInfo() {
+  const request = axios.get(`${ROOT_URL}/runtime_config/mutable_key_info`);
+  return {
+    type: FETCH_RUNTIME_CONFIGS_KEY_INFO,
+    payload: request
+  };
+}
+
+export function fetchRunTimeConfigsKeyInfoResponse(response) {
+  return {
+    type: FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE,
     payload: response
   };
 }

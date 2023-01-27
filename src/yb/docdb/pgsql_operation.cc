@@ -21,6 +21,7 @@
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/common/partition.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_value.h"
 
@@ -47,6 +48,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
@@ -78,10 +80,17 @@ DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
-DEFINE_UNKNOWN_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
+#ifdef NDEBUG
+constexpr bool kYsqlPackedRowEnabled = false;
+#else
+constexpr bool kYsqlPackedRowEnabled = true;
+#endif
+
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal, false, kYsqlPackedRowEnabled,
+                         "Whether packed row is enabled for YSQL.");
 
 DEFINE_UNKNOWN_bool(ysql_enable_packed_row_for_colocated_table, false,
-            "Whether to enable packed row for colocated tables.");
+                    "Whether to enable packed row for colocated tables.");
 
 DEFINE_UNKNOWN_uint64(
     ysql_packed_row_size_limit, 0,
@@ -530,6 +539,9 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
     case PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED:
       return ApplyTruncateColocated(data);
+
+    case PgsqlWriteRequestPB::PGSQL_FETCH_SEQUENCE:
+      return ApplyFetchSequence(data);
   }
   return Status::OK();
 }
@@ -828,12 +840,120 @@ Status PgsqlWriteOperation::ApplyTruncateColocated(const DocOperationApplyData& 
   return Status::OK();
 }
 
+Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data) {
+  QLTableRow table_row;
+  DCHECK(request_.has_fetch_sequence_params()) << "Invalid input: fetch sequence without params";
+  RETURN_NOT_OK(ReadColumns(data, &table_row));
+  if (table_row.IsEmpty()) {
+    // Row not found.
+    return STATUS(NotFound, "Unable to find relation for sequence");
+  }
+
+  // Retrieve fetch parameters from the request
+  auto fetch_count = request_.fetch_sequence_params().fetch_count();
+  DCHECK(fetch_count > 0) << "Invalid input: sequence fetch count must be positive";
+  auto inc_by = static_cast<__int128_t>(request_.fetch_sequence_params().inc_by());
+  DCHECK(inc_by != 0) << "Invalid input: sequence step must not be zero";
+  auto min_value = static_cast<__int128_t>(request_.fetch_sequence_params().min_value());
+  auto max_value = static_cast<__int128_t>(request_.fetch_sequence_params().max_value());
+  auto cycle = request_.fetch_sequence_params().cycle();
+
+  // Prepare to write response data
+  if (write_buffer_ == nullptr && sidecars_) {
+    // Reserve space for num rows.
+    write_buffer_ = &sidecars_->Start();
+    row_num_pos_ = write_buffer_->Position();
+    pggate::PgWire::WriteInt64(0, write_buffer_);
+  }
+
+  // Read last_value and is_called from the sequence record
+  ColumnId last_value_column_id(request_.col_refs()[0].column_id());
+  ColumnId is_called_column_id(request_.col_refs()[1].column_id());
+  const auto& last_value_column = VERIFY_RESULT_REF(
+      doc_read_context_->schema.column_by_id(last_value_column_id));
+  const auto& is_called_column = VERIFY_RESULT_REF(
+      doc_read_context_->schema.column_by_id(is_called_column_id));
+  const auto& last_value = table_row.GetValue(last_value_column_id);
+  const auto& is_called = table_row.GetValue(is_called_column_id);
+
+  auto first_fetched = static_cast<__int128_t>(last_value->int64_value());
+  // If last value is called, advance the first value one step
+  if (is_called->bool_value()) {
+    // Check for the limit
+    if (inc_by > 0 && first_fetched > max_value - inc_by) {
+      // At the limit, have to cycle
+      if (!cycle) {
+        return STATUS(QLError,
+                      "nextval: reached maximum value of sequence \"%s\" (%s)",
+                      Slice(),
+                      PgsqlError(YBPgErrorCode::YB_PG_SEQUENCE_GENERATOR_LIMIT_EXCEEDED));
+      }
+      first_fetched = min_value;
+    } else if (inc_by < 0 && first_fetched < min_value - inc_by) {
+      // At the limit, have to cycle
+      if (!cycle) {
+        return STATUS(QLError,
+                      "nextval: reached minimum value of sequence \"%s\" (%s)",
+                      Slice(),
+                      PgsqlError(YBPgErrorCode::YB_PG_SEQUENCE_GENERATOR_LIMIT_EXCEEDED));
+      }
+      first_fetched = max_value;
+    } else { // single fetch does not go over the limit
+      first_fetched += inc_by;
+    }
+  }
+  --fetch_count;
+  // If fetching of the requested number of values would make the value to go over
+  // the boundary, reduce fetch count to the highest possible value
+  if (inc_by > 0 && first_fetched + (inc_by * fetch_count) > max_value) {
+    fetch_count = static_cast<uint32>((max_value - first_fetched) / inc_by);
+  } else if (inc_by < 0 && first_fetched + (inc_by * fetch_count) < min_value) {
+    fetch_count = static_cast<uint32>((min_value - first_fetched) / inc_by);
+  }
+  // set last value of the range
+  auto last_fetched = first_fetched + (inc_by * fetch_count);
+
+  // Update the sequence row
+  if (!is_called->bool_value()) {
+    QLValuePB new_is_called;
+    new_is_called.set_bool_value(true);
+    DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(is_called_column_id));
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+        sub_path, ValueRef(new_is_called, is_called_column.sorting_type()), data.read_time,
+        data.deadline, request_.stmt_id()));
+  }
+  if (last_value->int64_value() != last_fetched) {
+    QLValuePB new_last_value;
+    new_last_value.set_int64_value(last_fetched);
+    DocPath sub_path(encoded_doc_key_.as_slice(),
+                     KeyEntryValue::MakeColumnId(last_value_column_id));
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+        sub_path, ValueRef(new_last_value, last_value_column.sorting_type()), data.read_time,
+        data.deadline, request_.stmt_id()));
+  }
+  // Return fetched range to the client
+  QLValuePB fetch_value;
+  fetch_value.set_int64_value(first_fetched);
+  RETURN_NOT_OK(pggate::WriteColumn(fetch_value, write_buffer_));
+  fetch_value.set_int64_value(last_fetched);
+  RETURN_NOT_OK(pggate::WriteColumn(fetch_value, write_buffer_));
+  result_rows_ = 2;
+
+  return Status::OK();
+}
+
 Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                         QLTableRow* table_row) {
   // Filter the columns using primary key.
   if (doc_key_) {
+    const auto& schema = doc_read_context_->schema;
     Schema projection;
-    RETURN_NOT_OK(CreateProjection(doc_read_context_->schema, request_.column_refs(), &projection));
+    if (!request_.col_refs().empty()) {
+      RETURN_NOT_OK(CreateProjection(schema, request_.col_refs(), &projection));
+    } else {
+      // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
+      RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+    }
     DocPgsqlScanSpec spec(projection, request_.stmt_id(), *doc_key_);
     DocRowwiseIterator iterator(projection,
                                 *doc_read_context_,

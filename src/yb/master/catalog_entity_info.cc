@@ -36,7 +36,6 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/partition.h"
-#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_client.pb.h"
@@ -372,7 +371,7 @@ bool TableInfo::has_pg_type_oid() const {
   return true;
 }
 
-std::string TableInfo::matview_pg_table_id() const {
+TableId TableInfo::matview_pg_table_id() const {
   return LockForRead()->pb.matview_pg_table_id();
 }
 
@@ -380,7 +379,7 @@ bool TableInfo::is_matview() const {
   return LockForRead()->pb.is_matview();
 }
 
-std::string TableInfo::indexed_table_id() const {
+TableId TableInfo::indexed_table_id() const {
   return LockForRead()->indexed_table_id();
 }
 
@@ -542,21 +541,22 @@ bool TableInfo::RemoveTabletUnlocked(const TabletId& tablet_id, DeactivateOnly d
   return result;
 }
 
-void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos* ret) const {
+TabletInfos TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req) const {
   if (req->has_include_inactive() && req->include_inactive()) {
-    GetInactiveTabletsInRange(
+    return GetInactiveTabletsInRange(
         req->partition_key_start(), req->partition_key_end(),
-        ret, req->max_returned_locations());
+        req->max_returned_locations());
   } else {
-    GetTabletsInRange(
+    return GetTabletsInRange(
         req->partition_key_start(), req->partition_key_end(),
-        ret, req->max_returned_locations());
+        req->max_returned_locations());
   }
 }
 
-void TableInfo::GetTabletsInRange(
+TabletInfos TableInfo::GetTabletsInRange(
     const std::string& partition_key_start, const std::string& partition_key_end,
-    TabletInfos* ret, const int32_t max_returned_locations) const {
+    const int32_t max_returned_locations) const {
+  TabletInfos ret;
   SharedLock<decltype(lock_)> l(lock_);
   decltype(partitions_)::const_iterator it, it_end;
   if (partition_key_start.empty()) {
@@ -572,19 +572,23 @@ void TableInfo::GetTabletsInRange(
   } else {
     it_end = partitions_.upper_bound(partition_key_end);
   }
-
+  ret.reserve(
+      std::min(static_cast<size_t>(std::max(max_returned_locations, 0)), partitions_.size()));
   int32_t count = 0;
   for (; it != it_end && count < max_returned_locations; ++it) {
-    ret->push_back(it->second);
+    ret.push_back(it->second);
     count++;
   }
+  return ret;
 }
 
-void TableInfo::GetInactiveTabletsInRange(
+TabletInfos TableInfo::GetInactiveTabletsInRange(
     const std::string& partition_key_start, const std::string& partition_key_end,
-    TabletInfos* ret, const int32_t max_returned_locations) const {
+    const int32_t max_returned_locations) const {
+  TabletInfos ret;
   SharedLock<decltype(lock_)> l(lock_);
   int32_t count = 0;
+  ret.reserve(std::min(static_cast<size_t>(std::max(max_returned_locations, 0)), tablets_.size()));
   for (const auto& p : tablets_) {
     if (count >= max_returned_locations) {
       break;
@@ -597,9 +601,10 @@ void TableInfo::GetInactiveTabletsInRange(
         p.second->metadata().dirty().pb.partition().partition_key_start() > partition_key_end) {
       continue;
     }
-    ret->push_back(p.second);
+    ret.push_back(p.second);
     count++;
   }
+  return ret;
 }
 
 bool TableInfo::IsAlterInProgress(uint32_t version) const {
@@ -964,6 +969,11 @@ const std::string& PersistentTableInfo::indexed_table_id() const {
              : pb.has_indexed_table_id() ? pb.indexed_table_id() : kEmptyString;
 }
 
+Result<bool> PersistentTableInfo::is_being_modified_by_ddl_transaction(
+  const TransactionId& txn) const {
+  return has_ysql_ddl_txn_verifier_state() &&
+    txn == VERIFY_RESULT(FullyDecodeTransactionId(pb_transaction_id()));
+}
 
 // ================================================================================================
 // DeletedTableInfo

@@ -186,6 +186,8 @@ func (pg Postgres) Restart() {
 // Uninstall drops the yugaware DB and removes Postgres binaries.
 func (pg Postgres) Uninstall(removeData bool) {
 
+	pg.Stop()
+
 	if removeData {
 		// Remove data directory
 		// TODO: we should also remove the pgsql run directory
@@ -201,6 +203,9 @@ func (pg Postgres) Uninstall(removeData bool) {
 			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
 				err.Error(), pg.SystemdFileLocation))
 		}
+
+		// reload systemd daemon
+		common.RunBash(common.Systemctl, []string{"daemon-reload"})
 	}
 
 	// Remove conf/binary
@@ -290,7 +295,7 @@ func (pg Postgres) Upgrade() {
 	pg.postgresDirectories = newPostgresDirectories()
 	config.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
 	pg.extractPostgresPackage()
-	pg.moveConfFiles()
+	pg.copyConfFiles()
 	pg.modifyPostgresConf()
 
 	if !common.HasSudoAccess() {
@@ -373,12 +378,12 @@ func (pg Postgres) setUpDataDir() {
 		if err != nil {
 			log.Fatal("failed to move config: " + err.Error())
 		}
-		pg.moveConfFiles() // move conf files back to conf location
+		pg.copyConfFiles() // move conf files back to conf location
 	}
 	// TODO: Need to figure on non-root case.
 }
 
-func (pg Postgres) moveConfFiles() {
+func (pg Postgres) copyConfFiles() {
 	// move conf files back to conf location
 	userName := viper.GetString("service_username")
 

@@ -27,7 +27,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.forms.AvailabilityZoneFormData;
+import com.yugabyte.yw.forms.AvailabilityZoneEditData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -201,8 +201,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
     createUniverseInAZ(uuid);
 
-    AvailabilityZoneFormData.AvailabilityZoneEditData editData =
-        new AvailabilityZoneFormData.AvailabilityZoneEditData();
+    AvailabilityZoneEditData editData = new AvailabilityZoneEditData();
     editData.subnet = "subnet-2";
     editData.secondarySubnet = "secondarySubnet";
     ObjectNode requestBody = (ObjectNode) Json.toJson(editData);
@@ -214,8 +213,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   @Test
   public void testEditAvailabilityZone() {
     AvailabilityZone az = AvailabilityZone.createOrThrow(defaultRegion, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZoneFormData.AvailabilityZoneEditData editData =
-        new AvailabilityZoneFormData.AvailabilityZoneEditData();
+    AvailabilityZoneEditData editData = new AvailabilityZoneEditData();
 
     editData.subnet = "subnet-2";
     editData.secondarySubnet = "secondarySubnet";

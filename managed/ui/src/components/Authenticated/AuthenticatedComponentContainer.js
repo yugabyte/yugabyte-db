@@ -5,8 +5,9 @@ import AuthenticatedComponent from './AuthenticatedComponent';
 import {
   fetchUniverseList,
   fetchUniverseListResponse,
-  resetUniverseList
-, setUniverseMetrics } from '../../actions/universe';
+  resetUniverseList,
+  setUniverseMetrics
+} from '../../actions/universe';
 import {
   getProviderList,
   getProviderListResponse,
@@ -35,6 +36,8 @@ import {
   fetchYugaWareVersionResponse,
   fetchCustomerConfigs,
   fetchCustomerConfigsResponse,
+  fetchRunTimeConfigsKeyInfo,
+  fetchRunTimeConfigsKeyInfoResponse,
   getTlsCertificates,
   getTlsCertificatesResponse,
   insecureLogin,
@@ -125,11 +128,13 @@ const mapDispatchToProps = (dispatch) => {
     getProviderListItems: () => {
       dispatch(getProviderList()).then((response) => {
         if (response.payload.status === 200) {
-          Promise.all(response.payload.data.map((provider) => {
-            return dispatch(listAccessKeys(provider.uuid)).then((response) => {
-              dispatch(listAccessKeysResponse(response.payload));
-            });
-          })).then(() => {
+          Promise.all(
+            response.payload.data.map((provider) => {
+              return dispatch(listAccessKeys(provider.uuid)).then((response) => {
+                dispatch(listAccessKeysResponse(response.payload));
+              });
+            })
+          ).then(() => {
             dispatch(listAccessKeysReqCompleted());
           });
         }
@@ -167,6 +172,12 @@ const mapDispatchToProps = (dispatch) => {
     fetchCustomerConfigs: () => {
       dispatch(fetchCustomerConfigs()).then((response) => {
         dispatch(fetchCustomerConfigsResponse(response.payload));
+      });
+    },
+
+    fetchRuntimeConfigKeyInfo: () => {
+      dispatch(fetchRunTimeConfigsKeyInfo()).then((response) => {
+        dispatch(fetchRunTimeConfigsKeyInfoResponse(response.payload));
       });
     },
 
