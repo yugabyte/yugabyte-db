@@ -231,7 +231,7 @@ Test options:
   --{no,skip}-{test-existence-check,check-test-existence}
     Don't check that all test binaries referenced by CMakeLists.txt files exist.
   --num-repetitions, --num-reps, -n
-    Repeat a C++ test this number of times. This delegates to the repeat_unit_test.sh script.
+    Repeat a C++/Java test this number of times. This delegates to the repeat_unit_test.sh script.
   --test-parallelism, --tp N
     When running tests repeatedly, run up to N instances of the test in parallel. Equivalent to the
     --parallelism argument of repeat_unit_test.sh.

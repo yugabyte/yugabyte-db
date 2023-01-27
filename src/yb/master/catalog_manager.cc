@@ -432,10 +432,10 @@ TAG_FLAG(ysql_legacy_colocated_database_creation, advanced);
 DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022");
 
 DEFINE_RUNTIME_int64(tablet_split_low_phase_shard_count_per_node, 8,
-    "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
+    "The per-node tablet leader count until which a table is splitting at the phase 1 threshold, "
     "as defined by tablet_split_low_phase_size_threshold_bytes.");
 DEFINE_RUNTIME_int64(tablet_split_high_phase_shard_count_per_node, 24,
-    "The per-node tablet count until which a table is splitting at the phase 2 threshold, "
+    "The per-node tablet leader count until which a table is splitting at the phase 2 threshold, "
     "as defined by tablet_split_high_phase_size_threshold_bytes.");
 
 DEFINE_RUNTIME_int64(tablet_split_low_phase_size_threshold_bytes, 512_MB,
@@ -8620,6 +8620,27 @@ Result<SnapshotScheduleId> CatalogManager::FindCoveringScheduleForObject(
   return StronglyTypedUuid<SnapshotScheduleId_Tag>::Nil();
 }
 
+Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<NamespaceInfo>& database) {
+  SharedLock lock(mutex_);
+  for (const auto& table : tables_->GetAllTables()) {
+    auto ltm = table->LockForRead();
+    if (table->namespace_id() != database->id()) {
+      continue;
+    }
+    if (IsCdcEnabledUnlocked(*table)) {
+      LOG(ERROR) << "Error deleting database: " << database->id() << ", table: " << table->id()
+                 << " is under replication"
+                 << ". Cannot delete a database that contains tables under replication.";
+      return STATUS_FORMAT(
+          InvalidCommand, Format(
+                              "Table: $0 is under replication. Cannot delete a database that "
+                              "contains tables under replication.",
+                              table->id()));
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
                                          DeleteNamespaceResponsePB* resp,
                                          rpc::RpcContext* rpc) {
@@ -8837,6 +8858,11 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
         "Cannot delete database which has schedule: $0, request: $1",
         covering_schedule_id, req->ShortDebugString());
   }
+
+  // Only allow YSQL database deletion if it does not contain any replicated tables. No need to
+  // check this for YCQL keyspaces, as YCQL does not allow drops of non-empty keyspaces, regardless
+  // of their replication status.
+  RETURN_NOT_OK(CheckIfDatabaseHasReplication(database));
 
   // Set the Namespace to DELETING.
   TRACE("Locking database");

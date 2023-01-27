@@ -70,7 +70,7 @@ The following examples demonstrate the possible stages (IN PROGRESS, ERROR, SUCC
 
 {{< note title="Setup" >}}
 
-Local single-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
+Local single-node cluster. See [Set up YugabyteDB universe](../../../explore/#set-up-yugabytedb-universe).
 
 {{< /note >}}
 

@@ -26,6 +26,14 @@ public class KubernetesRegionInfo extends KubernetesInfo {
   @ApiModelProperty
   public String kubeDomain;
 
+  @JsonAlias("CERT-MANAGER-CLUSTERISSUER")
+  @ApiModelProperty
+  public String certManagerClusterIssuer;
+
+  @JsonAlias("CERT-MANAGER-ISSUER")
+  @ApiModelProperty
+  public String certManagerIssuer;
+
   @Override
   @JsonIgnore
   public Map<String, String> getEnvVars() {
@@ -42,6 +50,12 @@ public class KubernetesRegionInfo extends KubernetesInfo {
     }
     if (kubeDomain != null) {
       envVars.put("KUBE_DOMAIN", kubeDomain);
+    }
+    if (certManagerClusterIssuer != null) {
+      envVars.put("CERT-MANAGER-CLUSTERISSUER", certManagerClusterIssuer);
+    }
+    if (certManagerIssuer != null) {
+      envVars.put("CERT-MANAGER-ISSUER", certManagerIssuer);
     }
 
     return envVars;
