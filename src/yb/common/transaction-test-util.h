@@ -88,6 +88,11 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return tablet_id;
   }
 
+  Result<IsExternalTransaction> IsExternalTransactionResult(
+      const TransactionId& transaction_id) override {
+    return IsExternalTransaction::kFalse;
+  }
+
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
 };
