@@ -90,6 +90,3 @@ analyze prtx1;
 -- Cleanup
 DROP TABLE x;
 DROP TABLE y;
-
--- Analyze all tables
-ANALYZE;
