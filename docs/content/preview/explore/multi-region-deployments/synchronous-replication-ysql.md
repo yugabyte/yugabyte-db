@@ -18,7 +18,7 @@ type: docs
 
 YugabyteDB can be deployed in a globally distributed manner to serve application queries from the region closest to end users with low latencies, as well as to survive any outages to ensure high availability.
 
-In a synchronized multi-region cluster, a minimum of 3 nodes are spread across 3 regions with a replication factor (RF) of 3.
+In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3.
 
 This deployment provides the following advantages:
 

@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB can be deployed in a globally distributed manner to serve application queries from the region closest to end users with low latencies, as well as to survive any outages to ensure high availability.
 
-In a synchronized multi-region cluster, a minimum of 3 nodes are spread across 3 regions with a replication factor (RF) of 3.
+In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3.
 
 This deployment provides the following advantages:
 
@@ -36,12 +36,6 @@ This deployment provides the following advantages:
     </a>
   </li>
 </ul>
-
-{{< note title="Setup for POCs" >}}
-
-To use uniform and topology-aware load balancing features of smart drivers with YugabyteDB Managed clusters, the application must be hosted in a peered application VPC.
-
-{{< /note >}}
 
 ## Create a replicate across regions cluster
 
@@ -65,11 +59,11 @@ To view a table of per-node statistics for the cluster, in YugabyteDB Managed, d
 
 1. On the **Clusters** page, select the cluster.
 
-1. Select **Nodes** to view the total read and write IOPS per node and other statistics as shown in the following illustration. Note that both the reads and the writes are roughly the same across all the nodes, indicating uniform load across the nodes.
+1. Select **Nodes** to view the total read and write IOPS per node and other statistics as shown in the following illustration.
 
 ![Read and write IOPS with 3 nodes](/images/ce/transactions_cloud_observe1.png)
 
-The load is distributed evenly across the regions.
+Note that both the reads and the writes are roughly the same across all the nodes, indicating uniform load across the nodes.
 
 To view your cluster metrics such as YSQL operations/second and Latency, in YugabyteDB Managed, select the cluster [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
 
@@ -113,7 +107,3 @@ Verify that the load is moving to the preferred region on the **Nodes** tab.
 When complete, the load is handled exclusively by the preferred region.
 
 Note that cross-region latencies are unavoidable in the write path, given the need to ensure region-level automatic failover and repair.
-
-## Learn more
-
-[Replication](../../../architecture/docdb-replication/replication/)
