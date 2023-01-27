@@ -51,7 +51,6 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
@@ -79,8 +78,7 @@ public class AWSCloudImpl implements CloudAPI {
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
 
   public AmazonElasticLoadBalancing getELBClient(Provider provider, String regionCode) {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    return getELBClientInternal(config, regionCode);
+    return getELBClientInternal(provider.getUnmaskedConfig(), regionCode);
   }
 
   private AmazonElasticLoadBalancing getELBClientInternal(
@@ -94,8 +92,7 @@ public class AWSCloudImpl implements CloudAPI {
 
   // TODO use aws sdk 2.x and switch to async
   public AmazonEC2 getEC2Client(Provider provider, String regionCode) {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    return getEC2ClientInternal(config, regionCode);
+    return getEC2ClientInternal(provider.getUnmaskedConfig(), regionCode);
   }
 
   private AmazonEC2 getEC2ClientInternal(Map<String, String> config, String regionCode) {
@@ -163,8 +160,7 @@ public class AWSCloudImpl implements CloudAPI {
   }
 
   @Override
-  public boolean isValidCreds(Provider provider, String region) {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+  public boolean isValidCreds(Map<String, String> config, String region) {
     try {
       AmazonEC2 ec2Client = getEC2ClientInternal(config, region);
       DryRunResult<DescribeInstancesRequest> dryRunResult =

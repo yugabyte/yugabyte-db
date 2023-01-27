@@ -105,7 +105,7 @@ public class CloudBootstrap extends CloudTaskBase {
 
       public static PerRegionMetadata fromRegion(Region region) {
         PerRegionMetadata perRegionMetadata = new PerRegionMetadata();
-        perRegionMetadata.customImageId = region.getYbImage();
+        perRegionMetadata.customImageId = region.ybImage;
         perRegionMetadata.customSecurityGroupId = region.getSecurityGroupId();
         //    perRegionMetadata.subnetId = can only be set per zone
         perRegionMetadata.vpcId = region.getVnetName();

@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import java.util.Map;
 import java.util.UUID;
@@ -58,8 +57,7 @@ public class KubernetesCheckStorageClass extends AbstractTaskBase {
     KubernetesManager k8s = kubernetesManagerFactory.getManager();
     Map<String, String> config = taskParams().config;
     if (config == null) {
-      Provider provider = Provider.getOrBadRequest(taskParams().providerUUID);
-      config = CloudInfoInterface.fetchEnvVars(provider);
+      config = Provider.getOrBadRequest(taskParams().providerUUID).getUnmaskedConfig();
     }
 
     // storage class name used by tserver

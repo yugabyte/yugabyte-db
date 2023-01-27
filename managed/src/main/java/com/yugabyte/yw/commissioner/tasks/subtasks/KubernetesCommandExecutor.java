@@ -35,7 +35,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -178,8 +177,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // (for backwards compatibility).
     Map<String, String> config = taskParams().config;
     if (config == null) {
-      Provider provider = Provider.getOrBadRequest(taskParams().providerUUID);
-      config = CloudInfoInterface.fetchEnvVars(provider);
+      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
     return config;
   }
@@ -423,10 +421,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             String helmFullNameWithSuffix = podVals.get("helmFullNameWithSuffix").asText();
             UUID azUUID = UUID.fromString(podVals.get("az_uuid").asText());
             String domain = azToDomain.get(azUUID);
-            AvailabilityZone az = AvailabilityZone.getOrBadRequest(azUUID);
-            Map<String, String> config = CloudInfoInterface.fetchEnvVars(az);
             String podAddressTemplate =
-                config.getOrDefault("KUBE_POD_ADDRESS_TEMPLATE", Util.K8S_POD_FQDN_TEMPLATE);
+                AvailabilityZone.get(azUUID)
+                    .getUnmaskedConfig()
+                    .getOrDefault("KUBE_POD_ADDRESS_TEMPLATE", Util.K8S_POD_FQDN_TEMPLATE);
             if (nodeName.contains("master")) {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
@@ -494,9 +492,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   private String getPullSecret() {
     // Since the pull secret will always be the same across clusters,
     // it is always at the provider level.
-    Provider provider = Provider.getOrBadRequest(taskParams().providerUUID);
+    Provider provider = Provider.get(taskParams().providerUUID);
     if (provider != null) {
-      Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+      Map<String, String> config = provider.getUnmaskedConfig();
       if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
         return config.get("KUBECONFIG_PULL_SECRET");
       }
@@ -523,7 +521,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     overrides = yaml.load(application.resourceAsStream("k8s-expose-all.yml"));
 
     Provider provider = Provider.get(taskParams().providerUUID);
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+    Map<String, String> config = provider.getUnmaskedConfig();
     Map<String, String> azConfig = new HashMap<String, String>();
     Map<String, String> regionConfig = new HashMap<String, String>();
 
@@ -593,10 +591,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
             replicationFactor = userIntent.replicationFactor;
-            Region r = Region.getOrBadRequest(region.uuid);
-            regionConfig = CloudInfoInterface.fetchEnvVars(r);
-            AvailabilityZone az = AvailabilityZone.getOrBadRequest(zone.uuid);
-            azConfig = CloudInfoInterface.fetchEnvVars(az);
+            azConfig = AvailabilityZone.get(zone.uuid).getUnmaskedConfig();
+            regionConfig = Region.get(region.uuid).getUnmaskedConfig();
           }
         }
       }

@@ -16,8 +16,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.Provider;
 import io.fabric8.kubernetes.api.model.Pod;
 import java.time.Duration;
@@ -94,8 +92,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
   private boolean waitForPods() {
     Map<String, String> config = taskParams().config;
     if (taskParams().config == null) {
-      Provider provider = Provider.getOrBadRequest(taskParams().providerUUID);
-      config = CloudInfoInterface.fetchEnvVars(provider);
+      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
     List<Pod> pods =
         kubernetesManagerFactory
