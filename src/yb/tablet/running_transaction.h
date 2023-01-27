@@ -85,7 +85,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return last_known_aborted_subtxn_set_;
   }
 
-  const bool external_transaction() const {
+  const IsExternalTransaction external_transaction() const {
     return metadata_.external_transaction;
   }
 
