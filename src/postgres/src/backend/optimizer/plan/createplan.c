@@ -3520,10 +3520,12 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	{
 		Assert(false);
 		/* YB_TODO(neil@yugabyte). Need rewrite - Code path wouldn't get here.
+		 * Still need to initialize for the compiler: -Wsometimes-uninitialized.
 		 *
 		 * subplan = (Plan *) make_result(result_tlist, NULL, NULL);
 		 * copy_generic_path_info(subplan, linitial(best_path->subpaths));
 		 */
+		subplan = NULL;
 	}
 	else
 	{
