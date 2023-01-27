@@ -134,7 +134,7 @@ The packed row format can be enabled using the following gflags.
 
 * Inserts: Entire row is stored as a single key-value pair.
 * Updates:  If some column(s) are updated, then each such column update is stored as a key-value pair in DocDb (same as without packed rows). However If all non-key columns are updated, then the row is stored in the packed format as one single key-value pair. This scheme adopts the best of both worlds - efficient updates and efficient storage. 
-* Select: Scans need to construct the row from packed inserts as well as non-packed update(s) if any.
+* **Select**: Scans need to construct the row from packed inserts as well as non-packed update(s) if any.
 * **Compactions**: Compactions produce a compact version of the row, if the row has unpacked fragments due to updates.
 * **Backwards compatible**: Read code can interpret non-packed format as well. Write/Updates can produce non-packed format as well.
 
