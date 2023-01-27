@@ -61,6 +61,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -110,13 +111,23 @@ DEFINE_RUNTIME_uint32(external_transaction_apply_rpc_limit, 0,
 DECLARE_bool(enable_deadlock_detection);
 DECLARE_int32(rpc_workers_limit);
 
+DECLARE_uint32(external_transaction_retention_window_secs);
+
 using namespace std::literals;
 using namespace std::placeholders;
 
 namespace yb {
 namespace tablet {
 
-std::chrono::microseconds GetTransactionTimeout() {
+std::chrono::microseconds GetTransactionTimeout(bool is_external) {
+  if (is_external) {
+    // For externally sourced transactions, use the retention window defined by
+    // --_external_transaction_retention_window_secs as the timeout.
+    auto retention_window_micros = static_cast<int64_t>(
+        GetAtomicFlag(&FLAGS_external_transaction_retention_window_secs) *
+        MonoTime::kMicrosecondsPerSecond);
+    return std::chrono::microseconds(retention_window_micros);
+  }
   const double timeout = GetAtomicFlag(&FLAGS_transaction_max_missed_heartbeat_periods) *
                          GetAtomicFlag(&FLAGS_transaction_heartbeat_usec);
   // Cast to avoid -Wimplicit-int-float-conversion.
@@ -242,14 +253,11 @@ class TransactionState {
 
   // Whether this transaction expired at specified time.
   bool ExpiredAt(HybridTime now) const {
-    if (is_external()) {
-      return false;
-    }
     if (ShouldBeCommitted() || ShouldBeInStatus(TransactionStatus::SEALED)) {
       return false;
     }
     const int64_t passed = now.GetPhysicalValueMicros() - last_touch_.GetPhysicalValueMicros();
-    if (std::chrono::microseconds(passed) > GetTransactionTimeout()) {
+    if (std::chrono::microseconds(passed) > GetTransactionTimeout(is_external())) {
       return true;
     }
     return false;
@@ -1252,6 +1260,17 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     ExecutePostponedLeaderActions(&actions);
   }
 
+  size_t TEST_CountExternalTransactions() {
+    std::lock_guard<std::mutex> lock(managed_mutex_);
+    auto count = 0;
+    for (const auto& transaction : managed_transactions_) {
+      if (transaction.is_external()) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   size_t test_count_transactions() {
     std::lock_guard<std::mutex> lock(managed_mutex_);
     return managed_transactions_.size();
@@ -1718,7 +1737,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         LOG_WITH_PREFIX(INFO)
             << __func__ << ", now: " << now << ", first: " << txn.ToString()
             << ", expired: " << txn.ExpiredAt(now) << ", timeout: "
-            << MonoDelta(GetTransactionTimeout()) << ", passed: "
+            << MonoDelta(GetTransactionTimeout(txn.is_external())) << ", passed: "
             << MonoDelta::FromMicroseconds(
                    now.GetPhysicalValueMicros() - txn.last_touch().GetPhysicalValueMicros());
       }
@@ -1802,6 +1821,10 @@ void TransactionCoordinator::ProcessAborted(const AbortedData& data) {
 
 int64_t TransactionCoordinator::PrepareGC(std::string* details) {
   return impl_->PrepareGC(details);
+}
+
+size_t TransactionCoordinator::TEST_CountExternalTransactions() const {
+  return impl_->TEST_CountExternalTransactions();
 }
 
 size_t TransactionCoordinator::test_count_transactions() const {

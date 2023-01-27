@@ -118,6 +118,7 @@ DECLARE_bool(ysql_legacy_colocated_database_creation);
 DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(tablet_server_svc_queue_length);
+DECLARE_uint32(external_transaction_retention_window_secs);
 
 namespace yb {
 
@@ -1180,6 +1181,47 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
 
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransactions) {
+  // This test ensures that transactions older than the retention window are cleaned up on both
+  // the coordinator and participant.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  // Write 2 transactions that are both not committed.
+  ASSERT_NO_FATALS(WriteTransactionalWorkload(
+      0, 49, &producer_cluster_, producer_table->name(), false /* commit_tranasction */));
+  master::WaitForReplicationDrainRequestPB req;
+  std::shared_ptr<client::YBTable> producer_tran_table;
+  YBTableName producer_tran_table_name(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  ASSERT_OK(producer_client()->OpenTable(producer_tran_table_name, &producer_tran_table));
+  PopulateWaitForReplicationDrainRequest({tables_pair.first, producer_tran_table}, &req);
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_NO_FATALS(WriteTransactionalWorkload(
+      50, 99, &producer_cluster_, producer_table->name(), false /* commit_tranasction */));
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  // Delete universe replication now so that new external transactions from the transaction pool
+  // do not come in.
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  // Set the retention window to 0 and ensure that the transaction is cleaned up on the coordinator.
+  FLAGS_external_transaction_retention_window_secs = 0;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return CountExternalTransactions(consumer_cluster()) == 0;
+  },  MonoDelta::FromSeconds(30), "Wait for transactions to be cleaned up on coordinator"));
+
+  // Trigger a compaction and ensure that the transaction has been cleaned up on the participant.
+  FLAGS_aborted_intent_cleanup_ms = 0;
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
 }
 
 class TwoDCYSqlTestStressTest : public TwoDCYSqlTestConsistentTransactionsTest {
