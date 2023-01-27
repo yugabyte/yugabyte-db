@@ -2675,7 +2675,6 @@ export default class ClusterFields extends Component {
                         minVal={ASYNC_MIN_REPLICATION_FACTOR}
                         maxVal={ASYNC_MAX_REPLICATION_FACTOR}
                         onInputChanged={this.replicationFactorChanged}
-                        input={{ style:false }}
                         onInputBlur={(e) => {
                           if (isEmptyString(e.target.value)) { this.replicationFactorChanged(ASYNC_MIN_REPLICATION_FACTOR); }
                           if (Number(e.target.value) !== this.state.replicationFactor) { this.replicationFactorChanged(e.target.value); }
