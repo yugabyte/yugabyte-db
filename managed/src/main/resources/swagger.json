@@ -7993,7 +7993,7 @@
           "type" : "integer"
         },
         "sortBy" : {
-          "enum" : [ "taskType", "scheduleUUID" ],
+          "enum" : [ "taskType", "scheduleUUID", "scheduleName" ],
           "type" : "string"
         }
       },
