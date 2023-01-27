@@ -102,7 +102,7 @@ The non-primary key columns correspond to subdocuments within the document. The 
 
 We use a binary-comparable encoding to translate the value for each YCQL type to strings that go to the KV-Store.
 
-## Packed Row format (Beta)
+## Packed row format (Beta)
 
 A row corresponding to the user table is stored as multiple key value pairs in the DocDB. For
 example, A row with one primary key and n non-key columns - K (primary key)  |  C1  | C2  | ………  |
