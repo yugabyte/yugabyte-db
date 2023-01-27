@@ -145,7 +145,7 @@ The packed row format can be enabled using the following gflags.
 
 ### Limitations
 
-While packed row feature works for YSQL api using the YSQL specific gflags with most cross features like backup restore, schema changes etc, the following are some of the known limitations an are being worked on.
+While packed row feature works for YSQL API using the YSQL specific GFlags with most cross features like backup restore, schema changes, and so on, the following are some of the known limitations which are currently under development:
 * Integration with xCluster and CDC (Beta) - There are some known limitations with schema changes/DDLs and CDC and Packed Row feature.
 * Colocated and xCluster - There are some limitations around propagation of schema changes for
   colocated tables in xCluster in the packed row format that are being worked on.
