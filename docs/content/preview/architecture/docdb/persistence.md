@@ -110,7 +110,7 @@ Cn, would be stored as n key value pairs - <K, C1> <K, C2> .... <K, Cn>.
 
 With packed row format, it would be stored as a single key value pair <K, packed {C1, C2...Cn}>.
 
-While UDTs can be used to achieve the packed row format at the application level, native support for
+While UDTs (User-defined type) can be used to achieve the packed row format at the application level, native support for
 packed row format has the following benefits:
 * Lower storage footprint.
 * Efficient INSERTs, especially when a table has large number of columns.
