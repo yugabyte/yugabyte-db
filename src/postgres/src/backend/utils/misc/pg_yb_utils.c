@@ -1042,7 +1042,7 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
-char *yb_test_block_index_state_change = "";
+char *yb_test_block_index_phase = "";
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
