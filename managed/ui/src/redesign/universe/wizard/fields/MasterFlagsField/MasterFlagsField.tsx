@@ -3,9 +3,6 @@ import { Controller, useFormContext } from 'react-hook-form';
 import { KeyValueInput } from '../../../../uikit/KeyValueInput/KeyValueInput';
 import { DBConfigFormValue } from '../../steps/db/DBConfig';
 import { I18n, translate } from '../../../../uikit/I18n/I18n';
-import { ControllerRenderProps } from '../../../../helpers/types';
-import { FlagsObject } from '../../../../helpers/dtos';
-import './MasterFlagsField.scss';
 
 interface MasterFlagsFieldProps {
   disabled: boolean;
@@ -23,12 +20,12 @@ export const MasterFlagsField: FC<MasterFlagsFieldProps> = ({ disabled }) => {
       <Controller
         control={control}
         name="masterGFlags"
-        render={({ value, onChange }: ControllerRenderProps<FlagsObject>) => (
+        render={({ field }) => (
           <KeyValueInput
             placeholderKey={translate('Flag')}
             placeholderValue={translate('Value')}
-            value={value}
-            onChange={onChange}
+            value={field.value}
+            onChange={field.onChange}
             disabled={disabled}
           />
         )}

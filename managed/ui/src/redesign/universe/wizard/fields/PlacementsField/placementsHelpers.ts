@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { useQuery } from 'react-query';
-import { useFormContext } from 'react-hook-form';
+import { Path, useFormContext } from 'react-hook-form';
 import { useEffect, useRef, useState } from 'react';
 import { Cluster, ClusterType, UniverseConfigure } from '../../../../helpers/dtos';
 import { CloudConfigFormValue } from '../../steps/cloud/CloudConfig';
@@ -74,6 +74,8 @@ export const useAutoPlacement = (
   const { setValue, getValues } = useFormContext<CloudConfigFormValue>();
   const [needAutoPlacement, setNeedAutoPlacement] = useState(false);
 
+  const fieldName = (name as unknown) as Path<CloudConfigFormValue>;
+
   const clusterType =
     operation === ClusterOperation.NEW_PRIMARY ? ClusterType.PRIMARY : ClusterType.ASYNC;
 
@@ -108,7 +110,7 @@ export const useAutoPlacement = (
         const cluster = _.find<Cluster>(data.clusters, { clusterType }); // TODO: revise logic for async cluster case
         const zones = getPlacementsFromCluster(cluster);
         _log('loaded auto placement', zones);
-        setValue(name, zones, { shouldValidate: true });
+        setValue(fieldName, zones, { shouldValidate: true });
         setNeedAutoPlacement(false);
       }
     }
@@ -122,18 +124,18 @@ export const useAutoPlacement = (
       // make sure it was a reset and not initial render when zones are empty due to being loaded
       if (!_.isEmpty(prevZones.current)) {
         const newPlacements = Array<PlacementUI>(replicationFactor).fill(null);
-        setValue(name, newPlacements, { shouldValidate: true });
+        setValue(fieldName, newPlacements, { shouldValidate: true });
         setNeedAutoPlacement(false);
         _log('manual: reset placements to', newPlacements);
       }
     } else {
-      const currentPlacements = getValues<string, PlacementUI[]>(name);
+      const currentPlacements = getValues(fieldName) ?? [];
 
       // filter zones and put "null" in place of zones from unavailable (i.e. deleted) regions, if any
       const zoneIDs = new Set(zonesAll.flatMap((item) => item.uuid));
-      const filteredCurrentPlacements = currentPlacements.map((item) =>
-        zoneIDs.has(item?.uuid || '') ? item : null
-      );
+      const filteredCurrentPlacements =
+        currentPlacements ||
+        [].map((item: Record<string, string>) => (zoneIDs.has(item?.uuid || '') ? item : null));
 
       // make sure number of placement rows always equal to replication factor
       const newPlacements: PlacementUI[] = [];
@@ -141,7 +143,7 @@ export const useAutoPlacement = (
         newPlacements.push(filteredCurrentPlacements[i] || null);
       }
 
-      setValue(name, newPlacements, { shouldValidate: true });
+      setValue(fieldName, newPlacements, { shouldValidate: true });
       setNeedAutoPlacement(false);
 
       _log('manual: update placements to', newPlacements);
@@ -158,7 +160,7 @@ export const useAutoPlacement = (
     if (autoPlacement) {
       if (_.isEmpty(regionList)) {
         _log('auto: reset placements');
-        setValue(name, [], { shouldValidate: true });
+        setValue(fieldName, [], { shouldValidate: true });
         setNeedAutoPlacement(false);
       } else {
         // need auto-placement when any of autoPlacement/regionList/totalNodes/replicationFactor changed
