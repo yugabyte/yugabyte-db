@@ -47,17 +47,33 @@ To use uniform and topology-aware load balancing features of smart drivers with 
 
 Before you can create a multi-region cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../../../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/).
+To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
+
+- Multi-region clusters must be [deployed in a VPC](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/). In AWS, you need a VPC for each region.
+- Set up a [peering connection](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to a VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
+- Copy the YB Workload Simulator application to the peered VPC and run it from there.
+
+YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
 
 ## Start a workload
 
-Follow the [setup instructions](../../#set-up-yb-workload-simulator) to connect the YB Workload Simulator application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
+Follow the [setup instructions](../../#set-up-yb-workload-simulator) to connect the YB Workload Simulator application, and run a read-write workload.
 
-You should now see some read and write load on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
+To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
-![Multi-zone cluster load](/images/ce/online-reconfig-multi-zone-load.png)
+To view a table of per-node statistics for the cluster, in YugabyteDB Managed, do the following:
+
+1. On the **Clusters** page, select the cluster.
+
+1. Select **Nodes** to view the total read and write IOPS per node and other statistics as shown in the following illustration. Note that both the reads and the writes are roughly the same across all the nodes, indicating uniform load across the nodes.
+
+![Read and write IOPS with 3 nodes](/images/ce/transactions_cloud_observe1.png)
 
 The load is distributed evenly across the regions.
+
+To view your cluster metrics such as YSQL operations/second and Latency, in YugabyteDB Managed, select the cluster [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
+
+![Performance charts for 3 nodes](/images/ce/transactions_cloud_chart.png)
 
 ## Tuning latencies
 
@@ -80,18 +96,19 @@ If application reads are known to be originating dominantly from a single region
 
 For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction.
 
-The following command sets the preferred zone to `aws.us-west-2.us-west-2a`:
+You can set one of the regions as preferred as follows:
 
-```sh
-$ ./bin/yb-admin \
-    --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-    set_preferred_zones  \
-    aws.us-west-2.us-west-2a
-```
+1. On the cluster **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
-You should see the read and write load on the [tablet servers page](http://localhost:7000/tablet-servers) move to the preferred region, as per the following illustration:
+1. For one of the regions, choose **Set as preferred region for reads and writes**.
 
-![Multi-zone cluster load](/images/ce/online-reconfig-multi-zone-pref-load.png)
+1. Click **Confirm and Save Changes** when you are done.
+
+The operation can take several minutes, during which time some cluster operations are not available.
+
+Verify that the load is moving to the preferred region on the **Nodes** tab.
+
+![Read and write IOPS with preferred region](/images/ce/add-node-cloud.png)
 
 When complete, the load is handled exclusively by the preferred region.
 
