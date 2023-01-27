@@ -175,27 +175,6 @@ public class CommonUtils {
         : value.replaceAll(maskRegex, "*");
   }
 
-  public static JsonNode getMaskedValue(JsonNode value, List<String> toMaskKeys) {
-    if (value == null) {
-      return value;
-    }
-    ObjectNode jsonNodeValue = (ObjectNode) value;
-    for (String key : toMaskKeys) {
-      if (jsonNodeValue.has(key)) {
-        String keyValue = jsonNodeValue.get(key).toString();
-        jsonNodeValue.put(key, keyValue.replaceAll(maskRegex, "*"));
-      }
-    }
-    return value;
-  }
-
-  public static String getMaskedValue(String value) {
-    if (value == null) {
-      return value;
-    }
-    return value.replaceAll(maskRegex, "*");
-  }
-
   @SuppressWarnings("unchecked")
   public static <T> T maskObject(T object) {
     try {

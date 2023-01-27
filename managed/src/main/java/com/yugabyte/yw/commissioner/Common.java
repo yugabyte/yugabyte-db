@@ -16,7 +16,7 @@ public class Common {
     docker("docker", false, false, false, ConfigHelper.ConfigType.DockerRegionMetadata),
     onprem("onprem", true, false),
     kubernetes("kubernetes", true, false),
-    local("local"),
+    local("cloud-1"),
     other("other");
 
     private final String value;

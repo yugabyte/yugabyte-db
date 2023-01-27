@@ -523,7 +523,7 @@ public class AccessManager extends DevopsBase {
     return response;
   }
 
-  public String createGCPCredentialsFile(UUID providerUUID, JsonNode credentials) {
+  public String createCredentialsFile(UUID providerUUID, JsonNode credentials) {
     try {
       ObjectMapper mapper = new ObjectMapper();
       String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";

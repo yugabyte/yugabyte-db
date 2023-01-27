@@ -19,8 +19,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-
 import io.ebean.annotation.Transactional;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -117,8 +115,7 @@ public class UniverseSpec {
 
   // Add any member variables that have the @jsonIgnored annotation.
   public ObjectNode setIgnoredJsonProperties(ObjectNode universeSpecObj) {
-    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(provider);
-    JsonNode providerUnmaskedConfig = Json.toJson(envVars);
+    JsonNode providerUnmaskedConfig = Json.toJson(this.provider.getUnmaskedConfig());
     ObjectNode providerObj = (ObjectNode) universeSpecObj.get("provider");
     providerObj.set("config", providerUnmaskedConfig);
 
@@ -129,8 +126,7 @@ public class UniverseSpec {
       for (int i = 0; i < regions.size(); i++) {
         ObjectNode regionObj = (ObjectNode) regionsObj.get(i);
         Region region = regions.get(i);
-        envVars = CloudInfoInterface.fetchEnvVars(region);
-        JsonNode regionUnmaskedConfig = Json.toJson(envVars);
+        JsonNode regionUnmaskedConfig = Json.toJson(region.getUnmaskedConfig());
         regionObj.set("config", regionUnmaskedConfig);
 
         List<AvailabilityZone> zones = region.zones;
@@ -140,8 +136,7 @@ public class UniverseSpec {
           for (int j = 0; j < zones.size(); j++) {
             ObjectNode zoneObj = (ObjectNode) zonesObj.get(j);
             AvailabilityZone zone = zones.get(j);
-            envVars = CloudInfoInterface.fetchEnvVars(zone);
-            JsonNode zoneUnmaskedConfig = Json.toJson(envVars);
+            JsonNode zoneUnmaskedConfig = Json.toJson(zone.getUnmaskedConfig());
             zoneObj.set("config", zoneUnmaskedConfig);
           }
         }

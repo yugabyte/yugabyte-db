@@ -52,17 +52,16 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -263,16 +262,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
         .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
     Provider provider = buildProviderReq("gcp", "Google");
-    Map<String, String> reqConfig = new HashMap<>();
-    reqConfig.put("use_host_vpc", "true");
-    reqConfig.put("use_host_credentials", "true");
-    CloudInfoInterface.setCloudProviderInfoFromConfig(provider, reqConfig);
+    provider.setConfig(Collections.singletonMap("use_host_vpc", "true"));
     provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     assertEquals("234234", provider.hostVpcId);
     assertEquals("234234", provider.destVpcId);
-    assertEquals("PROJ", config.get(GCPCloudImpl.GCE_PROJECT_PROPERTY));
-    assertEquals("234234", config.get(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY));
+    assertEquals("PROJ", provider.getUnmaskedConfig().get("GCE_HOST_PROJECT"));
+    assertEquals(
+        "234234", provider.getUnmaskedConfig().get(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY));
   }
 
   @Test
@@ -329,7 +325,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Provider provider = new Provider();
     provider.code = actualProviderCode;
     provider.name = actualProviderName;
-    provider.details = new ProviderDetails();
     return provider;
   }
 
@@ -390,32 +385,27 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     String providerName = code + "-Provider";
     Provider providerReq = buildProviderReq(code, providerName);
     Map<String, String> reqConfig = new HashMap<>();
-    when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
-        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
     if (code.equals("gcp")) {
       // Note that we do not wrap the GCP config in API requests. Caller should do extracting
       // config file details and putting it in the config map
-      reqConfig.put("use_host_credentials", "true");
-      reqConfig.put("use_host_vpc", "true");
-      reqConfig.put("host_project_id", "project");
-      reqConfig.put("config_file_path", "/tmp/credentials.json");
+      reqConfig.put("GCE_EMAIL", "email");
+      reqConfig.put("GCE_PROJECT", "project");
+      reqConfig.put("GOOGLE_APPLICATION_CREDENTIALS", "credentials");
     } else if (code.equals("aws")) {
-      reqConfig.put("AWS_ACCESS_KEY_ID", "bar");
-      reqConfig.put("AWS_SECRET_ACCESS_KEY", "bar2");
+      reqConfig.put("foo", "bar");
+      reqConfig.put("foo2", "bar2");
     } else {
-      reqConfig.put("YB_HOME_DIR", "/bar");
+      reqConfig.put("home", "/bar");
     }
     providerReq.customerUUID = customer.uuid;
-    CloudInfoInterface.setCloudProviderInfoFromConfig(providerReq, reqConfig);
+    providerReq.setConfig(reqConfig);
     Provider createdProvider =
         createProviderTest(providerReq, REGION_CODES_FROM_CLOUD_API, UUID.randomUUID());
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(createdProvider);
+    Map<String, String> config = createdProvider.getUnmaskedConfig();
     assertFalse(config.isEmpty());
-    if (code.equals("gcp")) {
-      assertEquals(reqConfig.size() - 1, config.size());
-    } else {
-      assertEquals(reqConfig.size(), config.size());
-    }
+    // We should technically check the actual content, but the keys are different between the
+    // input payload and the saved config. (So what?! check the expected keys)
+    assertEquals(reqConfig.size(), config.size());
   }
 
   // Following tests wont be migrated because no k8s multi-region support:
@@ -534,13 +524,11 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
     bodyJson.put("region", "ap-south-1");
-    ObjectNode detailsJson = Json.newObject();
-    ObjectNode CloudInfoJson = Json.newObject();
-    CloudInfoJson.put("AWS_ACCESS_KEY_ID", "test");
-    CloudInfoJson.put("AWS_SECRET_ACCESS_KEY", "secret");
-    CloudInfoJson.put("AWS_HOSTED_ZONE_ID", "1234");
-    detailsJson.set("cloudInfo", CloudInfoJson);
-    bodyJson.set("details", detailsJson);
+    ObjectNode configJson = Json.newObject();
+    configJson.put("AWS_ACCESS_KEY_ID", "test");
+    configJson.put("AWS_SECRET_ACCESS_KEY", "secret");
+    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
+    bodyJson.set("config", configJson);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
     Result result = assertPlatformException(() -> createProvider(bodyJson));
@@ -553,13 +541,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
-    ObjectNode detailsJson = Json.newObject();
-    ObjectNode CloudInfoJson = Json.newObject();
-    ObjectNode awsCloudInfoJson = Json.newObject();
-    awsCloudInfoJson.put("HOSTED_ZONE_ID", "1234");
-    CloudInfoJson.set("aws", awsCloudInfoJson);
-    detailsJson.set("cloudInfo", CloudInfoJson);
-    bodyJson.set("details", detailsJson);
+    ObjectNode configJson = Json.newObject();
+    configJson.put("HOSTED_ZONE_ID", "1234");
+    bodyJson.set("config", configJson);
     mockDnsManagerListFailure("fail", 0);
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
@@ -572,13 +556,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
-    ObjectNode detailsJson = Json.newObject();
-    ObjectNode CloudInfoJson = Json.newObject();
-    ObjectNode awsCloudInfoJson = Json.newObject();
-    awsCloudInfoJson.put("HOSTED_ZONE_ID", "1234");
-    CloudInfoJson.set("aws", awsCloudInfoJson);
-    detailsJson.set("cloudInfo", CloudInfoJson);
-    bodyJson.set("details", detailsJson);
+    ObjectNode configJson = Json.newObject();
+    configJson.put("HOSTED_ZONE_ID", "1234");
+    bodyJson.set("config", configJson);
 
     mockDnsManagerListFailure("fail", 1);
     Result result = assertPlatformException(() -> createProvider(bodyJson));
@@ -613,9 +593,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     AccessKey.create(provider.uuid, AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
     String jsonString =
         "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-            + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-            + "\"vnetName\":\"vpc-foo\","
-            + "\"securityGroupId\":\"sg-foo\" }}}, "
+            + ",\"code\":\"us-west-1\",\"vnetName\":\"vpc-foo\","
+            + "\"securityGroupId\":\"sg-foo\","
             + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
             + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
     Result result = editProvider(Json.parse(jsonString), provider.uuid);
@@ -630,9 +609,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Region.create(provider, "us-west-1", "us-west-1", "foo");
     String jsonString =
         "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-            + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-            + "\"vnetName\":\"vpc-foo\","
-            + "\"securityGroupId\":\"sg-foo\" }}}, "
+            + ",\"code\":\"us-west-1\",\"vnetName\":\"vpc-foo\","
+            + "\"securityGroupId\":\"sg-foo\","
             + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
             + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
 
@@ -649,8 +627,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     AccessKey.create(provider.uuid, AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
     String jsonString =
         "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-            + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-            + "\"securityGroupId\":\"sg-foo\" }}}, "
+            + ",\"code\":\"us-west-1\","
+            + "\"securityGroupId\":\"sg-foo\","
             + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
             + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
 
@@ -666,8 +644,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Provider provider = Provider.create(customer.uuid, Common.CloudType.aws, "test");
     String jsonString =
         "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
-            + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
-            + "\"securityGroupId\":\"sg-foo\" }}}, "
+            + ",\"code\":\"us-west-1\","
+            + "\"securityGroupId\":\"sg-foo\","
             + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
             + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
 
@@ -678,74 +656,59 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   @Test
   public void testPatchProviderFailure() throws Exception {
-    when(mockAccessManager.createGCPCredentialsFile(any(), any())).thenReturn("/test-path");
+    when(mockAccessManager.createCredentialsFile(any(), any())).thenReturn("/test-path");
     Provider provider = Provider.create(customer.uuid, Common.CloudType.gcp, "test");
     AccessKey.create(provider.uuid, AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
     String jsonString =
         "{"
-            + "\"code\":\"gcp\","
+            + "\"code\":\"aws\","
             + "\"name\":\"test\","
-            + "\"details\": { \"cloudInfo\": {"
-            + "\"gcp\": {"
-            + "\"gceProject\": \"test-project\" }}}"
-            + "}";
+            + "\"config\": {"
+            + "\"project_id\": \"test-project\","
+            + "\"client_email\": \"test-email\""
+            + "}}";
     Result result =
         assertPlatformException(() -> patchProvider(Json.parse(jsonString), provider.uuid));
-    assertBadRequest(result, "Unknown keys found: [GCE_PROJECT]");
+    assertBadRequest(result, "Unknown keys found: [client_email, project_id]");
   }
 
-  // to be fixed.
   @Test
   public void testPatchProviderSuccess() throws Exception {
-    when(mockAccessManager.createGCPCredentialsFile(any(), any())).thenReturn("/test-path");
+    when(mockAccessManager.createCredentialsFile(any(), any())).thenReturn("/test-path");
+    when(mockAccessManager.readCredentialsFromFile(any()))
+        .thenReturn(ImmutableMap.of("project_id", "test-project", "client_email", "test-email"));
     Provider provider = Provider.create(customer.uuid, Common.CloudType.gcp, "test");
-    Map<String, String> reqConfig = new HashMap<>();
-    reqConfig.put("gceProject", "test-project");
-    CloudInfoInterface.setCloudProviderInfoFromConfig(provider, reqConfig);
-    provider.save();
     AccessKey.create(provider.uuid, AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
 
     Result providerRes = getProvider(provider.uuid);
     ObjectNode providerJson = (ObjectNode) Json.parse(contentAsString(providerRes));
-    ObjectNode details = Json.newObject();
-    ObjectNode CloudInfoJson = Json.newObject();
-    ObjectNode gcpCloudInfo = Json.newObject();
-    gcpCloudInfo.put("gceProject", "test-project-updated");
-    CloudInfoJson.put("gcp", gcpCloudInfo);
-    details.set("cloudInfo", CloudInfoJson);
-    providerJson.set("details", details);
-    providerJson.remove("config");
+    providerJson.set(
+        "config", Json.toJson(Collections.singletonMap("project_id", "test-project-updated")));
     Result result = patchProvider(providerJson, provider.uuid);
     assertOk(result);
     provider = Provider.get(customer.uuid, provider.uuid);
     Map<String, String> expectedConfig =
         ImmutableMap.of(
-            GCPCloudImpl.GCE_PROJECT_PROPERTY, "test-project-updated",
-            GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY, "/test-path");
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+            "project_id", "test-project-updated",
+            "client_email", "test-email",
+            "GCE_PROJECT", "test-project-updated",
+            "GCE_EMAIL", "test-email",
+            "GOOGLE_APPLICATION_CREDENTIALS", "/test-path");
+    Map<String, String> config = provider.getUnmaskedConfig();
     assertEquals(expectedConfig, config);
   }
 
   @Test
   public void testPatchProviderConcurrentModification() throws Exception {
-    when(mockAccessManager.createGCPCredentialsFile(any(), any())).thenReturn("/test-path");
+    when(mockAccessManager.createCredentialsFile(any(), any())).thenReturn("/test-path");
+    when(mockAccessManager.readCredentialsFromFile(any()))
+        .thenReturn(ImmutableMap.of("project_id", "test-project", "client_email", "test-email"));
     Provider provider = Provider.create(customer.uuid, Common.CloudType.gcp, "test");
-    Map<String, String> reqConfig = new HashMap<>();
-    reqConfig.put("gceProject", "test-project");
-    CloudInfoInterface.setCloudProviderInfoFromConfig(provider, reqConfig);
-    provider.save();
-
     AccessKey.create(provider.uuid, AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
     Result providerRes = getProvider(provider.uuid);
-    JsonNode providerJson = Json.parse(contentAsString(providerRes));
-    JsonNode details = providerJson.get("details");
-    ObjectNode CloudInfoJson = (ObjectNode) details.get("cloudInfo");
-    ObjectNode gcpCloudInfo = (ObjectNode) CloudInfoJson.get("gcp");
-    gcpCloudInfo.put("gceProject", "test-project-updated");
-    CloudInfoJson.set("gcp", gcpCloudInfo);
-    ((ObjectNode) details).set("cloudInfo", CloudInfoJson);
-    ((ObjectNode) providerJson).set("details", details);
-    ((ObjectNode) providerJson).remove("config");
+    ObjectNode providerJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    providerJson.set(
+        "config", Json.toJson(Collections.singletonMap("project_id", "test-project-updated")));
 
     Result result = patchProviderWithEH(providerJson, provider.uuid);
     assertOk(result);

@@ -105,16 +105,16 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     setup();
 
     config.put("KUBECONFIG", "test");
-    kubernetesProvider.setConfig(config);
-    kubernetesProvider.save();
+    defaultProvider.setConfig(config);
+    defaultProvider.save();
     editUniverse.setUserTaskUUID(UUID.randomUUID());
-    Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion 1", "default-image");
+    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     InstanceType i =
         InstanceType.upsert(
-            kubernetesProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        getTestUserIntent(r, kubernetesProvider, i, 3);
+        getTestUserIntent(r, defaultProvider, i, 3);
     userIntent.replicationFactor = 1;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
@@ -475,7 +475,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.expectedUniverseVersion = 3;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     InstanceType.upsert(
-        kubernetesProvider.uuid, "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+        defaultProvider.uuid, "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.instanceType = "c5.xlarge";

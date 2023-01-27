@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -15,8 +16,6 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -87,16 +86,13 @@ public class Provider extends Model {
     this.customerUUID = id;
   }
 
-  /** @deprecated - Use details.metadata instead */
-  @ApiModelProperty(hidden = true)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   @Encrypted
-  public Map<String, String> config;
+  private Map<String, String> config;
 
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
-  @Encrypted
   public ProviderDetails details = new ProviderDetails();
 
   @OneToMany(cascade = CascadeType.ALL)
@@ -192,7 +188,6 @@ public class Provider extends Model {
   @ApiModelProperty public String destVpcId = null;
 
   // Hosted Zone for the deployment
-  @Deprecated
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public String hostedZoneId = null;
@@ -212,46 +207,25 @@ public class Provider extends Model {
     this.version = version;
   }
 
-  @Deprecated
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    if (configMap != null && !configMap.isEmpty()) {
-      CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
-    }
+    this.config = configMap;
   }
 
-  @Deprecated
   @JsonProperty("config")
-  public Map<String, String> getUnmaskedConfig() {
-    if (this.config == null) {
-      return new HashMap<>();
-    }
-    return this.config;
-  }
-
-  @JsonProperty("details")
-  public void setProviderDetails(ProviderDetails providerDetails) {
-    this.details = providerDetails;
-  }
-
-  @JsonProperty("details")
-  public ProviderDetails getMaskProviderDetails() {
-    CloudInfoInterface.maskProviderDetails(this);
-    return details;
+  public Map<String, String> getMaskedConfig() {
+    return maskConfigNew(this.getUnmaskedConfig());
   }
 
   @JsonIgnore
-  public ProviderDetails getProviderDetails() {
-    if (details == null) {
-      details = new ProviderDetails();
-    }
-    return details;
+  public Map<String, String> getUnmaskedConfig() {
+    if (config == null) return new HashMap<>();
+    return config;
   }
 
   @JsonIgnore
   public String getYbHome() {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(this);
-    String ybHomeDir = config.getOrDefault("YB_HOME_DIR", "");
+    String ybHomeDir = this.getUnmaskedConfig().getOrDefault("YB_HOME_DIR", "");
     if (ybHomeDir.isEmpty()) {
       ybHomeDir = DEFAULT_YB_HOME_DIR;
     }
@@ -269,7 +243,6 @@ public class Provider extends Model {
    * @param name, name of cloud provider
    * @return instance of cloud provider
    */
-  @Deprecated
   public static Provider create(UUID customerUUID, Common.CloudType code, String name) {
     return create(customerUUID, code, name, new HashMap<>());
   }
@@ -283,13 +256,11 @@ public class Provider extends Model {
    * @param config, Map of cloud provider configuration
    * @return instance of cloud provider
    */
-  @Deprecated
   public static Provider create(
       UUID customerUUID, Common.CloudType code, String name, Map<String, String> config) {
     return create(customerUUID, null, code, name, config);
   }
 
-  @Deprecated
   public static Provider create(
       UUID customerUUID,
       UUID providerUUID,
@@ -301,38 +272,7 @@ public class Provider extends Model {
     provider.uuid = providerUUID;
     provider.code = code.toString();
     provider.name = name;
-    provider.details = new ProviderDetails();
     provider.setConfig(config);
-    provider.save();
-    return provider;
-  }
-
-  /**
-   * Create a new Cloud Provider
-   *
-   * @param customerUUID, customer uuid
-   * @param code, code of cloud provider
-   * @param name, name of cloud provider
-   * @param providerDetails, providerDetails configuration.
-   * @return instance of cloud provider
-   */
-  public static Provider create(
-      UUID customerUUID, Common.CloudType code, String name, ProviderDetails providerDetails) {
-    return create(customerUUID, null, code, name, providerDetails);
-  }
-
-  public static Provider create(
-      UUID customerUUID,
-      UUID providerUUID,
-      Common.CloudType code,
-      String name,
-      ProviderDetails providerDetails) {
-    Provider provider = new Provider();
-    provider.customerUUID = customerUUID;
-    provider.uuid = providerUUID;
-    provider.code = code.toString();
-    provider.name = name;
-    provider.details = providerDetails;
     provider.save();
     return provider;
   }
@@ -443,16 +383,16 @@ public class Provider extends Model {
     return provider;
   }
 
-  @ApiModelProperty(required = false, hidden = true)
+  @ApiModelProperty(required = false)
   public String getHostedZoneId() {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(this);
-    return config.getOrDefault("HOSTED_ZONE_ID", null);
+    return getUnmaskedConfig()
+        .getOrDefault("HOSTED_ZONE_ID", getUnmaskedConfig().get("AWS_HOSTED_ZONE_ID"));
   }
 
-  @ApiModelProperty(required = false, hidden = true)
+  @ApiModelProperty(required = false)
   public String getHostedZoneName() {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(this);
-    return config.getOrDefault("HOSTED_ZONE_NAME", null);
+    return getUnmaskedConfig()
+        .getOrDefault("HOSTED_ZONE_NAME", getUnmaskedConfig().get("AWS_HOSTED_ZONE_NAME"));
   }
 
   /**
@@ -463,6 +403,14 @@ public class Provider extends Model {
    */
   public static List<Provider> getByCode(String code) {
     return find.query().where().eq("code", code).findList();
+  }
+
+  // Update host zone.
+  public void updateHostedZone(String hostedZoneId, String hostedZoneName) {
+    Map<String, String> currentProviderConfig = getUnmaskedConfig();
+    currentProviderConfig.put("HOSTED_ZONE_ID", hostedZoneId);
+    currentProviderConfig.put("HOSTED_ZONE_NAME", hostedZoneName);
+    this.setConfig(currentProviderConfig);
   }
 
   // Used for GCP providers to pass down region information. Currently maps regions to
