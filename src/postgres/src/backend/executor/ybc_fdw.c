@@ -645,7 +645,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 }
 
 #ifdef NEIL_TODO
-/* Keep this code till I look at ybFetchNext()
+/* Keep this code till I look at ybFetchNext() */
 {
 	/* Clear tuple slot before starting */
 	slot = node->ss.ss_ScanTupleSlot;
