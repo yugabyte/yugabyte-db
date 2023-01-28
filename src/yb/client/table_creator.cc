@@ -32,6 +32,9 @@ using std::string;
 
 DECLARE_bool(client_suppress_created_logs);
 
+DEFINE_test_flag(bool, duplicate_create_table_request, false,
+                 "Whether a table creator should send duplicate CreateTableRequestPB to master.");
+
 namespace yb {
 namespace client {
 
@@ -347,6 +350,18 @@ Status YBTableCreator::Create() {
   if (!s.ok() && !s.IsAlreadyPresent()) {
       RETURN_NOT_OK_PREPEND(s, strings::Substitute("Error creating $0 $1 on the master",
                                                    object_type, table_name_.ToString()));
+  }
+
+  // A client is possible to send out duplicate CREATE TABLE requests to master due to network
+  // latency issue, server too busy issue or other reasons.
+  if (PREDICT_FALSE(FLAGS_TEST_duplicate_create_table_request)) {
+    s = client_->data_->CreateTable(
+        client_, req, *schema_, deadline, &table_id_);
+
+    if (!s.ok() && !s.IsAlreadyPresent()) {
+        RETURN_NOT_OK_PREPEND(s, strings::Substitute("Error creating $0 $1 on the master",
+                                                      object_type, table_name_.ToString()));
+    }
   }
 
   // We are here because the create request succeeded or we received an IsAlreadyPresent error.
