@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 
 import java.util.Random;
 import java.util.HashSet;
+import java.util.stream.Collectors;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -43,7 +44,7 @@ public class WaitForYbcServer extends UniverseTaskBase {
   public static class Params extends UniverseDefinitionTaskParams {
     // The universe UUID must be stored in universeUUID field.
     // The xCluster info object to persist.
-    public Set<NodeDetails> nodeDetailsSet = null;
+    public Set<String> nodeNameList = null;
   }
 
   protected Params taskParams() {
@@ -61,7 +62,11 @@ public class WaitForYbcServer extends UniverseTaskBase {
     Set<NodeDetails> nodeDetailsSet =
         taskParams().nodeDetailsSet == null
             ? universe.getUniverseDetails().nodeDetailsSet
-            : taskParams().nodeDetailsSet;
+            : taskParams()
+                .nodeNameList
+                .stream()
+                .map(nodeName -> universe.getNode(nodeName))
+                .collect(Collectors.toSet());
     String errMsg = "";
 
     for (NodeDetails node : nodeDetailsSet) {

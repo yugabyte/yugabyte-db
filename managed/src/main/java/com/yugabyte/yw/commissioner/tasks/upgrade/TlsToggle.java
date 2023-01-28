@@ -150,7 +150,8 @@ public class TlsToggle extends UpgradeTaskBase {
       createStartYbcTasks(nodes.getRight())
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       // Wait for yb-controller to be responsive on each node.
-      createWaitForYbcServerTask(null).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForYbcServerTask(nodes.getRight())
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }
 
