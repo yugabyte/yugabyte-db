@@ -26,10 +26,10 @@ type Check interface {
 //
 // We will run all specified preflight checks and return errors for those that failed.
 // If an empty array is returned, there were no failures found.
-func Run(checkList []Check, skipChecks ...string) []checks.Result {
+func Run(checkList []Check, skipChecks ...string) *checks.MappedResults {
 	// Preallocate underlying arrary
-	var results []checks.Result = make([]checks.Result, 0, len(checkList))
-
+	// var results []checks.Result = make([]checks.Result, 0, len(checkList))
+	results := checks.NewMappedResults()
 	for _, check := range checkList {
 		// Skip the check if needed
 		if common.Contains(skipChecks, check.Name()) {
@@ -43,13 +43,14 @@ func Run(checkList []Check, skipChecks ...string) []checks.Result {
 
 		log.Info("Running preflight check '" + check.Name() + "'")
 		result := check.Execute()
+		results.AddResult(result)
+
 		if result.Error != nil {
 			// If the user wants to allow warnings, log warning and continue
 			if result.Status == checks.StatusWarning {
 				log.Warn(check.Name() + " raised a warning: " + result.Error.Error())
 			} else {
 				log.Info("preflight " + check.Name() + " failed: " + result.Error.Error())
-				results = append(results, result)
 			}
 		}
 	}
@@ -58,28 +59,41 @@ func Run(checkList []Check, skipChecks ...string) []checks.Result {
 
 // PrintPreflightResults will print all preflight errors to stdout, for the
 // user to see
-func PrintPreflightResults(results []checks.Result) {
+func PrintPreflightResults(results *checks.MappedResults) {
 	preflightWriter := tabwriter.NewWriter(os.Stdout, 3, 0, 1, ' ', 0)
-	fmt.Println("Preflight errors:")
 	fmt.Fprintln(preflightWriter, "#\tCheck name\tStatus\tError")
-	for ii, result := range results {
+	counter := 0
+	for _, result := range results.Critical {
+		counter++
 		fmt.Fprintf(preflightWriter, "%d\t%s\t%s\t%s\n",
-			ii+1,
+			counter,
 			result.Check,
 			result.Status.String(),
 			result.Error)
 	}
+	for _, result := range results.Warning {
+		counter++
+		fmt.Fprintf(preflightWriter, "%d\t%s\t%s\t%s\n",
+			counter,
+			result.Check,
+			result.Status.String(),
+			result.Error)
+	}
+	for _, result := range results.Passed {
+		counter++
+		fmt.Fprintf(preflightWriter, "%d\t%s\t%s\t%s\n",
+			counter,
+			result.Check,
+			result.Status.String(),
+			"") // Error, which is nil
+	}
 	preflightWriter.Flush()
+
 }
 
 // ShouldFail checks the list of results for critical failures. If any are found,
 // return true (we should fail).
 // Warning status should not cause a fail.
-func ShouldFail(results []checks.Result) bool {
-	for _, result := range results {
-		if result.Status == checks.StatusCritical {
-			return true
-		}
-	}
-	return false
+func ShouldFail(results *checks.MappedResults) bool {
+	return len(results.Critical) > 0
 }
