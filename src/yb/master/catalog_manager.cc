@@ -3609,7 +3609,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return CreateYsqlSysTable(orig_req, resp, nullptr);
   }
 
-  Status s;
   const char* const object_type = PROTO_PTR_IS_TABLE(orig_req) ? "table" : "index";
 
   // Copy the request, so we can fill in some defaults.
@@ -3870,6 +3869,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   scoped_refptr<TableInfo> table;
   TabletInfos tablets;
+  Status s;
 
   // Whether the table is joining an existing colocation group - i.e. is a
   // colocated non-parent table.
@@ -3883,11 +3883,33 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     TRACE("Acquired catalog manager lock");
 
     // Verify that the table does not exist.
-    table = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
-
-    if (table != nullptr) {
-      s = STATUS_SUBSTITUTE(AlreadyPresent,
-              "Object '$0.$1' already exists", ns->name(), table->name());
+    // Use table_names_map_ to check for table existence for all table types except YSQL
+    // tables.
+    // Use tables_ to check for YSQL table existence because
+    // (1) table_names_map_ isn't used for YSQL tables.
+    // (2) under certain circumstance, a client can send out duplicate CREATE TABLE
+    // requests containing same table id to master.
+    // (3) two concurrent CREATE TABLEs using the same fully qualified name cannot both succeed
+    // because of the pg_class unique index on the qualified name.
+    if (req.table_type() == PGSQL_TABLE_TYPE) {
+      table = tables_->FindTableOrNull(req.table_id());
+      // We rarely remove deleted entries from tables_, so it is necessary to check if TableInfoPtr
+      // retrieved from tables_ corresponds to a deleted table/index or not. If it corresponds to a
+      // deleted entry, then the entry in tables_ can be replaced.
+      // On the other hand, on master restart or leader change, we do not load deleted
+      // tables/indexes in memory.
+      if (table != nullptr && !table->is_deleted()) {
+        s = STATUS_SUBSTITUTE(AlreadyPresent, "Object with id $0 ('$1.$2') already exists",
+                              table->id(), ns->name(), table->name());
+      }
+    } else {
+      table = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
+      if (table != nullptr) {
+        s = STATUS_SUBSTITUTE(AlreadyPresent,
+                "Object '$0.$1' already exists", ns->name(), table->name());
+      }
+    }
+    if (!s.ok()) {
       LOG(WARNING) << "Found table: " << table->ToStringWithState()
                    << ". Failed creating table with error: "
                    << s.ToString() << " Request:\n" << orig_req->DebugString();
