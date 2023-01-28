@@ -2030,7 +2030,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     // Wait for yb-controller to be responsive on each node.
-    createWaitForYbcServerTask(null).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    createWaitForYbcServerTask(nodesToBeStarted)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**
