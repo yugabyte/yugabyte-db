@@ -12,11 +12,11 @@ import (
 var reconfigureCmd = &cobra.Command{
 	Use: "reconfigure",
 	Short: "The reconfigure command is used to apply changes made to yba-ctl.yml to running " +
-		"Yugabyte Anywhere services.",
+		"YugabyteDB Anywhere services.",
 	Args: cobra.NoArgs,
 	Long: `
     The reconfigure command is used to apply changes made to yba-ctl.yml to running 
-	Yugabyte Anywhere services. The process involves stopping all associated services
+	YugabyteDB Anywhere services. The process involves stopping all associated services
 	and restarting them.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		for _, name := range serviceOrder {
