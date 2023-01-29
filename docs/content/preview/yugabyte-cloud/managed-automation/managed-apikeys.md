@@ -1,16 +1,16 @@
 ---
 title: API keys
 headerTitle:
-linkTitle: Manage API keys
-description: Manage API keys for use with the YugabyteDB Managed automation tools including API and Terraform provider.
-headcontent: Manage API keys for use with the YugabyteDB Managed REST API
+linkTitle: API keys
+description: Manage API keys for use with YugabyteDB Managed automation tools including API and Terraform provider.
+headcontent: Manage API keys for use with YugabyteDB Managed automation tools
 aliases:
   - /preview/yugabyte-cloud/cloud-admin/cloud-admin-apikeys/
 menu:
   preview_yugabyte-cloud:
     identifier: managed-apikeys
     parent: managed-automation
-    weight: 150
+    weight: 10
 type: docs
 ---
 

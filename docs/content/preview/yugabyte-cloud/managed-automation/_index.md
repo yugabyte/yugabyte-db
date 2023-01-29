@@ -36,6 +36,24 @@ These identifiers can also be found in the URL when you access a cluster using t
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="managed-apikeys/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
+        <div class="title">Manage API keys</div>
+      </div>
+      <div class="body">
+        Create and revoke API keys for authenticating access using automation.
+      </div>
+    </a>
+  </div>
+
+</div>
+
+### Automation
+
+<div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="https://api-docs.yugabyte.com/docs/managed-apis">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
@@ -67,18 +85,6 @@ These identifiers can also be found in the URL when you access a cluster using t
       </div>
       <div class="body">
         Access your account and clusters from the command line.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="managed-apikeys/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
-        <div class="title">Manage API keys</div>
-      </div>
-      <div class="body">
-        Create and revoke API keys for authenticating access using automation.
       </div>
     </a>
   </div>
