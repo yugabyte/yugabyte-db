@@ -1,7 +1,6 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static io.ebean.Ebean.beginTransaction;
 import static io.ebean.Ebean.commitTransaction;
 import static io.ebean.Ebean.endTransaction;
@@ -16,8 +15,14 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
+import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+
 import io.ebean.Ebean;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
@@ -28,11 +33,11 @@ import io.ebean.RawSql;
 import io.ebean.RawSqlBuilder;
 import io.ebean.SqlUpdate;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -75,7 +80,9 @@ public class Region extends Model {
       accessMode = READ_ONLY)
   public String name;
 
+  @Deprecated
   @ApiModelProperty(
+      hidden = true,
       value = "The AMI to be used in this region.",
       example = "TODO",
       accessMode = READ_WRITE)
@@ -115,17 +122,11 @@ public class Region extends Model {
     this.active = active;
   }
 
-  static class RegionDetails {
-
-    public String sg_id; // Security group ID.
-    public String vnet; // Vnet key.
-    public Architecture arch; // ybImage architecture.
-  }
-
+  @Encrypted
   @DbJson
   @Column(columnDefinition = "TEXT")
-  @ApiModelProperty(value = "UI ONLY: TODO @JsonIgnore after removing UI dependency", hidden = true)
-  public RegionDetails details;
+  @ApiModelProperty
+  public RegionDetails details = new RegionDetails();
 
   @JsonIgnore
   public long getNodeCount() {
@@ -139,77 +140,116 @@ public class Region extends Model {
   }
 
   public void setSecurityGroupId(String securityGroupId) {
-    if (details == null) {
-      details = new RegionDetails();
+    Provider p = this.provider;
+    if (p.getCloudCode() == CloudType.aws) {
+      AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setSecurityGroupId(securityGroupId);
+    } else if (p.getCloudCode() == CloudType.azu) {
+      AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setSecurityGroupId(securityGroupId);
     }
-    details.sg_id = securityGroupId;
-  }
-
-  @ApiModelProperty
-  public String getSecurityGroupId() {
-    if (details != null) {
-      String sgNode = details.sg_id;
-      return sgNode == null || sgNode.isEmpty() ? null : sgNode;
-    }
-    return null;
-  }
-
-  public void setVnetName(String vnetName) {
-    if (details == null) {
-      details = new RegionDetails();
-    }
-    details.vnet = vnetName;
-  }
-
-  @ApiModelProperty
-  public String getVnetName() {
-    if (details != null) {
-      String vnetNode = details.vnet;
-      return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
-    }
-    return null;
-  }
-
-  public void setArchitecture(Architecture arch) {
-    if (details == null) {
-      details = new RegionDetails();
-    }
-    details.arch = arch;
-  }
-
-  @ApiModelProperty
-  public Architecture getArchitecture() {
-    if (details != null) {
-      return details.arch;
-    }
-    return null;
-  }
-
-  @DbJson
-  @Column(columnDefinition = "TEXT")
-  private Map<String, String> config;
-
-  @JsonProperty("config")
-  public void setConfig(Map<String, String> configMap) {
-    Map<String, String> currConfig = this.getUnmaskedConfig();
-    for (String key : configMap.keySet()) {
-      currConfig.put(key, configMap.get(key));
-    }
-    this.config = currConfig;
-  }
-
-  @JsonProperty("config")
-  public Map<String, String> getMaskedConfig() {
-    return maskConfigNew(getUnmaskedConfig());
   }
 
   @JsonIgnore
-  public Map<String, String> getUnmaskedConfig() {
-    if (this.config == null) {
-      return new HashMap<>();
-    } else {
-      return this.config;
+  public String getSecurityGroupId() {
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
+    String sgNode = "";
+    if (envVars.containsKey("securityGroupId")) {
+      sgNode = envVars.getOrDefault("securityGroupId", null);
     }
+    return sgNode == null || sgNode.isEmpty() ? null : sgNode;
+  }
+
+  public void setVnetName(String vnetName) {
+    Provider p = this.provider;
+    if (p.getCloudCode() == CloudType.aws) {
+      AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setVnet(vnetName);
+    } else if (p.getCloudCode() == CloudType.azu) {
+      AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setVnet(vnetName);
+    }
+  }
+
+  @JsonIgnore
+  public String getVnetName() {
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
+    String vnetNode = "";
+    if (envVars.containsKey("vnet")) {
+      vnetNode = envVars.getOrDefault("vnet", null);
+    }
+    return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
+  }
+
+  public void setArchitecture(Architecture arch) {
+    Provider p = this.provider;
+    if (p.getCloudCode() == CloudType.aws) {
+      AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setArch(arch);
+    }
+  }
+
+  @JsonIgnore
+  public Architecture getArchitecture() {
+    Provider p = this.provider;
+    if (p.getCloudCode() == CloudType.aws) {
+      AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      return regionCloudInfo.getArch();
+    }
+    return null;
+  }
+
+  @JsonIgnore
+  public String getYbImage() {
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
+    if (envVars.containsKey("ybImage")) {
+      return envVars.getOrDefault("ybImage", null);
+    }
+    return null;
+  }
+
+  public void setYbImage(String ybImage) {
+    Provider p = this.provider;
+    if (p.getCloudCode().equals(CloudType.aws)) {
+      AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setYbImage(ybImage);
+    } else if (p.getCloudCode().equals(CloudType.gcp)) {
+      GCPRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setYbImage(ybImage);
+    } else if (p.getCloudCode().equals(CloudType.azu)) {
+      AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
+      regionCloudInfo.setYbImage(ybImage);
+    }
+  }
+
+  @Deprecated
+  @DbJson
+  @Column(columnDefinition = "TEXT")
+  public Map<String, String> config;
+
+  @Deprecated
+  @JsonProperty("config")
+  public void setConfig(Map<String, String> configMap) {
+    CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+  }
+
+  @JsonProperty("details")
+  public void setRegionDetails(RegionDetails regionDetails) {
+    this.details = regionDetails;
+  }
+
+  @JsonProperty("details")
+  public RegionDetails getMaskRegionDetails() {
+    CloudInfoInterface.maskRegionDetails(this);
+    return details;
+  }
+
+  @JsonIgnore
+  public RegionDetails getRegionDetails() {
+    if (details == null) {
+      details = new RegionDetails();
+    }
+    return details;
   }
 
   /** Query Helper for PlacementRegion with region code */
@@ -236,13 +276,45 @@ public class Region extends Model {
       String ybImage,
       double latitude,
       double longitude) {
+    return create(provider, code, name, ybImage, latitude, longitude, new RegionDetails());
+  }
+
+  public static Region create(
+      Provider provider,
+      String code,
+      String name,
+      String ybImage,
+      double latitude,
+      double longitude,
+      RegionDetails details) {
     Region region = new Region();
     region.provider = provider;
     region.code = code;
     region.name = name;
-    region.ybImage = ybImage;
+    region.setYbImage(ybImage);
     region.latitude = latitude;
     region.longitude = longitude;
+    region.setRegionDetails(details);
+    region.save();
+    return region;
+  }
+
+  public static Region create(
+      Provider provider,
+      String code,
+      String name,
+      String ybImage,
+      double latitude,
+      double longitude,
+      Map<String, String> config) {
+    Region region = new Region();
+    region.provider = provider;
+    region.code = code;
+    region.name = name;
+    region.setYbImage(ybImage);
+    region.latitude = latitude;
+    region.longitude = longitude;
+    region.setConfig(config);
     region.save();
     return region;
   }
@@ -251,6 +323,10 @@ public class Region extends Model {
     Region region = Json.fromJson(metadata, Region.class);
     region.provider = provider;
     region.code = code;
+    region.details = new RegionDetails();
+    if (metadata.has("ybImage")) {
+      region.setYbImage(metadata.get("ybImage").textValue());
+    }
     region.save();
     return region;
   }
@@ -277,6 +353,14 @@ public class Region extends Model {
     Region region = get(customerUUID, providerUUID, regionUUID);
     if (region == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Provider/Region UUID");
+    }
+    return region;
+  }
+
+  public static Region getOrBadRequest(UUID regionUUID) {
+    Region region = get(regionUUID);
+    if (region == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Region UUID");
     }
     return region;
   }

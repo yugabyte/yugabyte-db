@@ -1424,7 +1424,8 @@ public class NodeManager extends DevopsBase {
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
             String ybImage =
-                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+                Optional.ofNullable(taskParam.machineImage)
+                    .orElse(taskParam.getRegion().getYbImage());
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
@@ -1508,7 +1509,8 @@ public class NodeManager extends DevopsBase {
           // gcp uses machine_image for ansible preprovision.yml
           if (cloudType.equals(Common.CloudType.gcp)) {
             String ybImage =
-                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+                Optional.ofNullable(taskParam.machineImage)
+                    .orElse(taskParam.getRegion().getYbImage());
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
