@@ -1667,13 +1667,13 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     Universe u = createUniverse(customer.getCustomerId());
 
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.other);
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.azu);
     Universe.UniverseUpdater updater =
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           UniverseDefinitionTaskParams.UserIntent userIntent =
               universeDetails.getPrimaryCluster().userIntent;
-          userIntent.providerType = Common.CloudType.other;
+          userIntent.providerType = Common.CloudType.azu;
           userIntent.provider = p.uuid.toString();
           universe.setUniverseDetails(universeDetails);
         };

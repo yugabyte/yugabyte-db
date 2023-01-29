@@ -20,8 +20,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import javax.persistence.PersistenceException;
@@ -151,12 +153,15 @@ public class RegionTest extends FakeDBApplication {
     Region r = Region.createWithMetadata(defaultProvider, "region-1", metaData);
     assertNotNull(r);
     JsonNode regionJson = Json.toJson(r);
+    JsonNode details = regionJson.get("details");
+    JsonNode cloudInfo = details.get("cloudInfo");
+    JsonNode awsRegionCloudInfo = cloudInfo.get("aws");
 
     assertValue(regionJson, "code", "region-1");
     assertValue(regionJson, "name", "sample region");
     assertValue(regionJson, "latitude", "36.778261");
     assertValue(regionJson, "longitude", "-119.417932");
-    assertValue(regionJson, "ybImage", "yb-image-1");
+    assertValue(awsRegionCloudInfo, "ybImage", "yb-image-1");
   }
 
   @Test(expected = PersistenceException.class)
@@ -218,7 +223,8 @@ public class RegionTest extends FakeDBApplication {
   public void testNullConfig() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     assertNotNull(r.uuid);
-    assertTrue(r.getUnmaskedConfig().isEmpty());
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(r);
+    assertTrue(envVars.isEmpty());
   }
 
   @Test
@@ -226,7 +232,8 @@ public class RegionTest extends FakeDBApplication {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     r.setConfig(ImmutableMap.of("Foo", "Bar"));
     r.save();
+    Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(r);
     assertNotNull(r.uuid);
-    assertNotNull(r.getUnmaskedConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+    assertNotNull(envVars.toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 }

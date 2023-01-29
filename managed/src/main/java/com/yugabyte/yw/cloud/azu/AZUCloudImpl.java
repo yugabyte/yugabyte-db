@@ -38,7 +38,7 @@ public class AZUCloudImpl implements CloudAPI {
 
   // Basic validation to make sure that the credentials work with Azure.
   @Override
-  public boolean isValidCreds(Map<String, String> config, String region) {
+  public boolean isValidCreds(Provider provider, String region) {
     // TODO validation for Azure crashes VM at the moment due to netty and jackson version issues.
     return true;
   }
