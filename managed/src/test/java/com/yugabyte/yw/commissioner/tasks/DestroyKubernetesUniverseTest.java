@@ -52,15 +52,15 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
   private void setupUniverse(boolean updateInProgress) {
     config.put("KUBECONFIG", "test");
-    defaultProvider.setConfig(config);
-    defaultProvider.save();
-    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
+    kubernetesProvider.setConfig(config);
+    kubernetesProvider.save();
+    Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     InstanceType i =
         InstanceType.upsert(
-            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            kubernetesProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        getTestUserIntent(r, defaultProvider, i, 3);
+        getTestUserIntent(r, kubernetesProvider, i, 3);
     userIntent.replicationFactor = 3;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
@@ -81,19 +81,19 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   private void setupUniverseMultiAZ(boolean updateInProgress, boolean skipProviderConfig) {
     if (!skipProviderConfig) {
       config.put("KUBECONFIG", "test");
-      defaultProvider.setConfig(config);
-      defaultProvider.save();
+      kubernetesProvider.setConfig(config);
+      kubernetesProvider.save();
     }
 
-    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
+    Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion 1", "default-image");
     az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
-            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            kubernetesProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        getTestUserIntent(r, defaultProvider, i, 3);
+        getTestUserIntent(r, kubernetesProvider, i, 3);
     userIntent.replicationFactor = 3;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();

@@ -805,7 +805,7 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--cloud_subnet_secondary");
             expectedCommand.add(createParams.secondarySubnetId);
           }
-          String ybImage = testData.region.ybImage;
+          String ybImage = testData.region.getYbImage();
           if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
             expectedCommand.add(ybImage);
@@ -835,7 +835,7 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (cloud.equals(Common.CloudType.gcp)) {
-          String ybImage = testData.region.ybImage;
+          String ybImage = testData.region.getYbImage();
           if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
             expectedCommand.add(ybImage);
