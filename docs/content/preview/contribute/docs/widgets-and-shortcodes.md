@@ -16,15 +16,13 @@ There are a number of display widgets and shortcodes available. All the shortcod
 
 ## Admonition boxes
 
-Use the note, tip, and warning shortcodes to create admonition boxes.
+Use the note, tip, and warning shortcodes to create admonition boxes. Keep titles short and to the point &mdash; full sentences generally don't make good titles.
 
 ### tip
 
 {{< tip title="Tip" >}}
 A tip box gives a hint or other helpful but optional piece of information.
 {{< /tip >}}
-
-#### tip source
 
 ```md
 {{</* tip title="Tip" */>}}
@@ -33,28 +31,22 @@ A tip box gives a hint or other useful but optional piece of information.
 ```
 
 {{< note title="Note" >}}
-
 A note box gives some important information that is often not optional.
-
 {{< /note >}}
 
 ```md
 {{</* note title="Note" */>}}
-This is a note with a [link](https://www.yugabyte.com).
+A note box gives some important information that is often not optional.
 {{</* /note */>}}
 ```
 
 {{< warning title="Warning" >}}
-
 A warning box informs the user about a potential issue or something to watch out for.
-
 {{< /warning >}}
 
 ```md
 {{</* warning title="Warning" */>}}
-
-This is a warning with a [link](https://www.yugabyte.com).
-
+A warning box informs the user about a potential issue or something to watch out for.
 {{</* /warning */>}}
 ```
 
@@ -100,24 +92,27 @@ The corresponding code for this widget is as follows. Note that the actual conte
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-  {{%/* includeMarkdown "binary/explore-ysql.md" */%}}
+{{</* readfile "binary/explore-macos.md" */>}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-  {{%/* includeMarkdown "binary/explore-ysql.md" */%}}
+{{</* readfile "binary/explore-linux.md" */>}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-  {{%/* includeMarkdown "docker/explore-ysql.md" */%}}
+{{</* readfile "binary/explore-docker.md" */>}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-  {{%/* includeMarkdown "kubernetes/explore-ysql.md" */%}}
+{{</* readfile "binary/explore-k8s.md" */>}}
   </div>
 </div>
 ```
 
 ## Include content from other files
 
-The [includeCode](#includecode) and [includeFile](#includefile) shortcodes insert the contents of a file as plain text, while [includeMarkdown](#includemarkdown) inserts the contents of a file _and renders it as markdown_.
+The [readfile](#readfile) shortcode inserts the contents of a file. For an example, see the [inline section switcher](#inline-section-switcher).
 
+You may see the `includeMarkdown` shortcode used, particularly in the YSQL and YCQL API references. It's an older shortcode, and we'll update those pages to use `readfile` over time.
+
+<!--
 ### includeCode
 
 Because it doesn't make its own code block, you can use this shortcode to build a code block from several sources.
@@ -195,10 +190,13 @@ CAREFUL! `hl_lines` takes a different form here than when you're specifying it o
 For more information on highlight options: <https://gohugo.io/content-management/syntax-highlighting/#highlight-shortcode>
 
 {{< /warning >}}
+-->
 
-### includeMarkdown
+### readfile
 
-Inserts the contents of a markdown file, rendered as part of the calling page. We use this primarily for [syntax diagrams](../syntax-diagrams/).
+Inserts the contents of a markdown file, rendered as part of the calling page. This is very helpful for content reuse, and will eventually replace includeMarkdown in [syntax diagrams](../syntax-diagrams/).
+
+This shortcode is part of the [Docsy theme](https://docsy.dev/) that we use for the docs site. Read more about it in the [Docsy documentation](https://www.docsy.dev/docs/adding-content/shortcodes/#include-external-files).
 
 ## Landing Page sections
 
