@@ -633,8 +633,6 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 ./bin/yugabyted configure --fault_tolerance=region --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
 ```
 
------
-
 ## Upgrade a YugabyteDB cluster
 
 To use the latest features of the database and apply the latest security fixes, it's prudent to upgrade your YugabyteDB cluster to the [latest release](https://download.yugabyte.com/).
