@@ -4,10 +4,9 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 
 ## 1.1.1
 
-### Bugs Fixed
+### Improvements
 
-[PG-520](https://jira.percona.com/browse/PG-520): pg_stat_monitor does not work with PostgreSQL15
-
+[PG-462](https://jira.percona.com/browse/PG-462): Initial Support for PostgreSQL15 was added
 
 ## 1.1.0
 
