@@ -47,7 +47,7 @@ wget -q -O - https://downloads.yugabyte.com/get_ybm_cli.sh | sh
 
 ## Setup
 
-Using ybm-cli requires providing, at minimum, an API key and the host address.
+Using ybm-cli requires providing, at minimum, an [API key](../managed-apikeys/) and the host address.
 
 You can pass these values as flags. For example:
 

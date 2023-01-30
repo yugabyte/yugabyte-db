@@ -23,9 +23,9 @@ Use the following automation tools to manage your YugabyteDB Managed account and
 
 ### Authentication
 
-For access, automation tools require authentication in the form of an [API key](../managed-apikeys/).
+For access, automation tools require authentication in the form of an [API key](managed-apikeys/).
 
-In addition, you need the following account details:
+In addition, you may need the following account details:
 
 - Your YugabyteDB Managed account ID. To view your account ID, click the **Profile** icon in the top right corner of the YugabyteDB Managed window. The account ID is also displayed in the API Key Details.
 - The project ID. The project ID is a unique identifier of the YugabyteDB Managed project under which database clusters can be deployed. Currently, accounts have only one project. The project ID is also available via the **Profile** icon in the top right corner of the YugabyteDB Managed window.
