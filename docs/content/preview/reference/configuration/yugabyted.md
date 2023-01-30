@@ -13,7 +13,7 @@ rightNav:
   hideH4: true
 ---
 
-YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) managing the data and [YB-Masters](../yb-master/) managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the YB-TServer and YB-Masters servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
+YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) managing the data and [YB-Masters](../yb-master/) managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use yugabyted. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
@@ -965,11 +965,11 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
 1. After starting all nodes, specify the data placement constraint on the cluster using the following command:
 
     ```sh
-    ./bin/yugabyted configure --fault_tolerance=zone
+    ./bin/yugabyted configure data_placement --fault_tolerance=zone
     ```
 
     To manually specify the data placement constraint, use the following command:
 
     ```sh
-    ./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
+    ./bin/yugabyted configure data_placement --fault_tolerance=zone --constraint_value=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
     ```
