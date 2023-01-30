@@ -36,7 +36,7 @@ brew install ybm-cli
 Using a shell script:
 
 ```sh
-$ curl -sSL https://downloads.yugabyte.com/get_ybm_cli.sh | bash
+curl -sSL https://downloads.yugabyte.com/get_ybm_cli.sh | bash
 ```
 
 If you have wget, you can use the following:
@@ -86,12 +86,12 @@ ybm [-h] [ <resource> ] [ <command> ] [ <flags> ]
 For example:
 
 ```sh
-$ ybm cluster create
+ybm cluster create
 ```
 
 ### Online help
 
-You can access command-line help for `ybm` by running one of the following examples from the YugabyteDB home:
+You can access command-line help for `ybm` by running the following commands from YugabyteDB home:
 
 ```sh
 ybm -h
@@ -101,7 +101,7 @@ ybm -h
 ybm -help
 ```
 
-For help with specific `ybm` resource commands, run 'ybm [ resource ] [ command ] -h'. For example, you can print the command-line help for the `ybm create` command by running the following:
+For help with specific `ybm` resource commands, run `ybm [ resource ] [ command ] -h`. For example, you can print the command-line help for the `ybm create` command by running the following:
 
 ```sh
 ybm read-replica create -h
@@ -126,7 +126,12 @@ The following resources can be managed using the CLI:
 
 ### cluster
 
-Use the `cluster` resource to perform operations on a YugabyteDB cluster.
+Use the `cluster` resource to perform operations on a YugabyteDB cluster, including the following:
+
+- create, update, and delete clusters
+- pause and resume clusters
+- get information about clusters
+- add IP allow lists to clusters
 
 ```text
 Usage: ybm cluster [command] [flags]
@@ -143,6 +148,8 @@ Examples:
   ```
 
 #### create
+
+Create a cluster.
 
 --cluster-name=_name_
 : Name for the cluster.
@@ -173,10 +180,14 @@ Examples:
 
 #### delete
 
+Delete the specified cluster.
+
 --cluster-name=_name_
 : Name of the cluster.
 
 #### get
+
+Fetch information about the specified cluster.
 
 --cluster-name=_name_
 : Name of the cluster.
@@ -233,7 +244,10 @@ Equivalent of `network-allow-list assign`.
 
 ### network-allow-list
 
-Use the `network-allow-list` resource to perform operations on a YugabyteDB cluster allow list.
+Use the `network-allow-list` resource to perform operations on a YugabyteDB cluster allow list, including the following:
+
+- create and delete allow lists
+- get information about an IP allow list
 
 ```text
 Usage: ybm network-allow-list [command] [flags]
@@ -275,7 +289,10 @@ Examples:
 
 ### read-replica
 
-Use the `read-replica` resource to perform operations on a YugabyteDB cluster read replica.
+Use the `read-replica` resource to perform operations on a YugabyteDB cluster read replica, including the following:
+
+- create, update, and delete read replicas
+- get information about read replicas
 
 ```text
 Usage: ybm read-replica [command] [flags]
@@ -348,7 +365,7 @@ Examples:
 
 ### vpc
 
-Use the `vpc` resource to perform operations on VPCs.
+Use the `vpc` resource to create and delete VPCs.
 
 ```text
 Usage: ybm vpc [command] [flags]
@@ -396,7 +413,10 @@ Examples:
 
 ### vpc-peering
 
-Use the `vpc-peering` resource to perform operations on VPC peerings.
+Use the `vpc-peering` resource to perform operations on VPC peerings, including the following:
+
+- create and delete peerings
+- get information about a peering
 
 ```text
 Usage: ybm vpc-peering [command] [flags]
@@ -460,7 +480,7 @@ Examples:
 
 ### cdc-sink
 
-Use the `cdc-sink` resource to perform operations on CDC sinks.
+Use the `cdc-sink` resource to create, update, and delete CDC sinks.
 
 ```text
 Usage: ybm cdc-sink [command] [flags]
@@ -528,7 +548,7 @@ Examples:
 
 ### cdc-stream
 
-Use the `cdc-stream` resource to perform operations on CDC streams.
+Use the `cdc-stream` resource to create, update, and delete CDC streams.
 
 ```text
 Usage: ybm cdc-stream [command] [flags]
@@ -606,7 +626,11 @@ Examples:
 
 ### backup
 
-Use the `backup` resource to perform operations on cluster backups.
+Use the `backup` resource to perform operations on cluster backups, including the following:
+
+- create and delete cluster backups
+- restore a backup
+- get information about clusters
 
 ```text
 Usage: ybm backup [command] [flags]
