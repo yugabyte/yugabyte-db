@@ -13,7 +13,7 @@ rightNav:
   hideH4: true
 ---
 
-YugabyteDB uses a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
+YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) managing the data and [YB-Masters](../yb-master/) managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use yugabyted. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
@@ -97,7 +97,7 @@ Examples:
 : IP address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
-: The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
+: The IP address of the existing yugabyted server to which the new `yugabyted` server will join.
 
 --config *config-file*
 : yugabyted configuration file path.
@@ -394,7 +394,7 @@ Use the `yugabyted connect ycql` subcommand to connect to YugabyteDB with [ycqls
 
 ### demo
 
-Use the `yugabyted demo` command to start YugabyteDB with the [Northwind sample dataset](../../../sample-data/northwind/).
+Use the `yugabyted demo` command to use the demo [Northwind sample dataset](../../../sample-data/northwind/) with YugabyteDB.
 
 #### Syntax
 
@@ -555,7 +555,7 @@ To destroy the multi-node cluster, execute the following:
 
 ### Create a multi-zone cluster
 
-To create a multi-zone cluster, start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details, as follows:
+To create a multi-zone cluster, start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
@@ -595,7 +595,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 ### Create a multi-region cluster
 
-To create a multi-region cluster, start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details as follows:
+To create a multi-region cluster, start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details as follows:
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=region
