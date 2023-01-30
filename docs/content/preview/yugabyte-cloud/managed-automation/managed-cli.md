@@ -57,7 +57,11 @@ ybm --apikey AWERDFSSS --host cloud.yugabyte.com cluster get
 
 For convenience, configure `ybm-cli` with default values for these flags as follows:
 
-- Using a configuration file called `.ybm-cli.yaml` under your `$HOME` directory. You can use the command `ybm configure` to set up the file.
+- Using a configuration file called `.ybm-cli.yaml` under your `$HOME` directory. You can use the command `ybm configure` to set up the file. For example:
+
+  ```sh
+  ybm configure --apikey AWERDFSSS --host cloud.yugabyte.com
+  ```
 
 - Using [environment variables](#environment-variables). Environment variables must begin with `YBM_`. For example:
 
@@ -79,7 +83,7 @@ ybm [-h] [ <resource> ] [ <command> ] [ <flags> ]
 - command: command to run
 - flags: one or more flags, separated by spaces.
 
-### Example
+For example:
 
 ```sh
 $ ybm cluster create
@@ -103,6 +107,8 @@ For help with specific `ybm` resource commands, run 'ybm [ resource ] [ command 
 ybm read-replica create -h
 ```
 
+### completion
+
 ## Resources
 
 The following resources can be managed using the CLI:
@@ -113,6 +119,8 @@ The following resources can be managed using the CLI:
 - [vpc](#vpc)
 - [vpc-peering](#vpc-peering)
 - [cdc-sink](#cdc-sink)
+- [cdc-stream](#cdc-stream)
+- [backup](#backup)
 
 -----
 
@@ -151,8 +159,8 @@ Examples:
 --node-config=_number_
 : Number of nodes for the cluster
 
---region-info=region=<region-name>,num_nodes=<number-of-nodes>,vpc=<vpc-name>
-: Region details for multi-region cluster.
+--region-info=region=_region-name_,num_nodes=_number-of-nodes_,vpc=_vpc-name_
+: Region details for multi-region cluster, provided as key-value pairs.
 
 --cluster-tier=_tier_
 : Type of cluster; `free` or `paid`.
@@ -167,6 +175,59 @@ Examples:
 
 --cluster-name=_name_
 : Name of the cluster.
+
+#### get
+
+--cluster-name=_name_
+: Name of the cluster.
+
+#### update
+
+--cluster-name=_name_
+: Name of the cluster to update.
+
+--cloud-type=_provider_
+: Cloud provider. `aws` or `gcp`.
+
+--cluster-type=_type_
+: Deployment type. `synchronous` or `geo_partitioned`.
+
+--node-config=_number_
+: Number of nodes for the cluster
+
+--region-info=region=_region-name_,num_nodes=_number-of-nodes_,vpc=_vpc-name_
+: Region details for multi-region cluster, provided as key-value pairs.
+
+--cluster-tier=_tier_
+: Type of cluster; `free` or `paid`.
+
+--fault-tolerance=_tolerance_
+: Fault tolerance for the cluster. `none`, `zone`, or `region`.
+
+--database-track=_track_
+: Database version to use for the cluster. `stable` or `preview`.
+
+#### pause
+
+--cluster-name=_name_
+: Name of the cluster to pause.
+
+#### resume
+
+--cluster-name=_name_
+: Name of the cluster to resume.
+
+#### describe-regions
+
+Equivalent of `cloud-regions get`.
+
+#### describe-instances
+
+Equivalent of `instance-types get`.
+
+#### add-network-allow-list
+
+Equivalent of `network-allow-list assign`.
 
 -----
 
@@ -198,7 +259,17 @@ Examples:
 : Description of the IP allow list. If the description includes spaces, enclose the description in quotes (").
 
 --ip_addr=_ip address_
-: IP address to add to the allow list.
+: IP addresses to add to the allow list.
+
+#### delete
+
+--name=_name_
+: Name of the IP allow list to delete.
+
+#### get
+
+--name=_name_
+: Name of the IP allow list.
 
 -----
 
@@ -215,14 +286,63 @@ Examples:
 - Create a read-replica cluster:
 
   ```sh
-  ybm read-replica create 
-     --replica=num_cores=<region-num_cores>,memory_mb=<memory_mb>,disk_size_gb=<disk_size_gb>,code=<GCP or AWS>,region=<region>,num_nodes=<num_nodes>,vpc=<vpc_name>,num_replicas=<num_replicas>,multi_zone=<multi_zone>
+  ybm read-replica create
+    --replica=num_cores=<region-num_cores>,\
+    memory_mb=<memory_mb>,\
+    disk_size_gb=<disk_size_gb>,\
+    code=<GCP or AWS>,\
+    region=<region>,\
+    num_nodes=<num_nodes>,\
+    vpc=<vpc_name>,\
+    num_replicas=<num_replicas>,\
+    multi_zone=<multi_zone>
   ```
 
 #### create
 
+--cluster-name=_name_
+: Name of the cluster to which you want to add read replicas.
+
 --replica=_arguments_
-: Specifications for the read replica.
+: Specifications for the read replica provided as key-value pairs, as follows:
+
+- num_cores - number of vCPUs per node
+- memory_mb - memory (MB) per node
+- disk_size_gb - disk size (GB) per node
+- code - cloud provider (aws or gcp)
+- region - region in which to deploy the read replica
+- num_nodes - number of nodes for the read replica
+- vpc_name - name of the VPC in which to deploy the read replica
+- num_replicas - the replication factor
+- multi-zone - whether the read replica is multi-zone.
+
+#### delete
+
+--cluster-name=_name_
+: Name of the cluster whose read replicas you want to delete.
+
+#### get
+
+--cluster-name=_name_
+: Name of the cluster whose read replicas you want to fetch.
+
+#### update
+
+--cluster-name=_name_
+: Name of the cluster whose read replicas you want to update.
+
+--replica=_arguments_
+: Specifications for the read replica provided as key-value pairs, as follows:
+
+- num_cores - number of vCPUs per node
+- memory_mb - memory (MB) per node
+- disk_size_gb - disk size (GB) per node
+- code - cloud provider (aws or gcp)
+- region - region in which to deploy the read replica
+- num_nodes - number of nodes for the read replica
+- vpc_name - name of the VPC in which to deploy the read replica
+- num_replicas - the replication factor
+- multi-zone - 
 
 -----
 
@@ -262,6 +382,16 @@ Examples:
 --cidr=_CIDRs_
 : Comma-delimited list of CIDRs for the regions in the VPC. Only required if `--region` specified.
 
+#### delete
+
+--name=_name_
+: Name of the VPC.
+
+#### get
+
+--name=_name_
+: Name of the VPC.
+
 -----
 
 ### vpc-peering
@@ -292,23 +422,39 @@ Examples:
 --name=_name_
 : Name for the peering.
 
---vpc-name=_name_
-: Name of the VPC to be peered.
+--yb-vpc-name=_name_
+: Name of the YugabyteDB VPC to be peered.
 
 --cloud=_provider_ (this is cloud-type above)
 : Cloud provider. `aws` or `gcp`.
 
---project=_project ID_
-: Project.
+--app-vpc-project-id=_project ID_
+: Project ID of the application VPC being peered. GCP only; required.
 
---vpc=_name_
-: The YugabyteDB Managed VPC to peer to.
+--app-vpc-name=_name_
+: Name of the application VPC being peered. GCP only; required.
 
---region=_region(s)_
-: Comma-delimited list of regions for the VPC.
+--app-vpc-cidr=_CIDR_
+: CIDR of the application VPC. Required for AWS; optional for GCP.
 
---cidr=_CIDR_
-: CIDR of the peered (application) VPC.
+--app-vpc-account-id=_ID_
+: Account ID of the application VPC. AWS only; required.
+
+--app-vpc-id=_ID_
+: ID of the application VPC. AWS only; required.
+
+--app-vpc-region=_region(s)_
+: Regions of the application VPC. AWS only; required.
+
+#### delete
+
+--name=_name_
+: Name of the peering.
+
+#### get
+
+--name=_name_
+: Name of the peering.
 
 -----
 
@@ -330,8 +476,8 @@ Examples:
       --hostname=kafka.self.us 
       --auth-type=BASIC 
       --cdc-sink-type=KAFKA 
-      --username=something 
-      --password=something
+      --username=myname 
+      --password=qwerty
   ```
 
 #### create
@@ -343,7 +489,7 @@ Examples:
 : Hostname of the CDC sink.
 
 --auth-type=_authorization_
-: Authorization type for the sink. `basic`
+: Authorization type of the sink. `basic`
 
 --cdc-sink-type=_type_
 : Type of CDC sink.
@@ -367,10 +513,143 @@ Examples:
 --new-name=_name_
 : New name for the sink.
 
+--username=_name_
+: Sink user name.
+
+--password=_password_
+: Sink user password.
+
 #### delete
 
 --name=_name_
 : Name of the sink.
+
+-----
+
+### cdc-stream
+
+Use the `cdc-stream` resource to perform operations on CDC streams.
+
+```text
+Usage: ybm cdc-stream [command] [flags]
+```
+
+Examples:
+
+- Create a CDC stream:
+
+  ```sh
+  ybm cdc-stream create
+      --cluster-name=cluster-1 
+      --name=stream-2 
+      --tables=table1,table2 
+      --sink=mysink 
+      --db-name=mydatabase 
+      --snapshot-existing-data=true 
+      --kafka-prefix=prefix
+  ```
+
+#### create
+
+--cluster-name=_name_
+: Name of the cluster with the tables you want to stream.
+
+--name=_name_
+: Name for the stream.
+
+--tables=_table names_
+: List of tables the CDC stream will listen to.
+
+--sink=_sink_
+: Destination sink for the stream.
+
+--db-name=_database name_
+: Database that the Cdc Stream will listen to.
+
+--snapshot-existing-data=_bool_
+: Whether to snapshot the existing data in the database.
+
+--kafka-prefix=_prefix_
+: Prefix for the Kafka topics.
+
+#### get
+
+--cluster-name=_name_
+: Name of the cluster with the streams you want to fetch.
+
+--name=_name_
+: Name of the CDC stream.
+
+#### update
+
+--cluster-name=_name_
+: Name of the cluster with the tables you want to stream.
+
+--name=_name_
+: Name of the stream.
+
+--tables=_table names_
+: List of tables the CDC stream will listen to.
+
+--new-name=_name_
+: New name for the stream.
+
+#### delete
+
+--cluster-name=_name_
+: Name of the cluster with the stream to delete.
+
+--name=_name_
+: Name of the stream.
+
+-----
+
+### backup
+
+Use the `backup` resource to perform operations on cluster backups.
+
+```text
+Usage: ybm backup [command] [flags]
+```
+
+Examples:
+
+- Create a backup:
+
+  ```sh
+  ybm backup create 
+      --cluster-name=test-cluster
+      --credentials=username=anonymous,password=password123
+  ```
+
+#### create
+
+--cluster-name=_name_
+: Name of the cluster to back up.
+
+--retention-period=_days_
+: Retention period for the backup in days.
+
+--description=_description_
+: A description of the backup.
+
+#### delete
+
+--backup-id=_id_
+: The ID of the backup to delete.
+
+#### get
+
+--cluster-name=_name_
+: Name of the cluster of which you want to view the backups.
+
+#### restore
+
+--cluster-name=_name_
+: Name of the cluster to restore to.
+
+--backup-id=_id_
+: The ID of the backup to restore.
 
 ## Environment variables
 
