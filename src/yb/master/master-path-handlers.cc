@@ -1166,6 +1166,115 @@ void MasterPathHandlers::HandleCatalogManager(
   }
 }
 
+void MasterPathHandlers::HandleNamespacesHTML(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp, bool only_user_namespaces) {
+  std::stringstream* output = &resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  std::vector<scoped_refptr<NamespaceInfo>> namespaces;
+  master_->catalog_manager()->GetAllNamespaces(&namespaces);
+
+  typedef map<string, string[kNumNamespaceColumns]> StringMap;
+
+  auto user_namespaces = std::make_unique<StringMap>();
+  auto system_namespaces = std::make_unique<StringMap>();
+
+  for (const auto& namespace_info : namespaces) {
+    const auto lock = namespace_info->LockForRead();
+    auto& namespaces = IsSystemNamespace(lock->name()) ? system_namespaces : user_namespaces;
+    auto& namespace_row = (*namespaces)[namespace_info->id()];
+    namespace_row[kNamespaceName] = EscapeForHtmlToString(lock->name());
+    namespace_row[kNamespaceId] = EscapeForHtmlToString(namespace_info->id());
+    namespace_row[kNamespaceLanguage] = DatabasePrefix(lock->database_type());
+    namespace_row[kNamespaceState] = SysNamespaceEntryPB_State_Name(lock->pb.state());
+    namespace_row[kNamespaceColocated] = lock->colocated() ? "true" : "false";
+  }
+
+  const auto GenerateHTML = [&] (const std::unique_ptr<StringMap>& namespaces,
+      const std::string& name) {
+    (*output) << "<div class='panel panel-default'>\n"
+              << "<div class='panel-heading'><h2 class='panel-title'>" << name
+              << " Namespaces</h2></div>\n";
+    (*output) << "<div class='panel-body table-responsive'>";
+
+    if (namespaces->empty()) {
+      (*output) << "There are no " << tolower(name[0])
+                << name.substr(1) << " namespaces.\n";
+    } else {
+      (*output) << "<table class='table table-responsive'>\n";
+      (*output) << "  <tr><th>Namespace Name</th>\n"
+                << "  <th>Namespace Id</th>\n"
+                << "  <th>Language</th>\n"
+                << "  <th>State</th>\n"
+                << "  <th>Colocated</th>\n";
+
+      for (const auto& namespace_row : *namespaces) {
+        (*output) << Substitute(
+            "<tr>"
+            "<td>$0</td>"
+            "<td>$1</td>"
+            "<td>$2</td>"
+            "<td>$3</td>"
+            "<td>$4</td>",
+            namespace_row.second[kNamespaceName],
+            namespace_row.second[kNamespaceId],
+            namespace_row.second[kNamespaceLanguage],
+            namespace_row.second[kNamespaceState],
+            namespace_row.second[kNamespaceColocated]);
+      }
+
+      (*output) << "</table>\n";
+
+    }
+    (*output) << "</div> <!-- panel-body -->\n";
+    (*output) << "</div> <!-- panel -->\n";
+  };
+
+  GenerateHTML(user_namespaces, "User");
+  if (!only_user_namespaces) {
+    GenerateHTML(system_namespaces, "System");
+  }
+}
+
+void MasterPathHandlers::HandleNamespacesJSON(const Webserver::WebRequest& req,
+    Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  std::vector<scoped_refptr<NamespaceInfo>> namespaces;
+  master_->catalog_manager()->GetAllNamespaces(&namespaces);
+
+  const auto generateJSON = [&] (bool for_system_namespaces) {
+    jw.String(for_system_namespaces ? "System Namespaces" : "User Namespaces");
+    jw.StartArray();
+    for (const auto& ns : namespaces) {
+      const auto lock = ns->LockForRead();
+      if (for_system_namespaces == IsSystemNamespace(ns->name())) {
+        jw.StartObject();
+        jw.String("name");
+        jw.String(lock->name());
+        jw.String("id");
+        jw.String(ns->id());
+        jw.String("language");
+        jw.String(DatabasePrefix(lock->database_type()));
+        jw.String("state");
+        jw.String(SysNamespaceEntryPB_State_Name(lock->pb.state()));
+        jw.String("colocated");
+        jw.String(lock->colocated() ? "true" : "false");
+        jw.EndObject();
+      }
+    }
+    jw.EndArray();
+  };
+
+  jw.StartObject();
+  generateJSON(false /* for_system_namespace */);
+  generateJSON(true);
+  jw.EndObject();
+}
+
 namespace {
 
 bool CompareByHost(const TabletReplica& a, const TabletReplica& b) {
@@ -2315,6 +2424,12 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/tables", "Tables",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-table");
+  cb = std::bind(&MasterPathHandlers::HandleNamespacesHTML,
+      this, _1, _2, false /* only_user_namespaces */);
+  server->RegisterPathHandler(
+      "/namespaces", "Namespaces",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      is_on_nav_bar, "fa fa-table");
 
   // The set of handlers not currently visible on the nav bar.
   cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
@@ -2375,6 +2490,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
   server->RegisterPathHandler(
       "/dump-entities", "Dump Entities",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleNamespacesJSON, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/namespaces", "Namespaces",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   server->RegisterPathHandler(
       "/api/v1/is-leader", "Leader Check",

@@ -93,7 +93,8 @@ public class Schedule extends Model {
 
   public enum SortBy implements PagedQuery.SortByIF {
     taskType("taskType"),
-    scheduleUUID("scheduleUUID");
+    scheduleUUID("scheduleUUID"),
+    scheduleName("scheduleName");
 
     private final String sortField;
 

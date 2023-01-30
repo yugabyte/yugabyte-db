@@ -414,6 +414,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
 
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
 
+  const std::string& state_name() const {
+    return SysTablesEntryPB_State_Name(pb.state());
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };

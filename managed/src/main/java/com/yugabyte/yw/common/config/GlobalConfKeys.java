@@ -34,17 +34,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "To log backup restore script output for debugging issues",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO: Use Enum type SkipCertValidationType
-  // I traced this to be Using Universe scope
-  public static final ConfKeyInfo<String> tlsSkipCertValidation =
-      new ConfKeyInfo<>(
-          "yb.tls.skip_cert_validation",
-          ScopeType.GLOBAL,
-          "Skip TLS Cert Validation",
-          "Used to skip certificates validation for the configure phase."
-              + "Possible values - ALL, HOSTNAME",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useKubectl =
       new ConfKeyInfo<>(
           "yb.use_kubectl",

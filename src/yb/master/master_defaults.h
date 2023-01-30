@@ -30,6 +30,8 @@ static const char* const kSystemAuthNamespaceId = "00000000000000000000000000000
 static const char* const kSystemDistributedNamespaceName = "system_distributed";
 static const char* const kSystemTracesNamespaceName = "system_traces";
 
+static const char* const kSystemPlatformNamespace = "system_platform";
+
 static const char* const kSystemPeersTableName = "peers";
 static const char* const kSystemPeersV2TableName = "peers_v2";
 static const char* const kSystemLocalTableName = "local";

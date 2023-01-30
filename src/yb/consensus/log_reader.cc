@@ -392,8 +392,6 @@ Status LogReader::ReadReplicatesInRange(
     int64_t max_bytes_to_read,
     ReplicateMsgs* replicates,
     int64_t* starting_op_segment_seq_num,
-    yb::SchemaPB* modified_schema,
-    uint32_t* modified_schema_version,
     CoarseTimePoint deadline) const {
   DCHECK_GT(starting_at, 0);
   DCHECK_GE(up_to, starting_at);
@@ -460,11 +458,6 @@ Status LogReader::ReadReplicatesInRange(
           max_bytes_to_read <= 0 ||
           total_size + space_required < max_bytes_to_read) {
         total_size += space_required;
-        if (entry.replicate().op_type() == consensus::OperationType::CHANGE_METADATA_OP &&
-            modified_schema != nullptr && modified_schema_version != nullptr) {
-          entry.replicate().change_metadata_request().schema().ToGoogleProtobuf(modified_schema);
-          *modified_schema_version = entry.replicate().change_metadata_request().schema_version();
-        }
         replicates_tmp.emplace_back(batch, entry.mutable_replicate());
       } else {
         limit_exceeded = true;

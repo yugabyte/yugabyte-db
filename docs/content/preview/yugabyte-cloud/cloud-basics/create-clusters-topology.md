@@ -24,9 +24,12 @@ YugabyteDB Managed offers a number of deployment and replication options in geo-
 | Multi zone | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Zone-level resilience |
 | Replicate across regions | Strong | High with strong consistency or low with eventual consistency | Depends on inter-region distances | Region-level resilience |
 | Partition by region | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
+| Read replica | Strong in source, eventual in replica | Low in region (1-10ms) | Low in primary region (1-10ms) | Low latency reads |
+
+<!--
 | xCluster active-passive | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery, low latency I/O |
 | xCluster active-active | Eventual (timeline) | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery-, low latency I/O |
-| Read replica | Strong in source, eventual in replica | Low in region (1-10ms) | Low in primary region (1-10ms) | Low latency reads |
+-->
 
 ## Single region multi-zone cluster
 
@@ -145,6 +148,7 @@ To deploy a partition-by-region cluster, refer to [Partition by region](../creat
 - [Row-level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)
 - [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
 
+<!--
 ## Cross-cluster
 
 In situations where applications want to keep data in multiple clouds or in remote regions, YugabyteDB offers xCluster replication across two data centers or cloud regions. This can be either bi-directional in an active-active configuration, or uni-directional in an active-passive configuration.
@@ -213,6 +217,7 @@ In an active-active configuration, both clusters can handle writes to potentiall
 - Because xCluster replication bypasses the query layer for replicated records, database triggers won't get fired and can lead to unexpected behavior
 - Because xCluster replication is done at the write-ahead log (WAL) level, there is no way to check for unique constraints. It's possible to have two conflicting writes in separate universes that will violate the unique constraint and will cause the main table to contain both rows but the index to contain just 1 row, resulting in an inconsistent state.
 - Similarly, the active-active mode doesn't support auto-increment IDs because both universes will generate the same sequence numbers, and this can result in conflicting rows. It is better to use UUIDs instead.
+-->
 
 ## Read replicas
 

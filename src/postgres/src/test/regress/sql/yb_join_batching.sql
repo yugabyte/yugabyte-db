@@ -85,6 +85,18 @@ DROP TABLE t10;
 DROP TABLE t11;
 DROP TABLE t12;
 
+create table d1(a int, primary key(a));
+create table d2(a int, primary key(a));
+create table d3(a int, primary key(a));
+create table d4(a int, primary key(a));
+
+/*+Leading(((d2 (d3 d4)) d1))*/ explain (costs off) select * from d1,d2,d3,d4 where d1.a = d3.a and d2.a = d3.a and d4.a = d2.a;
+
+drop table d1;
+drop table d2;
+drop table d3;
+drop table d4;
+
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 

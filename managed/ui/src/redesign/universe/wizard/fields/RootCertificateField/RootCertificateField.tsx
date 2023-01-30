@@ -3,7 +3,6 @@ import { useQuery } from 'react-query';
 import { Controller, useFormContext } from 'react-hook-form';
 import { api, QUERY_KEY } from '../../../../helpers/api';
 import { SecurityConfigFormValue } from '../../steps/security/SecurityConfig';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import { Certificate } from '../../../../helpers/dtos';
 import { Select } from '../../../../uikit/Select/Select';
 
@@ -28,7 +27,7 @@ export const RootCertificateField: FC<RootCertificateFieldProps> = ({ disabled }
     <Controller
       control={control}
       name="rootCA"
-      render={({ onChange, onBlur, value }: ControllerRenderProps<string | null>) => (
+      render={({ field: { onChange, onBlur, value } }) => (
         <Select<Certificate>
           isSearchable
           isClearable={false}

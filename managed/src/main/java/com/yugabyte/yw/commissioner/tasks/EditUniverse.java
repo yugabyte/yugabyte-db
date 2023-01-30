@@ -224,6 +224,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     Set<NodeDetails> existingNodesToStartMaster =
         newMasters.stream().filter(n -> n.state != NodeState.ToBeAdded).collect(Collectors.toSet());
 
+    boolean isWaitForLeadersOnPreferred =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybEditWaitForLeadersOnPreferred);
+
     // Set the old nodes' state to to-be-removed.
     if (!nodesToBeRemoved.isEmpty()) {
       if (nodesToBeRemoved.size() == nodes.size()) {
@@ -409,7 +412,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     createManageLoadBalancerTasks(
         createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null, null));
 
-    if (cluster.clusterType == ClusterType.PRIMARY) {
+    if (cluster.clusterType == ClusterType.PRIMARY && isWaitForLeadersOnPreferred) {
       createWaitForLeadersOnPreferredOnlyTask();
     }
 
