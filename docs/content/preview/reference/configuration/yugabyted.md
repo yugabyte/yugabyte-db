@@ -960,7 +960,7 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
     ./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
     ```
 
-1. Repeat the previous step on all the nodes of the cluster, one node at a time.
+1. Repeat the previous step on all the nodes of the cluster, one node at a time. If you are deploying the cluster on your local computer, specify the base directory for each node using the `--base-dir` flag.
 
 1. After starting all nodes, specify the data placement constraint on the cluster using the following command:
 
