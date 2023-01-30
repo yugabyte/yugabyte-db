@@ -92,7 +92,7 @@ Warning  FailedScheduling   75s (x40 over 55m)    default-scheduler   0/55 nodes
 We can schedule YBA pods on the particular nodes as required. We might see pods in the Pending state if the scheduler fails to figure out a node because pods need to match the labels or taints.
 - For [Node Selector](../../../install-yugabyte-platform/install-software/kubernetes/#nodeselector)
 - For [Affinity](../../../install-yugabyte-platform/install-software/kubernetes/#zoneaffinity)
-- For [Taints & Tolerations](../../../install-yugabyte-platform/install-software/kubernetes/#toleration)
+- For [Taints & Tolerations](../../../install-yugabyte-platform/install-software/kubernetes/#tolerations)
 
 ### Is StorageClass VolumeBindingMode set to WaitForFirstConsumer?
 
@@ -105,7 +105,7 @@ kubectl describe pod <POD_NAME> -n <NAMESPACE>
 ```
 
 ```sh
-  Warning  FailedScheduling   75s (x40 over 55m)    default-scheduler   0/55 nodes are available: 19 Insufficient cpu, 36 node(s) didn't match Pod's node affinity/selector
+Warning  FailedScheduling   75s (x40 over 55m)    default-scheduler   0/55 nodes are available: 19 Insufficient cpu, 36 node(s) didn't match Pod's node affinity/selector
 ```
 
 **Debug**
@@ -150,7 +150,7 @@ You can use following commands to check the storage class related information.
 Ensure the `StorageClass` used during YBA deployment should have `WaitForFirstConsumer` as `VolumeBindingMode`. Use the following command snippet to update the `VolumeBindingMode` of a `StorageClass`.
 
   ```sh
-  ## Considering standard named storage class exists in the cluster.
+  # Considering a storage class named standard exists in the cluster.
   kubectl get storageclass standard -ojson \
     | jq '.volumeBindingMode="WaitForFirstConsumer" | del(.metadata.managedFields, .metadata.creationTimestamp, .metadata.resourceVersion, .metadata.uid)' \
     | kubectl replace --force -f -
@@ -261,10 +261,10 @@ You can use `kubectl` to analyze the situation. We need to check YBA logs to und
 - Check the logs for particular container
 
   ```sh
-  ## yugabytedb anywhere
+  # yugabytedb anywhere
   kubectl logs <YBA-POD-NAME> -n <NAMESPACE> -c yugaware
 
-  ## postgres
+  # postgres
   kubectl logs <YBA-POD-NAME> -n <NAMESPACE> -c postgres
   ```
 
