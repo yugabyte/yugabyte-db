@@ -243,7 +243,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the fault tolerance for the cluster. This flag can accept one of the following values: zone, region, cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in three different zones, if available.
 
 --constraint_value *data-placement-constraint-value*
-: Specify the data placement for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the form `cloud.region.zone`.
+: Specify the data placement for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone`.
 
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.

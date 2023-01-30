@@ -48,7 +48,7 @@ $ ./bin/yugabyted -h
 $ ./bin/yugabyted -help
 ```
 
-For help with specific `yugabyted` commands, run 'yugabyted [ command ] -h'. For example, you can print the command line help for the `yugabyted start` command by running the following:
+For help with specific `yugabyted` commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
 
 ```sh
 $ ./bin/yugabyted start -h
@@ -90,8 +90,8 @@ Examples:
 
 #### Flags
 
--h, --help
-: Print the command line help and exit.
+-h | --help
+: Print the command-line help and exit.
 
 --advertise_address *bind-ip*
 : IP address or local hostname on which yugabyted will listen.
@@ -201,14 +201,14 @@ yugabyted configure --fault_tolerance=zone
 
 #### Flags
 
--h, --help
-: Print the command line help and exit.
+-h | --help
+: Print the command-line help and exit.
 
 --fault_tolerance *fault_tolerance*
-: Specify the fault tolerance associated with cluster. This flag can accept one of these values - zone, region, or cloud. `For example`: When the flag is configured with `zone`, `--fault_tolerance=zone`, Yugabyted will apply the `zone` data placement constraint on the YugabyteDB cluster to place the data in 3 different zones, if available.
+: Specify the fault tolerance for the cluster. This flag can accept one of the following values: zone, region, cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in three different zones, if available.
 
 --data_placement_constraint *data-placement-constraint*
-: Specify the data placement for the YugabyteDB cluster. This is an optional flag. This flag takes the comma-seperated values in the form `cloud.region.zone`.
+: Specify the data placement for the cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone`.
 
 --rf *replication-factor*
 : Specify the replication factor of the cluster. This is an optional flag which takes a value of `3` or `5`.
@@ -231,14 +231,13 @@ Use the `yugabyted stop` command to stop a YugabyteDB cluster.
 #### Syntax
 
 ```sh
-Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
-                               [--base_dir BASE_DIR]
+Usage: yugabyted stop [flags]
 ```
 
 #### Flags
 
--h, --help
-: Print the command line help and exit.
+-h | --help
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server that needs to be stopped.
@@ -258,14 +257,13 @@ Use the `yugabyted destroy` command to delete a cluster.
 #### Syntax
 
 ```sh
-Usage: yugabyted destroy [-h] [--config CONFIG] [--data_dir DATA_DIR]
-                                [--base_dir BASE_DIR]
+Usage: yugabyted destroy [flags]
 ```
 
 #### Flags
 
--h, --help
-: Print the command line help and exit.
+-h | --help
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server that needs to be destroyed.
@@ -285,14 +283,13 @@ Use the `yugabyted status` command to check the status.
 #### Syntax
 
 ```sh
-Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
-                                 [--base_dir BASE_DIR]
+Usage: yugabyted status [flags]
 ```
 
 #### Flags
 
--h, --help
-: Print the command line help and exit.
+-h | --help
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server whose status is desired.
@@ -312,14 +309,13 @@ Use the `yugabyted version` command to check the version number.
 #### Syntax
 
 ```sh
-Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
-                                  [--base_dir BASE_DIR]
+Usage: yugabyted version [flags]
 ```
 
 #### Flags
 
--h, --help
-: Print the command line help and exit.
+-h | --help
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server whose version is desired.
@@ -339,15 +335,13 @@ Use the `yugabyted collect_logs` command to generate a zipped file with all logs
 #### Syntax
 
 ```sh
-Usage: yugabyted collect_logs [-h] [--config CONFIG]
-                                       [--data_dir DATA_DIR]
-                                       [--base_dir BASE_DIR]
+Usage: yugabyted collect_logs [flags]
 ```
 
 #### Flags
 
--h, --help
-: Print the command line help and exit.
+-h | --help
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server whose logs are desired.
@@ -367,13 +361,13 @@ Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../
 #### Syntax
 
 ```sh
-Usage: yugabyted connect [-h] {ycql,ysql} ...
+Usage: yugabyted connect [flags]
 ```
 
 #### Flags
 
--h, --help
-: Print the command line help and exit.
+-h | --help
+: Print the command-line help and exit.
 
 --ysql
 : Connect with ysqlsh.
@@ -390,12 +384,12 @@ Use the `yugabyted demo connect` command to start YugabyteDB with the [Northwind
 #### Syntax
 
 ```sh
-Usage: yugabyted demo [-h] {connect,destroy} ...
+Usage: yugabyted demo [flags]
 ```
 
 #### Flags
 
--h, --help
+-h | --help
 : Print the help message and exit.
 
 connect
@@ -407,7 +401,7 @@ destroy
 
 -----
 
-## Environment Variables
+## Environment variables
 
 In the case of multi-node deployments, all nodes should have similar environment variables.
 
@@ -503,6 +497,13 @@ Create a single-node cluster and set additional flags for the YB-TServer process
 
 ### Create a multi-node cluster
 
+On macOS, the additional nodes need loopback addresses configured, as follows:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
 Add two more nodes to the cluster using the `join` option:
 
 ```sh
@@ -522,33 +523,33 @@ Destroy the above multi-node cluster:
 
 ### Create a multi-zone cluster
 
-#### Multi-node deployment
-
-To create a multi-node cluster for YugabyteDB, start the first node by running the `yugabyted start` command, and pass in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details. Run the following command:
+To create a multi-zone cluster, start the first node by running the `yugabyted start` command, and pass in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details, as follows:
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
 ```
 
-Start the second and the third node on two separate VMs:
+Start the second and the third node on two separate VMs as follows:
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-2a --fault_tolerance=zone
+```
 
+```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-3a --fault_tolerance=zone
 ```
 
-After starting the processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster as follows:
+After starting the processes on all the nodes, configure the data placement constraint of the cluster as follows:
 
 ```sh
 ./bin/yugabyted configure --fault_tolerance=zone
 ```
 
-This preceding command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are three or more zones available in the cluster, the `configure` command configures the cluster to survive at least one availability zone failure. Otherwise, it outputs a warning message.
+The preceding command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are three or more zones available in the cluster, the `configure` command configures the cluster to survive at least one availability zone failure. Otherwise, it outputs a warning message.
 
 The replication factor of the cluster defaults to 3.
 
-The data placement constraint can be manually set with the `--data_placement_constraint` flag, which takes the comma-separated value of `cloud.region.zone`. For example:
+You can set the data placement constraint manually using the `--data_placement_constraint` flag, which takes the comma-separated value of `cloud.region.zone`. For example:
 
 ```sh
 ./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
@@ -572,7 +573,9 @@ Start the second and the third nodes on two separate VMs as follows:
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-west.us-west-1a --fault_tolerance=region
+```
 
+```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-central.us-central-1a --fault_tolerance=region
 ```
 
@@ -589,13 +592,13 @@ The replication factor of the cluster defaults to 3.
 You can set the data placement constraint manually using the `--data_placement_constraint` flag, which takes the comma-separated value of `cloud.region.zone`. For example:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
+./bin/yugabyted configure --fault_tolerance=region --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
 ```
 
 You can set the replication factor of the cluster manually using the `--rf` flag. For example:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
+./bin/yugabyted configure --fault_tolerance=region --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
 ```
 
 -----
@@ -614,7 +617,7 @@ Repeat the steps on all the nodes of the cluster, one node at a time.
 
 ### Upgrade a cluster from single to multi zone
 
-The following steps assume that you already have a running YugabyteDB cluster deployed using `yugabyted`.
+The following steps assume that you have a running YugabyteDB cluster deployed using `yugabyted`, and have [downloaded the update](https://download.yugabyte.com/).
 
 1. Stop the first node by using `yugabyted stop` command:
 
