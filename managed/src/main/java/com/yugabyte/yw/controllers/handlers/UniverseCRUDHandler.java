@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers.handlers;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -450,6 +451,8 @@ public class UniverseCRUDHandler {
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
       c.validate(!cloudEnabled, isAuthEnforced);
+      // Enforce user tags.
+      validateUserTags(customer, c.userIntent);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
       if (c.userIntent.enableExposingService
           == UniverseDefinitionTaskParams.ExposingServiceState.NONE) {
@@ -704,6 +707,8 @@ public class UniverseCRUDHandler {
   public UUID update(Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     checkCanEdit(customer, u);
     checkTaskParamsForUpdate(u, taskParams);
+    // enforce user tags for cloud instances.
+    for (Cluster cluster : taskParams.clusters) validateUserTags(customer, cluster.userIntent);
     if (u.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.enableYbc = true;
@@ -932,6 +937,8 @@ public class UniverseCRUDHandler {
               + " for "
               + universe.universeUUID);
     }
+
+    for (Cluster cluster : taskParams.clusters) validateUserTags(customer, cluster.userIntent);
 
     if (universe.isYbcEnabled()) {
       taskParams.installYbc = true;
@@ -1833,6 +1840,35 @@ public class UniverseCRUDHandler {
       String errMsg = "Unknown cluster " + StringUtils.join(taskParamClustersUuids, ",");
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+  }
+
+  // This method enforces the user tags provided in runtime config.
+  // This ensures that universe creation fails when enforced tags are not provided.
+  private void validateUserTags(
+      Customer customer, UniverseDefinitionTaskParams.UserIntent userIntent) {
+    boolean enforceUserTags =
+        confGetter.getConfForScope(customer, CustomerConfKeys.enforceUserTags);
+    if (!userIntent.providerType.enforceInstanceTags() || !enforceUserTags) return;
+
+    Map<String, String> instanceTags = userIntent.instanceTags;
+    SetMultimap<String, String> tagToValues =
+        confGetter.getConfForScope(customer, CustomerConfKeys.enforcedUserTagsMap);
+    for (String userTag : tagToValues.keySet()) {
+      if (!instanceTags.containsKey(userTag))
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("%s user tags required.", StringUtils.join(tagToValues.keySet(), ", ")));
+      Set<String> acceptedValuesSet = tagToValues.get(userTag);
+
+      // "*" in the accepted values set should allow any value
+      if (!acceptedValuesSet.contains("*")
+          && !acceptedValuesSet.contains(instanceTags.get(userTag)))
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Invalid value for %s (accepted values: %s)",
+                userTag, StringUtils.join(acceptedValuesSet, ", ")));
     }
   }
 }

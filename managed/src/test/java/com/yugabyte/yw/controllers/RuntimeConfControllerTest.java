@@ -531,11 +531,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             "yb.query_stats.live_queries.ws",
             "yb.perf_advisor",
             // TODO (PLAT-7110)
-            "yb.releases.path");
+            "yb.releases.path",
+            "yb.universe.user_tags.accepted_values");
     assertEquals(
         "Do not modify this list to get the test to pass without discussing "
             + "on #runtime-config channel.",
-        8,
+        9,
         excludedKeys.size());
     for (String key : excludedKeys) {
       if (path.startsWith(key)) return true;
