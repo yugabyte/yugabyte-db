@@ -187,7 +187,7 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 --use_cassandra_authentication *bool*
 : Enable or disable YCQL authentication. Default: `false`.
 : If the `YCQL_USER` or `YCQL_PASSWORD` [environment variables](#environment-variables) exist, then authentication mode is automatically set to `true`.
-Note that the corresponding environment variables have higher priority than the command-line flags.
+: Note that the corresponding environment variables have higher priority than the command-line flags.
 
 --initial_scripts_dir *initial-scripts-dir*
 : The directory from where yugabyted reads initialization scripts.
@@ -243,7 +243,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the fault tolerance for the cluster. This flag can accept one of the following values: zone, region, cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in three different zones, if available.
 
 --constraint_value *data-placement-constraint-value*
-: Specify the data placement for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone`.
+: Specify the data placement for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the form `cloud.region.zone`.
 
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
@@ -856,7 +856,7 @@ Start the second and the third node on two separate VMs, as follows:
 
   {{% tab header="Insecure" lang="basic-2" %}}
 
-To create a multi-region cluster, start the first yugabyted node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flags to set the node location details as follows:
+To create a multi-region cluster, start the first node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flags to set the node location details as follows:
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=region
