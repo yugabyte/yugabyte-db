@@ -32,7 +32,7 @@ Generic</a>
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/).
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
 
 ## Create a universe
 

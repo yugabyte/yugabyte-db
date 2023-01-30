@@ -21,5 +21,5 @@ Using the **Edit Universe** page, you can specify the new intent for the univers
 
 Expansion of universes created with an on-premise cloud provider and secured with third-party certificates obtained from external certification authorities follows a different workflow. For details, see [Expand the universe](../../security/enable-encryption-in-transit#expand-the-universe).
 
-If your universe was created using Kubernetes, you have an option of modifying the Helm chart overrides. To do this, navigate to your universe's **Overiew**, click **Actions > Edit Kubernetes Overrides** to open the **Kubernetes Overrides** dialog and complete it by following instruction provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
+If your universe was created using Kubernetes, you have an option of modifying the Helm chart overrides. To do this, navigate to your universe's **Overiew**, click **Actions > Edit Kubernetes Overrides** to open the **Kubernetes Overrides** dialog and complete it by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
 
