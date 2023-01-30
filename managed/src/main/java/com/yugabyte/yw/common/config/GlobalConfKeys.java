@@ -11,8 +11,10 @@
 package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import java.time.Duration;
+import java.util.List;
 
 public class GlobalConfKeys extends RuntimeConfigKeysModule {
 
@@ -31,17 +33,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Log Script Output For YBA HA Feature",
           "To log backup restore script output for debugging issues",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO: Use Enum type SkipCertValidationType
-  // I traced this to be Using Universe scope
-  public static final ConfKeyInfo<String> tlsSkipCertValidation =
-      new ConfKeyInfo<>(
-          "yb.tls.skip_cert_validation",
-          ScopeType.GLOBAL,
-          "Skip TLS Cert Validation",
-          "Used to skip certificates validation for the configure phase."
-              + "Possible values - ALL, HOSTNAME",
-          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useKubectl =
       new ConfKeyInfo<>(
@@ -472,4 +463,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "TODO",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<List> tagList =
+      new ConfKeyInfo<>(
+          "yb.runtime_conf_ui.tag_filter",
+          ScopeType.GLOBAL,
+          "UI Tag Filters",
+          "List of tags to filter which keys are displayed",
+          ConfDataType.TagListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

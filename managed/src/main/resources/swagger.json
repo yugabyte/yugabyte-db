@@ -4387,6 +4387,9 @@
         "installNodeExporter" : {
           "type" : "boolean"
         },
+        "keyPairName" : {
+          "type" : "string"
+        },
         "nodeExporterPort" : {
           "format" : "int32",
           "type" : "integer"
@@ -4424,6 +4427,9 @@
         "sshPort" : {
           "format" : "int32",
           "type" : "integer"
+        },
+        "sshPrivateKeyContent" : {
+          "type" : "string"
         },
         "sshUser" : {
           "type" : "string"
@@ -4783,6 +4789,12 @@
     },
     "KubernetesRegionInfo" : {
       "properties" : {
+        "certManagerClusterIssuer" : {
+          "type" : "string"
+        },
+        "certManagerIssuer" : {
+          "type" : "string"
+        },
         "kubeConfig" : {
           "type" : "string"
         },
@@ -5999,49 +6011,49 @@
     },
     "PerfAdvisorSettingsFormData" : {
       "properties" : {
-        "connectionSkewIntervalMins" : {
+        "connection_skew_interval_mins" : {
           "description" : "Perf advisor connection skew check interval",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
         },
-        "connectionSkewMinConnections" : {
+        "connection_skew_min_connections" : {
           "description" : "Perf advisor connection skew min connections",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
         },
-        "connectionSkewThreshold" : {
+        "connection_skew_threshold_pct" : {
           "description" : "Perf advisor connection skew threshold",
           "format" : "double",
           "minimum" : 1,
           "type" : "number"
         },
-        "cpuSkewIntervalMins" : {
+        "cpu_skew_interval_mins" : {
           "description" : "Perf advisor cpu skew check interval",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
         },
-        "cpuSkewMinUsage" : {
+        "cpu_skew_min_usage_pct" : {
           "description" : "Perf advisor cpu skew min cpu usage",
           "format" : "double",
           "minimum" : 1,
           "type" : "number"
         },
-        "cpuSkewThreshold" : {
+        "cpu_skew_threshold_pct" : {
           "description" : "Perf advisor cpu skew threshold",
           "format" : "double",
           "minimum" : 1,
           "type" : "number"
         },
-        "cpuUsageIntervalMins" : {
+        "cpu_usage_interval_mins" : {
           "description" : "Perf advisor CPU usage check interval",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
         },
-        "cpuUsageThreshold" : {
+        "cpu_usage_threshold" : {
           "description" : "Perf advisor CPU usage threshold",
           "format" : "double",
           "minimum" : 1,
@@ -6051,41 +6063,54 @@
           "description" : "Enable/disable perf advisor runs for the universe",
           "type" : "boolean"
         },
-        "querySkewIntervalMins" : {
+        "query_skew_interval_mins" : {
           "description" : "Perf advisor query skew check interval",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
         },
-        "querySkewMinQueries" : {
+        "query_skew_min_queries" : {
           "description" : "Perf advisor query skew min queries",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
         },
-        "querySkewThreshold" : {
+        "query_skew_threshold_pct" : {
           "description" : "Perf advisor query skew threshold",
           "format" : "double",
           "minimum" : 1,
           "type" : "number"
         },
-        "rejectedConnIntervalMins" : {
+        "rejected_conn_interval_mins" : {
           "description" : "Perf advisor rejected connections check interval",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
         },
-        "rejectedConnThreshold" : {
+        "rejected_conn_threshold" : {
           "description" : "Perf advisor rejected connections threshold",
           "format" : "int32",
           "minimum" : 1,
           "type" : "integer"
         },
-        "runFrequencyMins" : {
+        "universe_frequency_mins" : {
           "description" : "Perf advisor runs frequency, in minutes",
           "format" : "int32",
           "minimum" : 5,
           "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
+    "PerfAdvisorSettingsWithDefaults" : {
+      "properties" : {
+        "defaultSettings" : {
+          "$ref" : "#/definitions/PerfAdvisorSettingsFormData",
+          "description" : "Universe custom settings"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/PerfAdvisorSettingsFormData",
+          "description" : "Universe custom settings"
         }
       },
       "type" : "object"
@@ -6157,6 +6182,10 @@
     },
     "PerformanceRecommendationFilter" : {
       "properties" : {
+        "createdInstantBefore" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
         "customerId" : {
           "format" : "uuid",
           "type" : "string"
@@ -6201,7 +6230,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerId", "ids", "isStale", "priorities", "states", "types", "universeId" ],
+      "required" : [ "createdInstantBefore", "customerId", "ids", "isStale", "priorities", "states", "types", "universeId" ],
       "type" : "object"
     },
     "PerformanceRecommendationPagedQuery" : {
@@ -6468,7 +6497,7 @@
           "readOnly" : true,
           "type" : "boolean"
         },
-        "allKeys" : {
+        "allAccessKeys" : {
           "items" : {
             "$ref" : "#/definitions/AccessKey"
           },
@@ -6533,7 +6562,7 @@
           "type" : "integer"
         }
       },
-      "required" : [ "allKeys", "regions" ],
+      "required" : [ "regions" ],
       "type" : "object"
     },
     "ProviderDetails" : {
@@ -7970,7 +7999,7 @@
           "type" : "integer"
         },
         "sortBy" : {
-          "enum" : [ "taskType", "scheduleUUID" ],
+          "enum" : [ "taskType", "scheduleUUID", "scheduleName" ],
           "type" : "string"
         }
       },
@@ -17353,7 +17382,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/PerfAdvisorSettingsFormData"
+              "$ref" : "#/definitions/PerfAdvisorSettingsWithDefaults"
             }
           }
         },

@@ -3,7 +3,6 @@ import { Controller, useFormContext } from 'react-hook-form';
 import { BaseToggle } from '../../../../uikit/Toggle/BaseToggle';
 import { InstanceConfigFormValue } from '../../steps/instance/InstanceConfig';
 import { Tooltip } from '../../../../uikit/Tooltip/Tooltip';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import { I18n } from '../../../../uikit/I18n/I18n';
 import './AssignPublicIPField.scss';
 
@@ -19,11 +18,11 @@ export const AssignPublicIPField: FC<AssignPublicIPFieldProps> = ({ disabled }) 
       <Controller
         control={control}
         name="assignPublicIP"
-        render={({ value, onChange }: ControllerRenderProps<boolean>) => (
+        render={({ field }) => (
           <BaseToggle
-            value={value}
+            value={field.value}
             disabled={disabled}
-            onChange={onChange}
+            onChange={field.onChange}
             descriptions={{
               on: (
                 <span className="assign-public-ip-field__toggle-on">

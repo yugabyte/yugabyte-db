@@ -29,7 +29,7 @@ var rootCmd = &cobra.Command{
     Anywhere instance through our command line CLI, such as clean, createBackup,
     restoreBackup, install, and upgrade! View the CLI menu to learn more!`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		initAfterFlagsParsed(cmd.Name())
+		initAfterFlagsParsed(cmd.CommandPath())
 	},
 }
 

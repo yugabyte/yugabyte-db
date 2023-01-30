@@ -1114,6 +1114,75 @@ Status PgClientSession::UpdateSequenceTuple(
   return Status::OK();
 }
 
+Status PgClientSession::FetchSequenceTuple(
+    const PgFetchSequenceTupleRequestPB& req, PgFetchSequenceTupleResponsePB* resp,
+    rpc::RpcContext* context) {
+  using pggate::PgDocData;
+  using pggate::PgWireDataHeader;
+
+  PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
+
+  auto psql_write = client::YBPgsqlWriteOp::NewFetchSequence(table, &context->sidecars());
+
+  auto* write_request = psql_write->mutable_request();
+  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
+
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
+
+  auto* fetch_sequence_params = write_request->mutable_fetch_sequence_params();
+  fetch_sequence_params->set_fetch_count(req.fetch_count());
+  fetch_sequence_params->set_inc_by(req.inc_by());
+  fetch_sequence_params->set_min_value(req.min_value());
+  fetch_sequence_params->set_max_value(req.max_value());
+  fetch_sequence_params->set_cycle(req.cycle());
+
+  write_request->add_col_refs()->set_column_id(
+      table->schema().ColumnId(kPgSequenceLastValueColIdx));
+  write_request->add_col_refs()->set_column_id(
+      table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+
+  auto& session = EnsureSession(PgClientSessionKind::kSequence);
+  session->SetDeadline(context->GetClientDeadline());
+  session->Apply(std::move(psql_write));
+  auto fetch_status = session->FlushFuture().get();
+  RETURN_NOT_OK(CombineErrorsToStatus(fetch_status.errors, fetch_status.status));
+
+  // Expect exactly two rows on success: sequence value range start and end, each as a single value
+  // in its own row.
+  // Even if a single value is fetched, both should be equal.
+  // If no value is fetched, the response should come with an error.
+  Slice cursor;
+  int64_t row_count;
+  PgDocData::LoadCache(context->sidecars().GetFirst(), &row_count, &cursor);
+  if (row_count != 2) {
+    return STATUS_SUBSTITUTE(InternalError, "Invalid row count has been fetched from sequence $0",
+                             req.seq_oid());
+  }
+
+  // Get the range start
+  int64_t value = 0;
+  if (PgDocData::ReadDataHeader(&cursor).is_null()) {
+    return STATUS_SUBSTITUTE(InternalError,
+                             "Invalid value range start has been fetched from sequence $0",
+                             req.seq_oid());
+  }
+  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &value));
+  resp->set_first_value(value);
+
+  // Get the range end
+  if (PgDocData::ReadDataHeader(&cursor).is_null()) {
+    return STATUS_SUBSTITUTE(InternalError,
+                             "Invalid value range end has been fetched from sequence $0",
+                             req.seq_oid());
+  }
+  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &value));
+  resp->set_last_value(value);
+
+  return Status::OK();
+}
+
 Status PgClientSession::ReadSequenceTuple(
     const PgReadSequenceTupleRequestPB& req, PgReadSequenceTupleResponsePB* resp,
     rpc::RpcContext* context) {

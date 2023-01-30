@@ -283,17 +283,13 @@ class CreateKubernetesConfiguration extends Component {
                 <div className="editor-container">
                   <Row>
                     {showPrefillKubeConfigLink && (
-                      <div
-                        className="fetch-kube-config-but"
-                        onClick={() => this.fillFormWithKubeConfig(props)}
-                      >
-                        <YBInfoTip
-                          placement="left"
-                          title="Fetch suggested kube config"
-                          content={'Prefill the current cluster config with suggested config'}
+                        <YBButton
+                          btnText="Fetch suggested config"
+                          btnClass="btn btn-orange fetch-kube-config-but"
+                          onClick={() => {
+                            this.fillFormWithKubeConfig(props);
+                          }}
                         />
-                        Fetch Kube config
-                      </div>
                     )}
                     <Col lg={8}>
                       <Row

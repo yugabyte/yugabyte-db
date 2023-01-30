@@ -70,6 +70,7 @@
 #include "utils/tqual.h"
 
 #include "catalog/pg_database.h"
+#include "commands/progress.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
 
@@ -145,6 +146,12 @@ char	   *pgstat_ybstat_tmpname = NULL;
  * without needing to copy things around.  We assume this inits to zeroes.
  */
 PgStat_MsgBgWriter BgWriterStats;
+
+/*
+ * Used in YB to indicate whether the statuses for ongoing concurrent
+ * concurrent indexes have been retrieved in this transaction.
+ */
+bool yb_retrieved_concurrent_index_progress = false;
 
 /* ----------
  * Local data
@@ -6133,6 +6140,7 @@ pgstat_clear_snapshot(void)
 	pgStatDBHash = NULL;
 	localBackendStatusTable = NULL;
 	localNumBackends = 0;
+	yb_retrieved_concurrent_index_progress = false;
 }
 
 

@@ -1624,6 +1624,39 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  public void testOnlyColocatedMateralizedViewBackup() throws Exception {
+    // The difference between this test and the test above is in this test only
+    // a materialized view is created without creating any other table first.
+    // This is to test if we correctly preserve tablegroup oid before the
+    // creation of the materialized view.
+    String backupDir = null;
+    String dbName = "colocated_db";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=true", dbName));
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(dbName).connect();
+         Statement stmt = connection2.createStatement()) {
+      stmt.execute("CREATE MATERIALIZED VIEW mtv AS SELECT * FROM pg_class");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", String.format("ysql.%s", dbName));
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT COUNT(*) FROM mtv",
+                  getSingleRow(stmt, "SELECT COUNT(*) FROM pg_class"));
+      assertQuery(stmt, "SELECT relname, relnamespace, relhasindex, relkind " +
+                  "FROM mtv WHERE relname = 'pg_class'", new Row("pg_class", 11, true, "r"));
+    }
+  }
+
+  @Test
   public void testLegacyColocatedMateralizedViewBackup() throws Exception {
     markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",

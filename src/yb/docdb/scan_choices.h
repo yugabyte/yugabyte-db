@@ -168,18 +168,18 @@ class OptionRange {
 
   OptionRange(int bound, bool upper, SortOrder sort_order = SortOrder::kAscending)
       : OptionRange(
-            {upper ? KeyEntryValue(KeyEntryType::kLowest)
+            {upper ? KeyEntryValue(KeyEntryType::kNullLow)
                    : KeyEntryValue::Int32(bound, sort_order)},
-            true,
+            !upper,
             {upper ? KeyEntryValue::Int32(bound, sort_order)
-                   : KeyEntryValue(KeyEntryType::kHighest)},
-            true) {}
+                   : KeyEntryValue(KeyEntryType::kNullHigh)},
+            upper) {}
   OptionRange()
       : OptionRange(
             {KeyEntryValue(KeyEntryType::kLowest)},
-            true,
+            false,
             {KeyEntryValue(KeyEntryType::kHighest)},
-            true) {}
+            false) {}
 
   const KeyEntryValue& lower() const { return lower_; }
   bool lower_inclusive() const { return lower_inclusive_; }

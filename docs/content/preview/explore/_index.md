@@ -17,15 +17,15 @@ showRightNav: true
 
 The Explore documentation introduces you to YugabyteDB's features, often through examples.
 
-Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Managed, or using a universe created via YugabyteDB Anywhere. 
+Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Managed, or using a universe created via YugabyteDB Anywhere.
 
-More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-your-yugabytedb-universe) for instructions on creating universes to run the examples.
+More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-yugabytedb-universe) for instructions on creating universes to run the examples.
 
 ## Overview
 
 The following table describes the YugabyteDB features you can explore, along with the setup required to run the examples (single- or multi-node universe):
 
-| Section | Purpose | [Universe&nbsp;setup](#set-up-your-yugabytedb-cluster) |
+| Section | Purpose | [Universe&nbsp;setup](#set-up-yugabytedb-universe) |
 | :--- | :--- | :--- |
 | [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single-node<br/>local/cloud |
 | [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi-node<br/>local |
@@ -285,7 +285,7 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
-  </li>  
+  </li>
   <li >
     <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="false">
@@ -335,7 +335,7 @@ java -Dnode=<host name> \
 - `<path-to-cluster-certificate>` with the path to the [cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
 
   </div>
-  
+
   <div id="localworkload" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
 
 To start the application against a running local universe, use the following command:
@@ -369,7 +369,7 @@ scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.3
 
 You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:
 
-1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the setup. 
+1. Navigate to your `tmp` directory and execute `mkdir logs` to create a log file in case there are any errors during the setup.
 
 2. Start the application against a running YugabyteDB Anywhere universe by executing the following commands in the terminal:
 
@@ -396,7 +396,7 @@ You can launch the application from your YugabyteDB Anywhere instance by using t
 
    Replace the following:
 
-   - `<node_ip>` - The IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName > Nodes** in YugabyteDB Anywhere. 
+   - `<node_ip>` - The IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName > Nodes** in YugabyteDB Anywhere.
 
    - `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
 

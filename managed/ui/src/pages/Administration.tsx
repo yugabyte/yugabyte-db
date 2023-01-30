@@ -88,6 +88,10 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     )?.value === 'true' ||
     test['enableRunTimeConfig'] ||
     released['enableRunTimeConfig'];
+  const configTagFilter = globalRuntimeConfigs?.data?.configEntries?.find(
+    (c: any) => c.key === 'yb.runtime_conf_ui.tag_filter'
+  )?.value;
+
   const defaultTab = isAvailable(currentCustomer.data.features, 'administration.highAvailability')
     ? AdministrationTabs.HA
     : AdministrationTabs.AC;
@@ -171,6 +175,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         <RuntimeConfigContainer
           defaultTab={defaultTab}
           activeTab={params.section}
+          configTagFilter={configTagFilter}
           routePrefix={`/admin/${id}/`}
         />
       </Tab>

@@ -1,7 +1,6 @@
 import _ from 'lodash';
 import React, { FC, useContext } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import { DBConfigFormValue } from '../../steps/db/DBConfig';
 import { Select } from '../../../../uikit/Select/Select';
 import { WizardContext } from '../../UniverseWizard';
@@ -21,11 +20,7 @@ export const PreferredLeadersField: FC = () => {
       <Controller
         control={control}
         name="preferredLeaders"
-        render={({
-          onChange,
-          onBlur,
-          value: leadersFormValue
-        }: ControllerRenderProps<NonNullable<PlacementUI>[]>) => (
+        render={({ field: { onChange, onBlur, value: leadersFormValue } }) => (
           <div>
             <Select<NonNullable<PlacementUI>>
               isSearchable={false}

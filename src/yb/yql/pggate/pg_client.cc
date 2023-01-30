@@ -323,6 +323,38 @@ class PgClient::Impl {
     return resp.skipped();
   }
 
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         bool is_db_catalog_version_mode,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle) {
+    tserver::PgFetchSequenceTupleRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_db_oid(db_oid);
+    req.set_seq_oid(seq_oid);
+    if (is_db_catalog_version_mode) {
+      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      req.set_ysql_db_catalog_version(ysql_catalog_version);
+    } else {
+      req.set_ysql_catalog_version(ysql_catalog_version);
+    }
+    req.set_fetch_count(fetch_count);
+    req.set_inc_by(inc_by);
+    req.set_min_value(min_value);
+    req.set_max_value(max_value);
+    req.set_cycle(cycle);
+
+    tserver::PgFetchSequenceTupleResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->FetchSequenceTuple(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return std::make_pair(resp.first_value(), resp.last_value());
+  }
+
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
                                                      uint64_t ysql_catalog_version,
@@ -482,6 +514,25 @@ class PgClient::Impl {
 
     RETURN_NOT_OK(proxy_->BackfillIndex(*req, &resp, PrepareController(deadline)));
     return ResponseStatus(resp);
+  }
+
+  Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
+                                uint64_t** backfill_statuses) {
+    tserver::PgGetIndexBackfillProgressRequestPB req;
+    tserver::PgGetIndexBackfillProgressResponsePB resp;
+
+    for (const auto& index_id : index_ids) {
+      index_id.ToPB(req.add_index_ids());
+    }
+
+    RETURN_NOT_OK(proxy_->GetIndexBackfillProgress(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    uint64_t* backfill_status = *backfill_statuses;
+    for (const auto entry : resp.rows_processed_entries()) {
+      *backfill_status = entry;
+      backfill_status++;
+    }
+    return Status::OK();
   }
 
   Result<int32> TabletServerCount(bool primary_only) {
@@ -675,6 +726,12 @@ Status PgClient::BackfillIndex(
   return impl_->BackfillIndex(req, deadline);
 }
 
+Status PgClient::GetIndexBackfillProgress(
+    const std::vector<PgObjectId>& index_ids,
+    uint64_t** backfill_statuses) {
+  return impl_->GetIndexBackfillProgress(index_ids, backfill_statuses);
+}
+
 Result<int32> PgClient::TabletServerCount(bool primary_only) {
   return impl_->TabletServerCount(primary_only);
 }
@@ -724,6 +781,21 @@ Result<bool> PgClient::UpdateSequenceTuple(int64_t db_oid,
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
       expected_last_val, expected_is_called);
 }
+
+Result<std::pair<int64_t, int64_t>> PgClient::FetchSequenceTuple(int64_t db_oid,
+                                                                 int64_t seq_oid,
+                                                                 uint64_t ysql_catalog_version,
+                                                                 bool is_db_catalog_version_mode,
+                                                                 uint32_t fetch_count,
+                                                                 int64_t inc_by,
+                                                                 int64_t min_value,
+                                                                 int64_t max_value,
+                                                                 bool cycle) {
+  return impl_->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      min_value, max_value, cycle);
+}
+
 
 Result<std::pair<int64_t, bool>> PgClient::ReadSequenceTuple(int64_t db_oid,
                                                              int64_t seq_oid,

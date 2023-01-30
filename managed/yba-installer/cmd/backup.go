@@ -163,5 +163,8 @@ func restoreBackupCmd() *cobra.Command {
 }
 
 func init() {
-	rootCmd.AddCommand(createBackupCmd(), restoreBackupCmd())
+	// Backup commands must be run from installed yba-ctl
+	if common.RunFromInstalled() {
+		rootCmd.AddCommand(createBackupCmd(), restoreBackupCmd())
+	}
 }

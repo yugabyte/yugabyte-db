@@ -108,7 +108,7 @@ public class RuntimeConfController extends AuthenticatedController {
       response = String.class,
       produces = "text/plain")
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
-    return ok(runtimeConfService.getKey(customerUUID, scopeUUID, path));
+    return ok(runtimeConfService.getKeyOrBadRequest(customerUUID, scopeUUID, path));
   }
 
   @ApiOperation(

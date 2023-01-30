@@ -327,6 +327,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                      LaunchBackfillIndexForTableResponsePB* resp,
                                      rpc::RpcContext* rpc);
 
+  // Gets the progress of ongoing index backfills.
+  Status GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
+                                  GetIndexBackfillProgressResponsePB* resp,
+                                  rpc::RpcContext* rpc);
+
   // Schedules a table deletion to run as a background task.
   Status ScheduleDeleteTable(const scoped_refptr<TableInfo>& table);
 
@@ -1626,6 +1631,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<SnapshotScheduleId> FindCoveringScheduleForObject(
       SysRowEntryType type, const std::string& object_id);
+
+  // Checks if the database being deleted contains any replicated tables.
+  Status CheckIfDatabaseHasReplication(const scoped_refptr<NamespaceInfo>& database);
 
   Status DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
                            DeleteNamespaceResponsePB* resp,
