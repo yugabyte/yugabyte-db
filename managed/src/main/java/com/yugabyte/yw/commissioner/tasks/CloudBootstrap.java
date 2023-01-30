@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.ApiModel;
@@ -40,13 +41,19 @@ public class CloudBootstrap extends CloudTaskBase {
   public static class Params extends CloudTaskParams {
     public static Params fromProvider(Provider provider) {
       Params taskParams = new Params();
+      AccessKey accessKey = null;
+      if (provider.allAccessKeys.size() > 0) {
+        accessKey = provider.allAccessKeys.get(0);
+      }
       taskParams.airGapInstall = provider.details.airGapInstall;
       taskParams.destVpcId = provider.destVpcId;
       taskParams.hostVpcId = provider.hostVpcId;
       taskParams.hostVpcRegion = provider.hostVpcRegion;
-      taskParams.keyPairName = provider.keyPairName;
+      if (accessKey != null) {
+        taskParams.keyPairName = accessKey.getKeyInfo().keyPairName;
+        taskParams.sshPrivateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
+      }
       taskParams.providerUUID = provider.uuid;
-      taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
       taskParams.sshPort = provider.details.sshPort;
       taskParams.sshUser = provider.details.sshUser;
       taskParams.setUpChrony = provider.details.setUpChrony;
