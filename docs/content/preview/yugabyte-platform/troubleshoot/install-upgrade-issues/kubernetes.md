@@ -262,10 +262,10 @@ You can use `kubectl` to analyze the situation. We need to check YBA logs to und
 
   ```sh
   # yugabytedb anywhere
-  kubectl logs <YBA-POD-NAME> -n <NAMESPACE> -c yugaware
+  kubectl logs <POD_NAME> -n <NAMESPACE> -c yugaware
 
   # postgres
-  kubectl logs <YBA-POD-NAME> -n <NAMESPACE> -c postgres
+  kubectl logs <POD_NAME> -n <NAMESPACE> -c postgres
   ```
 
 ## Running but load balancer service is not ready
@@ -345,7 +345,7 @@ You might experience the issue while accessing the YugabyteDB Anywhere through a
 
 **Resolution**
 
-- Set the correct domain name(s) during Helm install or upgrade by following [Set DNS name](../../../install-yugabyte-platform/install-software/kubernetes/#set-dns-name)
+- Set the correct domain name(s) during Helm install or upgrade by following [Set a DNS name](../../../install-yugabyte-platform/install-software/kubernetes/#set-a-dns-name).
 
 ### Unable to expand PVC
 
@@ -367,8 +367,8 @@ Error: UPGRADE FAILED: cannot patch "yw-test-yugaware-storage" with kind Persist
   ```
 
   ```sh
-  Name:            test-sc
-  IsDefaultClass:  No
+  Name:                  test-sc
+  IsDefaultClass:        No
   Provisioner:           kubernetes.io/gce-pd
   Parameters:            type=pd-standard
   AllowVolumeExpansion:  False
