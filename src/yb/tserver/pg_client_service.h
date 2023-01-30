@@ -42,9 +42,11 @@ namespace tserver {
     (DropDatabase) \
     (DropTable) \
     (DropTablegroup) \
+    (FetchSequenceTuple) \
     (FinishTransaction) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
+    (GetIndexBackfillProgress) \
     (GetTableDiskSize) \
     (Heartbeat) \
     (InsertSequenceTuple) \

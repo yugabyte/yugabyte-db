@@ -5,14 +5,28 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
+
+// Get the commands that will require yba-ctl.yml to be setup before getting run
+// function because go doesn't support const <slice>
+func cmdsRequireConfigInit() []string {
+	return []string{
+		"yba-ctl install",
+		"yba-ctl license",
+		"yba-ctl license update",
+		"yba-ctl upgrade",
+	}
+}
 
 // List of services required for YBA installation.
 var services map[string]common.Component
@@ -27,7 +41,9 @@ func initAfterFlagsParsed(cmdName string) {
 	log.Init(logLevel)
 
 	// verify that we have a conf file
-	ensureInstallerConfFile()
+	if common.Contains(cmdsRequireConfigInit(), cmdName) {
+		ensureInstallerConfFile()
+	}
 
 	common.InitViper()
 
@@ -46,24 +62,22 @@ func ensureInstallerConfFile() {
 	if os.IsNotExist(err) {
 		userChoice := common.UserConfirm(
 			fmt.Sprintf(
-				("No config file found at %[2]s.\n\n"+
-					"Proceed with default settings from reference conf file %[1]s?\n\n"+
-					"Note that some settings cannot be modified post-installation.\n"+
-					"To customize the default settings, \n"+
-					"1. please copy the reference conf file at %[1]s to %[2]s,\n"+
-					"2. change settings in %[2]s \n"+
-					"and, 3. re-run the install command. \n"),
-				common.GetReferenceYaml(), common.InputFile),
+				("Using default settings in config file %s. "+
+					"Note that some settings cannot be changed later. \n\n"+
+					"Proceed with default config? "),
+				common.InputFile),
 			common.DefaultNo)
-		if !userChoice {
-			log.Info("Aborting current command")
-			os.Exit(0)
-		}
 
-		// Copy over reference yaml
+		// Copy over reference yaml before checking the user choice.
 		common.MkdirAllOrFail(filepath.Dir(common.InputFile), 0755)
 		common.CopyFile(common.GetReferenceYaml(), common.InputFile)
 		os.Chmod(common.InputFile, 0600)
+
+		if !userChoice {
+			log.Info(fmt.Sprintf(
+				"Aborting current command. Please edit the config at %s and retry.", common.InputFile))
+			os.Exit(1)
+		}
 
 	}
 }
@@ -82,4 +96,26 @@ func initServices() {
 		serviceOrder = []string{PrometheusServiceName, YbPlatformServiceName}
 	}
 	// populate names of services for valid args
+}
+
+func handleRootCheck(cmd *cobra.Command) {
+	switch cmd.CommandPath() {
+	// Install should typically be done as root, and will confirm if the user does not.
+	case "yba-ctl install":
+		if !common.HasSudoAccess() {
+			if !common.UserConfirm("Installing without root access is not recommend and should only be "+
+				"done for POC's. Do you want to continue install as non-root? ", common.DefaultNo) {
+				fmt.Println("Please run install as root")
+				os.Exit(1)
+			}
+		}
+	default:
+		if _, err := os.Stat(common.InputFile); !errors.Is(err, fs.ErrNotExist) {
+			// If /opt/yba-ctl/yba-ctl.yml exists, it was put there be root?
+			if !common.HasSudoAccess() {
+				fmt.Println("Please run yba-ctl as root")
+				os.Exit(1)
+			}
+		}
+	}
 }

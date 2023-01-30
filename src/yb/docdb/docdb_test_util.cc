@@ -127,6 +127,11 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return result;
   }
 
+  Result<IsExternalTransaction> IsExternalTransactionResult(
+      const TransactionId& transaction_id) override {
+    return IsExternalTransaction::kFalse;
+  }
+
  private:
   static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";

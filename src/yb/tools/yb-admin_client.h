@@ -36,6 +36,7 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/master/master_admin.pb.h"
@@ -307,6 +308,8 @@ class ClusterAdminClient {
   Status PromoteAutoFlags(
       const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
 
+  Status ListAllNamespaces();
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const TabletId& tablet_id,
@@ -432,7 +435,7 @@ class ClusterAdminClient {
       const Object& obj, const Request& req, const char* error_message = nullptr);
 
  private:
-  using NamespaceMap = std::unordered_map<NamespaceId, master::NamespaceIdentifierPB>;
+  using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
   Result<const NamespaceMap&> GetNamespaceMap();
 
   NamespaceMap namespace_map_;

@@ -10,6 +10,8 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.Query;
@@ -82,6 +84,12 @@ public class AccessKey extends Model {
     @ApiModelProperty public String vaultPasswordFile;
     @ApiModelProperty public String vaultFile;
     @ApiModelProperty public boolean deleteRemote = true;
+    @ApiModelProperty public String keyPairName;
+    @ApiModelProperty public String sshPrivateKeyContent;
+
+    public String getSshPrivateKeyContent() {
+      return CommonUtils.getMaskedValue(sshPrivateKeyContent);
+    }
   }
 
   public static String getDefaultKeyCode(Provider provider) {
@@ -130,12 +138,18 @@ public class AccessKey extends Model {
   @ApiModelProperty(required = false, hidden = true)
   @JsonIgnore
   public String getKeyCode() {
+    if (this.idKey == null) {
+      return null;
+    }
     return this.idKey.keyCode;
   }
 
   @ApiModelProperty(required = false, hidden = true)
   @JsonIgnore
   public UUID getProviderUUID() {
+    if (this.idKey == null) {
+      return null;
+    }
     return this.idKey.providerUUID;
   }
 
@@ -162,7 +176,7 @@ public class AccessKey extends Model {
       } else {
         keyInfo.mergeFrom(new ProviderDetails());
       }
-    } catch (PlatformServiceException e) {
+    } catch (Exception e) {
       // Pass
     }
     return this.keyInfo;

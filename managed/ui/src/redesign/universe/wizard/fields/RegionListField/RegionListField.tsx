@@ -8,21 +8,27 @@ import { ErrorMessage } from '../../../../uikit/ErrorMessage/ErrorMessage';
 import { api, QUERY_KEY } from '../../../../helpers/api';
 import { Region } from '../../../../helpers/dtos';
 import { useDeepCompareUpdateEffect } from '../../../../helpers/hooks';
-import { ControllerRenderProps, ValidationErrors } from '../../../../helpers/types';
+import { ValidationErrors } from '../../../../helpers/types';
 import { CloudConfigFormValue } from '../../steps/cloud/CloudConfig';
 import './RegionListField.scss';
 
 const getOptionLabel = (option: Region): string => option.name;
 const getOptionValue = (option: Region): string => option.uuid;
 
-const ERROR_NO_REGIONS = 'Regions value is required';
-const validate = (value: Region[]): string | boolean =>
-  _.isEmpty(value) ? ERROR_NO_REGIONS : true;
+// const ERROR_NO_REGIONS = 'Regions value is required';
+// const validate = (value: Region[]): string | boolean =>
+//   _.isEmpty(value) ? ERROR_NO_REGIONS : true;
 
 const FIELD_NAME = 'regionList';
 
 export const RegionListField: FC = () => {
-  const { control, errors, getValues, setValue, watch } = useFormContext<CloudConfigFormValue>();
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    setValue,
+    watch
+  } = useFormContext<CloudConfigFormValue>();
   const provider = watch('provider');
   const { isFetching, data } = useQuery(
     [QUERY_KEY.getRegionsList, provider?.uuid],
@@ -51,8 +57,7 @@ export const RegionListField: FC = () => {
       <Controller
         control={control}
         name={FIELD_NAME}
-        rules={{ validate }}
-        render={({ onChange, onBlur, value }: ControllerRenderProps<string[]>) => (
+        render={({ field: { onChange, onBlur, value } }) => (
           <Select<Region>
             isSearchable
             isClearable

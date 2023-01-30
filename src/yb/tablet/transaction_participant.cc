@@ -1106,7 +1106,8 @@ class TransactionParticipant::Impl
     return metadata;
   }
 
-  Result<bool> IsExternalTransaction(const TransactionId& transaction_id) {
+  Result<IsExternalTransaction> IsExternalTransactionResult(
+      const TransactionId& transaction_id) {
     auto lock_and_iterator = LockAndFind(transaction_id,
                                          "is external transaction"s,
                                          TransactionLoadFlags{TransactionLoadFlag::kMustExist});
@@ -1856,8 +1857,9 @@ void TransactionParticipant::Cleanup(TransactionIdSet&& set) {
   return impl_->Cleanup(std::move(set), this);
 }
 
-Result<bool> TransactionParticipant::IsExternalTransaction(const TransactionId& transaction_id) {
-  return impl_->IsExternalTransaction(transaction_id);
+Result<IsExternalTransaction> TransactionParticipant::IsExternalTransactionResult(
+    const TransactionId& transaction_id) {
+  return impl_->IsExternalTransactionResult(transaction_id);
 }
 
 Status TransactionParticipant::ProcessReplicated(const ReplicatedData& data) {

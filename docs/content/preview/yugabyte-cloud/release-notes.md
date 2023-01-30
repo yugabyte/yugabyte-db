@@ -16,6 +16,12 @@ On this page:
 
 ## Releases
 
+### January 27, 2023
+
+**New Features**
+
+- [YugabyteDB Managed Terraform Provider](https://registry.terraform.io/providers/yugabyte/ybm/latest) generally available. Use the provider to deploy and manage your database clusters in YugabyteDB Managed.
+
 ### January 18, 2023
 
 **Database**

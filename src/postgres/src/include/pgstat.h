@@ -992,10 +992,11 @@ typedef enum ProgressCommandType
 {
 	PROGRESS_COMMAND_INVALID,
 	PROGRESS_COMMAND_VACUUM,
-	PROGRESS_COMMAND_COPY
+	PROGRESS_COMMAND_COPY,
+	PROGRESS_COMMAND_CREATE_INDEX
 } ProgressCommandType;
 
-#define PGSTAT_NUM_PROGRESS_PARAM	10
+#define PGSTAT_NUM_PROGRESS_PARAM	17
 
 /* ----------
  * Shared-memory data structures

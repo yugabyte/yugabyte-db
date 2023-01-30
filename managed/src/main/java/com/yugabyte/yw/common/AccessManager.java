@@ -218,6 +218,8 @@ public class AccessManager extends DevopsBase {
     keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
     keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
     keyInfo.deleteRemote = deleteRemote;
+    keyInfo.keyPairName = keyCode;
+    keyInfo.sshPrivateKeyContent = new String(Files.readAllBytes(destination));
 
     // TODO: Move this code for ProviderDetails update elsewhere
     ProviderDetails details = provider.details;
@@ -294,7 +296,8 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("Could not create AccessKey", ioe);
     } finally {
       try {
-        if (tempFile != null) {
+        File tmpKeyFile = new File(tempFile.toString());
+        if (tmpKeyFile.exists()) {
           Files.delete(tempFile);
         }
       } catch (IOException e) {
@@ -412,6 +415,13 @@ public class AccessManager extends DevopsBase {
       }
       keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
+      keyInfo.keyPairName = keyCode;
+      try {
+        Path privateKeyPath = Paths.get(keyInfo.privateKey);
+        keyInfo.sshPrivateKeyContent = new String(Files.readAllBytes(privateKeyPath));
+      } catch (IOException e) {
+        log.error("Failed to read private file content: {}", e);
+      }
       if (sshUser != null) {
         region.provider.details.sshUser = sshUser;
       } else {

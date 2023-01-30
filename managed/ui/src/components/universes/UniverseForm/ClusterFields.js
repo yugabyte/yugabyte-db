@@ -13,7 +13,8 @@ import {
   isEmptyObject,
   isNonEmptyArray,
   trimSpecialChars,
-  normalizeToValidPort
+  normalizeToValidPort,
+  isEmptyString
 } from '../../../utils/ObjectUtils';
 import {
   YBTextInput,
@@ -108,6 +109,9 @@ const UltraSSD_MIN_DISK_IOPS = 100;
 const UltraSSD_DISK_IOPS_MAX_PER_GB = 300;
 const UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 const UltraSSD_DISK_THROUGHPUT_CAP = 2500;
+
+const ASYNC_MAX_REPLICATION_FACTOR = 15;
+const ASYNC_MIN_REPLICATION_FACTOR = 1;
 
 const initialState = {
   universeName: '',
@@ -1314,6 +1318,9 @@ export default class ClusterFields extends Component {
         currentUniverse: { data }
       }
     } = this.props;
+
+    if(value === null || value > ASYNC_MAX_REPLICATION_FACTOR || value < ASYNC_MIN_REPLICATION_FACTOR) return;
+    
     const clusterExists = isDefinedNotNull(data.universeDetails)
       ? isEmptyObject(getClusterByType(data.universeDetails.clusters, clusterType))
       : null;
@@ -2662,14 +2669,17 @@ export default class ClusterFields extends Component {
                       <Field
                         key="replicationFactor"
                         name={`${clusterType}.replicationFactor`}
-                        type="text"
+                        type="number"
                         component={YBControlledNumericInputWithLabel}
                         label="Replication Factor"
-                        minVal={1}
-                        maxVal={15}
+                        minVal={ASYNC_MIN_REPLICATION_FACTOR}
+                        maxVal={ASYNC_MAX_REPLICATION_FACTOR}
                         onInputChanged={this.replicationFactorChanged}
+                        onInputBlur={(e) => {
+                          if (isEmptyString(e.target.value)) { this.replicationFactorChanged(ASYNC_MIN_REPLICATION_FACTOR); }
+                          if (Number(e.target.value) !== this.state.replicationFactor) { this.replicationFactorChanged(e.target.value); }
+                        }}
                         val={Number(this.state.replicationFactor)}
-                        disabled={isReadOnlyOnEdit}
                       />
                     ]
                   : null}
