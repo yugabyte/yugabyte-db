@@ -16,27 +16,24 @@ menu:
 type: docs
 ---
 
-YugabyteDB can be deployed in a globally distributed manner to serve application queries from the region closest to end users with low latencies, as well as to survive any outages to ensure high availability.
-
-In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3.
+For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region cluster. In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
 
 This deployment provides the following advantages:
 
-- Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
-
+- Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence.
 - Consistency. All writes are synchronously replicated. Transactions are globally consistent.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../synchronous-replication-cloud/" class="nav-link">
-      <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Use a cloud cluster
+    <a href="../synchronous-replication-ysql/" class="nav-link active">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Local
     </a>
   </li>
   <li>
-    <a href="../synchronous-replication-ysql/" class="nav-link active">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Use a local cluster
+    <a href="../synchronous-replication-cloud/" class="nav-link">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      YugabyteDB Managed
     </a>
   </li>
 </ul>

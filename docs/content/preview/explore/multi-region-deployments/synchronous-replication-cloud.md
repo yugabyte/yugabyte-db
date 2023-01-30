@@ -12,39 +12,36 @@ menu:
 type: docs
 ---
 
-YugabyteDB can be deployed in a globally distributed manner to serve application queries from the region closest to end users with low latencies, as well as to survive any outages to ensure high availability.
-
-In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3.
+For protection in the event of the failure of an entire cloud region, you can deploy YugabyteDB across multiple regions with a synchronously replicated multi-region cluster. In a synchronized multi-region cluster, a minimum of 3 nodes are [replicated](../../../architecture/docdb-replication/replication/) across 3 regions with a replication factor (RF) of 3. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
 
 This deployment provides the following advantages:
 
-- Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence. In the event of a region failure, the database cluster continues to serve data requests from the remaining regions. YugabyteDB automatically performs a failover to the nodes in the other two regions, and the tablets being failed over are evenly distributed across the two remaining regions.
-
+- Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence.
 - Consistency. All writes are synchronously replicated. Transactions are globally consistent.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../synchronous-replication-cloud/" class="nav-link active">
-      <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Use a cloud cluster
+    <a href="../synchronous-replication-ysql/" class="nav-link">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Local
     </a>
   </li>
   <li>
-    <a href="../synchronous-replication-ysql/" class="nav-link">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Use a local cluster
+    <a href="../synchronous-replication-cloud/" class="nav-link active">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      YugabyteDB Managed
     </a>
   </li>
 </ul>
 
-## Create a replicate across regions cluster
+## Create a Replicate across regions cluster
 
 Before you can create a multi-region cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../../../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
 
-- Multi-region clusters must be [deployed in a VPC](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/). In AWS, you need a VPC for each region.
-- Set up a [peering connection](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to a VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
+- Each region in a multi-region cluster must be [deployed in a VPC](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/). In AWS, this means creating a VPC for each region. In GCP, make sure your VPC includes the regions where you want to deploy the cluster. You need to create the VPCs before you deploy the cluster.
+- Set up a [peering connection](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to an application VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
 - Copy the YB Workload Simulator application to the peered VPC and run it from there.
 
 YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).

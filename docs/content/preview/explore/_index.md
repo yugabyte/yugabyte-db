@@ -73,10 +73,6 @@ You can run examples using a universe set up on your local machine or in a cloud
   </li>
 </ul>
 
-
-
-
-
 <div class="tab-content">
   <div id="cloud" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
 
