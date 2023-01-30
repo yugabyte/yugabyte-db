@@ -24,13 +24,18 @@ export enum QUERY_KEY {
   universeConfigure = 'universeConfigure',
   getInstanceTypes = 'getInstanceTypes',
   getDBVersions = 'getDBVersions',
+  getDBVersionsByProvider = 'getDBVersionsByProvider',
   getAccessKeys = 'getAccessKeys',
   getCertificates = 'getCertificates',
   getKMSConfigs = 'getKMSConfigs',
   deleteCertificate = 'deleteCertificate',
   getHAConfig = 'getHAConfig',
   getHAReplicationSchedule = 'getHAReplicationSchedule',
-  getHABackups = 'getHABackups'
+  getHABackups = 'getHABackups',
+  validateGflags = 'validateGflags',
+  getMostUsedGflags = 'getMostUsedGflags',
+  getAllGflags = 'getAllGflags',
+  getGflagByName = 'getGlagByName'
 }
 
 class ApiService {
@@ -41,7 +46,7 @@ class ApiService {
     return customerId || '';
   }
 
-  findUniverseByName = (universeName: string): Promise<Universe> => {
+  findUniverseByName = (universeName: string): Promise<string[]> => {
     // auto-cancel previous request, if any
     if (this.cancellers.findUniverseByName) this.cancellers.findUniverseByName();
 
@@ -49,9 +54,9 @@ class ApiService {
     const source = axios.CancelToken.source();
     this.cancellers.findUniverseByName = source.cancel;
 
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/find/${universeName}`;
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/find?name=${universeName}`;
     return axios
-      .get<Universe>(requestUrl, { cancelToken: source.token })
+      .get<string[]>(requestUrl, { cancelToken: source.token })
       .then((resp) => resp.data);
   };
 
@@ -109,6 +114,15 @@ class ApiService {
   getDBVersions = (): Promise<string[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
     return axios.get<string[]>(requestUrl).then((resp) => resp.data);
+  };
+
+  getDBVersionsByProvider = (providerId?: string): Promise<string[]> => {
+    if (providerId) {
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/releases`;
+      return axios.get<string[]>(requestUrl).then((resp) => resp.data);
+    } else {
+      return Promise.reject('Querying access keys failed: no provider ID provided');
+    }
   };
 
   getAccessKeys = (providerId?: string): Promise<AccessKey[]> => {

@@ -2,8 +2,6 @@ import React, { FC } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
 import { KeyValueInput } from '../../../../uikit/KeyValueInput/KeyValueInput';
 import { InstanceConfigFormValue } from '../../steps/instance/InstanceConfig';
-import { ControllerRenderProps } from '../../../../helpers/types';
-import { FlagsObject } from '../../../../helpers/dtos';
 import { translate } from '../../../../uikit/I18n/I18n';
 
 export const InstanceTagsField: FC = () => {
@@ -13,12 +11,12 @@ export const InstanceTagsField: FC = () => {
     <Controller
       control={control}
       name="instanceTags"
-      render={({ value, onChange }: ControllerRenderProps<FlagsObject>) => (
+      render={({ field }) => (
         <KeyValueInput
           placeholderKey={translate('Tag')}
           placeholderValue={translate('Value')}
-          value={value}
-          onChange={onChange}
+          value={field.value}
+          onChange={field.onChange}
           disabled={false}
         />
       )}

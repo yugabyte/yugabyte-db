@@ -1,8 +1,7 @@
 import React, { FC } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
 import { DBConfigFormValue } from '../../steps/db/DBConfig';
-import { ControllerRenderProps } from '../../../../helpers/types';
-import { CommunicationPorts } from '../../../../helpers/dtos';
+
 import { CommunicationPortsEditor } from './CommunicationPortsEditor';
 import './CommunicationPortsField.scss';
 
@@ -18,10 +17,10 @@ export const CommunicationPortsField: FC<CommunicationPortsFieldProps> = ({ disa
       <Controller
         control={control}
         name="communicationPorts"
-        render={({ value, onChange }: ControllerRenderProps<CommunicationPorts>) => (
+        render={({ field }) => (
           <CommunicationPortsEditor
-            value={value}
-            onChange={onChange}
+            value={field.value}
+            onChange={field.onChange}
             disabled={disabled}
           />
         )}

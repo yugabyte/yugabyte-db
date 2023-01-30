@@ -2019,6 +2019,7 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
+		YbRegisterSysTableForPrefetching(ProcedureRelationId); // pg_proc
 		YbRegisterSysTableForPrefetching(InheritsRelationId);  // pg_inherits
 	}
 
@@ -2027,6 +2028,7 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
+		YbPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
 		YbPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}
 
