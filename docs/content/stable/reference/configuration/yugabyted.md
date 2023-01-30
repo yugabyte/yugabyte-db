@@ -112,17 +112,16 @@ Examples:
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
 
 --background *bool*
-: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart. Default: `true`
+: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
 
 --cloud_location *cloud-location*
-: Cloud location of the yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region and multi-cloud deployments of YugabyteDB clusters.
+: Cloud location of the yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region, and multi-cloud deployments of YugabyteDB clusters.
 
 --fault_tolerance *fault_tolerance*
 : Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values: none, zone, region, cloud.
 
 --ui *bool*
-: Enable or disable the webserver UI.
-Default: `false`
+: Enable or disable the webserver UI. Default: `false`
 
 #### Advanced flags
 
@@ -163,23 +162,21 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 : If the `YSQL_PASSWORD` [environment variable](#environment-variables) exists, then authentication mode is automatically set to `true`.
 
 --use_cassandra_authentication *bool*
-: Enable or disable YCQL Authentication. Default is `false`.
-: If the `YCQL_USER` or `YCQL_PASSWORD` [environment variable](#environment-variables) exist, then authentication mode is automatically set to `true`.
-: Note that the corresponding environment variables have higher priority than the command-line flags.
+: Enable or disable YCQL authentication. Default: `false`.
+: If the `YCQL_USER` or `YCQL_PASSWORD` [environment variables](#environment-variables) exist, then authentication mode is automatically set to `true`. Note that the corresponding environment variables have higher priority than the command-line flags.
 
 --initial_scripts_dir *initial-scripts-dir*
 : The directory from where yugabyted reads initialization scripts.
 : Script format - YSQL `.sql`, YCQL `.cql`.
 : Initialization scripts are executed in sorted name order.
 
-#### Deprecated Flags
+#### Deprecated flags
 
 --daemon *bool*
-: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart.
-Default: `true`.
+: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`.
 
 --listen *bind-ip*
-: The IP address or localhost name to which `yugabyted` will listen.
+: The IP address or localhost name to which yugabyted will listen.
 
 -----
 
@@ -196,7 +193,7 @@ Usage: yugabyted configure [flags]
 For example, you would use the following command to create a multi-zone YugabyteDB cluster:
 
 ```sh
-yugabyted configure --fault_tolerance=zone
+./bin/yugabyted configure --fault_tolerance=zone
 ```
 
 #### Flags
@@ -204,7 +201,7 @@ yugabyted configure --fault_tolerance=zone
 -h | --help
 : Print the command-line help and exit.
 
---fault_tolerance *fault_tolerance*
+--fault_tolerance *fault-tolerance*
 : Specify the fault tolerance for the cluster. This flag can accept one of the following values: zone, region, cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in three different zones, if available.
 
 --data_placement_constraint *data-placement-constraint*
@@ -361,43 +358,78 @@ Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../
 #### Syntax
 
 ```sh
-Usage: yugabyted connect [flags]
+Usage: yugabyted connect [command] [flags]
 ```
+
+#### Commands
+
+The following subcommands are available for the `yugabyted connect` command:
+
+- [ysql](#ysql)
+- [ycql](#ycql)
+
+#### ysql
+
+Use the `yugabyted connect ysql` subcommand to connect to YugabyteDB with [ysqlsh](../../../admin/ysqlsh/).
+
+#### ycql
+
+Use the `yugabyted connect ycql` subcommand to connect to YugabyteDB with [ycqlsh](../../../admin/ycqlsh).
 
 #### Flags
 
 -h | --help
 : Print the command-line help and exit.
 
---ysql
-: Connect with ysqlsh.
+--config *config-file*
+: The path to the configuration file of the yugabyted server to connect to.
 
---ycql
-: Connect with ycqlsh.
+--data_dir *data-directory*
+: The data directory for the yugabyted server to connect to.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server to connect to.
 
 -----
 
 ### demo
 
-Use the `yugabyted demo connect` command to start YugabyteDB with the [Northwind sample dataset](../../../sample-data/northwind/).
+Use the `yugabyted demo` command to start YugabyteDB with the [Northwind sample dataset](../../../sample-data/northwind/).
 
 #### Syntax
 
 ```sh
-Usage: yugabyted demo [flags]
+Usage: yugabyted demo [command] [flags]
 ```
+
+#### Commands
+
+The following subcommands are available for the `yugabyted demo` command:
+
+- [connect](#connect-1)
+- [destroy](#destroy-1)
+
+#### connect
+
+Use the `yugabyted demo connect` subcommand to load the  [Northwind sample dataset](../../../sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the `ysqlsh` prompt for the same database.
+
+#### destroy
+
+Use the `yuagbyted demo destroy` subcommand to shut down the yugabyted single-node cluster and remove data, configuration, and log directories. This subcommand also deletes the `yb_demo_northwind` database.
 
 #### Flags
 
 -h | --help
 : Print the help message and exit.
 
-connect
-: Loads the Northwind sample dataset into a new `yb_demo_northwind` SQL database and then opens the `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
+--config *config-file*
+: The path to the configuration file of the yugabyted server to connect to or destroy.
 
-destroy
-: Shuts down the yugabyted single-node cluster and removes data, configuration, and log directories.
-: Deletes the `yb_demo_northwind` database.
+--data_dir *data-directory*
+: The data directory for the yugabyted server to connect to or destroy.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server to connect to or destroy.
 
 -----
 
@@ -504,7 +536,7 @@ sudo ifconfig lo0 alias 127.0.0.2
 sudo ifconfig lo0 alias 127.0.0.3
 ```
 
-Add two more nodes to the cluster using the `join` option:
+Add two more nodes to the cluster using the `join` option, as follows:
 
 ```sh
 ./bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data2 --listen=127.0.0.2 --join=127.0.0.1
@@ -513,7 +545,7 @@ Add two more nodes to the cluster using the `join` option:
 
 ### Destroy a multi-node cluster
 
-Destroy the above multi-node cluster:
+To destroy the multi-node cluster, execute the following:
 
 ```sh
 ./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
@@ -523,7 +555,7 @@ Destroy the above multi-node cluster:
 
 ### Create a multi-zone cluster
 
-To create a multi-zone cluster, start the first node by running the `yugabyted start` command, and pass in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details, as follows:
+To create a multi-zone cluster, start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details, as follows:
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
@@ -563,7 +595,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 ### Create a multi-region cluster
 
-To create a multi-region cluster, start the first node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details as follows:
+To create a multi-region cluster, start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flag for setting the node location details as follows:
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=region
