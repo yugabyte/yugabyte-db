@@ -71,3 +71,96 @@ DROP PROFILE IF EXISTS non_existing;
 NOTICE:  profile "non_existing" does not exist, skipping
 CREATE PROFILE exists_profile LIMIT FAILED_LOGIN_ATTEMPTS 3;
 DROP PROFILE IF EXISTS exists_profile;
+--
+-- Test \h CREATE PROFILE
+--
+\h CREATE PROFILE
+Command:     CREATE PROFILE
+Description: define a new login profile
+Syntax:
+CREATE PROFILE profile_name LIMIT
+  FAILED_LOGIN_ATTEMPTS number;
+  [PASSWORD_LOCK_TIME days];
+
+--
+-- Test \h DROP PROFILE
+--
+\h DROP PROFILE
+Command:     DROP PROFILE
+Description: remove a login profile
+Syntax:
+DROP PROFILE profile_name;
+
+--
+-- Test \h ALTER USER
+--
+\h ALTER USER
+Command:     ALTER USER
+Description: change a database role
+Syntax:
+ALTER USER role_specification [ WITH ] option [ ... ]
+
+where option can be:
+
+      SUPERUSER | NOSUPERUSER
+    | CREATEDB | NOCREATEDB
+    | CREATEROLE | NOCREATEROLE
+    | INHERIT | NOINHERIT
+    | LOGIN | NOLOGIN
+    | REPLICATION | NOREPLICATION
+    | BYPASSRLS | NOBYPASSRLS
+    | CONNECTION LIMIT connlimit
+    | [ ENCRYPTED ] PASSWORD 'password' | PASSWORD NULL
+    | VALID UNTIL 'timestamp'
+    | PROFILE profile_name | NOPROFILE
+    | ACCOUNT LOCK | ACCOUNT UNLOCK
+
+ALTER USER name RENAME TO new_name
+
+ALTER USER { role_specification | ALL } [ IN DATABASE database_name ] SET configuration_parameter { TO | = } { value | DEFAULT }
+ALTER USER { role_specification | ALL } [ IN DATABASE database_name ] SET configuration_parameter FROM CURRENT
+ALTER USER { role_specification | ALL } [ IN DATABASE database_name ] RESET configuration_parameter
+ALTER USER { role_specification | ALL } [ IN DATABASE database_name ] RESET ALL
+
+where role_specification can be:
+
+    role_name
+  | CURRENT_USER
+  | SESSION_USER
+
+--
+-- Test \h ALTER ROLE
+--
+\h ALTER ROLE
+Command:     ALTER ROLE
+Description: change a database role
+Syntax:
+ALTER ROLE role_specification [ WITH ] option [ ... ]
+
+where option can be:
+
+      SUPERUSER | NOSUPERUSER
+    | CREATEDB | NOCREATEDB
+    | CREATEROLE | NOCREATEROLE
+    | INHERIT | NOINHERIT
+    | LOGIN | NOLOGIN
+    | REPLICATION | NOREPLICATION
+    | BYPASSRLS | NOBYPASSRLS
+    | CONNECTION LIMIT connlimit
+    | [ ENCRYPTED ] PASSWORD 'password' | PASSWORD NULL
+    | VALID UNTIL 'timestamp'
+    | PROFILE profile_name | NOPROFILE
+    | ACCOUNT LOCK | ACCOUNT UNLOCK
+
+ALTER ROLE name RENAME TO new_name
+
+ALTER ROLE { role_specification | ALL } [ IN DATABASE database_name ] SET configuration_parameter { TO | = } { value | DEFAULT }
+ALTER ROLE { role_specification | ALL } [ IN DATABASE database_name ] SET configuration_parameter FROM CURRENT
+ALTER ROLE { role_specification | ALL } [ IN DATABASE database_name ] RESET configuration_parameter
+ALTER ROLE { role_specification | ALL } [ IN DATABASE database_name ] RESET ALL
+
+where role_specification can be:
+
+    role_name
+  | CURRENT_USER
+  | SESSION_USER
