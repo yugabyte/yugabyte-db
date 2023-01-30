@@ -100,35 +100,33 @@ Examples:
 : The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
 
 --config *config-file*
-: Yugabyted configuration file path.
+: yugabyted configuration file path.
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
 
 --data_dir *data-directory*
-: The directory where yugabyted stores data. Must be an absolute path. Can be
-configured to a directory different from the one where configurations and logs are stored.
+: The directory where yugabyted stores data. Must be an absolute path. Can be configured to a directory different from the one where configurations and logs are stored.
 
 --log_dir *log-directory*
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
 
 --background *bool*
-: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart.
-Default: `true`
+: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart. Default: `true`
 
 --cloud_location *cloud-location*
-: Cloud location of the Yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region and multi-cloud deployments of YugabyteDB clusters.
+: Cloud location of the yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region and multi-cloud deployments of YugabyteDB clusters.
 
 --fault_tolerance *fault_tolerance*
-: Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values - none, zone, region, and cloud.
+: Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values: none, zone, region, cloud.
 
 --ui *bool*
 : Enable or disable the webserver UI.
 Default: `false`
 
-#### Advanced Flags
+#### Advanced flags
 
-Advanced flags can be set by using the configuration file in the `--config` flag. The advance flags support for the `start` command is as follows:
+Advanced flags can be set by using the configuration file in the `--config` flag. The advanced flags support for the `start` command is as follows:
 
 --ycql_port *ycql-port*
 : The port on which YCQL will run.
@@ -161,12 +159,12 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 : Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 
 --ysql_enable_auth *bool*
-: Enable or disable YSQL Authentication. Default is `false`.
-: If the `YSQL_PASSWORD` environment variable exists, then authentication mode is automatically changed to enforced.
+: Enable or disable YSQL authentication. Default: `false`.
+: If the `YSQL_PASSWORD` [environment variable](#environment-variables) exists, then authentication mode is automatically set to `true`.
 
 --use_cassandra_authentication *bool*
 : Enable or disable YCQL Authentication. Default is `false`.
-: If the `YCQL_USER` or `YCQL_PASSWORD` environment variables exist, then authentication mode is automatically changed to enforced.
+: If the `YCQL_USER` or `YCQL_PASSWORD` [environment variable](#environment-variables) exist, then authentication mode is automatically set to `true`.
 : Note that the corresponding environment variables have higher priority than the command-line flags.
 
 --initial_scripts_dir *initial-scripts-dir*
@@ -203,7 +201,7 @@ yugabyted configure --fault_tolerance=zone
 
 #### Flags
 
--h | --help
+-h, --help
 : Print the command line help and exit.
 
 --fault_tolerance *fault_tolerance*
@@ -239,7 +237,7 @@ Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
 
 #### Flags
 
--h | --help
+-h, --help
 : Print the command line help and exit.
 
 --config *config-file*
@@ -293,7 +291,7 @@ Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
 
 #### Flags
 
--h | --help
+-h, --help
 : Print the command line help and exit.
 
 --config *config-file*
@@ -320,7 +318,7 @@ Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
 
 #### Flags
 
--h | --help
+-h, --help
 : Print the command line help and exit.
 
 --config *config-file*
@@ -348,7 +346,7 @@ Usage: yugabyted collect_logs [-h] [--config CONFIG]
 
 #### Flags
 
--h | --help
+-h, --help
 : Print the command line help and exit.
 
 --config *config-file*
@@ -374,7 +372,7 @@ Usage: yugabyted connect [-h] {ycql,ysql} ...
 
 #### Flags
 
--h | --help
+-h, --help
 : Print the command line help and exit.
 
 --ysql
@@ -397,7 +395,7 @@ Usage: yugabyted demo [-h] {connect,destroy} ...
 
 #### Flags
 
--h | --help
+-h, --help
 : Print the help message and exit.
 
 connect
