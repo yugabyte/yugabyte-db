@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -103,6 +104,8 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
           xClusterConfig.setPaused(value.getDisableStream());
           xClusterConfig.setTables(xClusterConfigTables);
           xClusterConfig.setReplicationSetupDone(xClusterConfigTables);
+          xClusterConfig.setStatusForTables(
+              xClusterConfigTables, XClusterTableConfig.Status.Running);
           updateStreamIdsFromTargetUniverseClusterConfig(
               config, xClusterConfig, xClusterConfigTables);
         });
