@@ -413,7 +413,8 @@ redis_rpcs_per_sec_all:
 
 redis_server_rpc_p95:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.95|max"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -473,7 +474,8 @@ redis_server_rpc_p95:
 
 redis_server_rpc_p99:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.99|max"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -1826,7 +1828,8 @@ ysql_sql_advanced_latency:
 
 ysql_server_rpc_p95:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.95|max"
+  range: true
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1849,7 +1852,8 @@ ysql_server_rpc_p95:
 
 ysql_server_rpc_p99:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.99|max"
+  range: true
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1922,7 +1926,8 @@ cql_sql_latency:
 
 cql_server_rpc_p95:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.95|max"
+  range: true
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
@@ -1946,7 +1951,8 @@ cql_server_rpc_p95:
 
 cql_server_rpc_p99:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.99|max"
+  range: true
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
