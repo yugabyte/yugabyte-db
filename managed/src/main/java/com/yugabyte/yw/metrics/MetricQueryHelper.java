@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
@@ -261,10 +262,26 @@ public class MetricQueryHelper {
               universeFilterLabel, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
           // Check if the universe is using newNamingStyle.
           if (newNamingStyle) {
-            // TODO(bhavin192): account for max character limit in
-            // Helm release name, which is 53 characters.
-            // The default value in metrics.yml is yb-tserver-(.*)
-            filterJson.put(nodeFilterLabel, nodePrefix + "-(.*)-yb-tserver-(.*)");
+            Set<String> nodePrefixes = new HashSet<String>();
+            for (Cluster cluster : universe.getUniverseDetails().clusters) {
+              Provider provider =
+                  Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+              for (Region r : provider.regions) {
+                for (AvailabilityZone az : r.zones) {
+                  boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+                  String helmRelease =
+                      KubernetesUtil.getHelmReleaseName(
+                          isMultiAZ,
+                          nodePrefix,
+                          universe.name,
+                          az.name,
+                          cluster.clusterType == ClusterType.ASYNC,
+                          newNamingStyle);
+                  nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");
+                }
+              }
+            }
+            filterJson.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
           }
         }
       } else {
