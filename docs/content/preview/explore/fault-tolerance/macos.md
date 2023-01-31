@@ -57,8 +57,6 @@ The examples are based on the YB Workload Simulator application, which uses the 
   </li>
 </ul>
 
-
-
 {{% explore-setup-multi %}}
 
 Follow the setup instructions to start a three-node cluster, connect the YB Workload Simulator application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
@@ -71,7 +69,7 @@ To view a table of per-node statistics for the universe, navigate to the [tablet
 
 Notice that both the reads and the writes are approximately the same across all nodes, indicating uniform load.
 
-To view the latency and throughput on the universe while the workload is running, navigate to the [simulation application UI](http://127.0.0.1:8000/), as per the following illustratioin:
+To view the latency and throughput on the universe while the workload is running, navigate to the [simulation application UI](http://127.0.0.1:8000/), as per the following illustration:
 
 ![Latency and throughput with 3 nodes](/images/ce/fault-tolerance-latency-throughput.png)
 
@@ -111,4 +109,3 @@ You can shut down the local universe that you created as follows:
 ./bin/yugabyted destroy \
                 --base_dir=/tmp/ybd3
 ```
-

@@ -35,7 +35,7 @@ For more information, see the following:
 
 - [Continuous Availability with YugabyteDB video](https://www.youtube.com/watch?v=4PpiOMcq-j8)
 - [Synchronous replication](../../../architecture/docdb-replication/replication/)
-- [Enable high availability in YugabyteDB Anywhere](../../../yugabyte-platform/manage-deployments/high-availability/) 
+- [Enable high availability in YugabyteDB Anywhere](../../../yugabyte-platform/manage-deployments/high-availability/)
 
 ## Examples
 
@@ -58,8 +58,6 @@ The examples are based on the YB Workload Simulator application, which uses the 
   </li>
 </ul>
 
-
-
 Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-similator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as Latency and Throughput charts for the running workload.
 
 ### Observe even load across all nodes
@@ -70,17 +68,17 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
 1. Select **Nodes** to view the total read and write IOPS per node and other statistics, as shown in the following illustration:
 
-   <!-- ![Read and write IOPS with 3 nodes](/images/ce/transactions_cloud_observe1.png) -->
+  <!-- ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png) -->
 
    Notice that both the reads and the writes are approximately the same across all nodes, indicating uniform load.
 
 1. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
 
-   <!-- ![Performance charts for 3 nodes](/images/ce/transactions_cloud_chart.png) -->
+   <!-- ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png) -->
 
 1. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8000/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
 
-   <!-- ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png) -->
+   ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
 ### Stop a node and observe continuous write availability
 
@@ -90,15 +88,17 @@ You can stop one of the nodes to simulate the loss of a zone, as follows:
 
 1. Select **Nodes**, find the node to be removed, and then click its corresponding **Actions > Stop Processes**.
 
-1. Verify that the details by seleting **Nodes**. Expect to see that the load has been moved off the stopped node and redistributed to the remaining nodes.
+1. Verify that the details by selecting **Nodes**. Expect to see that the load has been moved off the stopped node and redistributed to the remaining nodes, as shown in the following illustration:
+
+   ![Read and write IOPS with one node stopped](/images/ce/stop-node-yba.png)
 
 1. Navigate to **Metrics** to observe a slight spike and drop in the latency and YSQL Ops / Sec charts when the node is stopped, as shown in the following illustration:
 
-   <!-- ![Performance metrics with 4th node dead](/images/ce/stop-node-chart.png) -->
+   ![Performance metrics with a node dead](/images/ce/stop-node-chart-yba.png)
 
 Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8000/) to see the node being removed from the network diagram when it is stopped (it may take a few minutes to display the updated network diagram). Also notice a slight spike and drop in the latency and throughput, both of which resume immediately, as shown in the following illustration:
 
-<!-- ![Latency and throughput graph after stopping node 4](/images/ce/stop-node-graph-cloud.png) -->
+![Latency and throughput graph after dropping a node](/images/ce/fault-tolerance-latency-stoppednode.png)
 
 With the loss of the node, which also represents the loss of an entire fault domain, the universe is now in an under-replicated state.
 
@@ -106,4 +106,4 @@ Despite the loss of an entire fault domain, there is no impact on the applicatio
 
 ### Clean up
 
-You can delete your universe by following instructions provided in [Delete a universe](../../../yugabyte-platform/manage-deployments/delete-universe/). 
+You can delete your universe by following instructions provided in [Delete a universe](../../../yugabyte-platform/manage-deployments/delete-universe/).
