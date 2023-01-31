@@ -1320,13 +1320,21 @@ YBLoadRelations()
 		/*
 		 * Insert newly created relation into relcache hash table if needed:
 		 * a. If it's not already there (e.g. new table or initialization).
-		 * b. If it's a regular (non-system) table it could be changed (e.g. by an 'ALTER').
+		 * b. If it's a regular (non-system) table it could be changed (e.g. by
+		 *    an 'ALTER').
+		 * c. If it's a system view it could still be changed, either via YSQL
+		 *    upgrade or manually.
 		 */
 		Relation tmp_rel;
 		RelationIdCacheLookup(relid, tmp_rel);
-		/* Ignore update of existing sys relation as it can't be changed without DB upgrade. */
-		if (tmp_rel && IsSystemRelation(tmp_rel))
+
+		/* Non-view system relations cannot currently be altered. */
+		if (tmp_rel && IsSystemRelation(tmp_rel) &&
+			tmp_rel->rd_rel->relkind != RELKIND_VIEW)
+		{
 			continue;
+		}
+
 		/* get information from the pg_class_tuple */
 		Form_pg_class relp  = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 
