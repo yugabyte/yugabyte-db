@@ -290,8 +290,12 @@ public class EncryptionAtRestManager {
     RestoreKeyResult result = RestoreKeyResult.RESTORE_FAILED;
     try {
       if (universeKeys != null && universeKeys.isArray()) {
-        universeKeys.forEach(restorer);
-
+        // Have to traverse arraynode in reverse, i.e. ascending order of keys created.
+        // Reverse because during backup, we save it in desc order (KmsHistory.getAllTargetKeyRefs)
+        // Found no other elegant solution without changing too much code.
+        for (int i = universeKeys.size() - 1; i >= 0; --i) {
+          restorer.accept(universeKeys.get(i));
+        }
         LOG.info("Restore universe keys succeeded!");
         result = RestoreKeyResult.RESTORE_SUCCEEDED;
       }
@@ -299,5 +303,27 @@ public class EncryptionAtRestManager {
       LOG.error("Error occurred restoring universe key history", e);
     }
     return result;
+  }
+
+  /**
+   * Find the KMS config UUID that can decrypt a given key ref (encrypted universe key). Iterates
+   * through all KMS configs on platform to verify.
+   *
+   * @param keyProvider the KMS provider.
+   * @param keyRef the encrypted universe key.
+   * @return the matching KMS config UUID if any, else null.
+   */
+  public UUID findKmsConfigFromKeyRefOrNull(KeyProvider keyProvider, byte[] keyRef) {
+    UUID kmsConfigUUID = null;
+    List<KmsConfig> allKmsConfigs = KmsConfig.listKMSProviderConfigs(keyProvider);
+    EncryptionAtRestService<? extends SupportedAlgorithmInterface> keyService =
+        getServiceInstance(keyProvider.name());
+    for (KmsConfig kmsConfig : allKmsConfigs) {
+      if (keyService.verifyKmsConfigAndKeyRef(kmsConfig.configUUID, keyRef)) {
+        kmsConfigUUID = kmsConfig.configUUID;
+        break;
+      }
+    }
+    return kmsConfigUUID;
   }
 }

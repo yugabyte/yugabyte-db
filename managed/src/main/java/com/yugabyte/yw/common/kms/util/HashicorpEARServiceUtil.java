@@ -199,10 +199,9 @@ public class HashicorpEARServiceUtil {
    * @throws Exception
    */
   public static byte[] decryptUniverseKey(
-      UUID universeUUID, UUID configUUID, byte[] encryptedUniverseKey, ObjectNode authConfig)
-      throws Exception {
+      UUID configUUID, byte[] encryptedUniverseKey, ObjectNode authConfig) throws Exception {
 
-    LOG.debug("decryptUniverseKey called  : {} - {}", universeUUID, configUUID);
+    LOG.debug("decryptUniverseKey called on config UUID : '{}'", configUUID);
     if (encryptedUniverseKey == null) return null;
 
     try {
