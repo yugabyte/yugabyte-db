@@ -114,29 +114,19 @@ While UDTs (User-defined type) can be used to achieve the packed row format at t
 packed row format has the following benefits:
 * Lower storage footprint.
 * Efficient INSERTs, especially when a table has large number of columns.
-* Faster bulk ingestion.
 * Faster multi-column reads, as the reads need to fetch fewer key value pairs.
 * UDTs require application rewrite, and thus are not necessarily an option for everyone, like latency sensitive update workloads.
 
-The packed row format can be enabled using the following gflags.
-
-**ysql_enable_packed_row** - Whether packed row is enabled for YSQL (false by default).
-
-**ysql_packed_row_size_limit** - Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over the size limit, their columns will not be packed, but be stored as individual key value pairs instead.
-
-**ycql_enable_packed_row** - Whether packed row is enabled for YCQL (false by default).
-
-**ycql_packed_row_size_limit** - Packed row size limit for YCQL. The default value is 0 (use block size as limit).
-
-**ysql_enable_packed_row_for_colocated_table** - Whether packed row is enabled for colocated table in YSQL (false by default).
+The packed row format can be enabled using the [gflags](../../../reference/configuration/yb-tserver/#packed-row-flags).
 
 ### Design
 Following are the design aspects of packed row format:
 * **Inserts**: Entire row is stored as a single key-value pair.
-* **Updates**:  If some column(s) are updated, then each such column update is stored as a key-value pair in DocDb (same as without packed rows). However If all non-key columns are updated, then the row is stored in the packed format as one single key-value pair. This scheme adopts the best of both worlds - efficient updates and efficient storage. 
+* **Updates**:  If some column(s) are updated, then each such column update is stored as a key-value pair in DocDB (same as without packed rows). However If all non-key columns are updated, then the row is stored in the packed format as one single key-value pair. This scheme adopts the best of both worlds - efficient updates and efficient storage. 
 * **Select**: Scans need to construct the row from packed inserts as well as non-packed update(s) if any.
+* **Point lookups**: Point lookups will be just as fast as without Packed Row as fundamentally, we will still be seeking a single key value pair from DocDB.
 * **Compactions**: Compactions produce a compact version of the row, if the row has unpacked fragments due to updates.
-* **Backwards compatible**: Read code can interpret non-packed format as well. Write/Updates can produce non-packed format as well.
+* **Backwards compatible**: Read code can interpret non-packed format as well. Write/Updates can produce non-packed format as well. Once a row is packed, it cannot be unpacked.
 
 ### Performance data
 
@@ -146,10 +136,10 @@ Following are the design aspects of packed row format:
 ### Limitations
 
 While packed row feature works for YSQL API using the YSQL specific GFlags with most cross features like backup restore, schema changes, and so on, the following are some of the known limitations which are currently under development:
-* Integration with xCluster and CDC (Beta) - There are some known limitations with schema changes/DDLs and CDC and Packed Row feature.
-* Colocated and xCluster - There are some limitations around propagation of schema changes for
+* [#15740](https://github.com/yugabyte/yugabyte-db/issues/15740) Integration with CDC and schema changes (Beta) - There are some known limitations with schema changes/DDLs and CDC and Packed Row feature.
+* [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143) Colocated and xCluster (Beta) - There are some limitations around propagation of schema changes for
   colocated tables in xCluster in the packed row format that are being worked on.
-* Packed row support for YCQL is limited and is still being hardened.
+* [#14369](https://github.com/yugabyte/yugabyte-db/issues/14369) Packed row support for YCQL is limited and is still being hardened.
 
 ## Data expiration in YCQL
 
