@@ -93,6 +93,8 @@ REPLICAS_SEARCHING_LOOP_MAX_RETRIES = 30
 SLEEP_IN_REPLICAS_SEARCHING_ROUND_SEC = 20  # 30*20 sec = 10 minutes
 LEADERS_SEARCHING_LOOP_MAX_RETRIES = 5
 SLEEP_IN_LEADERS_SEARCHING_ROUND_SEC = 20  # 5*(100 + 20) sec = 10 minutes
+LIVE_TS_SEARCHING_LOOP_MAX_RETRIES = 40
+SLEEP_IN_LIVE_TS_SEARCHING_ROUND_SEC = 15  # 40*15 sec = 10 minutes
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
@@ -1477,8 +1479,8 @@ class YBBackup:
                     logging.warn("[app] xxhsum tool missing on the host, continuing with sha256")
                     self.use_xxhash_checksum = False
             else:
-                raise BackupException("No Live Tserver exists. "
-                                      "Check the tserver nodes status & try again.")
+                raise BackupException("No Live TServer exists. "
+                                      "Check the TServer nodes status & try again.")
         else:
             self.use_xxhash_checksum = False
 
@@ -1572,18 +1574,32 @@ class YBBackup:
         return self.leader_master_ip
 
     def get_live_tservers(self):
-        tserver_ips = []
-        output = self.run_yb_admin(['list_all_tablet_servers'])
-        for line in output.splitlines():
-            if LEADING_UUID_RE.match(line):
-                fields = split_by_space(line)
-                (ip_port, state) = (fields[1], fields[3])
-                if state == 'ALIVE':
-                    (ip, port) = ip_port.split(':')
-                    if self.secondary_to_primary_ip_map:
-                        ip = self.secondary_to_primary_ip_map[ip]
-                    tserver_ips.append(ip)
-        return tserver_ips
+        num_loops = 0
+        while num_loops < LIVE_TS_SEARCHING_LOOP_MAX_RETRIES:
+            logging.info('[app] Start searching for live TServer (try {})'.format(num_loops))
+            num_loops += 1
+            tserver_ips = []
+            output = self.run_yb_admin(['list_all_tablet_servers'])
+            for line in output.splitlines():
+                if LEADING_UUID_RE.match(line):
+                    fields = split_by_space(line)
+                    (ip_port, state) = (fields[1], fields[3])
+                    if state == 'ALIVE':
+                        (ip, port) = ip_port.split(':')
+                        if self.secondary_to_primary_ip_map:
+                            ip = self.secondary_to_primary_ip_map[ip]
+                        tserver_ips.append(ip)
+
+            if tserver_ips:
+                return tserver_ips
+
+            logging.info("Sleep for {} seconds before the next live TServer searching round.".
+                         format(SLEEP_IN_LIVE_TS_SEARCHING_ROUND_SEC))
+            time.sleep(SLEEP_IN_LIVE_TS_SEARCHING_ROUND_SEC)
+
+        raise BackupException(
+            "Exceeded max number of retries for the live TServer searching loop ({})!".
+            format(LIVE_TS_SEARCHING_LOOP_MAX_RETRIES))
 
     def get_live_tserver_ip(self):
         if not self.live_tserver_ip:
