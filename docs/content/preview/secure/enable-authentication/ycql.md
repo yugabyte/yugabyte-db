@@ -139,10 +139,10 @@ You should see the following output.
 
 #### Reset password for a superuser
 
-Superusers can alter the passwords for other users including the admin user. YCQL provides a feature to enable superusers to reset a lost/forgotten password using the[`ycql-allow-non-authenticated-password-reset`](../../../reference/configuration/yb-tserver/#ycql-allow-non-authenticated-password-reset) YB-TServer GFlag.
-Use the [`ycql-allow-non-authenticated-password-reset`](../../../reference/configuration/yb-tserver/#ycql-allow-non-authenticated-password-reset) YB-TServer GFlag in conjunction with the [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) YB-TServer GFlag to enable the password reset feature.
+Superusers can alter the passwords of other users including the admin user. However, if you have lost or forgotten the password of the only superuser, you can reset the password. To do this, you need to set the [ycql_allow_non_authenticated_password_reset](../../../reference/configuration/yb-tserver/#ycql-allow-non-authenticated-password-reset) YB-TServer flag to true.
+To enable the password reset feature, you must first set the [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag to false.
 
-The following example describes the steps to reset a password for the admin superuser created in the [Create a superuser](#create-a-superuser) step:
+For example, to reset the password for the admin superuser created in [Create a superuser](#create-a-superuser), do the following:
 
 1. Set `use_cassandra_authentication` to `false` and `ycql_allow_non_authenticated_password_reset` to `true` as follows:
 
