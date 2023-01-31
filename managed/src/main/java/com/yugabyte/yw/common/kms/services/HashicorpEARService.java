@@ -152,19 +152,14 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
 
   @Override
   public byte[] validateRetrieveKeyWithService(
-      UUID universeUUID,
-      UUID configUUID,
-      byte[] keyRef,
-      EncryptionAtRestConfig config,
-      ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
 
-    LOG.debug("validateRetrieveKeyWithService called: {}, {}", universeUUID, configUUID);
+    LOG.debug("validateRetrieveKeyWithService called on config UUID: '{}'", configUUID);
 
     byte[] keyVal = null;
     try {
       // keyRef is ciphertext
-      keyVal =
-          HashicorpEARServiceUtil.decryptUniverseKey(universeUUID, configUUID, keyRef, authConfig);
+      keyVal = HashicorpEARServiceUtil.decryptUniverseKey(configUUID, keyRef, authConfig);
       if (keyVal == null) {
         LOG.warn("Could not retrieve key from key ref through KMS");
       }
@@ -189,14 +184,12 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
   }
 
   @Override
-  public byte[] retrieveKeyWithService(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
-    LOG.debug("retrieveKeyWithService called: {}, {}", universeUUID, configUUID);
+  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
+    LOG.debug("retrieveKeyWithService called on config UUID: '{}'", configUUID);
 
     try {
       final ObjectNode authConfig = getAuthConfig(configUUID);
-      byte[] key =
-          validateRetrieveKeyWithService(universeUUID, configUUID, keyRef, config, authConfig);
+      byte[] key = validateRetrieveKeyWithService(configUUID, keyRef, authConfig);
       updateCurrentAuthConfigProperties(configUUID, authConfig);
       return key;
     } catch (Exception e) {

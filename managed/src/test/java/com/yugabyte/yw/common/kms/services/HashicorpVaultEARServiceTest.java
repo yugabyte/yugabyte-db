@@ -261,12 +261,11 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
           .when(
               () ->
                   HashicorpEARServiceUtil.decryptUniverseKey(
-                      testUniUUID, testConfigUUID, keyRef1, fakeAuthConfig))
+                      testConfigUUID, keyRef1, fakeAuthConfig))
           .thenReturn(Base64.getDecoder().decode(mockUniverseKey));
     }
 
-    final byte[] encryptionKey =
-        encryptionService.retrieveKeyWithService(testUniUUID, testConfigUUID, keyRef, config);
+    final byte[] encryptionKey = encryptionService.retrieveKeyWithService(testConfigUUID, keyRef);
     // String data = new String(encryptionKey, StandardCharsets.UTF_8);
     LOG.debug("Data received :: {}", new String(Base64.getEncoder().encode(encryptionKey)));
     assertNotNull(encryptionKey);
