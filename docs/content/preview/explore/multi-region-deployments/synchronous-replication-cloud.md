@@ -50,48 +50,65 @@ YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the app
 
 Follow the [setup instructions](../../#set-up-yb-workload-simulator) to connect the YB Workload Simulator application, and run a read-write workload.
 
+### Configure the smart driver
+
+The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the cluster. However, in a multi-region cluster, it's more efficient to target regions closest to your application.
+
+If you are running the workload simulator from a peered VPC, you can configure the smart driver with [topology load balancing](../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to limit connections to the closest region.
+
+To turn on topology load balancing, start the application as usual, adding the following flag:
+
+```sh
+-Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone>
+```
+
+Where `cloud.region.zone` is the location of the cluster region where your application is hosted.
+
+## View cluster activity
+
 To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
 To view a table of per-node statistics for the cluster, in YugabyteDB Managed, do the following:
 
 1. On the **Clusters** page, select the cluster.
 
-1. Select **Nodes** to view the total read and write IOPS per node and other statistics as shown in the following illustration.
+1. Select **Nodes** to view the total read and write operations for each node as shown in the following illustration.
 
-![Read and write IOPS with 3 nodes](/images/ce/transactions_cloud_observe1.png)
+![Read and write operations with 3 nodes](/images/ce/multisync-managed-nodes.png)
 
-Note that both the reads and the writes are roughly the same across all the nodes, indicating uniform load across the nodes.
+Note that read/write operations are roughly the same across all the nodes, indicating uniform load across the nodes.
 
-To view your cluster metrics such as YSQL operations/second and Latency, in YugabyteDB Managed, select the cluster [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
+To view your cluster metrics such as YSQL Operations/Second and YSQL Average Latency, in YugabyteDB Managed, select the cluster [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
 
-![Performance charts for 3 nodes](/images/ce/transactions_cloud_chart.png)
+![Performance charts for 3 regions](/images/ce/multisync-managed-charts.png)
 
 ## Tuning latencies
 
-Latency in a multi-region cluster depends on the distance/network packet transfer times between the nodes of the cluster and between the cluster and the client. Because the tablet leader replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
+Latency in a multi-region cluster depends on the distance/network packet transfer times between the nodes of the cluster and between the cluster and the client. Because the [shard leader](../../../architecture/docdb-sharding/sharding/) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
 
 For best performance as well as lower data transfer costs, you want to minimize transfers between providers, and between provider regions. You do this by locating your cluster as close to your applications as possible:
 
 - Use the same cloud provider as your application.
 - Locate your cluster in the same region as your application.
+- Peer your cluster with the VPC hosting your application.
 
 ### Follower reads
 
-YugabyteDB offers tunable global reads that allow read requests to trade off some consistency for lower read latency. By default, read requests in a YugabyteDB cluster are handled by the leader of the Raft group associated with the target tablet to ensure strong consistency. In situations where you are willing to sacrifice some consistency in favor of lower latency, you can choose to read from a tablet follower that is closer to the client rather than from the leader. YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers.
+YugabyteDB offers tunable global reads that allow read requests to trade off some consistency for lower read latency. By default, read requests in a YugabyteDB cluster are handled by the leader of the Raft group associated with the target shard to ensure strong consistency. In situations where you are willing to sacrifice some consistency in favor of lower latency, you can choose to read from a shard follower that is closer to the client rather than from the leader. YugabyteDB also allows you to specify the maximum staleness of data when reading from shard followers.
 
 For more information on follower reads, refer to the [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ysql/) example.
 
 ### Preferred region
 
-If application reads are known to be originating dominantly from a single region, you can designate a preferred region, which pins the shard leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting shard follower replicas.
+If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the shard leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting shard follower replicas.
 
 For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction.
 
-You can set one of the regions as preferred as follows:
+Set the region you are connected to as preferred as follows:
 
 1. On the cluster **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
-1. For one of the regions, choose **Set as preferred region for reads and writes**.
+1. For the region that your application is connected to, choose **Set as preferred region for reads and writes**.
 
 1. Click **Confirm and Save Changes** when you are done.
 
@@ -99,8 +116,12 @@ The operation can take several minutes, during which time some cluster operation
 
 Verify that the load is moving to the preferred region on the **Nodes** tab.
 
-![Read and write IOPS with preferred region](/images/ce/add-node-cloud.png)
+![Read and write operations with preferred region](/images/ce/multisync-managed-nodes-preferred.png)
 
 When complete, the load is handled exclusively by the preferred region.
+
+![Performance charts with preferred region](/images/ce/multisync-managed-charts-preferred.png)
+
+With the shard leaders now all located in the region to which the application is connected, latencies decrease and throughput increases.
 
 Note that cross-region latencies are unavoidable in the write path, given the need to ensure region-level automatic failover and repair.

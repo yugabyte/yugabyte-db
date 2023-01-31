@@ -105,7 +105,7 @@ The [configure](../../../reference/configuration/yugabyted/#configure) command d
 
 In this deployment, the YB-Masters are each placed in a separate region to allow them to survive the loss of a region. You can view the tablet servers on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
-![Multi-zone cluster YB-TServers](/images/ce/online-reconfig-multi-zone-tservers.png)
+![Multi-region cluster YB-TServers](/images/ce/online-reconfig-multi-zone-tservers.png)
 
 ## Start a workload
 
@@ -113,7 +113,7 @@ Follow the [setup instructions](../../#set-up-yb-workload-simulator) to connect 
 
 You should now see some read and write load on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
-![Multi-zone cluster load](/images/ce/online-reconfig-multi-zone-load.png)
+![Multi-region cluster load](/images/ce/online-reconfig-multi-zone-load.png)
 
 The load is distributed evenly across the regions.
 
@@ -149,7 +149,7 @@ $ ./bin/yb-admin \
 
 You should see the read and write load on the [tablet servers page](http://localhost:7000/tablet-servers) move to the preferred region, as per the following illustration:
 
-![Multi-zone cluster load](/images/ce/online-reconfig-multi-zone-pref-load.png)
+![Multi-region cluster load](/images/ce/online-reconfig-multi-zone-pref-load.png)
 
 When complete, the load is handled exclusively by the preferred region.
 
@@ -157,14 +157,10 @@ Note that cross-region latencies are unavoidable in the write path, given the ne
 
 ## Clean up
 
-Optionally, you can shutdown the local cluster as follows:
+Optionally, you can destroy the local cluster as follows:
 
 ```sh
 ./bin/yugabyted destroy --base_dir=/tmp/ybd1
 ./bin/yugabyted destroy --base_dir=/tmp/ybd2
 ./bin/yugabyted destroy --base_dir=/tmp/ybd3
 ```
-
-## Learn more
-
-[Replication](../../../architecture/docdb-replication/replication/)
