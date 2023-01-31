@@ -840,7 +840,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
-## Packed Row flags
+## Packed Row flags (Beta)
 
 To learn about Packed Row feature, see [Packed Row](../../../architecture/docdb/persistence/#packed-row-format-beta)
 
