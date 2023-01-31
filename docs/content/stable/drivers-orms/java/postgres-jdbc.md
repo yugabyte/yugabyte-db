@@ -118,7 +118,8 @@ jdbc:postgresql://hostname:port/database
 Following is an example JDBC URL for connecting to YugabyteDB:
 
 ```sh
-Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
+String yburl = "jdbc:postgresql://localhost:5433/yugabyte";
+Connection conn = DriverManager.getConnection(yburl, "yugabyte", "yugabyte");
 ```
 
 #### Use SSL
@@ -163,7 +164,7 @@ public class QuickStartApp {
   public static void main(String[] args) throws ClassNotFoundException, SQLException {
     Class.forName("org.postgresql.Driver");
     String yburl = "jdbc:postgresql://localhost:5433/yugabyte";
-    Connection conn = DriverManager.getConnection(yburl,"yugabyte", "yugabyte");
+    Connection conn = DriverManager.getConnection(yburl, "yugabyte", "yugabyte");
     Statement stmt = conn.createStatement();
     try {
         System.out.println("Connected to the PostgreSQL server successfully.");
