@@ -135,7 +135,7 @@ The following table describes the connection parameters required to connect usin
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
 ```java
-string yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
+String yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
