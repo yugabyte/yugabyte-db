@@ -141,16 +141,16 @@ Yugabyte manages upgrades for you. After you choose a track, database upgrades c
 
 Use a staging cluster for the following tasks:
 
-- Verifying your application is compatible with [database updates](#database-updates).
-- Ensuring your application correctly handles a rolling restart of the database without errors.
-- Testing new features. Use your staging (aka development, testing, pre-production, or canary) environment to try out new database features while your production systems are still running a previous version.
+- Verifying that your application is compatible with [database updates](#database-updates).
+- Ensuring that your application correctly handles a rolling restart of the database without errors.
+- Testing new features. Use your staging (also known as development, testing, pre-production, or canary) environment to try out new database features while your production systems are still running a previous version.
 - Testing scaling operations and disaster recovery. Find out how your environment responds to a scaling operation, outages, or the loss of a node.
 
-Create a staging cluster and configure your staging environment to connect to it. The staging cluster can be smaller than your production cluster, but ensure it has enough resources and capacity to handle a reasonable load. Sandbox clusters are too [resource-limited](../create-clusters/create-clusters-free/#limitations) for staging.
+Create a staging cluster and configure your staging environment to connect to it. The staging cluster can be smaller than your production cluster, but you need to ensure that it has enough resources and capacity to handle a reasonable load. Sandbox clusters are too [resource-limited](../create-clusters/create-clusters-free/#limitations) for staging.
 
 #### Database upgrades
 
-Yugabyte tests every version in the stable branch for backwards compatibility. However, before upgrading your production cluster, it's good practice to first test your pre-production environment against database updates to ensure your applications are compatible. You want to make sure that an update doesn't have any performance impact on your application. For example, new functionality or a change in the optimizer could impact performance for a single query in a complex application.
+Every YugabyteDB version in the stable track is tested for backwards compatibility. However, before upgrading your production cluster, it's good practice to first test your pre-production environment against database updates to ensure your applications are compatible. You want to make sure that an update doesn't have any performance impact on your application. For example, new functionality or a change in the optimizer could impact performance for a single query in a complex application.
 
 When you are notified of an upcoming maintenance event, schedule the [maintenance windows](../../cloud-clusters/cloud-maintenance/) for the staging and production cluster so that you can validate updates against your applications in your pre-production environment _before_ upgrading your production cluster.
 
