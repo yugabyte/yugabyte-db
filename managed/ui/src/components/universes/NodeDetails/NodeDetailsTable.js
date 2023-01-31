@@ -213,6 +213,7 @@ export default class NodeDetailsTable extends Component {
           hideQueries={hideQueries}
           disabled={actions_disabled}
           clusterType={clusterType}
+          isKubernetes={isKubernetes}
         />
       );
     };
