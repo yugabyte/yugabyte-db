@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-Use your free Sandbox cluster to get started with YugabyteDB. Although not suitable for production workloads or performance testing, a Sandbox cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB.
+Use your free Sandbox cluster to get started with YugabyteDB. Although not suitable for production workloads or performance testing, a Sandbox cluster includes enough resources to [start exploring](../../../../explore/) the core features available for developing applications with YugabyteDB.
 
 ## Features
 
