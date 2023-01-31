@@ -618,6 +618,9 @@ class ControlScript(object):
 
     # Configuring the data placement policy
     def configure_data_placement(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
 
         # to-do: can be removed after multi-region and geo-replicated feature is implemented
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
@@ -861,6 +864,10 @@ class ControlScript(object):
 
     # Configuring encryption at rest
     def configure_encrypt_at_rest(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
         status_details = []
         has_errors = False
 
