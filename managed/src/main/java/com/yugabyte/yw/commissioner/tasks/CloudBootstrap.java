@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.ApiModel;
@@ -110,6 +111,13 @@ public class CloudBootstrap extends CloudTaskBase {
       // Required: True for custom input, False for YW managed.
       public String customSecurityGroupId;
 
+      // Required for configuring region for onprem provider.
+      public String regionName;
+      public double latitude;
+      public double longitude;
+      // List of zones for regions, to be used for only onprem usecase.
+      public List<AvailabilityZone> azList;
+
       public static PerRegionMetadata fromRegion(Region region) {
         PerRegionMetadata perRegionMetadata = new PerRegionMetadata();
         perRegionMetadata.customImageId = region.getYbImage();
@@ -137,6 +145,14 @@ public class CloudBootstrap extends CloudTaskBase {
           // zones. Will be ignored in all other cases.
           perRegionMetadata.secondarySubnetId = region.zones.get(0).secondarySubnet;
           perRegionMetadata.subnetId = region.zones.get(0).subnet;
+
+          if (region.provider.getCloudCode().equals(Common.CloudType.onprem)) {
+            // OnPrem provider specific fields.
+            perRegionMetadata.latitude = region.latitude;
+            perRegionMetadata.longitude = region.longitude;
+            perRegionMetadata.azList = region.zones;
+            perRegionMetadata.regionName = region.name;
+          }
         }
         return perRegionMetadata;
       }
@@ -223,8 +239,11 @@ public class CloudBootstrap extends CloudTaskBase {
                   .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
             });
 
-    createInitializerTask()
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
+    // Need not to init CloudInitializer task for onprem provider.
+    if (!p.getCloudCode().equals(Common.CloudType.onprem)) {
+      createInitializerTask()
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
+    }
 
     getRunnableTask().runSubTasks();
   }

@@ -624,7 +624,8 @@ public class CloudProviderHandler {
     if (taskParams.perRegionMetadata == null) {
       taskParams.perRegionMetadata = new HashMap<>();
     }
-    if (taskParams.perRegionMetadata.isEmpty()) {
+    if (taskParams.perRegionMetadata.isEmpty()
+        && !provider.getCloudCode().equals(Common.CloudType.onprem)) {
       List<String> regionCodes = queryHelper.getRegionCodes(provider);
       for (String regionCode : regionCodes) {
         taskParams.perRegionMetadata.put(regionCode, new CloudBootstrap.Params.PerRegionMetadata());

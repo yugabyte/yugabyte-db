@@ -284,9 +284,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
       Provider provider, ImmutableList<String> regionCodesFromCloudAPI, UUID actualTaskUUID) {
     JsonNode bodyJson = Json.toJson(provider);
     boolean isOnprem = CloudType.onprem.name().equals(provider.code);
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(actualTaskUUID);
     if (!isOnprem) {
-      when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-          .thenReturn(actualTaskUUID);
       when(mockCloudQueryHelper.getRegionCodes(provider)).thenReturn(regionCodesFromCloudAPI);
     }
     Result result = createProvider(bodyJson);
@@ -295,8 +295,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     if (!isOnprem) {
       // When regions not supplied in request then we expect a call to cloud API to get region codes
       verify(mockCloudQueryHelper, times(provider.regions.isEmpty() ? 1 : 0)).getRegionCodes(any());
-      assertEquals(actualTaskUUID, ybpTask.taskUUID);
     }
+    assertEquals(actualTaskUUID, ybpTask.taskUUID);
     Provider createdProvider = Provider.get(customer.uuid, ybpTask.resourceUUID);
     assertEquals(provider.code, createdProvider.code);
     assertEquals(provider.name, createdProvider.name);
