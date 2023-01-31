@@ -119,12 +119,13 @@ The load is distributed evenly across the regions.
 
 ## Tuning latencies
 
-Latency in a multi-region cluster depends on the distance/network packet transfer times between the nodes of the cluster and between the cluster and the client. Because the tablet leader replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
+Latency in a multi-region cluster depends on the distance/network packet transfer times between the nodes of the cluster and between the cluster and the client. Because the [shard leader](../../../architecture/docdb-sharding/sharding/) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
 
 For best performance as well as lower data transfer costs, you want to minimize transfers between providers, and between provider regions. You do this by locating your cluster as close to your applications as possible:
 
 - Use the same cloud provider as your application.
 - Locate your cluster in the same region as your application.
+- Peer your cluster with the VPC hosting your application.
 
 ### Follower reads
 
@@ -149,7 +150,7 @@ $ ./bin/yb-admin \
 
 You should see the read and write load on the [tablet servers page](http://localhost:7000/tablet-servers) move to the preferred region, as per the following illustration:
 
-![Multi-region cluster load](/images/ce/online-reconfig-multi-zone-pref-load.png)
+![Multi-region cluster preferred load](/images/ce/online-reconfig-multi-zone-pref-load.png)
 
 When complete, the load is handled exclusively by the preferred region.
 
