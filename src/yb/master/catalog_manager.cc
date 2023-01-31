@@ -425,7 +425,7 @@ DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
 // Change the default value of this flag to false once we declare Colocation GA.
-DEFINE_NON_RUNTIME_bool(ysql_legacy_colocated_database_creation, true,
+DEFINE_NON_RUNTIME_bool(ysql_legacy_colocated_database_creation, false,
             "Whether to create a legacy colocated database using pre-Colocation GA implementation");
 TAG_FLAG(ysql_legacy_colocated_database_creation, advanced);
 
