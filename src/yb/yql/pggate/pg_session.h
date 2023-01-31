@@ -260,6 +260,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // -------------
   Result<client::TabletServersInfo> ListTabletServers();
 
+  Status GetIndexBackfillProgress(std::vector<PgObjectId> index_ids, uint64_t** backfill_statuses);
+
   //------------------------------------------------------------------------------------------------
   // Access functions.
   // TODO(neil) Need to double check these code later.

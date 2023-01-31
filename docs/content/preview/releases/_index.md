@@ -35,7 +35,7 @@ The type of YugabyteDB release series you are running determines its support tim
 
 **STS (standard-term support)** release series receive maintenance updates for at least 8 months (240 days) from the first release date of the minor release.
 
-LTS and STS release series are both subject to the following support and EOL timeframes:
+LTS and STS release series are both subject to the following support and EOL timelines:
 
 * **Extended support:** Following the maintenance support period, Yugabyte will provide support for at least an additional 180 days subject to the following guidelines:
   * Updates and Upgrades will not be made to the minor release.
@@ -54,7 +54,6 @@ The information in this section is a summary for convenience only. For complete 
 | [v2.14](release-notes/v2.14/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
 | [v2.12](release-notes/v2.12/) | {{< yb-eol-dates "v2.12" release >}} | {{< yb-eol-dates "v2.12" EOM >}} | {{< yb-eol-dates "v2.12" EOL >}} |
 | [v2.8](release-notes/v2.8/) | {{< yb-eol-dates "v2.8" release >}} | {{< yb-eol-dates "v2.8" EOM >}} | {{< yb-eol-dates "v2.8" EOL >}} |
-| [v2.6](release-notes/v2.6/) | {{< yb-eol-dates "v2.6" release >}} | {{< yb-eol-dates "v2.6" EOM >}} | {{< yb-eol-dates "v2.6" EOL >}} |
 
 ### Releases at end of life (EOL) {#eol-releases}
 
@@ -67,6 +66,7 @@ The following releases are no longer supported:
 | [v2.11](release-notes/v2.11/) | November 22, 2021 | n/a | n/a |
 | [v2.9](release-notes/v2.9/) | August 31, 2021 | n/a | n/a |
 | [v2.7](release-notes/v2.7/) | May 5, 2021 | n/a | n/a |
+| [v2.6](release-notes/v2.6/) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
 | [v2.5](release-notes/v2.5/) | November 12, 2020 | n/a | n/a |
 | [v2.4](release-notes/v2.4/) | January 22, 2021 | January 22, 2022 | July 21, 2022 |
 | [v2.2](release-notes/v2.2/) | July 15, 2020 | July 15, 2021 | January 15, 2022 |

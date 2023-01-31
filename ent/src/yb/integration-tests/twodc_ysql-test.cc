@@ -115,6 +115,10 @@ DECLARE_bool(TEST_xcluster_disable_replication_transaction_status_table);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_bool(ysql_legacy_colocated_database_creation);
+DECLARE_bool(TEST_cdc_skip_replication_poll);
+DECLARE_int32(rpc_workers_limit);
+DECLARE_int32(tablet_server_svc_queue_length);
+DECLARE_uint32(external_transaction_retention_window_secs);
 
 namespace yb {
 
@@ -1176,6 +1180,83 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
   ASSERT_OK(consumer_cluster()->CompactTablets());
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransactions) {
+  // This test ensures that transactions older than the retention window are cleaned up on both
+  // the coordinator and participant.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+
+  // Write 2 transactions that are both not committed.
+  ASSERT_NO_FATALS(WriteTransactionalWorkload(
+      0, 49, &producer_cluster_, producer_table->name(), false /* commit_tranasction */));
+  master::WaitForReplicationDrainRequestPB req;
+  std::shared_ptr<client::YBTable> producer_tran_table;
+  YBTableName producer_tran_table_name(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  ASSERT_OK(producer_client()->OpenTable(producer_tran_table_name, &producer_tran_table));
+  PopulateWaitForReplicationDrainRequest({tables_pair.first, producer_tran_table}, &req);
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_NO_FATALS(WriteTransactionalWorkload(
+      50, 99, &producer_cluster_, producer_table->name(), false /* commit_tranasction */));
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  // Delete universe replication now so that new external transactions from the transaction pool
+  // do not come in.
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  // Set the retention window to 0 and ensure that the transaction is cleaned up on the coordinator.
+  FLAGS_external_transaction_retention_window_secs = 0;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return CountExternalTransactions(consumer_cluster()) == 0;
+  },  MonoDelta::FromSeconds(30), "Wait for transactions to be cleaned up on coordinator"));
+
+  // Trigger a compaction and ensure that the transaction has been cleaned up on the participant.
+  FLAGS_aborted_intent_cleanup_ms = 0;
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
+}
+
+class TwoDCYSqlTestStressTest : public TwoDCYSqlTestConsistentTransactionsTest {
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    FLAGS_rpc_workers_limit = 8;
+    FLAGS_tablet_server_svc_queue_length = 10;
+    TwoDCYSqlTestConsistentTransactionsTest::SetUp();
+  }
+};
+
+TEST_F(TwoDCYSqlTestStressTest, ApplyTranasctionThrottling) {
+  // After a boostrap or a network partition, it is possible that there many unreplicated
+  // transactions that the consumer receives at once. Specifically, the consumer's
+  // coordinator must commit and then apply many transactions at once. Ensure that there is
+  // sufficient throttling on the coordinator to prevent RPC bottlenecks in this situation.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  // Pause replication to allow unreplicated data to accumulate.
+  FLAGS_TEST_cdc_skip_replication_poll = true;
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+  auto table_name_str =  GetCompleteTableName(producer_table->name());
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  int key = 0;
+  int step = 10;
+  // Write 30s worth of transactions.
+  auto now = CoarseMonoClock::Now();
+  while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "insert into $0 values(generate_series($1, $2))", table_name_str, key, key + step - 1));
+    key += step;
+  }
+  // Enable replication and ensure that the coordinator can handle 30s worth of data all at once.
+  FLAGS_TEST_cdc_skip_replication_poll = false;
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
@@ -3092,6 +3173,69 @@ TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
   }
 
   ASSERT_OK(DeleteUniverseReplication());
+}
+
+TEST_P(TwoDCYsqlTest, DeletingDatabaseContainingReplicatedTable) {
+  constexpr int kNTabletsPerTable = 1;
+  const int num_tables = 3;
+
+  auto tables = ASSERT_RESULT(SetUpWithParams({1, 1}, {1, 1}, 1));
+  // Additional namespaces.
+  const string kNamespaceName2 = "test_namespace2";
+
+  // Create the additional databases.
+  auto producer_db_2 = CreateDatabase(&producer_cluster_, kNamespaceName2, false);
+  auto consumer_db_2 = CreateDatabase(&consumer_cluster_, kNamespaceName2, false);
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  std::vector<YBTableName> producer_table_names;
+  std::vector<YBTableName> consumer_table_names;
+
+  auto create_tables = [this, &producer_tables](
+                           const string namespace_name, Cluster& cluster,
+                           bool is_replicated_producer, std::vector<YBTableName>& table_names) {
+    for (int i = 0; i < num_tables; i++) {
+      auto table = ASSERT_RESULT(CreateYsqlTable(
+          &cluster, namespace_name, Format("test_schema_$0", i), Format("test_table_$0", i),
+          boost::none /* tablegroup */, kNTabletsPerTable));
+      // For now, only replicate the second table for test_namespace.
+      if (is_replicated_producer && i == 1) {
+        std::shared_ptr<client::YBTable> yb_table;
+        ASSERT_OK(producer_client()->OpenTable(table, &yb_table));
+        producer_tables.push_back(yb_table);
+      }
+    }
+  };
+  // Create the tables in the producer test_namespace database that will contain some replicated
+  // tables.
+  create_tables(kNamespaceName, producer_cluster_, true, producer_table_names);
+  // Create non replicated tables in the producer's test_namespace2 database. This is done to
+  // ensure that its deletion isn't affected by other producer databases that are a part of
+  // replication.
+  create_tables(kNamespaceName2, producer_cluster_, false, producer_table_names);
+  // Create non replicated tables in the consumer's test_namespace3 database. This is done to
+  // ensure that its deletion isn't affected by other consumer databases that are a part of
+  // replication.
+  create_tables(kNamespaceName2, consumer_cluster_, false, consumer_table_names);
+  // Create tables in the consumer's test_namesapce database, only have the second table be
+  // replicated.
+  create_tables(kNamespaceName, consumer_cluster_, false, consumer_table_names);
+
+  // Setup universe replication for the tables.
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
+  master::IsSetupUniverseReplicationDoneResponsePB is_resp;
+  ASSERT_OK(WaitForSetupUniverseReplication(
+      consumer_cluster(), consumer_client(), kUniverseId, &is_resp));
+
+  ASSERT_NOK(producer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
+  ASSERT_NOK(consumer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
+  ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
+  ASSERT_OK(consumer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
+
+  ASSERT_OK(DeleteUniverseReplication());
+
+  ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
+  ASSERT_OK(consumer_client()->DeleteNamespace(kNamespaceName, YQL_DATABASE_PGSQL));
 }
 
 } // namespace enterprise

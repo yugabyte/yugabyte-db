@@ -156,7 +156,7 @@ Status CreateEmptyAutoFlagsConfig(AutoFlagsManager* auto_flag_manager) {
   LOG(INFO) << "Creating empty AutoFlags configuration.";
 
   AutoFlagsConfigPB new_config;
-  new_config.set_config_version(1);
+  new_config.set_config_version(0);
   RETURN_NOT_OK(
       auto_flag_manager->LoadFromConfig(std::move(new_config), ApplyNonRuntimeAutoFlags::kTrue));
   return OK();

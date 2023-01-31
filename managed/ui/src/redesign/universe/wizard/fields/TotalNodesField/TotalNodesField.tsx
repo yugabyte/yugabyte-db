@@ -4,7 +4,6 @@ import { useUpdateEffect } from 'react-use';
 import { Controller, useFormContext } from 'react-hook-form';
 import { Input } from '../../../../uikit/Input/Input';
 import { CloudConfigFormValue } from '../../steps/cloud/CloudConfig';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import './TotalNodesField.scss';
 
 const FIELD_NAME = 'totalNodes';
@@ -37,7 +36,7 @@ export const TotalNodesField: FC = () => {
       <Controller
         control={control}
         name={FIELD_NAME}
-        render={({ value, onChange, onBlur }: ControllerRenderProps<number>) => (
+        render={({ field: { value, onChange, onBlur } }) => (
           <Input
             type="number"
             disabled={!autoPlacement}

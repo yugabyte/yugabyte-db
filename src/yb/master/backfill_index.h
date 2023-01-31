@@ -153,6 +153,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
 
+  const uint64_t number_rows_processed() const { return number_rows_processed_; }
+
  private:
   void LaunchBackfillOrAbort();
   Status WaitForTabletSplitting();

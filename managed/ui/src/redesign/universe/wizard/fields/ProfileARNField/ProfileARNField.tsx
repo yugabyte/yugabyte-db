@@ -2,7 +2,6 @@ import React, { FC } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
 import { InstanceConfigFormValue } from '../../steps/instance/InstanceConfig';
 import { Input } from '../../../../uikit/Input/Input';
-import { ControllerRenderProps } from '../../../../helpers/types';
 
 interface ProfileARNFieldProps {
   disabled: boolean;
@@ -15,12 +14,12 @@ export const ProfileARNField: FC<ProfileARNFieldProps> = ({ disabled }) => {
     <Controller
       control={control}
       name="awsArnString"
-      render={({ value, onChange }: ControllerRenderProps<string | null>) => (
+      render={({ field }) => (
         <Input
           type="text"
           disabled={disabled}
-          value={value || ''}
-          onChange={(event) => onChange(event.target.value)}
+          value={field.value || ''}
+          onChange={(event) => field.onChange(event.target.value)}
         />
       )}
     />

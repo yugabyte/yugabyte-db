@@ -381,7 +381,6 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
-  SetAtomicFlag(true, &FLAGS_enable_lease_revocation);
   FLAGS_fail_on_out_of_range_clock_skew = false;
 
   TestBankAccounts(
