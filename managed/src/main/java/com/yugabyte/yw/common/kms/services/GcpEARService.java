@@ -145,24 +145,15 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
   }
 
   @Override
-  public byte[] retrieveKeyWithService(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
     byte[] keyVal = null;
     try {
-      switch (config.type) {
-        case CMK:
-          keyVal = keyRef;
-          break;
-        default:
-        case DATA_KEY:
-          // Decrypt the locally stored encrypted keyRef to get the universe key.
-          ObjectNode authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
-          keyVal = gcpEARServiceUtil.decryptBytes(authConfig, keyRef);
-          if (keyVal == null) {
-            LOG.warn("Could not retrieve key from key ref through GCP KMS");
-          }
-          break;
+      // Decrypt the locally stored encrypted keyRef to get the universe key.
+      ObjectNode authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
+      keyVal = gcpEARServiceUtil.decryptBytes(authConfig, keyRef);
+      if (keyVal == null) {
+        LOG.warn("Could not retrieve key from key ref through GCP KMS");
       }
     } catch (Exception e) {
       final String errMsg = "Error occurred retrieving encryption key";
@@ -174,29 +165,17 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
 
   @Override
   protected byte[] validateRetrieveKeyWithService(
-      UUID universeUUID,
-      UUID configUUID,
-      byte[] keyRef,
-      EncryptionAtRestConfig config,
-      ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
     byte[] keyVal = null;
     try {
-      switch (config.type) {
-        case CMK:
-          keyVal = keyRef;
-          break;
-        default:
-        case DATA_KEY:
-          if (authConfig == null) {
-            authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
-          }
-          // Decrypt the locally stored encrypted keyRef to get the universe key.
-          keyVal = gcpEARServiceUtil.decryptBytes(authConfig, keyRef);
-          if (keyVal == null) {
-            LOG.warn("Could not retrieve key from key ref through GCP KMS");
-          }
-          break;
+      if (authConfig == null) {
+        authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
+      }
+      // Decrypt the locally stored encrypted keyRef to get the universe key.
+      keyVal = gcpEARServiceUtil.decryptBytes(authConfig, keyRef);
+      if (keyVal == null) {
+        LOG.warn("Could not retrieve key from key ref through GCP KMS");
       }
     } catch (Exception e) {
       final String errMsg = "Error occurred retrieving encryption key";

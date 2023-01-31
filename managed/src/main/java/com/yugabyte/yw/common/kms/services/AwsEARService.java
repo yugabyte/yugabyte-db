@@ -144,21 +144,12 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
   }
 
   @Override
-  public byte[] retrieveKeyWithService(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
     byte[] keyVal = null;
     try {
-      switch (config.type) {
-        case CMK:
-          keyVal = keyRef;
-          break;
-        default:
-        case DATA_KEY:
-          keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef, null);
-          if (keyVal == null) {
-            LOG.warn("Could not retrieve key from key ref through AWS KMS");
-          }
-          break;
+      keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef, null);
+      if (keyVal == null) {
+        LOG.warn("Could not retrieve key from key ref through AWS KMS");
       }
     } catch (Exception e) {
       final String errMsg = "Error occurred retrieving encryption key";
@@ -170,24 +161,12 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
 
   @Override
   protected byte[] validateRetrieveKeyWithService(
-      UUID universeUUID,
-      UUID configUUID,
-      byte[] keyRef,
-      EncryptionAtRestConfig config,
-      ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
     byte[] keyVal = null;
     try {
-      switch (config.type) {
-        case CMK:
-          keyVal = keyRef;
-          break;
-        default:
-        case DATA_KEY:
-          keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef, authConfig);
-          if (keyVal == null) {
-            LOG.warn("Could not retrieve key from key ref through AWS KMS");
-          }
-          break;
+      keyVal = AwsEARServiceUtil.decryptUniverseKey(configUUID, keyRef, authConfig);
+      if (keyVal == null) {
+        LOG.warn("Could not retrieve key from key ref through AWS KMS");
       }
     } catch (Exception e) {
       final String errMsg = "Error occurred retrieving encryption key";
