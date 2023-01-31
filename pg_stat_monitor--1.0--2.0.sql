@@ -4,10 +4,8 @@
 \echo Use "ALTER EXTENSION pg_stat_monitor" to load this file. \quit
 
 DROP FUNCTION pg_stat_monitor_internal CASCADE;
-DROP FUNCTION pgsm_create_11_view CASCADE;
-DROP FUNCTION pgsm_create_13_view CASCADE;
-DROP FUNCTION pgsm_create_14_view CASCADE;
-DROP FUNCTION pgsm_create_view CASCADE;
+DROP FUNCTION histogram;
+DROP FUNCTION get_state;
 DROP FUNCTION pg_stat_monitor_settings CASCADE;
 
 CREATE FUNCTION pg_stat_monitor_internal(
@@ -90,6 +88,22 @@ CREATE FUNCTION pg_stat_monitor_internal(
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor_2_0'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
+
+CREATE FUNCTION histogram(_bucket int, _quryid int8)
+RETURNS SETOF RECORD AS $$
+DECLARE
+ rec record;
+BEGIN
+    FOR rec IN
+        WITH stat AS (select queryid, bucket, unnest(range()) AS range,
+            unnest(resp_calls)::int freq FROM pg_stat_monitor) select range,
+            freq, repeat('■', (freq::float / max(freq) over() * 30)::int) AS bar
+            FROM stat WHERE queryid = _quryid and bucket = _bucket
+    LOOP
+        RETURN next rec;
+    END loop;
+END
+$$ language plpgsql;
 
 -- Register a view on the function for ease of use.
 CREATE FUNCTION pgsm_create_11_view() RETURNS INT AS

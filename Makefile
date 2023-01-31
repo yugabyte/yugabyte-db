@@ -4,7 +4,7 @@ MODULE_big = pg_stat_monitor
 OBJS = hash_query.o guc.o pg_stat_monitor.o $(WIN32RES)
 
 EXTENSION = pg_stat_monitor
-DATA = pg_stat_monitor--1.0.sql pg_stat_monitor--2.0.sql pg_stat_monitor--1.0--2.0.sql
+DATA = pg_stat_monitor--2.0.sql pg_stat_monitor--1.0--2.0.sql
 
 PGFILEDESC = "pg_stat_monitor - execution statistics of SQL statements"
 

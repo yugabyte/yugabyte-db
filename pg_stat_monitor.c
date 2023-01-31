@@ -1807,6 +1807,12 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	char	   *parent_query_txt = NULL;
 	int        expected_columns = (api_version >= PGSM_V2_0)?PG_STAT_MONITOR_COLS_V2_0:PG_STAT_MONITOR_COLS_V1_0;
 
+	/* Disallow old api usage */
+	if (api_version < PGSM_V2_0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("pg_stat_monitor: API version not supported"),
+				 errhint("upgrade pg_stat_monitor extension")));
 	/* Safety check... */
 	if (!IsSystemInitialized())
 		ereport(ERROR,
