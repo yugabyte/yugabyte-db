@@ -95,8 +95,11 @@ public class AvailabilityZone extends Model {
   }
 
   @Deprecated
+  @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+    if (configMap != null && !configMap.isEmpty()) {
+      CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+    }
   }
 
   @Deprecated
