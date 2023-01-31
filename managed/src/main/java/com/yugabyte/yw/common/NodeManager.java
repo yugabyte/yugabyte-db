@@ -233,9 +233,19 @@ public class NodeManager extends DevopsBase {
       AccessKey accessKey =
           AccessKey.getOrBadRequest(params.getProvider().uuid, userIntent.accessKeyCode);
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+      String sshUser = null;
+      // Currently we only need this for provision node operation.
+      // All others use yugabyte user.
+      if (type == NodeCommandType.Provision) {
+        if (StringUtils.isNotBlank(params.sshUserOverride)) {
+          sshUser = params.sshUserOverride;
+        }
+      }
+
+      LOG.info("node.sshUserOverride {}, sshuser used {}", params.sshUserOverride, sshUser);
       subCommand.addAll(
           getAccessKeySpecificCommand(
-              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode));
+              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode, sshUser));
     }
 
     return subCommand;
@@ -246,7 +256,8 @@ public class NodeManager extends DevopsBase {
       NodeCommandType type,
       AccessKey.KeyInfo keyInfo,
       Common.CloudType providerType,
-      String accessKeyCode) {
+      String accessKeyCode,
+      String sshUser) {
     List<String> subCommand = new ArrayList<>();
 
     if (keyInfo.vaultFile != null) {
@@ -310,9 +321,12 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Wait_For_SSH)
         && providerDetails.sshUser != null) {
       subCommand.add("--ssh_user");
-      subCommand.add(providerDetails.sshUser);
+      if (StringUtils.isNotBlank(sshUser)) {
+        subCommand.add(sshUser);
+      } else {
+        subCommand.add(providerDetails.sshUser);
+      }
     }
-
     if (type == NodeCommandType.Precheck) {
       subCommand.add("--precheck_type");
       if (providerDetails.skipProvisioning) {
@@ -1228,7 +1242,7 @@ public class NodeManager extends DevopsBase {
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     commandArgs.addAll(
         getAccessKeySpecificCommand(
-            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode()));
+            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode(), null));
     commandArgs.addAll(
         getCommunicationPortsParams(
             new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
