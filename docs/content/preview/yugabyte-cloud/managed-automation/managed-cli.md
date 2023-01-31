@@ -4,6 +4,7 @@ headerTitle: YugabyteDB Managed CLI
 linkTitle: YugabyteDB Managed CLI
 description: Use YugabyteDB Managed CLI to access YugabyteDB clusters.
 headcontent: Manage cluster and account resources from the command line
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: managed-cli
