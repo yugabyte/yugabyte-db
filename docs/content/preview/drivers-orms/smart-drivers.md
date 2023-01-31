@@ -84,14 +84,20 @@ With this parameter specified in the URL, the driver fetches and maintains a lis
 
 A connection works as follows:
 
-- The driver makes an initial connection to the host specified in the URL/connection string and fetches information about the cluster nodes. This list is refreshed every 5 minutes, when a new connection request is received.
+- The driver makes an initial connection to the host specified in the URL/connection string and fetches information about the cluster nodes using the `yb_servers()` function. By default, this list is refreshed every 5 minutes, when a new connection request is received.
 - The driver then connects to the least-loaded node before returning the connection to the application.
 
 After the connection is established with a node, if that node fails, then the request is not retried.
 
 The application must use the same connection URL to create every connection it needs, so that the distribution happens equally.
 
-Note that the nodes in the cluster must be accessible. If, for example, the cluster has multiple regions deployed in separate VPCs, your application would need access to all the regions, typically via peering.
+To change the frequency that the list of nodes is refreshed, use the servers refresh interval parameter. For example, using the Go smart driver, you can change the interval to four minutes (specified in seconds) as follows:
+
+```go
+"postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
+```
+
+Note that, for load balancing, the nodes in the cluster must be accessible. If, for example, the cluster has multiple regions deployed in separate VPCs, your application would need access to all the regions, typically via peering.
 
 ### Topology-aware connection load balancing
 
@@ -99,9 +105,9 @@ For a database deployment that spans multiple regions, evenly distributing reque
 
 - For connecting to the geographically nearest regions and zones for lower latency and fewer network hops. Typically you would co-locate applications in the regions where your cluster is located. Topology balancing allows you to target only regions where the applications are hosted.
 
-- The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the shard leaders are hosted. In this case, for best performance you want your application to target the preferred locations.
+- The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the [shard leaders](../../architecture/docdb-sharding/sharding/) are hosted. In this case, for best performance you want your application to target the preferred locations.
 
-You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style).
+You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style). You still need to specify load balance as true to enable the topology-aware connection load balancing.
 
 For example, using the Go driver, you would set the parameters as follows:
 
@@ -110,9 +116,23 @@ For example, using the Go driver, you would set the parameters as follows:
     topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
 ```
 
-If no servers are available, the request may return with a failure.
+Use an asterisk (*) to specify all zones in a region. (You can't do this for region or cloud.) For example:
 
-You still need to specify load balance as true to enable the topology-aware connection load balancing.
+```go
+"postgres://username:password@localhost:5433/database_name?load_balance=true& \
+    topology_keys=cloud1.region1.*"
+```
+
+To specify fallback locations in cases where a location is unavailable, add `:n` to the topology key, where n is an integer indicating priority. The following example sets `zone1` as the topology key, and zones 2 and 3 as fallbacks (in that order) if `zone1` can't be reached:
+
+```go
+"postgres://username:password@localhost:5433/database_name?load_balance=true& \
+    topology_keys=cloud1.region1.zone1:1,cloud1.region1.zone2:2,cloud1.region1.zone3:3"
+```
+
+Not specifying a priority is the equivalent of setting priority to 1.
+
+If no servers are available, the request may return with a failure.
 
 ## Connection pooling
 
