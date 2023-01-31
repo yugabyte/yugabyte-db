@@ -68,7 +68,7 @@ You can add a node to the universe in YugabyteDB Anywhere as follows:
 
 1. In the **Nodes** field, change the number to 4 to add a new node.
 
-1. Click **Save**.
+1. Click **Save**. Note that the scaling operation can take several minutes.
 
 1. Verify that the node has been added by selecting **Nodes**, as per the following illustration:
 
@@ -94,7 +94,7 @@ You can remove a node from the universe as follows:
 
 1. Select **Nodes**, find the node to be removed, and then click its corresponding **Actions > Remove Node**.
 
-1. Verify that the details by selecting **Nodes**. Expect to see that the load has been moved off the removed node and redistributed to the remaining nodes.
+1. Verify that the details by selecting **Nodes**. The scale-in operation can take several minutes and expect to see that the load has been moved off the removed node and redistributed to the remaining nodes.
 
 1. Navigate to **Metrics** to observe a slight spike and drop in the latency and YSQL Ops / Sec charts when the node is removed, and then both return to normal, as shown in the following illustration:
 

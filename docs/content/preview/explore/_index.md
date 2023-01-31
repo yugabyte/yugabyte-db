@@ -355,7 +355,7 @@ For example:
 scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.3.jar ec2-user@123.456.789.2XS:/tmp/
 ``` -->
 
-To start the application against a YugabyteDB Anywhere universe locally, use the following command:
+To start the application against a running YugabyteDB Anywhere universe, use the following command from a local terminal:
 
 <!-- You can launch the application from your YugabyteDB Anywhere instance by using the terminal, as follows:
 
@@ -368,19 +368,7 @@ To start the application against a YugabyteDB Anywhere universe locally, use the
          -Ddbname=<dbname> \
          -Ddbuser=<dbuser> \
          -Ddbpassword=<dbpassword> \
-         -Dport=<port> \
-         -Dmax-pool-size=100 \
-         -Dspring.profiles.active=application.yaml \
-         -Dserver.port=8080 \
-         -DidCounter=1 \
-         -Dssl=false \
-         -Dsslmode=disable \
-         -Dworkload=genericWorkload \
-         -DadditionalEndpoints= \
-         -Dspring.datasource.hikari.maximumPoolSize=100 \
          -Dspring.datasource.hikari.data-source-properties.topologyKeys=<aws.regions.zones> \
-         -DloggingDir="/tmp/logs" \
-         -DXmx=32g \
          -jar ./yb-workload-sim-0.0.3.jar
    ```
 
@@ -392,7 +380,7 @@ To start the application against a YugabyteDB Anywhere universe locally, use the
 
    - `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database.
 
-   - `<port>` - 5433.
+   <!-- - `<port>` - 5433. -->
 
    - `<aws.regions.zones>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
 
@@ -400,7 +388,8 @@ To start the application against a YugabyteDB Anywhere universe locally, use the
      -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
      ```
 
-The preceding instructions are applicable to a YSQL workload. To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.3.jar` command:
+<!-- The preceding instructions are applicable to a YSQL workload.
+To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.3.jar` command:
 
 ```sh
 -Dworkload=genericCassandraWorkload \
@@ -417,11 +406,9 @@ In the local environment, you would need to execute the following:
 
 ```sh
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-```
+``` -->
 
 </div>
-
-
 
 To view the application UI, navigate to `http://<machine_ip_or_dns>:8080` (for example, `http://localhost:8080`).
 
