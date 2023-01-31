@@ -2609,6 +2609,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	AttrNumber attr_offset;
 	Bitmapset *update_attrs = NULL;
 	Bitmapset *pushdown_update_attrs = NULL;
+	/* Delay bailout because of not pushable expressions to analyze indexes. */
+	bool has_unpushable_exprs = false;
 
 	/* Verify YB is enabled. */
 	if (!IsYugaByteEnabled())
@@ -2802,16 +2804,18 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * elements not supported by DocDB, or expression pushdown is
 			 * disabled.
 			 *
-			 * However, if not pushable expression does not refer any target
-			 * table column, the Result node can evaluate it, and the statement
-			 * would still be one row.
+			 * If expression is not pushable, we can not do single line update,
+			 * but do not bail out until after we analyse indexes and make a
+			 * list of secondary indexes unaffected by the update. We can skip
+			 * update of those indexes regardless. Still allow to bail out
+			 * if there are triggers. There is no easy way to tell what columns
+			 * are affected by a trigger, so we should update all indexes.
 			 */
 			if (TupleDescAttr(tupDesc, resno - 1)->attnotnull ||
 				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
 				!YbCanPushdownExpr(tle->expr, &colrefs))
 			{
-				RelationClose(relation);
-				return false;
+				has_unpushable_exprs = true;
 			}
 
 			pushdown_update_attrs = bms_add_member(pushdown_update_attrs,
@@ -2836,6 +2840,17 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * update/delete from the index, requiring the scan.
 	 */
 	if (has_applicable_indices(relation, update_attrs, no_update_index_list))
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * Now it is OK to bail out because of unpushable expressions.
+	 * We have made a list, and can skip unaffected indexes even though
+	 * the update is not single row.
+	 */
+	if (has_unpushable_exprs)
 	{
 		RelationClose(relation);
 		return false;
@@ -4664,7 +4679,7 @@ create_nestloop_plan(PlannerInfo *root,
 
 	root->yb_cur_batched_relids = bms_union(root->yb_cur_batched_relids,
 										    batched_relids);
-	
+
 	yb_is_batched = yb_is_nestloop_batched(best_path);
 
 	outerrelids = best_path->outerjoinpath->parent->relids;
@@ -4709,7 +4724,7 @@ create_nestloop_plan(PlannerInfo *root,
 						   yb_get_unbatched_relids(best_path));
 
 		Relids inner_relids = best_path->innerjoinpath->parent->relids;
-		
+
 		YbBNLHashClauseInfo *current_hinfo = yb_hashClauseInfos;
 		foreach(l, joinrestrictclauses)
 		{
@@ -4726,10 +4741,10 @@ create_nestloop_plan(PlannerInfo *root,
 				RestrictInfo *batched_rinfo =
 					get_batched_restrictinfo(rinfo,batched_outerrelids,
 											 inner_relids);
-				
+
 				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
 			}
-			
+
 			current_hinfo->hashOp = hashOpno;
 			current_hinfo++;
 		}
