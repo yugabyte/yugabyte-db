@@ -98,37 +98,44 @@ Each data type supported in YSQL (or YCQL) is represented by a unique byte. The 
 
 ### Non-Primary key columns
 
-The non-primary key columns correspond to subdocuments within the document. The subdocument key corresponds to the column ID. There’s a unique byte for each data type we support in YSQL (or YCQL). The values are prefixed with the corresponding byte. If a column is a non-primitive type (such as a map or set), the corresponding subdocument is an Object.
+The non-primary key columns correspond to sub-documents in the document. The sub-document key corresponds to the column ID. There's a unique byte for each data type we support in YSQL (or YCQL). The values are prefixed with the corresponding byte. If a column is a non-primitive type (such as a map or set), the corresponding sub-document is an Object.
 
 We use a binary-comparable encoding to translate the value for each YCQL type to strings that go to the KV-Store.
 
 ## Packed row format (Beta)
 
-A row corresponding to the user table is stored as multiple key value pairs in the DocDB. For
-example, A row with one primary key and n non-key columns - K (primary key)  |  C1  | C2  | ………  |
-Cn, would be stored as n key value pairs - <K, C1> <K, C2> .... <K, Cn>. 
+A row corresponding to the user table is stored as multiple key value pairs in the DocDB. For example, a row with one primary key `K` and `n` non-key columns , that is, `K (primary key)  |  C1 (column)  | C2  | ………  | Cn`, would be stored as `n` key value pairs - `<K, C1> <K, C2> .... <K, Cn>`.
 
-With packed row format, it would be stored as a single key value pair <K, packed {C1, C2...Cn}>.
+With packed row format, it would be stored as a single key value pair: `<K, packed {C1, C2...Cn}>`.
 
-While UDTs (User-defined type) can be used to achieve the packed row format at the application level, native support for
-packed row format has the following benefits:
+While UDTs (User-defined type) can be used to achieve the packed row format at the application level, native support for packed row format has the following benefits:
+
 * Lower storage footprint.
 * Efficient INSERTs, especially when a table has large number of columns.
 * Faster multi-column reads, as the reads need to fetch fewer key value pairs.
-* UDTs require application rewrite, and thus are not necessarily an option for everyone, like latency sensitive update workloads.
+* UDTs require application rewrite, and therefore not necessarily an option for all use cases, like latency sensitive update workloads.
 
-The packed row format can be enabled using the [gflags](../../../reference/configuration/yb-tserver/#packed-row-flags-beta).
+The packed row format can be enabled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags-beta).
 
 ### Design
+
 Following are the design aspects of packed row format:
+
 * **Inserts**: Entire row is stored as a single key-value pair.
-* **Updates**:  If some column(s) are updated, then each such column update is stored as a key-value pair in DocDB (same as without packed rows). However If all non-key columns are updated, then the row is stored in the packed format as one single key-value pair. This scheme adopts the best of both worlds - efficient updates and efficient storage. 
-* **Select**: Scans need to construct the row from packed inserts as well as non-packed update(s) if any.
-* **Point lookups**: Point lookups will be just as fast as without Packed Row as fundamentally, we will still be seeking a single key value pair from DocDB.
+
+* **Updates**:  If some column(s) are updated, then each such column update is stored as a key-value pair in DocDB (same as without packed rows). However, if all non-key columns are updated, then the row is stored in the packed format as one single key-value pair. This scheme adopts both efficient updates and efficient storage.
+
+* **Select**: Scans need to construct the row from packed inserts as well as non-packed update(s), if any.
+
+* **Point lookups**: Point lookups will be just as fast as without packed row as fundamentally, we will still be seeking a single key value pair from DocDB.
+
 * **Compactions**: Compactions produce a compact version of the row, if the row has unpacked fragments due to updates.
-* **Backwards compatible**: Read code can interpret non-packed format as well. Write/Updates can produce non-packed format as well. Once a row is packed, it cannot be unpacked.
+
+* **Backwards compatible**: Read code can interpret non-packed format as well. Writes/updates can produce non-packed format as well. Once a row is packed, it cannot be unpacked.
 
 ### Performance data
+
+The packed row feature was tested with different configurations and following are some observations:
 
 * Sequential scans for table with 1 million rows was 2x faster with packed rows.
 * Bulk ingestion of 1 million rows was 2x faster with packed rows.
@@ -136,6 +143,7 @@ Following are the design aspects of packed row format:
 ### Limitations
 
 While packed row feature works for YSQL API using the YSQL specific GFlags with most cross features like backup restore, schema changes, and so on, the following are some of the known limitations which are currently under development:
+
 * [#15740](https://github.com/yugabyte/yugabyte-db/issues/15740) Integration with CDC and schema changes (Beta) - There are some known limitations with schema changes/DDLs and CDC and Packed Row feature.
 * [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143) Colocated and xCluster (Beta) - There are some limitations around propagation of schema changes for
   colocated tables in xCluster in the packed row format that are being worked on.
@@ -143,15 +151,10 @@ While packed row feature works for YSQL API using the YSQL specific GFlags with 
 
 ## Data expiration in YCQL
 
-In YCQL there are two types of TTL, the table TTL and column level TTL. The column TTLs are stored
-with the value using the same encoding as Redis. The Table TTL is not stored in DocDB (it is stored
-in master’s syscatalog as part of the table’s schema). If no TTL is present at the column’s value,
-the table TTL acts as the default value.
+In YCQL, there are two types of TTL, the table TTL and column level TTL. The column TTLs are stored with the value using the same encoding as Redis. The Table TTL is not stored in DocDB (it is stored in master's syscatalog as part of the table's schema). If no TTL is present at the column's value, the table TTL acts as the default value.
 
-Furthermore, YCQL has a distinction between rows created using Insert vs Update. We keep track of
-this difference (and row level TTLs) using a "liveness column", a special system column invisible to
-the user. It is added for inserts, but not updates: making sure the row is present even if all
-non-primary key columns are deleted only in the case of inserts.
+Furthermore, YCQL has a distinction between rows created using Insert vs Update. We keep track of this difference (and row level TTLs) using a "liveness column", a special system column invisible to
+the user. It is added for inserts, but not updates: making sure the row is present even if all non-primary key columns are deleted only in the case of inserts.
 
 ## YCQL - Collection type example
 
@@ -167,14 +170,14 @@ CREATE TABLE msgs (user_id text,
 
 ### Insert a row
 
-```
+```sql
 T1: INSERT INTO msgs (user_id, msg_id, msg, msg_props)
       VALUES ('user1', 10, 'msg1', {'from' : 'a@b.com', 'subject' : 'hello'});
 ```
 
 The entries in DocDB at this point will look like the following:
 
-```
+```sql
 (hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
 (hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'
 (hash1, 'user1', 10), msg_props_column_id, 'from', T1 -> 'a@b.com'

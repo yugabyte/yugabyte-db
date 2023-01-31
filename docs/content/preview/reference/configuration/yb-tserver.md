@@ -840,35 +840,35 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
-## Packed Row flags (Beta)
+## Packed row flags (Beta)
 
-To learn about Packed Row feature, see [Packed Row](../../../architecture/docdb/persistence/#packed-row-format-beta)
+To learn about Packed Row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta).
 
-#### --ysql_enable_packed_row
+##### --ysql_enable_packed_row
 
 Whether packed row is enabled for YSQL.
 
 Default: `false`
 
-#### --ysql_packed_row_size_limit
+##### --ysql_packed_row_size_limit
 
 Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, the remaining columns will be stored as individual key value pairs instead.
 
 Default: `0`
 
-#### --ycql_enable_packed_row
+##### --ycql_enable_packed_row
 
 Whether packed row is enabled for YCQL.
 
 Default: `false`
 
-#### --ycql_packed_row_size_limit
+##### --ycql_packed_row_size_limit
 
 Packed row size limit for YCQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, the remaining columns will be stored as individual key value pairs instead.
 
 Default: `0`
 
-#### --ysql_enable_packed_row_for_colocated_table
+##### --ysql_enable_packed_row_for_colocated_table
 
 Whether packed row is enabled for colocated table in YSQL. The colocated table has an additional gflag to alleviate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
 
