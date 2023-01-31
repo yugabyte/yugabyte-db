@@ -169,6 +169,7 @@ Create a cluster.
 
 --region-info=region=_region-name_,num_nodes=_number-of-nodes_,vpc=_vpc-name_
 : Region details for multi-region cluster, provided as key-value pairs.
+: Specify one `--region-info` flag for each region in the cluster.
 
 --cluster-tier=_tier_
 : Type of cluster; `free` or `paid`.
@@ -209,6 +210,7 @@ Fetch information about the specified cluster.
 
 --region-info=region=_region-name_,num_nodes=_number-of-nodes_,vpc=_vpc-name_
 : Region details for multi-region cluster, provided as key-value pairs.
+: Specify one `--region-info` flag for each region in the cluster.
 
 --cluster-tier=_tier_
 : Type of cluster; `free` or `paid`.
