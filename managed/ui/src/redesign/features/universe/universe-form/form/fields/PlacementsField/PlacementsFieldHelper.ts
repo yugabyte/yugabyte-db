@@ -27,7 +27,8 @@ import {
   DEDICATED_NODES_FIELD,
   MASTERS_IN_DEFAULT_REGION_FIELD,
   DEFAULT_REGION_FIELD,
-  TOAST_AUTO_DISMISS_INTERVAL
+  TOAST_AUTO_DISMISS_INTERVAL,
+  RESET_AZ_FIELD
 } from '../../../utils/constants';
 
 export const getPlacementsFromCluster = (
@@ -153,6 +154,7 @@ export const useNodePlacements = () => {
   const dedicatedNodes = useWatch({ name: DEDICATED_NODES_FIELD });
   const defaultRegion = useWatch({ name: DEFAULT_REGION_FIELD });
   const defaultMasterRegion = useWatch({ name: MASTERS_IN_DEFAULT_REGION_FIELD });
+  const resetAZ = useWatch({ name: RESET_AZ_FIELD });
 
   const prevPropsCombination = useRef({
     instanceType,
@@ -193,7 +195,7 @@ export const useNodePlacements = () => {
     payload.clusters[clusterIndex].userIntent = userIntent;
     payload['regionsChanged'] = regionsChanged;
     payload['userAZSelected'] = false;
-    payload['resetAZConfig'] = false;
+    payload['resetAZConfig'] = resetAZ;
     payload['clusterOperation'] = mode;
     payload['currentClusterType'] = clusterType;
   } else {
@@ -223,11 +225,22 @@ export const useNodePlacements = () => {
         !_.isEmpty(deviceInfo),
       onSuccess: async (data) => {
         const cluster = _.find(data.clusters, { clusterType });
+        if (resetAZ) {
+          //updating previous combinations to avoid re-rendering/redundant api calls
+          prevPropsCombination.current = {
+            ...prevPropsCombination.current,
+            totalNodes: Number(cluster?.userIntent.numNodes),
+            replicationFactor: Number(cluster?.userIntent.replicationFactor)
+          };
+          setValue(TOTAL_NODES_FIELD, Number(cluster?.userIntent.numNodes));
+          setValue(RESET_AZ_FIELD, false);
+        }
         const zones = getPlacementsFromCluster(cluster);
         setValue(PLACEMENTS_FIELD, _.compact(zones));
         setUniverseConfigureTemplate(data);
         setRegionsChanged(false);
         setNeedPlacement(false);
+
         try {
           let resource = await api.universeResource(data); // set Universe resource template whenever configure is called
           setUniverseResourceTemplate(resource);
@@ -255,6 +268,8 @@ export const useNodePlacements = () => {
     if (_.isEmpty(regionList)) {
       setValue(PLACEMENTS_FIELD, [], { shouldValidate: true });
       setNeedPlacement(false);
+    } else if (resetAZ) {
+      setNeedPlacement(true);
     } else {
       const isRegionListChanged = !_.isEqual(
         prevPropsCombination.current.regionList,
@@ -266,7 +281,7 @@ export const useNodePlacements = () => {
     }
 
     prevPropsCombination.current = propsCombination;
-  }, [instanceType, regionList, totalNodes, replicationFactor, deviceInfo]);
+  }, [instanceType, regionList, totalNodes, replicationFactor, deviceInfo, resetAZ]);
 
   return { isLoading: isFetching };
 };

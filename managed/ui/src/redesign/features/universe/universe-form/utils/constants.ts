@@ -10,6 +10,7 @@ export const TOTAL_NODES_FIELD = 'cloudConfig.numNodes';
 export const PLACEMENTS_FIELD = 'cloudConfig.placements';
 export const DEFAULT_REGION_FIELD = 'cloudConfig.defaultRegion';
 export const MASTERS_IN_DEFAULT_REGION_FIELD = 'cloudConfig.mastersInDefaultRegion';
+export const RESET_AZ_FIELD = 'cloudConfig.resetAZConfig';
 
 //Instance config
 export const INSTANCE_TYPE_FIELD = 'instanceConfig.instanceType';
