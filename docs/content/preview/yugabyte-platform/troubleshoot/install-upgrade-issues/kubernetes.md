@@ -12,19 +12,19 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
+
+ <li>
+    <a href="../vm/" class="nav-link">
+      <i class="fa-solid fa-building"></i>
+      Virtual machine </a>
+  </li>  
+
+<li>
     <a href="../kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
-  </li>
-
-  <li>
-    <a href="../vm/" class="nav-link">
-      <i class="fa-solid fa-building"></i>
-      VM
-    </a>
-  </li>
+  </li> 
 
 </ul>
 
