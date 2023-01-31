@@ -236,14 +236,14 @@ export default (store) => {
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
-          <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
-          {/* </Route> */}
-          <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
           <Route
             path="/universes/:uuid/replication/:replicationUUID"
             component={ReplicationDetails}
           />
+          <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
+          {/* </Route> */}
+          <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
         </Route>
 
         {/* ------------------------------------------------------------------------*/}
