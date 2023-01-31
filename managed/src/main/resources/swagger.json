@@ -2666,6 +2666,9 @@
           "readOnly" : true,
           "type" : "array"
         },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -4085,6 +4088,9 @@
           "readOnly" : true,
           "type" : "array"
         },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -4716,6 +4722,9 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
@@ -5587,6 +5596,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "sshUserOverride" : {
+          "description" : "SSH user override for the AMI",
+          "type" : "string"
+        },
         "state" : {
           "description" : "Node state",
           "enum" : [ "ToBeAdded", "InstanceCreated", "ServerSetup", "ToJoinCluster", "Reprovisioning", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "MetricsUnavailable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing", "SystemdUpgrade", "Terminating", "Terminated", "Rebooting", "HardRebooting" ],
@@ -5749,6 +5762,10 @@
           "description" : "REDIS RPC port",
           "format" : "int32",
           "type" : "integer"
+        },
+        "sshUserOverride" : {
+          "description" : "SSH user override for the AMI",
+          "type" : "string"
         },
         "state" : {
           "description" : "Node state",
@@ -7015,6 +7032,9 @@
           "readOnly" : true,
           "type" : "array"
         },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -7244,6 +7264,9 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
@@ -8267,6 +8290,9 @@
           "readOnly" : true,
           "type" : "array"
         },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -8662,6 +8688,9 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
@@ -9123,6 +9152,9 @@
           "readOnly" : true,
           "type" : "array"
         },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -9341,6 +9373,9 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
@@ -9573,6 +9608,9 @@
           "readOnly" : true,
           "type" : "array"
         },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -9779,6 +9817,9 @@
           "readOnly" : true,
           "type" : "array"
         },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -9984,6 +10025,9 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
@@ -10382,6 +10426,9 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
@@ -10941,6 +10988,17 @@
           },
           "readOnly" : true,
           "type" : "array"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
+        "sshUserOverrideMap" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Map of region UUID to SSH User override",
+          "example" : "{\n    'b28e0813-4866-4a2d-89f3-52265766d666': 'ec2-user',\n  }",
+          "type" : "object"
         },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",

@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class VMImageUpgrade extends UpgradeTaskBase {
@@ -62,6 +63,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           Set<NodeDetails> nodeSet = fetchAllNodes(taskParams().upgradeOption);
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
+
           // Create task sequence for VM Image upgrade
           createVMImageUpgradeTasks(nodeSet);
 
@@ -82,7 +84,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     for (NodeDetails node : nodes) {
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = taskParams().machineImages.get(region);
-
+      String sshUserOverride = taskParams().sshUserOverrideMap.get(region);
       if (!taskParams().forceVMImageUpgrade && machineImage.equals(node.machineImage)) {
         log.info(
             "Skipping node {} as it's already running on {} and force flag is not set",
@@ -106,6 +108,15 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
 
+      Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
+
+      node.machineImage = machineImage;
+      if (StringUtils.isNotBlank(sshUserOverride)) {
+        node.sshUserOverride = sshUserOverride;
+      }
+
+      node.ybPrebuiltAmi =
+          taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
       createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -143,10 +154,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           });
 
       createWaitForKeyInMemoryTask(node);
-
-      node.machineImage = machineImage;
-      node.ybPrebuiltAmi =
-          taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(getTaskSubGroupType());
     }
