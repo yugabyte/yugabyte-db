@@ -146,15 +146,11 @@ public class AppInit {
                   .getConfig(ConfigHelper.ConfigType.FileDataSync)
                   .getOrDefault("synced", "false")
                   .toString());
-
-      if (!ywFileDataSynced) {
-        String storagePath = appConfig.getString("yb.storage.path");
-        configHelper.syncFileData(storagePath, false);
-      }
+      String storagePath = appConfig.getString("yb.storage.path");
+      configHelper.syncFileData(storagePath, ywFileDataSynced);
 
       if (mode.equals("PLATFORM")) {
         String devopsHome = appConfig.getString("yb.devops.home");
-        String storagePath = appConfig.getString("yb.storage.path");
         if (devopsHome == null || devopsHome.length() == 0) {
           throw new RuntimeException("yb.devops.home is not set in application.conf");
         }

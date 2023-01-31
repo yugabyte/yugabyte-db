@@ -23,6 +23,7 @@ import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModelProperty;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,9 +104,10 @@ public class Provider extends Model {
   @JsonManagedReference(value = "provider-regions")
   public List<Region> regions;
 
+  @ApiModelProperty(required = false)
   @OneToMany(cascade = CascadeType.ALL)
   @JsonManagedReference(value = "provider-accessKey")
-  public List<AccessKey> allKeys;
+  public List<AccessKey> allAccessKeys;
 
   @JsonIgnore
   @OneToMany(mappedBy = "provider", cascade = CascadeType.ALL)
@@ -122,15 +124,47 @@ public class Provider extends Model {
 
   // Custom keypair name to use when spinning up YB nodes.
   // Default: created and managed by YB.
+  // Todo: Mark these fields as hidden post terraform client changes.
+  @Deprecated
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public String keyPairName = null;
 
   // Custom SSH private key component.
   // Default: created and managed by YB.
+  // Todo: Mark these fields as hidden post terraform client changes.
+  @Deprecated
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public String sshPrivateKeyContent = null;
+
+  @Deprecated
+  @JsonProperty("keyPairName")
+  public void setKeyPairName(String keyPairName) {
+    if (this.allAccessKeys.size() > 0) {
+      this.allAccessKeys.get(0).getKeyInfo().keyPairName = keyPairName;
+    } else {
+      AccessKey accessKey = new AccessKey();
+      AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+      keyInfo.keyPairName = keyPairName;
+      accessKey.setKeyInfo(keyInfo);
+      this.allAccessKeys.add(accessKey);
+    }
+  }
+
+  @Deprecated
+  @JsonProperty("sshPrivateKeyContent")
+  public void setSshPrivateKeyContent(String sshPrivateKeyContent) {
+    if (this.allAccessKeys.size() > 0) {
+      this.allAccessKeys.get(0).getKeyInfo().sshPrivateKeyContent = sshPrivateKeyContent;
+    } else {
+      AccessKey accessKey = new AccessKey();
+      AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+      keyInfo.sshPrivateKeyContent = sshPrivateKeyContent;
+      accessKey.setKeyInfo(keyInfo);
+      this.allAccessKeys.add(accessKey);
+    }
+  }
 
   // Custom SSH user to login to machines.
   // Default: created and managed by YB.
