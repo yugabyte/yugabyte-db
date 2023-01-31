@@ -716,7 +716,7 @@ Start the first node by running the following command:
 ```sh
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
     --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
-    --cloud_location=aws.us-east.us-east-1a
+    --cloud_location=aws.us-east-1.us-east-1a
 ```
 
 On macOS, the additional nodes need loopback addresses configured, as follows:
@@ -732,11 +732,11 @@ Add two more nodes to the cluster using the `join` option, as follows:
 ./bin/yugabyted start --secure --advertise_address=127.0.0.2 \
     --join=127.0.0.1 \
     --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
-    --cloud_location=aws.us-east.us-east-2a
+    --cloud_location=aws.us-east-1.us-east-1b
 ./bin/yugabyted start --secure --advertise_address=127.0.0.3 \
     --join=127.0.0.1 \
     --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
-    --cloud_location=aws.us-east.us-east-3a
+    --cloud_location=aws.us-east-1.us-east-1c
 ```
 
 ### Destroy a local multi-node cluster
@@ -759,7 +759,7 @@ To create a secure multi-zone cluster, start the first node by running the `yuga
 
 ```sh
 ./bin/yugabyted start --secure --advertise_address=<host-ip> \
-    --cloud_location=aws.us-east.us-east-1a \
+    --cloud_location=aws.us-east-1.us-east-1a \
     --fault_tolerance=zone
 ```
 
@@ -780,14 +780,14 @@ Start the second and the third node on two separate VMs, as follows:
 ```sh
 ./bin/yugabyted start --secure --advertise_address=<host-ip> \
     --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-east.us-east-2a \
+    --cloud_location=aws.us-east-1.us-east-1b \
     --fault_tolerance=zone
 ```
 
 ```sh
 ./bin/yugabyted start --secure --advertise_address=<host-ip> \
     --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-east.us-east-3a \
+    --cloud_location=aws.us-east-1.us-east-1c \
     --fault_tolerance=zone
 ```
 
@@ -799,7 +799,7 @@ To create a multi-zone cluster, start the first node by running the `yugabyted s
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> \
-    --cloud_location=aws.us-east.us-east-1a \
+    --cloud_location=aws.us-east-1.us-east-1a \
     --fault_tolerance=zone
 ```
 
@@ -808,14 +808,14 @@ Start the second and the third node on two separate VMs as follows:
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> \
     --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-east.us-east-2a \
+    --cloud_location=aws.us-east-1.us-east-1b \
     --fault_tolerance=zone
 ```
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> \
     --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-east.us-east-3a \
+    --cloud_location=aws.us-east-1.us-east-1c \
     --fault_tolerance=zone
 ```
 
@@ -837,14 +837,14 @@ You can set the data placement constraint manually using the `--constraint_value
 
 ```sh
 ./bin/yugabyted configure data_placement --fault_tolerance=zone \
-    --constraint_value=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
+    --constraint_value=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c \
 ```
 
 You can set the replication factor of the cluster manually using the `--rf` flag. For example:
 
 ```sh
 ./bin/yugabyted configure data_placement --fault_tolerance=zone \
-    --constraint_value=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a \
+    --constraint_value=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c \
     --rf=3
 ```
 
@@ -858,7 +858,7 @@ To create a secure multi-region cluster, start the first node by running the `yu
 
 ```sh
 ./bin/yugabyted start --secure --advertise_address=<host-ip> \
-    --cloud_location=aws.us-east.us-east-1a \
+    --cloud_location=aws.us-east-1.us-east-1a \
     --fault_tolerance=region
 ```
 
@@ -878,14 +878,14 @@ Start the second and the third node on two separate VMs, as follows:
 ```sh
 ./bin/yugabyted start --secure --advertise_address=<host-ip> \
     --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-west.us-west-1a \
+    --cloud_location=aws.us-west-1.us-west-1a \
     --fault_tolerance=region
 ```
 
 ```sh
 ./bin/yugabyted start --secure --advertise_address=<host-ip> \
     --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-central.us-central-1a \
+    --cloud_location=aws.us-central-1.us-central-1a \
     --fault_tolerance=region
 ```
 
@@ -897,7 +897,7 @@ To create a multi-region cluster, start the first node by running the `yugabyted
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> \
-    --cloud_location=aws.us-east.us-east-1a \
+    --cloud_location=aws.us-east-1.us-east-1a \
     --fault_tolerance=region
 ```
 
@@ -906,14 +906,14 @@ Start the second and the third nodes on two separate VMs as follows:
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> \
     --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-west.us-west-1a \
+    --cloud_location=aws.us-west-1.us-west-1a \
     --fault_tolerance=region
 ```
 
 ```sh
 ./bin/yugabyted start --advertise_address=<host-ip> \
     --join=<ip-address-first-yugabyted-node> \
-    --cloud_location=aws.us-central.us-central-1a \
+    --cloud_location=aws.us-central-1.us-central-1a \
     --fault_tolerance=region
 ```
 
@@ -936,7 +936,7 @@ You can set the data placement constraint manually using the `--constraint_value
 ```sh
 ./bin/yugabyted configure data_placement \
     --fault_tolerance=region \
-    --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
+    --constraint_value=aws.us-east-1.us-east-1a,aws.us-west-1.us-west-1a,aws.us-central-1.us-central-1a
 ```
 
 You can set the replication factor of the cluster manually using the `--rf` flag. For example:
@@ -944,7 +944,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 ```sh
 ./bin/yugabyted configure data_placement \
     --fault_tolerance=region \
-    --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a \
+    --constraint_value=aws.us-east-1.us-east-1a,aws.us-west-1.us-west-1a,aws.us-central-1.us-central-1a \
     --rf=3
 ```
 
@@ -1012,7 +1012,7 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
 
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
-      --cloud_location=aws.us-east.us-east-1a \
+      --cloud_location=aws.us-east-1.us-east-1a \
       --fault_tolerance=zone
     ```
 
@@ -1029,6 +1029,6 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
     ```sh
     ./bin/yugabyted configure data_placement \
       --fault_tolerance=zone \
-      --constraint_value=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a \
+      --constraint_value=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c \
       -rf=3
     ```
