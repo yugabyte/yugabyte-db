@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     identifier: install-upgrade-kubernetes-issues
     parent: troubleshoot-yp
-    weight: 10
+    weight: 13
 type: docs
 ---
 
