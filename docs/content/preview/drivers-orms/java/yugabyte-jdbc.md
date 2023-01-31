@@ -119,13 +119,14 @@ The following table describes the connection parameters required to connect, inc
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
 | `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
-| `yb-servers-refresh-interval` | Interval in seconds to refresh the node list | 300
+| `yb-servers-refresh-interval` | Interval in seconds to refresh the servers list | 300
 | `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example JDBC URL for connecting to YugabyteDB:
 
 ```sh
 jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+    yb-servers-refresh-interval=240& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
 

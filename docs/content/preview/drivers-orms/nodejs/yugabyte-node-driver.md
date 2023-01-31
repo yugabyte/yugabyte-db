@@ -82,8 +82,9 @@ The following table describes the connection parameters required to connect, inc
 Create a client to connect to the cluster using a connection string. The following is an example connection string for connecting to a YugabyteDB cluster with uniform and topology load balancing:
 
 ```sh
-postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true?
-    topology_keys=cloud.region.zone1,cloud.region.zone2
+postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true? \
+    ybServersRefreshInterval=240& \
+    topologyKeys=cloud.region.zone1,cloud.region.zone2
 ```
 
 After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.

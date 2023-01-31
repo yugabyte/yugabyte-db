@@ -100,13 +100,14 @@ The following table describes the connection parameters required to connect, inc
 | password | User password | yugabyte
 | dbname | Database name | yugabyte
 | `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
-| `yb_servers_refresh_interval` | Interval in seconds to refresh the node list | 300
+| `yb_servers_refresh_interval` | Interval in seconds to refresh the servers list | 300
 | `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing:
 
 ```sh
-postgres://username:password@localhost:5433/database_name?load_balance=true
+postgres://username:password@localhost:5433/database_name?load_balance=true& \
+    yb_servers_refresh_interval=240
 ```
 
 The following is a code snippet for connecting to YugabyteDB using the connection parameters:
@@ -114,7 +115,7 @@ The following is a code snippet for connecting to YugabyteDB using the connectio
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
                     user, password, host, port, dbname)
-url := fmt.Sprintf("%s?load_balance=true", baseUrl)
+url := fmt.Sprintf("%s?load_balance=true&yb_servers_refresh_interval=240", baseUrl)
 conn, err := pgx.Connect(context.Background(), url)
 ```
 

@@ -45,7 +45,7 @@ The YugabyteDB JDBC smart driver has the following connection load balancing fea
 
     Because YugabyteDB clusters can have servers in different regions and availability zones, the driver can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
-The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (older than 5 minutes) is discovered.
+The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (by default, older than 5 minutes) is discovered.
 
 The driver can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to talk to a completely different region.
 
@@ -117,6 +117,15 @@ To use the driver, do the following:
   String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
   DriverManager.getConnection(yburl);
   ```
+
+  To provide alternate hosts during the initial connection in case the first address fails, specify multiple hosts in the connection string, as follows:
+
+  ```java
+  String yburl = "jdbc:yugabytedb://127.0.0.1:5433,127.0.0.2:5433,127.0.0.3:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
+  DriverManager.getConnection(yburl);
+  ```
+
+  After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
   To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
 

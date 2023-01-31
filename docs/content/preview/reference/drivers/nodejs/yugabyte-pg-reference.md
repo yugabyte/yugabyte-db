@@ -46,11 +46,7 @@ The YugabyteDB node-postgres smart driver has the following load balancing featu
 
 The driver can be configured with pooling as well.
 
-## Fundamentals
-
-Learn how to perform the common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
-
-### Download the driver dependency
+## Download the driver dependency
 
 Download and install the YugabyteDB node-postgres smart driver using the following command (you need to have Node.js installed on your system):
 
@@ -61,6 +57,10 @@ npm install @yugabytedb/pg
 The driver requires YugabyteDB version 2.7.2.0 or higher.
 
 You can start using the driver in your code.
+
+## Fundamentals
+
+Learn how to perform the common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
 
 ### Load balancing connection properties
 
@@ -77,13 +77,15 @@ To use the driver, do the following:
 
 - Pass new connection properties for load balancing in the connection URL.
 
-  To enable uniform load balancing across all servers, set the `loadBalance` property to `true` in the URL, as per the following connection string:
+    To enable uniform load balancing across all servers, set the `loadBalance` property to `true` in the URL, as per the following connection string:
 
     ```javascript
     const connectionString = "postgresql://user:password@localhost:port/database?loadBalance=true"
     const client = new Client(connectionString);
     client.connect()
     ```
+
+    After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 - To specify topology keys, set the `topologyKeys` property to comma separated values, as per the following connection string:
 
@@ -95,7 +97,7 @@ To use the driver, do the following:
 
 - To configure a basic connection pool of maximum 100 connections using `Pool`, specify load balance as follows:
 
-  ```js
+    ```js
     let pool = new Pool({
         user: 'yugabyte',
         password: 'yugabyte',
@@ -105,7 +107,7 @@ To use the driver, do the following:
         database: 'yugabyte',
         max: 100
     })
-  ```
+    ```
 
 ## Try it out
 

@@ -51,13 +51,9 @@ The YugabyteDB PGX smart driver has the following connection load balancing feat
 
     Because YugabyteDB clusters can have servers in different regions and availability zones, the driver can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
-The driver package includes a class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (older than 5 minutes) is discovered.
+The driver package includes a class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (by default, older than 5 minutes) is discovered.
 
-## Fundamentals
-
-Learn how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
-
-### Import the driver package
+## Import the driver package
 
 You can import the YugabyteDB PGX driver package by adding the following import statement in your Go code.
 
@@ -68,6 +64,10 @@ import (
 ```
 
 Optionally, you can choose to import the pgxpool package instead. Refer to [Using pgxpool API](#using-pgxpool-api) to learn more.
+
+## Fundamentals
+
+Learn how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
 
 ### Load balancing connection properties
 
@@ -82,7 +82,7 @@ By default, the driver refreshes the list of nodes every 300 seconds (5 minutes)
 
 To use the driver, pass new connection properties for load balancing in the connection URL or properties pool.
 
-To enable uniform load balancing across all servers, you set the `load-balance` property to `true` in the URL, as per the following example:
+To enable uniform load balancing across all servers, you set the `load_balance` property to `true` in the URL, as per the following example:
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
@@ -91,7 +91,9 @@ url := fmt.Sprintf("%s?load_balance=true", baseUrl)
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Refer to [Use multiple addresses](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses). After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+
+To specify topology keys, you set the `topology_keys` property to comma separated values, as per the following example:
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
