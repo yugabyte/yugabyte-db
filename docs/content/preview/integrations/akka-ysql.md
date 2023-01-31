@@ -67,7 +67,6 @@ The following example is inspired from the [akka-cassandra-demo](https://github.
       "com.typesafe.akka" %% "akka-stream" % akkaVersion,
       "com.typesafe.akka" %% "akka-persistence-typed" % akkaVersion,
       "com.typesafe.akka" %% "akka-serialization-jackson" % akkaVersion,
-      "com.typesafe.akka" %% "akka-cluster-tools" % akkaVersion,
       "ch.qos.logback" % "logback-classic" % "1.2.11",
       "com.lightbend.akka" %% "akka-persistence-r2dbc" % "1.0.1")
     
