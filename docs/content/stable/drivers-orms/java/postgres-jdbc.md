@@ -162,8 +162,8 @@ import java.sql.ResultSet;
 public class QuickStartApp {
   public static void main(String[] args) throws ClassNotFoundException, SQLException {
     Class.forName("org.postgresql.Driver");
-    String yburl = "jdbc:postgresql://localhost:5433/yugabyte", "yugabyte", "yugabyte";
-    Connection conn = DriverManager.getConnection(yburl);
+    String yburl = "jdbc:postgresql://localhost:5433/yugabyte";
+    Connection conn = DriverManager.getConnection(yburl,"yugabyte", "yugabyte");
     Statement stmt = conn.createStatement();
     try {
         System.out.println("Connected to the PostgreSQL server successfully.");

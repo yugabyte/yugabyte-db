@@ -162,8 +162,8 @@ import java.sql.ResultSet;
 public class QuickStartApp {
   public static void main(String[] args) throws ClassNotFoundException, SQLException {
     Class.forName("org.postgresql.Driver");
-    String yburl = "jdbc:postgresql://localhost:5433/yugabyte", "yugabyte", "yugabyte";
-    Connection conn = DriverManager.getConnection(yburl);
+    String yburl = "jdbc:postgresql://localhost:5433/yugabyte";
+    Connection conn = DriverManager.getConnection(yburl,"yugabyte", "yugabyte");
     Statement stmt = conn.createStatement();
     try {
         System.out.println("Connected to the PostgreSQL server successfully.");
@@ -191,7 +191,8 @@ public class QuickStartApp {
 If you're using SSL, replace the connection string `yburl` with the following code:
 
 ```java
-String yburl = "jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8", "yugabyte", "yugabyte";
+String yburl = "jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8";
+Connection conn = DriverManager.getConnection(yburl,"yugabyte", "yugabyte");
 ```
 
 Run the project `QuickStartApp.java` using the following command:
