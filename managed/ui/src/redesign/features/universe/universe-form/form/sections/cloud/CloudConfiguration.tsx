@@ -42,7 +42,7 @@ export const CloudConfiguration: FC = () => {
     <Box className={classes.sectionContainer} data-testid="cloud-config-section">
       <Grid container spacing={3}>
         <Grid item lg={6}>
-          <Box mb={4}>
+          <Box mb={4.5}>
             <Typography className={classes.sectionHeaderFont}>
               {t('universeForm.cloudConfig.title')}
             </Typography>

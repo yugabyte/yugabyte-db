@@ -82,7 +82,8 @@
         "totalNodesField": "Total Nodes",
         "totalPodsField": "Total Pods",
         "universeName": "Name",
-        "universeNameInUse": "Name already in use"
+        "universeNameInUse": "Name already in use",
+        "resetAZLabel": "Reset Config"
       },
       "deleteClusterModal": {
         "deleteRRMessage": "Are you sure you want to delete this read replica cluster ?",
