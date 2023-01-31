@@ -25,7 +25,7 @@ PostgreSQL uses a cost-based optimizer, which utilizes data statistics, not stat
 
 `pg_hint_plan` reads hinting phrases in a comment of special form given with the target SQL statement. The special form is beginning by the character sequence `"/\*+"` and ends with `"\*/"`. Hint phrases are consists of hint name and following parameters enclosed by parentheses and delimited by spaces. Each hinting phrases can be delimited by new lines for readability.
 
-In the example below, hash join is selected as the joning method and scanning `pgbench_accounts` by sequential scan method.
+In the example below, hash join is selected as the joining method and scanning `pgbench_accounts` by sequential scan method.
 
 <pre>
 postgres=# /*+
