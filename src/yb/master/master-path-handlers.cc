@@ -209,7 +209,7 @@ Result<std::string> MasterPathHandlers::GetLeaderAddress(const Webserver::WebReq
   for (HostPortPB& host_port : http_broadcast_addresses) {
     host_port.set_port(reg.http_addresses(0).port());
   }
-  return Substitute(
+  return Format(
       "$0://$1$2$3",
       GetProtocol(),
       HostPortPBToString(DesiredHostPort(
@@ -402,7 +402,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
       string status;
       string color = "Green";
       if (desc->IsLive()) {
-        status = Substitute("$0:$1", kTserverAlive, UptimeString(desc->uptime_seconds()));
+        status = Format("$0:$1", kTserverAlive, UptimeString(desc->uptime_seconds()));
       } else {
         color = "Red";
         status = kTserverDead;
@@ -418,7 +418,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
         }
       }
 
-      *output << Substitute("    <td style=\"color:$0\">$1</td>", color, status);
+      *output << Format("    <td style=\"color:$0\">$1</td>", color, status);
 
       auto tserver = tablet_map->find(desc->permanent_uuid());
       bool no_tablets = tserver == tablet_map->end();
@@ -1027,7 +1027,7 @@ void MasterPathHandlers::HandleCatalogManager(
 
       const auto& schema = table_locked->schema();
       if (schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id()) {
-        table_row[kColocationId] = Substitute("$0", schema.colocated_table_id().colocation_id());
+        table_row[kColocationId] = Format("$0", schema.colocated_table_id().colocation_id());
         has_colocated_tables[table_cat] = true;
       }
 
@@ -1071,7 +1071,7 @@ void MasterPathHandlers::HandleCatalogManager(
       }
     }
 
-    table_row[kTableName] = Substitute(
+    table_row[kTableName] = Format(
         "<a href=\"/table?id=$0\">$1</a>",
         EscapeForHtmlToString(href_table_id),
         EscapeForHtmlToString(table_name));
@@ -1120,7 +1120,7 @@ void MasterPathHandlers::HandleCatalogManager(
       }
 
       for (const StringMap::value_type& table : *(ordered_tables[tpeIdx])) {
-        (*output) << Substitute(
+        (*output) << Format(
             "<tr>"
             "<td>$0</td>"
             "<td>$1</td>"
@@ -1139,16 +1139,16 @@ void MasterPathHandlers::HandleCatalogManager(
 
         if (tpeIdx == kUserTable || tpeIdx == kUserIndex) {
           if (has_tablegroups[tpeIdx]) {
-            (*output) << Substitute("<td>$0</td>", table.second[kParentOid]);
+            (*output) << Format("<td>$0</td>", table.second[kParentOid]);
           }
 
           if (has_colocated_tables[tpeIdx]) {
-            (*output) << Substitute("<td>$0</td>", table.second[kColocationId]);
+            (*output) << Format("<td>$0</td>", table.second[kColocationId]);
           }
         }
 
         if (tpeIdx != kSystemTable) {
-          (*output) << Substitute("<td>$0</td>", table.second[kOnDiskSize]);
+          (*output) << Format("<td>$0</td>", table.second[kOnDiskSize]);
         }
 
         (*output) << "</tr>\n";
@@ -1454,7 +1454,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
     string state = SysTabletsEntryPB_State_Name(l->pb.state());
     Capitalize(&state);
-    *output << Substitute(
+    *output << Format(
         "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
         tablet->tablet_id(),
         EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
@@ -1486,7 +1486,7 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
 
   std::vector<std::shared_ptr<MonitoredTask>> jobs =
       master_->catalog_manager()->GetRecentJobs();
-  *output << Substitute(
+  *output << Format(
       "<h3>Last $0 user-initiated jobs started in the past $1 "
       "hours</h3>\n",
       FLAGS_tasks_tracker_num_long_term_tasks,
@@ -1506,7 +1506,7 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
 
   std::vector<std::shared_ptr<MonitoredTask> > tasks =
     master_->catalog_manager()->GetRecentTasks();
-  *output << Substitute(
+  *output << Format(
       "<h3>Last $0 tasks started in the past $1 seconds</h3>\n",
       FLAGS_tasks_tracker_num_tasks,
       FLAGS_tasks_tracker_keep_time_multiplier *
@@ -1595,7 +1595,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
   *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th></tr>\n";
 
   for (TabletInfoPtr t : leaderless_ts) {
-    *output << Substitute(
+    *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><th>$3</th></tr>\n",
         EscapeForHtmlToString(t->table()->id()),
         EscapeForHtmlToString(t->table()->name()),
@@ -1619,7 +1619,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
   for (TabletInfoPtr t : *underreplicated_ts) {
     auto rm = t.get()->GetReplicaLocations();
 
-    *output << Substitute(
+    *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td>"
         "<td>$3</td><td>$4</td></tr>\n",
         EscapeForHtmlToString(t->table()->id()),
@@ -1734,16 +1734,16 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   // Universe UUID.
   (*output) << "  <tr>";
-  (*output) << Substitute(" <td>$0<span class='yb-overview'>$1</span></td>",
+  (*output) << Format(" <td>$0<span class='yb-overview'>$1</span></td>",
                           "<i class='fa fa-database yb-dashboard-icon' aria-hidden='true'></i>",
                           "Universe UUID ");
-  (*output) << Substitute(" <td>$0</td>",
+  (*output) << Format(" <td>$0</td>",
                           config.cluster_uuid());
   (*output) << "  </tr>\n";
 
   // Replication factor.
   (*output) << "  <tr>";
-  (*output) << Substitute(" <td>$0<span class='yb-overview'>$1</span></td>",
+  (*output) << Format(" <td>$0<span class='yb-overview'>$1</span></td>",
                           "<i class='fa fa-files-o yb-dashboard-icon' aria-hidden='true'></i>",
                           "Replication Factor ");
   auto num_replicas = master_->catalog_manager()->GetReplicationFactor();
@@ -1757,10 +1757,10 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   // Tserver count.
   (*output) << "  <tr>";
-  (*output) << Substitute(" <td>$0<span class='yb-overview'>$1</span></td>",
+  (*output) << Format(" <td>$0<span class='yb-overview'>$1</span></td>",
                           "<i class='fa fa-server yb-dashboard-icon' aria-hidden='true'></i>",
                           "Num Nodes (TServers) ");
-  (*output) << Substitute(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
+  (*output) << Format(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
                           GetTserverCountForDisplay(master_->ts_manager()),
                           "/tablet-servers",
                           "See all nodes &raquo;");
@@ -1768,10 +1768,10 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   // Num user tables.
   (*output) << "  <tr>";
-  (*output) << Substitute(" <tr><td>$0<span class='yb-overview'>$1</span></td>",
+  (*output) << Format(" <tr><td>$0<span class='yb-overview'>$1</span></td>",
                           "<i class='fa fa-table yb-dashboard-icon' aria-hidden='true'></i>",
                           "Num User Tables ");
-  (*output) << Substitute(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
+  (*output) << Format(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
                           user_tables.size(),
                           "/tables",
                           "See all tables &raquo;");
@@ -1779,7 +1779,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   // Load balancer status.
   bool load_balancer_enabled = master_->catalog_manager()->IsLoadBalancerEnabled();
-  (*output) << Substitute(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
+  (*output) << Format(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
                           "<td><i class='fa $2' aria-hidden='true'> </i></td></tr>\n",
                           "<i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>",
                           "Load Balancer Enabled",
@@ -1790,7 +1790,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
     IsLoadBalancedResponsePB resp;
     Status load_balanced = master_->catalog_manager()->IsLoadBalanced(&req, &resp);
 
-    (*output) << Substitute(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
+    (*output) << Format(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
                             "<td><i class='fa $2' aria-hidden='true'> </i></td></tr>\n",
                             "<i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>",
                             "Is Load Balanced?",
@@ -1799,10 +1799,10 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   }
 
   // Build version and type.
-  (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
+  (*output) << Format("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-code-fork yb-dashboard-icon' aria-hidden='true'></i>",
                           "YugabyteDB Version ", version_info.version_number());
-  (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
+  (*output) << Format("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-terminal yb-dashboard-icon' aria-hidden='true'></i>",
                           "Build Type ", version_info.build_type());
 
@@ -1825,17 +1825,17 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
       break;
     case EncryptionManager::EncryptionState::kEnabled:
       encryption_status_icon = "fa-lock";
-      encryption_status_str = Substitute("Enabled with key: $0", encryption_resp.key_id());
+      encryption_status_str = Format("Enabled with key: $0", encryption_resp.key_id());
       break;
     case EncryptionManager::EncryptionState::kEnabledUnkownIfKeyIsInMem:
       encryption_status_icon = "fa-question label label-danger";
-      encryption_status_str = Substitute(
+      encryption_status_str = Format(
           "Enabled with key: $0. Unable to determine if encryption keys are in memory",
           encryption_resp.key_id());
       break;
     case EncryptionManager::EncryptionState::kEnabledKeyNotInMem:
       encryption_status_icon = "fa-times label label-danger";
-      encryption_status_str = Substitute(
+      encryption_status_str = Format(
           "Enabled with key: $0. Node Does not have universe key in memory",
           encryption_resp.key_id());
       break;
@@ -1845,7 +1845,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
       break;
   }
 
-  (*output) << Substitute(
+  (*output) << Format(
       " <tr><td>$0<span class='yb-overview'>$1</span></td>"
       "<td>"
       "<div style='overflow-x:auto; max-width:300px; display:inline-block;'>"
@@ -1905,7 +1905,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
         *output << "<td><font color='red'>" << PeerRole_Name(PeerRole::UNKNOWN_ROLE)
                 << "</font></td>\n";
       }
-      *output << Substitute("    <td colspan=2><font color='red'><b>ERROR: $0</b></font></td>\n",
+      *output << Format("    <td colspan=2><font color='red'><b>ERROR: $0</b></font></td>\n",
                               EscapeForHtmlToString(error));
       *output << "  </tr>\n";
       continue;
@@ -1913,7 +1913,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     auto reg = master.registration();
     string reg_text = RegistrationToHtml(reg, GetHttpHostPortFromServerRegistration(reg));
     if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
-      reg_text = Substitute("<b>$0</b>", reg_text);
+      reg_text = Format("<b>$0</b>", reg_text);
     }
     string raft_role = master.has_role() ? PeerRole_Name(master.role()) : "N/A";
     auto delta = Env::Default()->NowMicros() - master.instance_id().start_time_us();
@@ -2271,7 +2271,7 @@ void MasterPathHandlers::HandlePrettyLB(
   for (const auto& zone : zones) {
     // Panel for this Zone.
     // Split the zones in proportion of the number of tservers in each zone.
-    *output << Substitute("<div class='col-lg-$0'>\n", 12*zone.second.size()/descs.size());
+    *output << Format("<div class='col-lg-$0'>\n", 12*zone.second.size()/descs.size());
 
     // Change the display of the panel if all tservers in this zone are down.
     bool all_tservers_down = true;
@@ -2287,15 +2287,15 @@ void MasterPathHandlers::HandlePrettyLB(
       zone_panel_display = "panel-danger";
     }
 
-    *output << Substitute("<div class='panel $0'>\n", zone_panel_display);
-    *output << Substitute("<div class='panel-heading'>"
+    *output << Format("<div class='panel $0'>\n", zone_panel_display);
+    *output << Format("<div class='panel-heading'>"
                           "<h6 class='panel-title'>Zone: $0</h6></div>\n", zone.first);
     *output << "<div class='row'>\n";
 
     // Tservers for this panel.
     for (const auto& tserver : zone.second) {
       // Split tservers equally.
-      *output << Substitute("<div class='col-lg-$0'>\n", 12/(zone.second.size()));
+      *output << Format("<div class='col-lg-$0'>\n", 12/(zone.second.size()));
       std::shared_ptr<TSDescriptor> desc;
       if (!master_->ts_manager()->LookupTSByUUID(tserver, &desc)) {
         continue;
@@ -2311,11 +2311,11 @@ void MasterPathHandlers::HandlePrettyLB(
         panel_type = "panel-danger";
         icon_type = "fa-times";
       }
-      *output << Substitute("<div class='panel $0' style='margin-bottom: 0px'>\n", panel_type);
+      *output << Format("<div class='panel $0' style='margin-bottom: 0px'>\n", panel_type);
 
       // Point to the tablet servers link.
       TSRegistrationPB reg = desc->GetRegistration();
-      *output << Substitute("<div class='panel-heading'>"
+      *output << Format("<div class='panel-heading'>"
                             "<h6 class='panel-title'><a href='$0://$1'>TServer - $1    "
                             "<i class='fa $2'></i></a></h6></div>\n",
                             GetProtocol(),
@@ -2324,7 +2324,7 @@ void MasterPathHandlers::HandlePrettyLB(
 
       *output << "<table class='table table-borderless table-hover'>\n";
       for (const auto& table : tserver_tree[tserver]) {
-        *output << Substitute("<tr height='200px'>\n");
+        *output << Format("<tr height='200px'>\n");
         // Display the table name.
         string tname = master_->catalog_manager()->GetTableInfo(table.first)->name();
         // Link the table name to the corresponding table page on the master.
@@ -2332,7 +2332,7 @@ void MasterPathHandlers::HandlePrettyLB(
         if (!master_->GetMasterRegistration(&reg).ok()) {
           continue;
         }
-        *output << Substitute("<td><h4><a href='$0://$1/table?id=$2'>"
+        *output << Format("<td><h4><a href='$0://$1/table?id=$2'>"
                               "<i class='fa fa-table'></i>    $3</a></h4>\n",
                               GetProtocol(),
                               GetHttpHostPortFromServerRegistration(reg),
@@ -2350,13 +2350,13 @@ void MasterPathHandlers::HandlePrettyLB(
           // Leaders and followers have different formatting.
           // Leaders need to stand out.
           if (replica.role == PeerRole::LEADER) {
-            *output << Substitute("<button type='button' class='btn btn-default'"
+            *output << Format("<button type='button' class='btn btn-default'"
                                 "style='background-image:none; border: 6px solid $0; "
                                 "font-weight: bolder'>"
                                 "L</button>\n",
                                 tablet_colors[replica.tablet_id]);
           } else {
-            *output << Substitute("<button type='button' class='btn btn-default'"
+            *output << Format("<button type='button' class='btn btn-default'"
                                 "style='background-image:none; border: 4px dotted $0'>"
                                 "F</button>\n",
                                 tablet_colors[replica.tablet_id]);
@@ -2515,11 +2515,12 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
   for (const TabletReplica& location : locations) {
     string location_html = TSDescriptorToHtml(*location.ts_desc, tablet_id);
     if (location.role == PeerRole::LEADER) {
-      html << Substitute("  <li><b>LEADER: $0</b></li>\n", location_html);
+      html << Format("  <li><b>LEADER: $0</b></li>\n", location_html);
     } else {
-      html << Substitute("  <li>$0: $1</li>\n",
+      html << Format("  <li>$0: $1</li>\n",
                          PeerRole_Name(location.role), location_html);
     }
+    html << Format("UUID: $0\n", location.ts_desc->permanent_uuid());
   }
   html << "</ul>\n";
   return html.str();
@@ -2531,7 +2532,7 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
 
   auto public_http_hp = GetPublicHttpHostPort(reg.common());
   if (public_http_hp) {
-    return Substitute(
+    return Format(
         "<a href=\"$0://$1/tablet?id=$2\">$3</a>",
         GetProtocol(),
         HostPortPBToString(*public_http_hp),
@@ -2547,7 +2548,7 @@ string MasterPathHandlers::RegistrationToHtml(
   string link_html = EscapeForHtmlToString(link_text);
   auto public_http_hp = GetPublicHttpHostPort(reg);
   if (public_http_hp) {
-    link_html = Substitute("<a href=\"$0://$1/\">$2</a>",
+    link_html = Format("<a href=\"$0://$1/\">$2</a>",
                            GetProtocol(),
                            HostPortPBToString(*public_http_hp),
                            link_html);
@@ -2648,7 +2649,7 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
     const auto& reg = desc->GetRegistration();
     const string& uuid = desc->permanent_uuid();
     string host_port = GetHttpHostPortFromServerRegistration(reg.common());
-    *output << Substitute("<th>$0<br>$1</th>",
+    *output << Format("<th>$0<br>$1</th>",
                           RegistrationToHtml(reg.common(), host_port), uuid);
   }
   *output << "</tr>";
@@ -2678,7 +2679,7 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
     const string& table_id = table->id();
     auto tablet_count = table->GetTablets(IncludeInactive::kTrue).size();
 
-    *output << Substitute(
+    *output << Format(
         "<tr>"
         "<td>$0</td>"
         "<td><a href=\"/table?id=$1\">$2</a></td>"
@@ -2701,7 +2702,7 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
             replicas.begin(), replicas.end(),
             [](const ReplicaInfo& replicate) { return replicate.role == LEADER; });
       }
-      *output << Substitute("<td>$0/$1</td>", num_replicas, num_leaders);
+      *output << Format("<td>$0/$1</td>", num_replicas, num_leaders);
     }
     *output << "</tr>";
   }
