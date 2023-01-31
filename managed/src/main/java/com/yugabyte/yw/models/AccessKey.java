@@ -30,6 +30,7 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.ManyToOne;
+import lombok.Data;
 import lombok.Getter;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.time.DateUtils;
@@ -41,6 +42,8 @@ import play.data.validation.Constraints;
         "Access key for the cloud provider. This helps to "
             + "authenticate the user and get access to the provider.")
 public class AccessKey extends Model {
+
+  @Data
   public static class MigratedKeyInfoFields {
     // Below fields are moved to provider details
     @ApiModelProperty public String sshUser;
