@@ -99,6 +99,12 @@ Start a 3-node cluster with a replication factor (RF) of `3`, and each replica p
     ./bin/yugabyted configure data_placement --base_dir=/tmp/ybd1 --fault_tolerance=region
     ```
 
+    If you are running a version prior to 2.17.1.0, run the following command instead:
+
+    ```sh
+    ./bin/yugabyted configure --base_dir=/tmp/ybd1 --fault_tolerance=region
+    ```
+
 The [configure](../../../reference/configuration/yugabyted/#configure) command determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If three or more regions are available in the cluster, `configure` configures the cluster to survive at least one region failure. Otherwise, it outputs a warning message. The command can be executed on any node where you already started YugabyteDB.
 
 ## Review the deployment
@@ -109,13 +115,40 @@ In this deployment, the YB-Masters are each placed in a separate region to allow
 
 ## Start a workload
 
-Follow the [setup instructions](../../#set-up-yb-workload-simulator) to connect the YB Workload Simulator application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
+Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install the YB Workload Simulator application.
+
+### Configure the smart driver
+
+The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the cluster. However, in a multi-region cluster, it's more efficient to target regions closest to your application.
+
+You can configure the smart driver with [topology load balancing](../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to limit connections to the closest region.
+
+To turn on topology load balancing, start the application as usual, adding the following flag:
+
+```sh
+-Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone>
+```
+
+Where `cloud.region.zone` is the location of the zone where your application is hosted.
+
+If you are running the application locally, set the value to the cloud location of the node you are connecting to. For example, if you are connecting to 127.0.0.1, set the value to `aws.us-west-2.us-west-2a` as follows:
+
+```sh
+java -jar \
+    -Dnode=127.0.0.1 \
+    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-west-2.us-west-2a \
+    ./yb-workload-sim-0.0.3.jar
+```
+
+After you are connected, [start a workload](../../#start-a-read-and-write-workload).
+
+## View cluster activity
+
+To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
 You should now see some read and write load on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
 ![Multi-region cluster load](/images/ce/online-reconfig-multi-zone-load.png)
-
-The load is distributed evenly across the regions.
 
 ## Tuning latencies
 
@@ -135,7 +168,7 @@ For more information on follower reads, refer to the [Follower reads](../../ysql
 
 ### Preferred region
 
-If application reads are known to be originating dominantly from a single region, you can designate a preferred region, which pins the shard leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting shard follower replicas.
+If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the shard leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting shard follower replicas.
 
 For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction.
 
@@ -153,8 +186,6 @@ You should see the read and write load on the [tablet servers page](http://local
 ![Multi-region cluster preferred load](/images/ce/online-reconfig-multi-zone-pref-load.png)
 
 When complete, the load is handled exclusively by the preferred region.
-
-Note that cross-region latencies are unavoidable in the write path, given the need to ensure region-level automatic failover and repair.
 
 ## Clean up
 

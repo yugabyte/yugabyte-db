@@ -254,8 +254,6 @@ To run the examples in YugabyteDB Anywhere, create a single- or multi-node unive
 
 </div>
 
-
-
 ## Set up YB Workload Simulator
 
 YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
@@ -298,10 +296,8 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
   </li>
 </ul>
 
-
 <div class="tab-content">
   <div id="cloudworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
-
 
 To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
@@ -317,7 +313,6 @@ java -Dnode=<host name> \
     -Dsslrootcert=<path-to-cluster-certificate> \
     -jar ./yb-workload-sim-0.0.3.jar
 ```
-
 
 - `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
 - `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
@@ -339,7 +334,6 @@ To start the application against a running local universe, use the following com
 ```sh
 java -jar \
     -Dnode=127.0.0.1 \
-    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a \
     ./yb-workload-sim-0.0.3.jar
 ```
 

@@ -48,7 +48,7 @@ YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the app
 
 ## Start a workload
 
-Follow the [setup instructions](../../#set-up-yb-workload-simulator) to connect the YB Workload Simulator application, and run a read-write workload.
+Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install the YB Workload Simulator application.
 
 ### Configure the smart driver
 
@@ -63,6 +63,8 @@ To turn on topology load balancing, start the application as usual, adding the f
 ```
 
 Where `cloud.region.zone` is the location of the cluster region where your application is hosted.
+
+After you are connected, [start a workload](../../#start-a-read-and-write-workload).
 
 ## View cluster activity
 
