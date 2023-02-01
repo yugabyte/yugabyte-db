@@ -32,17 +32,15 @@ type: docs
 
 [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features.
 
-## Connection load balancing
+## Key features
 
-The YugabyteDB node-postgres smart driver has the following load balancing features:
+The YugabyteDB node-postgres smart driver has the following key features:
 
-- Cluster-aware (uniform)
-
-    In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server.
-
-- Topology-aware
-
-    Because YugabyteDB clusters can have servers in different regions and availability zones, the driver can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
+| Feature | Notes |
+| :--- | :--- |
+| Uniform load balancing | After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across them. |
+| Servers refresh interval | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable. |
+| Topology keys | In cases where you want to restrict connections to specific geographies for lower latency, you can target specific regions and zones, along with fallback zones, across which to balance connections. |
 
 The driver can be configured with pooling as well.
 

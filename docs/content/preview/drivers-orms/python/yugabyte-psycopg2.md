@@ -118,6 +118,8 @@ You can specify multiple hosts in the connection string to provide alternative o
 conn = psycopg2.connect(dbname='yugabyte',host='host1,host2,host3',port='5433',user='yugabyte',password='yugabyte',load_balance='true')
 ```
 
+To query the cluster for a list of available hosts, use the `yb_servers()` function.
+
 The hosts are only used during the initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
 
 #### Use SSL

@@ -28,6 +28,17 @@ Yugabyte has developed the following smart drivers, available as open source sof
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
+## Key features
+
+YugabyteDB smart drivers have the following key features.
+
+| Feature | Notes |
+| :--- | :--- |
+| Multiple hosts | Like the upstream driver (with the exception of node.js), smart drivers support specifying multiple hosts for the initial connection, to avoid dropped connections in the case where the primary host is unavailable. |
+| Uniform load balancing | After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across them. |
+| Servers refresh interval | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
+| Topology keys | In cases where you want to restrict connections to specific geographies for lower latency, you can target specific regions and zones, along with fallback zones, across which to balance connections. |
+
 ## Overview
 
 YugabyteDB is a distributed, fault tolerant and highly available database with low latencies for reads and writes. Data in YugabyteDB is automatically sharded, replicated, and balanced across multiple nodes that can potentially be in different availability zones and regions. For better performance and fault tolerance, you can also balance application traffic (that is, connections to the database) across the nodes in the cluster to avoid excessive load (CPU and memory) on any single node (that is, hot nodes).
@@ -72,6 +83,14 @@ With cluster-aware (also referred to as uniform) connection load balancing, conn
 
 For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 nodes, then the driver creates 10 connections to each node. If the number of connections is not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using a smart driver.
 
+A connection works as follows:
+
+- The driver makes an initial connection to the host specified in the URL/connection string. You can specify multiple hosts to act as backups if the connection to the primary host fails.
+- The driver fetches information about the cluster nodes using the `yb_servers()` function. By default, this list is refreshed every 5 minutes, or when a new connection request is received.
+- The driver then connects to the least-loaded node before returning the connection to the application.
+
+#### Enable load balancing
+
 To enable cluster-aware load balancing, you set the load balance connection parameter to true in the connection URL or the connection string (DSN style).
 
 For example, using the Go smart driver, you would turn on load balancing as follows:
@@ -80,24 +99,25 @@ For example, using the Go smart driver, you would turn on load balancing as foll
 "postgres://username:password@host:5433/database_name?load_balance=true"
 ```
 
-With this parameter specified in the URL, the driver fetches and maintains a list of nodes from the given endpoint (localhost in preceding example) available in the YugabyteDB cluster and distributes the connections equally across them.
-
-A connection works as follows:
-
-- The driver makes an initial connection to the host specified in the URL/connection string and fetches information about the cluster nodes using the `yb_servers()` function. By default, this list is refreshed every 5 minutes, when a new connection request is received.
-- The driver then connects to the least-loaded node before returning the connection to the application.
+With this parameter specified in the URL, the driver fetches and maintains a list of nodes from the given endpoint available in the YugabyteDB cluster and distributes the connections equally across them.
 
 After the connection is established with a node, if that node fails, then the request is not retried.
 
 For connections to be distributed equally, the application must use the same connection URL to create every connection it needs.
 
-To change the frequency with which the driver fetches an updated list of servers, specify the server refresh interval parameter. For example, using the Go smart driver, you can change the interval to four minutes (specified in seconds) as follows:
+Note that, for load balancing, the nodes in the cluster must be accessible. If, for example, the cluster has multiple regions deployed in separate VPCs, your application would need access to all the regions, typically via peering.
+
+#### Servers refresh interval
+
+To change the frequency with which the driver fetches an updated list of servers, specify the server refresh interval parameter.
+
+For example, using the Go smart driver, you can change the interval to four minutes (specified in seconds) as follows:
 
 ```go
 "postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
 ```
 
-Note that, for load balancing, the nodes in the cluster must be accessible. If, for example, the cluster has multiple regions deployed in separate VPCs, your application would need access to all the regions, typically via peering.
+Note this feature is not available in the YugabyteDB Python Smart Driver.
 
 ### Topology-aware connection load balancing
 
@@ -106,6 +126,8 @@ For a database deployment that spans multiple regions, evenly distributing reque
 - For connecting to the geographically nearest regions and zones for lower latency and fewer network hops. Typically you would co-locate applications in the regions where your cluster is located. Topology balancing allows you to target only regions where the applications are hosted.
 
 - The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the [shard leaders](../../architecture/docdb-sharding/sharding/) are hosted. In this case, for best performance you want your application to target the preferred locations.
+
+#### Topology keys
 
 You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style). You still need to specify load balance as true to enable the topology-aware connection load balancing.
 
@@ -122,6 +144,8 @@ Use an asterisk (*) to specify all zones in a region. (You can't do this for reg
 "postgres://username:password@localhost:5433/database_name?load_balance=true& \
     topology_keys=cloud1.region1.*"
 ```
+
+#### Fallback topology keys
 
 To specify fallback locations in cases where a location is unavailable, add `:n` to the topology key, where n is an integer indicating priority. The following example sets `zone1` as the topology key, and zones 2 and 3 as fallbacks (in that order) if `zone1` can't be reached:
 

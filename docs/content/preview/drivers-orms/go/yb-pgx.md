@@ -100,7 +100,7 @@ The following table describes the connection parameters required to connect, inc
 | password | User password | yugabyte
 | dbname | Database name | yugabyte
 | `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
-| `yb_servers_refresh_interval` | Interval in seconds to refresh the servers list | 300
+| `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300
 | `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing:
@@ -144,6 +144,8 @@ You can specify multiple hosts in the connection string to provide alternative o
 ```sh
 postgres://username:password@host1:5433,host2:5433,host3:5433/database_name?load_balance=true
 ```
+
+To query the cluster for a list of available hosts, use the `yb_servers()` function.
 
 The following is a code snippet for connecting to YugabyteDB using multiple hosts:
 

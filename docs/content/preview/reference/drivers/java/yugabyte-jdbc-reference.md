@@ -33,17 +33,16 @@ type: docs
 
 [YugabyteDB JDBC smart driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features.
 
-## Connection load balancing
+## Key features
 
-The YugabyteDB JDBC smart driver has the following connection load balancing features:
+The YugabyteDB JDBC smart driver has the following key features:
 
-- Cluster-aware (uniform)
-
-    In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server.
-
-- Topology-aware
-
-    Because YugabyteDB clusters can have servers in different regions and availability zones, the driver can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
+| Feature | Notes |
+| :--- | :--- |
+| Specify multiple hosts | Like the upstream driver, the driver supports specifying multiple hosts for the initial connection, to avoid dropped connections in the case where the primary host is unavailable. |
+| Uniform load balancing | After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across them. |
+| Servers refresh interval | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable. |
+| Topology keys | In cases where you want to restrict connections to specific geographies for lower latency, you can target specific regions and zones, along with fallback zones, across which to balance connections. |
 
 The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (by default, older than 5 minutes) is discovered.
 
