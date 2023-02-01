@@ -900,7 +900,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
     auto current_id = round->id();
 
     if (PREDICT_TRUE(prev_id)) {
-      CHECK_OK(CheckOpInSequence(prev_id, current_id));
+      CHECK_OK_PREPEND(CheckOpInSequence(prev_id, current_id), LogPrefix());
     }
 
     if (current_id.index > committed_op_id.index) {
@@ -1042,6 +1042,14 @@ void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpIdPB& op_id) {
   last_received_op_id_ = yb::OpId::FromPB(op_id);
   last_received_op_id_current_leader_ = last_received_op_id_;
   next_index_ = op_id.index() + 1;
+}
+
+void ReplicaState::UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(const OpId& op_id) {
+  if (last_received_op_id_current_leader_.empty()) {
+    VLOG_WITH_PREFIX(0) << __func__ << " Updating last_received opid from "
+      << last_received_op_id_current_leader_.ToString() << " to " << op_id.ToString();
+    last_received_op_id_current_leader_ = op_id;
+  }
 }
 
 const yb::OpId& ReplicaState::GetLastReceivedOpIdUnlocked() const {
