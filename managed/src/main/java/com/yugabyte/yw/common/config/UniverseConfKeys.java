@@ -517,4 +517,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "Possible values - ALL, HOSTNAME, NONE",
           ConfDataType.SkipCertValdationEnum,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> deleteOrphanSnapshotOnStartup =
+      new ConfKeyInfo<>(
+          "yb.snapshot_cleanup.delete_orphan_on_startup",
+          ScopeType.UNIVERSE,
+          "Clean Orphan snapshots",
+          "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
