@@ -1522,6 +1522,7 @@ cypher_update_information *transform_cypher_remove_item_list(
                      errmsg("REMOVE clause does not support adding propereties from maps"),
                      parser_errposition(pstate, set_item->location)));
         }
+        set_item->is_add = false;
 
         item->remove_item = true;
 
@@ -1665,26 +1666,30 @@ cypher_update_information *transform_cypher_set_item_list(
                      errmsg("unexpected node in cypher update list")));
         }
 
-        if (set_item->is_add)
-        {
-            ereport(ERROR,
-                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("SET clause does not yet support adding propereties from maps"),
-                     parser_errposition(pstate, set_item->location)));
-        }
-
         item->remove_item = false;
 
-        // set variable and extract property name
+        // set variable, is_add and extract property name
         if (is_entire_prop_update)
         {
             ref = (ColumnRef *)set_item->prop;
+            item->is_add = set_item->is_add;
             item->prop_name = NULL;
         }
         else
         {
             ind = (A_Indirection *)set_item->prop;
             ref = (ColumnRef *)ind->arg;
+
+            if (set_item->is_add)
+            {
+                ereport(
+                    ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg(
+                         "SET clause does not yet support incrementing a specific property"),
+                     parser_errposition(pstate, set_item->location)));
+            }
+            set_item->is_add = false;
 
             // extract property name
             if (list_length(ind->indirection) != 1)
@@ -1732,6 +1737,12 @@ cypher_update_information *transform_cypher_set_item_list(
                      errmsg("undefined reference to variable %s in SET clause",
                             variable_name),
                             parser_errposition(pstate, set_item->location)));
+        }
+
+        // set keep_null property
+        if (is_ag_node(set_item->expr, cypher_map))
+        {
+            ((cypher_map*)set_item->expr)->keep_null = set_item->is_add;
         }
 
         // create target entry for the new property value
@@ -3802,6 +3813,7 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
             {
                 Node *n = NULL;
 
+                ((cypher_map*)node->props)->keep_null = true;
                 n = create_property_constraints(cpstate, entity, node->props);
 
                 cpstate->property_constraint_quals =
@@ -3861,7 +3873,10 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
 
                 if (rel->props)
                 {
-                    Node *n = create_property_constraints(cpstate, entity,
+                    Node *n;
+
+                    ((cypher_map*)rel->props)->keep_null = true;
+                    n = create_property_constraints(cpstate, entity,
                                                           rel->props);
                     cpstate->property_constraint_quals =
                         lappend(cpstate->property_constraint_quals, n);
@@ -5097,6 +5112,7 @@ static Expr *cypher_create_properties(cypher_parsestate *cpstate,
 
     if (props)
     {
+        ((cypher_map*)props)->keep_null = false;
         properties = (Expr *)transform_cypher_expr(cpstate, props,
                                                    EXPR_KIND_INSERT_TARGET);
     }

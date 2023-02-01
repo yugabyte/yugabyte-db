@@ -633,6 +633,10 @@ static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)
     {
         func_oid = get_ag_func_oid("agtype_build_map", 0);
     }
+    else if (!cm->keep_null)
+    {
+        func_oid = get_ag_func_oid("agtype_build_map_nonull", 1, ANYOID);
+    }
     else
     {
         func_oid = get_ag_func_oid("agtype_build_map", 1, ANYOID);

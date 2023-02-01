@@ -462,7 +462,20 @@ static void process_update_list(CustomScanState *node)
         }
         else
         {
-            altered_properties = get_map_from_agtype(new_property_value);
+            altered_properties = alter_properties(
+                update_item->is_add ? original_properties : NULL,
+                new_property_value);
+
+            /*
+             * For SET clause with plus-equal operator, nulls are not removed
+             * from the map during transformation because they are required in
+             * the executor to alter (merge) properties correctly. Only after
+             * that step, they can be removed.
+             */
+            if (update_item->is_add)
+            {
+                remove_null_from_agtype_object(altered_properties);
+            }
         }
 
         resultRelInfo = create_entity_result_rel_info(estate,

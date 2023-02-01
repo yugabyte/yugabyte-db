@@ -523,8 +523,9 @@ bool is_decimal_needed(char *numstr);
 int compare_agtype_scalar_values(agtype_value *a, agtype_value *b);
 agtype_value *alter_property_value(agtype_value *properties, char *var_name,
                                    agtype *new_v, bool remove_property);
-agtype_value *get_map_from_agtype(agtype *a);
-
+void remove_null_from_agtype_object(agtype_value *object);
+agtype_value *alter_properties(agtype_value *original_properties,
+                               agtype *new_properties);
 agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
                                           int variadic_offset,
                                           int expected_nargs);
