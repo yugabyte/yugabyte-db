@@ -910,6 +910,9 @@ public class NodeManager extends DevopsBase {
 
           subcommand.add("--tags");
           subcommand.add("override_gflags");
+          if (taskParam.resetMasterState) {
+            subcommand.add("--reset_master_state");
+          }
         }
         break;
       case Certs:

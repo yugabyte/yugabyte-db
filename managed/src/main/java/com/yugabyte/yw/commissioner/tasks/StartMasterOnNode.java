@@ -15,12 +15,11 @@ import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.Arrays;
-import java.util.List;
+import com.yugabyte.yw.models.helpers.NodeStatus;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -47,7 +46,6 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
         taskParams().nodeName,
         taskParams().universeUUID);
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
 
@@ -112,25 +110,38 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
 
       preTaskActions();
 
-      createStartMasterOnNodeTasks(universe, currentNode, null, false);
+      if (currentNode.masterState == null) {
+        saveNodeStatus(
+            taskParams().nodeName, NodeStatus.builder().masterState(MasterState.ToStart).build());
+      }
+
+      // Update node state to Starting Master.
+      createSetNodeStateTask(currentNode, NodeState.Starting)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+      // Start master on the node.
+      createStartMasterOnNodeTasks(universe, currentNode, null);
+
+      // Update node state to running.
+      createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
+
+      // Mark universe update success to true.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      hitException = true;
       throw t;
     } finally {
-      try {
-        // Reset the state, on any failure, so that the actions can be retried.
-        if (currentNode != null && hitException) {
-          setNodeState(taskParams().nodeName, currentNode.state);
-        }
-      } finally {
-        // Mark the update of the universe as done. This will allow future updates to
-        // the universe.
-        unlockUniverseForUpdate();
-      }
+      // Mark the update of the universe as done. This will allow future updates to
+      // the universe.
+      unlockUniverseForUpdate();
     }
     log.info(
         "Finished {} task for node {} in univ uuid={}",

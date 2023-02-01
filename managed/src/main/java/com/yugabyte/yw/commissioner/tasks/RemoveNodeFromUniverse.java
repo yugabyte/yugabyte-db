@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
@@ -54,7 +53,6 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         taskParams().nodeName,
         taskParams().universeUUID);
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
 
@@ -104,7 +102,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
             createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           } else {
-            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
+            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
           }
         }
 
@@ -112,7 +110,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         if (currentNode.isMaster) {
           createWaitForMasterLeaderTask()
               .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-          createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
+          createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
         }
       }
 
@@ -197,7 +195,6 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      hitException = true;
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the

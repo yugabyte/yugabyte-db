@@ -82,7 +82,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ReadOnlyClusterCreate,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
-          TaskType.ReleaseInstanceFromUniverse);
+          TaskType.ReleaseInstanceFromUniverse,
+          TaskType.StartNodeInUniverse,
+          TaskType.StopNodeInUniverse);
 
   @Override
   protected Application provideApplication() {

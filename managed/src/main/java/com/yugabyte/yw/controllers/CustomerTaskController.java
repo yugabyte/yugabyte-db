@@ -7,9 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
@@ -269,10 +267,11 @@ public class CustomerTaskController extends AuthenticatedController {
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
+      case StartNodeInUniverse:
+      case StopNodeInUniverse:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
         UUID universeUUID = UUID.fromString(universeUUIDStr);
-        int expectedUniverseVersion = oldTaskParams.get("expectedUniverseVersion").asInt();
         // Build node task params for node actions.
         NodeTaskParams nodeTaskParams = new NodeTaskParams();
         nodeTaskParams.nodeName = nodeName;
