@@ -842,7 +842,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ## Packed row flags (Beta)
 
-To learn about Packed Row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta).
+To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta) in the architecture section.
 
 ##### --ysql_enable_packed_row
 
@@ -852,7 +852,7 @@ Default: `false`
 
 ##### --ysql_packed_row_size_limit
 
-Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, the remaining columns will be stored as individual key value pairs instead.
+Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
 
 Default: `0`
 
@@ -864,13 +864,13 @@ Default: `false`
 
 ##### --ycql_packed_row_size_limit
 
-Packed row size limit for YCQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, the remaining columns will be stored as individual key value pairs instead.
+Packed row size limit for YCQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
 
 Default: `0`
 
 ##### --ysql_enable_packed_row_for_colocated_table
 
-Whether packed row is enabled for colocated table in YSQL. The colocated table has an additional gflag to alleviate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
+Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional GFlag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
 
 Default: `false`
 
