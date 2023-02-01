@@ -787,7 +787,7 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_EQ(caller_term, response.responder_term());
   ASSERT_OPID_EQ(response.status().last_received(), preceding_opid);
-  ASSERT_OPID_EQ(response.status().last_received_current_leader(), MinimumOpId());
+  ASSERT_OPID_EQ(response.status().last_received_current_leader(), preceding_opid);
 
   // Append a no-op.
   noop_opid = MakeOpId(caller_term, ++log_index);
@@ -837,6 +837,71 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   ASSERT_EQ(caller_term, response.responder_term());
   ASSERT_OPID_EQ(response.status().last_received(), noop_opid);
   ASSERT_OPID_EQ(response.status().last_received_current_leader(), noop_opid);
+}
+
+TEST_F(RaftConsensusTest, TestLastLeaderReceivedNotMinimum) {
+  SetUpConsensus(kMinimumTerm, 3);
+  SetUpGeneralExpectations();
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(consensus_->Start(info));
+
+  ConsensusRequestPB request;
+  ConsensusResponsePB response;
+  int64_t caller_term = 0;
+  int64_t log_index = 0;
+
+  caller_term = 1;
+  string caller_uuid = config_.peers(0).permanent_uuid();
+  OpId preceding_opid = OpId::Min();
+
+  // Heartbeat. This will cause the term to increment on the follower.
+  request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid.ToPB<OpIdPB>());
+  response.Clear();
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
+  ASSERT_EQ(caller_term, response.responder_term());
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), OpId::Min());
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()), OpId::Min());
+
+  // Replicate ops 0 -> 2000 from peer 0
+  OpIdPB noop_opid_pb;
+  OpId noop_opid;
+  for (int i = 0; i < 2000; ++i) {
+    noop_opid_pb = MakeOpId(caller_term, ++log_index);
+    noop_opid = OpId::FromPB(noop_opid_pb);
+    AddNoOpToConsensusRequest(&request, noop_opid.ToPB<OpIdPB>());
+  }
+  response.Clear();
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), noop_opid);
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()),  noop_opid);
+
+  // Heartbeat from peer 1 to establish new leader
+  caller_term = 2;
+  caller_uuid = config_.peers(1).permanent_uuid();
+  request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid.ToPB<OpIdPB>());
+  response.Clear();
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
+  ASSERT_EQ(caller_term, response.responder_term());
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), noop_opid);
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()), OpId::Min());
+
+  // Re-replicate ops 1->100 from peer 1 as the new leader
+  log_index = 1;
+  OpIdPB replicating_op_id_pb = MakeOpId(caller_term - 1, log_index);
+  OpId replicating_op_id;
+  request = MakeConsensusRequest(caller_term, caller_uuid, replicating_op_id.ToPB<OpIdPB>());
+  for (int i = 0; i < 100; ++i) {
+    replicating_op_id_pb = MakeOpId(caller_term - 1, log_index++);
+    replicating_op_id = OpId::FromPB(replicating_op_id_pb);
+    AddNoOpToConsensusRequest(&request, replicating_op_id.ToPB<OpIdPB>());
+  }
+  response.Clear();
+  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()),  replicating_op_id);
 }
 
 }  // namespace consensus
