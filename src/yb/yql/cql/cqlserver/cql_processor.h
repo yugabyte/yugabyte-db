@@ -96,8 +96,7 @@ class CQLProcessor : public ql::QLProcessor {
   std::unique_ptr<ql::CQLResponse> ProcessRequest(const ql::RegisterRequest& req);
 
   // Get a prepared statement and adds it to the set of statements currently being executed.
-  Result<std::shared_ptr<const CQLStatement>> GetPreparedStatement(
-      const ql::CQLMessage::QueryId& id, SchemaVersion version);
+  std::shared_ptr<const CQLStatement> GetPreparedStatement(const ql::CQLMessage::QueryId& id);
 
   // Statement executed callback.
   void StatementExecuted(const Status& s, const ql::ExecutedResult::SharedPtr& result = nullptr);

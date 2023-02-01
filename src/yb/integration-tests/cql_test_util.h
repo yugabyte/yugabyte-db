@@ -135,8 +135,6 @@ class CassandraResult {
   std::string RenderToString(const std::string& line_separator = ";",
                              const std::string& value_separator = ",") const;
 
-  const CassResult* get() const { return cass_result_.get(); }
-
  private:
   CassResultPtr cass_result_;
 };
@@ -190,16 +188,14 @@ class CassandraStatement {
       : cass_statement_(cass_statement_new(query.c_str(), parameter_count)) {}
 
   void SetKeyspace(const std::string& keyspace);
-  void SetPageSize(int page_size);
-  void SetPagingState(const CassandraResult& result);
 
-  CassandraStatement& Bind(size_t index, const std::string& v);
-  CassandraStatement& Bind(size_t index, const cass_bool_t& v);
-  CassandraStatement& Bind(size_t index, const cass_float_t& v);
-  CassandraStatement& Bind(size_t index, const cass_double_t& v);
-  CassandraStatement& Bind(size_t index, const cass_int32_t& v);
-  CassandraStatement& Bind(size_t index, const cass_int64_t& v);
-  CassandraStatement& Bind(size_t index, const CassandraJson& v);
+  void Bind(size_t index, const std::string& v);
+  void Bind(size_t index, const cass_bool_t& v);
+  void Bind(size_t index, const cass_float_t& v);
+  void Bind(size_t index, const cass_double_t& v);
+  void Bind(size_t index, const cass_int32_t& v);
+  void Bind(size_t index, const cass_int64_t& v);
+  void Bind(size_t index, const CassandraJson& v);
 
   CassStatement* get() const;
 

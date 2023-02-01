@@ -69,11 +69,10 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Allocate a prepared statement. If the statement already exists, return it instead.
   std::shared_ptr<CQLStatement> AllocatePreparedStatement(
-      const ql::CQLMessage::QueryId& id, const std::string& query, ql::QLEnv* ql_env);
+      const ql::CQLMessage::QueryId& id, const std::string& keyspace, const std::string& query);
 
   // Look up a prepared statement by its id. Nullptr will be returned if the statement is not found.
-  Result<std::shared_ptr<const CQLStatement>> GetPreparedStatement(
-      const ql::CQLMessage::QueryId& id, SchemaVersion version);
+  std::shared_ptr<const CQLStatement> GetPreparedStatement(const ql::CQLMessage::QueryId& id);
 
   std::shared_ptr<ql::Statement> GetAuthPreparedStatement() const { return auth_prepared_stmt_; }
 

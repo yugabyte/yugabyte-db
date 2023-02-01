@@ -148,12 +148,14 @@ shared_ptr<YBTable> QLEnv::GetTableDesc(const TableId& table_id, bool* cache_use
   return yb_table;
 }
 
-Result<SchemaVersion> QLEnv::GetUpToDateTableSchemaVersion(const YBTableName& table_name) {
+Status QLEnv::GetUpToDateTableSchemaVersion(const YBTableName& table_name,
+                                                    uint32_t* ver) {
   shared_ptr<YBTable> yb_table;
   RETURN_NOT_OK(client_->OpenTable(table_name, &yb_table));
 
   if (yb_table) {
-    return yb_table->schema().version();
+    *ver = yb_table->schema().version();
+    return Status::OK();
   } else {
     return STATUS_SUBSTITUTE(NotFound, "Cannot get table $0", table_name.ToString());
   }

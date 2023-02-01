@@ -286,47 +286,32 @@ void CassandraStatement::SetKeyspace(const string& keyspace) {
   CheckErrorCode(cass_statement_set_keyspace(cass_statement_.get(), keyspace.c_str()));
 }
 
-void CassandraStatement::SetPageSize(int page_size) {
-  CheckErrorCode(cass_statement_set_paging_size(cass_statement_.get(), page_size));
-}
-
-void CassandraStatement::SetPagingState(const CassandraResult& result) {
-  CheckErrorCode(cass_statement_set_paging_state(cass_statement_.get(), result.get()));
-}
-
-CassandraStatement& CassandraStatement::Bind(size_t index, const string& v) {
+void CassandraStatement::Bind(size_t index, const string& v) {
   CheckErrorCode(cass_statement_bind_string(cass_statement_.get(), index, v.c_str()));
-  return *this;
 }
 
-CassandraStatement& CassandraStatement::Bind(size_t index, const cass_bool_t& v) {
+void CassandraStatement::Bind(size_t index, const cass_bool_t& v) {
   CheckErrorCode(cass_statement_bind_bool(cass_statement_.get(), index, v));
-  return *this;
 }
 
-CassandraStatement& CassandraStatement::Bind(size_t index, const cass_float_t& v) {
+void CassandraStatement::Bind(size_t index, const cass_float_t& v) {
   CheckErrorCode(cass_statement_bind_float(cass_statement_.get(), index, v));
-  return *this;
 }
 
-CassandraStatement& CassandraStatement::Bind(size_t index, const cass_double_t& v) {
+void CassandraStatement::Bind(size_t index, const cass_double_t& v) {
   CheckErrorCode(cass_statement_bind_double(cass_statement_.get(), index, v));
-  return *this;
 }
 
-CassandraStatement& CassandraStatement::Bind(size_t index, const cass_int32_t& v) {
+void CassandraStatement::Bind(size_t index, const cass_int32_t& v) {
   CheckErrorCode(cass_statement_bind_int32(cass_statement_.get(), index, v));
-  return *this;
 }
 
-CassandraStatement& CassandraStatement::Bind(size_t index, const cass_int64_t& v) {
+void CassandraStatement::Bind(size_t index, const cass_int64_t& v) {
   CheckErrorCode(cass_statement_bind_int64(cass_statement_.get(), index, v));
-  return *this;
 }
 
-CassandraStatement& CassandraStatement::Bind(size_t index, const CassandraJson& v) {
+void CassandraStatement::Bind(size_t index, const CassandraJson& v) {
   CheckErrorCode(cass_statement_bind_string(cass_statement_.get(), index, v.value().c_str()));
-  return *this;
 }
 
 CassStatement* CassandraStatement::get() const {
