@@ -28,7 +28,9 @@ export enum QUERY_KEY {
   getAccessKeys = 'getAccessKeys',
   getCertificates = 'getCertificates',
   getKMSConfigs = 'getKMSConfigs',
-  fetchRunTimeConfigs = 'fetchRunTimeConfigs',
+  fetchGlobalRunTimeConfigs = 'fetchGlobalRunTimeConfigs',
+  fetchCustomerRunTimeConfigs = 'fetchCustomerRunTimeConfigs',
+  fetchProviderRunTimeConfigs = 'fetchProviderRunTimeConfigs',
   validateHelmYAML = 'validateHelmYAML'
 }
 

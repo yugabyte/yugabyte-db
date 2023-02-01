@@ -41,12 +41,14 @@ import { useSectionStyles } from '../../../universeMainStyle';
 export const InstanceConfiguration: FC = () => {
   const classes = useSectionStyles();
   const { t } = useTranslation();
+  const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
+  const customerUUID = currentCustomer?.data?.uuid;
 
   //fetch run time configs
-  const { data: runtimeConfigs } = useQuery(QUERY_KEY.fetchRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true)
+  const { data: customerRuntimeConfigs } = useQuery(QUERY_KEY.fetchCustomerRunTimeConfigs, () =>
+    api.fetchRunTimeConfigs(true, customerUUID)
   );
-  const authEnforcedObject = runtimeConfigs?.configEntries?.find(
+  const authEnforcedObject = customerRuntimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.universe.auth.is_enforced'
   );
   const isAuthEnforced = !!(authEnforcedObject?.value === 'true');
