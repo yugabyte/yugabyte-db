@@ -1458,8 +1458,8 @@ class ControlInstanceMethod(AbstractInstancesMethod):
                 args.search_pattern, host_info['server_type'],
                 self.YB_SERVER_TYPE))
 
-        # Skip if instance is not running.
-        if not host_info.get("is_running", True):
+        # Skip if instance is not running and command is stopping process.
+        if not host_info.get("is_running", True) and self.name == "stop":
             logging.info(
                 "Skipping ctl command %s for process: %s due to node not in running state",
                 self.name, self.base_command.name)
