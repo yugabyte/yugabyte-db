@@ -269,9 +269,9 @@ yugabyte-platform-1-yugaware-0   3/4     CrashLoopBackOff   2          4d14h
   kubectl logs <POD_NAME> -n <NAMESPACE> -c postgres
   ```
 
-## Load balancer service is not ready on a running universe
+## Load balancer service is not ready
 
-Load balancer might not be ready to provide services to a running YugabyteDB Anywhere universe.
+Load balancer might not be ready to provide services to a running YugabyteDB Anywhere instance.
 
 ### Incompatible load balancer
 
