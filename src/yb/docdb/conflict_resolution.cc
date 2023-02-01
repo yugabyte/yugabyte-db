@@ -248,15 +248,20 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       auto existing_intent = VERIFY_RESULT(
           docdb::ParseIntentKey(intent_iter_.key(), existing_value));
 
-      VLOG_WITH_PREFIX_AND_FUNC(4) << "Found: " << existing_value.ToDebugString()
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Found: " << SubDocKey::DebugSliceToString(existing_key)
+                                   << ", with value: " << existing_value.ToDebugString()
                                    << " has intent types " << ToString(existing_intent.types);
-      auto decoded_value = VERIFY_RESULT(DecodeIntentValue(
-          existing_value, nullptr /* verify_transaction_id_slice */,
-          HasStrong(existing_intent.types)));
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
+        auto decoded_value = VERIFY_RESULT(DecodeIntentValue(
+            existing_value, nullptr /* verify_transaction_id_slice */,
+            HasStrong(existing_intent.types)));
         auto transaction_id = decoded_value.transaction_id;
         bool lock_only = decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock);
+        VLOG_WITH_PREFIX_AND_FUNC(4)
+            << "Found conflict with exiting transaction: " << transaction_id
+            << ", lock_only: " << lock_only
+            << ", body: " << decoded_value.body.ToDebugHexString();
 
         if (!context_->IgnoreConflictsWith(transaction_id)) {
           auto p = conflicts_.emplace(transaction_id, std::make_shared<SubtxnHasNonLockConflict>());
