@@ -18,8 +18,8 @@ import unittest
 import decimal
 import age 
 
-DSN = "host=172.17.0.2 port=5432 dbname=postgres user=postgres password=agens"
-TEST_HOST = "172.17.0.2"
+DSN = "host=127.0.0.1 port=5432 dbname=postgres user=postgres password=agens"
+TEST_HOST = "127.0.0.1"
 TEST_PORT = 5432
 TEST_DB = "postgres"
 TEST_USER = "postgres"
