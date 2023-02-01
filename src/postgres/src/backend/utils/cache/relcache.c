@@ -4627,7 +4627,10 @@ RelationCacheInitializePhase3(void)
 	 * In YB mode initialize the relache at the beginning so that we need
 	 * fewer cache lookups in steady state.
 	 */
-	if (IsYugaByteEnabled() && (needNewCacheFile || YBCIsInitDbModeEnvVarSet()))
+	if (IsYugaByteEnabled() &&
+		(needNewCacheFile ||
+		 YBCIsInitDbModeEnvVarSet() ||
+		 *YBCGetGFlags()->ysql_enable_read_request_caching))
 	{
 		YBPreloadRelCache();
 	}

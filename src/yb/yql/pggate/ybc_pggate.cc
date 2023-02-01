@@ -1473,8 +1473,9 @@ const void* YBCPgGetThreadLocalErrMsg() {
   return PgGetThreadLocalErrMsg();
 }
 
-void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
-  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version);
+void YBCStartSysTablePrefetching(
+    uint64_t latest_known_ysql_catalog_version, bool should_use_cache) {
+  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version, should_use_cache);
 }
 
 void YBCStopSysTablePrefetching() {
