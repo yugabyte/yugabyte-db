@@ -1858,6 +1858,28 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
+  public void testGetUpdateOptionsNoSRforK8s() throws IOException {
+    testGetAvailableOptions(
+        u -> {
+          List<NodeDetails> nodesToAdd = new ArrayList<>();
+          u.nodeDetailsSet.forEach(
+              node -> {
+                node.state = NodeState.ToBeRemoved;
+                NodeDetails newNode = new NodeDetails();
+                newNode.state = NodeState.ToBeAdded;
+                newNode.placementUuid = node.placementUuid;
+                nodesToAdd.add(newNode);
+              });
+          u.nodeDetailsSet.addAll(nodesToAdd);
+          u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
+          u.getPrimaryCluster().userIntent.instanceType = "c3.large";
+          u.getPrimaryCluster().userIntent.providerType = CloudType.kubernetes;
+        },
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
+  }
+
+  @Test
   public void testGetUpdateOptionsEditFullMove() throws IOException {
     testGetAvailableOptions(
         u -> {
@@ -1879,6 +1901,18 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         },
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
+  }
+
+  @Test
+  public void testGetUpdateOptionsAffinitizedChanged() throws IOException {
+    testGetAvailableOptions(
+        x -> {
+          PlacementInfo.PlacementAZ placementAZ =
+              x.getPrimaryCluster().placementInfo.azStream().findFirst().get();
+          placementAZ.isAffinitized = !placementAZ.isAffinitized;
+        },
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
   }
 
   private void testGetAvailableOptions(
