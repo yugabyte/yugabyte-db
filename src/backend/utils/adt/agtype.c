@@ -174,6 +174,7 @@ static int extract_variadic_args_min(FunctionCallInfo fcinfo,
                                      int variadic_start, bool convert_unknown,
                                      Datum **args, Oid **types, bool **nulls,
                                      int min_num_args);
+static agtype_value* agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo);
 agtype_value *agtype_composite_to_agtype_value_binary(agtype *a);
 
 /* global storage of  OID for agtype and _agtype */
@@ -1839,6 +1840,39 @@ static void composite_to_agtype(Datum composite, agtype_in_state *result)
 }
 
 /*
+ * Removes properties with null value from the given agtype object.
+ */
+void remove_null_from_agtype_object(agtype_value *object)
+{
+    agtype_pair *avail; // next available position
+    agtype_pair *ptr;
+
+    if (object->type != AGTV_OBJECT)
+    {
+        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                        errmsg("a map is expected")));
+    }
+
+    avail = object->val.object.pairs;
+    ptr = object->val.object.pairs;
+
+    while (ptr - object->val.object.pairs < object->val.object.num_pairs)
+    {
+        if (ptr->value.type != AGTV_NULL)
+        {
+            if (ptr != avail)
+            {
+                memcpy(avail, ptr, sizeof(agtype_pair));
+            }
+            avail++;
+        }
+        ptr++;
+    }
+
+    object->val.object.num_pairs = avail - object->val.object.pairs;
+}
+
+/*
  * Append agtype text for "val" to "result".
  *
  * This is just a thin wrapper around datum_to_agtype.  If the same type
@@ -2313,12 +2347,7 @@ Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,
                                properties);
 }
 
-PG_FUNCTION_INFO_V1(agtype_build_map);
-
-/*
- * SQL function agtype_build_map(variadic "any")
- */
-Datum agtype_build_map(PG_FUNCTION_ARGS)
+static agtype_value* agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo)
 {
     int nargs;
     int i;
@@ -2364,8 +2393,18 @@ Datum agtype_build_map(PG_FUNCTION_ARGS)
     }
 
     result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
+    return result.res;
+}
 
-    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+PG_FUNCTION_INFO_V1(agtype_build_map);
+
+/*
+ * SQL function agtype_build_map(variadic "any")
+ */
+Datum agtype_build_map(PG_FUNCTION_ARGS)
+{
+    agtype_value *result= agtype_build_map_as_agtype_value(fcinfo);
+    PG_RETURN_POINTER(agtype_value_to_agtype(result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_build_map_noargs);
@@ -2383,6 +2422,18 @@ Datum agtype_build_map_noargs(PG_FUNCTION_ARGS)
     result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
 
     PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
+PG_FUNCTION_INFO_V1(agtype_build_map_nonull);
+
+/*
+ * Similar to agtype_build_map except null properties are removed.
+ */
+Datum agtype_build_map_nonull(PG_FUNCTION_ARGS)
+{
+    agtype_value *result= agtype_build_map_as_agtype_value(fcinfo);
+    remove_null_from_agtype_object(result);
+    PG_RETURN_POINTER(agtype_value_to_agtype(result));
 }
 
 PG_FUNCTION_INFO_V1(agtype_build_list);
@@ -8379,10 +8430,15 @@ agtype_value *alter_property_value(agtype_value *properties, char *var_name,
     return parsed_agtype_value;
 }
 
-/**
- * Returns the map contained within the provided agtype.
+/*
+ * Appends new_properties into a copy of original_properties. If the
+ * original_properties is NULL, returns new_properties.
+ *
+ * This is a helper function used by the SET clause executor for
+ * updating properties with the equal, or plus-equal operator and a map.
  */
-agtype_value *get_map_from_agtype(agtype *a)
+agtype_value *alter_properties(agtype_value *original_properties,
+                               agtype *new_properties)
 {
     agtype_iterator *it;
     agtype_iterator_token tok = WAGT_DONE;
@@ -8391,9 +8447,34 @@ agtype_value *get_map_from_agtype(agtype *a)
     agtype_value *value;
     agtype_value *parsed_agtype_value = NULL;
 
+    parsed_agtype_value = push_agtype_value(&parse_state, WAGT_BEGIN_OBJECT,
+                                            NULL);
+
+    // Copy original properties.
+    if (original_properties)
+    {
+        int i;
+
+        if (original_properties->type != AGTV_OBJECT)
+        {
+            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                            errmsg("a map is expected")));
+        }
+
+        for (i = 0; i < original_properties->val.object.num_pairs; i++)
+        {
+            agtype_pair* pair = original_properties->val.object.pairs + i;
+            parsed_agtype_value = push_agtype_value(&parse_state, WAGT_KEY,
+                                                    &pair->key);
+            parsed_agtype_value = push_agtype_value(&parse_state, WAGT_VALUE,
+                                                    &pair->value);
+        }
+    }
+
+    // Append new properties.
     key = palloc0(sizeof(agtype_value));
     value = palloc0(sizeof(agtype_value));
-    it = agtype_iterator_init(&a->root);
+    it = agtype_iterator_init(&new_properties->root);
     tok = agtype_iterator_next(&it, key, true);
 
     if (tok != WAGT_BEGIN_OBJECT)
@@ -8401,9 +8482,6 @@ agtype_value *get_map_from_agtype(agtype *a)
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                         errmsg("a map is expected")));
     }
-
-    parsed_agtype_value = push_agtype_value(&parse_state, WAGT_BEGIN_OBJECT,
-                                            NULL);
 
     while (true)
     {
@@ -8416,13 +8494,10 @@ agtype_value *get_map_from_agtype(agtype *a)
 
         agtype_iterator_next(&it, value, true);
 
-        if (value->type != AGTV_NULL)
-        {
-            parsed_agtype_value = push_agtype_value(&parse_state, WAGT_KEY,
-                                                    key);
-            parsed_agtype_value = push_agtype_value(&parse_state, WAGT_VALUE,
-                                                    value);
-        }
+        parsed_agtype_value = push_agtype_value(&parse_state, WAGT_KEY,
+                                                key);
+        parsed_agtype_value = push_agtype_value(&parse_state, WAGT_VALUE,
+                                                value);
     }
 
     parsed_agtype_value = push_agtype_value(&parse_state, WAGT_END_OBJECT,

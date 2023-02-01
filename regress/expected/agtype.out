@@ -2268,6 +2268,55 @@ SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agt
    | text
 (1 row)
 
+-- Test duplicate keys and null value
+-- expected: only the latest key, among duplicates, will be kept; and null will be removed
+SELECT * FROM create_graph('agtype_null_duplicate_test');
+NOTICE:  graph "agtype_null_duplicate_test" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:NULL, b:'bb', c:'cc', d:'dd' }) RETURN a $$) AS (a agtype);
+                                               a                                               
+-----------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"b": "bb", "c": "cc", "d": "dd"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:'aa', b:'bb', c:'cc', d:'dd' }) RETURN a $$) AS (a agtype);
+                                                    a                                                     
+----------------------------------------------------------------------------------------------------------
+ {"id": 281474976710658, "label": "", "properties": {"a": "aa", "b": "bb", "c": "cc", "d": "dd"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:'aa', b:'bb', b:NULL , d:NULL }) RETURN a $$) AS (a agtype);
+                                    a                                    
+-------------------------------------------------------------------------
+ {"id": 281474976710659, "label": "", "properties": {"a": "aa"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:'aa', b:'bb', b:'xx', d:NULL }) RETURN a $$) AS (a agtype);
+                                         a                                          
+------------------------------------------------------------------------------------
+ {"id": 281474976710660, "label": "", "properties": {"a": "aa", "b": "xx"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:NULL }) RETURN a $$) AS (a agtype);
+                               a                                
+----------------------------------------------------------------
+ {"id": 281474976710661, "label": "", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM drop_graph('agtype_null_duplicate_test', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table agtype_null_duplicate_test._ag_label_vertex
+drop cascades to table agtype_null_duplicate_test._ag_label_edge
+NOTICE:  graph "agtype_null_duplicate_test" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 --
 -- Vertex
 --

@@ -586,6 +586,16 @@ SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agt
 SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->'true'->2 as i) a;
 SELECT i, pg_typeof(i) FROM (SELECT '{"bool":false, "int":3, "float":3.14}'::agtype->'true'->>2 as i) a;
 
+-- Test duplicate keys and null value
+-- expected: only the latest key, among duplicates, will be kept; and null will be removed
+SELECT * FROM create_graph('agtype_null_duplicate_test');
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:NULL, b:'bb', c:'cc', d:'dd' }) RETURN a $$) AS (a agtype);
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:'aa', b:'bb', c:'cc', d:'dd' }) RETURN a $$) AS (a agtype);
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:'aa', b:'bb', b:NULL , d:NULL }) RETURN a $$) AS (a agtype);
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:'aa', b:'bb', b:'xx', d:NULL }) RETURN a $$) AS (a agtype);
+SELECT * FROM cypher('agtype_null_duplicate_test', $$ CREATE (a { a:NULL }) RETURN a $$) AS (a agtype);
+SELECT * FROM drop_graph('agtype_null_duplicate_test', true);
+
 --
 -- Vertex
 --

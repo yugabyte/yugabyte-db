@@ -3145,6 +3145,14 @@ CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME', 'agtype_build_map_noargs';
 
+CREATE FUNCTION ag_catalog.agtype_build_map_nonull(VARIADIC "any")
+RETURNS agtype
+LANGUAGE c
+STABLE
+CALLED ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 --
 -- There are times when the optimizer might eliminate
 -- functions we need. Wrap the function with this to

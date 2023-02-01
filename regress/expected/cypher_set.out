@@ -702,6 +702,11 @@ SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Juan {name:'Juan', role:'admin
 ---
 (0 rows)
 
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Robert {name:'Robert', role:'manager', city:'London'}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
 -- test copying properties between entities
 SELECT * FROM cypher('cypher_set_1', $$
     MATCH (at {name: 'Andy'}), (pn {name: 'Peter'})
@@ -761,6 +766,29 @@ SELECT * FROM cypher('cypher_set_1', $$
     RETURN p
 $$) AS (p agtype);
 ERROR:  a map is expected
+-- test plus-equal
+-- expected: {name:'Rob', age:47, city:London}
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Robert'})
+    SET p += {name:'Rob', role:NULL, age:47}
+    RETURN p
+$$) AS (p agtype);
+                                                        p                                                        
+-----------------------------------------------------------------------------------------------------------------
+ {"id": 2251799813685249, "label": "Robert", "properties": {"age": 47, "city": "London", "name": "Rob"}}::vertex
+(1 row)
+
+-- expected: no change
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Rob'})
+    SET p += {}
+    RETURN p
+$$) AS (p agtype);
+                                                        p                                                        
+-----------------------------------------------------------------------------------------------------------------
+ {"id": 2251799813685249, "label": "Robert", "properties": {"age": 47, "city": "London", "name": "Rob"}}::vertex
+(1 row)
+
 --
 -- Clean up
 --
@@ -784,7 +812,7 @@ NOTICE:  graph "cypher_set" has been dropped
 (1 row)
 
 SELECT drop_graph('cypher_set_1', true);
-NOTICE:  drop cascades to 7 other objects
+NOTICE:  drop cascades to 8 other objects
 DETAIL:  drop cascades to table cypher_set_1._ag_label_vertex
 drop cascades to table cypher_set_1._ag_label_edge
 drop cascades to table cypher_set_1."Andy"
@@ -792,6 +820,7 @@ drop cascades to table cypher_set_1."Peter"
 drop cascades to table cypher_set_1."Kevin"
 drop cascades to table cypher_set_1."Matt"
 drop cascades to table cypher_set_1."Juan"
+drop cascades to table cypher_set_1."Robert"
 NOTICE:  graph "cypher_set_1" has been dropped
  drop_graph 
 ------------

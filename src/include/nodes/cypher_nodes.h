@@ -195,6 +195,7 @@ typedef struct cypher_map
     ExtensibleNode extensible;
     List *keyvals;
     int location;
+    bool keep_null; // if false, keyvals with null value are removed
 } cypher_map;
 
 typedef struct cypher_list
@@ -374,6 +375,7 @@ typedef struct cypher_update_item
     char *prop_name;
     List *qualified_name;
     bool remove_item;
+    bool is_add;
 } cypher_update_item;
 
 typedef struct cypher_delete_information

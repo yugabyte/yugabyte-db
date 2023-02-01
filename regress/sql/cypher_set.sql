@@ -214,6 +214,7 @@ SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Peter {name:'Peter', age:34}) 
 SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Kevin {name:'Kevin', age:32, hungry:false}) $$) AS (a agtype);
 SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Matt {name:'Matt', city:'Toronto'}) $$) AS (a agtype);
 SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Juan {name:'Juan', role:'admin'}) $$) AS (a agtype);
+SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Robert {name:'Robert', role:'manager', city:'London'}) $$) AS (a agtype);
 
 -- test copying properties between entities
 SELECT * FROM cypher('cypher_set_1', $$
@@ -252,6 +253,21 @@ $$) AS (p agtype);
 SELECT * FROM cypher('cypher_set_1', $$
     MATCH (p {name: 'Peter'})
     SET p = sqrt(4)
+    RETURN p
+$$) AS (p agtype);
+
+-- test plus-equal
+-- expected: {name:'Rob', age:47, city:London}
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Robert'})
+    SET p += {name:'Rob', role:NULL, age:47}
+    RETURN p
+$$) AS (p agtype);
+
+-- expected: no change
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {name: 'Rob'})
+    SET p += {}
     RETURN p
 $$) AS (p agtype);
 
