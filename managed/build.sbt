@@ -435,7 +435,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b14"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.38-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.39-SNAPSHOT"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b19"
 
 libraryDependencies ++= Seq(
