@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -39,9 +40,12 @@ import play.libs.Json;
 @Singleton
 public class EncryptionAtRestManager {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestManager.class);
+  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public EncryptionAtRestManager() {}
+  public EncryptionAtRestManager(RuntimeConfGetter confGetter) {
+    this.confGetter = confGetter;
+  }
 
   public enum RestoreKeyResult {
     RESTORE_SKIPPED,
@@ -94,7 +98,9 @@ public class EncryptionAtRestManager {
           throw new InstantiationException(errMsg);
         }
 
-        serviceInstance = serviceConstructor.newInstance();
+        // Not able to inject this at the lower level class such as AWSEarService.java bcs it is
+        // instantiated separately. Hence we have to pass it down from here.
+        serviceInstance = serviceConstructor.newInstance(confGetter);
         serviceProvider.setServiceInstance(serviceInstance);
       }
     } catch (Exception e) {

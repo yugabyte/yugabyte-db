@@ -203,6 +203,15 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
          Filter: (p2.a = a)
 (10 rows)
 
+/*+ set(enable_seqscan on) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p1.b < p2.b + 1;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: ((a = p2.b) AND (b < (p2.b + 1)))
+(4 rows)
+
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------

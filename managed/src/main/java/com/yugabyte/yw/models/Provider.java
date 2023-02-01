@@ -254,15 +254,6 @@ public class Provider extends Model {
     }
   }
 
-  @Deprecated
-  @JsonProperty("config")
-  public Map<String, String> getUnmaskedConfig() {
-    if (this.config == null) {
-      return new HashMap<>();
-    }
-    return this.config;
-  }
-
   @JsonProperty("details")
   public void setProviderDetails(ProviderDetails providerDetails) {
     this.details = providerDetails;
@@ -526,5 +517,10 @@ public class Provider extends Model {
       newParams.perRegionMetadata.put(r.code, regionData);
     }
     return newParams;
+  }
+
+  @JsonIgnore
+  public long getUniverseCount() {
+    return Customer.get(this.customerUUID).getUniversesForProvider(this.uuid).stream().count();
   }
 }

@@ -89,7 +89,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
   private HealthChecker healthChecker;
   protected Customer customer;
-  private Users user;
+  protected Users user;
   protected KmsConfig kmsConfig;
   protected String authToken;
   protected YBClientService mockService;

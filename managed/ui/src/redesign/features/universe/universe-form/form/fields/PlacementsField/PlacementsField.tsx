@@ -10,7 +10,8 @@ import { Placement, UniverseFormData, CloudType } from '../../../utils/dto';
 import {
   REPLICATION_FACTOR_FIELD,
   PLACEMENTS_FIELD,
-  PROVIDER_FIELD
+  PROVIDER_FIELD,
+  RESET_AZ_FIELD
 } from '../../../utils/constants';
 
 interface PlacementsFieldProps {
@@ -152,8 +153,15 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
 
   if (fields.length) {
     return (
-      <Box mt={1} display="flex" width="100%" flexDirection="column">
-        <Typography variant="h5">{t('universeForm.cloudConfig.azHeader')}</Typography>
+      <Box display="flex" width="100%" flexDirection="column">
+        <Box width="100%" display="flex" flexDirection="row" alignItems={'center'}>
+          <Box flexShrink={1} mr={3}>
+            <Typography variant="h5">{t('universeForm.cloudConfig.azHeader')}</Typography>
+          </Box>
+          <YBButton variant="secondary" onClick={() => setValue(RESET_AZ_FIELD, true)}>
+            {t('universeForm.cloudConfig.resetAZLabel')}
+          </YBButton>
+        </Box>
         {renderHeader}
         {renderPlacements()}
         {unUsedZones.length > 0 && fields.length < replicationFactor && (

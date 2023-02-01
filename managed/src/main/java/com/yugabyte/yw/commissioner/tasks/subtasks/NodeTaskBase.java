@@ -58,19 +58,11 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
 
   // Helper API to update the db for the current node with the given state.
   public void setNodeState(NodeDetails.NodeState state) {
-    // Persist the desired node information into the DB.
-    UniverseUpdater updater =
-        nodeStateUpdater(
-            taskParams().universeUUID,
-            taskParams().nodeName,
-            NodeStatus.builder().nodeState(state).build());
-    saveUniverseDetails(updater);
+    saveNodeStatus(taskParams().nodeName, NodeStatus.builder().nodeState(state).build());
   }
 
   public void setNodeStatus(NodeStatus nodeStatus) {
-    UniverseUpdater updater =
-        nodeStateUpdater(taskParams().universeUUID, taskParams().nodeName, nodeStatus);
-    saveUniverseDetails(updater);
+    saveNodeStatus(taskParams().nodeName, nodeStatus);
   }
 
   @Override

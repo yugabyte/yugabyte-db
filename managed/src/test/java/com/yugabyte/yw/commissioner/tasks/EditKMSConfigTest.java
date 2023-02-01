@@ -38,7 +38,9 @@ public class EditKMSConfigTest extends CommissionerBaseTest {
     ObjectNode kmsConfigReq = Json.newObject().put("base_url", "api.amer.smartkey.io");
     ModelFactory.createKMSConfig(defaultCustomer.uuid, "SMARTKEY", kmsConfigReq, "test");
     UUID configUUID = KmsConfig.listKMSConfigs(defaultCustomer.uuid).get(0).configUUID;
-    when(mockEARManager.getServiceInstance(eq("SMARTKEY"))).thenReturn(new SmartKeyEARService());
+    // confGetter is not used in class SmartKeyEARService, so we can pass null.
+    when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
+        .thenReturn(new SmartKeyEARService(null));
     KMSConfigTaskParams params = new KMSConfigTaskParams();
     params.configUUID = configUUID;
     params.customerUUID = defaultCustomer.uuid;

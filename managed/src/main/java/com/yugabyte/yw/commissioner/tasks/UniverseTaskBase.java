@@ -947,6 +947,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     WaitForYbcServer task = createTask(WaitForYbcServer.class);
     WaitForYbcServer.Params params = new WaitForYbcServer.Params();
     params.universeUUID = taskParams().universeUUID;
+    params.nodeDetailsSet = nodeDetailsSet == null ? null : new HashSet<>(nodeDetailsSet);
     params.nodeNameList =
         nodeDetailsSet == null
             ? null
@@ -1249,7 +1250,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public SubTaskGroup createServerControlTask(
       NodeDetails node,
-      UniverseTaskBase.ServerType processType,
+      ServerType processType,
       String command,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
@@ -1260,7 +1261,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createServerControlTask(
-      NodeDetails node, UniverseTaskBase.ServerType processType, String command) {
+      NodeDetails node, ServerType processType, String command) {
     return createServerControlTask(node, processType, command, params -> {});
   }
 
@@ -1320,7 +1321,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public SubTaskGroup createServerControlTasks(
       List<NodeDetails> nodes,
-      UniverseTaskBase.ServerType processType,
+      ServerType processType,
       String command,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
@@ -1334,13 +1335,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createServerControlTasks(
-      List<NodeDetails> nodes, UniverseTaskBase.ServerType processType, String command) {
+      List<NodeDetails> nodes, ServerType processType, String command) {
     return createServerControlTasks(nodes, processType, command, params -> {});
   }
 
   private AnsibleClusterServerCtl getServerControlTask(
       NodeDetails node,
-      UniverseTaskBase.ServerType processType,
+      ServerType processType,
       String command,
       int sleepAfterCmdMillis,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
@@ -1816,7 +1817,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param processType : process type: master or tserver.
    * @param isAdd : true if the process is being added, false otherwise.
    */
-  public void createUpdateNodeProcessTasks(
+  public SubTaskGroup createUpdateNodeProcessTasks(
       Set<NodeDetails> servers, ServerType processType, Boolean isAdd) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpdateNodeProcess", executor);
     for (NodeDetails server : servers) {
@@ -1825,8 +1826,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Add it to the task list.
       subTaskGroup.addSubTask(updateNodeProcess);
     }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -1885,36 +1886,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Creates a task list to stop the masters of the cluster and adds it to the task queue.
+   * Creates a task list to start the tservers and adds it to the task queue.
    *
-   * @param nodes set of nodes to be stopped as master
+   * @param nodes : a collection of nodes that need tservers to be spawned.
+   * @return The subtask group.
    */
-  public SubTaskGroup createStopMasterTasks(Collection<NodeDetails> nodes) {
-    return createStopServerTasks(nodes, "master", false);
-  }
-
-  /**
-   * Creates a task list to stop the yb-controller process on cluster's node and adds it to the
-   * queue.
-   *
-   * @param nodes set of nodes on which yb-controller has to be stopped
-   */
-  public SubTaskGroup createStopYbControllerTasks(
-      Collection<NodeDetails> nodes, boolean isIgnoreError) {
-    return createStopServerTasks(nodes, "controller", isIgnoreError);
-  }
-
-  public SubTaskGroup createStopYbControllerTasks(Collection<NodeDetails> nodes) {
-    return createStopYbControllerTasks(nodes, false /*isIgnoreError*/);
-  }
-
-  /**
-   * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
-   *
-   * @param nodes set of nodes to be stopped as master
-   */
-  public SubTaskGroup createStopServerTasks(
-      Collection<NodeDetails> nodes, String serverType, boolean isIgnoreError) {
+  public SubTaskGroup createStartTServerTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
@@ -1927,7 +1904,75 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Add the az uuid.
       params.azUuid = node.azUuid;
       // The service and the command we want to run.
-      params.process = serverType;
+      params.process = ServerType.TSERVER.name().toLowerCase();
+      params.command = "start";
+      params.placementUuid = node.placementUuid;
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
+      // Start universe with systemd
+      params.useSystemd = userIntent.useSystemd;
+      // Create the Ansible task to get the server info.
+      AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
+      task.initialize(params);
+      // Add it to the task list.
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates a task list to stop the masters of the cluster and adds it to the task queue.
+   *
+   * @param nodes set of nodes to be stopped as master.
+   */
+  public SubTaskGroup createStopMasterTasks(Collection<NodeDetails> nodes) {
+    return createStopServerTasks(nodes, ServerType.MASTER, false);
+  }
+
+  /**
+   * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
+   *
+   * @param nodes set of nodes to be stopped as tserver.
+   */
+  public SubTaskGroup createStopTServerTasks(Collection<NodeDetails> nodes) {
+    return createStopServerTasks(nodes, ServerType.TSERVER, false);
+  }
+  /**
+   * Creates a task list to stop the yb-controller process on cluster's node and adds it to the
+   * queue.
+   *
+   * @param nodes set of nodes on which yb-controller has to be stopped
+   */
+  public SubTaskGroup createStopYbControllerTasks(
+      Collection<NodeDetails> nodes, boolean isIgnoreError) {
+    return createStopServerTasks(nodes, ServerType.CONTROLLER, isIgnoreError);
+  }
+
+  public SubTaskGroup createStopYbControllerTasks(Collection<NodeDetails> nodes) {
+    return createStopYbControllerTasks(nodes, false /*isIgnoreError*/);
+  }
+
+  /**
+   * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
+   *
+   * @param nodes set of nodes to be stopped as master
+   */
+  public SubTaskGroup createStopServerTasks(
+      Collection<NodeDetails> nodes, ServerType serverType, boolean isIgnoreError) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
+    for (NodeDetails node : nodes) {
+      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      UserIntent userIntent = getUserIntent(true);
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
+      // The service and the command we want to run.
+      params.process = serverType.name().toLowerCase();
       params.command = "stop";
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
@@ -3068,10 +3113,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // Helper API to update the db for the node with the given state.
   public void setNodeState(String nodeName, NodeDetails.NodeState state) {
-    // Persist the desired node information into the DB.
     UniverseUpdater updater =
-        nodeStateUpdater(
-            taskParams().universeUUID, nodeName, NodeStatus.builder().nodeState(state).build());
+        nodeStateUpdater(nodeName, NodeStatus.builder().nodeState(state).build());
     saveUniverseDetails(updater);
   }
 
@@ -3295,6 +3338,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Universe saveUniverseDetails(UniverseUpdater updater) {
     return saveUniverseDetails(taskParams().universeUUID, updater);
+  }
+
+  protected void saveNodeStatus(String nodeName, NodeStatus status) {
+    saveUniverseDetails(nodeStateUpdater(nodeName, status));
   }
 
   protected void preTaskActions() {
