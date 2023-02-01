@@ -125,7 +125,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
   void ResetCatalogReadPoint();
-  [[nodiscard]] bool HasCatalogReadPoint() const;
+  [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.

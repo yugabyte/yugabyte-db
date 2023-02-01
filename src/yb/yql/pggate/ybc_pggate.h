@@ -648,7 +648,8 @@ YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_o
                                       uint64_t** backfill_statuses,
                                       int num_indexes);
 
-void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
+void YBCStartSysTablePrefetching(
+    uint64_t latest_known_ysql_catalog_version, bool should_use_cache);
 
 void YBCStopSysTablePrefetching();
 
