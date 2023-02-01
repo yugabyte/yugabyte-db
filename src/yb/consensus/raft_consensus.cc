@@ -47,6 +47,7 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
@@ -2210,16 +2211,21 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB
   // watermark to the last message that remains in 'deduped_req'.
   //
   // It's possible that the leader didn't send us any new data -- it might be a completely
-  // duplicate request. In that case, we don't need to update LastReceived at all.
+  // duplicate request. In that case, we only update LastReceivedOpIdFromCurrentLeader
+  // Not updating this may result in the leader resending the same set of op-ids
+  // and resulting in empty de-duped requests forever. See GH #15629.
   if (!deduped_req.messages.empty()) {
     OpIdPB last_appended = deduped_req.messages.back()->id();
     TRACE(Substitute("Updating last received op as $0", last_appended.ShortDebugString()));
     state_->UpdateLastReceivedOpIdUnlocked(last_appended);
-  } else if (state_->GetLastReceivedOpIdUnlocked().index < deduped_req.preceding_op_id.index) {
-    return STATUS_FORMAT(InvalidArgument,
-                         "Bad preceding_opid: $0, last received: $1",
-                         deduped_req.preceding_op_id,
-                         state_->GetLastReceivedOpIdUnlocked());
+  } else {
+    if (state_->GetLastReceivedOpIdUnlocked().index < deduped_req.preceding_op_id.index) {
+      return STATUS_FORMAT(InvalidArgument,
+                          "Bad preceding_opid: $0, last received: $1",
+                          deduped_req.preceding_op_id,
+                          state_->GetLastReceivedOpIdUnlocked());
+    }
+    state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
   }
 
   VLOG_WITH_PREFIX(1) << "Marking committed up to " << apply_up_to;
