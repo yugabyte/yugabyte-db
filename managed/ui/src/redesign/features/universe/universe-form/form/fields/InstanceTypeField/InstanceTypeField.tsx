@@ -9,7 +9,7 @@ import { YBLabel, YBAutoComplete, YBHelper, YBHelperVariants } from '../../../..
 import { api, QUERY_KEY } from '../../../utils/api';
 import {
   sortAndGroup,
-  DEFAULT_INSTANCE_TYPES,
+  getDefaultInstanceType,
   isEphemeralAwsStorageInstance
 } from './InstanceTypeFieldHelper';
 import {
@@ -49,6 +49,14 @@ export const InstanceTypeField: FC = () => {
     setValue(INSTANCE_TYPE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
   };
 
+  //fetch run time configs
+  const {
+    data: providerRuntimeConfigs,
+    refetch: providerConfigsRefetch
+  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
+    api.fetchRunTimeConfigs(true, provider?.uuid)
+  );
+
   const { data, isLoading, refetch } = useQuery(
     [QUERY_KEY.getInstanceTypes, provider?.uuid],
     () => api.getInstanceTypes(provider?.uuid),
@@ -58,7 +66,8 @@ export const InstanceTypeField: FC = () => {
         // set default/first item as instance type after provider changes
         if (!getValues(INSTANCE_TYPE_FIELD) && provider?.code && data.length) {
           const defaultInstanceType =
-            DEFAULT_INSTANCE_TYPES[provider.code] || data[0].instanceTypeCode;
+            getDefaultInstanceType(provider.code, providerRuntimeConfigs) ??
+            data[0].instanceTypeCode;
           setValue(INSTANCE_TYPE_FIELD, defaultInstanceType, { shouldValidate: true });
         }
       }
@@ -66,10 +75,14 @@ export const InstanceTypeField: FC = () => {
   );
 
   useUpdateEffect(() => {
-    //Reset instance type after provider change
-    setValue(INSTANCE_TYPE_FIELD, null);
-    //refetch instances based on changed provider
-    refetch();
+    const getProviderRuntimeConfigs = async () => {
+      await providerConfigsRefetch();
+      //Reset instance type after provider change
+      setValue(INSTANCE_TYPE_FIELD, null);
+      //refetch instances based on changed provider
+      refetch();
+    };
+    getProviderRuntimeConfigs();
   }, [provider]);
 
   const instanceTypes = sortAndGroup(data, provider?.code);
