@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellLogsManager;
+import com.yugabyte.yw.common.SnapshotCleanup;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -90,6 +91,7 @@ public class AppInit {
       NodeAgentPoller nodeAgentPoller,
       YbcUpgrade ybcUpgrade,
       RecommendationGarbageCollector perfRecGC,
+      SnapshotCleanup snapshotCleanup,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
@@ -187,6 +189,9 @@ public class AppInit {
 
       // Schedule garbage collection of backups
       backupGC.start();
+
+      // Cleanup orphan snapshots
+      snapshotCleanup.deleteOrphanSnapshots();
 
       perfAdvisorScheduler.start();
 
