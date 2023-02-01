@@ -7,8 +7,8 @@ import com.google.api.client.util.Strings;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -31,6 +31,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import play.data.validation.Constraints;
@@ -613,17 +614,12 @@ public class CustomerTask extends Model {
     th.targetName = targetName;
     th.createTime = new Date();
     th.customTypeName = customTypeName;
-    if (Context.current.get() == null) {
+    String emailFromContext = Util.maybeGetEmailFromContext(Context.current.get());
+    if (emailFromContext.equals("Unknown")) {
       // When task is not created as a part of user action get email of the scheduler.
-      Schedule taskSchedule =
-          Schedule.getAllActive().stream().filter(Schedule::getRunningState).findAny().orElse(null);
-      if (taskSchedule != null) {
-        th.userEmail = taskSchedule.getUserEmail();
-      } else {
-        th.userEmail = "Unknown";
-      }
+      th.userEmail = maybeGetEmailFromSchedule();
     } else {
-      th.userEmail = ((UserWithFeatures) Context.current().args.get("user")).getUser().getEmail();
+      th.userEmail = emailFromContext;
     }
     String correlationId = (String) MDC.get(LogUtil.CORRELATION_ID);
     if (!Strings.isNullOrEmpty(correlationId)) th.correlationId = correlationId;
@@ -751,5 +747,14 @@ public class CustomerTask extends Model {
     } else {
       return getTargetName();
     }
+  }
+
+  private static String maybeGetEmailFromSchedule() {
+    return Schedule.getAllActive()
+        .stream()
+        .filter(Schedule::getRunningState)
+        .findAny()
+        .map(Schedule::getUserEmail)
+        .orElse("Unknown");
   }
 }

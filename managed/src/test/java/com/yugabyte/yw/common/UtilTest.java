@@ -22,6 +22,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
@@ -42,6 +43,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import play.mvc.Http.Context;
 
 @RunWith(JUnitParamsRunner.class)
 public class UtilTest extends FakeDBApplication {
@@ -440,5 +442,27 @@ public class UtilTest extends FakeDBApplication {
   })
   public void testBase36hash(String output, String input) {
     assertEquals(output, Util.base36hash(input));
+  }
+
+  @Test
+  public void testMaybeGetEmailFromContext() {
+    Customer defaultCustomer = ModelFactory.testCustomer();
+    Users defaultUser = ModelFactory.testUser(defaultCustomer);
+    // Case 1: Happy path
+    TestUtils.setFakeHttpContext(defaultUser, "sg@yftt.com");
+    String userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    assertEquals(userEmail, "sg@yftt.com");
+    // Case 2: getUser is null
+    TestUtils.setFakeHttpContext(null, "ok@g.com");
+    userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    assertEquals(userEmail, "Unknown");
+    // Case 3: getEmail is null
+    TestUtils.setFakeHttpContext(defaultUser, null);
+    userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    assertEquals(userEmail, "Unknown");
+    // Case 4: empty
+    TestUtils.setFakeHttpContext(defaultUser, "");
+    userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    assertEquals(userEmail, "");
   }
 }

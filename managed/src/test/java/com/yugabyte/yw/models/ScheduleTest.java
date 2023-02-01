@@ -5,23 +5,17 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.Schedule.State.Active;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.mockito.Mockito.mock;
-import static play.test.Helpers.contextComponents;
 
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
-import play.mvc.Http;
 
 public class ScheduleTest extends FakeDBApplication {
   private Customer defaultCustomer;
@@ -34,16 +28,7 @@ public class ScheduleTest extends FakeDBApplication {
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST27");
     defaultUser = ModelFactory.testUser(defaultCustomer);
     // Set http context
-    Map<String, String> flashData = Collections.emptyMap();
-    defaultUser.email = "shagarwal@yugabyte.com";
-    Map<String, Object> argData =
-        ImmutableMap.of("user", new UserWithFeatures().setUser(defaultUser));
-    Http.Request request = mock(Http.Request.class);
-    Long id = 2L;
-    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    Http.Context currentContext =
-        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-    Http.Context.current.set(currentContext);
+    TestUtils.setFakeHttpContext(defaultUser);
   }
 
   @Test
