@@ -258,7 +258,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
         if (processType == ServerType.MASTER && context.reconfigureMaster && activeRole) {
           createWaitForMasterLeaderTask().setSubTaskGroupType(subGroupType);
-          createChangeConfigTask(node, false /* isAdd */, subGroupType, true /* useHostPort */);
+          createChangeConfigTask(node, false /* isAdd */, subGroupType);
         }
       }
       if (!context.runBeforeStopping) {

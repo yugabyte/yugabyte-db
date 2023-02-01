@@ -18,7 +18,6 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
-
 import javax.inject.Inject;
 import play.libs.Json;
 

@@ -112,11 +112,7 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       if (currentNode.isMaster) {
-        createChangeConfigTask(
-            currentNode,
-            false /* isAdd */,
-            SubTaskGroupType.ConfigureUniverse,
-            true /* useHostPort */);
+        createChangeConfigTask(currentNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
 
         // Stop the master process on this node. Stop it only after master config change
         // to give the process time to clean up master state.
