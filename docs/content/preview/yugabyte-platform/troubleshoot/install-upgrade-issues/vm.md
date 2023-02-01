@@ -27,15 +27,13 @@ type: docs
 
 </ul>
 
-Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on a virtual machine. You can troubleshoot most of these issues.
+Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on a virtual machine. Most of these issues are related to connections.
 
 If you experience difficulties while troubleshooting, contact [Yugabyte Support](https://support.yugabyte.com).
 
-## Firewall managed by firewalld is enabled for host
+## Docker Engine connection to host issues
 
-If your YugabyteDB Anywhere host has a firewall managed by firewalld enabled, then Docker Engine might not be able to connect to the host. 
-
-To open the ports using firewall exceptions, execute the following command:
+If your YugabyteDB Anywhere host has a firewall managed by firewalld enabled, then Docker Engine might not be able to connect to the host. To resolve the issue, you can open the ports using firewall exceptions by using the following commands:
 
 ```sh
 sudo firewall-cmd --zone=trusted --add-interface=docker0
@@ -51,9 +49,9 @@ sudo firewall-cmd --zone=public --add-port=9880/tcp
 sudo firewall-cmd --zone=public --add-port=9874-9879/tcp
 ```
 
-## Mount paths on the nodes
+## Node access issues
 
-You can create mount paths on the nodes with private IP addresses `10.1.13.150`, `10.1.13.151`, and `10.1.13.152` by executing the following command:
+The node access might not be available due to IP addresses that cannot be resolved. To remedy the situation, you can create mount paths on the nodes with private IP addresses `10.1.13.150`, `10.1.13.151`, and `10.1.13.152` by executing the following command:
 
 ```sh
 for IP in 10.1.12.103 10.1.12.104 10.1.12.105;
@@ -62,9 +60,9 @@ do
 done
 ```
 
-## Firewall is enabled for nodes
+## Node connection issues
 
-You can add firewall exceptions on the nodes with private IP addresses `10.1.13.150`, `10.1.13.151`, and `10.1.13.152` by executing the following command:
+If a firewall is enabled for nodes, it might interfere with node connections. To resolve the issue, you can add firewall exceptions on the nodes with private IP addresses `10.1.13.150`, `10.1.13.151`, and `10.1.13.152` by executing the following command:
 
 ```sh
 for IP in 10.1.12.103 10.1.12.104 10.1.12.105;

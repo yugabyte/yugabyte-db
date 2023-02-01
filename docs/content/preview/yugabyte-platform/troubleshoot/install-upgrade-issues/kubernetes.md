@@ -231,7 +231,7 @@ Events:
 
 **Resolution**
 
-- To resolve the Bad pull secret, No pull secret, Bad pull secret name errors, enable the pull secret to fetch the images from YugabyteDB Quay.io registry and ensure that you have applied the same in the namespace that will be used to install YugabyteDB Anywhere. By default, the search for a secret with name `yugabyte-k8s-pull-secret` is performed. For more information, see [values.yaml](https://github.com/yugabyte/charts/blob/24a8dcf3a4c33153477e3e3ba82f9f4b6e2967a5/stable/yugaware/values.yaml#L16).
+- To resolve the Bad pull secret, No pull secret, Bad pull secret name errors, enable the pull secret to fetch the images from the YugabyteDB Quay.io registry and ensure that you have applied the same in the namespace that will be used to install YugabyteDB Anywhere. By default, search for a secret with name `yugabyte-k8s-pull-secret` is performed. For more information, see [values.yaml](https://github.com/yugabyte/charts/blob/24a8dcf3a4c33153477e3e3ba82f9f4b6e2967a5/stable/yugaware/values.yaml#L16).
 - To resolve the Unable to pull image error, ensure that the Kubernetes nodes can connect to Quay.io or you have images in the local registry. For more information, see [Pull and push yugabytedb docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 
 
@@ -345,7 +345,7 @@ Specify correct domain names during the Helm installation or upgrade, as per ins
 
 ### PVC expansion error
 
-This error manifests itself in inability to expand the PVC via the `helm upgrade` command. The error message should look similar to the following:
+This error manifests itself in an inability to expand the PVC via the `helm upgrade` command. The error message should look similar to the following:
 
 ```output
 Error: UPGRADE FAILED: cannot patch "yw-test-yugaware-storage" with kind PersistentVolumeClaim: persistentvolumeclaims "yw-test-yugaware-storage" is forbidden: only dynamically provisioned pvc can be resized and the storageclass that provisions the pvc must support resize
