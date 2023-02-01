@@ -618,7 +618,7 @@ class PgApiImpl {
   Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
                                   uint64_t** backfill_statuses);
 
-  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
+  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version, bool should_use_cache);
   void StopSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
