@@ -14,8 +14,8 @@ import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
 import com.yugabyte.yw.commissioner.RecommendationGarbageCollector;
-import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
@@ -24,7 +24,6 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellLogsManager;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -98,34 +97,6 @@ public class AppInit {
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
 
-    String version = ConfigHelper.getCurrentVersion(application);
-
-    String previousSoftwareVersion =
-        configHelper
-            .getConfig(ConfigHelper.ConfigType.YugawareMetadata)
-            .getOrDefault("version", "")
-            .toString();
-
-    boolean isPlatformDowngradeAllowed =
-        application.configuration().getBoolean("yb.is_platform_downgrade_allowed");
-
-    if (Util.compareYbVersions(previousSoftwareVersion, version, true) > 0
-        && !isPlatformDowngradeAllowed) {
-
-      String msg =
-          String.format(
-              "Platform does not support version downgrades, %s"
-                  + " has downgraded to %s. Shutting down. To override this check"
-                  + " (not recommended) and continue startup,"
-                  + " set the application config setting yb.is_platform_downgrade_allowed"
-                  + "or the environment variable"
-                  + " YB_IS_PLATFORM_DOWNGRADE_ALLOWED to true."
-                  + " Otherwise, upgrade your YBA version back to or above %s to proceed.",
-              previousSoftwareVersion, version, previousSoftwareVersion);
-
-      throw new RuntimeException(msg);
-    }
-
     if (!environment.isTest()) {
       // Check if we have provider data, if not, we need to seed the database
       if (Customer.find.query().where().findCount() == 0
@@ -141,20 +112,16 @@ public class AppInit {
       }
 
       boolean ywFileDataSynced =
-          Boolean.valueOf(
+          Boolean.parseBoolean(
               configHelper
                   .getConfig(ConfigHelper.ConfigType.FileDataSync)
                   .getOrDefault("synced", "false")
                   .toString());
-
-      if (!ywFileDataSynced) {
-        String storagePath = appConfig.getString("yb.storage.path");
-        configHelper.syncFileData(storagePath, false);
-      }
+      String storagePath = appConfig.getString("yb.storage.path");
+      configHelper.syncFileData(storagePath, ywFileDataSynced);
 
       if (mode.equals("PLATFORM")) {
         String devopsHome = appConfig.getString("yb.devops.home");
-        String storagePath = appConfig.getString("yb.storage.path");
         if (devopsHome == null || devopsHome.length() == 0) {
           throw new RuntimeException("yb.devops.home is not set in application.conf");
         }
@@ -245,7 +212,7 @@ public class AppInit {
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
 
-      Long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
+      long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
       String elapsedStr = String.valueOf(elapsed);
       if (elapsed > MAX_APP_INITIALIZATION_TIME) {
         Logger.warn("Completed initialization in " + elapsedStr + " seconds.");

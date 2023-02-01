@@ -34,17 +34,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "To log backup restore script output for debugging issues",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO: Use Enum type SkipCertValidationType
-  // I traced this to be Using Universe scope
-  public static final ConfKeyInfo<String> tlsSkipCertValidation =
-      new ConfKeyInfo<>(
-          "yb.tls.skip_cert_validation",
-          ScopeType.GLOBAL,
-          "Skip TLS Cert Validation",
-          "Used to skip certificates validation for the configure phase."
-              + "Possible values - ALL, HOSTNAME",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useKubectl =
       new ConfKeyInfo<>(
           "yb.use_kubectl",
@@ -432,21 +421,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable detailed security logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO:Subham
   public static ConfKeyInfo<Boolean> supressError =
       new ConfKeyInfo<>(
           "yb.fs_stateless.suppress_error",
           ScopeType.GLOBAL,
           "Supress Error",
-          "TODO",
+          "If set, suppresses exceptions to be thrown as part of FS <-> DB sync on YBA startup",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Long> maxFileSizeBytes =
       new ConfKeyInfo<>(
           "yb.fs_stateless.max_file_size_bytes",
           ScopeType.GLOBAL,
-          "Max File Size ",
-          "TODO",
+          "Max File Size",
+          "Maximum size of file that can be persisted in DB",
           ConfDataType.BytesType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Integer> maxFilesCountPersist =
@@ -454,8 +442,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.fs_stateless.max_files_count_persist",
           ScopeType.GLOBAL,
           "Max Files Persist",
-          "TODO",
+          "Maximum number of files that can be persisted in DB",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static ConfKeyInfo<Boolean> syncDBStateToFS =
+      new ConfKeyInfo<>(
+          "yb.fs_stateless.sync_db_to_fs_startup",
+          ScopeType.GLOBAL,
+          "Sync DB State to FS",
+          "If enabled syncs the files in DB to FS on every YBA startup",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Duration> taskGcCheckInterval =
       new ConfKeyInfo<>(

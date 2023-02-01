@@ -165,11 +165,15 @@ public class ConfigHelper {
     YugawareProperty.addConfigProperty(type.toString(), Json.toJson(config), type.getDescription());
   }
 
-  public void syncFileData(String storagePath, Boolean syncDataToDisk) {
+  public void syncFileData(String storagePath, Boolean ywFileDataSynced) {
     Boolean suppressExceptionsDuringSync =
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.fs_stateless.suppress_error");
     int fileCountThreshold =
         runtimeConfigFactory.globalRuntimeConf().getInt("yb.fs_stateless.max_files_count_persist");
+    Boolean syncDBStateToFS =
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getBoolean("yb.fs_stateless.sync_db_to_fs_startup");
     try {
       Collection<File> diskFiles = Collections.emptyList();
       List<FileData> dbFiles = FileData.getAll();
@@ -196,7 +200,7 @@ public class ConfigHelper {
       Set<String> filesInDB =
           fileDataNames.stream().map(FileData::getRelativePath).collect(Collectors.toSet());
 
-      if (!syncDataToDisk) {
+      if (!ywFileDataSynced) {
         Set<String> fileOnlyOnDisk = Sets.difference(filesOnDisk, filesInDB);
         if (currentFileCountDB + fileOnlyOnDisk.size() > fileCountThreshold) {
           // We fail in case the count exceeds the threshold.
@@ -214,7 +218,7 @@ public class ConfigHelper {
         LOG.info("Successfully Written " + fileOnlyOnDisk.size() + " files to DB.");
       }
 
-      if (syncDataToDisk) {
+      if (syncDBStateToFS) {
         Set<String> fileOnlyInDB = Sets.difference(filesInDB, filesOnDisk);
         // For all files only in the DB, write them to disk.
         for (String file : fileOnlyInDB) {
@@ -224,9 +228,11 @@ public class ConfigHelper {
         LOG.info("Successfully Written " + fileOnlyInDB.size() + " files to disk.");
       }
 
-      Map<String, Object> ywFileDataSync = new HashMap<>();
-      ywFileDataSync.put("synced", "true");
-      loadConfigToDB(ConfigType.FileDataSync, ywFileDataSync);
+      if (!ywFileDataSynced) {
+        Map<String, Object> ywFileDataSync = new HashMap<>();
+        ywFileDataSync.put("synced", "true");
+        loadConfigToDB(ConfigType.FileDataSync, ywFileDataSync);
+      }
     } catch (Exception e) {
       if (suppressExceptionsDuringSync) {
         LOG.error(e.getMessage());

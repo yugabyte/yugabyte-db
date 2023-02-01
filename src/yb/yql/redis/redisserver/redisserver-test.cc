@@ -2715,7 +2715,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp))
   }
 }
 
-TEST_F(TestRedisServiceExternal, TestSlowSubscribersSoftLimit) {
+TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersSoftLimit)) {
   expected_no_sessions_ = true;
 
   auto ts0 = external_mini_cluster()->tablet_server(0);

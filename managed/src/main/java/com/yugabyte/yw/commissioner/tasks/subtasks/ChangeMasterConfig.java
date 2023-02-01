@@ -163,7 +163,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     }
   }
 
-  private boolean isChangeMasterConfigDone(
+  public static boolean isChangeMasterConfigDone(
       YBClient client, NodeDetails node, boolean isAddMasterOp, String ipToUse) {
     try {
       ListMastersResponse response = client.listMasters();

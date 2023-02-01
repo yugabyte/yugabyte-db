@@ -73,6 +73,10 @@ DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "only be turned on after pg_yb_catalog_version is upgraded to one row per "
                  "database.");
 
+DEFINE_RUNTIME_uint32(external_transaction_retention_window_secs, 60 * 60 * 24,
+                      "Retention window on both the coordinator and participant for uncommitted "
+                      "transactions from a producer.");
+
 namespace yb {
 
 static int GetYCQLNumShardsPerTServer() {

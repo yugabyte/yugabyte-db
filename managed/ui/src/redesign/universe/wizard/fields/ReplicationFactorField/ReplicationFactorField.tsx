@@ -2,7 +2,6 @@ import React, { FC } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
 import { ReplicationFactor } from './ReplicationFactor';
 import { CloudConfigFormValue } from '../../steps/cloud/CloudConfig';
-import { ControllerRenderProps } from '../../../../helpers/types';
 
 interface ReplicationFactorFieldProps {
   disabled: boolean;
@@ -17,7 +16,7 @@ export const ReplicationFactorField: FC<ReplicationFactorFieldProps> = ({ disabl
     <Controller
       control={control}
       name="replicationFactor"
-      render={({ value, onChange }: ControllerRenderProps<number>) => (
+      render={({ field: { value, onChange } }) => (
         <ReplicationFactor
           value={value}
           onChange={onChange}

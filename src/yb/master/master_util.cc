@@ -34,6 +34,18 @@
 #include "yb/util/string_util.h"
 
 namespace yb {
+
+const char* DatabasePrefix(YQLDatabase db) {
+  switch(db) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
+    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
+    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
+  }
+  CHECK(false) << "Unexpected db type " << db;
+  return kDBTypePrefixUnknown;
+}
+
 namespace master {
 
 namespace {

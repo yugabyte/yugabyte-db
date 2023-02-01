@@ -134,7 +134,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       table_type(table_type),
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
-      doc_read_context(std::make_unique<docdb::DocReadContext>(log_prefix, schema, schema_version)),
+      doc_read_context(std::make_shared<docdb::DocReadContext>(log_prefix, schema, schema_version)),
       index_map(std::make_unique<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -153,9 +153,9 @@ TableInfo::TableInfo(const TableInfo& other,
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
       doc_read_context(schema_version != other.schema_version
-          ? std::make_unique<docdb::DocReadContext>(
+          ? std::make_shared<docdb::DocReadContext>(
               *other.doc_read_context, schema, schema_version)
-          : std::make_unique<docdb::DocReadContext>(*other.doc_read_context)),
+          : std::make_shared<docdb::DocReadContext>(*other.doc_read_context)),
       index_map(std::make_unique<IndexMap>(index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
@@ -171,7 +171,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       table_type(other.table_type),
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
-      doc_read_context(std::make_unique<docdb::DocReadContext>(
+      doc_read_context(std::make_shared<docdb::DocReadContext>(
           *other.doc_read_context, std::min(min_schema_version, other.schema_version))),
       index_map(std::make_unique<IndexMap>(*other.index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
@@ -1533,7 +1533,8 @@ SchemaPtr RaftGroupMetadata::schema(
     const TableId& table_id, const ColocationId& colocation_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id, colocation_id));
-  return SchemaPtr(table_info, &table_info->doc_read_context->schema);
+  const docdb::DocReadContextPtr doc_read_context = table_info->doc_read_context;
+  return SchemaPtr(doc_read_context, &doc_read_context->schema);
 }
 
 std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) const {

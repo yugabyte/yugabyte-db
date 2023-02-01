@@ -3,7 +3,6 @@ title: Replicate across regions
 linkTitle: Replicate across regions
 description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
 headcontent: Deploy region-level fault tolerant clusters
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-multisync

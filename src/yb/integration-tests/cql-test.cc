@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/client/client_master_rpc.h"
 #include "yb/client/table_info.h"
 
 #include "yb/consensus/raft_consensus.h"
@@ -19,7 +20,9 @@
 
 #include "yb/integration-tests/cql_test_base.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/master_ddl.proxy.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -723,7 +726,7 @@ void CqlTest::TestAlteredPrepareWithPaging(bool check_schema_in_paging,
   LOG(INFO) << "Client-1: Execute-2 prepared (for version 0 - 2 columns)";
   if (check_schema_in_paging) {
     Status s = session.Execute(stmt);
-    LOG(INFO) << "Expcted error: " << s;
+    LOG(INFO) << "Expected error: " << s;
     ASSERT_TRUE(s.IsQLError());
     ASSERT_NE(s.message().ToBuffer().find(
         "Wrong Metadata Version: Table has been altered. Execute the query again. "
@@ -786,7 +789,7 @@ void CqlTest::TestPrepareWithDropTableWithPaging() {
 
   LOG(INFO) << "Client-1: Execute-2 prepared (continue for deleted table)";
   Status s = session.Execute(stmt);
-  LOG(INFO) << "Expcted error: " << s;
+  LOG(INFO) << "Expected error: " << s;
   ASSERT_TRUE(s.IsServiceUnavailable());
   ASSERT_NE(s.message().ToBuffer().find(
       "All hosts in current policy attempted and were either unavailable or failed"),
@@ -795,7 +798,7 @@ void CqlTest::TestPrepareWithDropTableWithPaging() {
   LOG(INFO) << "Client-1: Prepare (for deleted table)";
   auto prepare_res = session.Prepare(select_stmt);
   ASSERT_FALSE(prepare_res.ok());
-  LOG(INFO) << "Expcted error: " << prepare_res.status();
+  LOG(INFO) << "Expected error: " << prepare_res.status();
   ASSERT_TRUE(prepare_res.status().IsQLError());
   ASSERT_NE(prepare_res.status().message().ToBuffer().find(
       "Object Not Found"), std::string::npos) << prepare_res.status();
@@ -803,7 +806,7 @@ void CqlTest::TestPrepareWithDropTableWithPaging() {
   LOG(INFO) << "Client-2: Prepare (for deleted table)";
   prepare_res = session2.Prepare(select_stmt);
   ASSERT_FALSE(prepare_res.ok());
-  LOG(INFO) << "Expcted error: " << prepare_res.status();
+  LOG(INFO) << "Expected error: " << prepare_res.status();
   ASSERT_TRUE(prepare_res.status().IsQLError());
   ASSERT_NE(prepare_res.status().message().ToBuffer().find(
       "Object Not Found"), std::string::npos) << prepare_res.status();
@@ -937,6 +940,147 @@ TEST_F(CqlTest, SelectAggregateFunctions) {
                 "20,100,1050,2000,21000");
     }
   }
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, CheckStateAfterDrop) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto cql = [&](const string query) { ASSERT_OK(session.ExecuteQuery(query)); };
+
+  cql("create table tbl (h1 int primary key, c1 int, c2 int, c3 int, c4 int, c5 int) "
+      "with transactions = {'enabled' : true}");
+  for (int j = 1; j <= 20; ++j) {
+    cql(Format("insert into tbl (h1, c1, c2, c3, c4, c5) VALUES ($0, $0, $0, $0, $0, $0)", j));
+  }
+
+  const int num_indexes = 5;
+  // Initiate the Index Backfilling.
+  for (int i = 1; i <= num_indexes; ++i) {
+    cql(Format("create index i$0 on tbl (c$0)", i));
+  }
+
+  // Wait here for the creation end.
+  // Note: in JAVA tests we have 'waitForReadPermsOnAllIndexes' for the same.
+  const YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
+  for (int i = 1; i <= num_indexes; ++i) {
+    const TableName name = Format("i$0", i);
+    const client::YBTableName index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, name);
+    ASSERT_OK(LoggedWaitFor(
+        [this, table_name, index_name]() {
+          auto result = client_->WaitUntilIndexPermissionsAtLeast(
+              table_name, index_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+          return result.ok() && *result == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+        },
+        90s,
+        "wait for create index '" + name + "' to complete",
+        12s));
+  }
+
+  class CheckHelper {
+    master::CatalogManager& catalog_manager;
+   public:
+    explicit CheckHelper(MiniCluster* cluster) : catalog_manager(CHECK_NOTNULL(EXPECT_RESULT(
+        CHECK_NOTNULL(cluster)->GetLeaderMiniMaster()))->catalog_manager_impl()) {}
+
+    Result<bool> IsDeleteDone(const TableId& table_id) {
+      master::IsDeleteTableDoneRequestPB req;
+      master::IsDeleteTableDoneResponsePB resp;
+      req.set_table_id(table_id);
+      const Status s = catalog_manager.IsDeleteTableDone(&req, &resp);
+      LOG(INFO) << "IsDeleteTableDone response for [id=" << table_id << "]: " << resp.DebugString();
+      if (!s.ok()) {
+        return client::internal::StatusFromResp(resp);
+      }
+      return resp.done();
+    }
+
+    // Check State for all listed running & deleted tables.
+    // Return TRUE if all deleted tables are in DELETED state, else return FALSE for waiting.
+    Result<bool> AreTablesDeleted(const std::vector<string>& running,
+                                  const std::vector<string>& deleted,
+                                  bool retry = true) {
+      using master::SysTablesEntryPB;
+
+      master::ListTablesRequestPB req;
+      master::ListTablesResponsePB resp;
+      req.set_include_not_running(true);
+      req.set_exclude_system_tables(true);
+      // Get all user tables.
+      RETURN_NOT_OK(catalog_manager.ListTables(&req, &resp));
+      LOG(INFO) << "ListTables returned " << resp.tables().size() << " tables";
+
+      // Check RUNNNING tables.
+      for (const string& name : running) {
+        for (const auto& table : resp.tables()) {
+          if (table.name() == name) {
+            LOG(INFO) << "Running '" << table.name() << "' [id=" << table.id() << "] state: "
+                      << SysTablesEntryPB_State_Name(table.state());
+            SCHECK(table.state() == SysTablesEntryPB::RUNNING ||
+                   table.state() == SysTablesEntryPB::ALTERING, IllegalState,
+                   Format("Bad running table state: $0",
+                       SysTablesEntryPB_State_Name(table.state())));
+          }
+        }
+      }
+
+      // Check DELETED tables.
+      bool all_deleted = true;
+      for (const string& name : deleted) {
+        for (const auto& table : resp.tables()) {
+          if (table.name() == name) {
+            LOG(INFO) << "Deleted '" << table.name() << "' [id=" << table.id() << "] state: "
+                      << SysTablesEntryPB_State_Name(table.state());
+            SCHECK(table.state() == SysTablesEntryPB::DELETING ||
+                   table.state() == SysTablesEntryPB::DELETED, IllegalState,
+                   Format("Bad deleted table state: $0",
+                       SysTablesEntryPB_State_Name(table.state())));
+            const bool deleted_state = (table.state() == master::SysTablesEntryPB::DELETED);
+            all_deleted = all_deleted && deleted_state;
+
+            const bool done = VERIFY_RESULT(IsDeleteDone(table.id()));
+            if (retry) {
+              if (done != deleted_state) {
+                // Handle race betrween first ListTables() and this IsDeleteTableDone() calls.
+                LOG(INFO) << "Found difference between ListTables & IsDeleteTableDone - retry...";
+                return AreTablesDeleted(running, deleted, false);
+              }
+            } else {
+              SCHECK(done == deleted_state, IllegalState,
+                     Format("Incorrect 'done' value: $0, state is $1",
+                         done, SysTablesEntryPB_State_Name(table.state())));
+            }
+          }
+        }
+      }
+
+      return all_deleted;
+    }
+  } check(cluster_.get());
+
+  const TableId table_id = ASSERT_RESULT(client::GetTableId(client_.get(), table_name));
+
+  // IsDeleteTableDone() for RUNNING table should fail.
+  Result<bool> res_done = check.IsDeleteDone(table_id);
+  ASSERT_NOK(res_done);
+  LOG(INFO) << "Expected error: " << res_done.status();
+  // Error example: MasterErrorPB::OBJECT_NOT_FOUND:
+  //     IllegalState: The object was NOT deleted: Current schema version=17
+  ASSERT_EQ(master::MasterError(res_done.status()), master::MasterErrorPB::OBJECT_NOT_FOUND);
+  ASSERT_TRUE(res_done.status().IsIllegalState());
+  ASSERT_STR_CONTAINS(res_done.status().message().ToBuffer(), "The object was NOT deleted");
+
+  ASSERT_TRUE(ASSERT_RESULT(check.AreTablesDeleted({"tbl", "i1", "i2"}, {})));
+
+  cql("drop index i1");
+  ASSERT_OK(Wait([&check]() -> Result<bool> {
+    return check.AreTablesDeleted({"tbl", "i2"}, {"i1"});
+  }, CoarseMonoClock::now() + 30s, "Deleted index cleanup"));
+
+  cql("drop table tbl");
+  ASSERT_OK(Wait([&check]() -> Result<bool> {
+    return check.AreTablesDeleted({}, {"tbl", "i1", "i2"});
+  }, CoarseMonoClock::now() + 30s, "Deleted table cleanup"));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

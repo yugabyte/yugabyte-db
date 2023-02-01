@@ -677,7 +677,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertValue(filters, "namespace", "demo");
     if (helmNewNamingStyle) {
-      assertValue(filters, "pod_name", "demo-(.*)-yb-tserver-(.*)");
+      assertValue(filters, "pod_name", "ybdemo-jjk0-yb-tserver-(.*)");
     } else {
       assertNull(filters.get("pod_name"));
     }

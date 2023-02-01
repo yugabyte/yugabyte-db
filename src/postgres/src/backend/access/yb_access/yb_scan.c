@@ -2071,7 +2071,7 @@ ybc_keys_match(HeapTuple tup, YbScanDesc ybScan, bool *recheck)
 
 HeapTuple
 ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan,
-								bool *recheck)
+					  bool *recheck)
 {
 	HeapTuple   tup      = NULL;
 

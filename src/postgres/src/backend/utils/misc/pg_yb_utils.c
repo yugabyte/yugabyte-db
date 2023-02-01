@@ -1024,7 +1024,7 @@ bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
-bool yb_bypass_cond_recheck = false;
+bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
@@ -1042,7 +1042,7 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
-char *yb_test_block_index_state_change = "";
+char *yb_test_block_index_phase = "";
 
 const char*
 YBDatumToString(Datum datum, Oid typid)

@@ -17,61 +17,8 @@ This page documents known issues you may encounter and suggested workarounds whe
 
 ## Contents
 
-- [Partition key column not part of primary key columns](#partition-key-column-not-part-of-primary-key-columns)
 - [Tables partitioned with expressions cannot contain primary/unique keys](#tables-partitioned-with-expressions-cannot-contain-primary-unique-keys)
 - [Multi-column partition by list is not supported](#multi-column-partition-by-list-is-not-supported)
-
-### Partition key column not part of primary key columns
-
-**GitHub**: [Issue #578](https://github.com/yugabyte/yb-voyager/issues/578)
-
-**Description**:  In YugabyteDB, if a table is partitioned on a column, then that column needs to be a part of the primary key columns. Creating a table where the partition key column is not part of the primary key columns results in an error.
-
-**Workaround**: Add all partition columns to the primary key columns.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE employees (
-    employee_id integer NOT NULL,
-    first_name varchar(20),
-    last_name varchar(25),
-    email varchar(25),
-    phone_number varchar(20),
-    hire_date timestamp DEFAULT statement_timestamp(),
-    job_id varchar(10),
-    salary double precision,
-    part_name varchar(25),
-    PRIMARY KEY (employee_id)) PARTITION BY RANGE (hire_date) ;
-```
-
-The preceding example will result in an error as follows:
-
-```output
-ERROR:  insufficient columns in the PRIMARY KEY constraint definition
-DETAIL:  PRIMARY KEY constraint on table "employees" lacks column "hire_date" which is part of the partition key.
-```
-
-An example table with the suggested workaround is as follows:
-
-```sql
-CREATE TABLE employees (
-    employee_id integer NOT NULL,
-    first_name varchar(20),
-    last_name varchar(25),
-    email varchar(25),
-    phone_number varchar(20),
-    hire_date timestamp DEFAULT statement_timestamp(),
-    job_id varchar(10),
-    salary double precision,
-    part_name varchar(25),
-    PRIMARY KEY (employee_id, hire_date)
-) PARTITION BY RANGE (hire_date) ;
-```
-
----
 
 ### Tables partitioned with expressions cannot contain primary/unique keys
 

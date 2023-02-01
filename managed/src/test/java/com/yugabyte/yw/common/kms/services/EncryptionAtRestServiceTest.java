@@ -109,18 +109,18 @@ public class EncryptionAtRestServiceTest extends FakeDBApplication {
 
   @Test
   public void testGetServiceNotImplemented() {
-    assertNull(new EncryptionAtRestManager().getServiceInstance("UNSUPPORTED"));
+    assertNull(new EncryptionAtRestManager(null).getServiceInstance("UNSUPPORTED"));
   }
 
   @Test
   public void testGetServiceNewInstance() {
-    assertNotNull(new EncryptionAtRestManager().getServiceInstance("SMARTKEY"));
+    assertNotNull(new EncryptionAtRestManager(null).getServiceInstance("SMARTKEY"));
   }
 
   @Test
   public void testGetServiceSingleton() {
     EncryptionAtRestService newService =
-        new EncryptionAtRestManager().getServiceInstance("SMARTKEY");
+        new EncryptionAtRestManager(null).getServiceInstance("SMARTKEY");
     assertEquals(KeyProvider.SMARTKEY.getServiceInstance().hashCode(), newService.hashCode());
   }
 

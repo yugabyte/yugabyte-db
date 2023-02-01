@@ -158,7 +158,8 @@ public class SmartKeyEARServiceTest extends FakeDBApplication {
     boolean createRequest;
 
     TestEncryptionAtRestService(boolean createRequest) {
-      super();
+      // confGetter is not used in parent class, so we can pass null.
+      super(null);
       this.createRequest = createRequest;
     }
 

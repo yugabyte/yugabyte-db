@@ -20,12 +20,15 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -40,16 +43,20 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -258,6 +265,19 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertEquals(customerTask.getTargetUUID(), configUUID);
     fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    // Set http context
+    Map<String, String> flashData = Collections.emptyMap();
+    defaultUser.email = "shagarwal@yugabyte.com";
+    Map<String, Object> argData =
+        ImmutableMap.of("user", new UserWithFeatures().setUser(defaultUser));
+    Http.Request request = mock(Http.Request.class);
+    Long id = 2L;
+    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
+    Http.Context currentContext =
+        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
+    Http.Context.current.set(currentContext);
+
     ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     result = FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken());
     assertOk(result);

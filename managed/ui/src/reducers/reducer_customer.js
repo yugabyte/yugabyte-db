@@ -399,9 +399,9 @@ export default function (state = INITIAL_STATE, action) {
     case FETCH_RUNTIME_CONFIGS_RESPONSE:
       return setPromiseResponse(state, 'runtimeConfigs', action);
     case FETCH_RUNTIME_CONFIGS_KEY_INFO:
-      return setLoadingState(state, 'runtimeConfigsKeyInfo', []);
+      return setLoadingState(state, 'runtimeConfigsKeyMetadata', []);
     case FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE:
-      return setPromiseResponse(state, 'runtimeConfigsKeyInfo', action);
+      return setPromiseResponse(state, 'runtimeConfigsKeyMetadata', action);
     case RESET_RUNTIME_CONFIGS:
       return setLoadingState(state, 'runtimeConfigs', []);
     case SET_RUNTIME_CONFIG:

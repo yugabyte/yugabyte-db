@@ -17,6 +17,14 @@
     _mount_logs_dir: "{{ _mount_points[0] }}/yb-data/{{ yb_process_type }}/logs"
   tags: always
 
+- name: Deleting files and directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items: "{{ delete_paths }}"
+  tags: always
+  when: delete_paths is defined
+
 - name: Setup | Create {{ yb_process_type }} logs directory
   file:
     path: "{{ _mount_logs_dir }}"

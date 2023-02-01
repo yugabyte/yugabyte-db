@@ -1015,7 +1015,7 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
         CatalogManagerUtil::NO_MATCH;
     for (const TabletId& tablet_id : drive_tablets) {
       const auto& placement_info = GetPlacementByTablet(tablet_id);
-      // TODO(bogdan): this should be augmented as well to allow dropping by one replica, if still
+      // TODO(#15853): this should be augmented as well to allow dropping by one replica, if still
       // leaving us with more than the minimum.
       //
       // If we have placement information, we want to only pick the tablet if it's moving to the
