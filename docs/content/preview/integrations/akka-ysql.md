@@ -299,8 +299,6 @@ You should see output similar to the following:
 successfully created account b2b51f94-b021-4fb8-ba33-219cd0aea3c1
 ```
 
-Note that it can take some time to view the output as all the keyspaces and tables that are required by Akka Persistence Cassandra are created for the first time.
-
 ### Verify the integration using ysqlsh
 
 Run [ysqlsh](../../admin/ysqlsh/) to connect to your database using the YSQL API as follows:
