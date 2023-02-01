@@ -482,6 +482,7 @@ build_deb(){
     sed -i "s:\. :${WORKDIR}/percona-pg-stat-monitor-${VERSION} :g" debian/rules
     dch -m -D "${OS_NAME}" --force-distribution -v "1:${VERSION}-${DEB_RELEASE}.${OS_NAME}" 'Update distribution'
     unset $(locale|cut -d= -f1)
+    pg_buildext updatecontrol
     dpkg-buildpackage -rfakeroot -us -uc -b
     mkdir -p $CURDIR/deb
     mkdir -p $WORKDIR/deb
