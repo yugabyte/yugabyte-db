@@ -77,7 +77,7 @@ For more information, see [Kubernetes: Specify a CPU request that is too big for
 
 **Resolution**
 
-- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Prerequisites](../../../install-yugabyte-platform/prerequisites/#kubernetes-based-installations)
+- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Prerequisites](../../../install-yugabyte-platform/prerequisites/#kubernetes-based-installations).
 - Modify the YugabyteDB Anywhere pods resources configuration. For more information, see [Modify resources](../../../install-yugabyte-platform/install-software/kubernetes/#modify-resources).
 
 ### Mismatch in node selector, affinity, taints, tolerations
@@ -158,7 +158,7 @@ You can obtain information related to storage classes, as follows:
 
 **Resolution**
 
-Since not setting `VolumeBindingMode` to `WaitForFirstConsumer` might result in the universe creating volume in a different zone than the selected zone, ensure that the `StorageClass` used during YugabyteDB Anywhere deployment has its `WaitForFirstConsumer` set to `VolumeBindingMode`. You can use the following command:
+Since not setting `VolumeBindingMode` to `WaitForFirstConsumer` might result in the universe creating the volume in a different zone than the selected zone, ensure that the `StorageClass` used during YugabyteDB Anywhere deployment has its `WaitForFirstConsumer` set to `VolumeBindingMode`. You can use the following command:
 
   ```sh
 kubectl get storageclass standard -ojson \
@@ -181,11 +181,11 @@ waiting for a volume to be created, either by external provisioner "ebs.csi.aws.
 
 **Resolution**
 
-Follow instructions provided in [Troubleshoot AWS EBS volumes](https://aws.amazon.com/premiumsupport/knowledge-center/eks-troubleshoot-ebs-volume-mounts/).
+Follow the instructions provided in [Troubleshoot AWS EBS volumes](https://aws.amazon.com/premiumsupport/knowledge-center/eks-troubleshoot-ebs-volume-mounts/).
 
 ## Pod failure to run
 
-In some cases, a scheduled pod fails to run and an errors are thrown.
+In some cases, a scheduled pod fails to run and errors are thrown.
 
 ### ImagePullBackOff and ErrImagePull errors
 
