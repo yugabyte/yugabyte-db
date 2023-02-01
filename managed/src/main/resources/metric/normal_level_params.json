@@ -1,6 +1,6 @@
 {
   "priority_regex": [
-    "rocksdb_(number_db_(next|seek|prev)",
+    "rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read",
     "|block_cache_(add|single_touch_add|multi_touch_add)",
     "|current_version_(sst_files_size|num_sst_files)",
     "|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)",

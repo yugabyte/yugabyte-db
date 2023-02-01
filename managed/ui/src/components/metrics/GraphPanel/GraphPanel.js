@@ -191,7 +191,8 @@ export const panelTypes = {
     metrics: [
       'ysql_server_rpc_per_second',
       'ysql_sql_latency',
-      'ysql_connections'
+      'ysql_connections',
+      'ysql_connections_per_sec'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
       // "ysql_server_rpc_p99"
     ]

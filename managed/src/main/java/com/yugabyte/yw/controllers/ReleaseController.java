@@ -9,6 +9,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -64,7 +65,11 @@ public class ReleaseController extends AuthenticatedController {
       ReleaseFormData formData =
           formFactory.getFormDataOrBadRequest(versionJson.getValue(), ReleaseFormData.class);
       formData.version = versionJson.getKey();
-      LOG.info("ReleaseController: Asked to add new release: {} ", formData.version);
+      if (!Util.isYbVersionFormatValid(formData.version)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Version %s is not valid", formData.version));
+      }
+      LOG.info("Asked to add new release: {} ", formData.version);
       versionDataList.add(formData);
     }
 

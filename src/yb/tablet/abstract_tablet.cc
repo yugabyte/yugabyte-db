@@ -97,7 +97,7 @@ Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
   docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
-  const auto doc_read_context = rpc::SharedField(table_info, table_info->doc_read_context.get());
+  const auto doc_read_context = table_info->doc_read_context;
   const auto index_doc_read_context = pgsql_read_request.has_index_request()
       ? GetDocReadContext(pgsql_read_request.index_request().table_id()) : nullptr;
 

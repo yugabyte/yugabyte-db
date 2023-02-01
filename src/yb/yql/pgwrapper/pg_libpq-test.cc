@@ -28,6 +28,7 @@
 #include <boost/lexical_cast.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
@@ -83,18 +84,18 @@ using master::GetTablegroupParentTableId;
 using master::GetColocationParentTableId;
 
 class PgLibPqTest : public LibPqTestBase {
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // Let colocated database related tests cover new Colocation GA implementation instead of legacy
-    // colocated database.
-    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
-  }
-
  protected:
   typedef std::function<Result<master::TabletLocationsPB>(client::YBClient* client,
                                                           std::string database_name,
                                                           PGConn* conn,
                                                           MonoDelta timeout)>
                                                           GetParentTableTabletLocation;
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Let colocated database related tests cover new Colocation GA implementation instead of legacy
+    // colocated database.
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
+  }
 
   void TestMultiBankAccount(IsolationLevel isolation, const bool colocation = false);
 
@@ -135,7 +136,20 @@ class PgLibPqTest : public LibPqTestBase {
 
   void TestLoadBalanceMultipleColocatedDB(
       GetParentTableTabletLocation getParentTableTabletLocation);
+
+  void TestTableColocationEnabledByDefault(
+      GetParentTableTabletLocation getParentTableTabletLocation);
 };
+
+static Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
+  return conn->FetchValue<PGOid>(
+      Format("SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
+}
+
+static Result<PgOid> GetTablegroupOid(PGConn* conn, const std::string& tablegroup_name) {
+  return conn->FetchValue<PGOid>(
+      Format("SELECT oid FROM pg_yb_tablegroup WHERE grpname = '$0'", tablegroup_name));
+}
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   auto conn = ASSERT_RESULT(Connect());
@@ -1151,8 +1165,7 @@ Result<TableGroupInfo> SelectTablegroup(
     client::YBClient* client, PGConn* conn, const std::string& database_name,
     const std::string& group_name) {
   TableGroupInfo group_info;
-  const auto database_oid = VERIFY_RESULT(conn->FetchValue<PGOid>(
-      Format("SELECT oid FROM pg_database WHERE datname=\'$0\'", database_name)));
+  const auto database_oid = VERIFY_RESULT(GetDatabaseOid(conn, database_name));
   group_info.oid = VERIFY_RESULT(conn->FetchValue<PGOid>(
       Format("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name)));
 
@@ -1345,15 +1358,16 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
 }
 
 class PgLibPqTableColocationEnabledByDefaultTest : public PgLibPqTest {
+ protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
     // Enable colocation by default on the cluster.
     options->extra_tserver_flags.push_back("--ysql_colocate_database_by_default=true");
   }
 };
 
-TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocationEnabledByDefault),
-    PgLibPqTableColocationEnabledByDefaultTest) {
+void PgLibPqTest::TestTableColocationEnabledByDefault(
+    GetParentTableTabletLocation getParentTableTabletLocation) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseNameColocatedByDefault = "test_db_colocated_by_default";
   const string kDatabaseNameColocatedExplicitly = "test_db_colocated_explicitly";
@@ -1367,16 +1381,16 @@ TEST_F_EX(
   // Database without specifying colocation value must be created with colocation = true.
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseNameColocatedByDefault));
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedByDefault));
-
-  // A parent table with one tablet should be created when the database is created.
-  auto colocated_tablet_locations = ASSERT_RESULT(
-      GetLegacyColocatedDBTabletLocations(client.get(), kDatabaseNameColocatedByDefault, nullptr,
-                                          30s));
-  auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
-  auto colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
-
   // Create a range partition table, the table should share the tablet with the parent table.
   ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+
+  // A parent table with one tablet should be created.
+  auto colocated_tablet_locations = ASSERT_RESULT(
+      getParentTableTabletLocation(client.get(), kDatabaseNameColocatedByDefault, &conn, 30s));
+  auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  auto colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+  ASSERT_TRUE(colocated_table->colocated());
+
   auto table_id =
       ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
@@ -1397,7 +1411,7 @@ TEST_F_EX(
   table_id = ASSERT_RESULT(
       GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo_non_colocated"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
-  for (auto& tablet : bar_tablets) {
+  for (auto& tablet : tablets) {
     ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
   }
 
@@ -1405,16 +1419,16 @@ TEST_F_EX(
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE DATABASE $0 WITH colocation = true", kDatabaseNameColocatedExplicitly));
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedExplicitly));
-
-  // A parent table with one tablet should be created when the database is created.
-  colocated_tablet_locations = ASSERT_RESULT(
-      GetLegacyColocatedDBTabletLocations(client.get(), kDatabaseNameColocatedExplicitly, nullptr,
-                                          30s));
-  colocated_tablet_id = colocated_tablet_locations.tablet_id();
-  colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
-
   // Create a range partition table, the table should share the tablet with the parent table.
   ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+
+  // A parent table with one tablet should be created.
+  colocated_tablet_locations = ASSERT_RESULT(
+      getParentTableTabletLocation(client.get(), kDatabaseNameColocatedExplicitly, &conn, 30s));
+  colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+  ASSERT_TRUE(colocated_table->colocated());
+
   table_id =
       ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedExplicitly,
       "foo"));
@@ -1441,6 +1455,12 @@ TEST_F_EX(
   for (auto& tablet : bar_tablets) {
     ASSERT_NE(tablet.tablet_id(), foo_tablets[0].tablet_id());
   }
+}
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocationEnabledByDefault),
+    PgLibPqTableColocationEnabledByDefaultTest) {
+  TestTableColocationEnabledByDefault(GetColocatedDbDefaultTablegroupTabletLocations);
 }
 
 void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
@@ -1585,7 +1605,7 @@ class PgLibPqTablegroupTest : public PgLibPqTest {
   }
 };
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CreateTablesToTablegroup),
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCreateTables),
           PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -1616,7 +1636,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CreateTablesToTablegroup),
   cluster_->AssertNoCrashes();
 }
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupBasics),
           PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -1840,7 +1860,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
 }
 
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsTruncateTable),
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupTruncateTable),
     PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -1920,7 +1940,9 @@ TEST_F_EX(
   ASSERT_EQ(bar_values[1], 100);
 }
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsDDL), PgLibPqTablegroupTest) {
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupDDLs),
+    PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
   const string kSchemaName = "test_schema";
@@ -1987,7 +2009,84 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsDDL), PgLibPq
 }
 
 TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsAccessMethods),
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCreationFailure),
+    PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+
+  const string set_next_tablegroup_oid_sql = "SELECT binary_upgrade_set_next_tablegroup_oid($0)";
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, "tg1", &conn);
+  const auto database_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kDatabaseName));
+
+  // Expect the next tablegroup created to take the next OID.
+  PgOid next_tg_oid = ASSERT_RESULT(GetTablegroupOid(&conn, "tg1")) + 1;
+  TablegroupId next_tg_id = GetPgsqlTablegroupId(database_oid, next_tg_oid);
+
+  // Force CREATE TABLEGROUP to fail, and delay the cleanup.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "3000"));
+  ASSERT_OK(conn.TestFailDdl("CREATE TABLEGROUP tg2"));
+
+  // Forcing PG to reuse tablegroup OID.
+  ASSERT_OK(conn.Execute("SET yb_binary_restore TO true"));
+  ASSERT_OK(conn.FetchFormat(set_next_tablegroup_oid_sql, next_tg_oid));
+  // Cleanup hasn't been processed yet, so this fails.
+  ASSERT_QUERY_FAIL(conn.Execute("CREATE TABLEGROUP tg3"),
+                    "Duplicate tablegroup");
+
+  // Wait for cleanup thread to delete a table.
+  // TODO(alex): Replace with the commented piece once D22198 lands.
+  std::this_thread::sleep_for(6s);
+
+  //  // Since delete hasn't started initially, WaitForDeleteTableToFinish will error out.
+  //  const auto tg_parent_table_id = master::GetTablegroupParentTableId(next_tg_id);
+  //  ASSERT_OK(WaitFor(
+  //      [&client, &tg_parent_table_id] {
+  //        Status s = client->WaitForDeleteTableToFinish(tg_parent_table_id);
+  //        return s.ok();
+  //      },
+  //      30s,
+  //      "Wait for tablegroup cleanup"));
+
+  ASSERT_OK(conn.FetchFormat(set_next_tablegroup_oid_sql, next_tg_oid));
+  ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg4"));
+  ASSERT_EQ(ASSERT_RESULT(GetTablegroupOid(&conn, "tg4")), next_tg_oid);
+}
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCreationFailureWithRestart),
+    PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+
+  const string set_next_tablegroup_oid_sql = "SELECT binary_upgrade_set_next_tablegroup_oid($0)";
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, "tg1", &conn);
+
+  // Expect the next tablegroup created to take the next OID.
+  PgOid next_tg_oid = ASSERT_RESULT(GetTablegroupOid(&conn, "tg1")) + 1;
+
+  // Force CREATE TABLEGROUP to fail, and delay the cleanup.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "3000"));
+  ASSERT_OK(conn.TestFailDdl("CREATE TABLEGROUP tg2"));
+
+  // Verify that tablegroup is cleaned up on startup.
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
+
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  // Cleanup (DeleteTable) has been processed during cluster startup, we're good to go.
+  ASSERT_OK(conn.Execute("SET yb_binary_restore TO true"));
+  ASSERT_OK(conn.FetchFormat(set_next_tablegroup_oid_sql, next_tg_oid));
+  ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg3"));
+  ASSERT_EQ(ASSERT_RESULT(GetTablegroupOid(&conn, "tg3")), next_tg_oid);
+}
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TablegroupAccessMethods),
     PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -3089,11 +3188,6 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
     return result;
   }
 
-  static Result<Oid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
-    return VERIFY_RESULT(conn->FetchValue<PGOid>(Format(
-        "SELECT oid FROM pg_database WHERE datname = '$0'", db_name)));
-  }
-
   static void WaitForCatalogVersionToPropagate() {
     // This is an estimate that should exceed the tserver to master hearbeat interval.
     // However because it is an estimate, this function may return before the catalog version is
@@ -3547,6 +3641,20 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleLegacyColocatedD
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleLegacyColocatedDB),
     PgLibPqLegecyColocatedDBTest) {
   TestLoadBalanceMultipleColocatedDB(GetLegacyColocatedDBTabletLocations);
+}
+
+class PgLibPqLegacyColocatedDBTableColocationEnabledByDefaultTest
+    : public PgLibPqTableColocationEnabledByDefaultTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTableColocationEnabledByDefaultTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
+  }
+};
+
+TEST_F_EX(PgLibPqTest,
+    YB_DISABLE_TEST_IN_TSAN(LegacyColocatedDBTableColocationEnabledByDefault),
+    PgLibPqLegacyColocatedDBTableColocationEnabledByDefaultTest) {
+  TestTableColocationEnabledByDefault(GetLegacyColocatedDBTabletLocations);
 }
 
 } // namespace pgwrapper

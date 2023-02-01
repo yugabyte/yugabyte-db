@@ -2,40 +2,46 @@ package logging
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"runtime"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/sirupsen/logrus/hooks/writer"
 )
+
+var logFileLogger = log.New()
+var stdLogger = log.New()
 
 // Fatal prints the error message to stdout at the error level, and
 // then kills the currently running process.
 func Fatal(errorMsg string) {
 	stackTrace := make([]byte, 4096)
 	count := runtime.Stack(stackTrace, false)
-	log.Debug("Hit fatal error with stack trace: \n" + string(stackTrace[:count]) + "\n")
-	log.Fatalln(errorMsg)
+	Debug("Hit fatal error with stack trace: \n" + string(stackTrace[:count]) + "\n")
+	logFileLogger.Warn(errorMsg) // only warn level so we can log to both file and stdout
+	stdLogger.Fatalln(errorMsg)
 }
 
 // Info prints the info message to the console at the info level.
 func Info(infoMsg string) {
-	log.Infoln(infoMsg)
+	logFileLogger.Infoln(infoMsg)
+	stdLogger.Infoln(infoMsg)
 }
 
 // Warn will log a warning message.
 func Warn(warnMsg string) {
-	log.Warn(warnMsg)
+	logFileLogger.Warn(warnMsg)
+	stdLogger.Warn(warnMsg)
 }
 
 // Debug prints the debug message to the console at the debug level.
 func Debug(debugMsg string) {
-	log.Debugln(debugMsg)
+	logFileLogger.Debug(debugMsg)
+	stdLogger.Debugln(debugMsg)
 }
 
 func Trace(msg string) {
-	log.Traceln(msg)
+	logFileLogger.Trace(msg)
+	stdLogger.Traceln(msg)
 }
 
 func AddOutputFile(filePath string) {
@@ -43,32 +49,28 @@ func AddOutputFile(filePath string) {
 	if err != nil {
 		log.Fatalln("Unable to create log file " + filePath)
 	}
-	log.Debugln(fmt.Sprintf("Opened log file %s", filePath))
 
-	// log file is always at trace level
-	levels := []log.Level{}
-	for level := log.PanicLevel; level <= log.TraceLevel; level++ {
-		levels = append(levels, level)
-	}
+	stdLogger.Debugln(fmt.Sprintf("Opened log file %s", filePath))
 
-	log.AddHook(&writer.Hook{
-		Writer:    logFile,
-		LogLevels: levels,
+	logFileLogger.SetFormatter(&log.TextFormatter{
+		DisableColors: true,
+		FullTimestamp: true,
+		DisableQuote:  true, // needed for newlines to print in log file
 	})
+
+	logFileLogger.SetLevel(log.TraceLevel)
+	logFileLogger.SetOutput(logFile)
+
 }
 
 // Init sets up the logger according to the right level.
 func Init(logLevel string) {
 
-	// TODO: use different formatters for tty and log file, similar to
-	// https://github.com/sirupsen/logrus/issues/894#issuecomment-1284051207
-	log.SetFormatter(&log.TextFormatter{
+	stdLogger.SetFormatter(&log.TextFormatter{
 		ForceColors:            true, // without this, logrus logs in logfmt output by default
 		FullTimestamp:          true,
 		DisableLevelTruncation: true,
 	})
-
-	log.SetLevel(log.TraceLevel)
 
 	stdErrLogLevel, err := log.ParseLevel(logLevel)
 	if err != nil {
@@ -76,17 +78,7 @@ func Init(logLevel string) {
 		stdErrLogLevel = log.InfoLevel
 	}
 
-	log.SetOutput(ioutil.Discard) // Send all logs to nowhere by default
-
-	// set ourselves as a handler for each level below the specified level
-	levels := []log.Level{}
-	for level := log.PanicLevel; level <= stdErrLogLevel; level++ {
-		levels = append(levels, level)
-	}
-
-	log.AddHook(&writer.Hook{
-		Writer:    os.Stdout,
-		LogLevels: levels,
-	})
+	stdLogger.SetLevel(stdErrLogLevel)
+	stdLogger.SetOutput(os.Stdout) // Send all logs to nowhere by default
 
 }

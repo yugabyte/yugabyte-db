@@ -5,10 +5,16 @@
 package common
 
 import (
+	"crypto/tls"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
@@ -71,6 +77,8 @@ func PostInstall() {
 		CreateSymlink(GetInstallerSoftwareDir(), filepath.Dir(InputFile), goBinaryName)
 		CreateSymlink(filepath.Dir(InputFile), "/usr/bin", goBinaryName)
 	}
+
+	waitForYBAReady()
 
 	MarkInstallComplete()
 }
@@ -166,56 +174,24 @@ func copyBits(vers string) {
 // all services when executing a clean.
 func Uninstall(serviceNames []string, removeData bool) {
 
-	// 1) Stop all running service processes
-	// 2) Delete service files (in root mode)/Stop cron/cleanup crontab in NonRoot
-	// 3) Delete service directories
-	// 4) Delete data dir in force mode (warn/ask for confirmation)
-
-	if HasSudoAccess() {
-
-		command := "service"
-
-		for index := range serviceNames {
-			commandCheck0 := "bash"
-			subCheck0 := Systemctl + " list-unit-files --type service | grep -w " + serviceNames[index]
-			argCheck0 := []string{"-c", subCheck0}
-			out0, _ := RunBash(commandCheck0, argCheck0)
-			if strings.TrimSuffix(string(out0), "\n") != "" {
-				argStop := []string{serviceNames[index], "stop"}
-				RunBash(command, argStop)
-			}
-
-		}
-	} else {
-
-		for index := range serviceNames {
-			commandCheck0 := "bash"
-			argCheck0 := []string{"-c", "pgrep -f " + serviceNames[index] + " | head -1"}
-			out0, _ := RunBash(commandCheck0, argCheck0)
-			// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
-			// process itself was started by a non-root user.)
-			if strings.TrimSuffix(string(out0), "\n") != "" {
-				pid := strings.TrimSuffix(string(out0), "\n")
-				argStop := []string{"-c", "kill -9 " + pid}
-				RunBash(commandCheck0, argStop)
-			}
-		}
-	}
-
 	// Removed the InstallVersionDir if it exists if we are not performing an upgrade
 	// (since we would essentially perform a fresh install).
 
-	RemoveAll(GetInstallerSoftwareDir())
+	RemoveAll(GetSoftwareDir())
 
 	if removeData {
-		err := RemoveAll(GetYBAInstallerDataDir())
+		err := RemoveAll(GetBaseInstall())
 		if err != nil {
-			log.Info(fmt.Sprintf("Failed to delete yba installer data dir %s", GetYBAInstallerDataDir()))
+			pe := err.(*fs.PathError)
+			if !errors.Is(pe.Err, fs.ErrNotExist) {
+				log.Info(fmt.Sprintf("Failed to delete yba installer data dir %s", GetYBAInstallerDataDir()))
+			}
 		}
 	}
 
-	// Remove the hidden marker file
-	RemoveAll(InstalledFile)
+	// Remove yba-ctl
+	RemoveAll("/opt/yba-ctl")
+	os.Remove("/usr/bin/" + goBinaryName)
 }
 
 // Upgrade performs the upgrade procedures common to all services.
@@ -304,6 +280,9 @@ func createYugabyteUser() {
 }
 
 func extractPlatformSupportPackageAndYugabundle(vers string) {
+
+	log.Info("Extracting yugabundle package.")
+
 	RemoveAll(GetInstallerSoftwareDir() + "packages")
 
 	yugabundleBinary := GetInstallerSoftwareDir() + "/yugabundle-" + vers + "-centos-x86_64.tar.gz"
@@ -314,12 +293,12 @@ func extractPlatformSupportPackageAndYugabundle(vers string) {
 	}
 	defer rExtract1.Close()
 
-	log.Info(fmt.Sprintf("Extracting %s", yugabundleBinary))
+	log.Debug(fmt.Sprintf("Extracting %s", yugabundleBinary))
 	err := tar.Untar(rExtract1, GetInstallerSoftwareDir(), tar.WithMaxUntarSize(-1))
 	if err != nil {
 		log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", yugabundleBinary, err.Error()))
 	}
-	log.Info(fmt.Sprintf("Completed extracting %s", yugabundleBinary))
+	log.Debug(fmt.Sprintf("Completed extracting %s", yugabundleBinary))
 
 	path1 := GetInstallerSoftwareDir() + "/yugabyte-" + vers +
 		"/yugabundle_support-" + vers + "-centos-x86_64.tar.gz"
@@ -331,12 +310,12 @@ func extractPlatformSupportPackageAndYugabundle(vers string) {
 	}
 	defer rExtract2.Close()
 
-	log.Info(fmt.Sprintf("Extracting %s", path1))
+	log.Debug(fmt.Sprintf("Extracting %s", path1))
 	err = tar.Untar(rExtract2, GetInstallerSoftwareDir(), tar.WithMaxUntarSize(-1))
 	if err != nil {
 		log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", path1, err.Error()))
 	}
-	log.Info(fmt.Sprintf("Completed extracting %s", path1))
+	log.Debug(fmt.Sprintf("Completed extracting %s", path1))
 
 	RenameOrFail(GetInstallerSoftwareDir()+"/yugabyte-"+vers,
 		GetInstallerSoftwareDir()+"/packages/yugabyte-"+vers)
@@ -350,19 +329,21 @@ func extractPlatformSupportPackageAndYugabundle(vers string) {
 
 func renameThirdPartyDependencies() {
 
+	log.Info("Extracting third-party dependencies.")
+
 	//Remove any thirdparty directories if they already exist, so
 	//that the install action is idempotent.
 	RemoveAll(GetInstallerSoftwareDir() + "/thirdparty")
 
 	path := GetInstallerSoftwareDir() + "/packages/thirdparty-deps.tar.gz"
 	rExtract, _ := os.Open(path)
-	log.Info("Extracting archive " + path)
+	log.Debug("Extracting archive " + path)
 	if err := tar.Untar(rExtract, GetInstallerSoftwareDir(), tar.WithMaxUntarSize(-1)); err != nil {
 		log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s",
 			path, err.Error()))
 	}
 
-	log.Info(fmt.Sprintf("Completed extracting archive at %s to %s", path, GetInstallerSoftwareDir()))
+	log.Debug(fmt.Sprintf("Completed extracting archive at %s to %s", path, GetInstallerSoftwareDir()))
 	RenameOrFail(GetInstallerSoftwareDir()+"/thirdparty", GetInstallerSoftwareDir()+"/third-party")
 	//TODO: There is an error here because InstallRoot + "/yb-platform/third-party" does not exist
 	/*RunBash("bash",
@@ -430,5 +411,46 @@ func generateSelfSignedCerts() (string, string) {
 	)
 
 	return serverCertPath, serverKeyPath
+
+}
+
+func waitForYBAReady() {
+	log.Info("Waiting for YBA ready.")
+
+	// Needed to access https URL without x509: certificate signed by unknown authority error
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+
+	url := fmt.Sprintf("https://%s:%s/api/v1/app_version",
+		viper.GetString("host"),
+		viper.GetString("platform.port"))
+
+	var resp *http.Response
+	var err error
+	// Check YBA version every 10 seconds for 2 minutes
+	for i := 0; i < 12; i++ {
+		resp, err = http.Get(url)
+		if err != nil {
+			log.Info(fmt.Sprintf("YBA at %s not ready. Checking again in 10 seconds.", url))
+			time.Sleep(10 * time.Second)
+		} else {
+			break
+		}
+	}
+
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+
+	// Validate version
+	if err == nil {
+		var result map[string]string
+		json.NewDecoder(resp.Body).Decode(&result)
+		if result["version"] != GetVersion() {
+			log.Fatal(fmt.Sprintf("Running YBA version %s does not match expected version %s",
+				result["version"], GetVersion()))
+		}
+	} else {
+		log.Fatal(fmt.Sprintf("Error waiting for YBA ready: %s", err.Error()))
+	}
 
 }

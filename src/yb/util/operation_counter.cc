@@ -69,7 +69,8 @@ namespace {
 
 // Using upper bits of counter as special flags.
 constexpr uint64_t kStopDelta = 1ull << 63u;
-constexpr uint64_t kDisabledDelta = 1ull << 48u;
+constexpr auto kOpCounterBits = 48u;
+constexpr uint64_t kDisabledDelta = 1ull << kOpCounterBits;
 constexpr uint64_t kOpCounterMask = kDisabledDelta - 1;
 constexpr uint64_t kDisabledCounterMask = ~kOpCounterMask;
 
@@ -80,12 +81,20 @@ uint64_t RWOperationCounter::GetOpCounter() const {
   return Get() & kOpCounterMask;
 }
 
+uint64_t RWOperationCounter::TEST_GetDisableCount() const {
+  return Get() >> kOpCounterBits;
+}
+
+bool RWOperationCounter::TEST_IsStopped() const {
+  return Get() & kStopDelta;
+}
+
 uint64_t RWOperationCounter::Update(uint64_t delta) {
   uint64_t result = counters_.fetch_add(delta, std::memory_order::acq_rel) + delta;
   VLOG(2) << "[" << this << "] Update(" << static_cast<int64_t>(delta) << "), result = " << result;
-  // Ensure that there is no underflow in either counter.
-  DCHECK_EQ((result & (kStopDelta >> 1u)), 0); // Counter of DisableAndWaitForOps() calls.
-  DCHECK_EQ((result & (kDisabledDelta >> 1u)), 0); // Counter of pending operations.
+  LOG_IF(DFATAL, (result & (kStopDelta >> 1u)) != 0) << "Disable counter underflow: " << result;
+  LOG_IF(DFATAL, (result & (kDisabledDelta >> 1u)) != 0)
+      << "Pending operations counter underflow: " << result;
   return result;
 }
 
@@ -136,7 +145,9 @@ Status RWOperationCounter::DisableAndWaitForOps(const CoarseTimePoint& deadline,
     return STATUS(TimedOut, "Timed out waiting to disable the resource exclusively");
   }
 
-  Update(stop ? kStopDelta : kDisabledDelta);
+  const uint64_t previous_value = Update(stop ? kStopDelta : kDisabledDelta);
+  LOG_IF(DFATAL, stop && (previous_value & kStopDelta) == 0) << "Counter already stopped";
+
   auto status = WaitForOpsToFinish(start_time, deadline);
   if (!status.ok()) {
     Enable(Unlock::kFalse, stop);

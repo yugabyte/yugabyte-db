@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.Update
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseConfig;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.Version;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -244,8 +245,7 @@ public class CertsRotate extends UpgradeTaskBase {
   }
 
   private boolean isCertReloadFeatureEnabled() {
-    return Boolean.parseBoolean(
-        this.runtimeConfigFactory.globalRuntimeConf().getString("yb.features.cert_reload.enabled"));
+    return this.confGetter.getGlobalConf(GlobalConfKeys.enableCertReload);
   }
 
   private boolean isCertReloadConfigured(Universe universe) {
@@ -280,7 +280,8 @@ public class CertsRotate extends UpgradeTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Wait for yb-controller to be responsive on each node.
-      createWaitForYbcServerTask(null).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForYbcServerTask(nodesPair.getRight())
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }
 

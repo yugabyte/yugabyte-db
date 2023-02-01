@@ -153,14 +153,18 @@ HybridScanChoices::HybridScanChoices(
   }
 
   current_scan_target_ranges_.resize(range_cols_scan_options_.size());
+  current_scan_target_.Clear();
   for (size_t i = 0; i < range_cols_scan_options_.size(); i++) {
     current_scan_target_ranges_[i] = range_cols_scan_options_.at(i).begin();
+    if (is_forward_scan_) {
+      current_scan_target_ranges_[i]->lower().AppendToKey(&current_scan_target_);
+    } else {
+      current_scan_target_ranges_[i]->upper().AppendToKey(&current_scan_target_);
+    }
   }
 
-  if (is_forward_scan_) {
-    current_scan_target_ = lower_doc_key;
-  } else {
-    current_scan_target_ = upper_doc_key;
+  if (!is_forward_scan_) {
+    KeyEntryValue(KeyEntryType::kHighest).AppendToKey(&current_scan_target_);
   }
 }
 

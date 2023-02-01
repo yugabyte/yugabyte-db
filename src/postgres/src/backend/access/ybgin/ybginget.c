@@ -471,8 +471,8 @@ addTargetSystemColumn(int attnum, YBCPgStatement handle)
 }
 
 /*
- * Add a regular column as target to the given statement handle.  Assume
- * tupdesc's relation is the same as handle's target relation.
+ * Add a regular column as target to the given statement handle if it is not
+ * dropped.  Assume tupdesc's relation is the same as handle's target relation.
  *
  * See related ybcAddTargetColumn.
  */
@@ -487,6 +487,9 @@ addTargetRegularColumn(TupleDesc tupdesc, int attnum, YBCPgStatement handle)
 	YBCPgTypeAttrs type_attrs;
 
 	att = TupleDescAttr(tupdesc, attnum - 1);
+	/* Ignore dropped attributes. */
+	if (att->attisdropped)
+		return;
 	type_attrs.typmod = att->atttypmod;
 	expr = YBCNewColumnRef(handle,
 						   attnum,
@@ -526,7 +529,7 @@ ybginSetupTargets(IndexScanDesc scan)
 	/*
 	 * For now, target all non-system columns of the base table.  This can be
 	 * very inefficient.  The lsm index access method avoids this using
-	 * filtering (see ybcAddTargetColumnIfRequired).
+	 * filtering (see YbAddTargetColumnIfRequired).
 	 *
 	 * TODO(jason): don't target unnecessary columns.
 	 */

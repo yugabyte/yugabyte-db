@@ -9,7 +9,10 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YbcManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -29,8 +32,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,7 +46,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 public class YbcUpgrade {
 
   private final PlatformScheduler platformScheduler;
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfGetter confGetter;
   private final YbcClientService ybcClientService;
   private final YbcManager ybcManager;
   private final NodeUniverseManager nodeUniverseManager;
@@ -69,12 +74,12 @@ public class YbcUpgrade {
   @Inject
   public YbcUpgrade(
       PlatformScheduler platformScheduler,
-      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter,
       YbcClientService ybcClientService,
       YbcManager ybcManager,
       NodeUniverseManager nodeUniverseManager) {
     this.platformScheduler = platformScheduler;
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.confGetter = confGetter;
     this.ybcClientService = ybcClientService;
     this.ybcManager = ybcManager;
     this.nodeUniverseManager = nodeUniverseManager;
@@ -89,15 +94,15 @@ public class YbcUpgrade {
   }
 
   private Duration upgradeInterval() {
-    return runtimeConfigFactory.globalRuntimeConf().getDuration(YBC_UPGRADE_INTERVAL);
+    return confGetter.getGlobalConf(GlobalConfKeys.ybcUpgradeInterval);
   }
 
   private int getYBCUniverseBatchSize() {
-    return runtimeConfigFactory.globalRuntimeConf().getInt(YBC_UNIVERSE_UPGRADE_BATCH_SIZE_PATH);
+    return confGetter.getGlobalConf(GlobalConfKeys.ybcUniverseBatchSize);
   }
 
   private int getYBCNodeBatchSize() {
-    return runtimeConfigFactory.globalRuntimeConf().getInt(YBC_NODE_UPGRADE_BATCH_SIZE_PATH);
+    return confGetter.getGlobalConf(GlobalConfKeys.ybcNodeBatchSize);
   }
 
   public synchronized void setYBCUpgradeProcess(UUID universeUUID) {
@@ -158,10 +163,17 @@ public class YbcUpgrade {
       while (ybcUpgradeUniverseSet.size() > 0 && numRetries < MAX_YBC_UPGRADE_POLL_RESULT_TRIES) {
         numRetries++;
         boolean found = false;
-        for (UUID universeUUID : targetUniverseList) {
+        Iterator<UUID> iter = targetUniverseList.iterator();
+        while (iter.hasNext()) {
+          UUID universeUUID = iter.next();
           if (checkYBCUpgradeProcessExists(universeUUID)) {
             found = true;
-            pollUpgradeTaskResult(universeUUID, ybcVersion, false);
+            Optional<Universe> optional = Universe.maybeGet(universeUUID);
+            if (!optional.isPresent()) {
+              iter.remove();
+            } else {
+              pollUpgradeTaskResult(universeUUID, ybcVersion, false);
+            }
           }
         }
         if (!found) {
@@ -196,9 +208,7 @@ public class YbcUpgrade {
       throws Exception {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     if (!force
-        && !runtimeConfigFactory
-            .forUniverse(universe)
-            .getBoolean(YBC_ALLOW_SCHEDULED_UPGRADE_PATH)) {
+        && !confGetter.getConfForScope(universe, UniverseConfKeys.ybcAllowScheduledUpgrade)) {
       log.debug(
           "Skipping scheduled ybc upgrade on universe {} as it was disabled.",
           universe.universeUUID);

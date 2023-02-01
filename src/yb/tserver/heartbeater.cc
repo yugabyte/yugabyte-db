@@ -713,6 +713,9 @@ Status Heartbeater::Thread::Stop() {
     should_run_ = false;
     cond_.Signal();
   }
+
+  rpcs_.Shutdown();
+
   RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
   thread_ = nullptr;
   return Status::OK();

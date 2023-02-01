@@ -756,9 +756,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       case onprem:
         p = ModelFactory.onpremProvider(customer);
         break;
-      case other:
-        p = ModelFactory.newProvider(customer, Common.CloudType.other);
-        break;
+        // case other:
+        //   p = ModelFactory.newProvider(customer, Common.CloudType.other);
+        //   break;
       default:
         throw new UnsupportedOperationException();
     }
@@ -1038,7 +1038,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       },
       {Common.CloudType.kubernetes, "c3.xlarge", null, 1, 100, null, null, null, null},
       {Common.CloudType.onprem, "c3.xlarge", null, 1, 100, null, null, "/var", null},
-      {Common.CloudType.other, "c3.xlarge", null, null, null, null, null, null, null},
+      // {Common.CloudType.other, "c3.xlarge", null, null, null, null, null, null, null},
 
       //  Failure cases
       {

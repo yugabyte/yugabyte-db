@@ -424,7 +424,18 @@ Status PGConn::RollbackTransaction() {
 
 Status PGConn::TestFailDdl(const std::string& ddl_to_fail) {
   RETURN_NOT_OK(Execute("SET yb_test_fail_next_ddl=true"));
-  return Execute(ddl_to_fail);
+  Status s = Execute(ddl_to_fail);
+  if (s.ok()) {
+    return STATUS_FORMAT(InternalError,
+                         "DDL '$0' should have failed, we explicitly instructed it to!",
+                         ddl_to_fail);
+  }
+  std::string msg = reinterpret_cast<const char*>(s.message().data());
+  if (msg.find("Failed DDL operation as requested") != std::string::npos) {
+    return Status::OK();
+  }
+  // Unexpected error.
+  return s;
 }
 
 Result<bool> PGConn::HasIndexScan(const std::string& query) {
@@ -565,6 +576,7 @@ Result<PGResultPtr> PGConn::CopyEnd() {
 
 Result<std::string> ToString(PGresult* result, int row, int column) {
   constexpr Oid BOOLOID = 16;
+  constexpr Oid NAMEOID = 19;
   constexpr Oid INT8OID = 20;
   constexpr Oid INT2OID = 21;
   constexpr Oid INT4OID = 23;
@@ -594,6 +606,7 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
       return yb::ToString(VERIFY_RESULT(GetValue<float>(result, row, column)));
     case FLOAT8OID:
       return yb::ToString(VERIFY_RESULT(GetValue<double>(result, row, column)));
+    case NAMEOID: FALLTHROUGH_INTENDED;
     case TEXTOID: FALLTHROUGH_INTENDED;
     case BPCHAROID: FALLTHROUGH_INTENDED;
     case VARCHAROID: FALLTHROUGH_INTENDED;

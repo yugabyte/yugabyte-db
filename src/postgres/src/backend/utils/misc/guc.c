@@ -2089,6 +2089,15 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_bypass_cond_recheck", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("If true then condition rechecking is bypassed at YSQL if the condition is bound to DocDB."),
+			NULL
+		},
+		&yb_bypass_cond_recheck,
+		true,
+		NULL, NULL, NULL
+	},
 
     {
 		{"yb_enable_upsert_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
@@ -2131,6 +2140,17 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_plpgsql_disable_prefetch_in_for_query,
 		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_sequence_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Allow nextval() to fetch the value range and advance "
+						 "the sequence value in a single operation."),
+			NULL
+		},
+		&yb_enable_sequence_pushdown,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4379,13 +4399,13 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"yb_test_block_index_state_change", PGC_SIGHUP, DEVELOPER_OPTIONS,
-			gettext_noop("Block the given index state change."),
-			gettext_noop("Valid values are \"indisready\", \"getsafetime\","
-						 " and \"indisvalid\". Any other value is ignored."),
+		{"yb_test_block_index_phase", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Block the given index creation phase."),
+			gettext_noop("Valid values are \"indisready\", \"backfill\", "
+						 " and \"postbackfill\". Any other value is ignored."),
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_test_block_index_state_change,
+		&yb_test_block_index_phase,
 		"",
 		/* Could add a check function, but it's not worth the bother. */
 		NULL, NULL, NULL

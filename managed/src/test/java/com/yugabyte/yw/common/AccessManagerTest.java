@@ -27,6 +27,7 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
@@ -228,17 +229,18 @@ public class AccessManagerTest extends FakeDBApplication {
       }
     }
 
-    if (commandType.equals("add-key")) {
-      return Json.toJson(
-          accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null, false));
-    } else if (commandType.equals("list-keys")) {
-      return accessManager.listKeys(regionUUID);
-    } else if (commandType.equals("create-vault")) {
-      String tmpPrivateFile =
-          TMP_KEYS_PATH + File.separator + defaultProvider.uuid + "/private.key";
-      return accessManager.createVault(regionUUID, tmpPrivateFile);
-    } else if (commandType.equals("delete-key")) {
-      return accessManager.deleteKey(regionUUID, "foo");
+    switch (commandType) {
+      case "add-key":
+        return Json.toJson(
+            accessManager.addKey(regionUUID, "foo", SSH_PORT, false, false, false, null, false));
+      case "list-keys":
+        return accessManager.listKeys(regionUUID);
+      case "create-vault":
+        String tmpPrivateFile =
+            TMP_KEYS_PATH + File.separator + defaultProvider.uuid + "/private.key";
+        return accessManager.createVault(regionUUID, tmpPrivateFile);
+      case "delete-key":
+        return accessManager.deleteKey(regionUUID, "foo");
     }
     return null;
   }
@@ -280,10 +282,7 @@ public class AccessManagerTest extends FakeDBApplication {
     }
     cloudCredentials
         .getAllValues()
-        .forEach(
-            (cloudCredential) -> {
-              assertTrue(cloudCredential.isEmpty());
-            });
+        .forEach((cloudCredential) -> assertTrue(cloudCredential.isEmpty()));
     assertValidAccessKey(json);
     List<FileData> fd = FileData.getAll();
     assertEquals(fd.size(), 4);
@@ -292,9 +291,9 @@ public class AccessManagerTest extends FakeDBApplication {
   @Test
   public void testManageAddKeyCommandWithProviderConfig() {
     Map<String, String> config = new HashMap<>();
-    config.put("accessKey", "ACCESS-KEY");
-    config.put("accessSecret", "ACCESS-SECRET");
-    defaultProvider.setConfig(config);
+    config.put("AWS_ACCESS_KEY_ID", "ACCESS-KEY");
+    config.put("AWS_SECRET_ACCESS_KEY", "ACCESS-SECRET");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(defaultProvider, config);
     defaultProvider.save();
 
     createTempFile(TMP_KEYS_PATH, "private.key", "test data");
@@ -326,10 +325,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
     cloudCredentials
         .getAllValues()
-        .forEach(
-            (cloudCredential) -> {
-              assertEquals(config, cloudCredential);
-            });
+        .forEach((cloudCredential) -> assertEquals(config, cloudCredential));
     assertValidAccessKey(json);
 
     List<FileData> fd = FileData.getAll();
@@ -465,15 +461,15 @@ public class AccessManagerTest extends FakeDBApplication {
 
   @Test
   public void testManageUploadKeyDuplicateKeyCode_PureKeyCode() throws IOException {
-    doTestManageUploadKeyDuplicateKeyCode(TEST_KEY_CODE);
+    doTestManageUploadKeyDuplicateKeyCode();
   }
 
   @Test
   public void testManageUploadKeyDuplicateKeyCode_KeyCodeWithPath() throws IOException {
-    doTestManageUploadKeyDuplicateKeyCode(TEST_KEY_CODE_WITH_PATH);
+    doTestManageUploadKeyDuplicateKeyCode();
   }
 
-  private void doTestManageUploadKeyDuplicateKeyCode(String keyCode) throws IOException {
+  private void doTestManageUploadKeyDuplicateKeyCode() throws IOException {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = TMP_KEYS_PATH + "/private.key";
     AccessKey.create(defaultProvider.uuid, TEST_KEY_CODE, keyInfo);
@@ -574,10 +570,7 @@ public class AccessManagerTest extends FakeDBApplication {
     Mockito.verify(shellProcessHandler, times(0)).run(command.capture(), anyMap());
     RuntimeException re =
         assertThrows(
-            RuntimeException.class,
-            () -> {
-              runCommand(defaultRegion.uuid, "add-key", false);
-            });
+            RuntimeException.class, () -> runCommand(defaultRegion.uuid, "add-key", false));
     assertThat(
         re.getMessage(), allOf(notNullValue(), equalTo("Key path /sys/foo/keys doesn't exist.")));
   }
@@ -616,7 +609,7 @@ public class AccessManagerTest extends FakeDBApplication {
   public void testDeleteKeyWithValidRegionInGCP() {
     Provider testProvider = ModelFactory.gcpProvider(defaultCustomer);
     Region testRegion = Region.create(testProvider, "us-west-2", "US West 2", "yb-image");
-    JsonNode result = runCommand(testRegion.uuid, "delete-key", false);
+    runCommand(testRegion.uuid, "delete-key", false);
     Mockito.verify(shellProcessHandler, times(0))
         .run(command.capture(), cloudCredentials.capture());
   }
@@ -711,7 +704,7 @@ public class AccessManagerTest extends FakeDBApplication {
       ObjectNode credentials = Json.newObject();
       credentials.put("foo", "bar");
       credentials.put("hello", "world");
-      String configFile = accessManager.createCredentialsFile(defaultProvider.uuid, credentials);
+      String configFile = accessManager.createGCPCredentialsFile(defaultProvider.uuid, credentials);
       assertEquals(
           "/tmp/yugaware_tests/amt/keys/" + defaultProvider.uuid + "/credentials.json", configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
@@ -728,7 +721,7 @@ public class AccessManagerTest extends FakeDBApplication {
     Map<String, String> inputConfig = new HashMap<>();
     inputConfig.put("foo", "bar");
     inputConfig.put("hello", "world");
-    accessManager.createCredentialsFile(defaultProvider.uuid, Json.toJson(inputConfig));
+    accessManager.createGCPCredentialsFile(defaultProvider.uuid, Json.toJson(inputConfig));
     Map<String, String> configMap = accessManager.readCredentialsFromFile(defaultProvider.uuid);
     assertEquals(inputConfig, configMap);
   }

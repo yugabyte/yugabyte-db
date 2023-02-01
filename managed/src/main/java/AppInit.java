@@ -4,6 +4,7 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
@@ -12,6 +13,7 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RecommendationGarbageCollector;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -53,6 +55,8 @@ import play.Logger;
 @Singleton
 public class AppInit {
 
+  private static final long MAX_APP_INITIALIZATION_TIME = 30;
+
   @Inject
   public AppInit(
       Environment environment,
@@ -85,7 +89,9 @@ public class AppInit {
       Config config,
       SupportBundleCleanup supportBundleCleanup,
       NodeAgentPoller nodeAgentPoller,
-      YbcUpgrade ybcUpgrade)
+      YbcUpgrade ybcUpgrade,
+      RecommendationGarbageCollector perfRecGC,
+      @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
 
@@ -140,15 +146,11 @@ public class AppInit {
                   .getConfig(ConfigHelper.ConfigType.FileDataSync)
                   .getOrDefault("synced", "false")
                   .toString());
-
-      if (!ywFileDataSynced) {
-        String storagePath = appConfig.getString("yb.storage.path");
-        configHelper.syncFileData(storagePath, false);
-      }
+      String storagePath = appConfig.getString("yb.storage.path");
+      configHelper.syncFileData(storagePath, ywFileDataSynced);
 
       if (mode.equals("PLATFORM")) {
         String devopsHome = appConfig.getString("yb.devops.home");
-        String storagePath = appConfig.getString("yb.storage.path");
         if (devopsHome == null || devopsHome.length() == 0) {
           throw new RuntimeException("yb.devops.home is not set in application.conf");
         }
@@ -206,6 +208,7 @@ public class AppInit {
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
       alertsGC.start();
+      perfRecGC.start();
 
       setUniverseKey.start();
       // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
@@ -214,8 +217,7 @@ public class AppInit {
       // Schedule garbage collection of backups
       backupGC.start();
 
-      // Schedule perf advisor data retrieval
-      // perfAdvisorScheduler.start();
+      perfAdvisorScheduler.start();
 
       // Cleanup old support bundles
       supportBundleCleanup.start();
@@ -238,6 +240,14 @@ public class AppInit {
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
+
+      Long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
+      String elapsedStr = String.valueOf(elapsed);
+      if (elapsed > MAX_APP_INITIALIZATION_TIME) {
+        Logger.warn("Completed initialization in " + elapsedStr + " seconds.");
+      } else {
+        Logger.info("Completed initialization in " + elapsedStr + " seconds.");
+      }
 
       Logger.info("AppInit completed");
     }

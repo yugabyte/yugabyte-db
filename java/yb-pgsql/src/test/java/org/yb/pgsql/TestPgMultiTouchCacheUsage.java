@@ -44,6 +44,13 @@ import com.google.gson.JsonParser;
 public class TestPgMultiTouchCacheUsage extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_packed_row", "false");
+    return flagMap;
+  }
+
   private int getMultiTouchHitCount() throws Exception {
     // Sum the multi touch hit count from all the 3 tservers.
     YBClient client = miniCluster.getClient();
@@ -113,6 +120,6 @@ public class TestPgMultiTouchCacheUsage extends BasePgSQLTest {
       throw ex;
     }
     int count2 = getMultiTouchHitCount();
-    assertTrue(count2 > count1);
+    assertGreaterThan(count2, count1);
   }
 }

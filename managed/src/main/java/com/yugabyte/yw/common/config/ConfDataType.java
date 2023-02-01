@@ -15,56 +15,109 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import java.time.Duration;
 import java.time.Period;
 import java.util.List;
-import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
 import com.yugabyte.yw.common.PlatformServiceException;
-
+import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
+import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import lombok.Getter;
 import play.libs.Json;
 
 @Getter
 public class ConfDataType<T> {
   static ConfDataType<Duration> DurationType =
-      new ConfDataType<>("Duration", Duration.class, Config::getDuration, Duration::parse);
+      new ConfDataType<>(
+          "Duration",
+          Duration.class,
+          Config::getDuration,
+          (s) -> {
+            return parseStringAndApply(s, Config::getDuration);
+          });
   static ConfDataType<Double> DoubleType =
-      new ConfDataType<>("Double", Double.class, Config::getDouble, Double::parseDouble);
+      new ConfDataType<>(
+          "Double",
+          Double.class,
+          Config::getDouble,
+          (s) -> {
+            return parseStringAndApply(s, Config::getDouble);
+          });
   static ConfDataType<String> StringType =
-      new ConfDataType<>("String", String.class, Config::getString, String::valueOf);
+      new ConfDataType<>(
+          "String",
+          String.class,
+          Config::getString,
+          (s) -> {
+            return parseStringAndApply(s, Config::getString);
+          });
   static ConfDataType<Long> LongType =
-      new ConfDataType<>("Long", Long.class, Config::getLong, Long::parseLong);
+      new ConfDataType<>(
+          "Long",
+          Long.class,
+          Config::getLong,
+          (s) -> {
+            return parseStringAndApply(s, Config::getLong);
+          });
   static ConfDataType<Boolean> BooleanType =
-      new ConfDataType<>("Boolean", Boolean.class, Config::getBoolean, ConfDataType::parseBoolean);
+      new ConfDataType<>(
+          "Boolean",
+          Boolean.class,
+          Config::getBoolean,
+          (s) -> {
+            return parseStringAndApply(s, Config::getBoolean);
+          });
   static ConfDataType<Period> PeriodType =
-      new ConfDataType<>("Period", Period.class, Config::getPeriod, Period::parse);
+      new ConfDataType<>(
+          "Period",
+          Period.class,
+          Config::getPeriod,
+          (s) -> {
+            return parseStringAndApply(s, Config::getPeriod);
+          });
   static ConfDataType<Integer> IntegerType =
-      new ConfDataType<>("Integer", Integer.class, Config::getInt, Integer::parseInt);
+      new ConfDataType<>(
+          "Integer",
+          Integer.class,
+          Config::getInt,
+          (s) -> {
+            return parseStringAndApply(s, Config::getInt);
+          });
   static ConfDataType<List> StringListType =
       new ConfDataType<>(
-          "String List", List.class, Config::getStringList, ConfDataType::parseStrList);
+          "String List",
+          List.class,
+          Config::getStringList,
+          (s) -> {
+            return parseStringAndApply(s, Config::getStringList);
+          });
   static ConfDataType<Long> BytesType =
       new ConfDataType<>(
           "Bytes",
           Long.class,
           Config::getBytes,
           (s) -> {
-            Config c = ConfigFactory.parseString("bytes = " + s);
-            return c.getBytes("bytes");
+            return parseStringAndApply(s, Config::getBytes);
           });
-
+  static ConfDataType<List> TagListType =
+      new ConfDataType<>(
+          "Tags List", List.class, Config::getStringList, ConfDataType::parseTagsList);
   static ConfDataType<VersionCheckMode> VersionCheckModeEnum =
       new ConfDataType<>(
           "VersionCheckMode",
           VersionCheckMode.class,
           new EnumGetter<>(VersionCheckMode.class),
           VersionCheckMode::valueOf);
+  static ConfDataType<SkipCertValidationType> SkipCertValdationEnum =
+      new ConfDataType<>(
+          "SkipCertValidationType",
+          SkipCertValidationType.class,
+          new EnumGetter<>(SkipCertValidationType.class),
+          SkipCertValidationType::valueOf);
 
   private final String name;
 
@@ -99,22 +152,22 @@ public class ConfDataType<T> {
     }
   }
 
-  static final Set<String> BOOLS = ImmutableSet.of("true", "false");
-
-  public static Boolean parseBoolean(String s) {
-    if (BOOLS.contains(s.toLowerCase().trim())) {
-      return Boolean.parseBoolean(s.trim());
-    } else {
-      throw new PlatformServiceException(BAD_REQUEST, "Not a valid boolean value");
+  public static List<ConfKeyTags> parseTagsList(String s) {
+    try {
+      List<ConfKeyTags> tagList =
+          Json.mapper().readValue(s, new TypeReference<List<ConfKeyTags>>() {});
+      return tagList;
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Not a valid list of tags."
+              + "All possible tags are "
+              + "PUBLIC, UIDriven, BETA, INTERNAL, YBM");
     }
   }
 
-  public static List<String> parseStrList(String s) {
-    try {
-      List<String> strList = Json.mapper().readValue(s, new TypeReference<List<String>>() {});
-      return strList;
-    } catch (Exception e) {
-      throw new PlatformServiceException(BAD_REQUEST, "Not a valid list of strings");
-    }
+  private static <K> K parseStringAndApply(String s, BiFunction<Config, String, K> parser) {
+    Config c = ConfigFactory.parseString("key = " + s);
+    return parser.apply(c, "key");
   }
 }

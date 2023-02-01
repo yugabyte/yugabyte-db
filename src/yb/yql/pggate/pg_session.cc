@@ -362,6 +362,20 @@ Result<bool> PgSession::UpdateSequenceTuple(int64_t db_oid,
       expected_last_val, expected_is_called);
 }
 
+Result<std::pair<int64_t, int64_t>> PgSession::FetchSequenceTuple(int64_t db_oid,
+                                                                  int64_t seq_oid,
+                                                                  uint64_t ysql_catalog_version,
+                                                                  bool is_db_catalog_version_mode,
+                                                                  uint32_t fetch_count,
+                                                                  int64_t inc_by,
+                                                                  int64_t min_value,
+                                                                  int64_t max_value,
+                                                                  bool cycle) {
+  return pg_client_.FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      min_value, max_value, cycle);
+}
+
 Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
                                                               int64_t seq_oid,
                                                               uint64_t ysql_catalog_version,
@@ -678,6 +692,11 @@ Result<client::TabletServersInfo> PgSession::ListTabletServers() {
   return pg_client_.ListLiveTabletServers(false);
 }
 
+Status PgSession::GetIndexBackfillProgress(std::vector<PgObjectId> index_ids,
+                                           uint64_t** backfill_statuses) {
+  return pg_client_.GetIndexBackfillProgress(index_ids, backfill_statuses);
+}
+
 bool PgSession::ShouldUseFollowerReads() const {
   return pg_txn_manager_->ShouldUseFollowerReads();
 }
@@ -733,6 +752,10 @@ void PgSession::ResetHasWriteOperationsInDdlMode() {
 
 bool PgSession::HasWriteOperationsInDdlMode() const {
   return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
+}
+
+void PgSession::SetDdlHasSyscatalogChanges() {
+  pg_txn_manager_->SetDdlHasSyscatalogChanges();
 }
 
 Status PgSession::ValidatePlacement(const std::string& placement_info) {

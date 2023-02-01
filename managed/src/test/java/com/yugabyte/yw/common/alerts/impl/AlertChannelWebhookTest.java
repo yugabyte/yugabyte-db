@@ -2,10 +2,12 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
+import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -22,28 +24,24 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertChannelWebhookTest extends FakeDBApplication {
 
-  @Rule public ExpectedException exceptionGrabber = ExpectedException.none();
-
   private static final String WEBHOOK_TEST_PATH = "/here/is/path";
 
   private Customer defaultCustomer;
 
-  @InjectMocks private AlertChannelWebHook channel;
+  private AlertChannelWebHook channel;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    channel = app.injector().instanceOf(AlertChannelWebHook.class);
   }
 
   @Test
@@ -85,7 +83,7 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
       assertThat(alertJson.get("labels"), equalTo(requestJson.get("commonLabels")));
       assertThat(alertJson.get("annotations"), equalTo(requestJson.get("commonAnnotations")));
       assertThat(alertJson.get("startsAt").asText(), notNullValue());
-      assertThat(alertJson.get("endsAt").isNull(), equalTo(true));
+      assertThat(alertJson.get("endsAt"), nullValue());
       assertThat(alertJson.get("status").asText(), equalTo("firing"));
 
       JsonNode groupLabelsJson = requestJson.get("groupLabels");
@@ -110,8 +108,12 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
 
       Alert alert = ModelFactory.createAlert(defaultCustomer);
 
-      exceptionGrabber.expect(PlatformNotificationException.class);
-      channel.sendNotification(defaultCustomer, alert, channelConfig);
+      assertThat(
+          () -> channel.sendNotification(defaultCustomer, alert, channelConfig),
+          thrown(
+              PlatformNotificationException.class,
+              "Error sending WebHook message for alert Alert 1: "
+                  + "error response 500 received with body {\"error\":\"not_ok\"}"));
     }
   }
 }

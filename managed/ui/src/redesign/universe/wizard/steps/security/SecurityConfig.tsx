@@ -175,10 +175,9 @@ export const SecurityConfig: FC<SecurityConfigProps> = ({ dispatch }) => {
                 <pre>Form State: {JSON.stringify(formMethods.formState, null, 8)}</pre>
               </Col>
               <Col xs={4}>
-                <pre>Errors: {JSON.stringify(formMethods.errors, null, 8)}</pre>
+                <pre>Errors: {JSON.stringify(formMethods?.formState.errors, null, 8)}</pre>
               </Col>
             </Row>
-
           </FormProvider>
         </div>
         <div className="wizard-step-wrapper__col-summary">

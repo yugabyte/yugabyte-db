@@ -1194,5 +1194,62 @@ TEST_F(AdminCliTest, PromoteAutoFlags) {
   ASSERT_NE(result.find("New AutoFlags were promoted. Config version"), std::string::npos);
 }
 
+TEST_F(AdminCliTest, TestListNamespaces) {
+  BuildAndStart();
+  ASSERT_OK(client_->CreateNamespaceIfNotExists("a_user_namespace"));
+  auto status = CallAdmin("list_namespaces");
+  ASSERT_OK(status);
+
+  std::string output = status.ToString();
+
+  ASSERT_STR_CONTAINS(output, "User Namespaces");
+  auto user_namespaces_pos = output.find("User Namespaces");
+  ASSERT_STR_CONTAINS(output, "System Namespaces");
+  auto system_namespaces_pos = output.find("System Namespaces");
+
+  std::regex system_namespace_regex("system .* ycql [a-zA-Z_]+ [a-zA-Z_]+");
+  std::smatch system_namespace_match;
+  std::regex_search(output, system_namespace_match, system_namespace_regex);
+  ASSERT_FALSE(system_namespace_match.empty());
+  // We expect the "system" keyspace to be under "System Keyspaces".
+  ASSERT_GT(system_namespace_match.position(0), system_namespaces_pos);
+
+  std::smatch user_namespace_match;
+  std::regex user_namespace_regex("a_user_namespace");
+  std::regex_search(output, user_namespace_match, user_namespace_regex);
+  ASSERT_FALSE(user_namespace_match.empty());
+  /* Because we compare their character positions, we expect "User Namespaces:" to be outputted
+  before "System Namespaces:" to simplify testing of whether "a_user_namespace" is under
+  "User Namespaces:" and not "System Namespaces:". */
+  ASSERT_LT(user_namespaces_pos, system_namespaces_pos);
+  ASSERT_GT(user_namespace_match.position(0), user_namespaces_pos);
+  ASSERT_LT(user_namespace_match.position(0), system_namespaces_pos);
+}
+
+TEST_F(AdminCliTest, PrintArgumentExpressions) {
+  const auto namespace_expression = "<namespace>:\n [(ycql|ysql).]<namespace_name> (default ycql.)";
+  const auto table_expression = "<table>:\n <namespace> <table_name> | tableid.<table_id>";
+  const auto index_expression = "<index>:\n  <namespace> <index_name> | tableid.<index_id>";
+
+  BuildAndStart();
+  auto status = CallAdmin("delete_table");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(table_expression), std::string::npos);
+
+  status = CallAdmin("delete_namespace");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(namespace_expression), std::string::npos);
+
+  status = CallAdmin("delete_index");
+  ASSERT_NOK(status);
+  ASSERT_NE(status.ToString().find(index_expression), std::string::npos);
+
+  status = CallAdmin("add_universe_key_to_all_masters");
+  ASSERT_NOK(status);
+  ASSERT_EQ(status.ToString().find(namespace_expression), std::string::npos);
+  ASSERT_EQ(status.ToString().find(table_expression), std::string::npos);
+  ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
+}
+
 }  // namespace tools
 }  // namespace yb

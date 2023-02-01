@@ -86,6 +86,10 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 TAG_FLAG(ysql_enable_profile, advanced);
 TAG_FLAG(ysql_enable_profile, hidden);
 
+DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
+            "If true, YB catalog preloads additional tables upon "
+            "connection creation and cache refresh.");
+
 namespace yb {
 namespace pggate {
 
@@ -438,6 +442,22 @@ YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
   return ToYBCStatus(pgapi->UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
       last_val, is_called, skipped));
+}
+
+YBCStatus YBCFetchSequenceTuple(int64_t db_oid,
+                                int64_t seq_oid,
+                                uint64_t ysql_catalog_version,
+                                bool is_db_catalog_version_mode,
+                                uint32_t fetch_count,
+                                int64_t inc_by,
+                                int64_t min_value,
+                                int64_t max_value,
+                                bool cycle,
+                                int64_t *first_value,
+                                int64_t *last_value) {
+  return ToYBCStatus(pgapi->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      min_value, max_value, cycle, first_value, last_value));
 }
 
 YBCStatus YBCReadSequenceTuple(int64_t db_oid,
@@ -1319,22 +1339,23 @@ uint64_t YBCGetSharedAuthKey() {
 
 const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
-      .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
-      .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
-      .ysql_disable_server_file_access         = &FLAGS_ysql_disable_server_file_access,
-      .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
-      .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
-      .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
+      .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
+      .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
+      .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
+      .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
+      .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
+      .ysql_max_read_restart_attempts           = &FLAGS_ysql_max_read_restart_attempts,
+      .ysql_max_write_restart_attempts          = &FLAGS_ysql_max_write_restart_attempts,
       .ysql_num_databases_reserved_in_db_catalog_version_mode =
           &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
-      .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
-      .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
-      .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
-      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default,
-      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled,
-      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching,
-      .ysql_enable_profile                     = &FLAGS_ysql_enable_profile
+      .ysql_output_buffer_size                  = &FLAGS_ysql_output_buffer_size,
+      .ysql_sequence_cache_minval               = &FLAGS_ysql_sequence_cache_minval,
+      .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
+      .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
+      .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
+      .ysql_ddl_rollback_enabled                = &FLAGS_ysql_ddl_rollback_enabled,
+      .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
+      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile
   };
   return &accessor;
 }
@@ -1402,6 +1423,16 @@ void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t
   pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
+YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
+                                      uint64_t** backfill_statuses,
+                                      int num_indexes) {
+  std::vector<PgObjectId> index_ids;
+  for (int i = 0; i < num_indexes; ++i) {
+    index_ids.emplace_back(PgObjectId(database_oids[i], index_oids[i]));
+  }
+  return ToYBCStatus(pgapi->GetIndexBackfillProgress(index_ids, backfill_statuses));
+}
+
 //------------------------------------------------------------------------------------------------
 // Thread-local variables.
 //------------------------------------------------------------------------------------------------
@@ -1448,6 +1479,10 @@ void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
 
 void YBCStopSysTablePrefetching() {
   pgapi->StopSysTablePrefetching();
+}
+
+bool YBCIsSysTablePrefetchingStarted() {
+  return pgapi->IsSysTablePrefetchingStarted();
 }
 
 void YBCRegisterSysTableForPrefetching(

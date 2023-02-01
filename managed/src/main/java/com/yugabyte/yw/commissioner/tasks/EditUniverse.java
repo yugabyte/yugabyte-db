@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -223,6 +224,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     Set<NodeDetails> existingNodesToStartMaster =
         newMasters.stream().filter(n -> n.state != NodeState.ToBeAdded).collect(Collectors.toSet());
 
+    boolean isWaitForLeadersOnPreferred =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybEditWaitForLeadersOnPreferred);
+
     // Set the old nodes' state to to-be-removed.
     if (!nodesToBeRemoved.isEmpty()) {
       if (nodesToBeRemoved.size() == nodes.size()) {
@@ -356,7 +360,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start tservers on all nodes.
-      createStartTserverProcessTasks(newTservers);
+      createStartTserverProcessTasks(newTservers, userIntent.enableYSQL);
 
       if (universe.isYbcEnabled()) {
         createStartYbcProcessTasks(
@@ -397,7 +401,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
-      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.waitForLbForAddedNodes)
           && !newTservers.isEmpty()) {
         // If only tservers are added, wait for load to balance across all tservers.
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
@@ -408,7 +412,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     createManageLoadBalancerTasks(
         createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null, null));
 
-    if (cluster.clusterType == ClusterType.PRIMARY) {
+    if (cluster.clusterType == ClusterType.PRIMARY && isWaitForLeadersOnPreferred) {
       createWaitForLeadersOnPreferredOnlyTask();
     }
 
@@ -426,7 +430,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Update these older ones to be not masters anymore so tserver info can be updated with the
       // final master list and other future cluster client operations.
-      createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false);
+      createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
     if (updateMasters) {

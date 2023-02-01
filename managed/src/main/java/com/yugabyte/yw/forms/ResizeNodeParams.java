@@ -7,7 +7,9 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -16,6 +18,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -25,6 +28,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import play.api.Play;
+import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = ResizeNodeParams.Converter.class)
@@ -37,6 +41,8 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       EnumSet.of(Common.CloudType.gcp, Common.CloudType.aws, Common.CloudType.kubernetes);
 
   private boolean forceResizeNode;
+  public Map<String, String> masterGFlags;
+  public Map<String, String> tserverGFlags;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
@@ -52,13 +58,30 @@ public class ResizeNodeParams extends UpgradeTaskParams {
   public void verifyParams(Universe universe, NodeDetails.NodeState nodeState) {
     super.verifyParams(universe, nodeState); // we call verifyParams which will fail
 
+    RuntimeConfigFactory runtimeConfigFactory =
+        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+
+    // Both master and tserver can be null. But if one is provided, both should be provided.
+    if ((masterGFlags == null && tserverGFlags != null)
+        || (tserverGFlags == null && masterGFlags != null)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Either none or both master and tserver gflags are required");
+    }
+    if (masterGFlags != null) {
+      // We want this flow to only be enabled for cloud in the first go.
+      if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+        throw new PlatformServiceException(
+            Status.METHOD_NOT_ALLOWED, "Cannot resize with gflag changes.");
+      }
+      masterGFlags = GFlagsUtil.trimFlags(masterGFlags);
+      tserverGFlags = GFlagsUtil.trimFlags(tserverGFlags);
+      GFlagsUtil.checkConsistency(masterGFlags, tserverGFlags);
+    }
+
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
       throw new IllegalArgumentException(
           "Only ROLLING_UPGRADE option is supported for resizing node (changing VM type).");
     }
-
-    RuntimeConfigFactory runtimeConfigFactory =
-        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
 
     boolean hasClustersToResize = false;
     for (Cluster cluster : clusters) {
@@ -295,6 +318,11 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       return true;
     }
     return false;
+  }
+
+  public boolean flagsProvided() {
+    // If one is present, we know the other must be present.
+    return masterGFlags != null;
   }
 
   public static class Converter extends BaseConverter<ResizeNodeParams> {}

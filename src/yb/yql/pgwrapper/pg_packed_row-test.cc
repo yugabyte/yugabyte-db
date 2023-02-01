@@ -711,5 +711,24 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AppliedSchemaVersion)) {
   ASSERT_OK(cluster_->CompactTablets());
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateToNull)) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test(v1 INT, v2 INT) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  ASSERT_OK(conn.Execute("UPDATE test SET v2 = NULL"));
+
+  auto content = ASSERT_RESULT(conn.FetchAllAsString("SELECT v2 FROM test"));
+  ASSERT_EQ(content, "NULL");
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  content = ASSERT_RESULT(conn.FetchAllAsString("SELECT v2 FROM test"));
+  ASSERT_EQ(content, "NULL");
+}
+
 } // namespace pgwrapper
 } // namespace yb

@@ -5,8 +5,15 @@ import React, { Component } from 'react';
 import { toast } from 'react-toastify';
 import { Field, FieldArray } from 'redux-form';
 import { Col, Alert } from 'react-bootstrap';
+import clsx from 'clsx';
+
 import { YBModal, YBInputField, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
-import { createErrorMessage, isNonEmptyArray , isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
+import {
+  createErrorMessage,
+  isNonEmptyArray,
+  isDefinedNotNull,
+  isNonEmptyObject
+} from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import {
   isKubernetesUniverse,
@@ -14,16 +21,27 @@ import {
   getReadOnlyCluster,
   getUniverseRegions
 } from '../../../../utils/UniverseUtils';
-
-import './RollingUpgradeForm.scss';
 import { EncryptionInTransit } from './EncryptionInTransit';
 import GFlagComponent from '../../../universes/UniverseForm/GFlagComponent';
 import { FlexShrink, FlexContainer } from '../../flexbox/YBFlexBox';
-import clsx from 'clsx';
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
-import WarningIcon from './images/warning.svg';
 import { sortVersion } from '../../../releases';
 import { HelmOverridesModal } from '../../../universes/UniverseForm/HelmOverrides';
+
+import './RollingUpgradeForm.scss';
+
+const GFLAG_UPDATE_OPTIONS = [
+  { value: 'Rolling', label: 'Apply all changes using a rolling restart (slower, zero downtime)' },
+  {
+    value: 'Non-Rolling',
+    label: 'Apply all changes immediately, using a concurrent restart (faster, some downtime)'
+  },
+  {
+    value: 'Non-Restart',
+    label:
+      'Apply all changes which do not require a restart immediately; apply remaining changes the next time the database is restarted'
+  }
+];
 
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
@@ -384,16 +402,6 @@ export default class RollingUpgradeForm extends Component {
             visible={modalVisible}
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
-            footerAccessory={
-              formValues.upgradeOption === 'Non-Restart' ? (
-                <span className="non-rolling-msg">
-                  <img alt="Note" src={WarningIcon} />
-                  &nbsp; <b>Note!</b> &nbsp; { "Flags that require rolling restart won't be applied"}
-                </span>
-              ) : (
-                <></>
-              )
-            }
             title="G-Flags"
             size="large"
             onFormSubmit={submitAction}
@@ -413,19 +421,19 @@ export default class RollingUpgradeForm extends Component {
               />
               <FlexContainer className="gflag-upgrade-container">
                 <FlexShrink className="gflag-upgrade--label">
-                  <span>G-Flag Upgrade Options</span>
+                  <span>G-Flag Update Options</span>
                 </FlexShrink>
                 <div className="gflag-upgrade-options">
-                  {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target, i) => (
-                    <div key={target} className="row-flex">
-                      <div className={clsx('upgrade-radio-option', i === 1 && 'mb-8')} key={target}>
+                  {GFLAG_UPDATE_OPTIONS.map((option, i) => (
+                    <div key={option.value} className="row-flex">
+                      <div className={clsx('upgrade-radio-option', i === 1 && 'mb-8')}>
                         <Field
                           name={'upgradeOption'}
                           type="radio"
                           component="input"
-                          value={`${target}`}
+                          value={option.value}
                         />
-                        <span className="upgrade-radio-label">{`${target}`}</span>
+                        <span className="upgrade-radio-label">{option.label}</span>
                       </div>
                       {i === 0 && (
                         <div className="gflag-delay">
@@ -476,18 +484,17 @@ export default class RollingUpgradeForm extends Component {
             error={error}
             footerAccessory={
               formValues.tlsCertificate !==
-              universe.currentUniverse?.data?.universeDetails?.rootCA ?
-                (
-                  <YBCheckBox
-                    label="Confirm TLS Changes"
-                    input={{
-                      checked: this.state.formConfirmed,
-                      onChange: this.toggleConfirmValidation
-                    }}
-                  />
-                ) : (
-                  <span>Select new CA signed cert from the list</span>
-                )
+              universe.currentUniverse?.data?.universeDetails?.rootCA ? (
+                <YBCheckBox
+                  label="Confirm TLS Changes"
+                  input={{
+                    checked: this.state.formConfirmed,
+                    onChange: this.toggleConfirmValidation
+                  }}
+                />
+              ) : (
+                <span>Select new CA signed cert from the list</span>
+              )
             }
             asyncValidating={
               !this.state.formConfirmed ||

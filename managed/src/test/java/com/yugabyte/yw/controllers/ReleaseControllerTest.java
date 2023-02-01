@@ -208,7 +208,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
                 .put("secretAccessKey", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+Vlvn/W")
                 .set("paths", pathsNode);
 
-    ObjectNode body = (ObjectNode) Json.newObject().set("foo", Json.newObject().set("s3", s3));
+    ObjectNode body =
+        (ObjectNode) Json.newObject().set("2.17.1.0-foo", Json.newObject().set("s3", s3));
     Result result = createRelease(customer.uuid, body);
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
     verify(mockReleaseManager, times(1)).addGFlagsMetadataFiles(any(), any());
@@ -230,7 +231,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
     ObjectNode gcs =
         (ObjectNode) Json.newObject().put("credentialsJson", "{}").set("paths", pathsNode);
 
-    ObjectNode body = (ObjectNode) Json.newObject().set("foo", Json.newObject().set("gcs", gcs));
+    ObjectNode body =
+        (ObjectNode) Json.newObject().set("2.17.1.0-foo", Json.newObject().set("gcs", gcs));
     Result result = createRelease(customer.uuid, body);
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
     verify(mockReleaseManager, times(1)).addGFlagsMetadataFiles(any(), any());
@@ -326,11 +328,11 @@ public class ReleaseControllerTest extends FakeDBApplication {
     pathsNode.put("x86_64", "https://foobar.com");
     ObjectNode body4 =
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
-    result = createRelease(customer.uuid, body4);
-    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
-    verify(mockReleaseManager, times(1)).addGFlagsMetadataFiles(any(), any());
-    assertOk(result);
-    assertAuditEntry(1, customer.uuid);
+    result = assertPlatformException(() -> createRelease(customer.uuid, body4));
+    verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
+    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
+    assertEquals(INTERNAL_SERVER_ERROR, result.status());
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test

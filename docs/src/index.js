@@ -201,15 +201,14 @@ $(document).ready(() => {
         $('ul.header-submenu', this).toggleClass('open');
       }
     });
-
+    if (document.querySelector('body').classList.contains('td-searchpage')) {
+      document.querySelector('.top-nav').classList.add('open-search-top');
+    }
     $(document).on('click', '.mobile-search', () => {
-      $('.page-header').toggleClass('open-search');
+      $('.top-nav').toggleClass('open-search-top');
       $('.page-header,.mobile-menu').removeClass('open');
       $('body').removeClass('hidden-scroll');
       $('.mobile-search').toggleClass('open');
-      if ($('.page-header .search-container-wrap').length === 0) {
-        $('.page-header').append('<div class="navbar-nav search-container-wrap">' + $('.search-container-wrap').html() + '</div>');
-      }
     });
   })();
 

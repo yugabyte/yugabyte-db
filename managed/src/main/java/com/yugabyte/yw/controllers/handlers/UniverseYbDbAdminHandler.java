@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
+import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Customer;
@@ -80,6 +81,24 @@ public class UniverseYbDbAdminHandler {
     if (!StringUtils.isEmpty(dbCreds.ycqlAdminUsername)) {
       ycqlQueryExecutor.updateAdminPassword(universe, dbCreds);
     }
+  }
+
+  public void dropUser(Customer customer, Universe universe, DatabaseUserDropFormData data) {
+    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Feature not allowed.");
+    }
+
+    ysqlQueryExecutor.dropUser(universe, data);
+  }
+
+  public void createRestrictedUser(
+      Customer customer, Universe universe, DatabaseUserFormData data) {
+    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Feature not allowed.");
+    }
+    data.validation();
+
+    ysqlQueryExecutor.createRestrictedUser(universe, data);
   }
 
   public void createUserInDB(Customer customer, Universe universe, DatabaseUserFormData data) {

@@ -23,6 +23,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -41,6 +42,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -66,6 +68,7 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTabletServersResponse;
 import play.libs.Json;
+import play.mvc.Http;
 
 @RunWith(JUnitParamsRunner.class)
 public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
@@ -160,6 +163,18 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     taskParams.creatingUser = defaultUser;
     try {
       UUID taskUUID = commissioner.submit(TaskType.AddNodeToUniverse, taskParams);
+      // Set http context
+      Map<String, String> flashData = Collections.emptyMap();
+      defaultUser.email = "shagarwal@yugabyte.com";
+      Map<String, Object> argData =
+          ImmutableMap.of("user", new UserWithFeatures().setUser(defaultUser));
+      Http.Request request = mock(Http.Request.class);
+      Long id = 2L;
+      play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
+      Http.Context currentContext =
+          new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
+      Http.Context.current.set(currentContext);
+
       CustomerTask.create(
           defaultCustomer,
           universe.universeUUID,
@@ -190,6 +205,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleClusterServerCtl, // start process
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
+          TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
@@ -215,6 +231,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()));
 
@@ -233,6 +250,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleClusterServerCtl, // start process (master/tServer)
           TaskType.UpdateNodeProcess, // update process name in DB
           TaskType.WaitForServer, // wait for process to come up
+          TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SetNodeState, // Live
@@ -252,6 +270,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -279,12 +298,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer, // tServer
+          TaskType.WaitForServer, // wait for postgres to be up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.AnsibleConfigureServers, // add Master
-          TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers,
+          TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
@@ -309,6 +329,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

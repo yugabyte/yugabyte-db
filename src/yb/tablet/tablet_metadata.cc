@@ -134,7 +134,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       table_type(table_type),
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
-      doc_read_context(std::make_unique<docdb::DocReadContext>(log_prefix, schema, schema_version)),
+      doc_read_context(std::make_shared<docdb::DocReadContext>(log_prefix, schema, schema_version)),
       index_map(std::make_unique<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -153,9 +153,9 @@ TableInfo::TableInfo(const TableInfo& other,
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
       doc_read_context(schema_version != other.schema_version
-          ? std::make_unique<docdb::DocReadContext>(
+          ? std::make_shared<docdb::DocReadContext>(
               *other.doc_read_context, schema, schema_version)
-          : std::make_unique<docdb::DocReadContext>(*other.doc_read_context)),
+          : std::make_shared<docdb::DocReadContext>(*other.doc_read_context)),
       index_map(std::make_unique<IndexMap>(index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
@@ -171,7 +171,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       table_type(other.table_type),
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
-      doc_read_context(std::make_unique<docdb::DocReadContext>(
+      doc_read_context(std::make_shared<docdb::DocReadContext>(
           *other.doc_read_context, std::min(min_schema_version, other.schema_version))),
       index_map(std::make_unique<IndexMap>(*other.index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
@@ -330,12 +330,10 @@ Status KvStoreInfo::LoadTablesFromPB(
     tables.emplace(table_info->table_id, table_info);
 
     const Schema& schema = table_info->schema();
-    if (table_info->primary()) {
-      if (schema.table_properties().is_ysql_catalog_table()) {
-        // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
-        // to set cotable ID.
-        table_info->doc_read_context->schema.set_cotable_id(table_info->cotable_id);
-      }
+    if (!table_info->primary() && schema.table_properties().is_ysql_catalog_table()) {
+      // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
+      // to set cotable ID.
+      table_info->doc_read_context->schema.set_cotable_id(table_info->cotable_id);
     }
     if (schema.has_colocation_id()) {
       colocation_to_table.emplace(schema.colocation_id(), table_info);
@@ -946,8 +944,17 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const std::vector<DeletedColumn>& deleted_cols,
                                   const SchemaVersion version,
                                   const TableId& table_id) {
-  DCHECK(schema.has_column_ids());
   std::lock_guard<MutexType> lock(data_mutex_);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, table_id);
+}
+
+void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
+                                  const IndexMap& index_map,
+                                  const std::vector<DeletedColumn>& deleted_cols,
+                                  const SchemaVersion version,
+                                  const TableId& table_id) {
+  DCHECK(data_mutex_.is_locked());
+  DCHECK(schema.has_column_ids());
   TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
   auto it = kv_store_.tables.find(target_table_id);
   CHECK(it != kv_store_.tables.end());
@@ -999,12 +1006,28 @@ void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_sche
 void RaftGroupMetadata::SetTableName(
     const string& namespace_name, const string& table_name, const TableId& table_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
+  SetTableNameUnlocked(namespace_name, table_name, table_id);
+}
+
+void RaftGroupMetadata::SetTableNameUnlocked(
+    const string& namespace_name, const string& table_name, const TableId& table_id) {
+  DCHECK(data_mutex_.is_locked());
   auto& tables = kv_store_.tables;
   auto& id = table_id.empty() ? primary_table_id_ : table_id;
   auto it = tables.find(id);
   DCHECK(it != tables.end());
   it->second->namespace_name = namespace_name;
   it->second->table_name = table_name;
+}
+
+void RaftGroupMetadata::SetSchemaAndTableName(
+    const Schema& schema, const IndexMap& index_map,
+    const std::vector<DeletedColumn>& deleted_cols,
+    const SchemaVersion version, const std::string& namespace_name,
+    const std::string& table_name, const TableId& table_id) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  SetSchemaUnlocked(schema, index_map, deleted_cols, version, table_id);
+  SetTableNameUnlocked(namespace_name, table_name, table_id);
 }
 
 void RaftGroupMetadata::AddTable(const std::string& table_id,
@@ -1510,7 +1533,8 @@ SchemaPtr RaftGroupMetadata::schema(
     const TableId& table_id, const ColocationId& colocation_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id, colocation_id));
-  return SchemaPtr(table_info, &table_info->doc_read_context->schema);
+  const docdb::DocReadContextPtr doc_read_context = table_info->doc_read_context;
+  return SchemaPtr(doc_read_context, &doc_read_context->schema);
 }
 
 std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) const {

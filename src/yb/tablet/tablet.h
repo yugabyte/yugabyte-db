@@ -618,6 +618,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   }
 
   void SetMemTableFlushFilterFactory(std::function<rocksdb::MemTableFilter()> factory) {
+    std::lock_guard<std::mutex> lock(flush_filter_mutex_);
     mem_table_flush_filter_factory_ = std::move(factory);
   }
 
@@ -872,7 +873,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
+  std::shared_ptr<docdb::SchemaPackingStorage> PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info);
 
@@ -1035,7 +1036,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   HybridTime DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs);
 
-  std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
+  mutable std::mutex flush_filter_mutex_;
+  std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_
+      GUARDED_BY(flush_filter_mutex_);
 
   client::LocalTabletFilter local_tablet_filter_;
 

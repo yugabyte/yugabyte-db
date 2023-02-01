@@ -13,6 +13,7 @@
 
 #include "yb/docdb/wait_queue.h"
 
+#include <chrono>
 #include <future>
 #include <memory>
 
@@ -60,11 +61,11 @@ DEFINE_UNKNOWN_uint64(force_single_shard_waiter_retry_ms, 30000,
 
 METRIC_DEFINE_coarse_histogram(
     tablet, wait_queue_pending_time_waiting, "Wait Queue - Still Waiting Time",
-    yb::MetricUnit::kMilliseconds,
+    yb::MetricUnit::kMicroseconds,
     "The amount of time a still-waiting transaction has been in the wait queue");
 METRIC_DEFINE_coarse_histogram(
     tablet, wait_queue_finished_waiting_latency, "Wait Queue - Total Waiting Time",
-    yb::MetricUnit::kMilliseconds,
+    yb::MetricUnit::kMicroseconds,
     "The amount of time an unblocked transaction spent in the wait queue");
 METRIC_DEFINE_coarse_histogram(
     tablet, wait_queue_blockers_per_waiter, "Wait Queue - Blockers per Waiter",
@@ -140,8 +141,8 @@ Result<ResolutionStatus> UnwrapResult(const Result<TransactionStatusResult>& res
   }
 }
 
-inline auto GetMillis(CoarseMonoClock::Duration duration) {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+inline auto GetMicros(CoarseMonoClock::Duration duration) {
+  return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
 }
 
 // Data for an active transaction which is waiting on some number of other transactions with which
@@ -184,7 +185,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
           << "be rare.";
       return;
     }
-    finished_waiting_latency_->Increment(GetMillis(CoarseMonoClock::Now() - created_at));
+    finished_waiting_latency_->Increment(GetMicros(CoarseMonoClock::Now() - created_at));
     if (!status.ok()) {
       unlocked_ = std::nullopt;
       callback(status);
@@ -525,7 +526,7 @@ class WaitQueue::Impl {
       auto duration = CoarseMonoClock::Now() - waiter->created_at;
       auto seconds = duration / 1s;
       VLOG_WITH_PREFIX_AND_FUNC(4) << waiter->id << " waiting for " << seconds << " seconds";
-      pending_time_waiting_->Increment(GetMillis(duration));
+      pending_time_waiting_->Increment(GetMicros(duration));
       auto transaction_id = waiter->id;
       StatusRequest request {
         .id = &transaction_id,

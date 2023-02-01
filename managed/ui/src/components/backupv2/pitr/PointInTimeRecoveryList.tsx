@@ -16,7 +16,7 @@ import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-tab
 import { useQuery } from 'react-query';
 import { YBButton } from '../../common/forms/fields';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { YBLoading } from '../../common/indicators';
+import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { getPITRConfigs } from '../common/PitrAPI';
 import { PointInTimeRecoveryEmpty } from './PointInTimeRecoveryEmpty';
 import { PointInTimeRecoveryEnableModal } from './PointInTimeRecoveryEnableModal';
@@ -40,7 +40,7 @@ export const FormatUnixTimeStampTimeToTimezone = ({ timestamp }: { timestamp: an
 };
 
 export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string }) => {
-  const { data: configs, isLoading } = useQuery(
+  const { data: configs, isLoading, isError } = useQuery(
     ['scheduled_sanpshots', universeUUID],
     () => getPITRConfigs(universeUUID),
     {
@@ -89,6 +89,12 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
   };
 
   if (isLoading) return <YBLoading />;
+  if (isError)
+    return (
+      <Row className="point-in-time-recovery-err">
+        <YBErrorIndicator customErrorMessage="Unable to load PITR Configurations" />
+      </Row>
+    );
 
   const regex = new RegExp(searchText.replace(/\\/g, '\\\\').toLowerCase() ?? '');
   const pitr_list = configs.filter(

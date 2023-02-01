@@ -16,11 +16,15 @@ import { RuntimeConfig } from './RuntimeConfig';
 const mapDispatchToProps = (dispatch: any) => {
   return {
     fetchRuntimeConfigs: (scope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE) => {
-      dispatch(
-        fetchRunTimeConfigs(scope, true)
-      ).then((response: any) => dispatch(fetchRunTimeConfigsResponse(response.payload)));
+      dispatch(fetchRunTimeConfigs(scope, true)).then((response: any) =>
+        dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
     },
-    setRuntimeConfig: (key: string, value: string, scope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE) => {
+    setRuntimeConfig: (
+      key: string,
+      value: string,
+      scope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE
+    ) => {
       dispatch(
         setRunTimeConfig({
           key: key,
@@ -30,17 +34,22 @@ const mapDispatchToProps = (dispatch: any) => {
       ).then((response: any) => {
         try {
           if (response.payload.isAxiosError || response.payload.status !== 200) {
-            toast.error("Could not save config, try again");
+            const responseError = response.payload?.response?.data?.error;
+            const errorMessage =
+              typeof responseError !== 'string'
+                ? 'Could not save config, try again'
+                : responseError;
+            toast.error(errorMessage);
           } else {
-            toast.success("Config saved successfully");
+            toast.success('Config saved successfully');
             dispatch(setRunTimeConfigResponse(response.payload));
           }
         } catch (error) {
           console.error('Error while trying to save config');
         } finally {
-          dispatch(
-            fetchRunTimeConfigs(scope, true)
-          ).then((response: any) => dispatch(fetchRunTimeConfigsResponse(response.payload)));
+          dispatch(fetchRunTimeConfigs(scope, true)).then((response: any) =>
+            dispatch(fetchRunTimeConfigsResponse(response.payload))
+          );
         }
       });
     },
@@ -49,20 +58,21 @@ const mapDispatchToProps = (dispatch: any) => {
         deleteRunTimeConfig({
           key: key,
           scope
-        })).then((response: any) => {
+        })
+      ).then((response: any) => {
         try {
           if (response.payload.isAxiosError || response.payload.status !== 200) {
-            toast.error("Could not delete config, try again");
+            toast.error('Could not delete config, try again');
           } else {
-            toast.success("Config resetted to parent scope successfully");
+            toast.success('Config resetted to parent scope successfully');
             dispatch(deleteRunTimeConfigResponse(response.payload));
           }
         } catch (error) {
           console.error('Error while trying to save config');
         } finally {
-          dispatch(
-            fetchRunTimeConfigs(scope, true)
-          ).then((response: any) => dispatch(fetchRunTimeConfigsResponse(response.payload)));
+          dispatch(fetchRunTimeConfigs(scope, true)).then((response: any) =>
+            dispatch(fetchRunTimeConfigsResponse(response.payload))
+          );
         }
       });
     },
@@ -72,7 +82,4 @@ const mapDispatchToProps = (dispatch: any) => {
   };
 };
 
-export const RuntimeConfigContainer = connect(
-  null,
-  mapDispatchToProps
-)(RuntimeConfig);
+export const RuntimeConfigContainer = connect(null, mapDispatchToProps)(RuntimeConfig);

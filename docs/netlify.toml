@@ -11,12 +11,12 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.108.0"
+  HUGO_VERSION = "0.110.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.108.0"
+  HUGO_VERSION = "0.110.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
@@ -276,6 +276,11 @@
 [[redirects]]
   from = "/v2.4/*"
   to = "https://docs-archive.yugabyte.com/v2.4/"
+  force = true
+
+[[redirects]]
+  from = "/v2.6/*"
+  to = "https://docs-archive.yugabyte.com/v2.6/"
   force = true
 
 # [[redirects]]

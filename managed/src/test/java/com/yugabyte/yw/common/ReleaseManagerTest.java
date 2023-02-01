@@ -577,7 +577,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
     try {
       releaseManager.addReleaseWithMetadata("0.0.1", metadata);
     } catch (RuntimeException re) {
-      assertEquals("Release already exists for version [0.0.1]", re.getMessage());
+      assertEquals("Release already exists for version 0.0.1", re.getMessage());
     }
   }
 

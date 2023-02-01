@@ -60,10 +60,7 @@ const getPlacements = (formData: WizardStepsFormData): PlacementRegion[] => {
 };
 
 // fix some skewed/missing fields in config response
-const patchConfigResponse = (
-  response: UniverseDetails,
-  original: UniverseDetails
-) => {
+const patchConfigResponse = (response: UniverseDetails, original: UniverseDetails) => {
   const clusterIndex = 0; // TODO: change to dynamic when support async clusters
 
   response.clusterOperation = original.clusterOperation;

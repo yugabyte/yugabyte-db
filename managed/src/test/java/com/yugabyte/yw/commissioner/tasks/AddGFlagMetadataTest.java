@@ -75,17 +75,6 @@ public class AddGFlagMetadataTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testFailureDueToMissingFilePath() {
-    AddGFlagMetadata.Params params = new AddGFlagMetadata.Params();
-    params.requiredGFlagsFileList = GFlagsValidation.GFLAG_FILENAME_LIST;
-    defaultReleaseMetadata.filePath = StringUtils.EMPTY;
-    params.releaseMetadata = defaultReleaseMetadata;
-    params.version = DEFAULT_VERSION;
-    TaskInfo taskInfo = submitTask(TaskType.AddGFlagMetadata, params, false);
-    assertEquals(Failure, taskInfo.getTaskState());
-  }
-
-  @Test
   public void testFailureWhileFetchingInputStream() throws FileNotFoundException, Exception {
     AddGFlagMetadata.Params params = new AddGFlagMetadata.Params();
     params.requiredGFlagsFileList = GFlagsValidation.GFLAG_FILENAME_LIST;

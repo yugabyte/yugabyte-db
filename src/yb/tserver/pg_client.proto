@@ -46,6 +46,8 @@ service PgClientService {
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
+  rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
+      returns (PgGetIndexBackfillProgressResponsePB);
   rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
   rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
@@ -65,6 +67,7 @@ service PgClientService {
 
   rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB) returns (PgInsertSequenceTupleResponsePB);
   rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB) returns (PgUpdateSequenceTupleResponsePB);
+  rpc FetchSequenceTuple(PgFetchSequenceTupleRequestPB) returns (PgFetchSequenceTupleResponsePB);
   rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB);
   rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
   rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
@@ -256,6 +259,8 @@ message PgFinishTransactionRequestPB {
   uint64 session_id = 1;
   bool commit = 2;
   bool ddl_mode = 3;
+  // This transaction contains changes to the DocDB schema protobufs.
+  bool has_docdb_schema_changes = 4;
 }
 
 message PgFinishTransactionResponsePB {
@@ -299,6 +304,17 @@ message PgLiveTabletServerPB {
   bool is_primary = 7;
   string public_ip = 8;
   uint32 pg_port = 9;
+}
+
+message PgGetIndexBackfillProgressRequestPB {
+ repeated PgObjectIdPB index_ids = 1;
+}
+
+message PgGetIndexBackfillProgressResponsePB {
+  AppStatusPB status = 1;
+  // The ordering of the indexes' results here is expected to be the same as the ordering in the
+  // corresponding request PB (PgGetIndexBackfillProgressRequestPB).
+  repeated uint64 rows_processed_entries = 2;
 }
 
 message PgListLiveTabletServersResponsePB {
@@ -478,6 +494,25 @@ message PgUpdateSequenceTupleRequestPB {
 message PgUpdateSequenceTupleResponsePB {
   AppStatusPB status = 1;
   bool skipped = 2;
+}
+
+message PgFetchSequenceTupleRequestPB {
+  uint64 session_id = 1;
+  int64 db_oid = 2;
+  int64 seq_oid = 3;
+  uint64 ysql_catalog_version = 4;
+  uint64 ysql_db_catalog_version = 10;
+  uint32 fetch_count = 5;
+  int64 inc_by = 6;
+  int64 min_value = 7;
+  int64 max_value = 8;
+  bool cycle = 9;
+}
+
+message PgFetchSequenceTupleResponsePB {
+  AppStatusPB status = 1;
+  int64 first_value = 2;
+  int64 last_value = 3;
 }
 
 message PgReadSequenceTupleRequestPB {

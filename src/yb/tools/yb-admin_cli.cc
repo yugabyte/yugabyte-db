@@ -83,6 +83,13 @@ constexpr auto kBlacklistAdd = "ADD";
 constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
 
+const std::string namespace_expression =
+"<namespace>:\n [(ycql|ysql).]<namespace_name> (default ycql.)";
+const std::string table_expression =
+"<table>:\n <namespace> <table_name> | tableid.<table_id>";
+const std::string index_expression =
+"<index>:\n  <namespace> <index_name> | tableid.<index_id>";
+
 Status GetUniverseConfig(ClusterAdminClientClass* client,
                          const ClusterAdminCli::CLIArguments&) {
   RETURN_NOT_OK_PREPEND(client->GetUniverseConfig(), "Unable to get universe config");
@@ -182,6 +189,22 @@ Status PrioritizedError(Status hi_pri_status, Status low_pri_status) {
 
 } // namespace
 
+std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arguments) {
+  std::string expressions;
+  std::stringstream ss(usage_arguments);
+  std::string next_argument;
+  while (ss >> next_argument) {
+    if (next_argument == "<namespace>") {
+      expressions += namespace_expression + '\n';
+    } else if (next_argument == "<table>") {
+      expressions += table_expression + '\n';
+    } else if (next_argument == "<index>") {
+      expressions += index_expression + '\n';
+    }
+  }
+  return expressions.empty() ? "" : "Definitions: " + expressions;
+}
+
 Status ClusterAdminCli::RunCommand(
     const Command& command, const CLIArguments& command_args, const std::string& program_name) {
   auto s = command.action_(command_args);
@@ -192,7 +215,7 @@ Status ClusterAdminCli::RunCommand(
       cerr << "Error running " << command.name_ << ": " << s << endl;
       if (s.IsInvalidArgument()) {
         cerr << Format("Usage: $0 $1 $2", program_name, command.name_, command.usage_arguments_)
-             << endl;
+             << endl << GetArgumentExpressions(command.usage_arguments_);
       }
     }
     return STATUS(RuntimeError, "Error running command");
@@ -285,12 +308,9 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
   }
 
   str << endl;
-  str << "<namespace>:" << endl;
-  str << "  [(ycql|ysql).]<namespace_name> (default ycql.)" << endl;
-  str << "<table>:" << endl;
-  str << "  <namespace> <table_name> | tableid.<table_id>" << endl;
-  str << "<index>:" << endl;
-  str << "  <namespace> <index_name> | tableid.<index_id>" << endl;
+  str << namespace_expression << endl;
+  str << table_expression << endl;
+  str << index_expression << endl;
 
   google::SetUsageMessage(str.str());
 }
@@ -500,6 +520,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         }
         RETURN_NOT_OK_PREPEND(client->DeleteReadReplicaPlacementInfo(),
                               Substitute("Unable to delete read replica placement info."));
+        return Status::OK();
+      });
+
+  Register(
+      "list_namespaces", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->ListAllNamespaces(),
+                              "Unable to list namespaces");
         return Status::OK();
       });
 

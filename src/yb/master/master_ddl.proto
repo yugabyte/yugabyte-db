@@ -96,7 +96,7 @@ message CreateTableRequestPB {
   // Only makes sense for colocated tables.
   optional uint32 colocation_id = 25;
 
-  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  // For YSQL tables, transaction used by this DDL. If aborted, table will be removed.
   optional TransactionMetadataPB transaction = 20;
 
   // For YSQL tables, this denotes the tablespace that this table is associated with.
@@ -523,6 +523,12 @@ message ListNamespacesResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated NamespaceIdentifierPB namespaces = 2;
+
+  repeated int32 states = 3;
+
+  /* We use int32 because the repeated bool type is bugged.
+  See https://github.com/yugabyte/yugabyte-db/issues/15868 */
+  repeated int32 colocated = 4;
 }
 
 message GetNamespaceInfoRequestPB {
@@ -547,6 +553,9 @@ message CreateTablegroupRequestPB {
   required bytes id = 1;
   required bytes namespace_id = 2;
   optional string namespace_name = 3;
+
+  // If aborted, tablegroup and related DocDB entities will be removed.
+  optional TransactionMetadataPB transaction = 5;
 
   // This denotes the tablespace that this tablegroup is associated with.
   optional bytes tablespace_id = 4;
@@ -630,6 +639,18 @@ message GetUDTypeInfoResponsePB {
   optional UDTypeInfoPB udtype = 2;
 }
 
+message ReportYsqlDdlTxnStatusRequestPB {
+  // The transaction whose status is being reported.
+  optional bytes transaction_id = 1;
+
+  // Whether the above transaction is committed or aborted.
+  optional bool is_committed = 2;
+}
+
+message ReportYsqlDdlTxnStatusResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterDdl {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -678,4 +699,7 @@ service MasterDdl {
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
   rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);
   rpc GetUDTypeInfo(GetUDTypeInfoRequestPB) returns (GetUDTypeInfoResponsePB);
+
+  rpc ReportYsqlDdlTxnStatus(ReportYsqlDdlTxnStatusRequestPB) returns
+      (ReportYsqlDdlTxnStatusResponsePB);
 }

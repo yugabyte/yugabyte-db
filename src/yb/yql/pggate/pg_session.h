@@ -18,7 +18,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "yb/client/client_fwd.h"
@@ -165,6 +164,16 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                    std::optional<int64_t> expected_last_val,
                                    std::optional<bool> expected_is_called);
 
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         bool is_db_catalog_version_mode,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle);
+
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
                                                      uint64_t ysql_catalog_version,
@@ -251,6 +260,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // -------------
   Result<client::TabletServersInfo> ListTabletServers();
 
+  Status GetIndexBackfillProgress(std::vector<PgObjectId> index_ids, uint64_t** backfill_statuses);
+
   //------------------------------------------------------------------------------------------------
   // Access functions.
   // TODO(neil) Need to double check these code later.
@@ -325,6 +336,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   void ResetHasWriteOperationsInDdlMode();
   bool HasWriteOperationsInDdlMode() const;
+
+  void SetDdlHasSyscatalogChanges();
 
   Result<bool> CheckIfPitrActive();
 

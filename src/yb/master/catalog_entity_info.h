@@ -41,6 +41,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
+#include "yb/common/transaction.h"
 
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
@@ -386,11 +387,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return pb.mutable_schema();
   }
 
-  std::string pb_transaction_id() const {
-    if (!pb.has_transaction()) {
-      return {};
-    }
-    return pb.transaction().transaction_id();
+  const std::string& pb_transaction_id() const {
+    static std::string kEmptyString;
+    return pb.has_transaction() ? pb.transaction().transaction_id() : kEmptyString;
   }
 
   bool has_ysql_ddl_txn_verifier_state() const {
@@ -411,6 +410,12 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
   bool is_being_created_by_ysql_ddl_txn() const {
     return has_ysql_ddl_txn_verifier_state() &&
       ysql_ddl_txn_verifier_state().contains_create_table_op();
+  }
+
+  Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
+
+  const std::string& state_name() const {
+    return SysTablesEntryPB_State_Name(pb.state());
   }
 
   // Helper to set the state of the tablet with a custom message.
@@ -536,15 +541,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
                      DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // This only returns tablets which are in RUNNING state.
-  void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
-  void GetTabletsInRange(
+  TabletInfos GetTabletsInRange(const GetTableLocationsRequestPB* req) const;
+  TabletInfos GetTabletsInRange(
       const std::string& partition_key_start, const std::string& partition_key_end,
-      TabletInfos* ret,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
   // Iterates through tablets_ and not partitions_, so there may be duplicates of key ranges.
-  void GetInactiveTabletsInRange(
+  TabletInfos GetInactiveTabletsInRange(
       const std::string& partition_key_start, const std::string& partition_key_end,
-      TabletInfos* ret,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
 
   std::size_t NumPartitions() const;

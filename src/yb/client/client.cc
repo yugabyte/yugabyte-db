@@ -124,6 +124,8 @@ using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
+using yb::master::GetIndexBackfillProgressRequestPB;
+using yb::master::GetIndexBackfillProgressResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
@@ -209,6 +211,7 @@ using yb::rpc::Messenger;
 using std::string;
 using std::vector;
 using std::make_pair;
+using google::protobuf::RepeatedField;
 using google::protobuf::RepeatedPtrField;
 
 using namespace yb::size_literals;  // NOLINT.
@@ -622,6 +625,22 @@ Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoi
   return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
 }
 
+Status YBClient::GetIndexBackfillProgress(
+    const std::vector<TableId>& index_ids,
+    RepeatedField<google::protobuf::uint64>* rows_processed_entries) {
+  GetIndexBackfillProgressRequestPB req;
+  GetIndexBackfillProgressResponsePB resp;
+  for (auto &index_id : index_ids) {
+    req.add_index_ids(index_id);
+  }
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetIndexBackfillProgress);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  *rows_processed_entries = std::move(resp.rows_processed_entries());
+  return Status::OK();
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
@@ -966,7 +985,7 @@ YBNamespaceAlterer* YBClient::NewNamespaceAlterer(
   return new YBNamespaceAlterer(this, namespace_name, namespace_id);
 }
 
-Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
+Result<vector<NamespaceInfo>> YBClient::ListNamespaces(
     const boost::optional<YQLDatabase>& database_type) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
@@ -974,10 +993,16 @@ Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
     req.set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
-  auto* namespaces = resp.mutable_namespaces();
-  vector<master::NamespaceIdentifierPB> result;
-  result.reserve(namespaces->size());
-  for (auto& ns : *namespaces) {
+  auto namespaces = resp.namespaces();
+  auto states = resp.states();
+  auto colocated = resp.colocated();
+  vector<NamespaceInfo> result;
+  result.reserve(namespaces.size());
+  for (int i = 0; i < namespaces.size(); ++i) {
+    NamespaceInfo ns;
+    ns.id = namespaces.Get(i);
+    ns.state = master::SysNamespaceEntryPB_State(states.Get(i));
+    ns.colocated = colocated.Get(i);
     result.push_back(std::move(ns));
   }
   return result;
@@ -1057,7 +1082,7 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
 Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
                                        const boost::optional<YQLDatabase>& database_type) {
   for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.name() == namespace_name) {
+    if (ns.id.name() == namespace_name) {
       return true;
     }
   }
@@ -1067,7 +1092,7 @@ Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
 Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
                                          const boost::optional<YQLDatabase>& database_type) {
   for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.id() == namespace_id) {
+    if (ns.id.id() == namespace_id) {
       return true;
     }
   }
@@ -1077,14 +1102,16 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
 Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
                                   const std::string& tablegroup_id,
-                                  const std::string& tablespace_id) {
+                                  const std::string& tablespace_id,
+                                  const TransactionMetadata* txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->CreateTablegroup(this,
                                  deadline,
                                  namespace_name,
                                  namespace_id,
                                  tablegroup_id,
-                                 tablespace_id);
+                                 tablespace_id,
+                                 txn);
 }
 
 Status YBClient::DeleteTablegroup(const std::string& tablegroup_id) {
@@ -1598,10 +1625,11 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-    GetTableLocationsCallback callback) {
+    PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetTableLocations(
-      this, table_id, max_tablets, require_tablets_running, deadline, std::move(callback));
+      this, table_id, max_tablets, require_tablets_running, partitions_only, deadline,
+      std::move(callback));
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
@@ -2053,6 +2081,11 @@ Result<TableSizeInfo> YBClient::GetTableDiskSize(const TableId& table_id) {
   return data_->GetTableDiskSize(table_id, deadline);
 }
 
+Status YBClient::ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed) {
+  auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
+  return data_->ReportYsqlDdlTxnStatus(txn, is_committed, deadline);
+}
+
 Result<bool> YBClient::CheckIfPitrActive() {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
   return data_->CheckIfPitrActive(deadline);
@@ -2280,7 +2313,7 @@ CoarseTimePoint YBClient::PatchAdminDeadline(CoarseTimePoint deadline) const {
   return CoarseMonoClock::Now() + default_admin_operation_timeout();
 }
 
-Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces() {
+Result<vector<NamespaceInfo>> YBClient::ListNamespaces() {
   return ListNamespaces(boost::none);
 }
 

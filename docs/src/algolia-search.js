@@ -42,9 +42,24 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
+   * Show Message when Search is empty.
+   */
+  function emptySearch() {
+    setTimeout(() => {
+      if (document.querySelector('body').classList.contains('td-searchpage--')) {
+        document.querySelector('#doc-hit').innerHTML = '<li class="no-result">Search data related to <b>YugabyteDb</b> in our Documentation </li>';
+        document.querySelector('#pagination-docs').style.display = 'none';
+      } else {
+        document.querySelector('.search-result').style.display = 'none';
+      }
+    }, 800);
+  }
+
+  /**
    * Main Docs section HTML.
    */
   function docsSection(hitIs) {
+    console.log(hitIs);
     let content = '';
     hitIs.forEach(hit => {
       const hitLevel0 = hit.hierarchy.lvl0;
@@ -54,12 +69,12 @@ import algoliasearch from 'algoliasearch';
 
       content += '<li>' +
         '<div class="search-title">' +
-          '<a href="' + hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/') + '">' +
-            '<span class="search-title-inner">' + hitLevel0 + '</span>' +
-            '<div class="breadcrumb-item">' + hit.breadcrumb + '</div>' +
-          '</a>' +
+        '<a href="' + hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/') + '">' +
+        '<span class="search-title-inner">' + hitLevel0 + '</span>' +
+        '<div class="breadcrumb-item">' + hit.breadcrumb + '</div>' +
+        '</a>' +
         '</div>' +
-      '</li>';
+        '</li>';
     });
 
     return content;
@@ -170,13 +185,13 @@ import algoliasearch from 'algoliasearch';
     if (searchValue.length > 0) {
       document.querySelector('.search-result').style.display = 'block';
     } else {
-      document.querySelector('.search-result').style.display = 'none';
+      emptySearch();
       return;
     }
 
     let perPageCount = 8;
     if (document.querySelector('body').classList.contains('td-searchpage')) {
-      perPageCount = 20;
+      perPageCount = 10;
     }
 
     const client = algoliasearch('UMBCUJCBE8', 'a879f0ab89b677264d0c6e087b714fd8');
@@ -186,6 +201,7 @@ import algoliasearch from 'algoliasearch';
     const searchOptions = {
       hitsPerPage: perPageCount,
       page: 0,
+      filters: 'version:"preview"',
     };
 
     if (pageItems && pageItems > 0) {
@@ -292,17 +308,18 @@ import algoliasearch from 'algoliasearch';
     document.addEventListener('click', (event) => {
       const isClickInsideElement = ignoreClickOnMeElement.contains(event.target);
       if (!isClickInsideElement) {
-        document.querySelector('.search-result').style.display = 'none';
+        emptySearch();
       }
     });
   }
   const inputReset = document.querySelector('.reset-input');
   inputReset.addEventListener('click', () => {
     document.querySelector('.td-search-input').value = '';
-    document.querySelector('.search-result').style.display = 'none';
+    emptySearch();
     document.querySelector('.td-search-input').classList.remove('have-text');
     if (document.querySelector('body').classList.contains('td-searchpage')) {
       window.history.pushState({}, '', '/search/');
     }
   });
 })();
+
