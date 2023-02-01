@@ -86,16 +86,61 @@ Each data type supported in YSQL or YCQL is represented by a unique byte. The ty
 
 ### Non-primary key columns
 
-The non-primary key columns correspond to subdocuments within the document. The subdocument key corresponds to the column ID. There is a unique byte for each data type supported in YSQL and YCQL. The values are prefixed with the corresponding byte. If a column is a non-primitive type (such as a map or set), the corresponding subdocument is an `Object`.
+The non-primary key columns correspond to sub-documents in the document. The sub-document key corresponds to the column ID. There's a unique byte for each data type we support in YSQL (or YCQL). The values are prefixed with the corresponding byte. If a column is a non-primitive type (such as a map or set), the corresponding sub-document is an Object.
 
 A binary-comparable encoding is used for translating the value for each YCQL type to strings that are added to the key-value store.
 
-### Data expiration in YCQL
+## Packed row format (Beta)
 
-In YCQL, there are two types of time to live (TTL): the table TTL and column-level TTL. The latter is stored with the value using the same encoding as Redis. The former is not stored in DocDB; instead, it is stored
-in the master’s syscatalog as part of the table’s schema. If no TTL is present at the column’s value, the table TTL acts as the default value.
+A row corresponding to the user table is stored as multiple key value pairs in the DocDB. For example, a row with one primary key `K` and `n` non-key columns , that is, `K (primary key)  |  C1 (column)  | C2  | ………  | Cn`, would be stored as `n` key value pairs - `<K, C1> <K, C2> .... <K, Cn>`.
 
-YCQL has a distinction between rows created using `INSERT` and `UPDATE` operations. This difference, as well as row-level TTLs are being kept track of via a liveness column, which is a special system column invisible to you. This column is added for inserts, but not updates, making sure the row is present even if all non-primary key columns are deleted only in the case of inserts.
+With packed row format, it would be stored as a single key value pair: `<K, packed {C1, C2...Cn}>`.
+
+While UDTs (user-defined types) can be used to achieve the packed row format at the application level, native support for packed row format has the following benefits:
+
+* Lower storage footprint.
+* Efficient INSERTs, especially when a table has large number of columns.
+* Faster multi-column reads, as the reads need to fetch fewer key value pairs.
+* UDTs require application rewrite, and therefore not necessarily an option for all use cases, like latency sensitive update workloads.
+
+The packed row format can be enabled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags-beta).
+
+### Design
+
+Following are the design aspects of packed row format:
+
+* **Inserts**: Entire row is stored as a single key-value pair.
+
+* **Updates**:  If some column(s) are updated, then each such column update is stored as a key-value pair in DocDB (same as without packed rows). However, if all non-key columns are updated, then the row is stored in the packed format as one single key-value pair. This scheme adopts both efficient updates and efficient storage.
+
+* **Select**: Scans need to construct the row from packed inserts as well as non-packed update(s), if any.
+
+* **Point lookups**: Point lookups will be just as fast as without packed row as fundamentally, we will still be seeking a single key-value pair from DocDB.
+
+* **Compactions**: Compactions produce a compact version of the row, if the row has unpacked fragments due to updates.
+
+* **Backward compatibility**: Read code can interpret non-packed format as well. Writes/updates can produce non-packed format as well. Once a row is packed, it cannot be unpacked.
+
+### Performance data
+
+Testing the packed row feature with different configurations showed significant performance gains:
+
+* Sequential scans for table with 1 million rows was 2x faster with packed rows.
+* Bulk ingestion of 1 million rows was 2x faster with packed rows.
+
+### Limitations
+
+The packed row feature works for the YSQL API using the YSQL-specific GFlags with most cross features like backup and restore, schema changes, and so on, subject to certain known limitations which are currently under development:
+
+* [#15740](https://github.com/yugabyte/yugabyte-db/issues/15740) Integration with CDC and schema changes (Beta) - There are some known limitations with schema changes/DDLs and CDC and Packed Row feature.
+* [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143) Colocated and xCluster (Beta) - There are some limitations around propagation of schema changes for colocated tables in xCluster in the packed row format that are being worked on.
+* [#14369](https://github.com/yugabyte/yugabyte-db/issues/14369) Packed row support for YCQL is limited and is still being hardened.
+
+## Data expiration in YCQL
+
+In YCQL, there are two types of TTL: the table TTL, and column-level TTL. Column TTLs are stored with the value using the same encoding as Redis. The table's TTL is not stored in DocDB (instead, it is stored in the master's syscatalog as part of the table's schema). If no TTL is present at the column's value, the table TTL acts as the default value.
+
+Furthermore, YCQL has a distinction between rows created using Insert vs Update. YugabyteDB keeps track of this difference (and column-level TTLs) using a "liveness column", a special system column invisible to the user. It is added for inserts, but not updates, which ensures the row is present even if all non-primary key columns are deleted only in the case of inserts.
 
 ## Collection type examples for YCQL
 
@@ -111,8 +156,6 @@ CREATE TABLE msgs (user_id text,
 
 ### Insert a row
 
-The following example inserts a row:
-
 ```sql
 T1: INSERT INTO msgs (user_id, msg_id, msg, msg_props)
       VALUES ('user1', 10, 'msg1', {'from' : 'a@b.com', 'subject' : 'hello'});
@@ -120,7 +163,7 @@ T1: INSERT INTO msgs (user_id, msg_id, msg, msg_props)
 
 The entries in DocDB would look similar to the following:
 
-```output
+```output.sql
 (hash1, 'user1', 10), liveness_column_id, T1 -> [NULL]
 (hash1, 'user1', 10), msg_column_id, T1 -> 'msg1'
 (hash1, 'user1', 10), msg_props_column_id, 'from', T1 -> 'a@b.com'
