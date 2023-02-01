@@ -95,6 +95,28 @@ for row in rows:
 cluster.shutdown()
 ```
 
+#### Use SSL
+
+To run the application with SSL, create the cluster connection with additional SSL parameters and imports described as follows:
+
+```python
+# Include additional imports.
+from ssl import SSLContext, PROTOCOL_TLS_CLIENT, CERT_REQUIRED
+from cassandra.auth import PlainTextAuthProvider
+
+# Include additional parameters.
+ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
+ssl_context.load_verify_locations('path to certs file')
+ssl_context.verify_mode = CERT_REQUIRED
+
+# Create the cluster connection.
+cluster = Cluster(contact_points=['ip_address'],
+    ssl_context=ssl_context,
+    ssl_options={'server_hostname': 'ip address'},
+    auth_provider=PlainTextAuthProvider(username='username', password='password'))
+session = cluster.connect()
+```
+
 ### Run the application
 
 To run the application, type the following:
