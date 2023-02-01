@@ -62,4 +62,13 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + " as stale and deleted.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> showUICost =
+      new ConfKeyInfo<>(
+          "yb.ui.show_cost",
+          ScopeType.CUSTOMER,
+          "Show costs in UI",
+          "Option to enable/disable costs in UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
