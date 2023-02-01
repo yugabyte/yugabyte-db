@@ -3681,7 +3681,9 @@ YbPreloadRelCacheHelper()
 	const uint64_t catalog_master_version =
 		YbGetCatalogCacheVersionForTablePrefetching();
 	YBCPgResetCatalogReadTime();
-	YBCStartSysTablePrefetching(catalog_master_version);
+	YBCStartSysTablePrefetching(
+		catalog_master_version,
+		*YBCGetGFlags()->ysql_enable_read_request_caching);
 	PG_TRY();
 	{
 		YBPreloadRelCache();

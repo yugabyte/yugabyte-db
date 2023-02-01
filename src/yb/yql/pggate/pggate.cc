@@ -1794,13 +1794,15 @@ Status PgApiImpl::ValidatePlacement(const char *placement_info) {
   return pg_session_->ValidatePlacement(placement_info);
 }
 
-void PgApiImpl::StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
+void PgApiImpl::StartSysTablePrefetching(
+    uint64_t latest_known_ysql_catalog_version, bool should_use_cache) {
   if (pg_sys_table_prefetcher_) {
     DLOG(FATAL) << "Sys table prefetching was started already";
   }
 
-  CHECK(!pg_session_->HasCatalogReadPoint());
-  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(latest_known_ysql_catalog_version));
+  CHECK(!pg_session_->catalog_read_time());
+  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(
+      latest_known_ysql_catalog_version,  should_use_cache));
 }
 
 void PgApiImpl::StopSysTablePrefetching() {
@@ -1809,6 +1811,10 @@ void PgApiImpl::StopSysTablePrefetching() {
   } else {
     pg_sys_table_prefetcher_.reset();
   }
+}
+
+bool PgApiImpl::IsSysTablePrefetchingStarted() const {
+  return static_cast<bool>(pg_sys_table_prefetcher_);
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(
