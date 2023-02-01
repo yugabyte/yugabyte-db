@@ -1,0 +1,45 @@
+name: Python Driver Tests
+
+on:
+  push:
+    branches: [ "master" ]
+    paths: 
+      - 'drivers/python/**'
+      
+  pull_request:
+    branches: [ "master" ]
+    paths: 
+      - 'drivers/python/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: drivers/python
+  
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run apache/age docker image
+      run: docker-compose up -d
+
+    - name: Set up python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install pre-requisites
+      run: |
+        sudo apt-get install python3-dev libpq-dev
+        pip install -r requirements.txt
+
+    - name: Build
+      run: |
+        python setup.py install
+
+    - name: Test
+      run: |
+        python -m unittest -v test_age_py.py
+        python -m unittest -v test_agtypes.py
