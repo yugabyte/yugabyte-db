@@ -321,7 +321,7 @@ class Loader {
   Loader(PgSession* session, const std::shared_ptr<ThreadSafeArena>& arena,
          size_t estimated_size, const Settings& settings)
       : session_(session),
-        arena_(SharedArena()),
+        arena_(arena),
         settings_(settings) {
     op_info_.reserve(estimated_size);
   }
@@ -397,7 +397,7 @@ class Loader {
   PgSession* session_;
   std::vector<OperationInfo> op_info_;
   std::shared_ptr<ThreadSafeArena> arena_;
-  const Settings& settings_;
+  const Settings settings_;
 };
 
 } // namespace
