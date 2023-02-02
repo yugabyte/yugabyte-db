@@ -2,7 +2,7 @@
 title: Request a free trial
 linkTitle: Request a free trial
 description: Request a free trial of YugabyteDB Managed to conduct POCs and performance testing.
-headcontent: Request a free trial for POCs and performance testing
+headcontent: Explore all YugabyteDB Managed features
 image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:

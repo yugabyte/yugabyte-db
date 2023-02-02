@@ -15,11 +15,13 @@ type: indexpage
 breadcrumbDisable: true
 resourcesIntro: Quick Links
 resources:
+  - title: Free Trial
+    url: /preview/yugabyte-cloud/managed-freetrial/
   - title: What's New
     url: /preview/yugabyte-cloud/release-notes/
   - title: YugabyteDB Managed FAQ
     url: /preview/faq/yugabytedb-managed-faq/
-  - title: Example Applications
+  - title: Build Applications
     url: /preview/develop/build-apps/
   - title: Troubleshoot
     url: /preview/yugabyte-cloud/cloud-troubleshoot/
