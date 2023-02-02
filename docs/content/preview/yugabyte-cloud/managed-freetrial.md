@@ -25,7 +25,7 @@ To request a free trial:
 1. Click **Request a Free Trial**.
 1. Enter your details.
 
-Our team will contact you inside two business days.
+Our team will contact you inside two business days. In the meantime, [create a Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/) to run a tutorial and [explore](../../explore/) YugabyteDB and distributed SQL.
 
 Once applied, the credits can be used to create dedicated clusters in a [variety of topologies](../cloud-basics/create-clusters-topology/), including:
 
@@ -34,6 +34,6 @@ Once applied, the credits can be used to create dedicated clusters in a [variety
 - Partition by region
 - Read replicas
 
-In the meantime, [create a Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/) to run a tutorial and [explore](../../explore/) YugabyteDB and distributed SQL.
+Create a [billing profile](../cloud-admin/cloud-billing-profile/) and add a payment method any time. You won't be charged until your credits are used.
 
-Only one free trial can be applied to an account. You must use your credits within 30 days of creating your first dedicated cluster.
+Only one free trial can be applied to an account.
