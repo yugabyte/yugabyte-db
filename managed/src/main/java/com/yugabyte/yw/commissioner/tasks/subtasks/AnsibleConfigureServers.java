@@ -114,15 +114,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       if (node.masterState != MasterState.Configured) {
         // Reset may be set only if node is not a master.
         // Once isMaster is set, it can be tied to a cluster.
-        String masterAddresses = universe.getMasterAddresses();
-        YBClient client = ybService.getClient(masterAddresses, universe.getCertificateNodetoNode());
-        try {
-          resetMasterState =
-              !ChangeMasterConfig.isChangeMasterConfigDone(
-                  client, node, true, node.cloudInfo.private_ip);
-        } finally {
-          ybService.closeClient(client, masterAddresses);
-        }
+        resetMasterState =
+            isChangeMasterConfigDone(universe, node, true, node.cloudInfo.private_ip);
       }
     }
     log.debug(

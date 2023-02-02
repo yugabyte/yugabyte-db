@@ -447,6 +447,11 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
 
   @Test
   public void tablesInLegacyColocatedDb() throws Exception {
+    markClusterNeedsRecreation();
+    // Change the default flag value to allow to create legacy colocated database.
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "true"),
+                            Collections.emptyMap());
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE DATABASE clc WITH colocation = true");
     }
@@ -519,10 +524,6 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
   @Test
   public void tablesInColocatedDb() throws Exception {
     markClusterNeedsRecreation();
-    // Change the default flag value to allow to create colocation database.
-    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
-                                                     "false"),
-                            Collections.emptyMap());
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE DATABASE clc WITH colocation = true");
     }

@@ -541,13 +541,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void DisableTabletSplittingInternal(const MonoDelta& duration, const std::string& feature);
 
+  void ReenableTabletSplittingInternal(const std::string& feature);
+
   // Returns true if there are no outstanding tablets and the tablet split manager is not currently
   // processing tablet splits.
   Status IsTabletSplittingComplete(
       const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  bool IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion);
+  bool IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion, CoarseTimePoint deadline);
 
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
