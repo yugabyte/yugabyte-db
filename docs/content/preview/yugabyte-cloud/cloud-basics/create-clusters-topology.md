@@ -74,9 +74,9 @@ In a cluster that is replicated across regions, the nodes of the cluster are dep
 
 **Consistency**: All writes are synchronously replicated. Transactions are globally consistent.
 
-**Latency**: Latency in a multi-region cluster depends on the distance/network packet transfer times between the nodes of the cluster and between the cluster and the client. As a mitigation, YugabyteDB offers tunable global reads that allow read requests to trade off some consistency for lower read latency. By default, read requests in a YugabyteDB cluster are handled by the leader of the Raft group associated with the target tablet to ensure strong consistency. In situations where you are willing to sacrifice some consistency in favor of lower latency, you can choose to read from a tablet follower that is closer to the client rather than from the leader. YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers.
+**Latency**: Latency in a multi-region cluster depends on the distance and network packet transfer times between the nodes of the cluster and between the cluster and the client. Write latencies in this deployment mode can be high. This is because the tablet leader replicates write operations across a majority of tablet peers before sending a response to the client. All writes involve cross-zone communication between tablet peers.
 
-Write latencies in this deployment mode can be high. This is because the tablet leader replicates write operations across a majority of tablet peers before sending a response to the client. All writes involve cross-zone communication between tablet peers.
+As a mitigation, you can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) and set a [preferred region](../create-clusters/create-clusters-multisync/#preferred-region).
 
 **Strengths**
 
@@ -122,12 +122,12 @@ In YugabyteDB Managed, a partition-by-region cluster consists initially of a pri
 
 **Consistency**: Because this deployment model has a single cluster that is spread out across multiple geographies, all writes are synchronously replicated to nodes in different zones of the same region, thus maintaining strong consistency.
 
-**Latency**: Because all the shard replicas are pinned to zones in a single region, read and write overhead is minimal and latency is low. To insert rows or make updates to rows pinned to a particular region, the cluster needs to touch only shard replicas in the same region.
+**Latency**: Because all the tablet replicas are pinned to zones in a single region, read and write overhead is minimal and latency is low. To insert rows or make updates to rows pinned to a particular region, the cluster needs to touch only tablet replicas in the same region.
 
 **Strengths**
 
 - Tables that have data that needs to be pinned to specific geographic regions to meet data sovereignty requirements
-- Low latency reads and writes in the region the data resides in
+- Low latency reads and writes in the region where the data resides
 - Strongly consistent reads and writes
 
 **Tradeoffs**
@@ -229,7 +229,7 @@ For applications that have writes happening from a single zone or region but wan
 
 **Consistency**: The data in the replica clusters is timeline consistent, which is better than eventual consistency.
 
-**Latency**: Reads from both the primary cluster and read replicas can be fast (single digit millisecond latency) because read replicas can serve timeline consistent reads without having to go to the shard leader in the primary cluster. Read replicas don't handle write requests; these are redirected to the primary cluster. So the write latency will depend on the distance between the client and the primary cluster.
+**Latency**: Reads from both the primary cluster and read replicas can be fast (single digit millisecond latency) because read replicas can serve timeline consistent reads without having to go to the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) in the primary cluster. Read replicas don't handle write requests; these are redirected to the primary cluster. So the write latency will depend on the distance between the client and the primary cluster.
 
 **Strengths**
 

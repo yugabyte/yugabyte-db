@@ -96,13 +96,13 @@ For best performance as well as lower data transfer costs, you want to minimize 
 
 ### Follower reads
 
-YugabyteDB offers tunable global reads that allow read requests to trade off some consistency for lower read latency. By default, read requests in a YugabyteDB cluster are handled by the leader of the Raft group associated with the target shard to ensure strong consistency. In situations where you are willing to sacrifice some consistency in favor of lower latency, you can choose to read from a shard follower that is closer to the client rather than from the leader. YugabyteDB also allows you to specify the maximum staleness of data when reading from shard followers.
+YugabyteDB offers tunable global reads that allow read requests to trade off some consistency for lower read latency. By default, read requests in a YugabyteDB cluster are handled by the leader of the Raft group associated with the target tablet to ensure strong consistency. In situations where you are willing to sacrifice some consistency in favor of lower latency, you can choose to read from a tablet follower that is closer to the client rather than from the leader. YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers.
 
 For more information on follower reads, refer to the [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ysql/) example.
 
 ### Preferred region
 
-If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the tablet leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting shard follower replicas.
+If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the tablet leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
 
 For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction.
 
@@ -124,6 +124,6 @@ When complete, the load is handled exclusively by the preferred region.
 
 ![Performance charts with preferred region](/images/ce/multisync-managed-charts-preferred.png)
 
-With the shard leaders now all located in the region to which the application is connected, latencies decrease and throughput increases.
+With the tablet leaders now all located in the region to which the application is connected, latencies decrease and throughput increases.
 
 Note that cross-region latencies are unavoidable in the write path, given the need to ensure region-level automatic failover and repair.

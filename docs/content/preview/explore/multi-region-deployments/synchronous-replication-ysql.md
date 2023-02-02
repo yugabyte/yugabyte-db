@@ -45,7 +45,7 @@ If you have a previously running local cluster, [destroy it](#clean-up).
 
 {{< note title="Setup for POCs" >}}
 
-The steps can also be used for deploying clusters in any public cloud, private data center, or in separate VMs. The only differences are as follows:
+The steps can also be used for deploying clusters in any public cloud, private data center, or in separate virtual machines. The only differences are as follows:
 
 - You don't need to specify the `--advertise_address` or `--base_dir` flags.
 - You don't need to configure loopback addresses.
@@ -153,7 +153,7 @@ You should now see some read and write load on the [tablet servers page](http://
 
 ## Tuning latencies
 
-Latency in a multi-region cluster depends on the distance/network packet transfer times between the nodes of the cluster and between the cluster and the client. Because the [shard leader](../../../architecture/docdb-sharding/sharding/) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
+Latency in a multi-region cluster depends on the distance/network packet transfer times between the nodes of the cluster and between the cluster and the client. Because the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
 
 For best performance as well as lower data transfer costs, you want to minimize transfers between providers, and between provider regions. You do this by locating your cluster as close to your applications as possible:
 
@@ -169,7 +169,7 @@ For more information on follower reads, refer to the [Follower reads](../../ysql
 
 ### Preferred region
 
-If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the shard leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting shard follower replicas.
+If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the tablet leaders to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
 
 For multi-row or multi-table transactional operations, colocating the leaders in a single zone or region can help reduce the number of cross-region network hops involved in executing a transaction.
 
