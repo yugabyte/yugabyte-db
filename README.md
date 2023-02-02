@@ -324,7 +324,7 @@ Join the AGE community for help, questions, discussions, and contributions.
 - Check our [website](https://age.apache.org/)
 - Chat live with us on [Discord](https://discord.com/invite/NMsBs9X8Ss/)
 - Follow us on [Twitter](https://twitter.com/apache_age?s=20&t=7Hu8Txk4vjvuEp-ryakacg)
-- Join our [Dev community](https://lists.apache.org/list.html?dev@age.apache.org)
+- Subscribe to our developer mailing list by sending an email to dev-subscribe@age.apache.org
 
 
 <h2><img height="20" src="/img/visualization.svg">&nbsp;&nbsp;Graph Visualization Tool for AGE</h2>
