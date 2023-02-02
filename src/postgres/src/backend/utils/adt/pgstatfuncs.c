@@ -1235,6 +1235,21 @@ pg_stat_get_backend_client_port(PG_FUNCTION_ARGS)
 										CStringGetDatum(remote_port)));
 }
 
+Datum
+yb_pg_stat_get_backend_catalog_version(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	PgBackendStatus *beentry;
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	if (beentry->yb_st_catalog_version.has_version)
+		PG_RETURN_DATUM(UInt64GetDatum(beentry->yb_st_catalog_version.version));
+	else
+		PG_RETURN_NULL();
+}
+
 
 Datum
 pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
