@@ -3703,7 +3703,7 @@ YbPreloadRelCacheHelper()
  * version it is unfortunate but ok. The master version will have
  * changed too (making our version number obsolete) so we will just end
  * up needing to do another cache refresh later.
- * See the comment for yb_catalog_cache_version in 'pg_yb_utils.c' for
+ * See the comment for yb_catalog_cache_version in 'pg_yb_utils.h' for
  * more details.
  */
 static void YBRefreshCache()
@@ -5162,6 +5162,9 @@ PostgresMain(int argc, char *argv[],
 
 				set_ps_display("idle", false);
 				pgstat_report_activity(STATE_IDLE, NULL);
+
+				if (IsYugaByteEnabled())
+					yb_pgstat_set_has_catalog_version(false);
 			}
 
 			ReadyForQuery(whereToSendOutput);
@@ -5219,7 +5222,9 @@ PostgresMain(int argc, char *argv[],
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
 
-		if (IsYugaByteEnabled()) {
+		if (IsYugaByteEnabled())
+		{
+			yb_pgstat_set_has_catalog_version(true);
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
 		}

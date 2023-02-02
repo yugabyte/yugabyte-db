@@ -88,6 +88,7 @@
 
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "pgstat.h"
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -136,6 +137,7 @@ void
 YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
 {
 	yb_catalog_cache_version = catalog_cache_version;
+	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 	YbUpdateLastKnownCatalogCacheVersion(yb_catalog_cache_version);
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
@@ -155,6 +157,7 @@ void
 YbResetCatalogCacheVersion()
 {
   yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+  yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
 /** These values are lazily initialized based on corresponding environment variables. */
@@ -1228,6 +1231,7 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
 		if (increment_done)
 		{
 			yb_catalog_cache_version += 1;
+			yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 			if (*YBCGetGFlags()->log_ysql_catalog_versions)
 				ereport(LOG,
 						(errmsg("%s: set local catalog version: %" PRIu64,
