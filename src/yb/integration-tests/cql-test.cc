@@ -71,6 +71,8 @@ class CqlTest : public CqlTestBase<MiniCluster> {
   void TestAlteredPrepare(bool metadata_in_exec_resp);
   void TestAlteredPrepareWithPaging(bool check_schema_in_paging,
                                     bool metadata_in_exec_resp = false);
+  void TestAlteredPrepareForIndexWithPaging(bool check_schema_in_paging,
+                                            bool metadata_in_exec_resp = false);
   void TestPrepareWithDropTableWithPaging();
 };
 
@@ -755,6 +757,122 @@ TEST_F(CqlTest, PrepareWithDropTableWithPaging) {
 TEST_F(CqlTest, PrepareWithDropTableWithPaging_NoSchemaCheck) {
   FLAGS_cql_check_table_schema_in_paging_state = false;
   TestPrepareWithDropTableWithPaging();
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+void CqlTest::TestAlteredPrepareForIndexWithPaging(
+    bool check_schema_in_paging, bool metadata_in_exec_resp) {
+  FLAGS_cql_check_table_schema_in_paging_state = check_schema_in_paging;
+  FLAGS_cql_always_return_metadata_in_execute_response = metadata_in_exec_resp;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(
+      session.ExecuteQuery("CREATE TABLE t1 (i INT, j INT, x INT, v INT, PRIMARY KEY(i, j)) WITH "
+                           "TRANSACTIONS = {'enabled': 'true'} AND CLUSTERING ORDER BY (j ASC)"));
+  ASSERT_OK(
+      session.ExecuteQuery("CREATE INDEX t1_x oN t1 (x)"));
+
+  const client::YBTableName table_name(YQL_DATABASE_CQL, "test", "t1");
+  const client::YBTableName index_table_name(YQL_DATABASE_CQL, "test", "t1_x");
+  ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+
+  for (int j = 1; j <= 7; ++j) {
+    ASSERT_OK(session.ExecuteQuery(Format("INSERT INTO t1 (i, j, x, v) VALUES (0, $0, 10, 5)", j)));
+  }
+  ASSERT_OK(session.ExecuteQuery(Format("INSERT INTO t1 (i, j, x, v) VALUES (0, 8, 9, 5)")));
+
+  // [Table only, Index only, Index + Table]
+  std::vector<string> queries = {
+      "SELECT * FROM t1", "SELECT x, j FROM t1 WHERE x = 10", "SELECT * FROM t1 WHERE x = 10"};
+  std::vector<string> expectedFirstPageSession1 = {
+      "0,1,10,5;0,2,10,5;0,3,10,5", "10,1;10,2;10,3", "0,1,10,5;0,2,10,5;0,3,10,5"};
+  std::vector<string> expectedFirstPageSession2 = {
+      "0,1,10,5,NULL;0,2,10,5,NULL;0,3,10,5,NULL", "10,1;10,2;10,3",
+      "0,1,10,5,NULL;0,2,10,5,NULL;0,3,10,5,NULL"};
+  std::vector<string> expectedSecondPageSession1 = {
+      "0,4,10,5,NULL;0,5,10,5,NULL;0,6,10,5,NULL", "10,4;10,5;10,6",
+      "0,4,10,5,99;0,5,10,5,NULL;0,6,10,5,NULL"};
+  std::vector<string> expectedSecondPageSession2 = {
+      "0,4,10,5,99;0,5,10,5,NULL;0,6,10,5,NULL", "10,4;10,5;10,6",
+      "0,4,10,5,99;0,5,10,5,NULL;0,6,10,5,NULL"};
+  // The returned result is (0,4,10,5,NULL) (0,5,10,5,NULL) (0,6,10,5,NULL).
+  // The result is interpreted by the driver in accordance with the old schema in the absence of
+  // metadata - as <page-size>*(INT, INT, INT, INT): (0, 4, 10, 5) (NULL, 0, 5, 10) (5, NULL, 0, 6).
+  std::vector<string> expectedSecondPageWithoutMetadata = {
+      "0,4,10,5;NULL,0,5,10;5,NULL,0,6", "10,4;10,5;10,6", "0,4,10,5;99,0,5,10;5,NULL,0,6"};
+
+  for (size_t i = 0; i < queries.size(); i++) {
+    auto& query = queries[i];
+
+    LOG(INFO) << "Query: " << query;
+    LOG(INFO) << "Client-1: Prepare";
+    auto session1 = ASSERT_RESULT(EstablishSession(driver_.get()));
+    auto prepared = ASSERT_RESULT(session1.Prepare(query));
+
+    LOG(INFO) << "Client-1: Execute-1 prepared (for schema version 0: 4 columns)";
+    CassandraStatement stmt = prepared.Bind();
+    stmt.SetPageSize(3);
+    CassandraResult res = ASSERT_RESULT(session1.ExecuteWithResult(stmt));
+    ASSERT_EQ(res.RenderToString(), expectedFirstPageSession1[i]);
+    stmt.SetPagingState(res);
+
+    LOG(INFO) << "Client-2: Alter: ADD k";
+    auto session2 = ASSERT_RESULT(EstablishSession(driver_.get()));
+    ASSERT_OK(session2.ExecuteQuery("ALTER TABLE t1 ADD k INT"));
+    ASSERT_OK(session2.ExecuteQuery("INSERT INTO t1 (i, j, x, v, k) VALUES (0, 4, 10, 5, 99)"));
+
+    LOG(INFO) << "Client-2: Prepare";
+    auto prepared2 = ASSERT_RESULT(session2.Prepare(query));
+    LOG(INFO) << "Client-2: Execute-1 prepared (for schema version 1: 5 columns)";
+    CassandraStatement stmt2 = prepared2.Bind();
+    stmt2.SetPageSize(3);
+    res = ASSERT_RESULT(session2.ExecuteWithResult(stmt2));
+    ASSERT_EQ(res.RenderToString(), expectedFirstPageSession2[i]);
+    stmt2.SetPagingState(res);
+
+    LOG(INFO) << "Client-1: Execute-2 prepared (for schema version 0: 4 columns)";
+    if (check_schema_in_paging) {
+      Status s = session1.Execute(stmt);
+      LOG(INFO) << "Expcted error: " << s;
+      ASSERT_TRUE(s.IsQLError());
+      ASSERT_NE(
+          s.message().ToBuffer().find(
+              "Wrong Metadata Version: Table has been altered. Execute the query again. "),
+          std::string::npos)
+          << s;
+    } else {
+      res = ASSERT_RESULT(session1.ExecuteWithResult(stmt));
+      if (metadata_in_exec_resp) {
+        ASSERT_EQ(res.RenderToString(), expectedSecondPageSession1[i]);
+      } else {
+        ASSERT_EQ(res.RenderToString(), expectedSecondPageWithoutMetadata[i]);
+      }
+    }
+
+    LOG(INFO) << "Client-2: Execute-2 prepared (for schema version 1: 5 columns)";
+    res = ASSERT_RESULT(session2.ExecuteWithResult(stmt2));
+    ASSERT_EQ(res.RenderToString(), expectedSecondPageSession2[i]);
+
+    // Revert alter table back.
+    ASSERT_OK(session2.ExecuteQuery("ALTER TABLE t1 DROP k"));
+  }
+}
+
+TEST_F(CqlTest, AlteredPrepareForIndexWithPaging) {
+  TestAlteredPrepareForIndexWithPaging(/* check_schema_in_paging =*/true);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, AlteredPrepareForIndexWithPaging_NoSchemaCheck) {
+  TestAlteredPrepareForIndexWithPaging(/* check_schema_in_paging =*/false);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, AlteredPrepareForIndexWithPaging_MetadataInExecResp) {
+  TestAlteredPrepareForIndexWithPaging(
+      /* check_schema_in_paging =*/false,
+      /* metadata_in_exec_resp =*/true);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
