@@ -8,6 +8,7 @@ aliases:
   - /preview/explore/global-distribution-linux/
   - /preview/explore/global-distribution/macos
   - /preview/explore/global-distribution/linux
+  - /preview/explore/multi-region-deployments/synchronous-replication-ycql/
 menu:
   preview:
     identifier: explore-multi-region-deployments-sync-replication-1-ysql
@@ -40,7 +41,7 @@ This deployment provides the following advantages:
 
 This example simulates AWS regions on a local machine.
 
-If you have a previously running local cluster, destroy it.
+If you have a previously running local cluster, [destroy it](#clean-up).
 
 {{< note title="Setup for POCs" >}}
 
@@ -99,7 +100,7 @@ Start a 3-node cluster with a replication factor (RF) of `3`, and each replica p
     ./bin/yugabyted configure data_placement --base_dir=/tmp/ybd1 --fault_tolerance=region
     ```
 
-    If you are running a version prior to 2.17.1.0, run the following command instead:
+    **If you are running a version prior to 2.17.1.0**, run the following command instead:
 
     ```sh
     ./bin/yugabyted configure --base_dir=/tmp/ybd1 --fault_tolerance=region
@@ -189,7 +190,7 @@ When complete, the load is handled exclusively by the preferred region.
 
 ## Clean up
 
-Optionally, you can destroy the local cluster as follows:
+To destroy the local cluster, do the following:
 
 ```sh
 ./bin/yugabyted destroy --base_dir=/tmp/ybd1
