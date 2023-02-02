@@ -6477,12 +6477,6 @@ void YBClearDdlHandles()
 
 void YbClearCurrentTransactionId()
 {
-#ifdef YB_TODO
-	/* YB_TODO(fizaa@yugabyte).
-	 * - PG13 data structures no longer have these fields.
-	 * - Need to reimplement clearing data accordingly to PG13.
-	 */
-	CurrentTransactionState->transactionId = InvalidTransactionId;
-	MyPgXact->xid = InvalidTransactionId;
-#endif
+	CurrentTransactionState->fullTransactionId = InvalidFullTransactionId;
+	MyProc->xid = InvalidTransactionId;
 }
