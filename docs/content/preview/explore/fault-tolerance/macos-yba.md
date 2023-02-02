@@ -68,13 +68,13 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
 2. Select **Nodes** to view the total read and write IOPS per node and other statistics, as shown in the following illustration:
 
-   <!-- ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png) -->
+   ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png)
 
    Notice that both the reads and the writes are approximately the same across all nodes, indicating uniform load.
 
 3. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
 
-   <!-- ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png) -->
+   ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png)
 
 4. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
 
