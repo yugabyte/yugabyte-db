@@ -132,8 +132,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   public void beforeTestYsqlUpgrade() throws Exception {
     sharedRelName = SHARED_ENTITY_PREFIX + "shared_" + Math.abs(name.getMethodName().hashCode());
 
-    customDbCb  = getConnectionBuilder().withDatabase(customDbName);
-    template1Cb = getConnectionBuilder().withDatabase("template1");
+    createDbConnections();
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE DATABASE " + customDbName);
@@ -947,6 +946,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   @Test
   public void upgradeIsIdempotent() throws Exception {
     recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    createDbConnections();
 
     upgradeCheckingIdempotency(false /* useSingleConnection */);
   }
@@ -961,6 +961,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
     recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    createDbConnections();
 
     // Ensures there's never more that one connection opened by an upgrade.
     CatchingThread connCounter = new CatchingThread("Connection counter", () -> {
@@ -1048,6 +1049,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
 
     recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    createDbConnections();
 
     try (Connection conn = template1Cb.connect();
          Statement stmt = conn.createStatement()) {
@@ -1152,6 +1154,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   //
   // Helpers
   //
+
+  /** Helper for creating db connections used in tests.  */
+  public void createDbConnections() {
+    customDbCb  = getConnectionBuilder().withDatabase(customDbName);
+    template1Cb = getConnectionBuilder().withDatabase("template1");
+  }
 
   /** Helper for upgradeIsIdempotent test. */
   public void upgradeCheckingIdempotency(boolean useSingleConnection) throws Exception {
