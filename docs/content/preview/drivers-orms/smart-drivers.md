@@ -38,6 +38,7 @@ YugabyteDB smart drivers have the following key features.
 | Uniform load balancing | After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across them. |
 | Servers refresh interval | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
 | Topology keys | In cases where you want to restrict connections to specific geographies for lower latency, you can target specific regions and zones, along with fallback zones, across which to balance connections. |
+| Connection pooling | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
 

@@ -49,6 +49,8 @@ type: docs
 
 The [YugabyteDB PGX smart driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a distributed Go driver for [YSQL](/preview/api/ysql/) based on [jackc/pgx](https://github.com/jackc/pgx/), with a additional [connection load balancing](../../smart-drivers/) features.
 
+The driver package includes a class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (by default, older than 5 minutes) is discovered.
+
 {{< note title="YugabyteDB Managed" >}}
 
 To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
@@ -57,8 +59,7 @@ To use smart driver load balancing features when connecting to clusters in Yugab
 
 ## CRUD operations
 
-For Go applications, most drivers provide database connectivity through the standard `database/sql` API.
-The following sections demonstrate how to perform common tasks required for Go application development using the YugabyteDB PGX smart driver.
+For Go applications, most drivers provide database connectivity through the standard `database/sql` API. The following sections demonstrate how to perform common tasks required for Go application development using the YugabyteDB PGX smart driver.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
@@ -122,7 +123,7 @@ conn, err := pgx.Connect(context.Background(), url)
 The following is an example connection string for connecting to YugabyteDB with topology-aware load balancing:
 
 ```sh
-postgres://username:password@localhost:5433/database_name?load_balance=true&
+postgres://username:password@localhost:5433/database_name?load_balance=true& \
     topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
 ```
 

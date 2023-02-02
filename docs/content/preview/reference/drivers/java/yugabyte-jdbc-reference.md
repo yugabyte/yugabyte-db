@@ -31,22 +31,12 @@ type: docs
 
 </ul>
 
-[YugabyteDB JDBC smart driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features.
+[YugabyteDB JDBC smart driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional connection load balancing features.
 
-## Key features
+For more information on the YugabyteDB Java smart driver, see the following:
 
-The YugabyteDB JDBC smart driver has the following key features:
-
-| Feature | Notes |
-| :--- | :--- |
-| Specify multiple hosts | Like the upstream driver, the driver supports specifying multiple hosts for the initial connection, to avoid dropped connections in the case where the primary host is unavailable. |
-| Uniform load balancing | After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across them. |
-| Servers refresh interval | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable. |
-| Topology keys | In cases where you want to restrict connections to specific geographies for lower latency, you can target specific regions and zones, along with fallback zones, across which to balance connections. |
-
-The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (by default, older than 5 minutes) is discovered.
-
-The driver can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to talk to a completely different region.
+- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../../drivers-orms/java/yugabyte-jdbc)
 
  <!-- place holder for adding link to YugabyteDB University course for Java Developers -->
 
