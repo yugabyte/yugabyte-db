@@ -12,12 +12,9 @@ menu:
 type: docs
 ---
 
-In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports **smart drivers**, which extend the PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
+In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports smart drivers, which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-- **Cluster-aware**. Drivers know about all the data nodes in a YugabyteDB cluster, eliminating the need for an external load balancer.
-- **Topology-aware**. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
-
-Yugabyte has developed the following smart drivers, available as open source software under the Apache 2.0 license.
+Yugabyte has developed the following smart drivers for YSQL, available as open source software under the Apache 2.0 license.
 
 | GitHub project | Based on | Learn more |
 | :--- | :--- | :--- |
@@ -34,11 +31,11 @@ YugabyteDB smart drivers have the following key features.
 
 | Feature | Notes |
 | :--- | :--- |
-| Multiple hosts | Like the upstream driver (with the exception of node.js), smart drivers support specifying multiple hosts for the initial connection, to avoid dropped connections in the case where the primary host is unavailable. |
-| Uniform load balancing | After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across them. |
-| Servers refresh interval | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
-| Topology keys | In cases where you want to restrict connections to specific geographies for lower latency, you can target specific regions and zones, along with fallback zones, across which to balance connections. |
-| Connection pooling | Like the upstream driver, smart drivers support popular connection pooling solutions. |
+| Multiple hosts | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, thereby avoiding dropped connections in the case where the primary host is unavailable. |
+| [Cluster aware](#cluster-aware-connection-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across them. |
+| [Servers refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
+| [Topology aware](#topology-aware-connection-load-balancing) | In cases where you want to restrict connections to specific geographies for lower latency, you can target specific regions and zones, along with fallback zones, across which to balance connections. |
+| [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
 
@@ -159,7 +156,7 @@ Not specifying a priority is the equivalent of setting priority to 1.
 
 If no servers are available, the request may return with a failure.
 
-## Connection pooling
+### Connection pooling
 
 Smart drivers can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to talk to a completely different region.
 
