@@ -21,7 +21,7 @@ resources:
     url: /preview/yugabyte-cloud/release-notes/
   - title: YugabyteDB Managed FAQ
     url: /preview/faq/yugabytedb-managed-faq/
-  - title: Build Applications
+  - title: Build applications
     url: /preview/develop/build-apps/
 cascade:
   unversioned: true

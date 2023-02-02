@@ -118,7 +118,7 @@ If you want to continue testing YugabyteDB with more resource-intensive scenario
 
 - [Request a free trial](../../yugabyte-cloud/managed-freetrial/) to try out bigger clusters with more resources.
 - Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
-- [Add a payment method](../../yugabyte-cloud/cloud-admin/cloud-billing-profile/) to upgrade to a fault tolerant [single- or multi-region cluster](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
+- [Add a payment method](../../yugabyte-cloud/cloud-admin/cloud-billing-profile/) to upgrade to a fault-tolerant [single- or multi-region cluster](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 
 ### Can I migrate my Sandbox to a Dedicated cluster?
 
