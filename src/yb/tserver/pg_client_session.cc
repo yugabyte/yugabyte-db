@@ -39,6 +39,7 @@
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/pg_response_cache.h"
+#include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 
@@ -66,6 +67,10 @@ DEFINE_RUNTIME_bool(ysql_enable_table_mutation_counter, false,
                     "certain threshold (decided based on ysql_auto_analyze_tuples_threshold and "
                     "ysql_auto_analyze_scale_factor).");
 TAG_FLAG(ysql_enable_table_mutation_counter, experimental);
+
+DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
+    "Where sequence values are cached for both existing and new sequences. Valid values are "
+    "\"connection\" and \"server\"");
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_ddl_rollback_enabled);
@@ -450,7 +455,7 @@ PgClientSession::PgClientSession(
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
     PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map,
     std::shared_ptr<PgMutationCounter> pg_node_level_mutation_counter,
-    PgResponseCache* response_cache)
+    PgResponseCache* response_cache, PgSequenceCache* sequence_cache)
     : id_(id),
       client_(*client),
       clock_(clock),
@@ -458,7 +463,8 @@ PgClientSession::PgClientSession(
       table_cache_(*table_cache),
       xcluster_safe_time_map_(xcluster_safe_time_map),
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
-      response_cache_(*response_cache) {}
+      response_cache_(*response_cache),
+      sequence_cache_(*sequence_cache) {}
 
 uint64_t PgClientSession::id() const {
   return id_;
@@ -1220,6 +1226,31 @@ Status PgClientSession::FetchSequenceTuple(
   using pggate::PgDocData;
   using pggate::PgWireDataHeader;
 
+  const int64_t sequence_id = req.seq_oid();
+  const int64_t inc_by = req.inc_by();
+  const bool use_sequence_cache = FLAGS_ysql_sequence_cache_method == "server";
+  std::shared_ptr<PgSequenceCache::Entry> entry;
+  // On exit we should notify a waiter for this sequence id that it is available.
+  auto se = ScopeExit([&entry, use_sequence_cache] {
+    if (use_sequence_cache && entry) {
+      entry->NotifyWaiter();
+    }
+  });
+  if (use_sequence_cache) {
+    entry = VERIFY_RESULT(
+        sequence_cache_.GetWhenAvailable(sequence_id, ToSteady(context->GetClientDeadline())));
+
+    // If the cache has a value, return immediately.
+    std::optional<int64_t> sequence_value = entry->GetValueIfCached(inc_by);
+    if (sequence_value.has_value()) {
+      // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the first
+      // and last value are the same.
+      resp->set_first_value(*sequence_value);
+      resp->set_last_value(*sequence_value);
+      return Status::OK();
+    }
+  }
+
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   auto table = VERIFY_RESULT(table_cache_.Get(table_oid.GetYbTableId()));
 
@@ -1229,11 +1260,11 @@ Status PgClientSession::FetchSequenceTuple(
   RETURN_NOT_OK(
       (SetCatalogVersion<PgFetchSequenceTupleRequestPB, PgsqlWriteRequestPB>(req, write_request)));
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
-  write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(sequence_id);
 
   auto* fetch_sequence_params = write_request->mutable_fetch_sequence_params();
   fetch_sequence_params->set_fetch_count(req.fetch_count());
-  fetch_sequence_params->set_inc_by(req.inc_by());
+  fetch_sequence_params->set_inc_by(inc_by);
   fetch_sequence_params->set_min_value(req.min_value());
   fetch_sequence_params->set_max_value(req.max_value());
   fetch_sequence_params->set_cycle(req.cycle());
@@ -1250,36 +1281,47 @@ Status PgClientSession::FetchSequenceTuple(
   RETURN_NOT_OK(CombineErrorsToStatus(fetch_status.errors, fetch_status.status));
 
   // Expect exactly two rows on success: sequence value range start and end, each as a single value
-  // in its own row.
-  // Even if a single value is fetched, both should be equal.
-  // If no value is fetched, the response should come with an error.
+  // in its own row. Even if a single value is fetched, both should be equal. If no value is
+  // fetched, the response should come with an error.
   Slice cursor;
   int64_t row_count;
   PgDocData::LoadCache(context->sidecars().GetFirst(), &row_count, &cursor);
   if (row_count != 2) {
     return STATUS_SUBSTITUTE(InternalError, "Invalid row count has been fetched from sequence $0",
-                             req.seq_oid());
+                             sequence_id);
   }
 
+  int64_t first_value = 0, last_value = 0;
   // Get the range start
-  int64_t value = 0;
   if (PgDocData::ReadDataHeader(&cursor).is_null()) {
     return STATUS_SUBSTITUTE(InternalError,
                              "Invalid value range start has been fetched from sequence $0",
-                             req.seq_oid());
+                             sequence_id);
   }
-  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &value));
-  resp->set_first_value(value);
+  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &first_value));
 
   // Get the range end
   if (PgDocData::ReadDataHeader(&cursor).is_null()) {
     return STATUS_SUBSTITUTE(InternalError,
                              "Invalid value range end has been fetched from sequence $0",
-                             req.seq_oid());
+                             sequence_id);
   }
-  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &value));
-  resp->set_last_value(value);
+  cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &last_value));
 
+  if (use_sequence_cache) {
+    entry->SetRange(first_value, last_value);
+    std::optional<int64_t> optional_sequence_value = entry->GetValueIfCached(inc_by);
+
+    RSTATUS_DCHECK(
+        optional_sequence_value.has_value(), InternalError, "Value for sequence $0 was not found.",
+        sequence_id);
+    // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the first
+    // and last value are the same.
+    last_value = first_value = *optional_sequence_value;
+  }
+
+  resp->set_first_value(first_value);
+  resp->set_last_value(last_value);
   return Status::OK();
 }
 

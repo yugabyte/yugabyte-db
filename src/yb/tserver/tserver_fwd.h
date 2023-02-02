@@ -37,6 +37,7 @@ class LocalTabletServer;
 class MetricsSnapshotter;
 class PgTableCache;
 class PgResponseCache;
+class PgSequenceCache;
 class TSTabletManager;
 class TableMutationCountSender;
 class TabletPeerLookupIf;
