@@ -23,8 +23,6 @@ resources:
     url: /preview/faq/yugabytedb-managed-faq/
   - title: Build Applications
     url: /preview/develop/build-apps/
-  - title: Troubleshoot
-    url: /preview/yugabyte-cloud/cloud-troubleshoot/
 cascade:
   unversioned: true
 ---
