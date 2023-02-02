@@ -40,7 +40,7 @@ The Sandbox cluster provides a fully functioning single node YugabyteDB cluster 
 >
 >YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/preview/develop/build-apps/). See [Differences between Sandbox and Dedicated clusters](/preview/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
 >
->To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), [request a free trial](../../managed-freetrial/).
+>To try more advanced deployments, [request a free trial](../../managed-freetrial/).
 
 To create your Sandbox cluster:
 

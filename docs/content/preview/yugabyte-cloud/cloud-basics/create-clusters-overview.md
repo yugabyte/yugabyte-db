@@ -194,8 +194,6 @@ Cluster charges are based on the total number of vCPUs used and how long they ha
 
 Before creating a cluster, you need to create your billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
 
-If you're interested in evaluating YugabyteDB Managed for production use and would like trial credits to conduct a proof-of-concept (POC), contact {{% support-cloud %}}.
-
 ## Next steps
 
 - [Create a cluster](../create-clusters/)
