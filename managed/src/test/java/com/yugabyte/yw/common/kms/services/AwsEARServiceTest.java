@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.kms.services;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -33,8 +34,12 @@ import com.amazonaws.services.kms.model.ListAliasesResult;
 import com.amazonaws.services.kms.model.UpdateAliasRequest;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
+import com.yugabyte.yw.models.Universe;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,10 +48,13 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AwsEARServiceTest extends FakeDBApplication {
+  @Mock RuntimeConfGetter mockConfGetter;
+
   ApiHelper mockApiHelper;
   AwsEARService encryptionService;
 
@@ -95,7 +103,9 @@ public class AwsEARServiceTest extends FakeDBApplication {
         .thenReturn(ByteBuffer.wrap(new String("some_universe_key_value_encrypted").getBytes()));
     when(mockClient.decrypt(any(DecryptRequest.class))).thenReturn(mockDecryptResult);
     when(mockDecryptResult.getPlaintext()).thenReturn(decryptedKeyBuffer);
-    encryptionService = new AwsEARService();
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.cloudEnabled)))
+        .thenReturn(false);
+    encryptionService = new AwsEARService(mockConfGetter);
     config = new EncryptionAtRestConfig();
     // TODO: (Daniel) - Create KMS Config and link to here
     config.kmsConfigUUID = null;

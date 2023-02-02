@@ -20,6 +20,7 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
 
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_type_util.h"
@@ -423,19 +424,19 @@ Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
 Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint deadline) {
   // TODO(Sanket): Eventually all of this logic needs to be moved
   // to the master and exposed as APIs for the clients to consume.
-  const std::string feature_name = "PITR";
   const auto splitting_disabled_until =
       CoarseMonoClock::Now() + MonoDelta::FromSeconds(kPitrSplitDisableDurationSecs);
   // Disable splitting and then wait for all pending splits to complete before
   // starting restoration.
   VERIFY_RESULT_PREPEND(
-      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, feature_name),
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, kPitrFeatureName),
       "Failed to disable tablet split before restore.");
 
   while (CoarseMonoClock::Now() < std::min(splitting_disabled_until, deadline)) {
     // Wait for existing split operations to complete.
     const auto resp = VERIFY_RESULT_PREPEND(
-        IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */),
+        IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */,
+                                          deadline - CoarseMonoClock::now() /* timeout */),
         "Tablet splitting did not complete. Cannot restore.");
     if (resp.is_tablet_splitting_complete()) {
       break;
@@ -458,7 +459,7 @@ Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint dead
   // splitting disables. This overwrites the previous value since the feature_name is the same so
   // overall the time is still kPitrSplitDisableDurationSecs.
   VERIFY_RESULT_PREPEND(
-      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, feature_name),
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, kPitrFeatureName),
       "Failed to disable tablet split before restore.");
 
   return Status::OK();

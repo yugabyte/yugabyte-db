@@ -2173,10 +2173,12 @@ Status ClusterAdminClient::DisableTabletSplitting(
 }
 
 Result<master::IsTabletSplittingCompleteResponsePB>
-    ClusterAdminClient::IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion) {
+    ClusterAdminClient::IsTabletSplittingCompleteInternal(
+    bool wait_for_parent_deletion, const MonoDelta timeout) {
   master::IsTabletSplittingCompleteRequestPB req;
   req.set_wait_for_parent_deletion(wait_for_parent_deletion);
-  return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req);
+  return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req,
+      nullptr /* error_message */, timeout);
 }
 
 Status ClusterAdminClient::IsTabletSplittingComplete(bool wait_for_parent_deletion) {
@@ -2196,9 +2198,9 @@ Status ClusterAdminClient::AddTransactionStatusTablet(const TableId& table_id) {
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
-    const Object& obj, const Request& req, const char* error_message) {
+    const Object& obj, const Request& req, const char* error_message, const MonoDelta timeout) {
   rpc::RpcController rpc;
-  rpc.set_timeout(timeout_);
+  rpc.set_timeout(timeout.Initialized() ? timeout : timeout_);
   Response response;
   auto result = (obj.*func)(req, &response, &rpc);
   if (error_message) {
@@ -2212,8 +2214,9 @@ Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpc(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
-    const Object& obj, const Request& req, const char* error_message) {
-  return ResponseResult(VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message)));
+    const Object& obj, const Request& req, const char* error_message, const MonoDelta timeout) {
+  return ResponseResult(
+      VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message, timeout)));
 }
 
 Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespaceMap() {

@@ -1,13 +1,20 @@
 -- TODO: Remove the seperate transaction for pg_proc update after GH #13500 is fixed.
 BEGIN;
     SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
-    UPDATE pg_catalog.pg_proc
-    SET proallargtypes = '{25,23,26,26,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20,20}',
-        proargmodes = '{i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
-        proargnames = '{cmdtype,pid,datid,relid,param1,param2,param3,param4,param5,param6,param7,
-        param8,param9,param10,param11,param12,param13,param14,param15,param16,param17}'
-    WHERE (proname = 'pg_stat_get_progress_info' AND
-           pronamespace = 'pg_catalog'::regnamespace);
+    DELETE FROM pg_catalog.pg_proc WHERE proname = 'pg_stat_get_progress_info';
+    INSERT INTO pg_catalog.pg_proc (
+        oid, proname, pronamespace, proowner, prolang, procost, prorows, provariadic, protransform,
+        prokind, prosecdef, proleakproof, proisstrict, proretset, provolatile, proparallel,
+        pronargs, pronargdefaults, prorettype, proargtypes, proallargtypes, proargmodes,
+        proargnames, proargdefaults, protrftypes, prosrc, probin, proconfig, proacl
+    ) VALUES
+        (3318, 'pg_stat_get_progress_info', 11, 10, 12, 1, 100, 0, '-', 'f', false, false, true,
+         true, 's', 'r', 1, 0, 2249, '25', '{25,23,26,26,20,20,20,20,20,20,20,20,20,20,20,20,
+         20,20,20,20,20}', '{i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
+         '{cmdtype,pid,datid,relid,param1,param2,param3,param4,param5,param6,param7,param8,
+         param9,param10,param11,param12,param13,param14,param15,param16,param17}',
+         NULL, NULL, 'pg_stat_get_progress_info', NULL, NULL, NULL)
+    ON CONFLICT DO NOTHING;
 COMMIT;
 
 CREATE OR REPLACE VIEW pg_catalog.pg_stat_progress_create_index WITH (use_initdb_acl = true) AS

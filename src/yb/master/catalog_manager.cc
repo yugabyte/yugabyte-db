@@ -425,7 +425,7 @@ DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
 // Change the default value of this flag to false once we declare Colocation GA.
-DEFINE_NON_RUNTIME_bool(ysql_legacy_colocated_database_creation, true,
+DEFINE_NON_RUNTIME_bool(ysql_legacy_colocated_database_creation, false,
             "Whether to create a legacy colocated database using pre-Colocation GA implementation");
 TAG_FLAG(ysql_legacy_colocated_database_creation, advanced);
 
@@ -3945,16 +3945,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
         std::unordered_set<ColocationId> colocation_ids;
         colocation_ids.reserve(tablet_lock.data().pb.table_ids().size());
-        if (!req.has_colocation_id()) {
-          for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
-            DCHECK(!table_id.empty());
-            const auto colocated_table_info = GetTableInfoUnlocked(table_id);
-            if (!colocated_table_info) {
-              // Needed because of #11129, should be replaced with DCHECK after the fix.
-              continue;
-            }
-            colocation_ids.insert(colocated_table_info->GetColocationId());
+        for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
+          DCHECK(!table_id.empty());
+          const auto colocated_table_info = GetTableInfoUnlocked(table_id);
+          if (!colocated_table_info) {
+            // Needed because of #11129, should be replaced with DCHECK after the fix.
+            continue;
           }
+          colocation_ids.insert(colocated_table_info->GetColocationId());
         }
 
         colocation_id = VERIFY_RESULT(
@@ -9607,11 +9605,6 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
-void CatalogManager::DisableTabletSplittingInternal(
-    const MonoDelta& duration, const std::string& feature) {
-  tablet_split_manager_.DisableSplittingFor(duration, feature);
-}
-
 Status CatalogManager::DisableTabletSplitting(
     const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
     rpc::RpcContext* rpc) {
@@ -9620,7 +9613,17 @@ Status CatalogManager::DisableTabletSplitting(
   return Status::OK();
 }
 
-bool CatalogManager::IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion) {
+void CatalogManager::DisableTabletSplittingInternal(
+    const MonoDelta& duration, const std::string& feature) {
+  tablet_split_manager_.DisableSplittingFor(duration, feature);
+}
+
+void CatalogManager::ReenableTabletSplittingInternal(const std::string& feature) {
+  tablet_split_manager_.ReenableSplittingFor(feature);
+}
+
+bool CatalogManager::IsTabletSplittingCompleteInternal(
+    bool wait_for_parent_deletion, CoarseTimePoint deadline) {
   vector<TableInfoPtr> tables;
   {
     SharedLock lock(mutex_);
@@ -9629,7 +9632,9 @@ bool CatalogManager::IsTabletSplittingCompleteInternal(bool wait_for_parent_dele
     tables = std::vector(std::begin(tables_it), std::end(tables_it));
   }
   for (const auto& table : tables) {
-    if (!tablet_split_manager_.IsTabletSplittingComplete(*table, wait_for_parent_deletion)) {
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table,
+                                                         wait_for_parent_deletion,
+                                                         deadline)) {
       return false;
     }
   }
@@ -9640,7 +9645,7 @@ Status CatalogManager::IsTabletSplittingComplete(
     const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
     rpc::RpcContext* rpc) {
   resp->set_is_tablet_splitting_complete(
-      IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion()));
+      IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion(), rpc->GetClientDeadline()));
   return Status::OK();
 }
 
