@@ -53,7 +53,7 @@ The following example is inspired from the [akka-cassandra-demo](https://github.
 
     Press enter when you're prompted to name the application.
 
-1. Add the following code in `build.sbt` file from your project's home directory.
+1. Replace the existing code in the `build.sbt` file from your project's home directory with the following:
 
     ```sh
     cd hello-world-template
@@ -89,7 +89,7 @@ To create an application using the plugin, do the following:
 
 To write a sample application and customize its configuration, do the following:
 
-1. Copy the following code in `src/main/scala/Main.scala` as follows:
+1. Replace the existing code in `src/main/scala/Main.scala` with the following:
 
     ```scala
     import akka.NotUsed
