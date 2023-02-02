@@ -32,3 +32,5 @@ Once applied, the credits can be used to create dedicated clusters in a [variety
 - Read replicas
 
 In the meantime, [create a Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/) to run a tutorial and [explore](../../explore/) YugabyteDB and distributed SQL.
+
+Only one free trial can be applied to an account. You must use your credits within 30 days of creating your first dedicated cluster.
