@@ -256,7 +256,7 @@ To write a sample application and customize its configuration, do the following:
     trait CborSerializable
     ```
 
-1. Create a `resources` directory in `src/main` using `mkdir resources`.
+1. Create a `resources` directory in `src/main` using `mkdir src/main/resources`.
 
 1. Create a file `src/main/resources/application.conf` and copy the following code:
 
