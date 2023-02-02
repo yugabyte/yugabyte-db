@@ -12,13 +12,16 @@ menu:
 type: docs
 ---
 
-To conduct a POC or performance testing, you can request a free trial. If you qualify, you will receive free credits towards creating Dedicated clusters and accessing other paid features in YugabyteDB Managed.
+To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), request a free trial. If you qualify, you will receive free credits towards creating Dedicated clusters and accessing other features in YugabyteDB Managed.
 
 To request a free trial:
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
 1. On the **Clusters** page, click **Add Cluster**.
+
+    ![Request a free trial](/images/yb-cloud/managed-trial.png)
+
 1. Click **Request a Free Trial**.
 1. Enter your details.
 

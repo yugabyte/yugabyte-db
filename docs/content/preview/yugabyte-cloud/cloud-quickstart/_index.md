@@ -30,6 +30,8 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 
 If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
 
+If you've run the tutorial and want to try more advanced deployments, [request a free trial](../managed-freetrial/).
+
 ## Create your Sandbox cluster
 
 The Sandbox cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required.
