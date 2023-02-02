@@ -105,7 +105,7 @@ export const UniverseFormContainer: FC<RouteComponentProps<{}, UniverseFormConta
   );
 
   //prefetch runtime configs
-  const { isLoading: isRuntimeConfigsLoading } = useQuery(QUERY_KEY.fetchRunTimeConfigs, () =>
+  const { isLoading: isRuntimeConfigsLoading } = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
     api.fetchRunTimeConfigs(true)
   );
 

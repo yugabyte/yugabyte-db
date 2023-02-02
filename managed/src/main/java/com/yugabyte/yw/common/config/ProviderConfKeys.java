@@ -32,6 +32,22 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Default AWS Instance Type",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> defaultGcpInstanceType =
+      new ConfKeyInfo<>(
+          "yb.internal.default_gcp_instance_type",
+          ScopeType.PROVIDER,
+          "Default GCP Instance Type",
+          "Default GCP Instance Type",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> defaultKubInstanceType =
+      new ConfKeyInfo<>(
+          "yb.internal.default_kubernetes_instance_type",
+          ScopeType.PROVIDER,
+          "Default Kubernetes Instance Type",
+          "Default Kubernetes Instance Type",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> universeBootScript =
       new ConfKeyInfo<>(
           "yb.universe_boot_script",

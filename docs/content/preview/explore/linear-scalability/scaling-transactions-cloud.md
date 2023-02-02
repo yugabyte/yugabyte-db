@@ -9,28 +9,35 @@ menu:
     name: Scaling transactions
     identifier: explore-transactions-scaling-transactions-3-ysql
     parent: explore-scalability
-    weight: 200
+    weight: 210
 type: docs
 ---
 
-With YugabyteDB, you can add nodes to upscale your cluster efficiently and reliably to achieve more read and write IOPS (input/output operations per second), without any downtime.
+With YugabyteDB, you can add nodes to upscale your cluster (also known as universe in YugabyteDB and YugabyteDB Anywhere) efficiently and reliably to achieve more read and write IOPS (input/output operations per second), without any downtime.
 
-This tutorial shows how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a three-node cluster with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+This document demonstrates how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a three-node cluster with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../scaling-transactions-cloud/" class="nav-link active">
-      <img src="/icons/cloud.svg" alt="Cloud Icon">
-      Use a cloud cluster
+    <a href="../scaling-transactions/" class="nav-link">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Local
     </a>
   </li>
   <li>
-    <a href="../scaling-transactions/" class="nav-link">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Use a local cluster
+    <a href="../scaling-transactions-cloud/" class="nav-link active">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      YugabyteDB Managed
+    </a>
+  </li>
+  <li>
+    <a href="../scaling-transactions-yba/" class="nav-link">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
     </a>
   </li>
 </ul>
+
 
 {{% explore-setup-multi-cloud %}}
 
@@ -82,7 +89,7 @@ Alternatively, you can navigate to the [simulation application UI](http://127.0.
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-graph-cloud.png)
 
-## Remove node and observe linear scale in
+## Remove node and observe linear scale-in
 
 You can remove a node from the cluster in YugabyteDB Managed as follows:
 

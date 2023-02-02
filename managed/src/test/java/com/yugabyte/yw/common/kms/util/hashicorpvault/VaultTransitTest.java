@@ -14,6 +14,11 @@ import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSEngineType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.VaultOperations;
+
+import play.libs.Json;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 
 import java.nio.charset.StandardCharsets;
@@ -43,6 +48,10 @@ import org.slf4j.LoggerFactory;
 public class VaultTransitTest extends FakeDBApplication {
   protected static final Logger LOG = LoggerFactory.getLogger(VaultTransitTest.class);
 
+  // Create fake auth config details
+  public ObjectMapper mapper = new ObjectMapper();
+  public ObjectNode fakeAuthConfig = mapper.createObjectNode();
+
   boolean MOCK_RUN;
 
   String vaultAddr;
@@ -58,6 +67,8 @@ public class VaultTransitTest extends FakeDBApplication {
     vaultToken = VaultEARServiceUtilTest.vaultToken;
     sEngine = VaultEARServiceUtilTest.sEngine;
     mountPath = VaultEARServiceUtilTest.mountPath;
+
+    fakeAuthConfig = (ObjectNode) Json.parse(VaultEARServiceUtilTest.jsonString);
   }
 
   @Test
@@ -147,7 +158,8 @@ public class VaultTransitTest extends FakeDBApplication {
 
     transitEngine = new VaultTransit(vAccessor, mountPath, KeyType.CMK);
 
-    String returnedName = HashicorpEARServiceUtil.getVaultKeyForUniverse(configUUID);
+    String returnedName =
+        HashicorpEARServiceUtil.getVaultKeyForUniverse(configUUID, fakeAuthConfig);
     assertEquals(keyName, returnedName);
 
     boolean created = transitEngine.createNewKeyWithEngine(returnedName);

@@ -20,6 +20,7 @@
 #include <boost/asio/io_context.hpp>
 
 #include "yb/common/common_types_util.h"
+#include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -1728,7 +1729,7 @@ class MasterSnapshotCoordinator::Impl {
 
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
-      context_.EnableTabletSplitting("PITR");
+      context_.ReenableTabletSplitting(kPitrFeatureName);
     }
   }
 

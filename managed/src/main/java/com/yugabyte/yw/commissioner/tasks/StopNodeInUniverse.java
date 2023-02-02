@@ -203,10 +203,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
         if (newMasterNode == null) {
           log.info("No eligible node found to move master from node {}", currentNode.getNodeName());
           createChangeConfigTask(
-              currentNode,
-              false /* isAdd */,
-              SubTaskGroupType.StoppingNodeProcesses,
-              true /* useHostPort */);
+              currentNode, false /* isAdd */, SubTaskGroupType.StoppingNodeProcesses);
           // Stop the master process on this node after the new master is added
           // and this current master is removed.
           if (instanceExists) {

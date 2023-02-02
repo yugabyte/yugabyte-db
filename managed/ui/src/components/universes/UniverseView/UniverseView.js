@@ -6,6 +6,7 @@ import { Link } from 'react-router';
 import { Dropdown, Tooltip, OverlayTrigger } from 'react-bootstrap';
 import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { useSelector } from 'react-redux';
 import moment from 'moment';
 import _ from 'lodash';
 
@@ -143,6 +144,7 @@ export const UniverseView = (props) => {
   const [curView, setCurView] = useState(view.LIST);
   const [curStatusFilter, setCurStatusFilter] = useState([]);
   const [focusedUniverse, setFocusedUniverse] = useState();
+  const runtimeConfigs = useSelector((state) => state.customer.runtimeConfigs);
 
   const {
     universe: { universeList },
@@ -155,17 +157,18 @@ export const UniverseView = (props) => {
     featureFlags
   } = props;
 
-  const universeUUIDs =
-    universeList?.data
-      ? universeList.data.map((universe) => universe.universeUUID)
-      : [];
+  const universeUUIDs = universeList?.data
+    ? universeList.data.map((universe) => universe.universeUUID)
+    : [];
   const prevUniverseUUIDs = usePrevious(universeUUIDs);
   const prevCustomerTaskList = usePrevious(customerTaskList);
 
   useEffect(() => {
+    if (!runtimeConfigs) {
+      props.fetchGlobalRunTimeConfigs();
+    }
     props.fetchUniverseMetadata();
     props.fetchUniverseTasks();
-
     return () => props.resetUniverseTasks();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -227,16 +230,21 @@ export const UniverseView = (props) => {
 
   const formatUniverseState = (status, row) => {
     const currentUniverseFailedTask = customerTaskList?.filter((task) => {
-      return ((task.targetUUID === row.universeUUID) && (
-        task.status === "Failure" || task.status === "Aborted"
-      ));
+      return (
+        task.targetUUID === row.universeUUID &&
+        (task.status === 'Failure' || task.status === 'Aborted')
+      );
     });
     const failedTask = currentUniverseFailedTask?.[0];
     return (
       <div className={`universe-status-cell ${status.className}`}>
         <div>
           {getUniverseStatusIcon(status)}
-          <span>{(status.text === "Error" && failedTask) ? `${failedTask.type} ${failedTask.target} failed` : status.text}</span>
+          <span>
+            {status.text === 'Error' && failedTask
+              ? `${failedTask.type} ${failedTask.target} failed`
+              : status.text}
+          </span>
         </div>
         <UniverseAlertBadge universeUUID={row.universeUUID} listView />
       </div>
@@ -252,6 +260,7 @@ export const UniverseView = (props) => {
           multiplier="month"
           base="month"
           isPricingKnown={isPricingKnown}
+          runtimeConfigs={runtimeConfigs}
         />
       </div>
     );
@@ -276,23 +285,23 @@ export const UniverseView = (props) => {
           {isPausableUniverse(row) &&
             !isEphemeralAwsStorage &&
             (featureFlags.test['pausedUniverse'] || featureFlags.released['pausedUniverse']) && (
-            <YBMenuItem
-              onClick={() => {
-                setFocusedUniverse(row);
-                showToggleUniverseStateModal();
-              }}
-              availability={getFeatureState(
-                currentCustomer.data.features,
-                'universes.details.overview.pausedUniverse'
-              )}
-            >
-              <YBLabelWithIcon
-                icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+              <YBMenuItem
+                onClick={() => {
+                  setFocusedUniverse(row);
+                  showToggleUniverseStateModal();
+                }}
+                availability={getFeatureState(
+                  currentCustomer.data.features,
+                  'universes.details.overview.pausedUniverse'
+                )}
               >
-                {universePaused ? 'Resume Universe' : 'Pause Universe'}
-              </YBLabelWithIcon>
-            </YBMenuItem>
-          )}
+                <YBLabelWithIcon
+                  icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                >
+                  {universePaused ? 'Resume Universe' : 'Pause Universe'}
+                </YBLabelWithIcon>
+              </YBMenuItem>
+            )}
 
           <YBMenuItem
             onClick={() => {
@@ -334,7 +343,7 @@ export const UniverseView = (props) => {
       .map((item, idx) => {
         return (
           <li className="universe-list-item" key={item.universeUUID} idx={idx}>
-            <YBUniverseItem {...props} universe={item} />
+            <YBUniverseItem {...props} universe={item} runtimeConfigs={runtimeConfigs} />
           </li>
         );
       });
@@ -343,7 +352,9 @@ export const UniverseView = (props) => {
   const renderView = (universes) => {
     const curSortObj = dropdownFieldKeys[sortField];
     const tableOptions = {
-      sortName: Object.prototype.hasOwnProperty.call(curSortObj, 'tableData') ? curSortObj.tableData : curSortObj.value,
+      sortName: Object.prototype.hasOwnProperty.call(curSortObj, 'tableData')
+        ? curSortObj.tableData
+        : curSortObj.value,
       sortOrder: sortOrder,
       onSortChange: (sortName, sortOrder) => {
         handleSortFieldChange(tableDataValueToKey[sortName]);
@@ -490,26 +501,26 @@ export const UniverseView = (props) => {
   let universes =
     _.isObject(universeList) && isNonEmptyArray(universeList.data)
       ? universeList.data.map((universeBase) => {
-        const universe = _.cloneDeep(universeBase);
-        universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
+          const universe = _.cloneDeep(universeBase);
+          universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
 
-        const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
-        const clusterProviders = props.providers.data.filter((p) =>
-          clusterProviderUUIDs.includes(p.uuid)
-        );
-        universe.providerTypes = clusterProviders.map((provider) => {
-          return getProviderMetadata(provider).name;
-        });
-        universe.providerNames = clusterProviders.map((provider) => provider.name);
+          const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
+          const clusterProviders = props.providers.data.filter((p) =>
+            clusterProviderUUIDs.includes(p.uuid)
+          );
+          universe.providerTypes = clusterProviders.map((provider) => {
+            return getProviderMetadata(provider).name;
+          });
+          universe.providerNames = clusterProviders.map((provider) => provider.name);
 
-        const universeStatus = getUniverseStatus(
-          universe,
-          universePendingTasks[universe.universeUUID]
-        );
-        universe.status = universeStatus.state;
-        universe.statusText = universeStatus.state.text;
-        return universe;
-      })
+          const universeStatus = getUniverseStatus(
+            universe,
+            universePendingTasks[universe.universeUUID]
+          );
+          universe.status = universeStatus.state;
+          universe.statusText = universeStatus.state.text;
+          return universe;
+        })
       : [];
 
   const statusFilterTokens = curStatusFilter.map((status) => ({

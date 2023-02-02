@@ -34,7 +34,7 @@ func (i installExistsCheck) Execute() Result {
 	// While err could be some other error (like, permission error, for example), it does not affect
 	// the result of InstallExistsCheck. If we can't access the file, it might as well not exist!
 	if _, err := os.Stat(common.InstalledFile); err != nil {
-		err := fmt.Errorf("no current Yugabyte Anywhere install found")
+		err := fmt.Errorf("no current YugabyteDB Anywhere install found")
 		res.Error = err
 		res.Status = StatusCritical
 	}
@@ -68,7 +68,7 @@ func (i installNotExistsCheck) Execute() Result {
 
 	// Error if the file exists because that indicates an install has already been completed.
 	if _, err := os.Stat(common.InstalledFile); err == nil {
-		err := fmt.Errorf("found existing Yugabyte Anywhere install")
+		err := fmt.Errorf("found existing YugabyteDB Anywhere install")
 		res.Error = err
 		res.Status = StatusCritical
 	}

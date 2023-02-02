@@ -228,6 +228,14 @@ void RowsResult::SetPagingState(RowsResult&& other) {
   paging_state_ = std::move(other.paging_state_);
 }
 
+void RowsResult::OverrideSchemaVersionInPagingState(uint32_t schema_version) {
+  LOG_IF(DFATAL, paging_state_.empty()) << "PagingState is not available";
+  QLPagingStatePB paging_state;
+  paging_state.ParseFromString(paging_state_);
+  paging_state.set_schema_version(schema_version);
+  SetPagingState(paging_state);
+}
+
 void RowsResult::ClearPagingState() {
   VLOG(3) << "Clear paging state " << GetStackTrace();
   paging_state_.clear();

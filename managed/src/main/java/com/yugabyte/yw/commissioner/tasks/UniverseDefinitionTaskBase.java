@@ -621,11 +621,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     if (stoppedNode != null && stoppedNode.isMaster) {
       // Perform master change only after the new master is added.
-      createChangeConfigTask(
-          stoppedNode,
-          false /* isAdd */,
-          SubTaskGroupType.ConfigureUniverse,
-          false /* useHostPort */);
+      createChangeConfigTask(stoppedNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       // Update this so that it is not added as a master in config update.
       createUpdateNodeProcessTask(stoppedNode.nodeName, ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

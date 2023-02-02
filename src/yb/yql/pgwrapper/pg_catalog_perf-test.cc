@@ -136,7 +136,7 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(StartupRPCCount)) {
   const auto first_connect_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta(connector));
   ASSERT_EQ(first_connect_rpc_count, 4);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta(connector));
-  ASSERT_EQ(subsequent_connect_rpc_count, 1);
+  ASSERT_EQ(subsequent_connect_rpc_count, 2);
 }
 
 // Test checks number of RPC in case of cache refresh without partitioned tables.
@@ -201,7 +201,7 @@ TEST_F_EX(PgCatalogPerfTest,
   }
   ASSERT_RESULT(aux_conn.Fetch("SELECT * FROM t"));
   size_t read_rpc_counter = 0;
-  auto cache_counters = ASSERT_RESULT(ResponseCacheCountersDelta(
+  auto [cache_queries, cache_hit] = ASSERT_RESULT(ResponseCacheCountersDelta(
     [this, &conn, &conns, &read_rpc_counter] {
       read_rpc_counter = VERIFY_RESULT(read_rpc_watcher_->Delta([&conn, &conns] {
         for (size_t i = 0; i < kAlterTableCount; ++i) {
@@ -230,10 +230,21 @@ TEST_F_EX(PgCatalogPerfTest,
   constexpr size_t kUniqueQueriesPerRefresh = 3;
   const auto unique_queries = kAlterTableCount * kUniqueQueriesPerRefresh;
   const auto total_queries = kConnectionCount * unique_queries;
-  ASSERT_EQ(cache_counters.first, total_queries);
-  ASSERT_LE(cache_counters.second, total_queries - unique_queries);
-  ASSERT_GE(cache_counters.second, total_queries - 2 * unique_queries);
+  ASSERT_EQ(cache_queries, total_queries);
+  ASSERT_EQ(cache_hit, total_queries - unique_queries);
   ASSERT_LE(read_rpc_counter, 720);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          YB_DISABLE_TEST_IN_TSAN(ResponseCacheEfficiencyInConnectionStart),
+          PgCatalogWithCachePerfTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto [cache_queries, cache_hit] = ASSERT_RESULT(ResponseCacheCountersDelta([this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  }));
+  ASSERT_EQ(cache_queries, 3);
+  ASSERT_EQ(cache_hit, 3);
 }
 
 } // namespace pgwrapper
