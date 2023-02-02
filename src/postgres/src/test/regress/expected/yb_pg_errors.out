@@ -450,6 +450,9 @@ NULL);
 ERROR:  syntax error at or near "NUL"
 LINE 16: ...L, id2 TEXT NOT NULL PRIMARY KEY, id3 INTEGER NOT NUL, id4 I...
                                                               ^
+-- YB: With default max_stack_depth, ASAN build detects stack-overflow first.
+-- Prevent that by lowering max_stack_depth temporarily.
+set max_stack_depth = '900kB';
 -- Check that stack depth detection mechanism works and
 -- max_stack_depth is not set too high
 create function infinite_recurse() returns int as
@@ -457,6 +460,9 @@ create function infinite_recurse() returns int as
 \set VERBOSITY terse
 select infinite_recurse();
 ERROR:  stack depth limit exceeded
+-- YB: undo above change.  Some experimentation showed issues with some later
+-- statements otherwise.
+reset max_stack_depth;
 -- YB note: check for unsupported system columns.
 CREATE TABLE test_tab1(id INT);
 INSERT INTO test_tab1 VALUES (1) RETURNING ctid;
