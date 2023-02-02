@@ -41,6 +41,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
+#include "yb/common/transaction.h"
 
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
@@ -386,11 +387,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return pb.mutable_schema();
   }
 
-  std::string pb_transaction_id() const {
-    if (!pb.has_transaction()) {
-      return {};
-    }
-    return pb.transaction().transaction_id();
+  const std::string& pb_transaction_id() const {
+    static std::string kEmptyString;
+    return pb.has_transaction() ? pb.transaction().transaction_id() : kEmptyString;
   }
 
   bool has_ysql_ddl_txn_verifier_state() const {
@@ -411,6 +410,12 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
   bool is_being_created_by_ysql_ddl_txn() const {
     return has_ysql_ddl_txn_verifier_state() &&
       ysql_ddl_txn_verifier_state().contains_create_table_op();
+  }
+
+  Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
+
+  const std::string& state_name() const {
+    return SysTablesEntryPB_State_Name(pb.state());
   }
 
   // Helper to set the state of the tablet with a custom message.

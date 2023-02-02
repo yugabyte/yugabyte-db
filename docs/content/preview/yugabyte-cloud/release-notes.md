@@ -16,6 +16,12 @@ On this page:
 
 ## Releases
 
+### January 27, 2023
+
+**New Features**
+
+- [YugabyteDB Managed Terraform Provider](https://registry.terraform.io/providers/yugabyte/ybm/latest) generally available. Use the provider to deploy and manage your database clusters in YugabyteDB Managed.
+
 ### January 18, 2023
 
 **Database**
@@ -38,6 +44,12 @@ On this page:
 **Database**
 
 - [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.14.5 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### December 12, 2022
+
+**New Features**
+
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis) generally available. Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
 
 ### November 28, 2022
 

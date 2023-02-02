@@ -149,8 +149,8 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
   }
 
   void AddNewTserverToLocation(const string& cloud, const string& region,
-                              const string& zone, const int expected_num_tservers,
-                              const string& placement_uuid = "") {
+                               const string& zone, const size_t expected_num_tservers,
+                               const string& placement_uuid = "") {
 
     std::vector<std::string> extra_opts;
     extra_opts.push_back("--placement_cloud=" + cloud);
@@ -223,6 +223,64 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
   for (int ii = 0; ii < 3; ++ii) {
     ASSERT_EQ(counts_per_ts[ii], 4);
   }
+}
+
+class LoadBalancerReadReplicaPlacementPolicyTest : public LoadBalancerPlacementPolicyTest {
+ protected:
+  void TestBlacklist(bool use_empty_table_placement) {
+    const string kReadReplicaPlacementUuid = "read_replica";
+    // Add 2 read replicas to cluster placement policy.
+    size_t num_tservers = num_tablet_servers();
+    AddNewTserverToLocation("c", "r", "z0", ++num_tservers, kReadReplicaPlacementUuid);
+    AddNewTserverToLocation("c", "r", "z0", ++num_tservers, kReadReplicaPlacementUuid);
+    ASSERT_EQ(num_tservers, 5);
+
+    ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
+        "c.r.z0:0", 1 /* replication_factor */, kReadReplicaPlacementUuid));
+
+    DeleteTable();
+    if (use_empty_table_placement) {
+      master::ReplicationInfoPB ri;
+      ASSERT_OK(NewTableCreator()->table_name(table_name())
+          .schema(&schema_).replication_info(ri).Create());
+    } else {
+      ASSERT_OK(NewTableCreator()->table_name(table_name()).schema(&schema_).Create());
+    }
+
+    // There should be 2 tablets on each of the read replicas since we start with 4 tablets and
+    // the replication factor for read replicas is 1.
+    // Note that we shouldn't have to wait for the load balancer here, since the table creation
+    // should evenly spread the tablets across both read replicas.
+    vector<int> counts_per_ts;
+    GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+    vector<int> expected_counts_per_ts = {4, 4, 4, 2, 2};
+    ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+
+    // Blacklist one of the read replicas. The tablets should all move to the other read replica.
+    ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+        external_mini_cluster()->master(),
+        external_mini_cluster()->tablet_server(4)));
+    WaitForLoadBalancer();
+    GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+    expected_counts_per_ts = {4, 4, 4, 4, 0};
+    ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+
+    // Clear the blacklist. The tablets should spread evenly across both read replicas.
+    ASSERT_OK(external_mini_cluster()->ClearBlacklist(external_mini_cluster()->master()));
+    WaitForLoadBalancer();
+    GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+    expected_counts_per_ts = {4, 4, 4, 2, 2};
+    ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+  }
+};
+
+TEST_F(LoadBalancerReadReplicaPlacementPolicyTest, Blacklist) {
+  TestBlacklist(false /* use_empty_table_placement */);
+}
+
+// Regression test for GitHub issue #15698.
+TEST_F(LoadBalancerReadReplicaPlacementPolicyTest, BlacklistWithEmptyPlacement) {
+  TestBlacklist(true /* use_empty_table_placement */);
 }
 
 TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {

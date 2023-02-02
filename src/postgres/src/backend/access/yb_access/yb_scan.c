@@ -1324,6 +1324,8 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 								  YBCIsRegionLocal(relation),
 								  &ybScan->handle));
 
+	ybScan->is_full_cond_bound = yb_bypass_cond_recheck;
+
 	/*
 	 * Set up the arrays to store the search intervals for each PG/YSQL
 	 * attribute (i.e. DocDB column).
@@ -1384,7 +1386,10 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		int bind_key_attnum = scan_plan->bind_key_attnums[i];
 		int idx = YBAttnumToBmsIndex(relation, bind_key_attnum);
 		if (!bms_is_member(idx, scan_plan->sk_cols))
+		{
+			ybScan->is_full_cond_bound = false;
 			continue;
+		}
 
 		/* Assign key offsets */
 		switch (key->sk_strategy)
@@ -1440,11 +1445,12 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		Assert(idx > 0);
 
 		/* Do not bind more than one condition to a column */
-		if (is_column_bound[idx])
+		if (is_column_bound[idx] ||
+			!YbCheckScanTypes(ybScan, scan_plan, i))
+		{
+			ybScan->is_full_cond_bound = false;
 			continue;
-
-		if (!YbCheckScanTypes(ybScan, scan_plan, i))
-			continue;
+		}
 
 		bool bound_inclusive = false;
 		switch (key->sk_strategy)
@@ -1529,15 +1535,22 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	}
 
 	/* Bind keys for BETWEEN */
-	int min_idx = YBAttnumToBmsIndex(relation, 1);
+	int min_idx = bms_first_member(scan_plan->sk_cols);
+	min_idx = min_idx < 0 ? 0 : min_idx;
 	for (int idx = min_idx; idx < max_idx; idx++)
 	{
+		/* There's no range key for this index */
+		if (!start_valid[idx] && !end_valid[idx])
+		{
+			continue;
+		}
+
 		/* Do not bind more than one condition to a column */
 		if (is_column_bound[idx])
+		{
+			ybScan->is_full_cond_bound = false;
 			continue;
-
-		if (!start_valid[idx] && !end_valid[idx])
-			continue;
+		}
 
 		YbBindColumnCondBetween(
 			ybScan, scan_plan->bind_desc, YBBmsIndexToAttnum(relation, idx),
@@ -2002,174 +2015,109 @@ ybcBeginScan(Relation relation,
 }
 
 static bool
-heaptuple_matches_key(HeapTuple tup,
-					  TupleDesc tupdesc,
-					  int nkeys,
-					  ScanKey keys[],
-					  AttrNumber sk_attno[],
+ybc_keys_match(HeapTuple tup, YbScanDesc ybScan, bool *recheck)
+{
+	ScanKey	   *keys	 = ybScan->keys;
+	AttrNumber *sk_attno = ybScan->target_key_attnums;
+
+	*recheck = false;
+
+	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
+	{
+		if (sk_attno[i] == InvalidAttrNumber)
+			continue;
+
+		ScanKey key = keys[i];
+		bool  is_null = false;
+		Datum res_datum = heap_getattr(
+			tup, sk_attno[i], ybScan->target_desc, &is_null);
+
+		if (key->sk_flags & SK_SEARCHNULL)
+		{
+			if (is_null)
+				continue;
+			else
+				return false;
+		}
+
+		if (key->sk_flags & SK_SEARCHNOTNULL)
+		{
+			if (!is_null)
+				continue;
+			else
+				return false;
+		}
+
+		/*
+			* TODO: support the different search options like SK_SEARCHARRAY.
+			*/
+		if (key->sk_flags != 0)
+		{
+			*recheck = true;
+			continue;
+		}
+
+		if (is_null)
+			return false;
+
+		bool matches = DatumGetBool(FunctionCall2Coll(
+			&key->sk_func, key->sk_collation, res_datum, key->sk_argument));
+		if (!matches)
+			return false;
+	}
+
+	return true;
+}
+
+HeapTuple
+ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan,
 					  bool *recheck)
 {
-	*recheck = false;
-
-	for (int i = 0; i < nkeys; i += YbGetLengthOfKey(&keys[i]))
-	{
-		if (sk_attno[i] == InvalidAttrNumber)
-			continue;
-
-		ScanKey key = keys[i];
-		bool  is_null = false;
-		Datum res_datum = heap_getattr(tup, sk_attno[i], tupdesc, &is_null);
-
-		if (key->sk_flags & SK_SEARCHNULL)
-		{
-			if (is_null)
-				continue;
-			else
-				return false;
-		}
-
-		if (key->sk_flags & SK_SEARCHNOTNULL)
-		{
-			if (!is_null)
-				continue;
-			else
-				return false;
-		}
-
-		/*
-		 * TODO: support the different search options like SK_SEARCHARRAY.
-		 */
-		if (key->sk_flags != 0)
-		{
-			*recheck = true;
-			continue;
-		}
-
-		if (is_null)
-			return false;
-
-		bool matches = DatumGetBool(FunctionCall2Coll(
-			&key->sk_func, key->sk_collation, res_datum, key->sk_argument));
-		if (!matches)
-			return false;
-	}
-
-	return true;
-}
-
-static bool
-indextuple_matches_key(IndexTuple tup,
-					   TupleDesc tupdesc,
-					   int nkeys,
-					   ScanKey keys[],
-					   AttrNumber sk_attno[],
-					   bool *recheck)
-{
-	*recheck = false;
-
-	for (int i = 0; i < nkeys; i += YbGetLengthOfKey(&keys[i]))
-	{
-		if (sk_attno[i] == InvalidAttrNumber)
-			break;
-
-		bool  is_null = false;
-
-		Datum res_datum = index_getattr(tup, sk_attno[i], tupdesc, &is_null);
-
-		ScanKey key = keys[i];
-		if (key->sk_flags & SK_SEARCHNULL)
-		{
-			if (is_null)
-				continue;
-			else
-				return false;
-		}
-
-		if (key->sk_flags & SK_SEARCHNOTNULL)
-		{
-			if (!is_null)
-				continue;
-			else
-				return false;
-		}
-
-		/*
-		 * TODO: support the different search options like SK_SEARCHARRAY.
-		 */
-		if (key->sk_flags != 0)
-		{
-			*recheck = true;
-			continue;
-		}
-
-		if (is_null)
-			return false;
-
-		bool matches = DatumGetBool(FunctionCall2Coll(
-			&key->sk_func, key->sk_collation, res_datum, key->sk_argument));
-		if (!matches)
-			return false;
-	}
-
-	return true;
-}
-
-HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
-{
-	int         nkeys    = ybScan->nkeys;
-	ScanKey    *keys     = ybScan->keys;
-	AttrNumber *sk_attno = ybScan->target_key_attnums;
 	HeapTuple   tup      = NULL;
 
 	if (ybScan->quit_scan)
 		return NULL;
+
+	/* In case of yb_hash_code pushdown tuple must be rechecked */
+	bool tuple_recheck_required = (ybScan->nhash_keys > 0);
 	/*
-	 * YB Scan may not be able to push down the scan key condition so we may
-	 * need additional filtering here.
-	 */
+	* YB Scan may not be able to push down the scan key condition so we may
+	* need additional filtering here.
+	*/
 	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, is_forward_scan)))
 	{
-		if (heaptuple_matches_key(tup, ybScan->target_desc, nkeys, keys, sk_attno, recheck))
+		if (tuple_recheck_required)
+			break;
+
+		bool recheck = false;
+		if ((ybScan->is_full_cond_bound && !YBCIsSysTablePrefetchingStarted())
+			|| ybc_keys_match(tup, ybScan, &recheck))
 		{
-			/* In case of yb_hash_code pushdown tuple must be rechecked */
-			*recheck |= (ybScan->nhash_keys > 0);
-			return tup;
+			tuple_recheck_required = recheck;
+			break;
 		}
 
 		heap_freetuple(tup);
 	}
-
-	return NULL;
+	Assert(!tuple_recheck_required || recheck);
+	if (recheck)
+		*recheck = tuple_recheck_required;
+	return tup;
 }
 
-IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
+IndexTuple
+ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 {
-	int         nkeys    = ybScan->nkeys;
-	ScanKey    *keys     = ybScan->keys;
-	AttrNumber *sk_attno = ybScan->target_key_attnums;
-	Relation    index    = ybScan->index;
-	IndexTuple  tup      = NULL;
-
 	if (ybScan->quit_scan)
 		return NULL;
 
-	/*
-	 * YB Scan may not be able to push down the scan key condition so we may
-	 * need additional filtering here.
+	/* 
+	 * If we have a yb_hash_code pushdown or not all conditions were
+	 * bound tuple must be rechecked.
 	 */
-	while (PointerIsValid(tup = ybcFetchNextIndexTuple(ybScan, index, is_forward_scan)))
-	{
-		if (indextuple_matches_key(tup, RelationGetDescr(index), nkeys, keys, sk_attno, recheck))
-		{
-			/* In case of pushdown yb_hash_code tuple must be rechecked */
-			*recheck |= (ybScan->nhash_keys > 0);
-			return tup;
-		}
+	*recheck = (ybScan->nhash_keys > 0) || !ybScan->is_full_cond_bound;
 
-		pfree(tup);
-	}
-
-	return NULL;
+	return ybcFetchNextIndexTuple(ybScan, ybScan->index, is_forward_scan);
 }
 
 void ybc_free_ybscan(YbScanDesc ybscan)

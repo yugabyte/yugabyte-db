@@ -216,6 +216,12 @@ void PggateTest::CommitTransaction() {
   CHECK_YBC_STATUS(YBCPgCommitTransaction());
 }
 
+void PggateTest::ExecCreateTableTransaction(YBCPgStatement pg_stmt) {
+  BeginDDLTransaction();
+  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  CommitDDLTransaction();
+}
+
 // ------------------------------------------------------------------------------------------------
 // Make sure that DataType in common.proto matches the YBCPgDataType enum
 // TODO: find a better way to generate these enums.

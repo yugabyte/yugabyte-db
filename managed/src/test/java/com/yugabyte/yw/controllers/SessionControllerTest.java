@@ -22,11 +22,14 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.SEE_OTHER;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
@@ -34,7 +37,9 @@ import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiUtils;
@@ -45,7 +50,10 @@ import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.user.UserService;
+import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -58,6 +66,7 @@ import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.scheduler.Scheduler;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -65,17 +74,44 @@ import kamon.instrumentation.play.GuiceModule;
 import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.junit.After;
 import org.junit.Test;
+import org.pac4j.core.client.Clients;
+import org.pac4j.core.config.Config;
+import org.pac4j.core.http.url.DefaultUrlResolver;
+import org.pac4j.core.profile.CommonProfile;
+import org.pac4j.core.profile.ProfileManager;
+import org.pac4j.oidc.client.OidcClient;
+import org.pac4j.oidc.config.OidcConfiguration;
 import org.pac4j.play.CallbackController;
+import org.pac4j.play.java.SecureAction;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
+import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
+import play.mvc.Http.Context;
 import play.mvc.Result;
 import play.test.Helpers;
 
 public class SessionControllerTest {
+
+  private static class HandlerWithEmailFromCtx extends ThirdPartyLoginHandler {
+
+    @Inject
+    public HandlerWithEmailFromCtx(
+        Environment env,
+        PlaySessionStore playSessionStore,
+        RuntimeConfigFactory runtimeConfFactory,
+        UserService userService) {
+      super(env, playSessionStore, runtimeConfFactory, userService);
+    }
+
+    @Override
+    public String getEmailFromCtx(Context ctx) {
+      return "test@yugabyte.com";
+    }
+  }
 
   private AlertDestinationService alertDestinationService;
 
@@ -84,6 +120,9 @@ public class SessionControllerTest {
   private SettableRuntimeConfigFactory settableRuntimeConfigFactory;
 
   private LdapUtil ldapUtil;
+
+  private final Config mockPac4jConfig = mock(Config.class);
+  private final SecureAction mockSecureAction = mock(SecureAction.class);
 
   private void startApp(boolean isMultiTenant) {
     HealthChecker mockHealthChecker = mock(HealthChecker.class);
@@ -94,6 +133,11 @@ public class SessionControllerTest {
     QueryAlerts mockQueryAlerts = mock(QueryAlerts.class);
     AlertConfigurationWriter mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     ldapUtil = mock(LdapUtil.class);
+    final Clients clients =
+        new Clients("/api/v1/callback", new OidcClient<>(new OidcConfiguration()));
+    clients.setUrlResolver(new DefaultUrlResolver(true));
+    final Config config = new Config(clients);
+    config.setHttpActionAdapter(new PlatformHttpActionAdapter());
     app =
         new GuiceApplicationBuilder()
             .disable(GuiceModule.class)
@@ -108,6 +152,8 @@ public class SessionControllerTest {
             .overrides(
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .overrides(bind(LdapUtil.class).toInstance(ldapUtil))
+            .overrides(bind(ThirdPartyLoginHandler.class).to(HandlerWithEmailFromCtx.class))
+            .overrides(bind(org.pac4j.core.config.Config.class).toInstance(config))
             .build();
     Helpers.start(app);
 
@@ -119,6 +165,48 @@ public class SessionControllerTest {
   public void tearDown() {
     Helpers.stop(app);
     TestHelper.shutdownDatabase();
+  }
+
+  @Test
+  public void testSSO_noUserFound()
+      throws InterruptedException, ExecutionException, TimeoutException {
+    startApp(false);
+    authorizeUserMockSetup(); // authorize "test@yugabyte.com"
+
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer, "not.matching@yugabyte.com");
+
+    Result result = routeWithYWErrHandler(fakeRequest("GET", "/api/third_party_login"), app);
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(UNAUTHORIZED, result.status());
+    assertThat(
+        json.get("error").toString(),
+        allOf(notNullValue(), containsString("User not found: test@yugabyte.com")));
+  }
+
+  @Test
+  public void testSSO_userFound() {
+    startApp(false);
+    authorizeUserMockSetup(); // authorize "test@yugabyte.com"
+
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer, "test@yugabyte.com");
+
+    Result result = route(app, fakeRequest("GET", "/api/third_party_login"));
+    assertEquals("Headers:" + result.headers(), SEE_OTHER, result.status());
+    assertEquals("/", result.headers().get("Location")); // Redirect
+  }
+
+  public void authorizeUserMockSetup() {
+    CommonProfile mockProfile = mock(CommonProfile.class);
+    when(mockProfile.getEmail()).thenReturn("test@yugabyte.com");
+    final Config pac4jConfig = app.injector().instanceOf(Config.class);
+    ProfileManager mockProfileManager = mock(ProfileManager.class);
+    doReturn(ImmutableList.of(mockProfile)).when(mockProfileManager).getAll(anyBoolean());
+    doReturn(Optional.of(mockProfile)).when(mockProfileManager).get(anyBoolean());
+    pac4jConfig.setProfileManagerFactory(webContext -> mockProfileManager);
+    doReturn(new PlatformHttpActionAdapter()).when(mockPac4jConfig).getHttpActionAdapter();
   }
 
   @Test
@@ -223,7 +311,7 @@ public class SessionControllerTest {
   }
 
   @Test
-  public void testLdapUserWithoutLdapConfig() throws LdapException {
+  public void testLdapUserWithoutLdapConfig() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);

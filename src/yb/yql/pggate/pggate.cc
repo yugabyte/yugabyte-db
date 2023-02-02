@@ -564,6 +564,25 @@ Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
   return Status::OK();
 }
 
+Status PgApiImpl::FetchSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     bool is_db_catalog_version_mode,
+                                     uint32_t fetch_count,
+                                     int64_t inc_by,
+                                     int64_t min_value,
+                                     int64_t max_value,
+                                     bool cycle,
+                                     int64_t *first_value,
+                                     int64_t *last_value) {
+  auto res = VERIFY_RESULT(pg_session_->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      min_value, max_value, cycle));
+  *first_value = res.first;
+  *last_value = res.second;
+  return Status::OK();
+}
+
 Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
                                     int64_t seq_oid,
                                     uint64_t ysql_catalog_version,
@@ -799,6 +818,7 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
@@ -870,6 +890,7 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
   return pg_stmt->Exec();
 }
@@ -1068,7 +1089,7 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_TABLE)) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTable*>(handle)->Exec();
 }
 
@@ -1833,17 +1854,24 @@ Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
   return pg_session_->ListTabletServers();
 }
 
+Status PgApiImpl::GetIndexBackfillProgress(std::vector<PgObjectId> oids,
+                                           uint64_t** backfill_statuses) {
+  return pg_session_->GetIndexBackfillProgress(oids, backfill_statuses);
+}
+
 Status PgApiImpl::ValidatePlacement(const char *placement_info) {
   return pg_session_->ValidatePlacement(placement_info);
 }
 
-void PgApiImpl::StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
+void PgApiImpl::StartSysTablePrefetching(
+    uint64_t latest_known_ysql_catalog_version, bool should_use_cache) {
   if (pg_sys_table_prefetcher_) {
     DLOG(FATAL) << "Sys table prefetching was started already";
   }
 
-  CHECK(!pg_session_->HasCatalogReadPoint());
-  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(latest_known_ysql_catalog_version));
+  CHECK(!pg_session_->catalog_read_time());
+  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(
+      latest_known_ysql_catalog_version,  should_use_cache));
 }
 
 void PgApiImpl::StopSysTablePrefetching() {
@@ -1852,6 +1880,10 @@ void PgApiImpl::StopSysTablePrefetching() {
   } else {
     pg_sys_table_prefetcher_.reset();
   }
+}
+
+bool PgApiImpl::IsSysTablePrefetchingStarted() const {
+  return static_cast<bool>(pg_sys_table_prefetcher_);
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(

@@ -71,10 +71,17 @@ export const BaseToggle: FC<BaseToggleProps> = ({
         })}
       >
         <div className="yb-uikit-toggle__value" style={{ width }}>
-          {sliderTexts
-            ? (checked ? sliderTexts.on : sliderTexts.off)
-            : (checked ? <Checkmark /> : <Crossmark />)
-          }
+          {sliderTexts ? (
+            checked ? (
+              sliderTexts.on
+            ) : (
+              sliderTexts.off
+            )
+          ) : checked ? (
+            <Checkmark />
+          ) : (
+            <Crossmark />
+          )}
         </div>
         <div
           className={clsx('yb-uikit-toggle__handle', {

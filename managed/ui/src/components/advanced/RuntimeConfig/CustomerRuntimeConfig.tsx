@@ -3,20 +3,14 @@ import { MenuItem, Dropdown } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { fetchCustomersList } from '../../../api/admin';
-import { RunTimeConfigScope } from '../../../redesign/helpers/dtos';
+import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/helpers/dtos';
 import { ConfigData } from '../ConfigData';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 
 import '../AdvancedConfig.scss';
 
-interface CustomerRuntimeConfigProps {
-  fetchRuntimeConfigs: (scope?: string) => void;
-  setRuntimeConfig: (key: string, value: string) => void;
-  deleteRunTimeConfig: (key: string) => void;
-  resetRuntimeConfigs: () => void;
-}
-
-export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
+export const CustomerRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
+  configTagFilter,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
@@ -93,6 +87,7 @@ export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
         deleteRunTimeConfig={deleteRunTimeConfig}
         scope={RunTimeConfigScope.CUSTOMER}
         customerUUID={customerUUID}
+        configTagFilter={configTagFilter}
       />
     </div>
   );

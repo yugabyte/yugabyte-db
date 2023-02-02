@@ -523,6 +523,12 @@ message ListNamespacesResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated NamespaceIdentifierPB namespaces = 2;
+
+  repeated int32 states = 3;
+
+  /* We use int32 because the repeated bool type is bugged.
+  See https://github.com/yugabyte/yugabyte-db/issues/15868 */
+  repeated int32 colocated = 4;
 }
 
 message GetNamespaceInfoRequestPB {
@@ -633,6 +639,18 @@ message GetUDTypeInfoResponsePB {
   optional UDTypeInfoPB udtype = 2;
 }
 
+message ReportYsqlDdlTxnStatusRequestPB {
+  // The transaction whose status is being reported.
+  optional bytes transaction_id = 1;
+
+  // Whether the above transaction is committed or aborted.
+  optional bool is_committed = 2;
+}
+
+message ReportYsqlDdlTxnStatusResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterDdl {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -681,4 +699,7 @@ service MasterDdl {
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
   rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);
   rpc GetUDTypeInfo(GetUDTypeInfoRequestPB) returns (GetUDTypeInfoResponsePB);
+
+  rpc ReportYsqlDdlTxnStatus(ReportYsqlDdlTxnStatusRequestPB) returns
+      (ReportYsqlDdlTxnStatusResponsePB);
 }

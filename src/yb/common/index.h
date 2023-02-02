@@ -107,6 +107,10 @@ class IndexInfo {
     return backfill_error_message_;
   }
 
+  uint64_t num_rows_processed_by_backfill_job() const {
+    return num_rows_processed_by_backfill_job_;
+  }
+
   std::string ToString() const;
 
   // Same as "IsExprCovered" but only search the key columns.
@@ -139,6 +143,10 @@ class IndexInfo {
   const std::vector<ColumnId> indexed_range_column_ids_; // Range column ids in the indexed table.
   const IndexPermissions index_permissions_ = INDEX_PERM_READ_WRITE_AND_DELETE;
   const std::string backfill_error_message_;
+  // When the backfill job is cleared, this is set to the number of indexed table rows processed by
+  // the backfill job. The (default) value is zero, otherwise. For partial indexes, this includes
+  // non-matching rows of the indexed table.
+  const uint64_t num_rows_processed_by_backfill_job_ = 0;
 
   // Column ids covered by the index (include indexed columns).
   std::unordered_set<ColumnId, boost::hash<ColumnIdRep>> covered_column_ids_;

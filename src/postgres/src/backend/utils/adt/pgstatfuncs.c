@@ -30,10 +30,17 @@
 #include "utils/inet.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "commands/progress.h"
+
 #define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
 
 /* Global bgwriter statistics, from bgwriter.c */
 extern PgStat_MsgBgWriter bgwriterStats;
+
+extern bool yb_retrieved_concurrent_index_progress;
+
+uint64_t *yb_pg_stat_retrieve_concurrent_index_progress();
 
 Datum
 pg_stat_get_numscans(PG_FUNCTION_ARGS)
@@ -449,6 +456,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
+	uint64_t *index_progress = NULL;
+	uint64_t *index_progress_iterator = NULL;
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -470,6 +479,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		cmdtype = PROGRESS_COMMAND_VACUUM;
 	else if (pg_strcasecmp(cmd, "COPY") == 0)
 		cmdtype = PROGRESS_COMMAND_COPY;
+	else if (pg_strcasecmp(cmd, "CREATE INDEX") == 0)
+		cmdtype = PROGRESS_COMMAND_CREATE_INDEX;
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -483,6 +494,27 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 	MemoryContextSwitchTo(oldcontext);
+
+	/*
+	 * Fetch stats for in-progress concurrent create indexes that aren't
+	 * captured in the local backend entry from master. We avoid reading these
+	 * stats while constructing the local backend entry in
+	 * pg_read_current_stats() in order to avoid extraneous RPCs to master
+	 * (in case we read from pg_stat_* views within a transaction but don't
+	 * read from pg_stat_progress_create_index). Since these stats are computed
+	 * on the fly and not at the time of pg_read_current_stats(), they may not
+	 * be consistent with other backend stats.
+	 * Also, the fetched values are constant within a transaction - we only
+	 * fetch from master if we haven't already done so within the current
+	 * transaction.
+	 */
+	if (IsYugaByteEnabled() && cmdtype == PROGRESS_COMMAND_CREATE_INDEX &&
+		!yb_retrieved_concurrent_index_progress)
+	{
+		index_progress = yb_pg_stat_retrieve_concurrent_index_progress();
+		index_progress_iterator = index_progress;
+		yb_retrieved_concurrent_index_progress = true;
+	}
 
 	/* 1-based index */
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
@@ -511,6 +543,29 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 						beentry->st_progress_command != PROGRESS_COMMAND_COPY))
 			continue;
 
+		/*
+		 * Fill in tuples_done for concurrent create indexes on YB relations
+		 * that are in the backfilling phase.
+		 */
+		if (IsYugaByteEnabled() && cmdtype == PROGRESS_COMMAND_CREATE_INDEX &&
+			(beentry->st_progress_param[PROGRESS_CREATEIDX_COMMAND]
+			 == PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY) &&
+			(beentry->st_progress_param[PROGRESS_CREATEIDX_PHASE]
+			 == YB_PROGRESS_CREATEIDX_BACKFILLING) &&
+			IsYBRelationById(beentry->st_progress_command_target) &&
+			index_progress_iterator)
+		{
+			/*
+			 * Note: we expect the ordering of the indexes in index_progress to
+			 * to match the ordering within the backend status array -
+			 * therefore we don't need to loop through index_progress to find
+			 * the relevant entry
+			 */
+			beentry->st_progress_param[PROGRESS_CREATEIDX_TUPLES_DONE]
+				= *index_progress_iterator;
+			index_progress_iterator++;
+		}
+
 		/* Value available to all callers */
 		values[0] = Int32GetDatum(beentry->st_procpid);
 		values[1] = ObjectIdGetDatum(beentry->st_databaseid);
@@ -529,8 +584,38 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 				nulls[i + 3] = true;
 		}
 
+		/*
+		 * Set the columns of pg_stat_progress_create_index that are unused
+		 * in YB to null.
+		 */
+		if (IsYugaByteEnabled() && cmdtype == PROGRESS_COMMAND_CREATE_INDEX)
+		{
+			for (i = 0; i < PGSTAT_NUM_PROGRESS_PARAM; i++)
+			{
+				/*
+				 * In YB, we only use the command, index_relid, phase,
+				 * tuples_total, tuples_done, partitions_total, partitions_done
+				 * columns for YB indexes. For temp indexes, tuples_total and
+				 * tuples_done aren't computed so we set those to null too.
+				 */
+				if (i == PROGRESS_CREATEIDX_COMMAND ||
+					i == PROGRESS_CREATEIDX_INDEX_OID ||
+					i == PROGRESS_CREATEIDX_PHASE ||
+					i == PROGRESS_CREATEIDX_PARTITIONS_TOTAL ||
+					i == PROGRESS_CREATEIDX_PARTITIONS_DONE ||
+					(IsYBRelationById(beentry->st_progress_command_target) &&
+					 (i == PROGRESS_CREATEIDX_TUPLES_TOTAL ||
+					  i == PROGRESS_CREATEIDX_TUPLES_DONE)))
+					continue;
+				nulls[i + 3] = true;
+			}
+		}
+
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
+
+	if (index_progress)
+		pfree(index_progress);
 
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);
@@ -1988,4 +2073,56 @@ yb_pg_stat_get_backend_rss_mem_bytes(PG_FUNCTION_ARGS)
 	result = local_beentry->yb_backend_rss_mem_bytes;
 
 	PG_RETURN_INT64(result);
+}
+
+/*
+ * In YB, this function is used to retrieve stats for in-progress concurrent
+ * CREATE INDEX from master.
+ */
+uint64_t *
+yb_pg_stat_retrieve_concurrent_index_progress()
+{
+	int			num_backends = pgstat_fetch_stat_numbackends();
+	int			curr_backend;
+	int			num_indexes = 0;
+	Oid			database_oids[num_backends];
+	Oid			index_oids[num_backends];
+	uint64_t	*progress = NULL;
+
+	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
+	{
+		PgBackendStatus *beentry;
+		LocalPgBackendStatus *local_beentry;
+		local_beentry = pgstat_fetch_stat_local_beentry(curr_backend);
+
+		if (!local_beentry)
+			continue;
+
+		beentry = &local_beentry->backendStatus;
+
+		/*
+		 * Filter out commands besides concurrent create indexes on YB
+		 * relations that are in the backfilling phase.
+		 */
+		if (beentry->st_progress_command != PROGRESS_COMMAND_CREATE_INDEX ||
+			(beentry->st_progress_param[PROGRESS_CREATEIDX_COMMAND]
+			 != PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY) ||
+			(beentry->st_progress_param[PROGRESS_CREATEIDX_PHASE]
+			 < YB_PROGRESS_CREATEIDX_BACKFILLING) ||
+			!IsYBRelationById(beentry->st_progress_command_target))
+			continue;
+
+		database_oids[num_indexes] = beentry->st_databaseid;
+		index_oids[num_indexes++] =
+			beentry->st_progress_param[PROGRESS_CREATEIDX_INDEX_OID];
+	}
+
+	if (num_indexes > 0)
+	{
+		progress = palloc(sizeof(uint64_t) * num_indexes);
+		HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
+												   &progress, num_indexes));
+	}
+
+	return progress;
 }

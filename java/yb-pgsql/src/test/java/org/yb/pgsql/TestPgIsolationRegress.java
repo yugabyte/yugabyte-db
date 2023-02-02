@@ -29,6 +29,7 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("enable_wait_queues", "false");
     flagMap.put("enable_deadlock_detection", "false");
+    flagMap.put("ysql_enable_packed_row", "false");
     return flagMap;
   }
 

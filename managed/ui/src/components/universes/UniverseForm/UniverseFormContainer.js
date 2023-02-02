@@ -19,7 +19,13 @@ import {
   fetchAuthConfigList,
   fetchAuthConfigListResponse
 } from '../../../actions/cloud';
-import { fetchRunTimeConfigs, fetchRunTimeConfigsResponse, getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
+import {
+  fetchRunTimeConfigs,
+  fetchRunTimeConfigsResponse,
+  getTlsCertificates,
+  getTlsCertificatesResponse,
+  DEFAULT_RUNTIME_GLOBAL_SCOPE
+} from '../../../actions/customers';
 import {
   rollingUpgrade,
   rollingUpgradeResponse,
@@ -56,12 +62,12 @@ import {
   isNonEmptyObject,
   isNonEmptyString,
   isEmptyObject,
-  makeFirstLetterUpperCase
-, createErrorMessage } from '../../../utils/ObjectUtils';
+  makeFirstLetterUpperCase,
+  createErrorMessage
+} from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
 import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
 import { toast } from 'react-toastify';
-
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -220,10 +226,10 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     fetchRunTimeConfigs: () => {
-      return dispatch(fetchRunTimeConfigs('00000000-0000-0000-0000-000000000000',true)).then((response) =>
+      return dispatch(fetchRunTimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)).then((response) =>
         dispatch(fetchRunTimeConfigsResponse(response.payload))
       );
-    },
+    }
   };
 };
 
@@ -396,9 +402,7 @@ function getFormData(currentUniverse, formType, clusterType) {
 function mapStateToProps(state, ownProps) {
   const {
     universe: { currentUniverse },
-    customer: {
-      runtimeConfigs
-    }
+    customer: { runtimeConfigs }
   } = state;
   let data = {
     formType: 'Create',
@@ -429,7 +433,7 @@ function mapStateToProps(state, ownProps) {
       selectEncryptionAtRestConfig: null,
       diskIops: null,
       throughput: null,
-      dedicatedNodes: false,
+      dedicatedNodes: false
     },
     async: {
       universeName: '',
@@ -451,7 +455,7 @@ function mapStateToProps(state, ownProps) {
       enableClientToNodeEncrypt: true,
       diskIops: null,
       throughput: null,
-      dedicatedNodes: false,
+      dedicatedNodes: false
     }
   };
 
@@ -617,12 +621,13 @@ const validateProviderFields = (values, props, clusterType) => {
     }
     if (currentProviderCode === 'gcp' || currentProviderCode === 'kubernetes') {
       const specialCharsRegex = /^[a-z0-9-]*$/;
-      const errorProviderName = currentProviderCode === 'gcp' ? 
-        currentProviderCode.toUpperCase() : makeFirstLetterUpperCase(currentProviderCode);
+      const errorProviderName =
+        currentProviderCode === 'gcp'
+          ? currentProviderCode.toUpperCase()
+          : makeFirstLetterUpperCase(currentProviderCode);
 
       if (!specialCharsRegex.test(currentClusterData.universeName)) {
-        errors.universeName =
-          `${errorProviderName} Universe name cannot contain capital letters or special characters except dashes`;
+        errors.universeName = `${errorProviderName} Universe name cannot contain capital letters or special characters except dashes`;
       }
     }
     if (

@@ -93,7 +93,7 @@ struct TableInfo {
 
   std::string log_prefix;
   // The table schema, secondary index map, index info (for index table only) and schema version.
-  const std::unique_ptr<docdb::DocReadContext> doc_read_context;
+  const std::shared_ptr<docdb::DocReadContext> doc_read_context;
   std::unique_ptr<IndexMap> index_map;
   std::unique_ptr<IndexInfo> index_info;
   SchemaVersion schema_version = 0;
@@ -413,11 +413,27 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                  const SchemaVersion version,
                  const TableId& table_id = "");
 
+  void SetSchemaUnlocked(const Schema& schema,
+                 const IndexMap& index_map,
+                 const std::vector<DeletedColumn>& deleted_cols,
+                 const SchemaVersion version,
+                 const TableId& table_id = "") REQUIRES(data_mutex_);
+
   void SetPartitionSchema(const PartitionSchema& partition_schema);
 
   void SetTableName(
       const std::string& namespace_name, const std::string& table_name,
       const TableId& table_id = "");
+
+  void SetTableNameUnlocked(
+      const std::string& namespace_name, const std::string& table_name,
+      const TableId& table_id = "") REQUIRES(data_mutex_);
+
+  void SetSchemaAndTableName(
+      const Schema& schema, const IndexMap& index_map,
+      const std::vector<DeletedColumn>& deleted_cols,
+      const SchemaVersion version, const std::string& namespace_name,
+      const std::string& table_name, const TableId& table_id = "");
 
   void AddTable(const std::string& table_id,
                 const std::string& namespace_name,

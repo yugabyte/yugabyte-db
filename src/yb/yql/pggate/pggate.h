@@ -186,6 +186,18 @@ class PgApiImpl {
                              bool is_called,
                              bool* skipped);
 
+  Status FetchSequenceTuple(int64_t db_oid,
+                            int64_t seq_oid,
+                            uint64_t ysql_catalog_version,
+                            bool is_db_catalog_version_mode,
+                            uint32_t fetch_count,
+                            int64_t inc_by,
+                            int64_t min_value,
+                            int64_t max_value,
+                            bool cycle,
+                            int64_t *first_value,
+                            int64_t *last_value);
+
   Status ReadSequenceTuple(int64_t db_oid,
                            int64_t seq_oid,
                            uint64_t ysql_catalog_version,
@@ -603,8 +615,12 @@ class PgApiImpl {
 
   Result<client::TabletServersInfo> ListTabletServers();
 
-  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
+  Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
+                                  uint64_t** backfill_statuses);
+
+  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version, bool should_use_cache);
   void StopSysTablePrefetching();
+  bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
 
   // RPC stats for EXPLAIN ANALYZE

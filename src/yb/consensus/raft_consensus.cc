@@ -46,6 +46,7 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
@@ -216,7 +217,7 @@ DEFINE_test_flag(int32, log_change_config_every_n, 1,
                  "Used to reduce the number of lines being printed for change config requests "
                  "when a test simulates a failure that would generate a log of these requests.");
 
-DEFINE_UNKNOWN_bool(enable_lease_revocation, false, "Enables lease revocation mechanism");
+DEFINE_UNKNOWN_bool(enable_lease_revocation, true, "Enables lease revocation mechanism");
 
 DEFINE_UNKNOWN_bool(quick_leader_election_on_create, false,
             "Do we trigger quick leader elections on table creation.");
@@ -2205,16 +2206,21 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const LWConsensusRequest
   // watermark to the last message that remains in 'deduped_req'.
   //
   // It's possible that the leader didn't send us any new data -- it might be a completely
-  // duplicate request. In that case, we don't need to update LastReceived at all.
+  // duplicate request. In that case, we only update LastReceivedOpIdFromCurrentLeader
+  // Not updating this may result in the leader resending the same set of op-ids
+  // and resulting in empty de-duped requests forever. See GH #15629.
   if (!deduped_req.messages.empty()) {
     OpId last_appended = OpId::FromPB(deduped_req.messages.back()->id());
     TRACE(Format("Updating last received op as $0", last_appended));
     state_->UpdateLastReceivedOpIdUnlocked(last_appended);
-  } else if (state_->GetLastReceivedOpIdUnlocked().index < deduped_req.preceding_op_id.index) {
-    return STATUS_FORMAT(InvalidArgument,
-                         "Bad preceding_opid: $0, last received: $1",
-                         deduped_req.preceding_op_id,
-                         state_->GetLastReceivedOpIdUnlocked());
+  } else {
+    if (state_->GetLastReceivedOpIdUnlocked().index < deduped_req.preceding_op_id.index) {
+      return STATUS_FORMAT(InvalidArgument,
+                          "Bad preceding_opid: $0, last received: $1",
+                          deduped_req.preceding_op_id,
+                          state_->GetLastReceivedOpIdUnlocked());
+    }
+    state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
   }
 
   VLOG_WITH_PREFIX(1) << "Marking committed up to " << apply_up_to;

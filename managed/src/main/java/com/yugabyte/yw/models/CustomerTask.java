@@ -8,6 +8,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.logging.LogUtil;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -17,7 +18,6 @@ import io.swagger.annotations.ApiModelProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import play.data.validation.Constraints;
 
 import javax.annotation.Nullable;
 import javax.persistence.Column;
@@ -33,6 +33,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import play.data.validation.Constraints;
+import play.mvc.Http.Context;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -568,6 +570,17 @@ public class CustomerTask extends Model {
     return correlationId;
   }
 
+  @Column
+  @ApiModelProperty(
+      value = "User triggering task",
+      accessMode = READ_ONLY,
+      example = "shagarwal@yugabyte.com")
+  private String userEmail;
+
+  public String getUserEmail() {
+    return userEmail;
+  }
+
   public void markAsCompleted() {
     markAsCompleted(new Date());
   }
@@ -600,6 +613,18 @@ public class CustomerTask extends Model {
     th.targetName = targetName;
     th.createTime = new Date();
     th.customTypeName = customTypeName;
+    if (Context.current.get() == null) {
+      // When task is not created as a part of user action get email of the scheduler.
+      Schedule taskSchedule =
+          Schedule.getAllActive().stream().filter(Schedule::getRunningState).findAny().orElse(null);
+      if (taskSchedule != null) {
+        th.userEmail = taskSchedule.getUserEmail();
+      } else {
+        th.userEmail = "Unknown";
+      }
+    } else {
+      th.userEmail = ((UserWithFeatures) Context.current().args.get("user")).getUser().getEmail();
+    }
     String correlationId = (String) MDC.get(LogUtil.CORRELATION_ID);
     if (!Strings.isNullOrEmpty(correlationId)) th.correlationId = correlationId;
     th.save();

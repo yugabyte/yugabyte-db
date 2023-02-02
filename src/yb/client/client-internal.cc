@@ -257,6 +257,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetIndexBackfillProgress);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTransactionStatusTablets);
@@ -2386,11 +2387,9 @@ Status YBClient::Data::ValidateReplicationInfo(
   ValidateReplicationInfoResponsePB resp;
   auto new_ri = req.mutable_replication_info();
   new_ri->CopyFrom(replication_info);
-  Status status = SyncLeaderMasterRpc(
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
       deadline, req, &resp, "ValidateReplicationInfo",
-      &master::MasterReplicationProxy::ValidateReplicationInfoAsync);
-  RETURN_NOT_OK(status);
-
+      &master::MasterReplicationProxy::ValidateReplicationInfoAsync));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -2413,6 +2412,22 @@ Result<TableSizeInfo> YBClient::Data::GetTableDiskSize(
   }
 
   return TableSizeInfo{resp.size(), resp.num_missing_tablets()};
+}
+
+Status YBClient::Data::ReportYsqlDdlTxnStatus(
+    const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline) {
+  master::ReportYsqlDdlTxnStatusRequestPB req;
+  master::ReportYsqlDdlTxnStatusResponsePB resp;
+
+  req.set_transaction_id(txn.transaction_id.data(), txn.transaction_id.size());
+  req.set_is_committed(is_committed);
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "ReportYsqlDdlTxnStatus",
+      &master::MasterDdlProxy::ReportYsqlDdlTxnStatusAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {

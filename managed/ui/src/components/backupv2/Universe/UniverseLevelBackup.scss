@@ -1,4 +1,4 @@
-@use'../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 #backup-tab-panel {
   .tab-content {
@@ -6,8 +6,8 @@
   }
 
   .advanced_configs {
-    right: 35px;
-    top: 3%;
+    right: 10px;
+    top: -15px;
     position: absolute;
 
     & > a {
@@ -41,5 +41,8 @@
         }
       }
     }
+  }
+  & > .nav.nav-tabs {
+    position: relative;
   }
 }

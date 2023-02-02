@@ -576,6 +576,7 @@ Result<PGResultPtr> PGConn::CopyEnd() {
 
 Result<std::string> ToString(PGresult* result, int row, int column) {
   constexpr Oid BOOLOID = 16;
+  constexpr Oid NAMEOID = 19;
   constexpr Oid INT8OID = 20;
   constexpr Oid INT2OID = 21;
   constexpr Oid INT4OID = 23;
@@ -605,6 +606,7 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
       return yb::ToString(VERIFY_RESULT(GetValue<float>(result, row, column)));
     case FLOAT8OID:
       return yb::ToString(VERIFY_RESULT(GetValue<double>(result, row, column)));
+    case NAMEOID: FALLTHROUGH_INTENDED;
     case TEXTOID: FALLTHROUGH_INTENDED;
     case BPCHAROID: FALLTHROUGH_INTENDED;
     case VARCHAROID: FALLTHROUGH_INTENDED;

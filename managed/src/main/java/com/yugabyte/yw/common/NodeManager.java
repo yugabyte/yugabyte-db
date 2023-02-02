@@ -92,7 +92,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.slf4j.Logger;
@@ -119,6 +119,8 @@ public class NodeManager extends DevopsBase {
   public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
   public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
   public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
+
+  public static final String YUGABYTE_USER = "yugabyte";
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -231,9 +233,19 @@ public class NodeManager extends DevopsBase {
       AccessKey accessKey =
           AccessKey.getOrBadRequest(params.getProvider().uuid, userIntent.accessKeyCode);
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+      String sshUser = null;
+      // Currently we only need this for provision node operation.
+      // All others use yugabyte user.
+      if (type == NodeCommandType.Provision) {
+        if (StringUtils.isNotBlank(params.sshUserOverride)) {
+          sshUser = params.sshUserOverride;
+        }
+      }
+
+      LOG.info("node.sshUserOverride {}, sshuser used {}", params.sshUserOverride, sshUser);
       subCommand.addAll(
           getAccessKeySpecificCommand(
-              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode));
+              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode, sshUser));
     }
 
     return subCommand;
@@ -244,7 +256,8 @@ public class NodeManager extends DevopsBase {
       NodeCommandType type,
       AccessKey.KeyInfo keyInfo,
       Common.CloudType providerType,
-      String accessKeyCode) {
+      String accessKeyCode,
+      String sshUser) {
     List<String> subCommand = new ArrayList<>();
 
     if (keyInfo.vaultFile != null) {
@@ -308,9 +321,12 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Wait_For_SSH)
         && providerDetails.sshUser != null) {
       subCommand.add("--ssh_user");
-      subCommand.add(providerDetails.sshUser);
+      if (StringUtils.isNotBlank(sshUser)) {
+        subCommand.add(sshUser);
+      } else {
+        subCommand.add(providerDetails.sshUser);
+      }
     }
-
     if (type == NodeCommandType.Precheck) {
       subCommand.add("--precheck_type");
       if (providerDetails.skipProvisioning) {
@@ -680,7 +696,7 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--http_remote_download");
           ybServerPackage = releaseMetadata.http.paths.x86_64;
           subcommand.add("--http_package_checksum");
-          subcommand.add(releaseMetadata.http.paths.x86_64_checksum);
+          subcommand.add(releaseMetadata.http.paths.x86_64Checksum);
         } else {
           ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
         }
@@ -909,6 +925,9 @@ public class NodeManager extends DevopsBase {
 
           subcommand.add("--tags");
           subcommand.add("override_gflags");
+          if (taskParam.resetMasterState) {
+            subcommand.add("--reset_master_state");
+          }
         }
         break;
       case Certs:
@@ -1143,7 +1162,7 @@ public class NodeManager extends DevopsBase {
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
 
-  enum SkipCertValidationType {
+  public enum SkipCertValidationType {
     ALL,
     HOSTNAME,
     NONE
@@ -1226,7 +1245,7 @@ public class NodeManager extends DevopsBase {
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     commandArgs.addAll(
         getAccessKeySpecificCommand(
-            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode()));
+            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode(), null));
     commandArgs.addAll(
         getCommunicationPortsParams(
             new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));

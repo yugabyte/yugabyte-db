@@ -9,26 +9,21 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.FakePerfAdvisorDBTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.PerfAdvisorSettingsFormData;
+import com.yugabyte.yw.forms.PerfAdvisorSettingsWithDefaults;
 import com.yugabyte.yw.models.Users;
-import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
-import java.io.IOException;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
-import javax.sql.DataSource;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -36,10 +31,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.perf_advisor.filters.PerformanceRecommendationFilter;
 import org.yb.perf_advisor.filters.StateChangeAuditInfoFilter;
 import org.yb.perf_advisor.models.PerformanceRecommendation;
-import org.yb.perf_advisor.models.PerformanceRecommendation.EntityType;
-import org.yb.perf_advisor.models.PerformanceRecommendation.RecommendationPriority;
 import org.yb.perf_advisor.models.PerformanceRecommendation.RecommendationState;
-import org.yb.perf_advisor.models.PerformanceRecommendation.RecommendationType;
 import org.yb.perf_advisor.models.PerformanceRecommendation.SortBy;
 import org.yb.perf_advisor.models.StateChangeAuditInfo;
 import org.yb.perf_advisor.models.paging.PagedQuery.SortDirection;
@@ -47,77 +39,20 @@ import org.yb.perf_advisor.models.paging.PerformanceRecommendationPagedQuery;
 import org.yb.perf_advisor.models.paging.PerformanceRecommendationPagedResponse;
 import org.yb.perf_advisor.models.paging.StateChangeAuditInfoPagedQuery;
 import org.yb.perf_advisor.models.paging.StateChangeAuditInfoPagedResponse;
-import org.yb.perf_advisor.services.db.PerformanceRecommendationService;
-import play.Application;
 import play.libs.Json;
 import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
-public class PerfAdvisorControllerTest extends FakeDBApplication {
-
-  private static EmbeddedPostgres db;
-
-  private Customer customer;
+public class PerfAdvisorControllerTest extends FakePerfAdvisorDBTest {
 
   private Users user;
 
   private String authToken;
 
-  private Universe universe;
-
-  private PerformanceRecommendationService performanceRecommendationService;
-
-  {
-    try {
-      db = EmbeddedPostgres.builder().start();
-      Thread shutdownHook =
-          new Thread("Stop postgres DB") {
-            @Override
-            public void run() {
-              try {
-                db.close();
-              } catch (IOException e) {
-                throw new RuntimeException(e);
-              }
-            }
-          };
-      Runtime.getRuntime().addShutdownHook(shutdownHook);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  private static final Map<String, Object> PERF_ADVISOR_DB_PROPERTIES =
-      ImmutableMap.<String, Object>builder()
-          .put("db.perf_advisor.driver", "org.postgresql.Driver")
-          .put("db.perf_advisor.migration.auto", true)
-          .build();
-
-  @Override
-  protected Application provideApplication() {
-    Map<String, Object> additionalConfiguration = new HashMap<>();
-    try {
-      DataSource postgresDatabase = db.getPostgresDatabase();
-      additionalConfiguration.put(
-          "db.perf_advisor.url", postgresDatabase.getConnection().getMetaData().getURL());
-      additionalConfiguration.put(
-          "db.perf_advisor.username", postgresDatabase.getConnection().getMetaData().getUserName());
-      additionalConfiguration.putAll(PERF_ADVISOR_DB_PROPERTIES);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-    return provideApplication(additionalConfiguration);
-  }
-
   @Before
   public void setUp() {
-    customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
-
-    universe = ModelFactory.createUniverse();
-    performanceRecommendationService =
-        app.injector().instanceOf(PerformanceRecommendationService.class);
   }
 
   @Test
@@ -283,20 +218,54 @@ public class PerfAdvisorControllerTest extends FakeDBApplication {
     assertThat(response.getEntities(), contains(info2, info3));
   }
 
-  private PerformanceRecommendation createTestRecommendation() {
-    Map<String, Object> recInfo = new HashMap<>();
-    recInfo.put("sample-key", "sample-value");
-    return new PerformanceRecommendation()
-        .setRecommendationType(RecommendationType.CPU_SKEW)
-        .setRecommendation("recommendation")
-        .setObservation("observation")
-        .setCustomerId(customer.getUuid())
-        .setUniverseId(universe.getUniverseUUID())
-        .setEntityType(EntityType.NODE)
-        .setEntityNames("node-1, node-2")
-        .setRecommendationInfo(recInfo)
-        .setRecommendationState(RecommendationState.OPEN)
-        .setRecommendationPriority(RecommendationPriority.MEDIUM);
+  @Test
+  public void testUpdateAndGetSettingsRecommendation() {
+    PerfAdvisorSettingsFormData settings =
+        new PerfAdvisorSettingsFormData()
+            .setEnabled(true)
+            .setUniverseFrequencyMins(10)
+            .setConnectionSkewThresholdPct(60.0)
+            .setConnectionSkewMinConnections(100)
+            .setConnectionSkewIntervalMins(5)
+            .setCpuSkewThresholdPct(65.0)
+            .setCpuSkewMinUsagePct(55.0)
+            .setCpuSkewIntervalMins(6)
+            .setCpuUsageThreshold(55.0)
+            .setCpuUsageIntervalMins(7)
+            .setQuerySkewThresholdPct(70.0)
+            .setQuerySkewMinQueries(200)
+            .setQuerySkewIntervalMins(8)
+            .setRejectedConnThreshold(9)
+            .setRejectedConnIntervalMins(15);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/universes/"
+                + universe.getUniverseUUID()
+                + "/perf_advisor_settings",
+            authToken,
+            Json.toJson(settings));
+    assertThat(result.status(), equalTo(OK));
+
+    result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/universes/"
+                + universe.getUniverseUUID()
+                + "/perf_advisor_settings",
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode json = Json.parse(contentAsString(result));
+    PerfAdvisorSettingsWithDefaults updated =
+        Json.fromJson(json, PerfAdvisorSettingsWithDefaults.class);
+
+    assertThat(updated.getUniverseSettings(), equalTo(settings));
+    assertThat(updated.getDefaultSettings(), notNullValue());
   }
 
   private StateChangeAuditInfo createAuditInfo(

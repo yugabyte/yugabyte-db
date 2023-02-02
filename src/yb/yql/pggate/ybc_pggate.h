@@ -127,6 +127,18 @@ YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  bool is_called,
                                  bool* skipped);
 
+YBCStatus YBCFetchSequenceTuple(int64_t db_oid,
+                                int64_t seq_oid,
+                                uint64_t ysql_catalog_version,
+                                bool is_db_catalog_version_mode,
+                                uint32_t fetch_count,
+                                int64_t inc_by,
+                                int64_t min_value,
+                                int64_t max_value,
+                                bool cycle,
+                                int64_t *first_value,
+                                int64_t *last_value);
+
 YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
@@ -632,9 +644,16 @@ void YBCPgResetCatalogReadTime();
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
-void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
+YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
+                                      uint64_t** backfill_statuses,
+                                      int num_indexes);
+
+void YBCStartSysTablePrefetching(
+    uint64_t latest_known_ysql_catalog_version, bool should_use_cache);
 
 void YBCStopSysTablePrefetching();
+
+bool YBCIsSysTablePrefetchingStarted();
 
 void YBCRegisterSysTableForPrefetching(
     YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid);

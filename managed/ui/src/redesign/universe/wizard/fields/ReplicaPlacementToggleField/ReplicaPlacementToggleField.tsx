@@ -2,7 +2,6 @@ import React, { FC } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
 import { BaseToggle } from '../../../../uikit/Toggle/BaseToggle';
 import { CloudConfigFormValue } from '../../steps/cloud/CloudConfig';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import { I18n } from '../../../../uikit/I18n/I18n';
 import './ReplicaPlacementToggleField.scss';
 
@@ -17,7 +16,7 @@ export const ReplicaPlacementToggleField: FC<ReplicaPlacementToggleFieldProps> =
     <Controller
       control={control}
       name="autoPlacement"
-      render={({ value, onChange }: ControllerRenderProps<boolean>) => (
+      render={({ field: { value, onChange } }) => (
         <BaseToggle
           value={value}
           disabled={disabled}

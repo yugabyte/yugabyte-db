@@ -425,6 +425,7 @@ ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(fast_varint-test)
 ADD_YB_TEST(shared_mem-test)
+ADD_YB_TEST(operation_counter-test)
 
 #######################################
 # jsonwriter_test_proto

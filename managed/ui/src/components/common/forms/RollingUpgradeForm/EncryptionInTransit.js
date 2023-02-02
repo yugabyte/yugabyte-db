@@ -200,7 +200,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
 
     if (formValues.rootAndClientRootCASame) {
       if (formValues.enableNodeToNodeEncrypt && formValues.enableClientToNodeEncrypt) {
-        formValues['clientRootCA'] = formValues['rootCA'];
+        formValues['clientRootCA'] = null;
         formValues['createNewClientRootCA'] = false;
       }
     }

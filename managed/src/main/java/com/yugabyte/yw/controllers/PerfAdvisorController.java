@@ -16,14 +16,26 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
+import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigParseOptions;
+import com.typesafe.config.ConfigRenderOptions;
+import com.typesafe.config.ConfigSyntax;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler.RunResult;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfService;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.forms.PerfAdvisorSettingsFormData;
+import com.yugabyte.yw.forms.PerfAdvisorSettingsWithDefaults;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Audit.TargetType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -34,6 +46,7 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.perf_advisor.filters.PerformanceRecommendationFilter;
 import org.yb.perf_advisor.filters.StateChangeAuditInfoFilter;
 import org.yb.perf_advisor.models.PerformanceRecommendation;
@@ -55,8 +68,14 @@ import play.mvc.Result;
 @Slf4j
 public class PerfAdvisorController extends AuthenticatedController {
 
+  private static final String PERF_ADVISOR_SETTINGS_KEY = "yb.perf_advisor";
+
   @Inject private PerformanceRecommendationService performanceRecommendationService;
   @Inject private StateChangeAuditInfoService stateChangeAuditInfoService;
+  @Inject private SettableRuntimeConfigFactory configFactory;
+  @Inject private RuntimeConfService runtimeConfService;
+
+  @Inject private PerfAdvisorScheduler perfAdvisorScheduler;
 
   @ApiOperation(
       value = "Get performance recommendation details",
@@ -211,6 +230,102 @@ public class PerfAdvisorController extends AuthenticatedController {
             "Get performance recommendation page " + query);
 
     return PlatformResults.withData(response);
+  }
+
+  @ApiOperation(
+      value = "Get universe performance advisor settings",
+      response = PerfAdvisorSettingsWithDefaults.class)
+  public Result getSettings(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (!customer.getCustomerId().equals(universe.customerId)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
+    }
+
+    String jsonDefaultSettings =
+        configFactory
+            .forCustomer(customer)
+            .getValue(PERF_ADVISOR_SETTINGS_KEY)
+            .render(ConfigRenderOptions.concise());
+    PerfAdvisorSettingsFormData defaultSettings =
+        Json.fromJson(Json.parse(jsonDefaultSettings), PerfAdvisorSettingsFormData.class);
+    PerfAdvisorSettingsWithDefaults result =
+        new PerfAdvisorSettingsWithDefaults().setDefaultSettings(defaultSettings);
+
+    String configString =
+        runtimeConfService.getKeyIfPresent(customerUUID, universeUUID, PERF_ADVISOR_SETTINGS_KEY);
+    if (StringUtils.isEmpty(configString)) {
+      return PlatformResults.withData(result);
+    }
+
+    String jsonUniverseSettings =
+        ConfigFactory.parseString(configString).root().render(ConfigRenderOptions.concise());
+    PerfAdvisorSettingsFormData universeSettings =
+        Json.fromJson(Json.parse(jsonUniverseSettings), PerfAdvisorSettingsFormData.class);
+    result.setUniverseSettings(universeSettings);
+
+    return PlatformResults.withData(result);
+  }
+
+  @ApiOperation(value = "Update universe performance advisor settings", response = YBPSuccess.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PerformanceAdvisorSettingsRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.PerfAdvisorSettingsFormData",
+          required = true))
+  @Transactional
+  public Result updateSettings(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (!customer.getCustomerId().equals(universe.customerId)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
+    }
+    PerfAdvisorSettingsFormData settings = parseJsonAndValidate(PerfAdvisorSettingsFormData.class);
+    String settingsJsonString = Json.stringify(Json.toJson(settings));
+    String settingsString =
+        ConfigFactory.parseString(
+                settingsJsonString, ConfigParseOptions.defaults().setSyntax(ConfigSyntax.JSON))
+            .root()
+            .render();
+
+    runtimeConfService.setKey(
+        customerUUID, universeUUID, PERF_ADVISOR_SETTINGS_KEY, settingsString);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            TargetType.PerformanceAdvisorSettings,
+            null,
+            ActionType.Update,
+            request().body().asJson());
+    return YBPSuccess.empty();
+  }
+
+  @ApiOperation(value = "Start performance advisor run for universe", response = YBPSuccess.class)
+  public Result runPerfAdvisor(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (!customer.getCustomerId().equals(universe.customerId)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
+    }
+
+    RunResult result = perfAdvisorScheduler.runPerfAdvisor(universe);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            TargetType.PerformanceAdvisorRun,
+            null,
+            ActionType.Create,
+            request().body().asJson());
+    if (result.isStarted()) {
+      return YBPSuccess.empty();
+    } else {
+      throw new PlatformServiceException(PRECONDITION_FAILED, result.getFailureReason());
+    }
   }
 
   private <T> T convertException(Callable<T> operation, String operationName) {

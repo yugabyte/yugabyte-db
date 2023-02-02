@@ -7,7 +7,9 @@ package common
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -172,56 +174,24 @@ func copyBits(vers string) {
 // all services when executing a clean.
 func Uninstall(serviceNames []string, removeData bool) {
 
-	// 1) Stop all running service processes
-	// 2) Delete service files (in root mode)/Stop cron/cleanup crontab in NonRoot
-	// 3) Delete service directories
-	// 4) Delete data dir in force mode (warn/ask for confirmation)
-
-	if HasSudoAccess() {
-
-		command := "service"
-
-		for index := range serviceNames {
-			commandCheck0 := "bash"
-			subCheck0 := Systemctl + " list-unit-files --type service | grep -w " + serviceNames[index]
-			argCheck0 := []string{"-c", subCheck0}
-			out0, _ := RunBash(commandCheck0, argCheck0)
-			if strings.TrimSuffix(string(out0), "\n") != "" {
-				argStop := []string{serviceNames[index], "stop"}
-				RunBash(command, argStop)
-			}
-
-		}
-	} else {
-
-		for index := range serviceNames {
-			commandCheck0 := "bash"
-			argCheck0 := []string{"-c", "pgrep -f " + serviceNames[index] + " | head -1"}
-			out0, _ := RunBash(commandCheck0, argCheck0)
-			// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
-			// process itself was started by a non-root user.)
-			if strings.TrimSuffix(string(out0), "\n") != "" {
-				pid := strings.TrimSuffix(string(out0), "\n")
-				argStop := []string{"-c", "kill -9 " + pid}
-				RunBash(commandCheck0, argStop)
-			}
-		}
-	}
-
 	// Removed the InstallVersionDir if it exists if we are not performing an upgrade
 	// (since we would essentially perform a fresh install).
 
-	RemoveAll(GetInstallerSoftwareDir())
+	RemoveAll(GetSoftwareDir())
 
 	if removeData {
-		err := RemoveAll(GetYBAInstallerDataDir())
+		err := RemoveAll(GetBaseInstall())
 		if err != nil {
-			log.Info(fmt.Sprintf("Failed to delete yba installer data dir %s", GetYBAInstallerDataDir()))
+			pe := err.(*fs.PathError)
+			if !errors.Is(pe.Err, fs.ErrNotExist) {
+				log.Info(fmt.Sprintf("Failed to delete yba installer data dir %s", GetYBAInstallerDataDir()))
+			}
 		}
 	}
 
-	// Remove the hidden marker file
-	RemoveAll(InstalledFile)
+	// Remove yba-ctl
+	RemoveAll("/opt/yba-ctl")
+	os.Remove("/usr/bin/" + goBinaryName)
 }
 
 // Upgrade performs the upgrade procedures common to all services.

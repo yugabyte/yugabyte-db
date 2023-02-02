@@ -22,8 +22,8 @@ import {
   YBNumericInput
 } from '../../common/forms/fields';
 import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from '../common/IBackup';
-import { useSelector } from 'react-redux';
-import { find, flatten, groupBy, omit, uniq, uniqBy } from 'lodash';
+import { useDispatch, useSelector } from 'react-redux';
+import { find, flatten, groupBy, isArray, omit, uniq, uniqBy } from 'lodash';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
@@ -41,9 +41,10 @@ import { components } from 'react-select';
 import Close from '../../universes/images/close.svg';
 
 import { PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
-import './BackupCreateModal.scss';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
+import './BackupCreateModal.scss';
 
 interface BackupCreateModalProps {
   onHide: Function;
@@ -90,12 +91,14 @@ const SCHEDULE_DURATION_OPTIONS = ['Minutes', 'Hours', ...DURATIONS].map((t: str
   };
 });
 
-const INCREMENTAL_BACKUP_DURATION_OPTIONS = ['Hours', 'Days', 'Months'].map((t: string) => {
-  return {
-    value: t,
-    label: t
-  };
-});
+const INCREMENTAL_BACKUP_DURATION_OPTIONS = ['Minutes', 'Hours', 'Days', 'Months'].map(
+  (t: string) => {
+    return {
+      value: t,
+      label: t
+    };
+  }
+);
 
 const TABLE_BACKUP_OPTIONS = [
   { label: 'Select all tables in this Keyspace', value: Backup_Options_Type.ALL },
@@ -137,7 +140,7 @@ const initialValues = {
   storage_config: null as any,
   is_incremental_backup_enabled: false,
   incremental_backup_frequency: 1,
-  incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[0]
+  incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[1]
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -181,6 +184,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
   const queryClient = useQueryClient();
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
+  const dispatch = useDispatch();
 
   const doCreateBackup = useMutation(
     (values: any) => {
@@ -202,6 +206,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         );
         queryClient.invalidateQueries(['backups']);
         queryClient.invalidateQueries(['incremental_backups', values['baseBackupUUID']]);
+
+        dispatch(fetchUniverseInfo(currentUniverseUUID) as any).then((response: any) => {
+          dispatch(fetchUniverseInfoResponse(response.payload));
+        });
+
         onHide();
       },
       onError: (err: any) => {
@@ -254,22 +263,25 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   );
 
   const groupedStorageConfigs = useMemo(() => {
+    if (!isArray(storageConfigs?.data)) {
+      return [];
+    }
+    const filteredConfigs = storageConfigs.data.filter((c: IStorageConfig) => c.type === 'STORAGE');
+
     // if user has only one storage config, select it by default
-    if (storageConfigs.data.length === 1) {
-      const { configUUID, configName, name } = storageConfigs.data[0];
+    if (filteredConfigs.length === 1) {
+      const { configUUID, configName, name } = filteredConfigs[0];
       initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
     }
 
-    const configs = storageConfigs.data
-      .filter((c: IStorageConfig) => c.type === 'STORAGE')
-      .map((c: IStorageConfig) => {
-        return {
-          value: c.configUUID,
-          label: c.configName,
-          name: c.name,
-          regions: c.data?.REGION_LOCATIONS
-        };
-      });
+    const configs = filteredConfigs.map((c: IStorageConfig) => {
+      return {
+        value: c.configUUID,
+        label: c.configName,
+        name: c.name,
+        regions: c.data?.REGION_LOCATIONS
+      };
+    });
 
     return Object.entries(groupBy(configs, (c: IStorageConfig) => c.name)).map(
       ([label, options]) => {

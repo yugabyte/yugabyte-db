@@ -13,7 +13,7 @@ import { useAutoPlacement, useAvailabilityZones } from './placementsHelpers';
 import { ReactComponent as WarningIcon } from './error_outline-24px.svg';
 import { ReactComponent as CheckIcon } from './done-24px.svg';
 import { ReactComponent as ErrorIcon } from './clear-24px.svg';
-import { ControllerRenderProps, ValidationErrors } from '../../../../helpers/types';
+import { ValidationErrors } from '../../../../helpers/types';
 import './PlacementsField.scss';
 
 // add one more field to DTO types + allow gaps in node placements list
@@ -33,7 +33,12 @@ const FIELD_NAME = 'placements';
 const MIN_PLACEMENTS_FOR_GEO_REDUNDANCY = 3;
 
 export const PlacementsField: FC = () => {
-  const { control, getValues, watch, errors } = useFormContext<CloudConfigFormValue>();
+  const {
+    control,
+    getValues,
+    watch,
+    formState: { errors }
+  } = useFormContext<CloudConfigFormValue>();
   const { operation } = useContext(WizardContext);
 
   // use watch() as component has to re-render itself on any of these values change
@@ -82,19 +87,15 @@ export const PlacementsField: FC = () => {
         control={control}
         name={FIELD_NAME}
         rules={{ validate }}
-        render={({
-          onChange,
-          onBlur,
-          value: placementsFormValue
-        }: ControllerRenderProps<PlacementUI[]>) => (
+        render={({ field: { value, onChange, onBlur } }) => (
           <>
-            {_.isEmpty(placementsFormValue) && isLoading && (
+            {_.isEmpty(value) && isLoading && (
               <div className="availability-zones__row">
                 <YBLoadingCircleIcon size="medium" />
               </div>
             )}
 
-            {!_.isEmpty(placementsFormValue) && (
+            {!_.isEmpty(value) && (
               <>
                 <Row className="availability-zones__row">
                   <Col xs={12}>
@@ -103,8 +104,7 @@ export const PlacementsField: FC = () => {
                         <ErrorIcon />
                         <I18n>{(errors as ValidationErrors)[FIELD_NAME]?.message}</I18n>
                       </div>
-                    ) : _.compact(placementsFormValue).length <
-                      MIN_PLACEMENTS_FOR_GEO_REDUNDANCY ? (
+                    ) : _.compact(value).length < MIN_PLACEMENTS_FOR_GEO_REDUNDANCY ? (
                       <div className="availability-zones__placements-label availability-zones__placements-label--warning">
                         <WarningIcon />
                         <I18n>
@@ -135,7 +135,7 @@ export const PlacementsField: FC = () => {
               </>
             )}
 
-            {placementsFormValue.map((placement, placementIndex) => (
+            {value.map((placement, placementIndex) => (
               <Row key={placementIndex} className="availability-zones__row">
                 <Col sm={8}>
                   <Select<AvailabilityZoneUI>
@@ -147,7 +147,7 @@ export const PlacementsField: FC = () => {
                     value={zonesAll.find((item) => item.uuid === placement?.uuid) || null}
                     onBlur={onBlur}
                     onChange={(selection) => {
-                      const newPlacement = _.cloneDeep(placementsFormValue);
+                      const newPlacement = _.cloneDeep(value);
                       if (selection) {
                         newPlacement[placementIndex] = {
                           uuid: (selection as AvailabilityZoneUI).uuid,
@@ -175,14 +175,14 @@ export const PlacementsField: FC = () => {
                     min={1}
                     value={placement?.numNodesInAZ || ''}
                     className="availability-zones__number-input"
-                    disabled={autoPlacement || _.isEmpty(placementsFormValue[placementIndex])}
+                    disabled={autoPlacement || _.isEmpty(value[placementIndex])}
                     onBlur={onBlur}
                     onChange={(event) => {
                       // strip all non-digit chars and forbid manual typing of zero or negative values
                       const newNodeCount = Number(event.target.value.replace(/\D/g, ''));
                       if (newNodeCount < 1) return;
 
-                      const newPlacement = _.cloneDeep(placementsFormValue);
+                      const newPlacement = _.cloneDeep(value);
                       if (newPlacement[placementIndex]) {
                         // expected that configure call will put right "replicationFactor" before submitting actual changes to create/edit api
                         newPlacement[placementIndex]!.replicationFactor = 1;

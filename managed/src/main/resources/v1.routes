@@ -62,7 +62,6 @@ GET     /customers/:cUUID/providers/:pUUID                                     c
 DELETE  /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
 PUT     /customers/:cUUID/providers/:pUUID/edit                                com.yugabyte.yw.controllers.CloudProviderApiController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID)
 PUT     /customers/:cUUID/providers/:pUUID/refresh_pricing                     com.yugabyte.yw.controllers.CloudProviderApiController.refreshPricing(cUUID: java.util.UUID, pUUID: java.util.UUID)
-PATCH   /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.patch(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/access_key_rotation                 com.yugabyte.yw.controllers.CloudProviderApiController.accessKeysRotation(cUUID:java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/access_key_rotation/schedule        com.yugabyte.yw.controllers.CloudProviderApiController.scheduledAccessKeysRotation(cUUID:java.util.UUID, pUUID: java.util.UUID)
 GET     /customers/:cUUID/providers/:pUUID/access_key_rotation/schedule        com.yugabyte.yw.controllers.CloudProviderApiController.listAccessKeyRotationSchedules(cUUID:java.util.UUID, pUUID: java.util.UUID)
@@ -284,8 +283,8 @@ GET     /customers/:cUUID/universes/:uniUUID/range_hash                        c
 POST    /customers/:cUUID/universes/import                                     com.yugabyte.yw.controllers.ImportController.importUniverse(cUUID: java.util.UUID)
 
 # Link/Unlink universe
-POST   /customers/:cUUID/universes/:uniUUID/export                              com.yugabyte.yw.controllers.LinkUnlinkController.exportUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-POST   /customers/:cUUID/universes/:uniUUID/import                             com.yugabyte.yw.controllers.LinkUnlinkController.importUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST   /customers/:cUUID/universes/:uniUUID/export                             com.yugabyte.yw.controllers.AttachDetachController.exportUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST   /customers/:cUUID/universes/:uniUUID/import                             com.yugabyte.yw.controllers.AttachDetachController.importUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe - info about Yugabyte DB master node
 GET     /customers/:cUUID/universes/:uniUUID/masters                           com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -298,6 +297,8 @@ POST    /customers/:cUUID/universes/:uniUUID/run_query                         c
 POST    /customers/:cUUID/universes/:uniUUID/run_in_shell                      com.yugabyte.yw.controllers.UniverseYbDbAdminController.runInShell(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/update_db_credentials             com.yugabyte.yw.controllers.UniverseYbDbAdminController.setDatabaseCredentials(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/create_db_credentials             com.yugabyte.yw.controllers.UniverseYbDbAdminController.createUserInDB(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/create_restricted_db_credentials  com.yugabyte.yw.controllers.UniverseYbDbAdminController.createRestrictedUserInDB(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/drop_db_credentials               com.yugabyte.yw.controllers.UniverseYbDbAdminController.dropUserInDB(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe Actions
 POST    /customers/:cUUID/universes/:uniUUID/pause                             com.yugabyte.yw.controllers.UniverseActionsController.pause(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -506,6 +507,9 @@ POST   /customers/:cUUID/performance_recommendations/resolve                   c
 DELETE /customers/:cUUID/performance_recommendations                           com.yugabyte.yw.controllers.PerfAdvisorController.delete(cUUID: java.util.UUID)
 + forceNoAudit
 POST   /customers/:cUUID/performance_recommendation_state_change/page          com.yugabyte.yw.controllers.PerfAdvisorController.pageAuditInfo(cUUID: java.util.UUID)
+GET    /customers/:cUUID/universes/:uniUUID/perf_advisor_settings              com.yugabyte.yw.controllers.PerfAdvisorController.getSettings(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST   /customers/:cUUID/universes/:uniUUID/perf_advisor_settings              com.yugabyte.yw.controllers.PerfAdvisorController.updateSettings(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST   /customers/:cUUID/universes/:uniUUID/start_manually                     com.yugabyte.yw.controllers.PerfAdvisorController.runPerfAdvisor(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # List buckets API
 POST     /customers/:cUUID/cloud/:cloud/buckets                                com.yugabyte.yw.controllers.CustomerConfigController.listBuckets(cUUID: java.util.UUID, cloud: String)

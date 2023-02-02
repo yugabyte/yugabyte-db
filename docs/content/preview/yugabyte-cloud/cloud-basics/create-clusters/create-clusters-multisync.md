@@ -3,7 +3,6 @@ title: Replicate across regions
 linkTitle: Replicate across regions
 description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
 headcontent: Deploy region-level fault tolerant clusters
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-multisync
@@ -28,11 +27,17 @@ Multi-region replicated clusters include the following features:
 
 ## Preferred region
 
-You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients. In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
+You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients.
 
-Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred.
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](../../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred region.
 
 When no region is preferred, YugabyteDB Managed distributes requests equally across regions. You can set or change the preferred region after cluster creation.
+
+Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
+
+You can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
+
+In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
 ## Prerequisites
 

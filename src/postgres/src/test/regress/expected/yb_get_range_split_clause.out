@@ -32,7 +32,7 @@ NOTICE:  relation with oid 12048 is not backed by YB
 CREATE TABLE view_test (a INT);
 CREATE VIEW my_view AS SELECT * FROM view_test;
 SELECT yb_get_range_split_clause('my_view'::regclass);
-NOTICE:  relation with oid 16501 is not backed by YB
+NOTICE:  relation with oid 16502 is not backed by YB
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -41,7 +41,7 @@ NOTICE:  relation with oid 16501 is not backed by YB
 DROP VIEW my_view;
 CREATE MATERIALIZED VIEW my_materialized_view AS SELECT * FROM view_test;
 SELECT yb_get_range_split_clause('my_materialized_view'::regclass);
-NOTICE:  relation with oid 16505 is not range-partitioned
+NOTICE:  relation with oid 16506 is not range-partitioned
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -56,7 +56,7 @@ CREATE TEMP TABLE temp_tbl (
 ) SPLIT AT VALUES((-100), (250));
 WARNING:  Split options on TEMP table will be ignored
 SELECT yb_get_range_split_clause('temp_tbl'::regclass);
-NOTICE:  relation with oid 16509 is not backed by YB
+NOTICE:  relation with oid 16510 is not backed by YB
  yb_get_range_split_clause
 ---------------------------
  (null)
@@ -69,7 +69,7 @@ CREATE TABLE no_pk_tbl (
   b TEXT
 );
 SELECT yb_get_range_split_clause('no_pk_tbl'::regclass);
-NOTICE:  relation with oid 16514 is not range-partitioned
+NOTICE:  relation with oid 16515 is not range-partitioned
  yb_get_range_split_clause 
 ---------------------------
  (null)
@@ -79,7 +79,7 @@ DROP TABLE no_pk_tbl;
 -- Test hash-partitioned table.
 CREATE TABLE hash_partitioned_tbl (k INT PRIMARY KEY) SPLIT INTO 5 TABLETS;
 SELECT yb_get_range_split_clause('hash_partitioned_tbl'::regclass);
-NOTICE:  relation with oid 16517 is not range-partitioned
+NOTICE:  relation with oid 16518 is not range-partitioned
  yb_get_range_split_clause
 ---------------------------
  (null)

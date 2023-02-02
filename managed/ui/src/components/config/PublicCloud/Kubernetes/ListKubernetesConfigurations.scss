@@ -40,14 +40,7 @@
 
 .editor-container{
   .fetch-kube-config-but{
-    float: right;
-    right: 5%;
-    position: absolute;
-    text-decoration: underline;
-    color: colors.$YB_ORANGE;
-    cursor: pointer;
-    &>.yb-info-tip{
-      margin-right: 5px;
-    }
+    width: auto;
+    margin-top: 10px;
   }
 }

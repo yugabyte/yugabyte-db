@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.SmartKeyAlgorithm;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
@@ -32,10 +33,12 @@ import play.libs.Json;
 public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorithm> {
 
   private final ApiHelper apiHelper;
+  private final RuntimeConfGetter confGetter;
 
-  public SmartKeyEARService() {
+  public SmartKeyEARService(RuntimeConfGetter confGetter) {
     super(KeyProvider.SMARTKEY);
     this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
+    this.confGetter = confGetter;
   }
 
   /**

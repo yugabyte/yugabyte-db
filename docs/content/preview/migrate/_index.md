@@ -11,20 +11,19 @@ menu:
   preview:
     identifier: voyager
     parent: migrate
-cascade:
-  unversioned: true
-  beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 ---
 
 YugabyteDB Voyager is a powerful open-source data migration engine that accelerates cloud native adoption by removing barriers to moving applications to the public or private cloud. It helps you migrate databases to YugabyteDB quickly and securely.
 
 YugabyteDB Voyager manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration, and data-migration, using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line utility.
 
+![Voyager Architecture](/images/migrate/voyager_architecture.png)
+
 ## Features
 
 - Free and completely open source.
 - Supports widely used databases for migration and doesn't require changes to the [source databases](#source-databases) in most cases.
-- Supports all YugabyteDB products (YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.) as the [target database](#target-database).
+- Supports all YugabyteDB products (YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later) as the [target database](#target-database).
 - Provides a unified [CLI](reference/yb-voyager-cli/) experience for all different source databases.
 - Auto-tuneable based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
 - Monitor the import status, and expected time for data export and import to complete using progress bars.
@@ -104,17 +103,6 @@ A typical migration workflow using yb-voyager consists of the following steps:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="reference/">
-      <div class="head">
-       <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
-        <div class="title">Reference</div>
-      </div>
-      <div class="body">
-        Learn about the yb-voyager CLI options, data modeling strategies, and data type mapping support.
-      </div>
-    </a>
-  </div>
-      <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="known-issues/">
       <div class="head">
        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true">
@@ -122,6 +110,17 @@ A typical migration workflow using yb-voyager consists of the following steps:
       </div>
       <div class="body">
         Learn about the existing issues and workarounds you can do before migrating data using yb-voyager.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="reference/">
+      <div class="head">
+       <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
+        <div class="title">Reference</div>
+      </div>
+      <div class="body">
+        Learn about the yb-voyager CLI options, data modeling strategies, and data type mapping support.
       </div>
     </a>
   </div>

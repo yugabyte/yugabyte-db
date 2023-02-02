@@ -51,6 +51,8 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
 
 /*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p3)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1, p2, p3 where p1.a = p3.a AND p2.a = p3.a and p1.b = p2.b;
 
+/*+ set(enable_seqscan on) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p1.b < p2.b + 1;
+
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 /*+IndexScan(p5 p5_hash)*/ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
 
@@ -84,6 +86,18 @@ EXPLAIN (COSTS OFF) /*+ Leading((t12 (t11 t10))) Set(enable_seqscan true) */ SEL
 DROP TABLE t10;
 DROP TABLE t11;
 DROP TABLE t12;
+
+create table d1(a int, primary key(a));
+create table d2(a int, primary key(a));
+create table d3(a int, primary key(a));
+create table d4(a int, primary key(a));
+
+/*+Leading(((d2 (d3 d4)) d1))*/ explain (costs off) select * from d1,d2,d3,d4 where d1.a = d3.a and d2.a = d3.a and d4.a = d2.a;
+
+drop table d1;
+drop table d2;
+drop table d3;
+drop table d4;
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;

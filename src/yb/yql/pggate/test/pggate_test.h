@@ -71,8 +71,10 @@ class PggateTest : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Setup the database for testing.
-  void SetupDB(const std::string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
-  void CreateDB(const std::string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
+  void SetupDB(const std::string& db_name = kDefaultDatabase,
+               YBCPgOid db_oid = kDefaultDatabaseOid);
+  void CreateDB(const std::string& db_name = kDefaultDatabase,
+                YBCPgOid db_oid = kDefaultDatabaseOid);
   void ConnectDB(const std::string& db_name = kDefaultDatabase);
 
  protected:
@@ -80,6 +82,7 @@ class PggateTest : public YBTest {
   void CommitDDLTransaction();
   void BeginTransaction();
   void CommitTransaction();
+  void ExecCreateTableTransaction(YBCPgStatement pg_stmt);
 
   //------------------------------------------------------------------------------------------------
   // Simulated cluster.
