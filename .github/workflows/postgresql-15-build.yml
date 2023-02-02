@@ -29,8 +29,7 @@ jobs:
            /etc/postgresql
           sudo rm -f /usr/bin/pg_config
           sudo /usr/bin/perl -MCPAN -e 'install IPC::RUN'
-          sudo /usr/bin/perl -MCPAN -e 'install String::Util'
-          sudo /usr/bin/perl -MCPAN -e 'install Data::Str2Num'
+          sudo /usr/bin/perl -MCPAN -e 'install Text::Trim'
 
       - name: Create pgsql dir
         run: mkdir -p /opt/pgsql

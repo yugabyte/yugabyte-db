@@ -1,6 +1,5 @@
 package PGSM;
 
-use String::Util qw(trim);
 use File::Basename;
 use File::Compare;
 use Test::More;

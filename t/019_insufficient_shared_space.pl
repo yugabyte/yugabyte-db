@@ -5,7 +5,6 @@ use warnings;
 use File::Basename;
 use File::Compare;
 use File::Copy;
-use String::Util qw(trim);
 use Test::More;
 use lib 't';
 use pgsm;
