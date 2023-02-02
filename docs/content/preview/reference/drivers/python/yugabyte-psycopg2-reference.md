@@ -28,18 +28,19 @@ type: docs
   </li>
 </ul>
 
-[Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features.
+Yugabyte Psycopg2 smart driver is a distributed python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features.
 
 For more information on the YugabyteDB node-postgres smart driver, see the following:
 
 - [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
 - [CRUD operations](../../../../drivers-orms/python/yugabyte-psycopg2/)
+- [GitHub repository](https://github.com/yugabyte/psycopg2)
 
 ## Download the driver dependency
 
 Building Psycopg2 requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
-The YugabyteDB Psycopg2 requires PostgreSQL version 12 or later (preferably 14).
+The YugabyteDB Psycopg2 driver requires PostgreSQL version 12 or later (preferably 14).
 
 If prerequisites are met, you can install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
 
@@ -115,7 +116,7 @@ conn = yb_pool.getconn()
 
 This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/) utility.
 
-Next, you use Python shell terminal to demonstrate the driver's load balancing features by running a few python scripts.
+Next, you use a Python shell terminal to demonstrate the driver's load balancing features by running a few python scripts.
 
 {{< note title="Note">}}
 The driver requires YugabyteDB version 2.7.2.0 or later.
