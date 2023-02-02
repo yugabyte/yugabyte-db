@@ -200,6 +200,9 @@ TEST_P(TabletSplitITestWithIsolationLevel, SplitSingleTablet) {
 
   ASSERT_OK(cluster_->RestartSync());
 
+  // Wait previous writes to be replicated and LB to stabilize as we are going to check all peers.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(
+      RegularBuildVsDebugVsSanitizers(10s, 20s, 30s)));
   ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows * 2));
 }
 
