@@ -218,6 +218,7 @@ set(TSERVER_SRCS
   pg_create_table.cc
   pg_mutation_counter.cc
   pg_response_cache.cc
+  pg_sequence_cache.cc
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
   read_query.cc
