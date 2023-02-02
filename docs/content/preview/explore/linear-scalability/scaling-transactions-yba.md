@@ -38,7 +38,7 @@ This document demonstrates how YugabyteDB can scale seamlessly while running a r
   </li>
 </ul>
 
-Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-similator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as Latency and Throughput charts for the running workload.
+Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as Latency and Throughput charts for the running workload.
 
 ## Observe IOPS per node
 
@@ -56,7 +56,7 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
    ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png)
 
-1. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8000/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
+1. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
 
    ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
@@ -82,7 +82,7 @@ Navigate to [Metrics](../../../yugabyte-platform/troubleshoot/universe-issues/#u
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-anywhere-chart.png)
 
-Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8000/) to see the new node being added to the network diagram. You can also notice a slight spike and drop in the latency and throughput when the node is added, and then both return to normal, as shown in the following illustration:
+Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to see the new node being added to the network diagram. You can also notice a slight spike and drop in the latency and throughput when the node is added, and then both return to normal, as shown in the following illustration:
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-graph-cloud.png)
 
@@ -100,7 +100,7 @@ You can remove a node from the universe as follows:
 
    ![Performance metrics with 4th node dead](/images/ce/stop-node-chart-anywhere.png)
 
-Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8000/) to see the node being removed from the network diagram when it is stopped (it may take few minutes to display the updated network diagram). Also notice a slight spike and drop in the latency and throughput, both of which resume immediately, as shown in the following illustration:
+Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to see the node being removed from the network diagram when it is stopped. Also notice a slight spike and drop in the latency and throughput, both of which resume immediately, as shown in the following illustration:
 
 ![Latency and throughput graph after stopping node 4](/images/ce/stop-node-graph-cloud.png)
 

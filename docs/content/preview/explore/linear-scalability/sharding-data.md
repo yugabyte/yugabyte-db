@@ -50,13 +50,12 @@ Sharding is also referred to as horizontal partitioning. The distinction between
 
 YugabyteDB currently supports two ways of sharding data: [hash](#hash-sharding) (also known as consistent hash) sharding, and [range](#range-sharding) sharding.
 
-For additional information about sharding in YugabyteDB, see the following:  
+For additional information about sharding in YugabyteDB, see the following: 
 
 - [Architecture: sharding](../../../architecture/docdb-sharding/)
-
-* [Data sharding in a distributed SQL database](https://blog.yugabyte.com/how-data-sharding-works-in-a-distributed-sql-database/)
-* [Analysis of four data sharding strategies in a distributed SQL database](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
-* [Overcoming MongoDB sharding and replication limitations with YugabyteDB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
+- [Data sharding in a distributed SQL database](https://blog.yugabyte.com/how-data-sharding-works-in-a-distributed-sql-database/)
+- [Analysis of four data sharding strategies in a distributed SQL database](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
+- [Overcoming MongoDB sharding and replication limitations with YugabyteDB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
 
 ### Hash sharding
 
@@ -159,7 +158,7 @@ To create a universe, do the following:
                      --tserver_flags "memstore_size_mb=1"
     ```
 
-    `memstore_size_mb=1` sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that you can observe which tablets the data is written to.
+    `memstore_size_mb=1` sets the total size of memstores on the tablet-servers to `1MB`. This forces a flush of the data to disk when a value greater than 1MB is added, allowing you to observe to which tablets the data is written.
 
 1. Add two more nodes to make this a 3-node by joining them with the previous node. You need to pass the `memstore_size` flag to each of the added YB-TServer servers, as follows:
 
@@ -180,7 +179,7 @@ To create a universe, do the following:
     ```
 
 
-Note that setting `memstore_size` to such a low value is not recommended in production, and is only used here to illustrate the point by forcing flushes to happen more quickly.
+Note that setting `memstore_size` to such a low value is not recommended in production, and is only used in the preceding example to force flushes to happen more quickly.
 
 ### Create a table
 
@@ -304,7 +303,7 @@ Perform the following:
     (1 rows)
     ```
 
-1. Check the sizes of the various tablets, as follow:
+1. Check the sizes of the various tablets, as follows:
 
     ```sh
     du -hs /tmp/ybd*/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/* | grep -v '0B'
@@ -330,7 +329,7 @@ The key has been written to one of the tablets. In this example, the tablet's UU
 
 ### Observe automatic sharding when adding nodes
 
-1. Add one more node to the cluster for a total of four nodes, as follows:
+1. Add one more node to the universe for a total of four nodes, as follows:
 
     ```sh
     ./bin/yugabyted start \
@@ -344,7 +343,7 @@ The key has been written to one of the tablets. In this example, the tablet's UU
 
     ![Auto-sharding when adding one node](/images/ce/sharding_4nodes.png)
 
-1. Add two more nodes to the cluster, making it a total of six nodes, as follows:
+1. Add two more nodes to the universe, making it a total of six nodes, as follows:
 
     ```sh
     ./bin/yugabyted start \
@@ -362,13 +361,13 @@ The key has been written to one of the tablets. In this example, the tablet's UU
                       --tserver_flags "memstore_size_mb=1"
     ```
 
-1. Verify that the tablets are evenly distributed across the six nodes. Each node now has wo tablets, as per the following illustration:
+1. Verify that the tablets are evenly distributed across the six nodes. Each node now has two tablets, as per the following illustration:
 
     ![Auto-sharding when adding three nodes](/images/ce/sharding_6nodes.png)
 
 ### Clean up
 
-If you are done experimenting, run the following commands to shut down the local cluster:
+Execute the following commands to shut down the local universe:
 
 ```sh
 ./bin/yugabyted destroy \
