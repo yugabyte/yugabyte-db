@@ -36,7 +36,7 @@ import play.api.libs.Files.TemporaryFile;
 import play.mvc.Http;
 import play.mvc.Result;
 
-public class LinkUnlinkController extends AbstractPlatformController {
+public class AttachDetachController extends AbstractPlatformController {
 
   @Inject private Config config;
 

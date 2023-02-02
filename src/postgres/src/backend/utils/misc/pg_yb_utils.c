@@ -1305,6 +1305,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_YbCreateProfileStmt:
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
+		case T_CreatedbStmt:
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
 		case T_CommentStmt: // COMMENT (create new comment)
 		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP affects only objects of current connection
@@ -1335,13 +1336,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			}
 
 			*is_catalog_version_increment = false;
-			*is_breaking_catalog_change = false;
-			break;
-		}
-		case T_CreatedbStmt:
-		{
-			*is_catalog_version_increment =
-				*YBCGetGFlags()->ysql_enable_read_request_caching;
 			*is_breaking_catalog_change = false;
 			break;
 		}

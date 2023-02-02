@@ -317,6 +317,10 @@ class ReplicaState {
   // This must be called under a lock.
   void UpdateLastReceivedOpIdUnlocked(const OpId& op_id);
 
+  // Updates the last received operation from current leader.
+  // This must be called under a lock.
+  void UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(const OpId& op_id);
+
   // Returns the last received op id. This must be called under the lock.
   const OpId& GetLastReceivedOpIdUnlocked() const;
 

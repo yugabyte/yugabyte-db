@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
@@ -56,7 +57,9 @@ public class EncryptionAtRestUtil {
       Constructor<T> getConstructor(Class<T> serviceClass) {
     Constructor<T> serviceConstructor = null;
     for (Constructor<?> constructor : serviceClass.getConstructors()) {
-      if (constructor.getParameterCount() == 0) {
+      // Gets all the constructors with the runtime config object as a paramter.
+      if (constructor.getParameterCount() == 1
+          && RuntimeConfGetter.class.equals(constructor.getParameterTypes()[0])) {
         serviceConstructor = (Constructor<T>) constructor;
         break;
       }

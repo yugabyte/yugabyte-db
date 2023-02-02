@@ -123,7 +123,6 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
     try {
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);

@@ -1690,9 +1690,7 @@ TEST_F(AutomaticTabletSplitITest, IncludeTasksInOutstandingSplits) {
   // Allow no new splits. The stalled split task should resume after the pause is removed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   auto catalog_mgr = ASSERT_RESULT(catalog_manager());
-  ASSERT_OK(WaitFor([&]() {
-    return !catalog_mgr->tablet_split_manager()->IsRunning();
-  }, 10s, "Wait for tablet split manager to stop running."));
+  ASSERT_OK(catalog_mgr->tablet_split_manager()->WaitUntilIdle());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(kInitialNumTablets + 1, /* expected_non_split_tablets */
                                          1 /* expected_split_tablets */));

@@ -11,11 +11,16 @@
 package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.algorithms.AwsAlgorithm;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
+import com.yugabyte.yw.models.Universe;
+
 import java.util.UUID;
 
 /**
@@ -24,8 +29,11 @@ import java.util.UUID;
  */
 public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
 
-  public AwsEARService() {
+  private final RuntimeConfGetter confGetter;
+
+  public AwsEARService(RuntimeConfGetter confGetter) {
     super(KeyProvider.AWS);
+    this.confGetter = confGetter;
   }
 
   private byte[] generateUniverseDataKey(
@@ -91,8 +99,14 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     byte[] result = null;
     final String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
     if (cmkId != null) {
-      // Ensure an alias exists from KMS CMK to universe UUID
-      AwsEARServiceUtil.createOrUpdateCMKAlias(configUUID, cmkId, universeUUID.toString());
+      // Skip for YBM use case
+      boolean cloudEnabled =
+          confGetter.getConfForScope(
+              Universe.getOrBadRequest(universeUUID), UniverseConfKeys.cloudEnabled);
+      if (!cloudEnabled) {
+        // Ensure an alias exists from KMS CMK to universe UUID for all YBA use cases
+        AwsEARServiceUtil.createOrUpdateCMKAlias(configUUID, cmkId, universeUUID.toString());
+      }
       switch (config.type) {
         case CMK:
           result = AwsEARServiceUtil.getCMK(configUUID, cmkId).getKeyArn().getBytes();
@@ -114,8 +128,14 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     byte[] result = null;
     final String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
     if (cmkId != null) {
-      // Ensure an alias exists from KMS CMK to universe UUID
-      AwsEARServiceUtil.createOrUpdateCMKAlias(configUUID, cmkId, universeUUID.toString());
+      // Skip for YBM use case
+      boolean cloudEnabled =
+          confGetter.getConfForScope(
+              Universe.getOrBadRequest(universeUUID), UniverseConfKeys.cloudEnabled);
+      if (!cloudEnabled) {
+        // Ensure an alias exists from KMS CMK to universe UUID
+        AwsEARServiceUtil.createOrUpdateCMKAlias(configUUID, cmkId, universeUUID.toString());
+      }
       String algorithm = "AES";
       int keySize = 256;
       result = generateUniverseDataKey(configUUID, universeUUID, algorithm, keySize, cmkId);
@@ -179,9 +199,15 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
 
   @Override
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {
-    final String aliasName = AwsEARServiceUtil.generateAliasName(universeUUID.toString());
-    if (AwsEARServiceUtil.getAlias(configUUID, aliasName) != null) {
-      AwsEARServiceUtil.deleteAlias(configUUID, aliasName);
+    // Skip and do nothing for YBM use case
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Universe.getOrBadRequest(universeUUID), UniverseConfKeys.cloudEnabled);
+    if (!cloudEnabled) {
+      final String aliasName = AwsEARServiceUtil.generateAliasName(universeUUID.toString());
+      if (AwsEARServiceUtil.getAlias(configUUID, aliasName) != null) {
+        AwsEARServiceUtil.deleteAlias(configUUID, aliasName);
+      }
     }
   }
 }

@@ -709,10 +709,6 @@ void PgSession::ResetCatalogReadPoint() {
   catalog_read_time_ = ReadHybridTime();
 }
 
-bool PgSession::HasCatalogReadPoint() const {
-  return static_cast<bool>(catalog_read_time_);
-}
-
 void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
   if (read_ht) {
     catalog_read_time_ = read_ht;

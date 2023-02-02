@@ -95,7 +95,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     String getKeyUrl = String.format("https://some_base_url/crypto/v1/keys/%s/export", mockKid);
     Map<String, String> mockQueryParams =
         ImmutableMap.of("name", universe.universeUUID.toString(), "limit", "1");
-    when(mockEARManager.getServiceInstance(eq("SMARTKEY"))).thenReturn(new SmartKeyEARService());
+    // confGetter is not used in class SmartKeyEARService, so we can pass null.
+    when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
+        .thenReturn(new SmartKeyEARService(null));
   }
 
   @Test
