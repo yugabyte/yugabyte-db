@@ -1161,7 +1161,10 @@ class UniverseForm extends Component {
         >
           {clusterForm}
           <div className="form-action-button-container">
-            <UniverseResources resources={universe.universeResourceTemplate.data}>
+            <UniverseResources
+              resources={universe.universeResourceTemplate.data}
+              runtimeConfigs={this.props.runtimeConfigs}
+            >
               <YBButton
                 btnClass="btn btn-default universe-form-submit-btn"
                 btnText="Cancel"

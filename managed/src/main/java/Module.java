@@ -2,8 +2,6 @@
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import com.google.inject.Singleton;
-import com.google.inject.name.Named;
 import com.google.inject.name.Names;
 import com.yugabyte.yw.cloud.CloudModules;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
@@ -84,7 +82,6 @@ import org.yb.perf_advisor.module.PerfAdvisor;
 import org.yb.perf_advisor.query.NodeManagerInterface;
 import play.Configuration;
 import play.Environment;
-import play.Logger;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -97,7 +94,6 @@ public class Module extends AbstractModule {
   private final Environment environment;
   private final Configuration config;
   private final String[] TLD_OVERRIDE = {"local"};
-  private static long startTime;
 
   public Module(Environment environment, Configuration config) {
     this.environment = environment;
@@ -109,6 +105,7 @@ public class Module extends AbstractModule {
     bind(Long.class)
         .annotatedWith(Names.named("AppStartupTimeMs"))
         .toInstance(System.currentTimeMillis());
+    bind(YBALifeCycle.class).asEagerSingleton();
     if (!config.getBoolean("play.evolutions.enabled")) {
       // We want to init flyway only when evolutions are not enabled
       bind(YBFlywayInit.class).asEagerSingleton();

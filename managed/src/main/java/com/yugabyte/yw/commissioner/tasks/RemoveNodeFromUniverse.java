@@ -54,7 +54,6 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         taskParams().nodeName,
         taskParams().universeUUID);
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
 
@@ -104,7 +103,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
             createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           } else {
-            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
+            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
           }
         }
 
@@ -112,7 +111,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         if (currentNode.isMaster) {
           createWaitForMasterLeaderTask()
               .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-          createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
+          createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
         }
       }
 

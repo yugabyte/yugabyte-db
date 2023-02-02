@@ -12,18 +12,26 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import javax.inject.Inject;
 import play.api.Play;
 
 public class CloudAccessKeySetup extends CloudTaskBase {
+
+  private TemplateManager templateManager;
+
   @Inject
-  protected CloudAccessKeySetup(BaseTaskDependencies baseTaskDependencies) {
+  protected CloudAccessKeySetup(
+      BaseTaskDependencies baseTaskDependencies, TemplateManager templateManager) {
     super(baseTaskDependencies);
+    this.templateManager = templateManager;
   }
 
   public static class Params extends CloudBootstrap.Params {
@@ -38,7 +46,8 @@ public class CloudAccessKeySetup extends CloudTaskBase {
   @Override
   public void run() {
     String regionCode = taskParams().regionCode;
-    Region region = Region.getByCode(getProvider(), regionCode);
+    Provider provider = getProvider();
+    Region region = Region.getByCode(provider, regionCode);
     if (region == null) {
       throw new RuntimeException("Region " + regionCode + " not setup.");
     }
@@ -47,7 +56,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
     // TODO(bogdan): validation at higher level?
     String accessKeyCode =
         Strings.isNullOrEmpty(taskParams().keyPairName)
-            ? AccessKey.getDefaultKeyCode(getProvider())
+            ? AccessKey.getDefaultKeyCode(provider)
             : taskParams().keyPairName;
 
     if (!Strings.isNullOrEmpty(taskParams().sshPrivateKeyContent)) {
@@ -81,6 +90,21 @@ public class CloudAccessKeySetup extends CloudTaskBase {
             taskParams().ntpServers,
             taskParams().showSetUpChrony);
       }
+    }
+
+    if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
+      // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
+      // and create a pre-provision script
+      AccessKey accessKey = AccessKey.getOrBadRequest(provider.uuid, accessKeyCode);
+      templateManager.createProvisionTemplate(
+          accessKey,
+          provider.details.airGapInstall,
+          provider.details.passwordlessSudoAccess,
+          provider.details.installNodeExporter,
+          provider.details.nodeExporterPort,
+          provider.details.nodeExporterUser,
+          provider.details.setUpChrony,
+          provider.details.ntpServers);
     }
   }
 }

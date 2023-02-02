@@ -430,7 +430,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Update these older ones to be not masters anymore so tserver info can be updated with the
       // final master list and other future cluster client operations.
-      createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false);
+      createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
     if (updateMasters) {
@@ -533,10 +534,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
       createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
-      // Do not use useHostPort = true because retry is not done for the option
-      // when the leader itself is being removed. The retryable error code
-      // LEADER_NEEDS_STEP_DOWN is reported only when useHostPort = false.
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, false);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
     }
 
     // Perform any additions still left.
@@ -546,7 +544,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Perform any removals still left.
     for (int idx = numIters; idx < removeMasters.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, false);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
     }
   }
 }

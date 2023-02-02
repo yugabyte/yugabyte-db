@@ -64,7 +64,7 @@ public class AzuEARServiceTest extends FakeDBApplication {
   public Customer customer;
 
   @Spy public AzuEARServiceUtil mockAzuEARServiceUtil;
-  @Spy public AzuEARService mockAzuEARService;
+  @Spy public AzuEARService mockAzuEARService = new AzuEARService(null);
   @Mock public KeyClient mockKeyClient;
   @Mock public CryptographyClient mockCryptographyClient;
   @Mock public KeyVaultKey mockKeyVaultKey;

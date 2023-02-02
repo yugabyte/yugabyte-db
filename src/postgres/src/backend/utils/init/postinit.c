@@ -586,8 +586,7 @@ BaseInit(void)
  */
 static void
 InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
-                 Oid useroid, char *out_dbname, bool override_allow_connections,
-                 bool* yb_sys_table_prefetching_started)
+				 Oid useroid, char *out_dbname, bool override_allow_connections)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		am_superuser;
@@ -693,23 +692,19 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		const uint64_t catalog_master_version =
 			YbGetCatalogCacheVersionForTablePrefetching();
 		YBCPgResetCatalogReadTime();
-		YBCStartSysTablePrefetching(catalog_master_version);
-		*yb_sys_table_prefetching_started = true;
+		YBCStartSysTablePrefetching(
+			catalog_master_version, false /* should_use_cache */);
 		YbRegisterSysTableForPrefetching(
-				AuthIdRelationId);        // pg_authid
+			AuthIdRelationId);        // pg_authid
 		YbRegisterSysTableForPrefetching(
-				DatabaseRelationId);      // pg_database
-		YbRegisterSysTableForPrefetching(
-				DbRoleSettingRelationId); // pg_db_role_setting
-		YbRegisterSysTableForPrefetching(
-				AuthMemRelationId);       // pg_auth_members
+			DatabaseRelationId);      // pg_database
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
 			YbRegisterSysTableForPrefetching(
-					YbProfileRelationId); // pg_yb_profile
+				YbProfileRelationId); // pg_yb_profile
 			YbRegisterSysTableForPrefetching(
-					YbRoleProfileRelationId);	// pg_yb_role_profile
+				YbRoleProfileRelationId);	// pg_yb_role_profile
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
@@ -1100,6 +1095,21 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId,
 										YbTablegroupRelationId,
 										&YbTablegroupCatalogExists));
+
+		if (YBCIsSysTablePrefetchingStarted())
+		{
+			YBCStopSysTablePrefetching();
+			YBCPgResetCatalogReadTime();
+			YBCStartSysTablePrefetching(
+				YbGetLastKnownCatalogCacheVersion(),
+				*YBCGetGFlags()->ysql_enable_read_request_caching);
+			YbRegisterSysTableForPrefetching(
+				AuthMemRelationId);       // pg_auth_members
+			YbRegisterSysTableForPrefetching(
+				DatabaseRelationId);      // pg_database
+			YbRegisterSysTableForPrefetching(
+				DbRoleSettingRelationId); // pg_db_role_setting
+		}
 	}
 
 	RelationCacheInitializePhase3();
@@ -1163,9 +1173,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 }
 
 static void
-YbEnsureSysTablePrefetchingStopped(bool sys_table_prefetching_started)
+YbEnsureSysTablePrefetchingStopped()
 {
-	if (sys_table_prefetching_started)
+	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
 		YBCStopSysTablePrefetching();
 }
 
@@ -1173,20 +1183,19 @@ void
 InitPostgres(const char *in_dbname, Oid dboid, const char *username,
              Oid useroid, char *out_dbname, bool override_allow_connections)
 {
-	bool sys_table_prefetching_started = false;
 	PG_TRY();
 	{
 		InitPostgresImpl(
 			in_dbname, dboid, username, useroid, out_dbname,
-			override_allow_connections, &sys_table_prefetching_started);
+			override_allow_connections);
 	}
 	PG_CATCH();
 	{
-		YbEnsureSysTablePrefetchingStopped(sys_table_prefetching_started);
+		YbEnsureSysTablePrefetchingStopped();
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-	YbEnsureSysTablePrefetchingStopped(sys_table_prefetching_started);
+	YbEnsureSysTablePrefetchingStopped();
 }
 
 /*

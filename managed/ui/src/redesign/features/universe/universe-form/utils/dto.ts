@@ -430,6 +430,7 @@ export interface CloudConfigFormValue {
   autoPlacement?: boolean;
   placements: Placement[];
   defaultRegion?: string | null;
+  resetAZConfig?: boolean;
   mastersInDefaultRegion?: boolean;
 }
 
@@ -514,6 +515,7 @@ export const DEFAULT_CLOUD_CONFIG: CloudConfigFormValue = {
   autoPlacement: true, // "AUTO" is the default value when creating new universe
   placements: [],
   defaultRegion: null,
+  resetAZConfig: false,
   mastersInDefaultRegion: false
 };
 

@@ -25,6 +25,7 @@ func cmdsRequireConfigInit() []string {
 		"yba-ctl license",
 		"yba-ctl license update",
 		"yba-ctl upgrade",
+		"yba-ctl preflight",
 	}
 }
 

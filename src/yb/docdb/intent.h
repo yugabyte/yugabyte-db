@@ -91,11 +91,12 @@ struct DecodedIntentValue {
 // encoded_intent_value - input intent value to decode.
 // transaction_id_slice - input transaction id (to double-check with transaction id in value). If
 //                        empty, decode TransactionId into returned result instead.
+// require_write_id     - If true, require a write_id in the value and return an error if not found.
 // Returned DecodedIntentValue will have a Nil transaction_id unless transaction_id_slice was
-// non-null.
+// non-null, and will have write_id set as long as one was found.
 Result<DecodedIntentValue> DecodeIntentValue(
     const Slice& encoded_intent_value, const Slice* transaction_id_slice = nullptr,
-    bool has_strong_intent = true);
+    bool require_write_id = true);
 
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);

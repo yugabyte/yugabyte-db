@@ -74,7 +74,7 @@ func DetectOS() string {
 }
 
 // GetVersion gets the version at execution time so that yba-installer
-// installs the correct version of Yugabyte Anywhere.
+// installs the correct version of YugabyteDB Anywhere.
 func GetVersion() string {
 
 	// locate the version metadata json file in the same dir as the yba-ctl

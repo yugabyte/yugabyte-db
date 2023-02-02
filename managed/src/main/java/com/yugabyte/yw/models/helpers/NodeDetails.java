@@ -35,7 +35,6 @@ import org.slf4j.LoggerFactory;
 @ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
   public static final Logger LOG = LoggerFactory.getLogger(NodeDetails.class);
-
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node ID")
   public int nodeIdx = -1;
@@ -63,6 +62,9 @@ public class NodeDetails {
 
   @ApiModelProperty(value = "Machine image name")
   public String machineImage;
+
+  @ApiModelProperty(value = "SSH user override for the AMI")
+  public String sshUserOverride;
 
   // Indicates that disks in fstab are mounted using using uuid (not as by path).
   @ApiModelProperty(value = "Disks are mounted by uuid")
@@ -168,7 +170,7 @@ public class NodeDetails {
     None,
     ToStart,
     Configured,
-    ToStop,
+    ToStop
   }
 
   // The current state of the node.

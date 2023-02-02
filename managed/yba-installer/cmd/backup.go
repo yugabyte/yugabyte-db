@@ -49,7 +49,7 @@ func CreateBackupScript(outputPath string, dataDir string,
 		args = append(args, "--db_port", viper.GetString("postgres.install.port"))
 	}
 
-	log.Info("Creating a backup of your Yugabyte Anywhere Installation.")
+	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
 	common.RunBash(fileName, args)
 }
 
@@ -80,7 +80,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	} else {
 		args = append(args, "-u", common.GetCurrentUser(), "-e", common.GetCurrentUser())
 	}
-	log.Info("Restoring a backup of your Yugabyte Anywhere Installation.")
+	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
 	common.RunBash(fileName, args)
 
 }
@@ -93,10 +93,10 @@ func createBackupCmd() *cobra.Command {
 
 	createBackup := &cobra.Command{
 		Use:   "createBackup outputPath",
-		Short: "The createBackup command is used to take a backup of your Yugabyte Anywhere instance.",
+		Short: "The createBackup command is used to take a backup of your YugabyteDB Anywhere instance.",
 		Long: `
     The createBackup command executes our yb_platform_backup.sh that creates a backup of your
-    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
+    YugabyteDB Anywhere instance. Executing this command requires that you create and specify the
     outputPath where you want the backup .tar.gz file to be stored as the first argument to
     createBackup.
     `,
@@ -131,10 +131,10 @@ func restoreBackupCmd() *cobra.Command {
 
 	restoreBackup := &cobra.Command{
 		Use:   "restoreBackup inputPath",
-		Short: "The restoreBackup command restores a backup of your Yugabyte Anywhere instance.",
+		Short: "The restoreBackup command restores a backup of your YugabyteDB Anywhere instance.",
 		Long: `
     The restoreBackup command executes our yb_platform_backup.sh that restores the backup of your
-    Yugabyte Anywhere instance. Executing this command requires that you create and specify the
+    YugabyteDB Anywhere instance. Executing this command requires that you create and specify the
     inputPath where the backup .tar.gz file that will be restored is located as the first argument
     to restoreBackup.
     `,
