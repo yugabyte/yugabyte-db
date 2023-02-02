@@ -90,12 +90,14 @@ const SCHEDULE_DURATION_OPTIONS = ['Minutes', 'Hours', ...DURATIONS].map((t: str
   };
 });
 
-const INCREMENTAL_BACKUP_DURATION_OPTIONS = ['Hours', 'Days', 'Months'].map((t: string) => {
-  return {
-    value: t,
-    label: t
-  };
-});
+const INCREMENTAL_BACKUP_DURATION_OPTIONS = ['Minutes', 'Hours', 'Days', 'Months'].map(
+  (t: string) => {
+    return {
+      value: t,
+      label: t
+    };
+  }
+);
 
 const TABLE_BACKUP_OPTIONS = [
   { label: 'Select all tables in this Keyspace', value: Backup_Options_Type.ALL },
@@ -137,7 +139,7 @@ const initialValues = {
   storage_config: null as any,
   is_incremental_backup_enabled: false,
   incremental_backup_frequency: 1,
-  incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[0]
+  incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[1]
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
