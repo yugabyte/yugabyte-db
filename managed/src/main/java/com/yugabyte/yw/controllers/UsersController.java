@@ -294,10 +294,13 @@ public class UsersController extends AuthenticatedController {
       user.setPassword(formData.getPassword());
     }
     if (StringUtils.isNotEmpty(formData.getTimezone())
-        && !formData.getTimezone().equals(user.getTimezone())) {
+        && !formData.getTimezone().equals(user.getTimezone())
+        && (user.getRole() == Role.Admin || user.getRole() == Role.SuperAdmin)) {
       user.setTimezone(formData.getTimezone());
     }
-    if (formData.getRole() != user.getRole()) {
+    if (formData.getRole() != user.getRole()
+        && user.getRole() != Role.ReadOnly
+        && user.getRole() != Role.BackupAdmin) {
       if (Role.SuperAdmin == user.getRole()) {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
       }
