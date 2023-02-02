@@ -58,7 +58,7 @@ The examples are based on the YB Workload Simulator application, which uses the 
   </li>
 </ul>
 
-Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-similator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as Latency and Throughput charts for the running workload.
+Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
 ### Observe even load across all nodes
 
@@ -66,21 +66,21 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
 1. Navigate to **Universes** and select your universe.
 
-1. Select **Nodes** to view the total read and write IOPS per node and other statistics, as shown in the following illustration:
+2. Select **Nodes** to view the total read and write IOPS per node and other statistics, as shown in the following illustration:
 
-  <!-- ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png) -->
+   <!-- ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png) -->
 
    Notice that both the reads and the writes are approximately the same across all nodes, indicating uniform load.
 
-1. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
+3. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
 
    <!-- ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png) -->
 
-1. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8000/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
+4. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
 
    ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
-### Stop a node and observe continuous write availability
+### Stop node and observe continuous write availability
 
 You can stop one of the nodes to simulate the loss of a zone, as follows:
 
@@ -96,7 +96,7 @@ You can stop one of the nodes to simulate the loss of a zone, as follows:
 
    ![Performance metrics with a node dead](/images/ce/stop-node-chart-yba.png)
 
-Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8000/) to see the node being removed from the network diagram when it is stopped (it may take a few minutes to display the updated network diagram). Also notice a slight spike and drop in the latency and throughput, both of which resume immediately, as shown in the following illustration:
+Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to see the node being removed from the network diagram when it is stopped (it may take a few minutes to display the updated network diagram). Also notice a slight spike and drop in the latency and throughput, both of which resume immediately, as shown in the following illustration:
 
 ![Latency and throughput graph after dropping a node](/images/ce/fault-tolerance-latency-stoppednode.png)
 
