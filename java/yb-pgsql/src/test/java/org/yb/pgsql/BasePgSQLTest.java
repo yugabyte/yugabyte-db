@@ -2161,12 +2161,20 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rpc_count_after - rpc_count_before;
   }
 
+  /** Creates a new tserver and returns its id. **/
+  protected int spawnTServer() throws Exception {
+    int tserverId = miniCluster.getNumTServers();
+    miniCluster.startTServer(getTServerFlags());
+    return tserverId;
+  }
+
+  /** Creates a new tserver with additional flags and returns its id. **/
   protected int spawnTServerWithFlags(Map<String, String> additionalFlags) throws Exception {
     Map<String, String> tserverFlags = getTServerFlags();
     tserverFlags.putAll(additionalFlags);
-    int tserver = miniCluster.getNumTServers();
+    int tserverId = miniCluster.getNumTServers();
     miniCluster.startTServer(tserverFlags);
-    return tserver;
+    return tserverId;
   }
 
   /**
