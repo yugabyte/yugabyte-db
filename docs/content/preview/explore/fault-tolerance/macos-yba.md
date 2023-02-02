@@ -2,7 +2,7 @@
 title: Explore fault tolerance
 headerTitle: Continuous availability
 linkTitle: Continuous availability
-description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
+description: Simulate fault tolerance and resilience in a universe created via YugabyteDB Anywhere.
 headcontent: Highly available and fault tolerant
 aliases:
   - /explore/fault-tolerance/
@@ -12,7 +12,7 @@ aliases:
   - /preview/explore/fault-tolerance-macos/
 menu:
   preview:
-    identifier: fault-tolerance-1-macos
+    identifier: fault-tolerance-2-macos
     parent: explore
     weight: 215
 type: docs
@@ -35,6 +35,7 @@ For more information, see the following:
 
 - [Continuous Availability with YugabyteDB video](https://www.youtube.com/watch?v=4PpiOMcq-j8)
 - [Synchronous replication](../../../architecture/docdb-replication/replication/)
+- [Enable high availability in YugabyteDB Anywhere](../../../yugabyte-platform/manage-deployments/high-availability/)
 
 ## Examples
 
@@ -44,68 +45,65 @@ The examples are based on the YB Workload Simulator application, which uses the 
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../macos/" class="nav-link active">
+    <a href="../macos/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li>
-    <a href="../macos-yba/" class="nav-link">
+    <a href="../macos-yba/" class="nav-link active">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
     </a>
   </li>
 </ul>
 
-{{% explore-setup-multi %}}
-
-Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
+Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
 ### Observe even load across all nodes
 
-To view a table of per-node statistics for the universe, navigate to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The following illustration shows the total read and write IOPS per node:
+You can use YugabyteDB Anywhere to view per-node statistics for the universe, as follows:
 
-![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance-evenly-distributed.png)
+1. Navigate to **Universes** and select your universe.
 
-Notice that both the reads and the writes are approximately the same across all nodes, indicating uniform load.
+2. Select **Nodes** to view the total read and write IOPS per node and other statistics, as shown in the following illustration:
 
-To view the latency and throughput on the universe while the workload is running, navigate to the [simulation application UI](http://127.0.0.1:8080/), as per the following illustration:
+   ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png)
 
-![Latency and throughput with 3 nodes](/images/ce/fault-tolerance-latency-throughput.png)
+   Notice that both the reads and the writes are approximately the same across all nodes, indicating uniform load.
+
+3. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
+
+   ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png)
+
+4. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
+
+   ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
 ### Stop node and observe continuous write availability
 
-Stop one of the nodes to simulate the loss of a zone, as follows:
+You can stop one of the nodes to simulate the loss of a zone, as follows:
 
-```sh
-./bin/yugabyted stop --base_dir=/tmp/ybd2
-```
+1. Navigate to **Universes** and select your universe.
 
-Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update.
+1. Select **Nodes**, find the node to be removed, and then click its corresponding **Actions > Stop Processes**.
 
-The `Time since heartbeat` value for that node starts to increase. When that number reaches 60s (1 minute), YugabyteDB changes the status of that node from ALIVE to DEAD. Observe the load (tablets) and IOPS getting moved off the removed node and redistributed to the other nodes, as per the following illustration:
+1. Verify that the details by selecting **Nodes**. Expect to see that the load has been moved off the stopped node and redistributed to the remaining nodes, as shown in the following illustration:
 
-![Read and write IOPS with one node stopped](/images/ce/fault-tolerance-dead-node.png)
+   ![Read and write IOPS with one node stopped](/images/ce/stop-node-yba.png)
 
-With the loss of the node, which also represents the loss of an entire fault domain, the universe is now in an under-replicated state.
+1. Navigate to **Metrics** to observe a slight spike and drop in the latency and YSQL Ops / Sec charts when the node is stopped, as shown in the following illustration:
 
-Navigate to the [simulation application UI](http://127.0.0.1:8080/) to see the node removed from the network diagram when it is stopped, as per the following illustration:
+   ![Performance metrics with a node dead](/images/ce/stop-node-chart-yba.png)
+
+Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to see the node being removed from the network diagram when it is stopped (it may take a few minutes to display the updated network diagram). Also notice a slight spike and drop in the latency and throughput, both of which resume immediately, as shown in the following illustration:
 
 ![Latency and throughput graph after dropping a node](/images/ce/fault-tolerance-latency-stoppednode.png)
 
-It may take close to 60 seconds to display the updated network diagram. You can also notice a spike and drop in the latency and throughput, both of which resume immediately.
+With the loss of the node, which also represents the loss of an entire fault domain, the universe is now in an under-replicated state.
 
 Despite the loss of an entire fault domain, there is no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
 
 ### Clean up
 
-You can shut down the local universe that you created as follows:
-
-```sh
-./bin/yugabyted destroy \
-                --base_dir=/tmp/ybd1
-./bin/yugabyted destroy \
-                --base_dir=/tmp/ybd2
-./bin/yugabyted destroy \
-                --base_dir=/tmp/ybd3
-```
+You can delete your universe by following instructions provided in [Delete a universe](../../../yugabyte-platform/manage-deployments/delete-universe/).
