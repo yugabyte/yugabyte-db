@@ -1180,7 +1180,7 @@ download_thirdparty() {
   fi
   download_and_extract_archive "$YB_THIRDPARTY_URL" "$LOCAL_THIRDPARTY_DIR_PARENT"
   if [[ -n ${YB_THIRDPARTY_DIR:-} &&
-       $(readlink -f "$YB_THIRDPARTY_DIR") != "$extracted_dir" ]]; then
+        $YB_THIRDPARTY_DIR != "$extracted_dir" ]]; then
     log_thirdparty_and_toolchain_details
     fatal "YB_THIRDPARTY_DIR is already set to '$YB_THIRDPARTY_DIR', cannot set it to" \
           "'$extracted_dir'"
@@ -1791,7 +1791,7 @@ finalize_yb_thirdparty_dir() {
     # For local third-party builds we might need to download the toolchain referenced by the
     # third-party directory.
     download_toolchain
-  elif [[ ! $(readlink -f "$YB_THIRDPARTY_DIR") == $OPT_YB_BUILD_DIR/* ]]; then
+  elif [[ ! $YB_THIRDPARTY_DIR == $OPT_YB_BUILD_DIR/* ]]; then
     fatal "YB_THIRDPARTY_DIR is set to '$YB_THIRDPARTY_DIR' but it does not exist and is not" \
           "within '$OPT_YB_BUILD_DIR' so we would not be able to download it."
   fi
