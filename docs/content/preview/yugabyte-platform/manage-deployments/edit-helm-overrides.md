@@ -4,7 +4,6 @@ headerTitle: Edit Kubernetes overrides
 linkTitle: Edit Kubernetes overrides
 description: Edit Kubernetes overrides for a universe.
 aliases:
-  - /preview/manage/enterprise-edition/edit-helm-overrides-1/
 menu:
   preview_yugabyte-platform:
     identifier: edit-helm-overrides
