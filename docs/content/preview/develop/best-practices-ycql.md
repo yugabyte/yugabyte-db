@@ -80,7 +80,7 @@ Use YugabyteDB-specific [client drivers](../../develop/build-apps/) because they
 
 A single client (for example, a multi-threaded application) should ideally use a single cluster object. The single cluster object typically holds underneath the covers a configurable number of connections to YB-TServers. Typically 1 or 2 connections per YB-TServer suffices to serve even 64-128 application threads. The same connection can be used for multiple outstanding requests, also known as multiplexing.
 
-The appropriate connection timeout will depend on the specific requirements of the application. In addition to the usual considerations, because YugabyteDB is distributed, you want connections to move to recovered, or newly added, nodes as quickly as possible.
+The appropriate connection timeout depends on the specific requirements of the application. In addition to the usual considerations, because YugabyteDB is distributed, you want connections to move to recovered, or newly added, nodes as quickly as possible.
 
 When a connection reaches the timeout period, the pool re-establishes a new connection to the node with the least amount of connections, which would likely be the new node. Set the timeout too long, and you risk not taking maximum advantage of a new node. (The node will still be used for YB-TServer operations, but not for new client connections.) Setting the timeout too short, however, degrades overall latency performance due to the high first connection latency. Experiment with different timeout values and monitor the performance of the application and the database to determine the optimal value.
 
