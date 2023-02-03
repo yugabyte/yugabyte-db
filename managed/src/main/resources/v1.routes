@@ -189,6 +189,11 @@ GET     /customers/:cUUID/alert_channels/:acUUID                               c
 PUT     /customers/:cUUID/alert_channels/:acUUID                               com.yugabyte.yw.controllers.AlertController.updateAlertChannel(cUUID: java.util.UUID, acUUID: java.util.UUID)
 DELETE  /customers/:cUUID/alert_channels/:acUUID                               com.yugabyte.yw.controllers.AlertController.deleteAlertChannel(cUUID: java.util.UUID, acUUID: java.util.UUID)
 
+GET     /customers/:cUUID/alert_channel_templates                              com.yugabyte.yw.controllers.AlertController.listAlertChannelTemplates(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_channel_templates/:acType                      com.yugabyte.yw.controllers.AlertController.getAlertChannelTemplates(cUUID: java.util.UUID, acType: String)
+POST    /customers/:cUUID/alert_channel_templates/:acType                      com.yugabyte.yw.controllers.AlertController.setAlertChannelTemplates(cUUID: java.util.UUID, acType: String)
+DELETE  /customers/:cUUID/alert_channel_templates/:acType                      com.yugabyte.yw.controllers.AlertController.deleteAlertChannelTemplates(cUUID: java.util.UUID, acType: String)
+
 POST    /customers/:cUUID/alert_destinations                                   com.yugabyte.yw.controllers.AlertController.createAlertDestination(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_destinations                                   com.yugabyte.yw.controllers.AlertController.listAlertDestinations(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_destinations/:adUUID                           com.yugabyte.yw.controllers.AlertController.getAlertDestination(cUUID: java.util.UUID, adUUID: java.util.UUID)
