@@ -447,10 +447,10 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Boolean> syncDBStateToFS =
       new ConfKeyInfo<>(
-          "yb.fs_stateless.sync_db_to_fs_startup",
+          "yb.fs_stateless.disable_sync_db_to_fs_startup",
           ScopeType.GLOBAL,
           "Sync DB State to FS",
-          "If enabled syncs the files in DB to FS on every YBA startup",
+          "If disables does not syncs the files in DB to FS on every YBA startup",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static ConfKeyInfo<Duration> taskGcCheckInterval =
