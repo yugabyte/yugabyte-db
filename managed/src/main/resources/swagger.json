@@ -422,6 +422,32 @@
         "type" : "object"
       } ]
     },
+    "AlertChannelTemplates" : {
+      "description" : "Alert channel templates",
+      "properties" : {
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "textTemplate" : {
+          "description" : "Notification text template",
+          "type" : "string"
+        },
+        "titleTemplate" : {
+          "description" : "Notification title template",
+          "type" : "string"
+        },
+        "type" : {
+          "description" : "Channel type",
+          "enum" : [ "Email", "Slack", "PagerDuty", "WebHook" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "textTemplate", "type" ],
+      "type" : "object"
+    },
     "AlertChannelWebHookParams" : {
       "allOf" : [ {
         "$ref" : "#/definitions/AlertChannelParams"
@@ -1117,7 +1143,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -11747,6 +11773,131 @@
         } ],
         "summary" : "List access keys for all providers of a customer",
         "tags" : [ "Access Keys" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_channel_templates" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAlertChannelTemplates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertChannelTemplates"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all alert channel templates",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_channel_templates/{acType}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteAlertChannelTemplates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "acType",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete alert channel templates",
+        "tags" : [ "Alerts" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getAlertChannelTemplates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "acType",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertChannelTemplates"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get alert channel templates",
+        "tags" : [ "Alerts" ]
+      },
+      "post" : {
+        "description" : "",
+        "operationId" : "setAlertChannelTemplates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "acType",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "SetAlertChannelTemplatesRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertChannelTemplates"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertChannelTemplates"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Set alert channel templates",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_channels" : {
