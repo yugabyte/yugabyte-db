@@ -53,11 +53,9 @@ type: docs
   </li>
 </ul>
 
-[YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
+[YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
 
 For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
-
-The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (by default, older than 5 minutes) is discovered.
 
 {{< note title="YugabyteDB Managed" >}}
 
@@ -136,14 +134,18 @@ After the driver establishes the initial connection, it fetches the list of avai
 
 #### Use multiple addresses
 
-You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Delimit the addresses using commas, as follows:
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails.
+
+{{< tip title="Tip">}}
+To obtain a list of available hosts, you can connect to any cluster node and use the `yb_servers()` YSQL function.
+{{< /tip >}}
+
+Delimit the addresses using commas, as follows:
 
 ```sh
 jdbc://yugabytedb://hostname1:port,hostname2:port,hostname3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
-
-To query the cluster for a list of available hosts, use the `yb_servers()` function.
 
 The hosts are only used during the initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
 

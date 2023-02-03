@@ -37,7 +37,7 @@ type: docs
 
 </ul>
 
-YugabyteDB PGX smart driver is a distributed Go driver for [YSQL](../../../../api/ysql/) based on [PGX driver](https://github.com/jackc/pgx/), with additional connection load balancing features.
+YugabyteDB PGX smart driver is a Go driver for [YSQL](../../../../api/ysql/) based on [PGX](https://github.com/jackc/pgx/), with additional connection load balancing features.
 
 For more information on the YugabyteDB PGX smart driver, see the following:
 
@@ -83,7 +83,7 @@ url := fmt.Sprintf("%s?load_balance=true", baseUrl)
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Refer to [Use multiple addresses](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses). After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+You can specify [multiple hosts](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 To specify topology keys, you set the `topology_keys` property to comma separated values, as per the following example:
 
@@ -111,8 +111,7 @@ if err != nil {
 }
 ```
 
-The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled
-in your code.
+The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled in your code.
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
@@ -120,8 +119,7 @@ Read more on designing [Database schemas and tables](../../../../explore/ysql-la
 
 #### Insert data
 
-To write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()`
-function.
+To write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()` function.
 
 ```sql
 INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
@@ -212,7 +210,7 @@ config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 pool, err := pgxpool.ConnectConfig(context.Background(), config)
 ```
 
-You can either `Acquire` a connection from pool and execute queries on it, or use Query API to directly execute SQLs on the pool.
+You can either `Acquire` a connection from the pool and execute queries on it, or use the Query API to directly execute SQLs on the pool.
 
 ```go
 conn, err := pool.Acquire(context.Background())

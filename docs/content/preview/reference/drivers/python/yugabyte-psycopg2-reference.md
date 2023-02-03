@@ -28,7 +28,7 @@ type: docs
   </li>
 </ul>
 
-Yugabyte Psycopg2 smart driver is a distributed python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features.
+Yugabyte Psycopg2 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional connection load balancing features.
 
 For more information on the YugabyteDB node-postgres smart driver, see the following:
 
@@ -84,7 +84,7 @@ To enable uniform load balancing across all servers, you set the `load-balance` 
     conn = psycopg2.connect(user = 'username', password='password', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True')
     ```
 
-You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails. Refer to [Use multiple addresses](../../../../drivers-orms/python/yugabyte-psycopg2/#use-multiple-addresses). After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+You can specify [multiple hosts](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 To specify topology keys, you set the `topology_keys` property to comma-separated values in the Connection string or dictionary, as per the following examples:
 

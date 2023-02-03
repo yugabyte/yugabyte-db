@@ -33,8 +33,8 @@ YugabyteDB smart drivers have the following key features.
 | :--- | :--- |
 | Multiple hosts | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, thereby avoiding dropped connections in the case where the primary host is unavailable. |
 | [Cluster aware](#cluster-aware-connection-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across them. |
-| [Servers refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
 | [Topology aware](#topology-aware-connection-load-balancing) | In cases where you want to restrict connections to specific geographies for lower latency, you can target specific regions and zones, along with fallback zones, across which to balance connections. |
+| [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
@@ -84,7 +84,7 @@ For example, if a client application creates 100 connections to a YugabyteDB clu
 A connection works as follows:
 
 - The driver makes an initial connection to the host specified in the URL/connection string. You can specify multiple hosts to act as backups if the connection to the primary host fails.
-- The driver fetches information about the cluster nodes using the `yb_servers()` function. By default, this list is refreshed every 5 minutes, or when a new connection request is received.
+- The driver fetches information about the cluster nodes using the `yb_servers()` function. By default, this list is refreshed every 5 minutes, and this time is checked when a new connection request is received.
 - The driver then connects to the least-loaded node before returning the connection to the application.
 
 #### Enable load balancing
@@ -115,7 +115,7 @@ For example, using the Go smart driver, you can change the interval to four minu
 "postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
 ```
 
-Note this feature is not available in the YugabyteDB Python Smart Driver.
+(Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
 
 ### Topology-aware connection load balancing
 
@@ -125,6 +125,10 @@ For a database deployment that spans multiple regions, evenly distributing reque
 
 - The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the [shard leaders](../../architecture/docdb-sharding/sharding/) are hosted. In this case, for best performance you want your application to target the preferred locations.
 
+You can also specify fallback locations, and the order in which they should be attempted. When no nodes are available in the primary location, the driver tries to connect to nodes in the fallback locations in the order specified. This way you can, for example, target the next geographically nearest location in case the first location is unavailable.
+
+If you don't provide fallback locations, when no nodes are available in the primary locations, the driver falls back to nodes across the entire cluster.
+
 #### Topology keys
 
 You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style). You still need to specify load balance as true to enable the topology-aware connection load balancing.
@@ -132,15 +136,13 @@ You specify the locations as topology keys, with values in the format `cloud.reg
 For example, using the Go driver, you would set the parameters as follows:
 
 ```go
-"postgres://username:password@localhost:5433/database_name?load_balance=true& \
-    topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
+"postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
 ```
 
 Use an asterisk (*) to specify all zones in a region. (You can't do this for region or cloud.) For example:
 
 ```go
-"postgres://username:password@localhost:5433/database_name?load_balance=true& \
-    topology_keys=cloud1.region1.*"
+"postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.*"
 ```
 
 #### Fallback topology keys
@@ -148,8 +150,7 @@ Use an asterisk (*) to specify all zones in a region. (You can't do this for reg
 To specify fallback locations in cases where a location is unavailable, add `:n` to the topology key, where n is an integer indicating priority. The following example sets `zone1` as the topology key, and zones 2 and 3 as fallbacks (in that order) if `zone1` can't be reached:
 
 ```go
-"postgres://username:password@localhost:5433/database_name?load_balance=true& \
-    topology_keys=cloud1.region1.zone1:1,cloud1.region1.zone2:2,cloud1.region1.zone3:3"
+"postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1:1,cloud1.region1.zone2:2,cloud1.region1.zone3:3"
 ```
 
 Not specifying a priority is the equivalent of setting priority to 1.
