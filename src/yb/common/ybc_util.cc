@@ -50,6 +50,8 @@ bool suppress_nonpg_logs = false;
 
 bool yb_binary_restore = false;
 
+bool yb_pushdown_strict_inequality = true;
+
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
 int ysql_session_max_batch_size = 0;
