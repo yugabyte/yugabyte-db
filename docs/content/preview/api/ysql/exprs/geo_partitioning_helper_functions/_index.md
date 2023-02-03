@@ -8,8 +8,6 @@ menu:
   preview:
     identifier: geo-partitioning-helper-functions
     parent: api-ysql-exprs
-aliases:
-  - /preview/api/ysql/exprs/
 type: indexpage
 ---
 
