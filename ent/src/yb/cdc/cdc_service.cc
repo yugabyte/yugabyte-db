@@ -3975,7 +3975,8 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
     for (const auto& tablet : tablets) {
       if (tablet.has_split_parent_tablet_id() &&
           tablet.split_parent_tablet_id() == info.tablet_id) {
-        return STATUS_FORMAT(TabletSplit, Format("Tablet Split detected on $0", info.tablet_id));
+        return STATUS_FORMAT(
+            TabletSplit, Format("Tablet Split detected on $0 : $1", info.tablet_id, status));
       }
     }
   }
