@@ -12,8 +12,8 @@ private: true
 
 ## Runtime yb-master GFlags
 
-<!-- {< flag-listing process="master" flagType="runtime" >}} -->
+{{< flag-listing version="2.16.1.0" process="master" flagType="runtime" >}}
 
 ## All yb-master GFlags
 
-<!-- {< flag-listing process="master" flagType="all" >}} -->
+{{< flag-listing version="2.16.1.0" process="master" flagType="all" >}}

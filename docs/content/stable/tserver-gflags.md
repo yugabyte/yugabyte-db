@@ -12,8 +12,8 @@ private: true
 
 ## Runtime yb-tserver GFlags
 
-<!-- {< flag-listing process="tserver" flagType="runtime" >}} -->
+{{< flag-listing version="2.16.1.0" process="tserver" flagType="runtime" >}}
 
 ## All yb-tserver GFlags
 
-<!-- {< flag-listing process="tserver" flagType="all" >}} -->
+{{< flag-listing version="2.16.1.0" process="tserver" flagType="all" >}}
