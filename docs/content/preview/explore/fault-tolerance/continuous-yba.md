@@ -4,15 +4,9 @@ headerTitle: Continuous availability
 linkTitle: Continuous availability
 description: Simulate fault tolerance and resilience in a universe created via YugabyteDB Anywhere.
 headcontent: Highly available and fault tolerant
-aliases:
-  - /explore/fault-tolerance/
-  - /preview/explore/fault-tolerance/
-  - /preview/explore/cloud-native/fault-tolerance/
-  - /preview/explore/postgresql/fault-tolerance/
-  - /preview/explore/fault-tolerance-macos/
 menu:
   preview:
-    identifier: fault-tolerance-2-macos
+    identifier: fault-tolerance-3-macos
     parent: explore
     weight: 215
 type: docs
@@ -51,6 +45,12 @@ The examples are based on the YB Workload Simulator application, which uses the 
     </a>
   </li>
   <li>
+    <a href="../macos-ybm/" class="nav-link">
+      <img src="/icons/cloud.svg" alt="Server Icon">
+      YugabyteDB Managed
+    </a>
+  </li>
+  <li>
     <a href="../macos-yba/" class="nav-link active">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
@@ -66,19 +66,19 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
 1. Navigate to **Universes** and select your universe.
 
-2. Select **Nodes** to view the total read and write IOPS per node and other statistics, as shown in the following illustration:
+1. Select **Nodes** to view the total read and write IOPS per node and other statistics, as shown in the following illustration:
 
-   ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png)
+    ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png)
 
-   Notice that both the reads and the writes are approximately the same across all nodes, indicating uniform load.
+    Notice that both the reads and the writes are approximately the same across all nodes, indicating uniform load.
 
-3. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
+1. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
 
-   ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png)
+    ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png)
 
-4. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
+1. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
 
-   ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
+    ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
 ### Stop node and observe continuous write availability
 
@@ -90,11 +90,11 @@ You can stop one of the nodes to simulate the loss of a zone, as follows:
 
 1. Verify that the details by selecting **Nodes**. Expect to see that the load has been moved off the stopped node and redistributed to the remaining nodes, as shown in the following illustration:
 
-   ![Read and write IOPS with one node stopped](/images/ce/stop-node-yba.png)
+    ![Read and write IOPS with one node stopped](/images/ce/stop-node-yba.png)
 
 1. Navigate to **Metrics** to observe a slight spike and drop in the latency and YSQL Ops / Sec charts when the node is stopped, as shown in the following illustration:
 
-   ![Performance metrics with a node dead](/images/ce/stop-node-chart-yba.png)
+    ![Performance metrics with a node dead](/images/ce/stop-node-chart-yba.png)
 
 Alternatively, you can navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to see the node being removed from the network diagram when it is stopped (it may take a few minutes to display the updated network diagram). Also notice a slight spike and drop in the latency and throughput, both of which resume immediately, as shown in the following illustration:
 

@@ -48,17 +48,17 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
 1. Select **Nodes** to view the total read and write IOPS per node and other statistics, as shown in the following illustration:
 
-   ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png)
+    ![Read and write IOPS with 3 nodes](/images/ce/transactions_anywhere_observe1.png)
 
-   Note that both the reads and the writes are approximately the same across all the nodes, indicating uniform load.
+    Note that both the reads and the writes are approximately the same across all the nodes, indicating uniform load.
 
 1. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
 
-   ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png)
+    ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png)
 
 1. Navigate to the [YB Workload Simulator application UI](http://127.0.0.1:8080/) to view the latency and throughput on the universe while the workload is running, as per the following illustration:
 
-   ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
+    ![Latency and throughput with 3 nodes](/images/ce/simulation-graph-cloud.png)
 
 ## Add node and observe linear scale-out
 
@@ -72,7 +72,7 @@ You can add a node to the universe in YugabyteDB Anywhere as follows:
 
 1. Verify that the node has been added by selecting **Nodes**, as per the following illustration:
 
-   ![Read and write IOPS with 4 nodes](/images/ce/add-node-anywhere.png)
+    ![Read and write IOPS with 4 nodes](/images/ce/add-node-anywhere.png)
 
 Shortly, you should see the new node performing a comparable number of reads and writes as the other nodes. The tablets are also distributed evenly across all four nodes.
 
