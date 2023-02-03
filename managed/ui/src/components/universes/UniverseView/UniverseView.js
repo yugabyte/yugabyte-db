@@ -6,6 +6,7 @@ import { Link } from 'react-router';
 import { Dropdown, Tooltip, OverlayTrigger } from 'react-bootstrap';
 import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { useSelector } from 'react-redux';
 import moment from 'moment';
 import _ from 'lodash';
 
@@ -143,6 +144,7 @@ export const UniverseView = (props) => {
   const [curView, setCurView] = useState(view.LIST);
   const [curStatusFilter, setCurStatusFilter] = useState([]);
   const [focusedUniverse, setFocusedUniverse] = useState();
+  const runtimeConfigs = useSelector((state) => state.customer.runtimeConfigs);
 
   const {
     universe: { universeList },
@@ -159,13 +161,16 @@ export const UniverseView = (props) => {
     universeList && universeList.data
       ? universeList.data.map((universe) => universe.universeUUID)
       : [];
+
   const prevUniverseUUIDs = usePrevious(universeUUIDs);
   const prevCustomerTaskList = usePrevious(customerTaskList);
 
   useEffect(() => {
+    if (!runtimeConfigs) {
+      props.fetchGlobalRunTimeConfigs();
+    }
     props.fetchUniverseMetadata();
     props.fetchUniverseTasks();
-
     return () => props.resetUniverseTasks();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -246,6 +251,7 @@ export const UniverseView = (props) => {
           multiplier="month"
           base="month"
           isPricingKnown={isPricingKnown}
+          runtimeConfigs={runtimeConfigs}
         />
       </div>
     );
@@ -328,7 +334,7 @@ export const UniverseView = (props) => {
       .map((item, idx) => {
         return (
           <li className="universe-list-item" key={item.universeUUID} idx={idx}>
-            <YBUniverseItem {...props} universe={item} />
+            <YBUniverseItem {...props} universe={item} runtimeConfigs={runtimeConfigs} />
           </li>
         );
       });

@@ -370,6 +370,7 @@ export const mockProps = {
   showToggleUniverseStateModal: jest.fn(),
   showDeleteUniverseModal: jest.fn(),
   fetchUniverseMetadata: jest.fn(),
+  fetchGlobalRunTimeConfigs: jest.fn(),
   fetchUniverseTasks: jest.fn(),
   resetUniverseTasks: jest.fn()
 };

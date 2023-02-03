@@ -39,7 +39,7 @@ class CTAButton extends Component {
 
 class UniverseDisplayItem extends Component {
   render() {
-    const { universe, providers, refreshUniverseData } = this.props;
+    const { universe, providers, refreshUniverseData, runtimeConfigs } = this.props;
     if (!isNonEmptyObject(universe)) {
       return <span />;
     }
@@ -60,12 +60,16 @@ class UniverseDisplayItem extends Component {
     const pricePerHour = universe.pricePerHour;
     const numNodes = <span>{nodeCount}</span>;
     let costPerMonth = <span>n/a</span>;
+
     if (isFinite(pricePerHour)) {
-      costPerMonth = <YBCost
-        value={pricePerHour}
-        multiplier={'month'}
-        isPricingKnown={isPricingKnown}
-      />;
+      costPerMonth = (
+        <YBCost
+          value={pricePerHour}
+          multiplier={'month'}
+          isPricingKnown={isPricingKnown}
+          runtimeConfigs={runtimeConfigs}
+        />
+      );
     }
     const universeCreationDate = universe.creationDate ? (
       <TimestampWithTimezone timeFormat="MM/DD/YYYY" timestamp={universe.creationDate} />
@@ -106,12 +110,19 @@ class UniverseDisplayItem extends Component {
 }
 
 export default class UniverseDisplayPanel extends Component {
+  componentDidMount() {
+    if (!this.props.runtimeConfigs) {
+      this.props.fetchGlobalRunTimeConfigs();
+    }
+  }
+
   render() {
     const self = this;
     const {
       universe: { universeList },
       cloud: { providers },
-      customer: { currentCustomer }
+      customer: { currentCustomer },
+      runtimeConfigs
     } = this.props;
     if (getPromiseState(providers).isSuccess()) {
       let universeDisplayList = <span />;
@@ -127,6 +138,7 @@ export default class UniverseDisplayPanel extends Component {
                 universe={universeItem}
                 providers={providers}
                 refreshUniverseData={self.props.fetchUniverseMetadata}
+                runtimeConfigs={runtimeConfigs}
               />
             );
           });

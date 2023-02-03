@@ -23,7 +23,8 @@ import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse,
   getTlsCertificates,
-  getTlsCertificatesResponse
+  getTlsCertificatesResponse,
+  DEFAULT_RUNTIME_GLOBAL_SCOPE
 } from '../../../actions/customers';
 import {
   rollingUpgrade,
@@ -61,12 +62,12 @@ import {
   isNonEmptyObject,
   isNonEmptyString,
   isEmptyObject,
-  makeFirstLetterUpperCase
+  makeFirstLetterUpperCase,
+  createErrorMessage
 } from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
 import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
 import { toast } from 'react-toastify';
-import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -225,9 +226,9 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     fetchRunTimeConfigs: () => {
-      return dispatch(
-        fetchRunTimeConfigs('00000000-0000-0000-0000-000000000000', true)
-      ).then((response) => dispatch(fetchRunTimeConfigsResponse(response.payload)));
+      return dispatch(fetchRunTimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)).then((response) =>
+        dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
     }
   };
 };
