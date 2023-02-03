@@ -18,7 +18,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.ThreadUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.*;
 import java.util.List;
@@ -35,7 +35,7 @@ import java.util.List;
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgWriteRestart extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgWriteRestart.class);
   private static final int SLEEP_DURATION = 5000;

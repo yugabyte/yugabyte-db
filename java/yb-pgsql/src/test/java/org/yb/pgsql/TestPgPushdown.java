@@ -30,12 +30,12 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 /**
  * Test pushdown behaviour of different expression from PG to YB layer.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgPushdown extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgPushdown.class);
 

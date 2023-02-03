@@ -4,7 +4,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -15,7 +15,7 @@ import java.util.Map;
 import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(YBTestRunnerNonTsanOnly.class)
+@RunWith(YBTestRunner.class)
 public class TestPgLocale extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgLocale.class);
 

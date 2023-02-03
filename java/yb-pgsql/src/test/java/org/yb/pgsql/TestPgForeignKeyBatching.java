@@ -15,7 +15,7 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.Statement;
@@ -23,7 +23,7 @@ import java.util.Map;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(YBTestRunnerNonTsanOnly.class)
+@RunWith(YBTestRunner.class)
 public class TestPgForeignKeyBatching extends BasePgSQLTestWithRpcMetric {
   private final static int MAX_BATCH_SIZE = 512;
 

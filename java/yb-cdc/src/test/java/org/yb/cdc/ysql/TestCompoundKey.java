@@ -27,12 +27,12 @@ import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
 import org.yb.cdc.common.ExpectedRecordCPKProto;
 import org.yb.cdc.util.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestCompoundKey extends CDCBaseClass {
   private Logger LOG = LoggerFactory.getLogger(TestCompoundKey.class);
 
