@@ -156,6 +156,15 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithPartit
           ti, pi, 100 * pi + 1, 100 * (pi + 1)));
     }
   }
+
+  constexpr auto kTableWithCastInPartitioning = "t_with_cast";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (d DATE, v INT) PARTITION BY RANGE(EXTRACT(month FROM d))",
+      kTableWithCastInPartitioning));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0_p0 PARTITION OF $0 FOR VALUES FROM (1) TO (12)",
+      kTableWithCastInPartitioning));
+
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
   ASSERT_EQ(cache_refresh_rpc_count, 6);
 }

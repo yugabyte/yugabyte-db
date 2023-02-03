@@ -2928,7 +2928,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case AccessMethodProcedureRelationId:             // pg_amproc
 			sys_table_index_id = AccessMethodProcedureIndexId;
 			break;
-		case AccessMethodRelationId:                      // pg_am AmNameIndexId
+		case AccessMethodRelationId:                      // pg_am
 			sys_table_index_id = AmNameIndexId;
 			break;
 		case AttrDefaultRelationId:                       // pg_attrdef
@@ -2936,6 +2936,9 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 		case AttributeRelationId:                         // pg_attribute
 			sys_table_index_id = AttributeRelidNameIndexId;
+			break;
+		case CastRelationId:                              // pg_cast
+			sys_table_index_id = CastSourceTargetIndexId;
 			break;
 		case ConstraintRelationId:                        // pg_constraint
 			sys_table_index_id = ConstraintRelidTypidNameIndexId;
@@ -2958,6 +2961,9 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case PolicyRelationId:                            // pg_policy
 			sys_table_index_id = PolicyPolrelidPolnameIndexId;
 			break;
+		case ProcedureRelationId:                         // pg_proc
+			sys_table_index_id = ProcedureNameArgsNspIndexId;
+			break;
 		case RelationRelationId:                          // pg_class
 			sys_table_index_id = ClassNameNspIndexId;
 			break;
@@ -2973,9 +2979,8 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case AccessMethodOperatorRelationId:              // pg_amop
 			sys_table_index_id = AccessMethodOperatorIndexId;
 			break;
-		case CastRelationId:        switch_fallthrough(); // pg_cast
-		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
-		case ProcedureRelationId:   break;                // pg_proc
+		case PartitionedRelationId:                       // pg_partitioned_table
+			break;
 
 		default:
 		{
