@@ -10,11 +10,9 @@ menu:
 type: docs
 ---
 
-
 ## Synopsis
 
 `yb_server_cloud()` returns the cloud that user's server is connected to.
-
 
 ## Examples
 
@@ -24,7 +22,7 @@ Call `yb_server_cloud()`
 yugabyte=# SELECT yb_server_cloud();
 ```
 
-```
+```output.sql
  yb_server_cloud
 -----------------
  aws
@@ -33,7 +31,7 @@ yugabyte=# SELECT yb_server_cloud();
 
 {{< note title="Note" >}}
 
-* If the placement_cloud flag was not set at node startup, yb_server_cloud() would return NULL.
+If you didn't set the placement_cloud flag at node startup, yb_server_cloud() returns NULL.
 
 {{< /note >}}
 

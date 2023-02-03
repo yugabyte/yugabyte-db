@@ -4,17 +4,15 @@ headerTitle: yb_server_cloud()
 linkTitle: yb_server_cloud()
 description: Returns the cloud of the currently connected node
 menu:
-  preview:
+  stable:
     identifier: api-ysql-exprs-yb_server_cloud
     parent: geo-partitioning-helper-functions
 type: docs
 ---
 
-
 ## Synopsis
 
 `yb_server_cloud()` returns the cloud that user's server is connected to.
-
 
 ## Examples
 
@@ -24,7 +22,7 @@ Call `yb_server_cloud()`
 yugabyte=# SELECT yb_server_cloud();
 ```
 
-```
+```output.sql
  yb_server_cloud
 -----------------
  aws
@@ -33,7 +31,7 @@ yugabyte=# SELECT yb_server_cloud();
 
 {{< note title="Note" >}}
 
-* If the placement_cloud flag was not set at node startup, yb_server_cloud() would return NULL.
+If you didn't set the placement_cloud flag at node startup, yb_server_cloud() returns NULL.
 
 {{< /note >}}
 

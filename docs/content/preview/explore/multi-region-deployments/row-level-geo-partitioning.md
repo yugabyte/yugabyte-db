@@ -107,7 +107,7 @@ Next, create the parent table that contains a `geo_partition` column which is us
     ```
 
 {{< note title="Note" >}}
-You can set geo_partiton to be **DEFAULT [yb_server_region()](../../../api/ysql/exprs/geo_partitioning_helper_functions/func_yb_server_region)** to partition based on the regions. This way, insertions to the local partitioned table wouldn't have to specify the geo_partition column value.
+You can set geo_partition to be **DEFAULT [yb_server_region()](../../../api/ysql/exprs/geo_partitioning_helper_functions/func_yb_server_region)** to partition based on regions. This way, insertions to the local partitioned table don't have to specify the geo_partition column value.
 {{< /note >}}
 
 1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `bank_transactions_eu`, another for the India region called `bank_transactions_india,` and a third partition for US region called `bank_transactions_us`. Create any required indexes for each partition, making sure to associate each index with the same tablespace as that of the partition table.

@@ -5,21 +5,15 @@ linkTitle: Geo-partitioning helper functions
 description: This section contains all the helper functions for geo-distribution.
 image: /images/section_icons/api/ysql.png
 menu:
-  preview:
+  stable:
     identifier: geo-partitioning-helper-functions
     parent: api-ysql-exprs
-aliases:
-  - /preview/api/ysql/exprs/
 type: indexpage
 ---
 
 ## Synopsis
 
 The followinng functions are primarily helpful while implementing [Row-level geo-partitioning](../../../../explore/multi-region-deployments/row-level-geo-partitioning/), as they can significantly simplify inserting rows from user's server and selecting rows from the local partition.
-
-
-
-
 
 | Function | Return Type |Description |
 |-----------|------------|-------------|

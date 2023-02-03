@@ -10,20 +10,19 @@ menu:
 type: docs
 ---
 
-
 ## Synopsis
 
 `yb_server_zone()` returns the region that user's server is connected to.
 
-
 ## Examples
-Select the zone that user is connected to
+
+Select the zone that you're connected to:
 
 ```plpgsql
 yugabyte=# SELECT yb_server_zone();
 ```
 
-```
+```output.sql
  yb_server_zone
 -----------------
  us-west-1c
@@ -33,12 +32,9 @@ yugabyte=# SELECT yb_server_zone();
 ## Usage in Row-level geo-partitioning
 
 Similar to [`yb_server_region()`](../func_yb_server_region), this function is also helpful while implementing [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/), as it can significantly simplify inserting rows from the user server's partition if the partitioning is based on default value of yb_server_zone().
-
-
-
 {{< note title="Note" >}}
 
-* If the placement_region flag was not set at node startup, yb_server_region() would return NULL.
+If you didn't set the placement_region flag at node startup, yb_server_region() returns NULL.
 
 {{< /note >}}
 
