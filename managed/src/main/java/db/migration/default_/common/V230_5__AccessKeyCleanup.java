@@ -10,50 +10,36 @@
 
 package db.migration.default_.common;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AccessKey.MigratedKeyInfoFields;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.ProviderDetails;
+import com.yugabyte.yw.models.migrations.V230_5.TmpAccessKeyDto;
+import com.yugabyte.yw.models.migrations.V230_5.TmpCustomer;
+import com.yugabyte.yw.models.migrations.V230_5.TmpProvider;
+import com.yugabyte.yw.models.migrations.V230_5.TmpProviderDetails;
 import io.ebean.Ebean;
 import java.sql.Connection;
 import java.util.Optional;
-import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.flywaydb.core.api.migration.jdbc.BaseJdbcMigration;
 import play.libs.Json;
 
 @Slf4j
-public class V224__AccessKeyCleanup extends BaseJdbcMigration {
-
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  @ToString
-  public static class AccessKeyTmpDto {
-    private final MigratedKeyInfoFields keyInfo;
-
-    public AccessKeyTmpDto(JsonNode keyInfoJson) {
-      log.debug("AccessKey.KeyInfo:\n" + keyInfoJson.toPrettyString());
-      this.keyInfo = Json.fromJson(keyInfoJson, MigratedKeyInfoFields.class);
-    }
-  }
+public class V230_5__AccessKeyCleanup extends BaseJdbcMigration {
 
   @Override
-  public void migrate(Connection connection) throws Exception {
-    Ebean.execute(V224__AccessKeyCleanup::migrateAllAccessKeys);
+  public void migrate(Connection connection) {
+    Ebean.execute(V230_5__AccessKeyCleanup::migrateAllAccessKeys);
   }
 
   public static void migrateAllAccessKeys() {
-    for (Customer customer : Customer.getAll()) {
-      for (Provider provider : Provider.getAll(customer.uuid)) {
+    for (TmpCustomer customer : TmpCustomer.find.all()) {
+      for (TmpProvider provider : TmpProvider.getAll(customer.uuid)) {
         if (provider.details == null) {
-          provider.details = new ProviderDetails();
+          provider.details = new TmpProviderDetails();
         }
-        final Optional<AccessKeyTmpDto> optAcccessKey =
+        final Optional<TmpAccessKeyDto> optAcccessKey =
             AccessKey.getLatestAccessKeyQuery(provider.uuid)
                 .select("keyInfo")
-                .asDto(AccessKeyTmpDto.class)
+                .asDto(TmpAccessKeyDto.class)
                 .findOneOrEmpty();
         optAcccessKey.ifPresent(
             latestKey -> {
