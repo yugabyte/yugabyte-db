@@ -38,6 +38,7 @@ For more information on the YugabyteDB Java smart driver, see the following:
 - [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
 - [CRUD operations](../../../../drivers-orms/java/yugabyte-jdbc)
 - [GitHub repository](https://github.com/yugabyte/pgjdbc)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
  <!-- place holder for adding link to YugabyteDB University course for Java Developers -->
 
@@ -269,8 +270,3 @@ The driver requires YugabyteDB version 2.7.2.0 or higher.
   The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
 
   When started, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Choose one of these options to run the corresponding script with its Java application in the background.
-
-## Learn more
-
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)

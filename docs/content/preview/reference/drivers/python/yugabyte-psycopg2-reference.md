@@ -35,6 +35,7 @@ For more information on the YugabyteDB node-postgres smart driver, see the follo
 - [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
 - [CRUD operations](../../../../drivers-orms/python/yugabyte-psycopg2/)
 - [GitHub repository](https://github.com/yugabyte/psycopg2)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
 ## Download the driver dependency
 
@@ -185,8 +186,3 @@ When you're done experimenting, run the following command to destroy the local c
 ## Limitations
 
 Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
-
-## Further reading
-
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)

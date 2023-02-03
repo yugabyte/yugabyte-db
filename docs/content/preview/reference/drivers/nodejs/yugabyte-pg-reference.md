@@ -37,6 +37,7 @@ For more information on the YugabyteDB node-postgres smart driver, see the follo
 - [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
 - [CRUD operations](../../../../drivers-orms/nodejs/yugabyte-node-driver)
 - [GitHub repository](https://github.com/yugabyte/node-postgres)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
 ## Download the driver dependency
 
@@ -242,8 +243,3 @@ When you're done experimenting, run the following command to destroy the local c
 ```sh
 ./bin/yb-ctl destroy
 ```
-
-## Further reading
-
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)

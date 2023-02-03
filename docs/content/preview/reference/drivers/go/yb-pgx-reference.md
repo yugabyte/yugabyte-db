@@ -44,6 +44,7 @@ For more information on the YugabyteDB PGX smart driver, see the following:
 - [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
 - [CRUD operations](../../../../drivers-orms/go/yb-pgx)
 - [GitHub repository](https://github.com/yugabyte/pgx)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
 ## Import the driver package
 
@@ -283,8 +284,3 @@ if err != nil {
     return err
 }
 ```
-
-## Further reading
-
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
