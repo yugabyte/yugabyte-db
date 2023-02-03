@@ -105,9 +105,12 @@ You can also modify TLS settings for an existing universe by navigating to **Uni
 
 For universes created with an on-premise cloud provider, instead of using self-signed certificates, you can use third-party certificates from external CAs. The third-party CA root certificate must be configured in YugabyteDB Anywhere. You have to copy the custom CA root certificate, node certificate, and node key to the appropriate database nodes using the procedure described in [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls).
 
-The certificates must meet the following criteria:
+The certificates must adhere to the following criteria:
 
-- Be in the `.crt` format and the private key must be in the `.pem` format.
+- Be stored in a `.crt` file, with both the certificate and the private key being in the PEM format. 
+
+  If your certificates and keys are stored in the PKCS12 format, you can [convert them to the PEM format](#convert-certificates-and-keys-from-pkcs12-to-pem-format).
+
 - Contain IP addresses of the database nodes or DNS names as the Subject Alternative Names (wildcards are acceptable).
 
 ### Use custom CA-signed certificates to enable TLS
@@ -120,9 +123,9 @@ The following procedure describes how to install certificates on the database no
 
 If you are enabling client-to-node TLS, make sure to copy the client certificate and client key to each of the nodes.
 
-In addition, verify the following:
+In addition, ensure the following:
 
-- The file names and file paths of different certificates and keys are identical across all the database nodes. For example, if you name your CA root certificate as `ca.crt` on one node, then name it `ca.crt` on all the nodes. Similarly, if you copy `ca.crt` to `/opt/yugabyte/keys` on one node, then copy `ca.crt` to the same path on other nodes.
+- The file names and file paths of different certificates and keys are identical across all the database nodes. For example, if you name your CA root certificate as `ca.crt` on one node, then you must name it `ca.crt` on all the nodes. Similarly, if you copy `ca.crt` to `/opt/yugabyte/keys` on one node, then you must copy `ca.crt` to the same path on other nodes.
 - The yugabyte system user has read permissions to all the certificates and keys.
 
 **Step 3**: Create a CA-signed certificate in YugabyteDB Anywhere, as follows:
@@ -137,13 +140,13 @@ In addition, verify the following:
 
 1. Upload the custom CA root certificate as the root certificate.
 
-   If you do not have the root certificate but instead have an intermediate certificate, you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then using this bundle as the root certificate.
+   If you do not have the root certificate but instead have an intermediate certificate, you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then using this bundle as the root certificate. You might also want to [verify the certificate chain](#verify-certificate-chain).
 
 1. Enter the file paths for each of the certificates on the nodes. These are the paths from the previous step.
 
 1. In the **Certificate Name** field, enter a meaningful name for your certificate.
 
-1. Use the **Expiration Date** field to specify the expiration date of the certificate. To find this information, execute the `openssl x509 -in <root crt file path> -text -noout` command and note the **Validity Not After** date.
+1. Use the **Expiration Date** field to specify the expiration date of the certificate. To find this information, execute the `openssl x509 -in <root_crt_file_path> -text -noout` command and note the **Validity Not After** date.
 
 1. Click **Add** to make the certificate available.
 
@@ -158,6 +161,34 @@ In addition, verify the following:
 1. Create the universe.
 
 You can rotate certificates for universes configured with the same type of certificates. This involves replacing existing certificates with new database node certificates.
+
+#### Convert certificates and keys from PKCS12 to PEM format
+
+If your certificates and keys are stored in the PKCS12 format, you can convert them to the PEM format using OpenSSL. 
+
+You start by extracting the certificate via the following command:
+
+```sh
+openssl pkcs12 -in cert-archive.pfx -out cert.pem -clcerts -nokeys
+```
+
+To extract the key and write it to the PEM file unencrypted, execute the following command:
+
+```sh
+openssl pkcs12 -in cert-archive.pfx -out key.pem -nocerts -nodes
+```
+
+If the key is protected by a passphrase in the PKCS12 archive, you are prompted for the passphrase.
+
+#### Verify certificate chain
+
+To verify the certificate chain, execute the following command:
+
+```sh
+openssl verify -CAfile bundle.pem cert.pem
+```
+
+The `bundle.pem` file is a certificate bundle containing the root certificate and any intermediate certificates in the PEM format.
 
 ### Rotate custom CA-signed certificates
 
