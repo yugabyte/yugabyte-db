@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-Once data is replicated using Raft across a majority of the YugabyteDB tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer.
+After data is replicated using Raft across a majority of the YugabyteDB tablet-peers, it is applied to each tablet peer's local DocDB document storage layer.
 
 ## Storage model
 
@@ -67,7 +67,7 @@ DocumentKey1, SubKey1, SubKey3, T10 -> Value2
 DocumentKey1, SubKey4, T10 -> Value3
 ```
 
-Deletions of documents and subdocuments are performed by writing a single Tombstone marker at the
+Deletions of documents and sub-documents are performed by writing a single Tombstone marker at the
 corresponding value. During compaction, overwritten or deleted values are cleaned up to reclaim space.
 
 ## Mapping SQL rows to DocDB
@@ -79,10 +79,10 @@ For YSQL and YCQL tables, every row is a document in DocDB.
 The document key contains the full primary key with column values organized in the following order:
 
 1. A 16-bit hash of the hash column values is stored.
-2. The hash columns are stored.
-3. The clustering (range) columns are stored.
+1. The hash columns are stored.
+1. The clustering (range) columns are stored.
 
-Each data type supported in YSQL or YCQL is represented by a unique byte. The type prefix is also present in the primary key’s hash or range components.
+Each data type supported in YSQL or YCQL is represented by a unique byte. The type prefix is also present in the primary key's hash or range components.
 
 ### Non-primary key columns
 
