@@ -107,7 +107,7 @@ For universes created with an on-premise cloud provider, instead of using self-s
 
 The certificates must adhere to the following criteria:
 
-- Be in the `.crt` format and the private key must be in the `.pem` format. 
+- Be stored in a `.crt` file, with both the certificate and the private key being in the PEM format. 
 
   If your certificates and keys are stored in the PKCS12 format, you can [convert them to the PEM format](#convert-certificates-and-keys-from-pkcs12-to-pem-format).
 
