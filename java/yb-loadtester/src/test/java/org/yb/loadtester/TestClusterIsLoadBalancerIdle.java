@@ -14,7 +14,7 @@ package org.yb.loadtester;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBCluster;
 
 import static junit.framework.TestCase.assertTrue;
@@ -25,7 +25,7 @@ import static junit.framework.TestCase.assertFalse;
  * without any significant impact to a running load test.
  */
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestClusterIsLoadBalancerIdle extends TestClusterBase {
   @Override
   protected int getReplicationFactor() {
