@@ -11,14 +11,13 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
-import static play.test.Helpers.contextComponents;
 
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
@@ -27,12 +26,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 
-import java.util.Collections;
 import java.util.Date;
-import java.util.Map;
 import java.util.UUID;
 
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import org.apache.commons.lang3.time.DateUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -40,7 +36,6 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class SchedulerTest extends FakeDBApplication {
@@ -61,18 +56,8 @@ public class SchedulerTest extends FakeDBApplication {
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST28");
     defaultUser = ModelFactory.testUser(defaultCustomer);
     scheduler = new Scheduler(mockPlatformScheduler, mockCommissioner);
-
     // Set http context
-    Map<String, String> flashData = Collections.emptyMap();
-    defaultUser.email = "shagarwal@yugabyte.com";
-    Map<String, Object> argData =
-        ImmutableMap.of("user", new UserWithFeatures().setUser(defaultUser));
-    Http.Request request = mock(Http.Request.class);
-    Long id = 2L;
-    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    Http.Context currentContext =
-        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-    Http.Context.current.set(currentContext);
+    TestUtils.setFakeHttpContext(defaultUser);
   }
 
   @Test

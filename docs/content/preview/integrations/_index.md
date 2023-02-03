@@ -22,9 +22,9 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 <ul class="nav yb-pills">
 
   <li>
-    <a href="akka/">
+    <a href="akka-ysql/">
       <img src="/images/section_icons/develop/ecosystem/akka-icon.png">
-      Akka Persistence Cassandra
+      Akka Persistence
     </a>
   </li>
 

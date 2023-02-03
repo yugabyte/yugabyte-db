@@ -170,11 +170,12 @@ public class ConfigHelper {
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.fs_stateless.suppress_error");
     int fileCountThreshold =
         runtimeConfigFactory.globalRuntimeConf().getInt("yb.fs_stateless.max_files_count_persist");
-    Boolean syncDBStateToFS =
+    Boolean disableSyncDBStateToFS =
         runtimeConfigFactory
             .globalRuntimeConf()
-            .getBoolean("yb.fs_stateless.sync_db_to_fs_startup");
+            .getBoolean("yb.fs_stateless.disable_sync_db_to_fs_startup");
     try {
+      long fileSyncStartTime = System.currentTimeMillis();
       Collection<File> diskFiles = Collections.emptyList();
       List<FileData> dbFiles = FileData.getAll();
       int currentFileCountDB = dbFiles.size();
@@ -218,7 +219,7 @@ public class ConfigHelper {
         LOG.info("Successfully Written " + fileOnlyOnDisk.size() + " files to DB.");
       }
 
-      if (syncDBStateToFS) {
+      if (!disableSyncDBStateToFS) {
         Set<String> fileOnlyInDB = Sets.difference(filesInDB, filesOnDisk);
         // For all files only in the DB, write them to disk.
         for (String file : fileOnlyInDB) {
@@ -233,6 +234,8 @@ public class ConfigHelper {
         ywFileDataSync.put("synced", "true");
         loadConfigToDB(ConfigType.FileDataSync, ywFileDataSync);
       }
+      long fileSyncEndTime = System.currentTimeMillis();
+      LOG.debug("Time taken for file sync operation: {}", fileSyncEndTime - fileSyncStartTime);
     } catch (Exception e) {
       if (suppressExceptionsDuringSync) {
         LOG.error(e.getMessage());

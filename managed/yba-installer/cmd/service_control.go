@@ -11,7 +11,7 @@ var startCmd = &cobra.Command{
 		"Anywhere installation.",
 	Long: `
     The start command can be invoked to start any service that is required for the
-    running of Yugabyte Anywhere. Can be invoked without any arguments to start all
+    running of YugabyteDB Anywhere. Can be invoked without any arguments to start all
     services, or invoked with a specific service name to start only that service.
     Valid service names: postgres, prometheus, yb-platform`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
@@ -33,7 +33,7 @@ var stopCmd = &cobra.Command{
 		"Anywhere installation.",
 	Long: `
     The stop command can be invoked to stop any service that is required for the
-    running of Yugabyte Anywhere. Can be invoked without any arguments to stop all
+    running of YugabyteDB Anywhere. Can be invoked without any arguments to stop all
     services, or invoked with a specific service name to stop only that service.
     Valid service names: postgres, prometheus, yb-platform`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
@@ -55,7 +55,7 @@ var restartCmd = &cobra.Command{
 		"Anywhere installation.",
 	Long: `
     The restart command can be invoked to stop any service that is required for the
-    running of Yugabyte Anywhere. Can be invoked without any arguments to restart all
+    running of YugabyteDB Anywhere. Can be invoked without any arguments to restart all
     services, or invoked with a specific service name to restart only that service.
     Valid service names: postgres, prometheus, yb-platform`,
 	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),

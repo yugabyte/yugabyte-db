@@ -6,7 +6,7 @@ menu:
   preview_integrations:
     identifier: ycql-akka
     parent: integrations
-    weight: 571
+    weight: 572
 type: docs
 ---
 
@@ -39,7 +39,7 @@ The following section illustrates how to run an Akka Persistence Cassandra based
 
 To use the [Akka Persistence Cassandra plugin](https://doc.akka.io/docs/akka-persistence-cassandra/current/overview.html), ensure that you have the following:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/).
 - Java Development Kit (JDK) 8, 11 or 17 installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
 - [sbt](https://www.scala-sbt.org/1.x/docs/) is installed.
 
@@ -55,7 +55,7 @@ The following example is inspired from the [akka-cassandra-demo](https://github.
 
     Press enter when you're prompted to name the application.
 
-1. Add the following code in `build.sbt` file from your project's home directory.
+1. Replace the existing code in the `build.sbt` file from your project's home directory with the following:
 
     ```sh
     cd hello-world-template
@@ -94,7 +94,7 @@ To create an application using the plugin, do the following:
 
 To write a sample application and customize its configuration, do the following:
 
-1. Copy the following code in `src/main/scala/Main.scala` as follows:
+1. Replace the existing code in `src/main/scala/Main.scala` with the following:
 
     ```scala
     import akka.NotUsed
@@ -104,10 +104,10 @@ To write a sample application and customize its configuration, do the following:
     import akka.persistence.typed.RecoveryCompleted
     import akka.persistence.typed.scaladsl.{ Effect, EventSourcedBehavior }
     import java.util.UUID
-    
+
     // a single bank account
     object PersistentBankAccount {
-    
+
       // commands = messages
       sealed trait Command extends CborSerializable
       final case class CreateBankAccount(
@@ -117,11 +117,11 @@ To write a sample application and customize its configuration, do the following:
           initialBalance: Double,
           replyTo: ActorRef[Response])
           extends Command
-    
+
       // events = to persist to Yugabyte
       trait Event extends CborSerializable
       final case class BankAccountCreated(bankAccount: BankAccount) extends Event
-    
+
       // state
       final case class BankAccount(
           id: String,
@@ -129,13 +129,13 @@ To write a sample application and customize its configuration, do the following:
           currency: String,
           balance: Double)
           extends CborSerializable
-    
+
       // responses
       sealed trait Response
       final case class BankAccountCreatedResponse(id: String)
           extends Response
           with CborSerializable
-    
+
       val commandHandler: (BankAccount, Command) => Effect[Event, BankAccount] =
         (state, command) =>
           command match {
@@ -158,13 +158,13 @@ To write a sample application and customize its configuration, do the following:
                   s"Wrong user $user for existing account $id, expected ${state.user}")
               }
           }
-    
+
       val eventHandler: (BankAccount, Event) => BankAccount = (state, event) =>
         event match {
           case BankAccountCreated(bankAccount) =>
             bankAccount
         }
-    
+
       def apply(id: String): Behavior[Command] =
         EventSourcedBehavior[Command, Event, BankAccount](
           persistenceId = PersistenceId.ofUniqueId(id),
@@ -172,16 +172,16 @@ To write a sample application and customize its configuration, do the following:
           commandHandler = commandHandler,
           eventHandler = eventHandler)
     }
-    
+
     object Bank {
-    
+
       import PersistentBankAccount.{ Command, CreateBankAccount }
-    
+
       sealed trait Event extends CborSerializable
       case class BankAccountCreated(id: String) extends Event
-    
+
       case class State(accounts: Set[String]) extends CborSerializable
-    
+
       def commandHandler(context: ActorContext[Command])
           : (State, Command) => Effect[Event, State] = (state, command) =>
         command match {
@@ -200,14 +200,14 @@ To write a sample application and customize its configuration, do the following:
               }
             }
         }
-    
+
       def eventHandler(context: ActorContext[Command]): (State, Event) => State =
         (state, event) =>
           event match {
             case BankAccountCreated(id) =>
               state.copy(accounts = state.accounts + id)
           }
-    
+
       // behavior
       def apply(): Behavior[Command] = Behaviors.setup { context =>
         EventSourcedBehavior[Command, Event, State](
@@ -222,28 +222,28 @@ To write a sample application and customize its configuration, do the following:
         }
       }
     }
-    
+
     object BankPlayground {
       import PersistentBankAccount.{
         BankAccountCreatedResponse,
         CreateBankAccount,
         Response
       }
-    
+
       def main(args: Array[String]): Unit = {
         val rootBehavior: Behavior[NotUsed] = Behaviors.setup { context =>
           val bank = context.spawn(Bank(), "bank")
-    
+
           val responseHandler = context.spawn(ResponseHandler(), "replyHandler")
-    
+
           val id = UUID.randomUUID().toString
           bank ! CreateBankAccount(id, "Harsh", "INR", 10000, responseHandler)
-    
+
           Behaviors.empty
         }
         val system = ActorSystem(rootBehavior, "Demo")
       }
-    
+
       object ResponseHandler {
         def apply(): Behavior[Response] = {
           Behaviors.receive[Response] {
@@ -254,14 +254,14 @@ To write a sample application and customize its configuration, do the following:
         }
       }
     }
-    
+
     /**
      * Marker trait for serialization with Jackson CBOR
      */
     trait CborSerializable
     ```
 
-1. Create a `resources` directory in `src/main` using `mkdir resources`.
+1. Create a `resources` directory in `src/main` using `mkdir src/main/resources`.
 
 1. Create a file `src/main/resources/application.conf` and copy the following code:
 
