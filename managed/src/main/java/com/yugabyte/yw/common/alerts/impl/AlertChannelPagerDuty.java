@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.Customer;
@@ -49,12 +50,13 @@ public class AlertChannelPagerDuty extends AlertChannelWebBase {
   }
 
   @Override
-  public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
+  public void sendNotification(
+      Customer customer, Alert alert, AlertChannel channel, AlertChannelTemplates channelTemplates)
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelPagerDutyParams params = (AlertChannelPagerDutyParams) channel.getParams();
-    String title = getNotificationTitle(alert, channel);
-    String text = getNotificationText(alert, channel);
+    String title = getNotificationTitle(alert, channel, channelTemplates);
+    String text = getNotificationText(alert, channel, channelTemplates);
 
     try {
       EventResult eventResult;

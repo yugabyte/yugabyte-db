@@ -62,7 +62,7 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     channelConfig.setParams(params);
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
-    channel.sendNotification(defaultCustomer, alert, channelConfig);
+    channel.sendNotification(defaultCustomer, alert, channelConfig, null);
 
     RecordedRequest request = server.takeRequest();
     assertThat(request.getPath(), is(PAGERDUTY_PATH));
@@ -99,7 +99,7 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
     alert.setState(State.RESOLVED);
-    channel.sendNotification(defaultCustomer, alert, channelConfig);
+    channel.sendNotification(defaultCustomer, alert, channelConfig, null);
 
     RecordedRequest request = server.takeRequest();
     assertThat(request.getPath(), is(PAGERDUTY_PATH));
@@ -123,7 +123,7 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     Alert alert = ModelFactory.createAlert(defaultCustomer);
 
     assertThat(
-        () -> channel.sendNotification(defaultCustomer, alert, channelConfig),
+        () -> channel.sendNotification(defaultCustomer, alert, channelConfig, null),
         thrown(
             PlatformNotificationException.class,
             "Error sending PagerDuty event for alert Alert 1: {\"error\":\"not_ok\"}"));

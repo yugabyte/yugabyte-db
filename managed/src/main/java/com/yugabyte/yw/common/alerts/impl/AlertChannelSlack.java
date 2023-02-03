@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.Customer;
 import javax.inject.Inject;
 import lombok.Data;
@@ -27,11 +28,12 @@ public class AlertChannelSlack extends AlertChannelWebBase {
   }
 
   @Override
-  public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
+  public void sendNotification(
+      Customer customer, Alert alert, AlertChannel channel, AlertChannelTemplates channelTemplates)
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelSlackParams params = (AlertChannelSlackParams) channel.getParams();
-    String text = getNotificationText(alert, channel);
+    String text = getNotificationText(alert, channel, channelTemplates);
 
     SlackMessage message = new SlackMessage();
     message.username = params.getUsername();

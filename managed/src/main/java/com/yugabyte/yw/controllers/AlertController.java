@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.AlertTemplate.TestAlertSettings;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -45,6 +46,8 @@ import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertDefinition;
@@ -52,6 +55,7 @@ import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Audit.TargetType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -100,6 +104,8 @@ public class AlertController extends AuthenticatedController {
   @Inject private AlertService alertService;
 
   @Inject private AlertChannelService alertChannelService;
+
+  @Inject private AlertChannelTemplateService alertChannelTemplateService;
 
   @Inject private AlertDestinationService alertDestinationService;
 
@@ -488,6 +494,57 @@ public class AlertController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
+  @ApiOperation(value = "Get alert channel templates", response = AlertChannelTemplates.class)
+  public Result getAlertChannelTemplates(UUID customerUUID, String channelTypeStr) {
+    Customer.getOrBadRequest(customerUUID);
+    ChannelType channelType = parseChannelType(channelTypeStr);
+    return PlatformResults.withData(alertChannelTemplateService.get(customerUUID, channelType));
+  }
+
+  @ApiOperation(value = "Set alert channel templates", response = AlertChannelTemplates.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "SetAlertChannelTemplatesRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.models.AlertChannelTemplates",
+          required = true))
+  public Result setAlertChannelTemplates(UUID customerUUID, String channelTypeStr) {
+    Customer.getOrBadRequest(customerUUID);
+    ChannelType channelType = parseChannelType(channelTypeStr);
+    AlertChannelTemplates data = parseJson(AlertChannelTemplates.class);
+    data.setType(channelType);
+    data.setCustomerUUID(customerUUID);
+    AlertChannelTemplates result = alertChannelTemplateService.save(data);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AlertChannelTemplates,
+            data.getType().name(),
+            ActionType.Set,
+            request().body().asJson());
+    return PlatformResults.withData(CommonUtils.maskObject(result));
+  }
+
+  @ApiOperation(value = "Delete alert channel templates", response = YBPSuccess.class)
+  public Result deleteAlertChannelTemplates(UUID customerUUID, String channelTypeStr) {
+    Customer.getOrBadRequest(customerUUID);
+    ChannelType channelType = parseChannelType(channelTypeStr);
+    alertChannelTemplateService.delete(customerUUID, channelType);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), TargetType.AlertChannelTemplates, channelTypeStr, Audit.ActionType.Delete);
+    return YBPSuccess.empty();
+  }
+
+  @ApiOperation(
+      value = "List all alert channel templates",
+      response = AlertChannelTemplates.class,
+      responseContainer = "List")
+  public Result listAlertChannelTemplates(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    return PlatformResults.withData(alertChannelTemplateService.list(customerUUID));
+  }
+
   @ApiOperation(value = "Create an alert destination", response = AlertDestination.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -784,5 +841,14 @@ public class AlertController extends AuthenticatedController {
     universe.name = "some-universe";
     universe.universeUUID = UUID.randomUUID();
     return universe;
+  }
+
+  private ChannelType parseChannelType(String channelTypeStr) {
+    try {
+      return ChannelType.valueOf(channelTypeStr);
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Channel type " + channelTypeStr + " does not exist");
+    }
   }
 }
