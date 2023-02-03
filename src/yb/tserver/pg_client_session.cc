@@ -363,6 +363,7 @@ struct PerformData {
       if (op->has_sidecar()) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(op->sidecar_index()));
       }
+      op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
     }
 
     return Status::OK();

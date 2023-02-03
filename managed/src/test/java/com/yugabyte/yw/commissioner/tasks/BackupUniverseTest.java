@@ -10,25 +10,21 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static play.test.Helpers.contextComponents;
 
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.TaskType;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -36,12 +32,13 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
-import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class BackupUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
+
+  private Users defaultUser;
 
   @Override
   @Before
@@ -53,6 +50,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
     defaultUniverse.save();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
   }
 
   private TaskInfo submitTask(BackupTableParams.ActionType actionType, boolean enableVerboseLogs) {
@@ -65,18 +63,8 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     backupTableParams.actionType = actionType;
     backupTableParams.enableVerboseLogs = enableVerboseLogs;
     backupTableParams.customerUuid = defaultCustomer.uuid;
-
     // Set http context
-    Users user = ModelFactory.testUser(defaultCustomer);
-    Map<String, String> flashData = Collections.emptyMap();
-    user.email = "shagarwal@yugabyte.com";
-    Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
-    Http.Request request = mock(Http.Request.class);
-    Long id = 2L;
-    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    Http.Context currentContext =
-        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-    Http.Context.current.set(currentContext);
+    TestUtils.setFakeHttpContext(defaultUser);
 
     try {
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, backupTableParams);

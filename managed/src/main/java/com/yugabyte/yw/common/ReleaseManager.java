@@ -904,6 +904,7 @@ public class ReleaseManager {
     version = String.format("ybc-%s-%s-%s", version, osType, archType);
     Object metadata = getReleaseMetadata(ConfigHelper.ConfigType.YbcSoftwareReleases).get(version);
     if (metadata == null) {
+      log.error(String.format("ybc version %s not found", version));
       return null;
     }
     return metadataFromObject(metadata);

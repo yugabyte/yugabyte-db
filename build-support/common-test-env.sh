@@ -1161,13 +1161,8 @@ set_sanitizer_runtime_options() {
   # Don't add a hyphen after the regex so we can handle both tsan and tsan_slow.
   if [[ $build_root_basename =~ ^tsan ]]; then
     # Configure TSAN (ignored if this isn't a TSAN build).
-    #
-    # Deadlock detection (new in clang 3.5) is disabled because:
-    # 1. The clang 3.5 deadlock detector crashes in some YB unit tests. It
-    #    needs compiler-rt commits c4c3dfd, 9a8efe3, and possibly others.
-    # 2. Many unit tests report lock-order-inversion warnings; they should be
-    #    fixed before reenabling the detector.
-    TSAN_OPTIONS="detect_deadlocks=0"
+    TSAN_OPTIONS="detect_deadlocks=1"
+    TSAN_OPTIONS+=" second_deadlock_stack=1"
     TSAN_OPTIONS+=" suppressions=$YB_SRC_ROOT/build-support/tsan-suppressions.txt"
     TSAN_OPTIONS+=" history_size=7"
     TSAN_OPTIONS+=" external_symbolizer_path=$ASAN_SYMBOLIZER_PATH"

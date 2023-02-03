@@ -169,8 +169,6 @@ Status PgTabletSplitTestBase::InvokeSplitsAndWaitForCompletion(
   // Loop while a tablet can be picked.
   master::TabletInfoPtr parent;
   while (true) {
-    // Get tablets and sort, we assume partition_key cannot be changed as we are holding a
-    // string_view to partition_key_start.
     const auto tablets = GetTabletsByPartitionKey(table);
     const auto tablet  = VERIFY_RESULT(select_tablet(tablets));
     if (!tablet) {
@@ -240,8 +238,8 @@ Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForCompletion(
 }
 
 PartitionKeyTabletMap GetTabletsByPartitionKey(const master::TableInfoPtr& table) {
-  // Get tablets and sort, we assume partition_key cannot be changed as we are holding a
-  // string_view to partition_key_start.
+  // Get tablets and keep in sorted order, we assume partition_key cannot be changed
+  // as we are holding a std::string_view to partition_key_start.
   PartitionKeyTabletMap tablets;
   for (auto& t : table->GetTablets()) {
     const auto& partition = t->LockForRead()->pb.partition();

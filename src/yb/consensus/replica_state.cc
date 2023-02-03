@@ -93,12 +93,6 @@ ReplicaState::ReplicaState(
   }
 
   CHECK(IsAcceptableAtomicImpl(leader_state_cache_));
-
-  // Actually we don't need this lock, but GetActiveRoleUnlocked checks that we are holding the
-  // lock.
-  auto lock = LockForRead();
-  CoarseTimePoint now;
-  RefreshLeaderStateCacheUnlocked(&now);
 }
 
 ReplicaState::~ReplicaState() {
@@ -106,6 +100,9 @@ ReplicaState::~ReplicaState() {
 
 Status ReplicaState::StartUnlocked(const OpIdPB& last_id_in_wal) {
   DCHECK(IsLocked());
+
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
 
   // Our last persisted term can be higher than the last persisted operation
   // (i.e. if we called an election) but reverse should never happen.
