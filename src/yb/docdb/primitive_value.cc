@@ -13,6 +13,7 @@
 
 #include "yb/docdb/primitive_value.h"
 
+#include <memory>
 #include <string>
 
 #include <glog/logging.h>
@@ -765,24 +766,24 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 
     case KeyEntryType::kFrozenDescending:
     case KeyEntryType::kFrozen: {
-      auto end_marker_value_type = KeyEntryType::kGroupEnd;
-      if (type == KeyEntryType::kFrozenDescending) {
-        end_marker_value_type = KeyEntryType::kGroupEndDescending;
-      }
+      const auto end_marker_value_type = (type == KeyEntryType::kFrozenDescending)
+          ? KeyEntryType::kGroupEndDescending
+          : KeyEntryType::kGroupEnd;
 
-      if (out) {
-        out->frozen_val_ = new FrozenContainer();
-      }
+      std::unique_ptr<FrozenContainer> frozen_val(out ? new FrozenContainer() : nullptr);
       while (!slice->empty()) {
         auto current_value_type = DecodeKeyEntryType(*slice->data());
         if (current_value_type == end_marker_value_type) {
           slice->consume_byte();
           type_ref = type;
+          if (frozen_val) {
+            out->frozen_val_ = frozen_val.release();
+          }
           return Status::OK();
         } else {
-          if (out) {
-            out->frozen_val_->emplace_back();
-            RETURN_NOT_OK(DecodeKey(slice, &out->frozen_val_->back()));
+          if (frozen_val) {
+            frozen_val->emplace_back();
+            RETURN_NOT_OK(DecodeKey(slice, &frozen_val->back()));
           } else {
             RETURN_NOT_OK(DecodeKey(slice, nullptr));
           }
@@ -947,29 +948,24 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       return Status::OK();
     }
 
-    case KeyEntryType::kInetaddress: {
-      if (out) {
-        string bytes;
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-        out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
-      } else {
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
-      }
-      type_ref = type;
-      return Status::OK();
-    }
-
+    case KeyEntryType::kInetaddress:
     case KeyEntryType::kInetaddressDescending: {
-      if (out) {
-        string bytes;
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
-        out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
+      auto decoder = &DecodeComplementZeroEncodedStr;
+      if (type == KeyEntryType::kInetaddress) {
+        decoder = &DecodeZeroEncodedStr;
+      }
+      std::unique_ptr<InetAddress> inetaddress_val(out ? new InetAddress() : nullptr);
+      if (inetaddress_val) {
+        std::string bytes;
+        RETURN_NOT_OK(decoder(slice, &bytes));
+        RETURN_NOT_OK(inetaddress_val->FromSlice(bytes));
       } else {
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
+        RETURN_NOT_OK(decoder(slice, nullptr));
       }
       type_ref = type;
+      if (inetaddress_val) {
+        out->inetaddress_val_ = inetaddress_val.release();
+      }
       return Status::OK();
     }
 
@@ -1120,17 +1116,18 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     case ValueEntryType::kFrozen: {
       auto end_marker_value_type = KeyEntryType::kGroupEnd;
 
-      frozen_val_ = new FrozenContainer();
+      auto frozen_val = std::make_unique<FrozenContainer>();
       while (!slice.empty()) {
-        KeyEntryType current_value_type = static_cast<KeyEntryType>(*slice.data());
+        auto current_value_type = static_cast<KeyEntryType>(*slice.data());
         if (current_value_type == end_marker_value_type) {
           slice.consume_byte();
           type_ = value_type;
+          frozen_val_ = frozen_val.release();
           return Status::OK();
         } else {
           // Frozen elems are encoded as keys even in values.
-          frozen_val_->emplace_back();
-          RETURN_NOT_OK(frozen_val_->back().DecodeFromKey(&slice));
+          frozen_val->emplace_back();
+          RETURN_NOT_OK(frozen_val->back().DecodeFromKey(&slice));
         }
       }
 
