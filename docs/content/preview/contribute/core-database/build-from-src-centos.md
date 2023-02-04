@@ -51,41 +51,134 @@ Update packages on your system, install development tools and additional package
 ```sh
 sudo yum update
 sudo yum groupinstall -y 'Development Tools'
-sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-devel python3 python3-pip python3-devel which
-sudo yum install -y cmake3 ctest3 ninja-build
+sudo yum -y install libatomic
 ```
 
-### Build tools
+### Python 3
 
-Make sure `cmake`/`ctest` binaries are at least version 3. On CentOS, one way to achieve this is to symlink them into `/usr/local/bin`.
+Python 3.7 or higher is required.
+Since CentOS 7 does not include that in their package manager, this is nontrivial.
+One way is to compile from source.
+Here is an example using Python 3.7, but it is recommended to choose a higher version.
+
+[Install packages for building python][python-packages].
+
+```
+sudo yum -y install gcc make zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel openssl-devel tk-devel libffi-devel xz-devel
+```
+
+[python-packages]: https://github.com/pyenv/pyenv/wiki#suggested-build-environment
+
+Download python source.
 
 ```sh
+cd /tmp
+curl https://www.python.org/ftp/python/3.7.16/Python-3.7.16.tgz | tar xz
+cd Python-3.7.16
+```
+
+Make and install python to `/usr/local/bin`.
+
+```sh
+./configure --enable-optimizations
+sudo make altinstall
+```
+
+Create a symlink named `python3`.
+It is wise to choose to install it somewhere besides `/usr/bin` and with higher precedence because the package manager's Python 3.6 may overwrite the symlink.
+One such location is `/usr/local/bin`.
+
+```sh
+sudo ln -s /usr/local/bin/python3.7 /usr/local/bin/python3
+```
+
+{{< note title="Note" >}}
+
+If encountering python-related issues during build, it may be that you are still using the previous build's virtualenv.
+That virtualenv can be cleaned using the `--clean-venv` option to build.
+
+{{< /note >}}
+
+### Cmake 3
+
+Cmake 3.17.3 or higher is required.
+The package manager has that, but we still need to link the name `cmake` to `cmake3`.
+Do similarly for `ctest`.
+
+```sh
+sudo yum install -y cmake3
 sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
 sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ```
 
-You could also symlink them into another directory that is on your `PATH`.
+### /opt/yb-build
 
-{{< note title="Note" >}}
-
+By default, when running build, thirdparty libraries are not built, and pre-built libraries are downloaded.
 We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party dependencies on CentOS.
-Linuxbrew allows us to create a portable package that contains its own copy of glibc and can be installed on most Linux distributions.
-However, we are transitioning away from using Linuxbrew and towards native toolchains on various platforms.
+The build scripts automatically install these in directories under `/opt/yb-build`.
+In order for the build script to write under those directories, it needs proper permissions.
+One way to do that is as follows:
 
-Our build scripts may automatically install Linuxbrew in a directory such as `/opt/yb-build/brew/linuxbrew-<version>`.
-There is no need to add any of those directories to `PATH`.
+```sh
+sudo mkdir -m 777 /opt/yb-build
+```
 
-{{< /note >}}
+Alternatively, the build options `--no-download-thirdparty` and/or `--no-linuxbrew` can be specified.
+However, those cases may require additional, undocumented steps.
+
+### Ninja
+
+It is recommended to install ninja for faster build.
+
+```sh
+sudo yum install -y ninja-build
+```
+
+### Ccache
+
+It is recommended to install ccache for faster build.
+
+```sh
+sudo yum install -y ccache
+```
+
+Set `YB_CCACHE_DIR` in your `.bashrc` or equivalent:
+
+```sh
+echo 'export YB_CCACHE_DIR=$HOME/.cache/yb_ccache' >>$HOME/.bashrc
+```
 
 ### Java
 
 {{% readfile "includes/java.md" %}}
+
+The openjdk requirement is satisfied with the package manager.
+
+```sh
+sudo yum install -y java-11-openjdk
+```
+
+Maven needs to be download/installed manually.
 
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
 ### Build release package
+
+Additional packages are needed in order to build yugabyted-ui:
+
+```sh
+sudo yum install -y npm golang
+```
+
+ulimits may need to be modified.
+For example, build may fail with "too many open files".
+In that case, increase the nofile limit in `/etc/security/limits.conf`:
+
+```
+* - nofile 1048576
+```
 
 Run the `yb_release` script to build a release package:
 
