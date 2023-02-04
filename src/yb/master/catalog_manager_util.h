@@ -41,19 +41,19 @@ class CatalogManagerUtil {
   // multi AZ setup, else checks load distribution across tservers (single AZ).
   static Status IsLoadBalanced(const TSDescriptorVector& ts_descs);
 
-  // For the given set of descriptors, checks if every tserver that shouldn't have leader load
-  // actually has no leader load.
-  // If transaction_tables_use_preferred_zones = false, then we also check if txn status tablet
-  // leaders are spread evenly based on the information in `tables`.
+  static ReplicationInfoPB GetTableReplicationInfo(
+      const scoped_refptr<const TableInfo>& table,
+      const std::shared_ptr<const YsqlTablespaceManager>
+          tablespace_manager,
+      const ReplicationInfoPB& cluster_replication_info);
+
+  // For the given set of descriptors, checks if every tserver does not have an excess tablet leader
+  // load given the preferred zones.
   static Status AreLeadersOnPreferredOnly(
       const TSDescriptorVector& ts_descs,
-      const ReplicationInfoPB& replication_info,
+      const ReplicationInfoPB& cluster_replication_info,
+      const std::shared_ptr<const YsqlTablespaceManager> tablespace_manager = nullptr,
       const std::vector<scoped_refptr<TableInfo>>& tables = {});
-
-  // Creates a mapping from tserver uuid to the number of transaction leaders present.
-  static void CalculateTxnLeaderMap(std::map<std::string, int>* txn_map,
-                                    int* num_txn_tablets,
-                                    std::vector<scoped_refptr<TableInfo>> tables);
 
   // For the given set of descriptors, returns the map from each placement AZ to list of tservers
   // running in that zone.

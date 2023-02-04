@@ -192,7 +192,10 @@ std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
 
 Result<ReplicationInfoPB> ClusterLoadBalancer::GetTableReplicationInfo(
     const scoped_refptr<const TableInfo>& table) const {
-  return catalog_manager_->GetTableReplicationInfo(table);
+  return CatalogManagerUtil::GetTableReplicationInfo(
+      table,
+      catalog_manager_->GetTablespaceManager(),
+      catalog_manager_->ClusterConfig()->LockForRead()->pb.replication_info());
 }
 
 void ClusterLoadBalancer::InitTablespaceManager() {
