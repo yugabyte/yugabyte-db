@@ -139,6 +139,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, log_min_duration_statement, -1,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_expression_pushdown, false,
     "Push supported expressions from ysql down to DocDB for evaluation.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
+    "Push down strict inequality filters");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,
     "Delay in milliseconds between stages of online index build. Set high to give online "
     "transactions more time to complete.");
