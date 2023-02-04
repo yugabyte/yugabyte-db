@@ -57,7 +57,7 @@ public class TestOneOrTwoAdmins extends BasePgSQLTest {
   private static boolean isYBTxnException(PSQLException ex) {
     String msg = ex.getMessage();
     return msg.contains("Missing metadata for transaction:") ||
-           msg.contains("Conflicts with higher priority transaction:") ||
+           msg.contains("conflicts with higher priority transaction:") ||
            msg.contains("Transaction aborted:") ||
            msg.contains("Unknown transaction, could be recently aborted:");
   }

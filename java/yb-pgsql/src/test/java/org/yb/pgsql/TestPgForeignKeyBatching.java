@@ -120,7 +120,7 @@ public class TestPgForeignKeyBatching extends BasePgSQLTestWithRpcMetric {
       stmt.execute("INSERT INTO child VALUES(1, 1), (2, 2), (3, 3)");
       runInvalidQuery(extraStmt,
         "DELETE FROM parent WHERE k = 1",
-        "Conflicts with higher priority transaction");
+        "conflicts with higher priority transaction");
       stmt.execute("COMMIT");
 
       stmt.execute("DELETE FROM child");
@@ -128,7 +128,7 @@ public class TestPgForeignKeyBatching extends BasePgSQLTestWithRpcMetric {
       stmt.execute("INSERT INTO child VALUES (1, 1), (2, 2), (3, 3)");
       runInvalidQuery(extraStmt,
         "DELETE FROM parent WHERE k = 1",
-        "Conflicts with higher priority transaction");
+        "conflicts with higher priority transaction");
       stmt.execute("COMMIT");
     }
   }
