@@ -575,6 +575,36 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   ASSERT_NOK(conn.Execute(DropTableStmt(kAddCol)));
 }
 
+TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(FailureRecoveryTestWithAbortedTxn)) {
+  // Make TransactionParticipant::Impl::CheckForAbortedTransactions and TabletLoader::Visit deadlock
+  // on the mutex. GH issue #15849.
+
+  // Temporarily disable abort cleanup. This flag will be reset when we RestartMaster.
+  ASSERT_OK(cluster_->SetFlagOnMasters("transactions_poll_check_aborted", "true"));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(CreateTableStmt(kDropTable)));
+
+  // Create an aborted transaction so that TransactionParticipant::Impl::CheckForAbortedTransactions
+  // has something to do.
+  ASSERT_OK(conn.TestFailDdl(CreateTableStmt(kCreateTable)));
+
+  // Crash in the middle of a DDL so that TabletLoader::Visit will perform some writes to
+  // sys_catalog on CatalogManager startup.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_crash_after_table_marked_deleting", "true"));
+  ASSERT_OK(conn.Execute(DropTableStmt(kDropTable)));
+
+  ASSERT_EQ(cluster_->master_daemons().size(), 1);
+  // Give enough time for CheckForAbortedTransactions to start and get stuck.
+  cluster_->GetLeaderMaster()->mutable_flags()->push_back(
+      "--TEST_delay_sys_catalog_reload_secs=10");
+
+  RestartMaster();
+
+  VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
+}
+
 class PgDdlAtomicityConcurrentDdlTest : public PgDdlAtomicitySanityTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
