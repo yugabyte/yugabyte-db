@@ -740,6 +740,10 @@ public class NodeManager extends DevopsBase {
       String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
       ybcFlags.put("nfs_dirs", nfsDirs);
     }
+    if (taskParam.gflags != null && taskParam.gflags.containsKey(GFlagsUtil.CERT_NODE_FILENAME)) {
+      ybcFlags.put(
+          GFlagsUtil.CERT_NODE_FILENAME, taskParam.gflags.get(GFlagsUtil.CERT_NODE_FILENAME));
+    }
 
     if (!taskParam.itestS3PackagePath.isEmpty()
         && userIntent.providerType.equals(Common.CloudType.aws)) {
