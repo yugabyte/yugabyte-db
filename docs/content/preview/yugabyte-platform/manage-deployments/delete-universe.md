@@ -1,7 +1,7 @@
 ---
-title: Delete a universe
-headerTitle: Delete a universe
-linkTitle: Delete a universe
+title: Delete universe
+headerTitle: Delete universe
+linkTitle: Delete universe
 description: Use YugabyteDB Anywhere to delete a universe.
 aliases:
   - /preview/manage/enterprise-edition/delete-universe/

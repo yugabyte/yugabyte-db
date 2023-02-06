@@ -16,4 +16,4 @@ If your universe was created using Kubernetes, you have an option of modifying t
 
 ![img](/images/yb-platform/kubernetes-config66.png)
 
-Complete the dialog it by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
+Complete the dialog by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
