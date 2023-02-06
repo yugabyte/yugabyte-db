@@ -74,7 +74,7 @@ func initServices() {
 	if installPostgres {
 		services[PostgresServiceName] = NewPostgres("10.23")
 	}
-	services[PrometheusServiceName] = NewPrometheus("2.39.0")
+	services[PrometheusServiceName] = NewPrometheus("2.41.0")
 	services[YbPlatformServiceName] = NewPlatform(common.GetVersion())
 	// serviceOrder = make([]string, len(services))
 	if installPostgres {
