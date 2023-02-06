@@ -118,7 +118,8 @@ jdbc:postgresql://hostname:port/database
 Following is an example JDBC URL for connecting to YugabyteDB:
 
 ```sh
-Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
+String yburl = "jdbc:postgresql://localhost:5433/yugabyte";
+Connection conn = DriverManager.getConnection(yburl, "yugabyte", "yugabyte");
 ```
 
 #### Use SSL
@@ -134,7 +135,7 @@ The following table describes the connection parameters required to connect usin
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
 ```java
-string yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
+String yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt";
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
@@ -162,8 +163,8 @@ import java.sql.ResultSet;
 public class QuickStartApp {
   public static void main(String[] args) throws ClassNotFoundException, SQLException {
     Class.forName("org.postgresql.Driver");
-    String yburl = "jdbc:postgresql://localhost:5433/yugabyte", "yugabyte", "yugabyte";
-    Connection conn = DriverManager.getConnection(yburl);
+    String yburl = "jdbc:postgresql://localhost:5433/yugabyte";
+    Connection conn = DriverManager.getConnection(yburl, "yugabyte", "yugabyte");
     Statement stmt = conn.createStatement();
     try {
         System.out.println("Connected to the PostgreSQL server successfully.");
@@ -191,7 +192,8 @@ public class QuickStartApp {
 If you're using SSL, replace the connection string `yburl` with the following code:
 
 ```java
-String yburl = "jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8", "yugabyte", "yugabyte";
+String yburl = "jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8";
+Connection conn = DriverManager.getConnection(yburl, "yugabyte", "yugabyte");
 ```
 
 Run the project `QuickStartApp.java` using the following command:
