@@ -584,7 +584,9 @@ public enum TaskType {
   // Tasks belonging to subtasks.ldap classpath
   QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
 
-  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class);
+  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class),
+
+  UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class);
 
   private final Class<? extends ITask> taskClass;
 

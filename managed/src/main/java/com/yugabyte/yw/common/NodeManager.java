@@ -1508,7 +1508,11 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs) {
     if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
       addInstanceTags(
-          universe, userIntent.instanceTags, userIntent.providerType, nodeTaskParam, commandArgs);
+          universe,
+          nodeTaskParam.tags != null ? nodeTaskParam.tags : userIntent.instanceTags,
+          userIntent.providerType,
+          nodeTaskParam,
+          commandArgs);
     }
   }
 

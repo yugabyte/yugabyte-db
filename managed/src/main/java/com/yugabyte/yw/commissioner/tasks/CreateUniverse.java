@@ -102,7 +102,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                   // Update on-prem node UUIDs.
                   updateOnPremNodeUuidsOnTaskParams();
                   // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), false);
+                  updateUniverseNodesAndSettings(u, taskParams(), false);
+                  for (Cluster cluster : taskParams().clusters) {
+                    u.getUniverseDetails()
+                        .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+                  }
                   // There is a rare possibility that this succeeds and
                   // saving the Universe fails. It is ok because the retry
                   // will just fail.
