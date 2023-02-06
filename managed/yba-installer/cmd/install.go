@@ -35,6 +35,7 @@ var installCmd = &cobra.Command{
 		}
 
 		// Run install
+		ybaCtl.MarkYBAInstallStart()
 		common.Install(common.GetVersion())
 
 		for _, name := range serviceOrder {
@@ -48,11 +49,14 @@ var installCmd = &cobra.Command{
 			status := service.Status()
 			statuses = append(statuses, status)
 			if !common.IsHappyStatus(status) {
-				log.Fatal(status.Service + " is not running! Install might have failed, please check " + common.YbaCtlLogFile)
+				log.Fatal(status.Service + " is not running! Install might have failed, please check " +
+					common.YbactlLogFile())
 			}
 		}
 
-		common.PostInstall()
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to install yba-ctl")
+		}
 		common.PrintStatus(statuses...)
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 	},
