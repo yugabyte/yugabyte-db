@@ -44,10 +44,10 @@ func FromFile(filePath string) (*License, error) {
 // embedded at build time (meaning, we are using a dev build)
 func FromInstalledLicense() (*License, error) {
 	// The installed license path doesn't exist, return an empty license.
-	if _, err := os.Stat(common.LicenseFileInstall); errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(common.LicenseFile()); errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
-	return FromFile(common.LicenseFileInstall)
+	return FromFile(common.LicenseFile())
 }
 
 // FromParts creates a license from the individual parts of a license

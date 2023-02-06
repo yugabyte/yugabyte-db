@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 
@@ -138,10 +139,15 @@ func (pg Postgres) Start() {
 		restartSeconds := config.GetYamlPathData("postgres.restartSeconds")
 
 		command1 := "bash"
-		arg1 := []string{"-c", pg.cronScript + " " + restartSeconds + " > /dev/null 2>&1 &"}
+		arg1 := []string{"-c", pg.cronScript + " " + common.GetSoftwareRoot() + " " +
+			common.GetDataRoot() + " " + restartSeconds + " > /dev/null 2>&1 &"}
 
 		common.RunBash(command1, arg1)
-
+		// Non-root script does not wait for postgres to start, so check for it to be running.
+		for pg.Status().Status != common.StatusRunning {
+			log.Info("waiting for non-root script to start postgres...")
+			time.Sleep(time.Second * 2)
+		}
 	}
 }
 
@@ -190,6 +196,7 @@ func (pg Postgres) Restart() {
 
 // Uninstall drops the yugaware DB and removes Postgres binaries.
 func (pg Postgres) Uninstall(removeData bool) {
+	log.Info("Uninstalling postgres")
 	pg.Stop()
 
 	if removeData {
@@ -224,7 +231,7 @@ func (pg Postgres) CreateBackup() {
 	}
 	file, err := os.Create(outFile)
 	if err != nil {
-		log.Fatal("faled to open file " + outFile + ": " + err.Error())
+		log.Fatal("failed to open file " + outFile + ": " + err.Error())
 	}
 	defer file.Close()
 
@@ -377,21 +384,30 @@ func (pg Postgres) setUpDataDir() {
 		if err != nil {
 			log.Fatal("failed to move config: " + err.Error())
 		}
-		pg.copyConfFiles() // move conf files back to conf location
+	} else {
+		_, err := common.RunBash("bash", []string{"-c", "mv " + pg.ConfFileLocation + " " + pg.dataDir})
+		if err != nil {
+			log.Fatal("failed to move config: " + err.Error())
+		}
 	}
-	// TODO: Need to figure on non-root case.
+	pg.copyConfFiles() // move conf files back to conf location
 }
 
 func (pg Postgres) copyConfFiles() {
 	// move conf files back to conf location
 	userName := viper.GetString("service_username")
 
-	common.MkdirAllOrFail(pg.ConfFileLocation, 0700)
-	common.Chown(pg.ConfFileLocation, userName, userName, false)
-	common.RunBash(
-		"sudo",
-		[]string{"-u", userName, "find", pg.dataDir, "-iname", "*.conf", "-exec", "cp", "{}",
-			pg.ConfFileLocation, ";"})
+	findArgs := []string{pg.dataDir, "-iname", "*.conf", "-exec", "cp", "{}",
+		pg.ConfFileLocation, ";"}
+	if common.HasSudoAccess() {
+		common.MkdirAllOrFail(pg.ConfFileLocation, 0700)
+		common.Chown(pg.ConfFileLocation, userName, userName, false)
+		args := append([]string{"-u", userName, "find"}, findArgs...)
+		common.RunBash("sudo", args)
+	} else {
+		common.MkdirAllOrFail(pg.ConfFileLocation, 0775)
+		common.RunBash("find", findArgs)
+	}
 }
 
 func (pg Postgres) createYugawareDatabase() {
@@ -482,5 +498,6 @@ func (pg Postgres) CreateCronJob() {
 	restartSeconds := viper.GetString("postgres.install.restartSeconds")
 	common.RunBash("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + pg.cronScript + " " +
+			common.GetSoftwareRoot() + " " + common.GetDataRoot() + " " +
 			restartSeconds + "\") | sort - | uniq - | crontab - "})
 }
