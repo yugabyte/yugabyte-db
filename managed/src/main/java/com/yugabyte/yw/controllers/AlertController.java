@@ -30,12 +30,14 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertTemplateSettingsService;
 import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.TestAlertTemplateSubstitutor;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
 import com.yugabyte.yw.forms.AlertDestinationFormData;
 import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
+import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
@@ -54,6 +56,7 @@ import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertTemplateSettings;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Audit.TargetType;
@@ -114,6 +117,8 @@ public class AlertController extends AuthenticatedController {
   @Inject private MetricUrlProvider metricUrlProvider;
 
   @Inject private AlertTemplateSettingsService alertTemplateSettingsService;
+
+  @Inject private AlertTemplateVariableService alertTemplateVariableService;
 
   @ApiOperation(value = "Get details of an alert", response = Alert.class)
   public Result get(UUID customerUUID, UUID alertUUID) {
@@ -681,6 +686,59 @@ public class AlertController extends AuthenticatedController {
             ctx(),
             TargetType.AlertTemplateSettings,
             settingsUuid.toString(),
+            Audit.ActionType.Delete);
+    return YBPSuccess.empty();
+  }
+
+  @ApiOperation(
+      value = "List alert template variables",
+      response = AlertTemplateVariable.class,
+      responseContainer = "List")
+  public Result listAlertTemplateVariables(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customerUUID);
+
+    return PlatformResults.withData(variables);
+  }
+
+  @ApiOperation(
+      value = "Crete or update alert template variables",
+      response = AlertTemplateVariable.class,
+      responseContainer = "List")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "EditAlertTemplateVariablesRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.AlertTemplateVariablesFormData",
+          required = true))
+  public Result editAlertTemplateVariables(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertTemplateVariablesFormData data = parseJson(AlertTemplateVariablesFormData.class);
+
+    List<AlertTemplateVariable> variables =
+        alertTemplateVariableService.save(customerUUID, data.variables);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            TargetType.AlertTemplateVariables,
+            Objects.toString(customerUUID, null),
+            Audit.ActionType.Edit,
+            request().body().asJson());
+    return PlatformResults.withData(variables);
+  }
+
+  @ApiOperation(value = "Delete an alert template variables", response = YBPSuccess.class)
+  public Result deleteAlertTemplateVariables(UUID customerUUID, UUID variablesUuid) {
+    Customer.getOrBadRequest(customerUUID);
+    alertTemplateVariableService.delete(variablesUuid);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            TargetType.AlertTemplateVariables,
+            variablesUuid.toString(),
             Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
