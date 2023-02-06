@@ -1,0 +1,61 @@
+---
+title: View CREATE INDEX status with pg_stat_progress_create_index
+linkTitle: View CREATE INDEX status
+description: Use pg_stat_progress_create_index to get the CREATE INDEX command status, including the status of an ongoing concurrent index backfill, and the index build's progress reports.
+headerTitle: View CREATE INDEX status with pg_stat_progress_create_index
+image: /images/section_icons/index/develop.png
+menu:
+  preview:
+    identifier: pg-stat-progress-create-index
+    parent: query-tuning
+    weight: 450
+type: docs
+---
+
+YugabyteDB supports the PostgreSQL `pg_stat_progress_create` view to report the progress of the CREATE INDEX command execution. Whenever [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/) is running, the `pg_stat_progress_create_index` view contains one row for each client connection that is currently running a CREATE INDEX command.
+
+### Online index backfill
+
+When an index is created on an existing table, YugabyteDB will automatically backfill existing data into the index in an online manner (that is, while continuing to serve other concurrent writes and traffic). For more details on how this is done, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
+
+* YugabyteDB can now build indexes on non-empty tables while online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can now use the YSQL [`CREATE INDEX`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+* Backfilling an index while online is disable by default. To enable online index backfilling, set the `yb-tserver` [`--ysql_disable_index_backfill`](../../../reference/configuration/yb-tserver/#ysql-disable-index-backfill) flag to `false` when starting YB-TServers. Note: Do not use this flag in a production cluster yet. For details on how this works, see [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)
+
+The following table describes the view columns:
+
+| Column | Type | Description |
+| :----- | :--- | :---------- |
+| pid | integer | Process ID of backend that is running the CREATE INDEX. |
+| datid | OID | Object ID of the database to which this backend is connected. |
+| datname | name | Name of the database to which this backend is connected. |
+| relid | OID | Object ID of indexed relation.|
+| index_relid | OID | Object ID of index. |
+| command | text | The command that is running CREATE INDEX CONCURRENTLY, or CREATE INDEX NONCONCURRENTLY. |
+| phase | text | The current phase of the command. The possible phases are _initializing_, or _backfilling_. |
+| tuples_total | bigint | Number of indexed table tuples already processed. |
+| tuples_done | bigint | Estimate of total number of tuples (in the indexed table). This value is retrieved from `pg_class.reltuples`. |
+| partitions_total | bigint | If the ongoing CREATE INDEX is for a partitioned table, this refers to the total number of partitions in the table. Set to 0 otherwise. |
+| partitions_done | bigint | If the ongoing CREATE INDEX is for a partitioned table, this refers to the number of partitions the index has been created for. Set to 0 otherwise. |
+
+Columns such as `lockers_total`, `lockers_done`, `current_locker_pid`, `blocks_total`, and `blocks_done` are not applicable to YugabyteDB and will have always have null values.
+
+## YugabyteDB-specific changes
+
+The `pg_stat_progress_create_index` view includes the following YugabyteDB-specific changes:
+
+* In YugabyteDB, the `pg_stat_progress_create_index` view is a local view; it only has entries for CREATE INDEX commands issued by local YSQL clients.
+
+* In PostgreSQL, `tuples_done` and `tuples_total` refer to the tuples of the _index_. However, in YugabyteDB, because it is currently easier to get indexed table counts (and there's no effortless way to retrieve the index counts), these fields refer to the tuples of the _indexed table_. This discrepancy is only evident for partial indexes, where the reported progress will be less than the actual progress. `tuples_total` is an estimate that is retrieved from `pg_class.reltuples`.
+Additionally, the values for `tuples_done` and `tuples_total` for temporary indexes are not displayed unlike in PostgreSQL, because these columns reflect tuples of the indexed table.
+
+## Examples
+
+
+
+## Learn more
+
+* Refer to [View live queries with pg_stat_activity](../pg-stat-activity/) to analyze live queries.
+* Refer to [View COPY progress with pg_stat_progress_copy](../pg-stat-progress-copy/) to track the COPY operation status.
+* Refer to [Analyze queries with EXPLAIN](../explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.
+* Refer to [Optimize YSQL queries using pg_hint_plan](../pg-hint-plan/) show the query execution plan generated by YSQL.
+* Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.

@@ -76,6 +76,18 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pg-stat-progress-create-index/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="title">View CREATE INDEX status with pg_stat_progress_create_index</div>
+      </div>
+      <div class="body">
+        Get the CREATE INDEX command status, including the status of an ongoing concurrent index backfill, and the index build's progress reports.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="explain-analyze/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
