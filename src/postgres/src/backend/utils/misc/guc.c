@@ -1993,6 +1993,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_pushdown_strict_inequality", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, strict inequality filters are pushed down."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_pushdown_strict_inequality,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2095,7 +2106,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_bypass_cond_recheck,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4399,13 +4410,13 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"yb_test_block_index_state_change", PGC_SIGHUP, DEVELOPER_OPTIONS,
-			gettext_noop("Block the given index state change."),
-			gettext_noop("Valid values are \"indisready\", \"getsafetime\","
-						 " and \"indisvalid\". Any other value is ignored."),
+		{"yb_test_block_index_phase", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Block the given index creation phase."),
+			gettext_noop("Valid values are \"indisready\", \"backfill\", "
+						 " and \"postbackfill\". Any other value is ignored."),
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_test_block_index_state_change,
+		&yb_test_block_index_phase,
 		"",
 		/* Could add a check function, but it's not worth the bother. */
 		NULL, NULL, NULL

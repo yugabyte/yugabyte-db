@@ -31,6 +31,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -160,6 +161,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     taskParams.creatingUser = defaultUser;
     try {
       UUID taskUUID = commissioner.submit(TaskType.AddNodeToUniverse, taskParams);
+      // Set http context
+      TestUtils.setFakeHttpContext(defaultUser);
+
       CustomerTask.create(
           defaultCustomer,
           universe.universeUUID,
@@ -288,8 +292,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.AnsibleConfigureServers, // add Master
-          TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers,
+          TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);

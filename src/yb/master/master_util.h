@@ -37,7 +37,14 @@ static constexpr const char* kTablegroupParentTableIdSuffix = ".tablegroup.paren
 static constexpr const char* kColocationParentTableIdSuffix = ".colocation.parent.uuid";
 static constexpr const char* kColocationParentTableNameSuffix = ".colocation.parent.tablename";
 
+static constexpr const char* kDBTypePrefixUnknown = "unknown";
+static constexpr const char* kDBTypePrefixCql = "ycql";
+static constexpr const char* kDBTypePrefixYsql = "ysql";
+static constexpr const char* kDBTypePrefixRedis = "yedis";
+
 namespace yb {
+
+const char* DatabasePrefix(YQLDatabase db);
 
 namespace consensus {
 

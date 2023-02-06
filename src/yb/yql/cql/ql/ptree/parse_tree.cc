@@ -126,6 +126,9 @@ Result<SchemaVersion> ParseTree::GetYBTableSchemaVersion() const {
 }
 
 Result<bool> ParseTree::IsYBTableAltered(QLEnv *ql_env) const {
+  // We check the Main Table schema version even for "Index Only scan" & "Index + Table scan". This
+  // is safe to do since if Index schema was changed - the Main Table schema version is also
+  // incremented.
   const shared_ptr<const client::YBTable> table = GetYBTableFromTreeNode(root_.get());
   SCHECK(table, IllegalState, "Table missing");
   const SchemaVersion current_schema_ver = table->schema().version();

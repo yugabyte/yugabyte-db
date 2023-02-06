@@ -18,13 +18,15 @@ from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
 
+import adal
+import base64
+import datetime
+import json
 import logging
 import os
 import re
 import requests
-import adal
-import json
-import datetime
+import yaml
 
 SUBSCRIPTION_ID = os.environ.get("AZURE_SUBSCRIPTION_ID")
 RESOURCE_GROUP = os.environ.get("AZURE_RG")
@@ -54,6 +56,11 @@ VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
 PRIVATE_DNS_ZONE_ID_REGEX = re.compile(
     "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
     "/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
+CLOUDINIT_EPHEMERAL_MNTPOINT = {
+    "mounts": [
+        ["ephemeral0", "/mnt/resource"]
+    ]
+}
 
 
 class GetPriceWorker(Thread):
@@ -106,6 +113,43 @@ def id_to_name(resourceId):
 def get_zones(region, metadata):
     return ["{}-{}".format(region, zone)
             for zone in metadata["regions"].get(region, {}).get("zones", [])]
+
+
+def cloud_init_encoded(**kwargs):
+    """
+    Create base64 encoded cloud init data.
+
+    **kwargs are additional key/values to add to the cloud init
+    """
+    ci_header = "#cloud-config"
+    cloud_init = CLOUDINIT_EPHEMERAL_MNTPOINT.copy()
+
+    # Handle additional mounts. Allow overriding of ephemeral0 to /mnt/resource.
+    # If ephemeral0 is provided in kwargs, we want to use the user defined mount point over what
+    # we specify as the default. We will loop through all 'additional mounts', looking for
+    # ephemeral0. If it is found, we want to override our default (which only includes an option
+    # for ephemeral0). If ephemeral0 is not found in additional mounts, we want our ephemeral0
+    # default + the other user provided mount points.
+    # Remember, mounts is a list of lists - [ [ "ephemeral0", "/mnt/resource"] ]
+    additional_mounts = kwargs.pop("mounts", [])
+    for am in additional_mounts:
+        # ephemeral and ephemeral0 refer to the same mount point, either may be used.
+        if am[0] == "ephemeral" or am[0] == "ephemeral0":
+            cloud_init["mounts"] = additional_mounts
+            break
+    else:
+        cloud_init["mounts"].extend(additional_mounts)
+
+    cloud_init.update(**kwargs)
+    ci_data = yaml.dump(cloud_init)
+    logging.debug("created cloud init data: {}".format(ci_data))
+
+    lines = [
+        ci_header,
+        ci_data
+    ]
+    cloud_file = '\n'.join(lines)
+    return base64.b64encode(cloud_file.encode('utf-8')).decode('utf-8')
 
 
 class AzureBootstrapClient():
@@ -170,7 +214,7 @@ class AzureBootstrapClient():
                    self.network_client.subnets.list(RESOURCE_GROUP, vnet)]
         for subnet in subnets:
             # Maybe change to tags rather than filtering on name prefix
-            if(subnet.get("name").startswith(YUGABYTE_SUBNET_PREFIX.format(''))):
+            if subnet.get("name").startswith(YUGABYTE_SUBNET_PREFIX.format('')):
                 logging.debug("Found default subnet {}".format(subnet.get("name")))
                 return subnet.get("name")
         logging.info("Could not find default {} in vnet {}".format(YUGABYTE_SUBNET_PREFIX, vnet))
@@ -601,6 +645,10 @@ class AzureCloudAdmin():
             plan = self.compute_client.virtual_machine_images \
                 .get(region, pub, offer, sku, version).as_dict().get('plan')
 
+        # Base64 encode the cloud init data. Python base64 takes in and returns
+        # byte-like objects, so we must encode the yaml and then decode the output.
+        # This allows us to pass the cloud init as a base64 encoded string.
+        cloud_init = cloud_init_encoded()
         vm_parameters = {
             "location": region,
             "os_profile": {
@@ -614,7 +662,8 @@ class AzureCloudAdmin():
                             "key_data": format_rsa_key(private_key, public_key=True)
                         }]
                     }
-                }
+                },
+                "custom_data": cloud_init,
             },
             "hardware_profile": {
                 "vm_size": instance_type

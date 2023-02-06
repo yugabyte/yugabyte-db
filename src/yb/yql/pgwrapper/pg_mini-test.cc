@@ -825,7 +825,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadOnly)) {
     ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
     ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
         << result.status();
-    ASSERT_STR_CONTAINS(result.status().ToString(), "Conflicts with higher priority transaction");
+    ASSERT_STR_CONTAINS(result.status().ToString(), "conflicts with higher priority transaction");
   }
 }
 

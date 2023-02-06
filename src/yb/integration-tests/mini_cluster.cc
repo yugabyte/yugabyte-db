@@ -1132,6 +1132,23 @@ Status WaitForInitDb(MiniCluster* cluster) {
   return STATUS_FORMAT(TimedOut, "Unable to init db in $0", kTimeout);
 }
 
+size_t CountExternalTransactions(MiniCluster* cluster) {
+  auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+  auto total_transactions = 0;
+  for (const auto &peer : peers) {
+    if (peer->LeaderStatus() == consensus::LeaderStatus::NOT_LEADER) {
+      continue;
+    }
+    auto tablet = peer->shared_tablet();
+    auto coordinator = tablet ? tablet->transaction_coordinator() : nullptr;
+    if (!coordinator) {
+      continue;
+    }
+    total_transactions += coordinator->TEST_CountExternalTransactions();
+  }
+  return total_transactions;
+}
+
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
   size_t result = 0;
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);

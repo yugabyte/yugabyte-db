@@ -594,11 +594,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           if (currUserIntent.replicationFactor != 1) {
             createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
-            createChangeConfigTask(
-                node,
-                false /* isAdd */,
-                SubTaskGroupType.ChangeInstanceType,
-                true /* useHostPort */);
+            createChangeConfigTask(node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType);
           }
         }
 

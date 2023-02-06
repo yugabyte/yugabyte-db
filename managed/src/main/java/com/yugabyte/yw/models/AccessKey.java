@@ -10,6 +10,8 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.Query;
@@ -28,6 +30,7 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.ManyToOne;
+import lombok.Data;
 import lombok.Getter;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.time.DateUtils;
@@ -39,6 +42,8 @@ import play.data.validation.Constraints;
         "Access key for the cloud provider. This helps to "
             + "authenticate the user and get access to the provider.")
 public class AccessKey extends Model {
+
+  @Data
   public static class MigratedKeyInfoFields {
     // Below fields are moved to provider details
     @ApiModelProperty public String sshUser;
@@ -82,6 +87,12 @@ public class AccessKey extends Model {
     @ApiModelProperty public String vaultPasswordFile;
     @ApiModelProperty public String vaultFile;
     @ApiModelProperty public boolean deleteRemote = true;
+    @ApiModelProperty public String keyPairName;
+    @ApiModelProperty public String sshPrivateKeyContent;
+
+    public String getSshPrivateKeyContent() {
+      return CommonUtils.getMaskedValue(sshPrivateKeyContent);
+    }
   }
 
   public static String getDefaultKeyCode(Provider provider) {
@@ -130,12 +141,18 @@ public class AccessKey extends Model {
   @ApiModelProperty(required = false, hidden = true)
   @JsonIgnore
   public String getKeyCode() {
+    if (this.idKey == null) {
+      return null;
+    }
     return this.idKey.keyCode;
   }
 
   @ApiModelProperty(required = false, hidden = true)
   @JsonIgnore
   public UUID getProviderUUID() {
+    if (this.idKey == null) {
+      return null;
+    }
     return this.idKey.providerUUID;
   }
 
@@ -162,7 +179,7 @@ public class AccessKey extends Model {
       } else {
         keyInfo.mergeFrom(new ProviderDetails());
       }
-    } catch (PlatformServiceException e) {
+    } catch (Exception e) {
       // Pass
     }
     return this.keyInfo;

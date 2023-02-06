@@ -93,12 +93,6 @@ ReplicaState::ReplicaState(
   }
 
   CHECK(IsAcceptableAtomicImpl(leader_state_cache_));
-
-  // Actually we don't need this lock, but GetActiveRoleUnlocked checks that we are holding the
-  // lock.
-  auto lock = LockForRead();
-  CoarseTimePoint now;
-  RefreshLeaderStateCacheUnlocked(&now);
 }
 
 ReplicaState::~ReplicaState() {
@@ -106,6 +100,9 @@ ReplicaState::~ReplicaState() {
 
 Status ReplicaState::StartUnlocked(const OpIdPB& last_id_in_wal) {
   DCHECK(IsLocked());
+
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
 
   // Our last persisted term can be higher than the last persisted operation
   // (i.e. if we called an election) but reverse should never happen.
@@ -901,7 +898,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
     auto current_id = round->id();
 
     if (PREDICT_TRUE(prev_id)) {
-      CHECK_OK(CheckOpInSequence(prev_id, current_id));
+      CHECK_OK_PREPEND(CheckOpInSequence(prev_id, current_id), LogPrefix());
     }
 
     if (current_id.index > committed_op_id.index) {
@@ -1042,8 +1039,16 @@ void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {
       << ", Trace:" << std::endl << (trace ? trace->DumpToString(true) : "No trace found");
 
   last_received_op_id_ = op_id;
-  last_received_op_id_current_leader_ = op_id;
   next_index_ = op_id.index + 1;
+  last_received_op_id_current_leader_ = op_id;
+}
+
+void ReplicaState::UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(const OpId& op_id) {
+  if (last_received_op_id_current_leader_.empty()) {
+    VLOG_WITH_PREFIX(0) << __func__ << " Updating last_received opid from "
+      << last_received_op_id_current_leader_.ToString() << " to " << op_id.ToString();
+    last_received_op_id_current_leader_ = op_id;
+  }
 }
 
 const yb::OpId& ReplicaState::GetLastReceivedOpIdUnlocked() const {

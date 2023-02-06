@@ -1024,7 +1024,7 @@ bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
-bool yb_bypass_cond_recheck = false;
+bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
@@ -1042,7 +1042,7 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
-char *yb_test_block_index_state_change = "";
+char *yb_test_block_index_phase = "";
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
@@ -1305,6 +1305,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_YbCreateProfileStmt:
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
+		case T_CreatedbStmt:
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
 		case T_CommentStmt: // COMMENT (create new comment)
 		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP affects only objects of current connection
@@ -1335,13 +1336,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			}
 
 			*is_catalog_version_increment = false;
-			*is_breaking_catalog_change = false;
-			break;
-		}
-		case T_CreatedbStmt:
-		{
-			*is_catalog_version_increment =
-				*YBCGetGFlags()->ysql_enable_read_request_caching;
 			*is_breaking_catalog_change = false;
 			break;
 		}

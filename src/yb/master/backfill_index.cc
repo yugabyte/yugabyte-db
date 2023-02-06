@@ -248,6 +248,11 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
   uint32_t current_version = l->pb.version();
   if (expected_version && *expected_version != current_version) {
     return STATUS(AlreadyPresent, "Table has already moved to a different version.");
+  } else if (!l->is_running()) {
+    LOG(WARNING) << __func__ << ": The table state is " << l->state_name() << " will stop backfill";
+    return STATUS_SUBSTITUTE(
+        IllegalState, "Table $0 is not in ALTERING or RUNNING state: $1",
+        table->ToString(), l->state_name());
   }
   l.mutable_data()->pb.clear_fully_applied_schema();
   l.mutable_data()->pb.clear_fully_applied_schema_version();
@@ -299,6 +304,12 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
       return STATUS_SUBSTITUTE(
           AlreadyPresent, "Schema was already updated to $0 before we got to it (expected $1).",
           indexed_table_pb.version(), *current_version);
+    } else if (!indexed_table_data.is_running()) {
+      LOG(WARNING) << __func__ << ": The table state is " << indexed_table_data.state_name()
+                   << " will stop backfill";
+      return STATUS_SUBSTITUTE(
+          IllegalState, "Table $0 is not in ALTERING or RUNNING state: $1",
+          indexed_table->ToString(), indexed_table_data.state_name());
     }
 
     CopySchemaDetailsToFullyApplied(&indexed_table_pb);
@@ -869,7 +880,8 @@ Status BackfillTable::WaitForTabletSplitting() {
   CoarseTimePoint deadline = CoarseMonoClock::Now() +
                              FLAGS_index_backfill_tablet_split_completion_timeout_sec * 1s;
   while (!tablet_split_manager->IsTabletSplittingComplete(*indexed_table_,
-                                                          false /* wait_for_parent_deletion */)) {
+                                                          false /* wait_for_parent_deletion */,
+                                                          deadline)) {
     if (CoarseMonoClock::Now() > deadline) {
       return STATUS(TimedOut, "Tablet splitting did not complete after being disabled; cannot "
                               "safely backfill the index.");
@@ -979,6 +991,11 @@ Status BackfillTable::MarkIndexesAsDesired(
           idx_pb->clear_backfill_error_message();
         }
         idx_pb->clear_is_backfill_deferred();
+        // We clear the backfill job upon completion - however, we want to persist the number
+        // of indexed table rows completed, so we record the information in the index info PB.
+        // For partial indexes, the number of rows processed includes non-matching rows of
+        // the indexed table.
+        idx_pb->set_num_rows_processed_by_backfill_job(number_rows_processed_);
       }
     }
     RETURN_NOT_OK(
@@ -1038,7 +1055,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
       MultiStageAlterTable::UpdateIndexPermission(
           master_->catalog_manager_impl(), indexed_table_, permissions_to_set, boost::none),
       "Could not update permissions after backfill. "
-      "Possible that the master-leader has changed.");
+      "Possible that the master-leader has changed, or the table was deleted.");
   backfill_job_->SetState(
       all_success ? MonitoredTaskState::kComplete : MonitoredTaskState::kFailed);
   RETURN_NOT_OK(ClearCheckpointStateInTablets());

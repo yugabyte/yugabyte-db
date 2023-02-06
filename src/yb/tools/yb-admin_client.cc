@@ -68,6 +68,7 @@
 #include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
@@ -151,10 +152,6 @@ namespace {
 
 static constexpr const char* kRpcHostPortHeading = "RPC Host/Port";
 static constexpr const char* kBroadcastHeading = "Broadcast Host/Port";
-static constexpr const char* kDBTypePrefixUnknown = "unknown";
-static constexpr const char* kDBTypePrefixCql = "ycql";
-static constexpr const char* kDBTypePrefixYsql = "ysql";
-static constexpr const char* kDBTypePrefixRedis = "yedis";
 static constexpr const char* kTableIDPrefix = "tableid";
 
 string FormatFirstHostPort(
@@ -201,17 +198,6 @@ Result<Response> ResponseResult(Response&& response,
     typename std::enable_if<!HasMemberFunctionHasError<Response>, void*>::type = nullptr) {
   // Response has no has_error method, nothing to check
   return std::move(response);
-}
-
-const char* DatabasePrefix(YQLDatabase db) {
-  switch(db) {
-    case YQL_DATABASE_UNKNOWN: break;
-    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
-    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
-    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
-  }
-  CHECK(false) << "Unexpected db type " << db;
-  return kDBTypePrefixUnknown;
 }
 
 Result<TypedNamespaceName> ResolveNamespaceName(
@@ -1266,7 +1252,7 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
     if (include_db_type) {
       const auto db_type_iter = namespace_metadata.find(table.namespace_id());
       if (db_type_iter != namespace_metadata.end()) {
-        str << DatabasePrefix(db_type_iter->second.database_type()) << '.';
+        str << DatabasePrefix(db_type_iter->second.id.database_type()) << '.';
       } else {
         LOG(WARNING) << "Table in unknown namespace found " << table.ToString();
         continue;
@@ -1488,6 +1474,30 @@ Status ClusterAdminClient::DeleteIndexById(const TableId& table_id) {
   RETURN_NOT_OK(yb_client_->DeleteIndexTable(table_id, &indexed_table_name));
   cout << "Deleted index " << table_id << " from table " <<
       indexed_table_name.ToString() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListAllNamespaces() {
+  cout << "name | UUID | language | state | colocated" << endl << endl;
+  const auto namespaces = VERIFY_RESULT_REF(GetNamespaceMap());
+  const auto list_namespaces = [&] (bool for_system_namespace) -> void {
+    cout << (for_system_namespace ? "System Namespaces:" : "User Namespaces:") << endl;
+    for (const auto& namespace_info_pair : namespaces) {
+      const auto namespace_info = namespace_info_pair.second;
+      if (for_system_namespace == master::IsSystemNamespace(namespace_info.id.name())) {
+        cout << namespace_info.id.name()
+        << " " << namespace_info.id.id()
+        << " " << DatabasePrefix(namespace_info.id.database_type())
+        << " " << SysNamespaceEntryPB_State_Name(namespace_info.state)
+        << " " << (namespace_info.colocated ? "true" : "false")
+        << endl;
+      }
+    }
+  };
+
+  list_namespaces(false /* for_system_namespace */);
+  cout << endl;
+  list_namespaces(true /* for_system_namespace */);
   return Status::OK();
 }
 
@@ -2123,8 +2133,9 @@ Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInf
       "Resolving namespace id for '$0' of type '$1'", namespace_name, DatabasePrefix(db_type));
   for (const auto& item : VERIFY_RESULT_REF(GetNamespaceMap())) {
     const auto& namespace_info = item.second;
-    if (namespace_info.database_type() == db_type && namespace_name == namespace_info.name()) {
-      return namespace_info;
+    if (namespace_info.id.database_type() == db_type &&
+        namespace_name == namespace_info.id.name()) {
+      return namespace_info.id;
     }
   }
   return STATUS_FORMAT(
@@ -2162,10 +2173,12 @@ Status ClusterAdminClient::DisableTabletSplitting(
 }
 
 Result<master::IsTabletSplittingCompleteResponsePB>
-    ClusterAdminClient::IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion) {
+    ClusterAdminClient::IsTabletSplittingCompleteInternal(
+    bool wait_for_parent_deletion, const MonoDelta timeout) {
   master::IsTabletSplittingCompleteRequestPB req;
   req.set_wait_for_parent_deletion(wait_for_parent_deletion);
-  return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req);
+  return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req,
+      nullptr /* error_message */, timeout);
 }
 
 Status ClusterAdminClient::IsTabletSplittingComplete(bool wait_for_parent_deletion) {
@@ -2185,9 +2198,9 @@ Status ClusterAdminClient::AddTransactionStatusTablet(const TableId& table_id) {
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
-    const Object& obj, const Request& req, const char* error_message) {
+    const Object& obj, const Request& req, const char* error_message, const MonoDelta timeout) {
   rpc::RpcController rpc;
-  rpc.set_timeout(timeout_);
+  rpc.set_timeout(timeout.Initialized() ? timeout : timeout_);
   Response response;
   auto result = (obj.*func)(req, &response, &rpc);
   if (error_message) {
@@ -2201,15 +2214,16 @@ Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpc(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
-    const Object& obj, const Request& req, const char* error_message) {
-  return ResponseResult(VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message)));
+    const Object& obj, const Request& req, const char* error_message, const MonoDelta timeout) {
+  return ResponseResult(
+      VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message, timeout)));
 }
 
 Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespaceMap() {
   if (namespace_map_.empty()) {
     auto v = VERIFY_RESULT(yb_client_->ListNamespaces());
     for (auto& ns : v) {
-      auto ns_id = ns.id();
+      auto ns_id = ns.id.id();
       namespace_map_.emplace(std::move(ns_id), std::move(ns));
     }
   }
@@ -2218,8 +2232,13 @@ Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespace
 
 Result<TableNameResolver> ClusterAdminClient::BuildTableNameResolver(
     TableNameResolver::Values* tables) {
+      const auto namespaces = VERIFY_RESULT(yb_client_->ListNamespaces());
+      vector<master::NamespaceIdentifierPB> namespace_ids;
+      for (const auto& ns : namespaces) {
+        namespace_ids.push_back(ns.id);
+      }
   return TableNameResolver(
-      tables, VERIFY_RESULT(yb_client_->ListTables()), VERIFY_RESULT(yb_client_->ListNamespaces()));
+      tables, VERIFY_RESULT(yb_client_->ListTables()), std::move(namespace_ids));
 }
 
 string RightPadToUuidWidth(const string &s) {

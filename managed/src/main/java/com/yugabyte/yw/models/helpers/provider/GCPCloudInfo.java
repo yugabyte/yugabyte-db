@@ -12,8 +12,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
+import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 

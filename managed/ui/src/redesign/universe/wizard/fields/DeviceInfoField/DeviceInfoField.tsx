@@ -10,7 +10,6 @@ import { I18n } from '../../../../uikit/I18n/I18n';
 import { WizardContext } from '../../UniverseWizard';
 import { api, QUERY_KEY } from '../../../../helpers/api';
 import { Select } from '../../../../uikit/Select/Select';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import './DeviceInfoField.scss';
 
 interface StorageTypeOption {
@@ -109,13 +108,9 @@ export const DeviceInfoField: FC = () => {
       control={control}
       name={FIELD_NAME}
       rules={{ validate }}
-      render={({
-        onChange,
-        onBlur,
-        value: deviceInfoFormValue
-      }: ControllerRenderProps<DeviceInfo | null>) => (
+      render={({ field }) => (
         <>
-          {deviceInfoFormValue && (
+          {field.value && (
             <Row className="device-info-field__row">
               <Col sm={2}>
                 <I18n className="device-info-field__label">Volume Info</I18n>
@@ -129,11 +124,11 @@ export const DeviceInfoField: FC = () => {
                       disabled={formData.cloudConfig.provider?.code === CloudType.onprem}
                       min={1}
                       className="device-info-field__num-input"
-                      onBlur={onBlur}
-                      value={deviceInfoFormValue.numVolumes}
+                      onBlur={field.onBlur}
+                      value={field.value.numVolumes}
                       onChange={(event) => {
                         const numVolumes = Number(event.target.value.replace(/\D/g, ''));
-                        if (numVolumes > 0) onChange({ ...deviceInfoFormValue, numVolumes });
+                        if (numVolumes > 0) field.onChange({ ...field.value, numVolumes });
                       }}
                     />
                     <span className="device-info-field__x-symbol" />
@@ -146,16 +141,16 @@ export const DeviceInfoField: FC = () => {
                       }
                       min={1}
                       className="device-info-field__num-input"
-                      onBlur={onBlur}
-                      value={deviceInfoFormValue.volumeSize}
+                      onBlur={field.onBlur}
+                      value={field.value.volumeSize}
                       onChange={(event) => {
                         const volumeSize = Number(event.target.value.replace(/\D/g, ''));
-                        if (volumeSize > 0) onChange({ ...deviceInfoFormValue, volumeSize });
+                        if (volumeSize > 0) field.onChange({ ...field.value, volumeSize });
                       }}
                     />
                   </div>
 
-                  {deviceInfoFormValue.storageType && (
+                  {field.value.storageType && (
                     <div className="device-info-field__inputs-block device-info-field__inputs-block--storage-type">
                       <I18n className="device-info-field__label device-info-field__label--margin-right">
                         {formData.cloudConfig.provider?.code === CloudType.aws
@@ -168,67 +163,76 @@ export const DeviceInfoField: FC = () => {
                         isDisabled={false}
                         className="device-info-field__storage-type"
                         value={getStorageTypeOptions(formData.cloudConfig.provider?.code).find(
-                          (item) => item.value === deviceInfoFormValue.storageType
+                          (item) => item.value === field?.value?.storageType
                         )}
-                        onBlur={onBlur}
+                        onBlur={field.onBlur}
                         onChange={(selection) => {
                           const storageType = (selection as StorageTypeOption).value;
                           if (storageType === StorageType.IO1) {
-                            onChange({
-                              ...deviceInfoFormValue,
+                            field.onChange({
+                              ...field.value,
                               diskIops: DEFAULT_IOPS_IO1,
                               throughput: null,
                               storageType
                             });
                           } else if (storageType === StorageType.GP3) {
-                            onChange({
-                              ...deviceInfoFormValue,
+                            field.onChange({
+                              ...field.value,
                               diskIops: DEFAULT_IOPS_GP3,
                               throughput: DEFAULT_THROUGHPUT_GP3,
                               storageType
                             });
                           } else {
-                            onChange({
-                              ...deviceInfoFormValue,
+                            field.onChange({
+                              ...field.value,
                               diskIops: null,
                               throughput: null,
-                              storageType });
+                              storageType
+                            });
                           }
                         }}
                         options={getStorageTypeOptions(formData.cloudConfig.provider?.code)}
                       />
 
-                      {(deviceInfoFormValue.storageType === StorageType.IO1 ||
-                        deviceInfoFormValue.storageType === StorageType.GP3) && (
+                      {(field.value.storageType === StorageType.IO1 ||
+                        field.value.storageType === StorageType.GP3) && (
                         <>
-                          <I18n className="device-info-field__label device-info-field__label--margin-right">Provisioned IOPS</I18n>
+                          <I18n className="device-info-field__label device-info-field__label--margin-right">
+                            Provisioned IOPS
+                          </I18n>
                           <Input
                             type="number"
                             min={1}
                             className="device-info-field__num-input"
-                            onBlur={onBlur}
-                            value={deviceInfoFormValue.diskIops ||
-                              (deviceInfoFormValue.storageType === StorageType.IO1 ? DEFAULT_IOPS_IO1 : DEFAULT_IOPS_GP3)}
+                            onBlur={field.onBlur}
+                            value={
+                              field.value.diskIops ||
+                              (field.value.storageType === StorageType.IO1
+                                ? DEFAULT_IOPS_IO1
+                                : DEFAULT_IOPS_GP3)
+                            }
                             onChange={(event) => {
                               const diskIops = Number(event.target.value.replace(/\D/g, ''));
-                              onChange({ ...deviceInfoFormValue, diskIops });
+                              field.onChange({ ...field.value, diskIops });
                             }}
                           />
                         </>
                       )}
 
-                      {(deviceInfoFormValue.storageType === StorageType.GP3) && (
+                      {field.value.storageType === StorageType.GP3 && (
                         <>
-                          <I18n className="device-info-field__label device-info-field__label--margin-right">Provisioned Throughput (MiB/sec)</I18n>
+                          <I18n className="device-info-field__label device-info-field__label--margin-right">
+                            Provisioned Throughput (MiB/sec)
+                          </I18n>
                           <Input
                             type="number"
                             min={1}
                             className="device-info-field__num-input"
-                            onBlur={onBlur}
-                            value={deviceInfoFormValue.throughput || DEFAULT_THROUGHPUT_GP3}
+                            onBlur={field.onBlur}
+                            value={field.value.throughput || DEFAULT_THROUGHPUT_GP3}
                             onChange={(event) => {
                               const throughput = Number(event.target.value.replace(/\D/g, ''));
-                              onChange({ ...deviceInfoFormValue, throughput });
+                              field.onChange({ ...field.value, throughput });
                             }}
                           />
                         </>

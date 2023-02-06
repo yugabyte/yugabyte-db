@@ -605,7 +605,7 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
 
 YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
                                   YbTableProperties properties) {
-  CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
+  CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionListSize();
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
   properties->tablegroup_oid = table_desc->GetTablegroupOid();
@@ -646,14 +646,14 @@ static Status GetSplitPoints(YBCPgTableDesc table_desc,
   const Schema& schema = table_desc->schema();
   const auto& column_ids = table_desc->partition_schema().range_schema().column_ids;
   size_t num_range_key_columns = table_desc->num_range_key_columns();
-  size_t num_splits = table_desc->GetPartitionCount() - 1;
+  size_t num_splits = table_desc->GetPartitionListSize() - 1;
   docdb::KeyEntryValue v;
 
   // decode DocKeys
-  const auto& partitions_bounds = table_desc->GetPartitions();
+  const auto& partitions_bounds = table_desc->GetPartitionList();
   for (size_t split_idx = 0; split_idx < num_splits; ++split_idx) {
     // +1 skip the first empty string lower bound partition key
-    const std::string& column_bounds = partitions_bounds[split_idx + 1];
+    const auto& column_bounds = (partitions_bounds)[split_idx + 1];
     docdb::DocKeyDecoder decoder(column_bounds);
 
     for (size_t col_idx = 0; col_idx < num_range_key_columns; ++col_idx) {
@@ -1423,6 +1423,16 @@ void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t
   pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
+YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
+                                      uint64_t** backfill_statuses,
+                                      int num_indexes) {
+  std::vector<PgObjectId> index_ids;
+  for (int i = 0; i < num_indexes; ++i) {
+    index_ids.emplace_back(PgObjectId(database_oids[i], index_oids[i]));
+  }
+  return ToYBCStatus(pgapi->GetIndexBackfillProgress(index_ids, backfill_statuses));
+}
+
 //------------------------------------------------------------------------------------------------
 // Thread-local variables.
 //------------------------------------------------------------------------------------------------
@@ -1463,8 +1473,9 @@ const void* YBCPgGetThreadLocalErrMsg() {
   return PgGetThreadLocalErrMsg();
 }
 
-void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
-  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version);
+void YBCStartSysTablePrefetching(
+    uint64_t latest_known_ysql_catalog_version, bool should_use_cache) {
+  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version, should_use_cache);
 }
 
 void YBCStopSysTablePrefetching() {

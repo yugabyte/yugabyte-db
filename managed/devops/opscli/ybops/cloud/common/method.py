@@ -1027,6 +1027,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
     CERT_ROTATE_ACTIONS = ['APPEND_NEW_ROOT_CERT', 'ROTATE_CERTS',
                            'REMOVE_OLD_ROOT_CERT', 'UPDATE_CERT_DIRS']
     SKIP_CERT_VALIDATION_OPTIONS = ['ALL', 'HOSTNAME']
+    # Child files and directories for master.
+    MASTER_STATE_DIRS = ['wals', 'data', 'consensus-meta', 'instance',
+                         'auto_flags_config', 'tablet-meta']
 
     def __init__(self, base_command):
         super(ConfigureInstancesMethod, self).__init__(base_command, "configure")
@@ -1096,6 +1099,10 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         # Development flag for itests.
         self.parser.add_argument('--itest_s3_package_path',
                                  help="Path to download packages for itest. Only for AWS/onprem.")
+        self.parser.add_argument('--reset_master_state',
+                                 help="Reset master state by deleting old files and directories.",
+                                 action="store_true",
+                                 default=False)
 
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
@@ -1389,6 +1396,20 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.encryption_key_source_file, args.encryption_key_target_dir))
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
+        if args.reset_master_state and args.extra_gflags is not None:
+            delete_paths = []
+            extra_gflags = self.extra_vars.get('extra_gflags')
+            if extra_gflags is not None:
+                fs_data_dirs_str = extra_gflags.get('fs_data_dirs')
+                if fs_data_dirs_str is not None:
+                    fs_data_dirs = fs_data_dirs_str.split(",")
+                    for fs_data_dir in fs_data_dirs:
+                        for state_dir in self.MASTER_STATE_DIRS:
+                            # Example path is /mnt/d0/yb-data/master/wals.
+                            path = os.path.join(fs_data_dir, 'yb-data', 'master', state_dir)
+                            delete_paths.append(path)
+            if delete_paths:
+                self.extra_vars["delete_paths"] = delete_paths
         # If we are just rotating certs, we don't need to do any configuration changes.
         if not rotate_certs:
             self.cloud.setup_ansible(args).run(
@@ -1437,8 +1458,8 @@ class ControlInstanceMethod(AbstractInstancesMethod):
                 args.search_pattern, host_info['server_type'],
                 self.YB_SERVER_TYPE))
 
-        # Skip if instance is not running.
-        if not host_info.get("is_running", True):
+        # Skip if instance is not running and command is stopping process.
+        if not host_info.get("is_running", True) and self.name == "stop":
             logging.info(
                 "Skipping ctl command %s for process: %s due to node not in running state",
                 self.name, self.base_command.name)

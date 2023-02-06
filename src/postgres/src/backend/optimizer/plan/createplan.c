@@ -4741,6 +4741,11 @@ create_nestloop_plan(PlannerInfo *root,
 	bms_free(root->yb_cur_batched_relids);
 	root->yb_cur_batched_relids = prev_yb_cur_batched_relids;
 
+	/* restore availBatchedRelids */
+	if (yb_is_batched)
+		root->yb_availBatchedRelids =
+			list_delete_first(root->yb_availBatchedRelids);
+
 	/* Restore curOuterRels */
 	bms_free(root->curOuterRels);
 	root->curOuterRels = saveOuterRels;

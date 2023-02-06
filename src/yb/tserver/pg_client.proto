@@ -46,7 +46,11 @@ service PgClientService {
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
+  rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
+      returns (PgGetIndexBackfillProgressResponsePB);
   rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
+  rpc GetTablePartitionList(PgGetTablePartitionListRequestPB)
+      returns (PgGetTablePartitionListResponsePB);
   rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   };
@@ -304,6 +308,17 @@ message PgLiveTabletServerPB {
   uint32 pg_port = 9;
 }
 
+message PgGetIndexBackfillProgressRequestPB {
+ repeated PgObjectIdPB index_ids = 1;
+}
+
+message PgGetIndexBackfillProgressResponsePB {
+  AppStatusPB status = 1;
+  // The ordering of the indexes' results here is expected to be the same as the ordering in the
+  // corresponding request PB (PgGetIndexBackfillProgressRequestPB).
+  repeated uint64 rows_processed_entries = 2;
+}
+
 message PgListLiveTabletServersResponsePB {
   AppStatusPB status = 1;
   repeated PgLiveTabletServerPB servers = 2;
@@ -325,6 +340,15 @@ message PgOpenTableResponsePB {
 
   master.GetTableSchemaResponsePB info = 2;
   PgTablePartitionsPB partitions = 3;
+}
+
+message PgGetTablePartitionListRequestPB {
+  string table_id = 1;
+}
+
+message PgGetTablePartitionListResponsePB {
+  AppStatusPB status = 1;
+  PgTablePartitionsPB partitions = 2;
 }
 
 message PgPerformOpPB {

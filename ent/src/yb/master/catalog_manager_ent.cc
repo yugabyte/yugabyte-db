@@ -18,6 +18,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/master/catalog_entity_info.h"
@@ -3171,12 +3172,12 @@ Status CatalogManager::RestoreSnapshotSchedule(
       MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
 
   // Disable splitting and then wait for all pending splits to complete before starting restoration.
-  DisableTabletSplittingInternal(disable_duration_ms, "PITR");
+  DisableTabletSplittingInternal(disable_duration_ms, kPitrFeatureName);
 
   bool inflight_splits_finished = false;
   while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
     // Wait for existing split operations to complete.
-    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */)) {
+    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */, deadline)) {
       inflight_splits_finished = true;
       break;
     }
@@ -3184,7 +3185,7 @@ Status CatalogManager::RestoreSnapshotSchedule(
   }
 
   if (!inflight_splits_finished) {
-    EnableTabletSplitting("PITR");
+    ReenableTabletSplitting(kPitrFeatureName);
     return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
   }
 
@@ -8201,8 +8202,8 @@ void CatalogManager::PrepareRestore() {
   is_catalog_loaded_ = false;
 }
 
-void CatalogManager::EnableTabletSplitting(const std::string& feature) {
-  DisableTabletSplittingInternal(MonoDelta::FromMilliseconds(0), feature);
+void CatalogManager::ReenableTabletSplitting(const std::string& feature) {
+  super::ReenableTabletSplittingInternal(feature);
 }
 
 void CatalogManager::ScheduleXClusterNSReplicationAddTableTask() {

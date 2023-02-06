@@ -24,7 +24,6 @@ import com.google.common.base.Strings;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
-import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
@@ -62,6 +61,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -77,7 +77,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.persistence.PersistenceException;
@@ -430,10 +429,12 @@ public class CloudProviderHandler {
   private void updateGCPProviderConfig(Provider provider, Map<String, String> config) {
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
     JsonNode gcpCredentials = gcpCloudInfo.gceApplicationCredentials;
-    String gcpCredentialsFile =
-        accessManager.createGCPCredentialsFile(provider.uuid, gcpCredentials);
-    if (gcpCredentialsFile != null) {
-      gcpCloudInfo.setGceApplicationCredentialsPath(gcpCredentialsFile);
+    if (gcpCredentials != null) {
+      String gcpCredentialsFile =
+          accessManager.createGCPCredentialsFile(provider.uuid, gcpCredentials);
+      if (gcpCredentialsFile != null) {
+        gcpCloudInfo.setGceApplicationCredentialsPath(gcpCredentialsFile);
+      }
     }
     if (!config.isEmpty()) {
       if (config.containsKey(GCPCloudImpl.GCE_PROJECT_PROPERTY)) {
@@ -623,7 +624,8 @@ public class CloudProviderHandler {
     if (taskParams.perRegionMetadata == null) {
       taskParams.perRegionMetadata = new HashMap<>();
     }
-    if (taskParams.perRegionMetadata.isEmpty()) {
+    if (taskParams.perRegionMetadata.isEmpty()
+        && !provider.getCloudCode().equals(Common.CloudType.onprem)) {
       List<String> regionCodes = queryHelper.getRegionCodes(provider);
       for (String regionCode : regionCodes) {
         taskParams.perRegionMetadata.put(regionCode, new CloudBootstrap.Params.PerRegionMetadata());
@@ -729,13 +731,23 @@ public class CloudProviderHandler {
       String anyProviderRegion,
       Set<Region> regionsToAdd) {
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(editProviderReq);
-    boolean updatedProviderConfig =
-        maybeUpdateCloudProviderConfig(provider, providerConfig, anyProviderRegion);
-    boolean updatedKubeConfig = maybeUpdateKubeConfig(provider, providerConfig);
-    boolean providerDataUpdated = updatedProviderConfig || updatedKubeConfig;
-    if (providerDataUpdated) {
-      provider.save();
+    Map<String, String> existingConfigMap = CloudInfoInterface.fetchEnvVars(provider);
+    boolean updatedProviderDetails = false;
+    boolean updatedProviderConfig = false;
+    if (!provider.details.equals(editProviderReq.details)) {
+      updatedProviderDetails = true;
+      provider.details = editProviderReq.details;
     }
+    if (!existingConfigMap.equals(providerConfig)) {
+      provider.details.cloudInfo = editProviderReq.details.cloudInfo;
+      updatedProviderConfig =
+          maybeUpdateCloudProviderConfig(provider, providerConfig, anyProviderRegion);
+    }
+    boolean updatedKubeConfig = maybeUpdateKubeConfig(provider, providerConfig);
+    boolean providerDataUpdated =
+        updatedProviderConfig || updatedKubeConfig || updatedProviderDetails;
+
+    provider.save();
     return providerDataUpdated;
   }
 
@@ -785,24 +797,6 @@ public class CloudProviderHandler {
       return true;
     }
     return false;
-  }
-
-  // Merges the config from a provider to another provider.
-  // Only the non-existing config keys are copied.
-  public void mergeProviderConfig(Provider fromProvider, Provider toProvider) {
-    Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(toProvider);
-    if (MapUtils.isEmpty(providerConfig)) {
-      return;
-    }
-    Map<String, String> existingConfig = CloudInfoInterface.fetchEnvVars(fromProvider);
-    Set<String> unknownKeys = Sets.difference(providerConfig.keySet(), existingConfig.keySet());
-    if (!unknownKeys.isEmpty()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, " Unknown keys found: " + new TreeSet<>(unknownKeys));
-    }
-    existingConfig = new HashMap<>(existingConfig);
-    existingConfig.putAll(providerConfig);
-    CloudInfoInterface.setCloudProviderInfoFromConfig(toProvider, existingConfig);
   }
 
   private void maybeUpdateVPC(Provider provider) {
