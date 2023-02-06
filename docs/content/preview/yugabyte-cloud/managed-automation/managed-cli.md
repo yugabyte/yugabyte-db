@@ -17,9 +17,9 @@ rightNav:
 
 ## Overview
 
-The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-cli) (YBM CLI) is an open source tool that enables you to interact with YugabyteDB Managed accounts using commands in your command-line shell. With minimal configuration, the CLI enables you to start running commands that implement functionality equivalent to that provided by the browser-based YugabyteDB Managed interface from the command prompt in your shell.
+The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-cli) (ybm-cli) is an open source tool that enables you to interact with YugabyteDB Managed accounts using commands in your command-line shell. With minimal configuration, the CLI enables you to start running commands that implement functionality equivalent to that provided by the browser-based YugabyteDB Managed interface from the command prompt in your shell.
 
-You can install the YugabyteDB Managed CLI using any of the following methods:
+You can install ybm-cli using any of the following methods:
 
 Using Docker:
 
@@ -66,7 +66,7 @@ For convenience, you can configure ybm-cli with default values for these flags a
 
   By default, this writes the values to the file `.ybm-cli.yaml` under your `$HOME` directory.
 
-  To switch between multiple configurations while using ybm-cli, you can specify the configuration file by using the `--config` flag. For example:
+  To switch between multiple configurations while using ybm-cli, use the `--config` flag to specify the configuration file. For example, to use a configuration file named `.ybm-cli-portal.yaml` instead of the default configuration, execute the following command:
 
   ```sh
   ybm --config ~/.ybm-cli-portal.yaml cluster get
