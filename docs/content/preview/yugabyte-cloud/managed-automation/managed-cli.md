@@ -17,7 +17,7 @@ rightNav:
 
 ## Overview
 
-The YugabyteDB Managed Command Line Interface (YBM CLI) is an open source tool that enables you to interact with YugabyteDB Managed accounts using commands in your command-line shell. With minimal configuration, the CLI enables you to start running commands that implement functionality equivalent to that provided by the browser-based YugabyteDB Managed interface from the command prompt in your shell.
+The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-cli) (YBM CLI) is an open source tool that enables you to interact with YugabyteDB Managed accounts using commands in your command-line shell. With minimal configuration, the CLI enables you to start running commands that implement functionality equivalent to that provided by the browser-based YugabyteDB Managed interface from the command prompt in your shell.
 
 You can install the YugabyteDB Managed CLI using any of the following methods:
 
@@ -46,22 +46,30 @@ If you have wget, you can use the following:
 wget -q -O - https://downloads.yugabyte.com/get_ybm_cli.sh | sh
 ```
 
-## Setup
+## Global configuration
 
 Using ybm-cli requires providing, at minimum, an [API key](../managed-apikeys/) and the host address.
 
-You can pass these values as flags. For example:
+You can pass these values as flags when running ybm-cli commands. For example:
 
 ```sh
 ybm --apikey AWERDFSSS --host cloud.yugabyte.com cluster get
 ```
 
-For convenience, configure `ybm-cli` with default values for these flags as follows:
+For convenience, you can configure ybm-cli with default values for these flags as follows:
 
-- Using a configuration file called `.ybm-cli.yaml` under your `$HOME` directory. You can use the command `ybm configure` to set up the file. For example:
+- Use the `configure` command to write these values to a YAML configuration file. For example:
 
   ```sh
   ybm configure --apikey AWERDFSSS --host cloud.yugabyte.com
+  ```
+
+  By default, this writes the values to the file `.ybm-cli.yaml` under your `$HOME` directory.
+
+  To switch between multiple configurations while using ybm-cli, you can specify the configuration file by using the `--config` flag. For example:
+
+  ```sh
+  ybm --config ~/.ybm-cli-portal.yaml cluster get
   ```
 
 - Using [environment variables](#environment-variables). Environment variables must begin with `YBM_`. For example:
@@ -69,7 +77,7 @@ For convenience, configure `ybm-cli` with default values for these flags as foll
   ```sh
   export YBM_APIKEY=AWERDFSSS
   export YBM_HOST=cloud.yugabyte.com
-  ybm get cluster
+  ybm cluster get
   ```
 
 By default, `https://` is added to the host if no scheme is provided. To use http, add `http://` to the host.
