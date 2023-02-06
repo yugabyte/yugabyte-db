@@ -622,25 +622,24 @@ class ControlScript(object):
             Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
                 "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
 
-        # to-do: can be removed after multi-region and geo-replicated feature is implemented
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
+        rf_value = self.configs.temp_data.get("replication_factor")
+
         if fault_tolerance == "cloud":
             Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
 
-        join_ip = self.configs.saved_data.get("join")
-        advertise_ip = self.advertise_ip()
-        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
-                                        self.configs.saved_data.get("master_rpc_port"))
         current_masters = self.get_all_masters()
         current_masters = [ master.split(':')[0] for master in current_masters ]
         leader_master = self.get_leader_master().split(':')[0]
+        master_addr = "{}:{}".format(leader_master,
+                                        self.configs.saved_data.get("master_rpc_port"))
 
         leader_master_http_endpoint = "{}:{}".format(leader_master,
                         self.configs.saved_data.get("master_webserver_port"))
         placement_locations = self.get_all_masters_locations(leader_master_http_endpoint)
 
         new_masters = self.get_new_valid_masters(current_masters,
-                leader_master, placement_locations)
+                leader_master, placement_locations, rf_value)
 
         masters_to_remove = [ master for master in current_masters if master not in new_masters ]
         masters_to_add = [ master for master in new_masters if master not in current_masters ]
@@ -648,8 +647,21 @@ class ControlScript(object):
         if not masters_to_remove and not masters_to_add:
             Output.log("Desired fault tolerance is already setup. No Masters to move.")
         else :
-            for i in range(len(masters_to_remove)):
-                self.replace_master(master_addr, masters_to_remove[i], masters_to_add[i])
+            track_masters_to_remove = masters_to_remove
+            track_masters_to_add = masters_to_add
+            if masters_to_remove and masters_to_add:
+                for i in range(len(masters_to_remove)):
+                    self.replace_master(master_addr, masters_to_remove[i], masters_to_add[i])
+                    track_masters_to_remove.remove(masters_to_remove[i])
+                    track_masters_to_add.remove(masters_to_add[i])
+
+            if len(track_masters_to_add) != 0:
+                for master in track_masters_to_add:
+                    self.add_master_for_data_placement(master_addr, master)
+
+            if len(track_masters_to_remove) != 0:
+                for master in track_masters_to_remove:
+                    self.remove_master_for_data_placement(master_addr, master)
 
         current_masters = self.get_all_masters()
         placement_info = self.configs.temp_data.get("constraint_value")
@@ -659,14 +671,13 @@ class ControlScript(object):
                 placement_info.append(placement_locations[master.split(":")[0]])
             placement_info = ",".join(placement_info)
 
-        if not self.is_placement_constraint_valid_length(placement_info):
+        if not self.is_placement_constraint_valid_length(placement_info, rf_value):
             Output.log_error_and_exit("FAILED: Invalid number of placement constraint specified.")
 
         if not self.is_placement_constraint_valid_values(placement_locations, placement_info):
             Output.log_error_and_exit("FAILED: Invalid values provided for placement constraint.")
 
         master_addresses = ",".join(current_masters)
-        rf_value = self.configs.temp_data.get("replication_factor")
 
         if not YBAdminProxy.modify_placement_info(master_addresses, placement_info, rf_value):
             Output.log_error_and_exit("FAILED: Setting of placement info of masters")
@@ -675,8 +686,14 @@ class ControlScript(object):
 
         status_details = {}
         if self.is_master_placement_location_valid(placement_locations, new_masters):
-            success_status = "Universe can survive at least 1 availability {} failure".format(
-                    self.configs.temp_data.get("fault_tolerance"))
+            success_status = ""
+            if fault_tolerance == "zone":
+                success_status = "Universe can survive at least 1 availability {} failure".format(
+                    fault_tolerance)
+            if fault_tolerance == "region":
+                success_status = "Universe can survive at least 1 {} failure".format(
+                        fault_tolerance)
+
             status_details = [(Output.make_yellow("Status"),
             "Configuration successful. Primary data placement is geo-redundant"), ]
             status_details += [
@@ -1864,13 +1881,20 @@ class ControlScript(object):
 
     # Raises a Retryable error if the master is not in the list of master of the cluster
     def get_master_at_addrs(self, master):
-        join_ip = self.configs.saved_data.get("join")
-        advertise_ip = self.advertise_ip()
-        master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
-                                        self.configs.saved_data.get("master_rpc_port"))
 
-        all_masters_and_roles = { m[1].split(":")[0]: m[2]
-                                    for m in YBAdminProxy.get_masters(master_addr) }
+        current_masters = self.configs.saved_data.get("current_masters")
+        all_masters_and_roles = ""
+        if current_masters:
+            all_masters_and_roles = { m[1].split(":")[0]: m[2]
+                                    for m in YBAdminProxy.get_masters(current_masters) }
+        if not all_masters_and_roles:
+            join_ip = self.configs.saved_data.get("join")
+            advertise_ip = self.advertise_ip()
+            master_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                            self.configs.saved_data.get("master_rpc_port"))
+            all_masters_and_roles = { m[1].split(":")[0]: m[2]
+                                        for m in YBAdminProxy.get_masters(master_addr) }
+
         if master in all_masters_and_roles and all_masters_and_roles[master] == "FOLLOWER":
             return True
 
@@ -2028,41 +2052,54 @@ class ControlScript(object):
         return ft_location
 
     # Get new valid master addresses that does not violate fault tolerance policy
-    # if there are not any masters then raise error and output the same
-    def get_new_valid_masters(self, current_masters, leader_master, master_locations):
+    def get_new_valid_masters(self, current_masters, leader_master,
+                              master_locations, replication_factor):
+
         new_master_locations = dict()
         new_master_locations[leader_master] = self.get_cloud_location_per_fault_tolerance(
                                                 master_locations[leader_master])
-        self.get_cloud_location_per_fault_tolerance(master_locations[leader_master])
-
+        # check if the current master's cloud location are already
+        # statisfying the fault tolerance value and replication factor (implied or explicit)
+        # specified in the configure command
         for master in current_masters:
             ft_location = self.get_cloud_location_per_fault_tolerance(master_locations[master])
             if ft_location not in new_master_locations.values():
                 new_master_locations[master] = ft_location
 
-        if len(new_master_locations) == len(current_masters):
+        if len(new_master_locations) == int(replication_factor):
             return new_master_locations.keys()
 
+        # if new masters list is not equal to replication factor,
+        # determine new masters based on the distinct cloud locations
+        # of nodes in the cluster
         for master, location in master_locations.items():
             ft_location = self.get_cloud_location_per_fault_tolerance(location)
             if ft_location not in new_master_locations.values():
                 new_master_locations[master] = ft_location
-            if len(new_master_locations) == len(current_masters):
-                break
+            if len(new_master_locations) == int(replication_factor):
+                return new_master_locations.keys()
 
+        # if new master list is not equal to replication factor after iterating
+        # through the distinct cloud locations, add the existing masters back
+        # to the new master's list for satisfying the replication factor.
         new_valid_masters_list = new_master_locations.keys()
-
-        if len(new_valid_masters_list) != len(current_masters):
+        if len(new_valid_masters_list) != int(replication_factor):
             for master in current_masters:
                 if not master in new_valid_masters_list:
                     new_valid_masters_list.append(master)
-                if len(new_valid_masters_list) == len(current_masters):
+                if len(new_valid_masters_list) == int(replication_factor):
                     break
 
         return new_valid_masters_list
 
     # Replace the old master with a new one to maintain fault tolerance policy
     def replace_master(self, master_addr, old_master, new_master):
+        self.add_master_for_data_placement(master_addr, new_master)
+        self.remove_master_for_data_placement(master_addr, old_master)
+
+    # add a new master computed during configure data_placement command
+    def add_master_for_data_placement(self, master_addr, new_master):
+
         Output.log("Adding master {} to the cluster.".format(new_master))
         if not YBAdminProxy.add_master(master_addr, new_master):
             Output.log_error_and_exit("Failed to add master {} to the cluster."
@@ -2073,6 +2110,9 @@ class ControlScript(object):
         else:
             Output.log("Added master {} to the cluster".format(new_master))
 
+    # remove an master computed during configure data_placement command
+    def remove_master_for_data_placement(self, master_addr, old_master):
+
         Output.log("Removing master {} from the cluster.".format(old_master))
         if not YBAdminProxy.remove_master(master_addr, old_master):
             Output.log_error_and_exit("Failed to remove master {} from the cluster."
@@ -2082,6 +2122,7 @@ class ControlScript(object):
                             .format(old_master))
         else:
             Output.log("Removed master {} from the cluster".format(old_master))
+
 
     # After Master reconsile step is complete, determine if master placement
     # is valid per fault tolerance specified in the configure command
@@ -2130,12 +2171,11 @@ class ControlScript(object):
 
         return is_valid
 
-    def is_placement_constraint_valid_length(self, placement_constraint):
+    def is_placement_constraint_valid_length(self, placement_constraint, replication_factor):
 
         placement_constraint_list = placement_constraint.split(',')
-
         is_valid = True
-        if len(placement_constraint_list) != 3:
+        if len(placement_constraint_list) != int(replication_factor):
             is_valid = False
 
         return is_valid
