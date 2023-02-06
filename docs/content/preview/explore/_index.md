@@ -331,7 +331,6 @@ To start the application against a running local universe, use the following com
 ```sh
 java -jar \
     -Dnode=127.0.0.1 \
-    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a \
     ./yb-workload-sim-0.0.3.jar
 ```
 

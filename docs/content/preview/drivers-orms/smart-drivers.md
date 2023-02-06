@@ -99,7 +99,7 @@ For a database deployment that spans multiple regions, evenly distributing reque
 
 - For connecting to the geographically nearest regions and zones for lower latency and fewer network hops. Typically you would co-locate applications in the regions where your cluster is located. Topology balancing allows you to target only regions where the applications are hosted.
 
-- The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the shard leaders are hosted. In this case, for best performance you want your application to target the preferred locations.
+- The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the tablet leaders are hosted. In this case, for best performance you want your application to target the preferred locations.
 
 You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style).
 
