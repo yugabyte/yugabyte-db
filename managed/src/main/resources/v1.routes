@@ -204,6 +204,10 @@ PUT     /customers/:cUUID/alert_template_settings                              c
 GET     /customers/:cUUID/alert_template_settings                              com.yugabyte.yw.controllers.AlertController.listAlertTemplateSettings(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/alert_template_settings/:settingsUUID                com.yugabyte.yw.controllers.AlertController.deleteAlertTemplateSettings(cUUID: java.util.UUID, settingsUUID: java.util.UUID)
 
+PUT     /customers/:cUUID/alert_template_variables                             com.yugabyte.yw.controllers.AlertController.editAlertTemplateVariables(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alert_template_variables                             com.yugabyte.yw.controllers.AlertController.listAlertTemplateVariables(cUUID: java.util.UUID)
+DELETE  /customers/:cUUID/alert_template_variables/:variableUUID               com.yugabyte.yw.controllers.AlertController.deleteAlertTemplateVariables(cUUID: java.util.UUID, variableUUID: java.util.UUID)
+
 # Maintenance Window API
 GET     /customers/:cUUID/maintenance_windows/:windowUUID                      com.yugabyte.yw.controllers.MaintenanceController.get(cUUID: java.util.UUID, windowUUID: java.util.UUID)
 + forceNoAudit
