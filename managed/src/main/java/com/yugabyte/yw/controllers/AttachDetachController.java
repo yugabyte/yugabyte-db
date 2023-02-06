@@ -27,6 +27,7 @@ import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.UniverseSpec;
+import com.yugabyte.yw.models.XClusterConfig;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -56,6 +57,14 @@ public class AttachDetachController extends AbstractPlatformController {
             config,
             configHelper,
             confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances));
+
+    List<XClusterConfig> xClusterConfigs =
+        XClusterConfig.getByUniverseUuid(universe.getUniverseUUID());
+    if (!xClusterConfigs.isEmpty()) {
+      throw new PlatformServiceException(
+          METHOD_NOT_ALLOWED,
+          "Detach universe currently does not support universes with xcluster replication set up.");
+    }
 
     List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
 
