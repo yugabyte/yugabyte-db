@@ -158,6 +158,22 @@ SELECT * FROM tab_range_nonkey2 WHERE a = 1;
  1 | 1
 (1 row)
 
+/*+IndexScan(tab_range_nonkey2 idx_range)*/EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Index Scan using idx_range on tab_range_nonkey2
+   Index Cond: (a <= 3)
+(2 rows)
+
+/*+IndexScan(tab_range_nonkey2 idx_range)*/SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
+ a | b 
+---+---
+ 0 | 0
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(4 rows)
+
 UPDATE tab_range_nonkey2 SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey2;
  a | b
@@ -204,6 +220,22 @@ SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 ---+---
  1 | 1
 (1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco
+   Index Cond: (a <= 3)
+(2 rows)
+
+SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
+ a | b 
+---+---
+ 0 | 0
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(4 rows)
 
 UPDATE tab_range_nonkey_noco SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey_noco;
