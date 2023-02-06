@@ -821,25 +821,35 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
                                        ListMasterServersResponsePB* resp) const {
   auto master_addresses = options().GetMasterAddresses();
   auto peer_status = resp->mutable_master_server_and_type();
-  std::vector<Endpoint> master_entries;
+  // Keeps the mapping of <resolved_addr, address>.
+  std::map<std::string, std::string> resolved_addr_map;
   for (const auto& list : *master_addresses) {
     for (const auto& master_addr : list) {
-      Status s = master_addr.ResolveAddresses(&master_entries);
+      std::vector<Endpoint> resolved_addresses;
+      Status s = master_addr.ResolveAddresses(&resolved_addresses);
       if (!s.ok()) {
         VLOG(1) << "Could not resolve: " << master_addr.ToString();
+        continue;
+      }
+      for (const auto& resolved_addr : resolved_addresses) {
+        const auto resolved_addr_str = HostPort(resolved_addr).ToString();
+        std::map<std::string, std::string>::iterator it = resolved_addr_map.find(resolved_addr_str);
+        // We want to return dns addresses (if available) and not resolved addresses.
+        // So, insert into the map if it does not have the resolved address or
+        // if the inserted entry has the key (resolved_addr) and value (address) as same.
+        if (it == resolved_addr_map.end()) {
+          resolved_addr_map.insert({resolved_addr_str, master_addr.ToString()});
+        } else if (it->second == resolved_addr_str) {
+          it->second = master_addr.ToString();
+        }
       }
     }
   }
 
-  // de-duplicate master entries.
-  std::sort(master_entries.begin(), master_entries.end());
-  master_entries.erase(
-      std::unique(master_entries.begin(), master_entries.end()), master_entries.end());
-
   std::string leader = heartbeater_->get_leader_master_hostport();
-  for (const auto& master_endpoint : master_entries) {
+  for (const auto& resolved_master_entry : resolved_addr_map) {
     auto master_entry = peer_status->Add();
-    auto master = HostPort(master_endpoint).ToString();
+    auto master = resolved_master_entry.second;
     master_entry->set_master_server(master);
     if (leader.compare(master) == 0) {
       master_entry->set_is_leader(true);
