@@ -79,6 +79,7 @@ var upgradeCmd = &cobra.Command{
 		common.PrintStatus(statuses...)
 		// Here ends the postgres minor version/no upgrade workflow
 
+		ybaCtl.Install()
 		common.PostUpgrade()
 
 	},
