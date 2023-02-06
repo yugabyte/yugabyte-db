@@ -153,7 +153,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
       : trace_(new Trace),
-        start_(CoarseMonoClock::Now()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -166,7 +165,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
       : trace_(new Trace),
-        start_(CoarseMonoClock::Now()),
         manager_(manager),
         transaction_(transaction),
         metadata_(metadata),
@@ -178,7 +176,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
       : trace_(new Trace),
-        start_(CoarseMonoClock::Now()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -209,13 +206,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     LOG_IF_WITH_PREFIX(DFATAL, !waiters_.empty()) << "Non empty waiters";
     const auto threshold = GetAtomicFlag(&FLAGS_txn_slow_op_threshold_ms);
     const auto now = CoarseMonoClock::Now();
+    // start_ is not set if Init is not called - this happens for transactions that get
+    // aborted without doing anything, so we set time_spent to 0 for these transactions.
+    const auto time_spent = now - (start_ == CoarseTimePoint() ? now : start_);
     if (trace_->must_print()
-           || (threshold > 0 && ToMilliseconds(now - start_) > threshold)) {
-      LOG(INFO) << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
+           || (threshold > 0 && ToMilliseconds(time_spent) > threshold)) {
+      LOG(INFO) << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
         << trace_->DumpToString(true);
     } else {
       YB_LOG_IF_EVERY_N(INFO, FLAGS_txn_print_trace_every_n > 0, FLAGS_txn_print_trace_every_n)
-        << ToString() << " took " << ToMicroseconds(now - start_) << "us. Trace: \n"
+        << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
         << trace_->DumpToString(true);
     }
   }
@@ -970,6 +970,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     } else {
       metadata_.start_time = read_point_.Now();
     }
+    start_ = CoarseMonoClock::Now();
   }
 
   void SetReadTimeIfNeeded(bool do_it) {
@@ -1902,7 +1903,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
-  const CoarseTimePoint start_;
+  CoarseTimePoint start_;
 
   // Manager is created once per service.
   TransactionManager* const manager_;
