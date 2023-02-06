@@ -559,7 +559,9 @@ public enum TaskType {
 
   FinalizeUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeUpgrade.class),
 
-  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class);
+  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
+
+  UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class);
 
   private final Class<? extends ITask> taskClass;
 
