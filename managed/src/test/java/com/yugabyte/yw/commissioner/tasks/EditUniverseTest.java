@@ -94,6 +94,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.UpdateUniverseIntent,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -133,6 +134,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.UpdateUniverseIntent,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -251,12 +253,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Json.toJson(newTags), details.get("tags"));
     assertEquals("q1,q3", details.get("deleteTags").asText());
 
-    List<TaskInfo> updateUniverseTagsTask = subTasksByPosition.get(1);
-    assertEquals(
-        new ArrayList<>(Collections.singletonList(TaskType.UpdateUniverseTags)),
-        updateUniverseTagsTask.stream()
-            .map(t -> t.getTaskType())
-            .collect(Collectors.toCollection(ArrayList::new)));
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(
         new HashMap<>(newTags),

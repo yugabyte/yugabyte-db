@@ -13,27 +13,19 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import java.util.Map;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@Deprecated
-public class UpdateUniverseTags extends UniverseTaskBase {
+public class UpdateUniverseIntent extends UniverseTaskBase {
 
   @Inject
-  protected UpdateUniverseTags(BaseTaskDependencies baseTaskDependencies) {
+  protected UpdateUniverseIntent(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends UniverseTaskParams {
-    public UUID clusterUUID;
-    public Map<String, String> instanceTags;
-  }
+  public static class Params extends UniverseDefinitionTaskParams {}
 
   protected Params taskParams() {
     return (Params) taskParams;
@@ -60,11 +52,10 @@ public class UpdateUniverseTags extends UniverseTaskBase {
               log.error(msg);
               throw new RuntimeException(msg);
             }
-
-            // Update the tags.
-            UserIntent userIntent =
-                universeDetails.getClusterByUuid(taskParams().clusterUUID).userIntent;
-            userIntent.instanceTags = taskParams().instanceTags;
+            UniverseDefinitionTaskParams.Cluster cluster = taskParams().clusters.get(0);
+            universe
+                .getUniverseDetails()
+                .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
             universe.setUniverseDetails(universeDetails);
           };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
