@@ -104,7 +104,7 @@ struct TransactionData {
 Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
                           const char* reason, Counter* conflicts_metric) {
   conflicts_metric->Increment();
-  return (STATUS(TryAgain, Format("$0 Conflicts with $1 transaction: $2", our_id, reason, other_id),
+  return (STATUS(TryAgain, Format("$0 conflicts with $1 transaction: $2", our_id, reason, other_id),
                  Slice(), TransactionError(TransactionErrorCode::kConflict)));
 }
 

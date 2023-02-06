@@ -131,14 +131,26 @@ const preparePayload = (values) => {
 
   payload[version][importType]['paths'] = {
     x86_64: values['x86_64'],
-    helmChart: values['helmChart'],
-    helmChartChecksum: values['helmChartChecksum'],
   };
 
   if (importType === 'http') {
     payload[version][importType]['paths'] = {
       ...payload[version][importType]['paths'],
       x86_64Checksum: values['x86_64Checksum']
+    };
+  }
+
+  if (values['helmChart']) {
+    payload[version][importType]['paths'] = {
+      ...payload[version][importType]['paths'],
+      helmChart: values['helmChart'],
+    };
+  }
+
+  if (values['helmChartChecksum']) {
+    payload[version][importType]['paths'] = {
+      ...payload[version][importType]['paths'],
+      helmChartChecksum: values['helmChartChecksum'],
     };
   }
 

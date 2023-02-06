@@ -50,7 +50,7 @@ Sharding is also referred to as horizontal partitioning. The distinction between
 
 YugabyteDB currently supports two ways of sharding data: [hash](#hash-sharding) (also known as consistent hash) sharding, and [range](#range-sharding) sharding.
 
-For additional information about sharding in YugabyteDB, see the following: 
+For additional information about sharding in YugabyteDB, see the following:
 
 - [Architecture: sharding](../../../architecture/docdb-sharding/)
 - [Data sharding in a distributed SQL database](https://blog.yugabyte.com/how-data-sharding-works-in-a-distributed-sql-database/)
@@ -112,11 +112,11 @@ This type of sharding allows efficiently querying a range of rows by the primary
 
 Range sharding has a few issues at scale, including:
 
-* Starting out with a single shard means that a single node is handling all user queries.
+- Starting out with a single shard means that a single node is handling all user queries.
 
     This often results in a database "warming" problem, where all queries are handled by a single node even if there are multiple nodes in the cluster. The user would have to wait for enough splits to happen and these shards to get redistributed before all nodes in the cluster are being utilized. This can be a big issue in production workloads. This can be mitigated in some cases where the distribution is keys is known ahead of time by pre-splitting the table into multiple shards, however this is hard in practice.
 
-* Globally ordering keys across all the shards often generates hot spots, in which some shards get much more activity than others.
+- Globally ordering keys across all the shards often generates hot spots, in which some shards get much more activity than others.
 
     Nodes hosting hot spots are overloaded relative to others. You can mitigate this to some extent with active load balancing, but this does not always work well in practice: by the time hot shards are redistributed across nodes, the workload may have changed and introduced new hot spots.
 
@@ -178,7 +178,6 @@ To create a universe, do the following:
                       --tserver_flags "memstore_size_mb=1"
     ```
 
-
 Note that setting `memstore_size` to such a low value is not recommended in production, and is only used in the preceding example to force flushes to happen more quickly.
 
 ### Create a table
@@ -203,19 +202,19 @@ By default, [yugabyted](../../../reference/configuration/yugabyted/) creates one
 
 Using the universe Admin UI, you can observe the following:
 
-* The tablets are evenly balanced across the various nodes. You can see the number of tablets per node in the **Tablet Servers** page of the master admin UI by navigating to the [table details page](http://127.0.0.1:7000/tablet-servers) that should look similar to the following:
+- The tablets are evenly balanced across the various nodes. You can see the number of tablets per node in the **Tablet Servers** page of the master admin UI by navigating to the [table details page](http://127.0.0.1:7000/tablet-servers) that should look similar to the following:
 
     ![Number of tablets in the table](/images/ce/sharding_evenload.png)
 
     Notice that each node has three tablets, and the total number of tablets is nine, as expected. Out of these three, it is the leader of one and follower of other two.
 
-* The table has three shards, each owning a range of the keyspace. Navigate to the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to examine various tablets and expect to see the following:
+- The table has three shards, each owning a range of the keyspace. Navigate to the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to examine various tablets and expect to see the following:
 
     ![Tablet details of the table](/images/ce/sharding_keyranges.png)
 
     There are three shards as expected, and the key ranges owned by each tablet are shown. This page also shows which node is currently hosting and is the leader for each tablet. Note that tablet balancing across nodes happens on a per-table basis, with each table scaled out to an appropriate number of nodes.
 
-* Each tablet has a separate directory dedicated to it for data. List all the tablet directories and check their sizes, as follows:
+- Each tablet has a separate directory dedicated to it for data. List all the tablet directories and check their sizes, as follows:
 
     1. Get the table ID of the table you created by navigating to the [table listing page](http://127.0.0.1:7000/tables) and accessing the row corresponding to `ybdemo_keyspace.cassandrakeyvalue`. In this illustration, the table ID is `769f533fbde9425a8520b9cd59efc8b8`.
 
@@ -247,11 +246,11 @@ You can use the sample application to insert a key-value entry with the value si
 
 The following are the key flags that you pass to the sample application:
 
-* `--num_unique_keys 1` to write exactly one key. Keys are numbers converted to text, and typically start from 0.
-* `--num_threads_read 0` to not perform any reads (hence 0 read threads).
-* `--num_threads_write 1` creates one writer thread. Because you're not writing a lot of data, a single writer thread is sufficient.
-* `--value_size 10000000` to generate the value being written as a random byte string of around 10MB size.
-* `--nouuid` to not prefix a UUID to the key. A UUID allows multiple instances of the load tester to run without interfering with each other.
+- `--num_unique_keys 1` to write exactly one key. Keys are numbers converted to text, and typically start from 0.
+- `--num_threads_read 0` to not perform any reads (hence 0 read threads).
+- `--num_threads_write 1` creates one writer thread. Because you're not writing a lot of data, a single writer thread is sufficient.
+- `--value_size 10000000` to generate the value being written as a random byte string of around 10MB size.
+- `--nouuid` to not prefix a UUID to the key. A UUID allows multiple instances of the load tester to run without interfering with each other.
 
 Perform the following:
 
@@ -285,7 +284,7 @@ Perform the following:
     4360 [main] INFO com.yugabyte.sample.Main  - The sample app has finished
     ```
 
-1. Use `ycqlsh` to check what you have inserted: 
+1. Use `ycqlsh` to check what you have inserted:
 
     ```sh
     ./bin/ycqlsh

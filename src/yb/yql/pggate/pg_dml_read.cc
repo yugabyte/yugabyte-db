@@ -390,15 +390,18 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value,
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op3_pb = condition_expr_pb->mutable_condition()->add_operands();
-      auto op4_pb = condition_expr_pb->mutable_condition()->add_operands();
-      auto op5_pb = condition_expr_pb->mutable_condition()->add_operands();
 
       op1_pb->set_column_id(col.id());
 
       RETURN_NOT_OK(attr_value->EvalTo(op2_pb));
       RETURN_NOT_OK(attr_value_end->EvalTo(op3_pb));
-      op4_pb->mutable_value()->set_bool_value(start_inclusive);
-      op5_pb->mutable_value()->set_bool_value(end_inclusive);
+
+      if (yb_pushdown_strict_inequality) {
+        auto op4_pb = condition_expr_pb->mutable_condition()->add_operands();
+        auto op5_pb = condition_expr_pb->mutable_condition()->add_operands();
+        op4_pb->mutable_value()->set_bool_value(start_inclusive);
+        op5_pb->mutable_value()->set_bool_value(end_inclusive);
+      }
     } else {
       auto op = QL_OP_GREATER_THAN_EQUAL;
       if (!start_inclusive) {

@@ -123,7 +123,7 @@ For a database deployment that spans multiple regions, evenly distributing reque
 
 - For connecting to the geographically nearest regions and zones for lower latency and fewer network hops. Typically you would co-locate applications in the regions where your cluster is located. Topology balancing allows you to target only regions where the applications are hosted.
 
-- The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the [shard leaders](../../architecture/docdb-sharding/sharding/) are hosted. In this case, for best performance you want your application to target the preferred locations.
+- The cluster has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the [tablet leaders](../../architecture/docdb-sharding/sharding/) are hosted. In this case, for best performance you want your application to target the preferred locations.
 
 You can also specify fallback locations, and the order in which they should be attempted. When no nodes are available in the primary location, the driver tries to connect to nodes in the fallback locations in the order specified. This way you can, for example, target the next geographically nearest location in case the first location is unavailable.
 
