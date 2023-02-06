@@ -136,7 +136,8 @@ function mapStateToProps(state, ownProps) {
     'upgradeOption',
     'systemdValue',
     'ybSoftwareVersion',
-    'tlsCertificate'
+    'tlsCertificate',
+    'gFlags'
   );
 
   return {
