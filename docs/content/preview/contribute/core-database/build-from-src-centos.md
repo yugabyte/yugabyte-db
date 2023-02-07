@@ -57,7 +57,7 @@ sudo yum -y install libatomic
 ### Python 3
 
 Python 3.7 or higher is required.
-Since CentOS 7 does not include that in their package manager, this is nontrivial.
+Since CentOS 7 does not include that in the package manager, this is nontrivial.
 One way is to compile from source.
 Here is an example using Python 3.9.
 
