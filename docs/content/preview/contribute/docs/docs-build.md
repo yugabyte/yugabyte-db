@@ -115,6 +115,8 @@ When the build is done, the `yugabyte-db/docs/public` folder contains a full HTM
 
 ## Troubleshooting
 
+* If either `npn start` or `npm run build` exit with the error `npm ERR! env: python: No such file or directory`, for a homebrew python install, create a symlink by executing `sudo ln -s /opt/homebrew/bin/python3 /opt/homebrew/bin/python` 
+
 * Make sure the GUI installer for the command-line tools finishes with a dialog box telling you the install succeeded. If not, run it again.
 
 * If you get an error about missing command-line tools, make sure xcode-select is pointing to the right directory, and that the directory contains a `usr/bin` subdirectory. Run `xcode-select -p` to find the path to the tools. Re-run xcode-select --install.
