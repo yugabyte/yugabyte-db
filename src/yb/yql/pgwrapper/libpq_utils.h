@@ -142,6 +142,7 @@ class PGConn {
   CHECKED_STATUS StartTransaction(IsolationLevel isolation_level);
   CHECKED_STATUS CommitTransaction();
   CHECKED_STATUS RollbackTransaction();
+  CHECKED_STATUS TestFailDdl(const std::string& ddl_to_fail);
 
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
