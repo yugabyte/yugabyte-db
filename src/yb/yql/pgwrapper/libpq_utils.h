@@ -232,7 +232,7 @@ class PGConnBuilder {
   const size_t connect_timeout_;
 };
 
-bool HasTryAgain(const Status& status);
+bool HasTransactionError(const Status& status);
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
 

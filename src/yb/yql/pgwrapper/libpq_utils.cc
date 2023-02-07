@@ -669,8 +669,12 @@ std::string PqEscapeIdentifier(const std::string& input) {
   return output;
 }
 
-bool HasTryAgain(const Status& status) {
-  return status.ToString().find("Try again:") != std::string::npos;
+bool HasTransactionError(const Status& status) {
+  const auto& message = status.ToString();
+  return message.find("conflicts with higher priority transaction:") != std::string::npos ||
+         message.find("Transaction aborted:") != std::string::npos ||
+         message.find("expired or aborted by a conflict:") != std::string::npos ||
+         message.find("Unknown transaction, could be recently aborted:") != std::string::npos;
 }
 
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)

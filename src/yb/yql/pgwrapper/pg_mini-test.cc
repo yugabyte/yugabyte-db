@@ -496,8 +496,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
   for (int key = 0; key != kKeys; ++key) {
     auto status = conn.ExecuteFormat("INSERT INTO t (key) VALUES ($0)", key);
     ASSERT_TRUE(status.ok() || PgsqlError(status) == YBPgErrorCode::YB_PG_UNIQUE_VIOLATION ||
-                status.ToString().find("Already present: Duplicate request") != std::string::npos)
-        << status;
+                status.ToString().find("Duplicate request") != std::string::npos) << status;
   }
 
   SetAtomicFlag(0, &FLAGS_TEST_respond_write_failed_probability);

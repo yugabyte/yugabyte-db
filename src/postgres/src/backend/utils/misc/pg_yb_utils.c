@@ -475,25 +475,6 @@ YBReportFeatureUnsupported(const char *msg)
 			 errmsg("%s", msg)));
 }
 
-
-static bool
-YBShouldReportErrorStatus()
-{
-	static int cached_value = -1;
-	if (cached_value == -1)
-	{
-		cached_value = YBCIsEnvVarTrue("YB_PG_REPORT_ERROR_STATUS");
-	}
-
-	return cached_value;
-}
-
-void
-HandleYBStatus(YBCStatus status)
-{
-   HandleYBStatusAtErrorLevel(status, ERROR);
-}
-
 static const char*
 FetchUniqueConstraintName(Oid relation_id)
 {
@@ -515,26 +496,30 @@ FetchUniqueConstraintName(Oid relation_id)
 	return name;
 }
 
-void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level)
+/*
+ * GetStatusMsgAndArgumentsByCode - get error message arguments out of the
+ * status codes
+ *
+ * We already have cases when DocDB returns status with SQL code and
+ * relation Oid, but without error message, assuming the message is generated
+ * on Postgres side, with relation name retrieved by Oid. We have to keep
+ * the functionality for backward compatibility.
+ *
+ * Same approach can be used for similar cases, when status is originated from
+ * DocDB: by known SQL code the function may set or amend the error message and
+ * message arguments.
+ */
+void
+GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
+							   const char **msg, size_t *nargs, const char ***args)
 {
-	if (!status)
-		return;
-
-	/* Build message in the current memory context. */
-	const char* msg_buf = BuildYBStatusMessage(
-			status, &FetchUniqueConstraintName);
-
-	if (YBShouldReportErrorStatus())
-		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
-
-	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
-	const uint16_t txn_err_code = YBCStatusTransactionError(status);
-	YBCFreeStatus(status);
-	ereport(error_level,
-			(errmsg("%s", msg_buf),
-			 errcode(pg_err_code),
-			 yb_txn_errcode(txn_err_code),
-			 errhidecontext(true)));
+	if (pg_err_code == ERRCODE_UNIQUE_VIOLATION)
+	{
+		*msg = "duplicate key value violates unique constraint \"%s\"";
+		*nargs = 1;
+		*args = (const char **) palloc(sizeof(const char **));
+		*args[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
+	}
 }
 
 void
