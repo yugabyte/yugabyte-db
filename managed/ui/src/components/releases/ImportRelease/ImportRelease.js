@@ -22,6 +22,7 @@ const getValidationSchema = (type) => {
         message: 'Path should starts with gs, s3 or https'
       })
       .required('Path is required'),
+    helmChart: Yup.string(),
   };
 
   switch (type) {
@@ -39,8 +40,11 @@ const getValidationSchema = (type) => {
         message: 'Checksum must have a pattern of [MD5|SHA1|SHA256]:[checksum_value];'
           + ' e.g., MD5:99d42a85b0d2b2813d6cea877aaab919'
       });
-      shape['helmChartChecksum'] = Yup.string()
-      .required('Checksum is required')
+      shape['helmChartChecksum'] = Yup.string().when('helmChart', {
+        is: (val) => val && val.length > 0,
+        then: Yup.string().required('Checksum is required'),
+        otherwise: Yup.string(),
+      })
       .matches(/(MD5|SHA1|SHA256):\w+/, {
         message: 'Checksum must have a pattern of [MD5|SHA1|SHA256]:[checksum_value];'
           + ' e.g., MD5:99d42a85b0d2b2813d6cea877aaab919'
