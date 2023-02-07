@@ -115,7 +115,7 @@ When the build is done, the `yugabyte-db/docs/public` folder contains a full HTM
 
 ## Troubleshooting
 
-* If either `npn start` or `npm run build` exit with the error `npm ERR! env: python: No such file or directory`, for a homebrew python install, create a symlink by executing `sudo ln -s /opt/homebrew/bin/python3 /opt/homebrew/bin/python` 
+* If either `npm start` or `npm run build` exit with the error `npm ERR! env: python: No such file or directory`, for a homebrew python install, create a symlink by executing `sudo ln -s /opt/homebrew/bin/python3 /opt/homebrew/bin/python` 
 
 * Make sure the GUI installer for the command-line tools finishes with a dialog box telling you the install succeeded. If not, run it again.
 
