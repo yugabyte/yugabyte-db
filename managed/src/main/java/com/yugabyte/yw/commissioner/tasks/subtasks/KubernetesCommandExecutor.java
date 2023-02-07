@@ -214,6 +214,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         kubernetesManagerFactory
             .getManager()
             .helmInstall(
+                taskParams().universeUUID,
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().providerUUID,
@@ -226,6 +227,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         kubernetesManagerFactory
             .getManager()
             .helmUpgrade(
+                taskParams().universeUUID,
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().helmReleaseName,
@@ -284,6 +286,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         kubernetesManagerFactory
             .getManager()
             .expandPVC(
+                taskParams().universeUUID,
                 config,
                 taskParams().namespace,
                 taskParams().helmReleaseName,
