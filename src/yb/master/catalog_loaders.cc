@@ -306,8 +306,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
   // Add the tablet to tablegroup_manager_ if the tablet is for a tablegroup.
   if (first_table->IsTablegroupParentTable()) {
-    auto lock = first_table->LockForRead();
-    if (!lock->started_hiding() && !lock->started_deleting()) {
+    if (first_table->IsOperationalForClient()) {
       const auto tablegroup_id = GetTablegroupIdFromParentTableId(first_table->id());
 
       auto* tablegroup =
@@ -319,8 +318,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       // Loop through tablet_colocation_map to add child tables to our tablegroup info.
       for (const auto& colocation_info : tablet_colocation_map) {
         if (!IsTablegroupParentTableId(colocation_info.second->id())) {
-          auto child_table_lock = colocation_info.second->LockForRead();
-          if (!child_table_lock->started_hiding() && !child_table_lock->started_deleting()) {
+          if (colocation_info.second->IsOperationalForClient()) {
             RETURN_NOT_OK(tablegroup->AddChildTable(colocation_info.second->id(),
                 colocation_info.first));
           }
