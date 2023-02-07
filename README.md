@@ -339,6 +339,14 @@ After installing AGE Extension, you may use this tool to get access to the visua
 ![Viewer gdb, and graph](/img/agce.gif)
 
 
+<h2><img height="20" src="/img/videos.png">&nbsp;&nbsp;Video Links</h2>
+
+You can also get help from these videos. 
+
+- Install on [Windows](https://www.youtube.com/watch?v=ddk8VX8Hm-I&list=PLGp3huJbWNDjgwP7s99Q-9_w1vxpjNHXG)
+- Install on [MacOS](https://www.youtube.com/watch?v=0-qMwpDh0CA)
+
+
 
 <h2><img height="20" src="/img/community.svg">&nbsp;&nbsp;Contributing</h2>
 
