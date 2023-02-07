@@ -50,17 +50,33 @@ public class ResizeNodeParams extends UpgradeTaskParams {
             .forUniverse(universe)
             .getBoolean("yb.internal.allow_unsupported_instances");
 
+    boolean hasClustersToResize = false;
     for (Cluster cluster : clusters) {
       UserIntent newUserIntent = cluster.userIntent;
       UserIntent currentUserIntent =
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
+      if (!hasResizeChanges(currentUserIntent, newUserIntent)) {
+        continue;
+      }
 
       String errorStr =
           checkResizeIsPossible(currentUserIntent, newUserIntent, allowUnsupportedInstances);
       if (errorStr != null) {
         throw new IllegalArgumentException(errorStr);
       }
+      hasClustersToResize = true;
     }
+    if (!hasClustersToResize) {
+      throw new IllegalArgumentException("No changes!");
+    }
+  }
+
+  private boolean hasResizeChanges(UserIntent currentUserIntent, UserIntent newUserIntent) {
+    if (currentUserIntent == null || newUserIntent == null) {
+      return false;
+    }
+    return !(Objects.equals(currentUserIntent.instanceType, newUserIntent.instanceType)
+        && Objects.equals(currentUserIntent.deviceInfo, newUserIntent.deviceInfo));
   }
 
   /**
