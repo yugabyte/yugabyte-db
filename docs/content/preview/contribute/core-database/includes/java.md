@@ -12,7 +12,7 @@ To build the Java part, you need:
 * [Apache Maven](https://maven.apache.org/) 3.3 or later.
 
 If downloading releases, don't forget to add the bin directory to `PATH`.
-For example,
+Here's an example on x64 Linux:
 
 ```sh
 mkdir ~/tools
