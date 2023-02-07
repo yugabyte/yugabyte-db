@@ -360,6 +360,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return is_hiding() || is_hidden();
   }
 
+  bool started_hiding_or_deleting() const {
+    return started_hiding() || started_deleting();
+  }
+
   // Return the table's name.
   const TableName& name() const {
     return pb.name();
@@ -454,6 +458,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool is_running() const;
   bool is_deleted() const;
+  bool IsOperationalForClient() const {
+    auto l = LockForRead();
+    return !l->started_hiding_or_deleting();
+  }
 
   std::string ToString() const override;
   std::string ToStringWithState() const;
