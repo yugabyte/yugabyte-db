@@ -696,7 +696,7 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--http_remote_download");
           ybServerPackage = releaseMetadata.http.paths.x86_64;
           subcommand.add("--http_package_checksum");
-          subcommand.add(releaseMetadata.http.paths.x86_64Checksum);
+          subcommand.add(releaseMetadata.http.paths.x86_64Checksum.toLowerCase());
         } else {
           ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
         }
