@@ -88,7 +88,7 @@ To restore the data backed up in one of the previously created snapshots, run th
 ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> restore_snapshot 6e7e85b0-13ef-4073-9ab7-224cb77f22ef
 ```
 
-This command rolls back the database to the state which it had when the snapshot was created. The restore happens in-place: it changes the state of the existing database within the same cluster.
+This command rolls back the database to the state which it had when the snapshot was created. The restore happens in-place: it changes the state of the existing database in the same cluster.
 
 ## Move a snapshot to external storage
 
@@ -119,11 +119,11 @@ To move a snapshot to external storage, gather all the relevant files from all t
     * *<disk_number>* - used when running YugabyteDB on multiple disks with the `--fs_data_dirs` flag. The default value is `1`.
     * *<table_id>* - the UUID of the table. You can obtain it from the `http://<yb-master-ip>:7000/tables` URL in the Admin UI.
     * *<tablet_id>* - each table contains a list of tablets. Each tablet has a `<tablet_id>.snapshots` directory that you need to copy.
-    * *<snapshot_id>* - there is a directory for each snapshot, since you can have multiple completed snapshots on each server.
+    * *<snapshot_id>* - there is a directory for each snapshot, as you can have multiple completed snapshots on each server.
 
     This directory structure is specific to a local testing tool `yb-ctl`. In practice, for each server, you would use the `--fs_data_dirs` flag, which is a comma-separated list of paths for the data. It is recommended to have different paths on separate disks. In the `yb-ctl` example, these are the full paths up to the `disk-number`.
 
-To obtain a snapshot of a multi-node cluster, you would access each node and copy the folders of only the leader tablets on that node. Since each tablet replica has a copy of the same data, there is no need to keep a copy for each replica.
+To obtain a snapshot of a multi-node cluster, you would access each node and copy the folders of only the leader tablets on that node. Because each tablet replica has a copy of the same data, there is no need to keep a copy for each replica.
 
 If you don't want to keep the in-cluster snapshot, you can safely [delete it](#delete-a-snapshot).
 
@@ -164,14 +164,14 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
     ```sh
     scp -r /mnt/d0/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004003/ \
         tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots/6e7e85b0-13ef-4073-9ab7-224cb77f22ef/* \
-        10.9.206.43:/mnt/d0/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/ \
+        <target_node_ip>:/mnt/d0/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/ \
         tablet-50046f422aa6450ca82538e919581048.snapshots/a26f19a2-ae82-4aae-810e-bb03d0fefb04/
     ```
 
     ```sh
     scp -r /mnt/d0/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004003/ \
         tablet-27ce76cade8e4894a4f7ffa154b33c3b.snapshots/6e7e85b0-13ef-4073-9ab7-224cb77f22ef/* \
-        10.9.206.43:/mnt/d0/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/ \
+        <target_node_ip>:/mnt/d0/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/ \
         tablet-111ab9d046d449d995ee9759bf32e028.snapshots/a26f19a2-ae82-4aae-810e-bb03d0fefb04/
     ```
 
