@@ -8518,6 +8518,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "sizeInBytes" : {
+          "description" : "Size in bytes of the support bundle",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "startDate" : {
           "format" : "date-time",
           "type" : "string"

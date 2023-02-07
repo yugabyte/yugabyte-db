@@ -7,6 +7,8 @@ import {DropdownButton, MenuItem} from "react-bootstrap";
 import {YBMenuItem} from "../../UniverseDetail/compounds/YBMenuItem";
 import {YBButton, YBModal} from "../../../common/forms/fields";
 
+import {formatBytes} from "../../../xcluster/ReplicationUtils";
+
 import "./ThirdStep.scss";
 
 
@@ -171,6 +173,22 @@ export const ThirdStep = withRouter(({
               >
               Status
               </TableHeaderColumn>
+
+              <TableHeaderColumn
+                dataField="sizeInBytes"
+                dataFormat={(sizeInBytes) => {
+                  if(sizeInBytes === 0) {
+                    return "-";
+                  }
+
+                  return formatBytes(sizeInBytes);
+                }}
+                className={'node-name-field'}
+                columnClassName={'node-name-field'}
+              >
+              Size
+              </TableHeaderColumn>
+
               <TableHeaderColumn
                 dataField="bundleUUID"
                 dataFormat={(bundleUUID, row) => {
