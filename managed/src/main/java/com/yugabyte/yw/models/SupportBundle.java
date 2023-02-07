@@ -16,6 +16,7 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -27,6 +28,7 @@ import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import javax.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -69,6 +71,11 @@ public class SupportBundle extends Model {
   private SupportBundleStatusType status;
 
   @JsonIgnore @Setter @Getter private static int retentionDays;
+
+  @Transient
+  @ApiModelProperty(value = "Size in bytes of the support bundle", required = false)
+  // 0 is the only invalid size.
+  private long sizeInBytes;
 
   public enum SupportBundleStatusType {
     Running("Running"),
@@ -196,6 +203,15 @@ public class SupportBundle extends Model {
     SupportBundleUtil sbutil = new SupportBundleUtil();
     Date expirationDate = sbutil.getDateNDaysAfter(this.parseCreationDate(), getRetentionDays());
     return expirationDate;
+  }
+
+  public long getSizeInBytes() {
+    if (this.status != SupportBundleStatusType.Success) {
+      return 0;
+    }
+
+    sizeInBytes = FileUtils.getFileSize(path);
+    return sizeInBytes;
   }
 
   public static List<SupportBundle> getAll(UUID universeUUID) {
