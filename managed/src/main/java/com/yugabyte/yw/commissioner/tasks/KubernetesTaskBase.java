@@ -19,6 +19,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -41,6 +43,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   protected boolean isBlacklistLeaders = false;
   protected int leaderBacklistWaitTimeMs;
+  public static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
 
   @Inject
   protected KubernetesTaskBase(BaseTaskDependencies baseTaskDependencies) {
