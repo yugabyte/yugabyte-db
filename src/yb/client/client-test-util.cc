@@ -42,6 +42,7 @@
 
 #include <boost/function.hpp>
 
+#include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
@@ -49,10 +50,13 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/client/yb_table_name.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/test_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -158,5 +162,31 @@ std::shared_ptr<YBqlReadOp> CreateReadOp(
   return op;
 }
 
+void VerifyTable(
+    client::YBClient* client,
+    const std::string& database_name,
+    const std::string& table_name,
+    const int timeout_secs,
+    const bool exists) {
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto ret =
+            client->TableExists(client::YBTableName(YQL_DATABASE_PGSQL, database_name, table_name));
+        WARN_NOT_OK(ResultToStatus(ret), "TableExists call failed");
+        return ret.ok() && ret.get() == exists;
+      },
+      MonoDelta::FromSeconds(timeout_secs),
+      Format(
+          "Verify Table $0 $1 exists in database $2", table_name, (exists ? "" : "not"),
+          database_name)));
+}
+
+void VerifyTableNotExists(
+    YBClient* client,
+    const std::string& database_name,
+    const std::string& table_name,
+    const int timeout_secs) {
+  VerifyTable(client, database_name, table_name, timeout_secs, false /* exists */);
+}
 }  // namespace client
 }  // namespace yb

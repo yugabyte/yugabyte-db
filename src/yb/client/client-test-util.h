@@ -75,6 +75,9 @@ YBSchema YBSchemaFromSchema(const Schema& schema);
 std::shared_ptr<YBqlReadOp> CreateReadOp(
     int32_t key, const TableHandle& table, const std::string& value_column);
 
+void VerifyTableNotExists(
+    YBClient* client, const std::string& db_name, const std::string& table_name, int timeout_secs);
+
 }  // namespace client
 }  // namespace yb
 
