@@ -329,6 +329,10 @@ class ClusterLoadBalancer {
 
   virtual const PlacementInfoPB& GetLiveClusterPlacementInfo() const;
 
+  void AddTSIfBlacklisted(
+      const std::shared_ptr<TSDescriptor>& ts_desc, const BlacklistPB& blacklist,
+      const bool leader_blacklist);
+
   //
   // Generic load information methods.
   //
@@ -380,7 +384,7 @@ class ClusterLoadBalancer {
       TabletServerId* to_ts,
       std::string* to_ts_path);
 
-  virtual void SetBlacklist() const;
+  virtual void SetBlacklistAndPendingDeleteTS();
 
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;

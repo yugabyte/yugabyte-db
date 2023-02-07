@@ -223,14 +223,6 @@ class GlobalLoadState {
   // Get global leader load for a certain TS.
   int GetGlobalLeaderLoad(const TabletServerId& ts_uuid) const;
 
-  void SetBlacklist(const BlacklistPB& blacklist) {
-    blacklist_.CopyFrom(blacklist);
-  }
-
-  void SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
-    leader_blacklist_.CopyFrom(leader_blacklist);
-  }
-
   // Used to determine how many tablets are being remote bootstrapped across the cluster.
   int total_starting_tablets_ = 0;
 
@@ -238,10 +230,12 @@ class GlobalLoadState {
 
   bool drive_aware_ = true;
 
-  // The cached blacklist setting of the cluster. We store this upfront, as we add to the list of
-  // tablet servers one by one, so we compare against it once per tablet server.
-  BlacklistPB blacklist_;
-  BlacklistPB leader_blacklist_;
+  // The list of tablet server ids that match the blacklist.
+  std::set<TabletServerId> blacklisted_servers_;
+  std::set<TabletServerId> leader_blacklisted_servers_;
+
+  // List of tablet server ids that have pending deletes.
+  std::set<TabletServerId> servers_with_pending_deletes_;
 
  private:
   // Map from tablet server ids to the global metadata we store for each.
@@ -279,10 +273,12 @@ class PerTableLoadState {
 
   // Comparator to sort tablet servers' leader load.
   struct LeaderLoadComparator {
-    explicit LeaderLoadComparator(PerTableLoadState* state) : state_(state) {}
+    explicit LeaderLoadComparator(PerTableLoadState* state, GlobalLoadState* global_state)
+      : state_(state), global_state_(global_state) {}
     bool operator()(const TabletServerId& a, const TabletServerId& b);
 
     PerTableLoadState* state_;
+    GlobalLoadState* global_state_;
   };
 
   // Get the load for a certain TS.
@@ -389,13 +385,6 @@ class PerTableLoadState {
 
   // Set of tablet ids that have been determined to have replicas in incorrect placements.
   std::set<TabletId> tablets_wrong_placement_;
-
-  // The list of tablet server ids that match the cached blacklist.
-  std::set<TabletServerId> blacklisted_servers_;
-  std::set<TabletServerId> leader_blacklisted_servers_;
-
-  // List of tablet server ids that have pending deletes.
-  std::set<TabletServerId> servers_with_pending_deletes_;
 
   // List of tablet ids that have been added to a new tablet server.
   std::set<TabletId> tablets_added_;
