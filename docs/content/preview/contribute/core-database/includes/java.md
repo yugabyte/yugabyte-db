@@ -11,9 +11,9 @@ To build the Java part, you need:
   JDK can be downloaded from [OpenJDK](http://jdk.java.net/archive), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 * [Apache Maven](https://maven.apache.org/) 3.3 or later.
 
-Also make sure Maven's `bin` directory is added to your `PATH` (for example, by adding to your `~/.bashrc`).
-For example, if you've installed Maven into `~/tools/apache-maven-3.6.3`:
+If downloading releases, don't forget to add the bin directory to `PATH` (for example, by adding to your `~/.bashrc`).
+For example,
 
 ```sh
-export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
+export PATH=$HOME/tools/zulu11.62.17-ca-jdk11.0.18-linux_x64/bin:$HOME/tools/apache-maven-3.8.7/bin:$PATH
 ```
