@@ -951,6 +951,11 @@ void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_i
   tablespace_id_for_table_creation_ = tablespace_id;
 }
 
+google::protobuf::RepeatedField<int> TableInfo::GetHostedStatefulServices() const {
+  auto l = LockForRead();
+  return l->pb.hosted_stateful_services();
+}
+
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   VLOG_WITH_FUNC(2) << "Setting state for " << name() << " to "
                     << SysTablesEntryPB::State_Name(state) << " reason: " << msg;

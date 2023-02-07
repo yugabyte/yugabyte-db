@@ -200,6 +200,8 @@ message SysTablesEntryPB {
   // YSQL transaction that is currently modifying this table state. The changes being performed by
   // it are detailed in 'ysql_ddl_txn_state' above.
   optional TransactionMetadataPB transaction = 29;
+
+  repeated StatefulServiceKind hosted_stateful_services = 39;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
