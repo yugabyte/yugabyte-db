@@ -241,18 +241,6 @@ extern bool YBSavepointsEnabled();
 extern bool YBIsDBCatalogVersionMode();
 
 /*
- * Given a status returned by YB C++ code, reports that status as a PG/YSQL
- * ERROR using ereport if it is not OK.
- */
-extern void	HandleYBStatus(YBCStatus status);
-
-/*
- * Generic version of HandleYBStatus that reports the YBCStatus at the
- * specified PG/YSQL error level (e.g. ERROR or WARNING or NOTICE).
- */
-void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level);
-
-/*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
  * in an atomic fashion, it is possible that we could have a table existing in
  * postgres metadata but not in DocDB. In the case of a delete it is really
@@ -755,5 +743,93 @@ void YBUpdateRowLockPolicyForSerializable(
 		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy);
 
 const char* yb_fetch_current_transaction_priority(void);
+
+void GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
+							   const char **msg, size_t *nargs, const char ***args);
+
+#define HandleYBStatus(status) \
+	HandleYBStatusAtErrorLevel(status, ERROR)
+
+/*
+ * Macro to convert DocDB Status to Postgres error.
+ * It is generally based on the ereport macro, it makes a sequence of errxxx()
+ * function calls, where errstart() comes the first and errfinish() the last.
+ *
+ * The error location info (file name, line number, function name) comes from
+ * the status, so we need lower level access, that's why we can not use ereport
+ * here. Also we don't need ereport's flexibility, as we support transfer of
+ * limited subset of Postgres error fields.
+ *
+ * Similar to ereport, we have a version for compilers without support for
+ * __builtin_constant_p, though we may drop it eventually.
+ */
+#ifdef HAVE__BUILTIN_CONSTANT_P
+#define HandleYBStatusAtErrorLevel(status, elevel) \
+	do \
+	{ \
+		AssertMacro(!IsMultiThreadedMode()); \
+		YBCStatus _status = (status); \
+		if (_status) \
+		{ \
+			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
+			const char	   *filename = YBCStatusFilename(_status); \
+			int				lineno = YBCStatusLineNumber(_status); \
+			const char	   *funcname = YBCStatusFuncname(_status); \
+			const char	   *msg_buf = YBCMessageAsCString(_status); \
+			size_t			nargs; \
+			const char	  **args = YBCStatusArguments(_status, &nargs); \
+			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, &msg_buf, \
+										   &nargs, &args); \
+			YBCFreeStatus(_status); \
+			if (errstart(elevel, filename ? filename : __FILE__, \
+						 lineno > 0 ? lineno : __LINE__, \
+						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			{ \
+				yb_errmsg_from_status_data(msg_buf, nargs, args); \
+				errcode(pg_err_code); \
+				yb_txn_errcode(txn_err_code); \
+				errhidecontext(true); \
+				errfinish(0); \
+				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
+					pg_unreachable(); \
+			} \
+		} \
+	} while (0)
+#else							/* !HAVE__BUILTIN_CONSTANT_P */
+#define HandleYBStatusAtErrorLevel(status, elevel) \
+	do \
+	{ \
+		AssertMacro(!IsMultiThreadedMode()); \
+		YBCStatus _status = (status); \
+		if (_status) \
+		{ \
+			const int		elevel_ = (elevel); \
+			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
+			const char	   *filename = YBCStatusFilename(_status); \
+			int				lineno = YBCStatusLineNumber(_status); \
+			const char	   *funcname = YBCStatusFuncname(_status); \
+			const char	   *msg_buf = YBCMessageAsCString(_status); \
+			size_t			nargs; \
+			const char	  **args = YBCStatusArguments(_status, &nargs); \
+			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, &msg_buf, \
+										   &nargs, &args); \
+			YBCFreeStatus(_status); \
+			if (errstart(elevel_, filename ? filename : __FILE__, \
+						 lineno > 0 ? lineno : __LINE__, \
+						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			{ \
+				yb_errmsg_from_status_data(msg_buf, nargs, args); \
+				errcode(pg_err_code); \
+				yb_txn_errcode(txn_err_code); \
+				errhidecontext(true); \
+				errfinish(0); \
+				if (elevel_ >= ERROR) \
+					pg_unreachable(); \
+			} \
+		} \
+	} while (0)
+#endif
 
 #endif /* PG_YB_UTILS_H */
