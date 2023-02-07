@@ -118,6 +118,12 @@ You still need to specify load balance as true to enable the topology-aware conn
 
 Smart drivers can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to talk to a completely different region.
 
+The appropriate connection timeout depends on the specific requirements of the application. In addition to the usual considerations, because YugabyteDB is distributed, you also want connections to move to recovered or newly-added nodes as quickly as possible.
+
+When a connection reaches the timeout period, the pool re-establishes a new connection to the node with the least amount of connections, which would likely be the new node. Set the timeout too long, and you risk not taking maximum advantage of a new node. For example, a timeout of 10 minutes means a new node might not receive connections for up to 10 minutes. (The node will still be used for YB-TServer operations, but not for new client connections.) Setting the timeout too short, however, degrades overall latency performance due to the high first connection latency. Experiment with different timeout values and monitor the performance of the application and the database to determine the optimal value.
+
+For an example of how connection pooling reduces latencies, see [Database Connection Management: Exploring Pools and Performance](https://www.yugabyte.com/blog/database-connection-management/).
+
 ## Using smart drivers with YugabyteDB Managed
 
 [YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
