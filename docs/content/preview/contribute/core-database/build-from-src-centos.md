@@ -95,7 +95,7 @@ sudo ln -s /usr/local/bin/python3.9 /usr/local/bin/python3
 {{< note title="Note" >}}
 
 If encountering python-related issues during build, it may be that you are still using the previous build's virtualenv.
-That virtualenv can be cleaned using the `--clean-venv` option to build.
+That virtualenv can be cleaned using the `--clean-venv` build option.
 
 {{< /note >}}
 
