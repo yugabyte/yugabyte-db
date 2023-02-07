@@ -44,9 +44,9 @@ For operations like `UPDATE ... IF EXISTS` and `INSERT ... IF NOT EXISTS` that r
 
 ### JSONB document data type
 
-YugabyteDB supports the [`jsonb`](../../api/ycql/type_jsonb/) data type that makes it easy to model JSON data, which does not have a set schema and might change often. You can use JSONB to group less interesting and less accessed columns of a table. YCQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
+YugabyteDB supports the [`jsonb`](../../api/ycql/type_jsonb/) data type to model JSON data, which does not have a set schema and might change often. You can use JSONB to group less interesting and less accessed columns of a table. YCQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
 
-{{< note title="Use jsonb columns only when necessary" >}}
+{{< note title="Use JSONB columns only when necessary" >}}
 
 `jsonb` columns are slower to read and write compared to normal columns. They also take more space because they need to store keys in strings and make keeping data consistency harder. A good schema design is to keep most columns as regular ones or collections, and only using `jsonb` for truly dynamic values. Don't create a `data jsonb` column where you store everything, but a `dynamic_data jsonb` column and other ones being primitive columns.
 
@@ -54,7 +54,7 @@ YugabyteDB supports the [`jsonb`](../../api/ycql/type_jsonb/) data type that mak
 
 ### Incrementing numeric types
 
-In YugabyteDB, YCQL extends Apache Cassandra to add increment and decrement operators for integer data types. [Integers](../../api/ycql/type_int) can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. YugabyteDB implements CAS(compare and swap) operations in one round trip, compared to four for Apache Cassandra.
+In YugabyteDB, YCQL extends Apache Cassandra to add increment and decrement operators for integer data types. [Integers](../../api/ycql/type_int) can be set, inserted, incremented, and decremented while `COUNTER` can only be incremented or decremented. YugabyteDB implements CAS(compare and set) operations in one round trip, compared to four for Apache Cassandra.
 
 ### Expire older records automatically with TTL
 
@@ -78,7 +78,7 @@ A single client (for example, a multi-threaded application) should ideally use a
 
 ### Use prepared statements
 
-Use prepared statements whenever possible. This will ensure that YB partition aware drivers are able to route queries to the tablet leader, improve throughput and server doesn't have to parse the query on each operation.
+Use prepared statements whenever possible. This will ensure that YugabyteDB partition aware drivers are able to route queries to the tablet leader, improve throughput and server doesn't have to parse the query on each operation.
 
 ### Use batching for higher throughput
 
@@ -104,7 +104,7 @@ If your collections are immutable, or you update the whole collection in full, c
 
 ### Use `partition_hash` for large table scans
 
-`partition_hash` function can be handy for querying a subset of the data to get approximate row counts or to breakdown
+`partition_hash` function can be used for querying a subset of the data to get approximate row counts or to breakdown
  full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
 
 ## Miscellaneous

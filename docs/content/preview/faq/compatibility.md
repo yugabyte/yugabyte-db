@@ -147,7 +147,7 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 
 ### CQL features that are either unnecessary or disallowed in YCQL
 
-1. Lightweight transactions for compare-and-swap operations (such as incrementing integers) are unnecessary because YCQL achieves single row linearizability by default.
+1. Lightweight transactions for compare-and-set operations (such as incrementing integers) are unnecessary because YCQL achieves single row linearizability by default.
 1. Tunable write consistency is disallowed in YCQL because writes are committed at quorum using Raft replication protocol.
 
 This [blog](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/) goes into the details of YCQL vs Apache Cassandra architecture and is recommended for further reading.
