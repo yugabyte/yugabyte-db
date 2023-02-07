@@ -428,3 +428,23 @@ The value of `core_pattern` can be a literal path or it can contain a pipe symbo
   ```
 
 - If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. In this case, it is your responsibility to identify the location to which these files are written and retrieve them.
+
+## Perform the follower lag check during upgrades
+
+You can use the follower lag check to ensure that the YB-Master and YB-TServer process is caught up to its peers. To find this metric on Prometheus, execute the following:
+
+```sh
+max by (instance) (follower_lag_ms{instance='<ip>:<http_port>'})
+```
+
+- *ip* represents the YB-Master IP or the YB-TServer IP.
+- *http_port* represents the HTTP port on which the YB-Master or YB-TServer is listening. The YB-Master default port is 7000 and the YB-TServer default port is 9000.
+
+The result is the maximum follower lag, in milliseconds, of the most recent Prometheus of the specified YB-Master or YB-TServer process.
+
+Typically, the maximum follower lag of a healthy universe is a few seconds at most. The following reasons may contribute to a significant increase in the follower lag, potentially reaching several minutes:
+
+- Node issues, such as network problems between nodes, an unhealthy state of nodes, or inability of the node's YB-Master or YB-TServer process to properly serve requests. The lag usually persists until the issue is resolved.
+- Issues during a rolling upgrade, when the YB-Master or YB-TServer process is stopped, upgrade on the associated process is performed, then the process is restarted. During the downtime, writes to the database continue to occur, but the associated YB-Master or YB-TServer are left behind. The lag gradually decreases after the YB-Master or YB-TServer has restarted and can serve requests again. However, if an upgrade is performed on a universe that is not in a healthy state to begin with (for example, a node is down or is experiencing an unexpected problem), a failure is likely to occur due to the follower lag threshold not being reached within the specified timeframe after the processes have restarted. Note that the default value for the follower lag threshold is 1 minute and the overall time allocated for the process to catch up is 15 minutes. To remedy the situation, perform the following:
+  - Bring the node back to a healthy state by stopping and restarting the node, or removing it and adding a new one).
+  - Ensure that the YB-Master and YB-TServer processes are running correctly on the node. 
