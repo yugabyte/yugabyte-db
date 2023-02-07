@@ -12,20 +12,20 @@ package com.yugabyte.yw.common.config;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import java.time.Duration;
-import java.time.Period;
-import java.util.List;
-import java.util.function.BiFunction;
-import java.util.function.Function;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
+import java.time.Duration;
+import java.time.Period;
+import java.util.List;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.Getter;
 import play.libs.Json;
 
@@ -104,8 +104,16 @@ public class ConfDataType<T> {
             return parseStringAndApply(s, Config::getBytes);
           });
   static ConfDataType<List> TagListType =
-      new ConfDataType<>(
-          "Tags List", List.class, Config::getStringList, ConfDataType::parseTagsList);
+      new ConfDataType<List>(
+          "Tags List",
+          List.class,
+          (config, path) ->
+              config
+                  .getStringList(path)
+                  .stream()
+                  .map(s -> ConfKeyTags.valueOf(s))
+                  .collect(Collectors.toList()),
+          ConfDataType::parseTagsList);
   static ConfDataType<VersionCheckMode> VersionCheckModeEnum =
       new ConfDataType<>(
           "VersionCheckMode",
