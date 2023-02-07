@@ -900,9 +900,47 @@ create index q3_range on q3(a asc);
                Index Cond: (c1 = p1.c1)
 (7 rows)
 
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan on) Set(enable_material off) Leading((q3 (q2 q1)))*/ explain (costs off) select * from q1, q2, q3 where q1.c1 = q2.c1 and q3.a = q1.c2;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (q1.c2 = q3.a)
+   ->  Seq Scan on q3
+   ->  YB Batched Nested Loop Join
+         Join Filter: (q1.c1 = q2.c1)
+         ->  Seq Scan on q2
+         ->  Index Scan using q1_pkey on q1
+               Index Cond: ((c1 = ANY (ARRAY[q2.c1, $1, $2])) AND (c2 = ANY (ARRAY[q3.a, $4, $5])))
+(8 rows)
+
 DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
+create table oidtable(a oid, primary key(a asc));
+create table int4table(a int4, primary key(a asc));
+insert into oidtable select i from generate_series(1,20) i where i % 2 = 0;
+insert into int4table select i from generate_series(1,20) i where i % 3 = 0;
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off) Leading((oidtable int4table))*/explain (costs off) select * from oidtable, int4table where oidtable.
+a = int4table.a;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (oidtable.a = (int4table.a)::oid)
+   ->  Seq Scan on int4table
+   ->  Index Scan using oidtable_pkey on oidtable
+         Index Cond: (a = ANY (ARRAY[(int4table.a)::oid, ($1)::oid, ($2)::oid]))
+(5 rows)
+
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off) Leading((oidtable int4table))*/ select * from oidtable, int4table where oidtable.a = int4table.a;
+ a  | a  
+----+----
+  6 |  6
+ 12 | 12
+ 18 | 18
+(3 rows)
+
+drop table oidtable;
+drop table int4table;
 SELECT '' AS "xxx", *
   FROM J1_TBL AS tx order by 1, 2, 3, 4;
  xxx | i | j |   t

@@ -4706,7 +4706,7 @@ create_nestloop_plan(PlannerInfo *root,
 	{
 		/* Add the available batched outer rels. */
 		root->yb_availBatchedRelids =
-			lappend(root->yb_availBatchedRelids, outerrelids);
+			lcons(outerrelids, root->yb_availBatchedRelids);
 
 		/* Collect all the equality operators of the batched join conditions. */
 		/*
@@ -4758,8 +4758,12 @@ create_nestloop_plan(PlannerInfo *root,
 
 	/* restore availBatchedRelids */
 	if (yb_is_batched)
+	{
+		Assert(bms_equal((Relids) linitial(root->yb_availBatchedRelids),
+			   outerrelids));
 		root->yb_availBatchedRelids =
 			list_delete_first(root->yb_availBatchedRelids);
+	}
 
 	/* Restore curOuterRels */
 	bms_free(root->curOuterRels);
@@ -5390,9 +5394,9 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			}
 			else
 			{
-				Var *var = (Var *) inner_expr;
-				scalar_type = var->vartype;
-				collid = var->varcollid;
+				Assert(IsA(inner_expr, Var) || IsA(inner_expr, RelabelType));
+				scalar_type = exprType((Node*) inner_expr);
+				collid = exprCollation((Node*)inner_expr);
 			}
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
