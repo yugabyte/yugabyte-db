@@ -79,12 +79,18 @@ SHLIB_EXPORTS = exports.txt
 
 ##########################################################################
 
+exports.txt:
+	cat exports-common.txt > $@
+ifneq ($(YB_DO_NOT_BUILD_TESTS), 1)
+	cat exports-test.txt >> $@
+endif
+
 all: submake-libpgport submake-catalog-headers submake-utils-headers postgres $(POSTGRES_IMP) all-lib
 
 # Shared-library target all-lib.
 # Depends on postgres build, and Makefile_ybpostgres.shlib will add the other
 # deps (e.g. all-shared-lib and/or all-static-lib).
-all-lib: postgres all-lib
+all-lib: postgres all-lib exports.txt
 include $(top_srcdir)/src/Makefile_ybpostgres.shlib
 
 
