@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <condition_variable>
+#include <mutex>
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_info.h"
@@ -242,6 +245,70 @@ TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableGC)) {
   VerifyTableNotExists(client.get(), kDatabase, test_name_idx, 40);
 }
 
+TEST_F(
+    PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestRaceIndexDeletionAndReadQueryOnColocatedDB)) {
+  TableName table_name = "test_pgsql_table";
+  TableName index_name = Format("$0_idx", table_name);
+  NamespaceName db_name = "test_db";
+
+  ASSERT_OK(
+      ASSERT_RESULT(Connect()).ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", db_name));
+
+  auto conn = ASSERT_RESULT(ConnectToDB("test_db"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON test_pgsql_table(value)", index_name));
+  for (int i = 0; i < 5000; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES($1, '$2')", table_name, i, i));
+  }
+  TestThreadHolder threads;
+  std::mutex m;
+  std::condition_variable cv;
+  bool cache_warm = false;
+  bool index_deletion_sent = false;
+  threads.AddThreadFunctor([this, &m, &cv, &cache_warm, &index_deletion_sent, &table_name] {
+    auto conn = ASSERT_RESULT(ConnectToDB("test_db"));
+    ASSERT_RESULT(
+        conn.FetchValue<int32_t>(Format("SELECT key FROM $0 where value = '1000'", table_name)));
+    LOG(INFO) << "queryer - setting cache to be warm";
+    {
+      std::unique_lock lk(m);
+      cache_warm = true;
+    }
+    cv.notify_one();
+    LOG(INFO) << "queryer - waiting for index deletion to be sent";
+    {
+      std::unique_lock lk(m);
+      cv.wait(lk, [&index_deletion_sent] { return index_deletion_sent; });
+    }
+    auto result =
+        conn.FetchValue<int32_t>(Format("SELECT key FROM $0 where value = '3000'", table_name));
+    if (!result.ok() &&
+        !(result.status().IsNetworkError() &&
+          result.status().ToString().find("OBJECT_NOT_FOUND") != std::string::npos)) {
+      FAIL() << "Expected ok or network error from query, received: " << result.status().ToString();
+    }
+    LOG(INFO) << "queryer - complete";
+  });
+  threads.AddThreadFunctor([this, &m, &cv, &cache_warm, &index_deletion_sent, &index_name] {
+    auto conn = ASSERT_RESULT(ConnectToDB("test_db"));
+    LOG(INFO) << "index deleter - waiting for cache to be warm";
+    {
+      std::unique_lock lk(m);
+      cv.wait(lk, [&cache_warm] { return cache_warm; });
+    }
+    ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", index_name));
+    LOG(INFO) << "index deleter - setting index deletion request sent to true";
+    {
+      std::unique_lock lk(m);
+      index_deletion_sent = true;
+    }
+    cv.notify_one();
+    LOG(INFO) << "index deleter - finished";
+  });
+  threads.JoinAll();
+  threads.Stop();
+}
+
 // Class for sanity test.
 class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
  protected:
@@ -416,7 +483,7 @@ class PgDdlAtomicityParallelDdlTest : public PgDdlAtomicitySanityTest {
     const auto msg = s.message().ToBuffer();
     static const auto allowed_msgs = {
       "Catalog Version Mismatch"s,
-      "Conflicts with higher priority transaction"s,
+      "conflicts with higher priority transaction"s,
       "Restart read required"s,
       "Transaction aborted"s,
       "Transaction metadata missing"s,
@@ -573,6 +640,36 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   // be verified. All future DDL operations will now fail.
   ASSERT_NOK(conn.Execute(RenameColumnStmt(kAddCol)));
   ASSERT_NOK(conn.Execute(DropTableStmt(kAddCol)));
+}
+
+TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(FailureRecoveryTestWithAbortedTxn)) {
+  // Make TransactionParticipant::Impl::CheckForAbortedTransactions and TabletLoader::Visit deadlock
+  // on the mutex. GH issue #15849.
+
+  // Temporarily disable abort cleanup. This flag will be reset when we RestartMaster.
+  ASSERT_OK(cluster_->SetFlagOnMasters("transactions_poll_check_aborted", "true"));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(CreateTableStmt(kDropTable)));
+
+  // Create an aborted transaction so that TransactionParticipant::Impl::CheckForAbortedTransactions
+  // has something to do.
+  ASSERT_OK(conn.TestFailDdl(CreateTableStmt(kCreateTable)));
+
+  // Crash in the middle of a DDL so that TabletLoader::Visit will perform some writes to
+  // sys_catalog on CatalogManager startup.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_crash_after_table_marked_deleting", "true"));
+  ASSERT_OK(conn.Execute(DropTableStmt(kDropTable)));
+
+  ASSERT_EQ(cluster_->master_daemons().size(), 1);
+  // Give enough time for CheckForAbortedTransactions to start and get stuck.
+  cluster_->GetLeaderMaster()->mutable_flags()->push_back(
+      "--TEST_delay_sys_catalog_reload_secs=10");
+
+  RestartMaster();
+
+  VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
 }
 
 class PgDdlAtomicityConcurrentDdlTest : public PgDdlAtomicitySanityTest {

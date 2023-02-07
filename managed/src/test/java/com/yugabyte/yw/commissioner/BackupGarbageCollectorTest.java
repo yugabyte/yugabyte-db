@@ -11,9 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.test.Helpers.contextComponents;
 
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -21,6 +19,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -35,18 +34,14 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class BackupGarbageCollectorTest extends FakeDBApplication {
@@ -64,6 +59,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private YbcManager mockYbcManager;
   private CustomerConfig s3StorageConfig;
 
+  private Users defaultUser;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
@@ -72,6 +69,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     tableManagerYb = app.injector().instanceOf(TableManagerYb.class);
     mockBackupUtil = mock(BackupUtil.class);
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST0");
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     backupGC =
         new BackupGarbageCollector(
             mockPlatformScheduler,
@@ -237,16 +235,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     bp.storageConfigUUID = customerConfig.configUUID;
     bp.universeUUID = defaultUniverse.universeUUID;
     // Set http context
-    Users user = ModelFactory.testUser(defaultCustomer);
-    Map<String, String> flashData = Collections.emptyMap();
-    user.email = "shagarwal@yugabyte.com";
-    Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
-    Http.Request request = mock(Http.Request.class);
-    Long id = 2L;
-    play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
-    Http.Context currentContext =
-        new Http.Context(id, header, request, flashData, flashData, argData, contextComponents());
-    Http.Context.current.set(currentContext);
+    TestUtils.setFakeHttpContext(defaultUser);
 
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);

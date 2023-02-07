@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <boost/optional/optional.hpp>
@@ -47,6 +48,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/yb_partition.h"
 
 namespace yb {
 
@@ -221,21 +223,24 @@ class PartitionSchema {
                    std::string* buf) const;
 
   template <class Collection>
-  Status EncodePgsqlKey(const Collection& hash_values, std::string* buf) const {
-    if (!hash_schema_) {
-      return Status::OK();
-    }
-
-    if (*hash_schema_ != YBHashSchema::kPgsqlHash) {
-      return STATUS_FORMAT(
-          InvalidArgument, "Unexpected hash scheme in EncodePgsqlKey", *hash_schema_);
-    }
-
+  Result<uint16_t> PgsqlHashColumnCompoundValue(const Collection& hash_values) const {
+    SCHECK(hash_schema_ && *hash_schema_ == YBHashSchema::kPgsqlHash,
+           InvalidArgument,
+           "Unexpected hash schema in PgsqlHashColumnCompoundValue");
     std::string tmp;
-    for (const auto &value : hash_values) {
+    for (const auto& value : hash_values) {
       ProcessHashKeyEntry(value, &tmp);
     }
-    return CompleteEncodeKey(tmp, buf);
+    return YBPartition::HashColumnCompoundValue(tmp);
+  }
+
+  template <class Collection>
+  Result<std::string> EncodePgsqlHash(const Collection& hash_values) const {
+    if (!hash_schema_) {
+      return std::string();
+    }
+    auto hash_value = VERIFY_RESULT(PgsqlHashColumnCompoundValue(hash_values));
+    return EncodeMultiColumnHashValue(hash_value);
   }
 
   // Appends the row's encoded partition key into the provided buffer.
@@ -410,7 +415,7 @@ class PartitionSchema {
                               std::string* buf);
 
   // Hashes a compound string of all columns into a 16-bit integer.
-  static uint16_t HashColumnCompoundValue(const std::string& compound);
+  static uint16_t HashColumnCompoundValue(std::string_view compound);
 
   // Encodes the specified columns of a row into 2-byte partition key using the multi column
   // hashing scheme.
@@ -467,8 +472,6 @@ class PartitionSchema {
   // Validates that this partition schema is valid. Returns OK, or an
   // appropriate error code for an invalid partition schema.
   Status Validate(const Schema& schema) const;
-
-  static Status CompleteEncodeKey(const std::string& temp, std::string* buf);
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;

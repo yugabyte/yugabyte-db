@@ -14,8 +14,8 @@
 
 #include <algorithm>
 #include <atomic>
-#include <functional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "yb/client/tablet_server.h"
@@ -51,8 +51,6 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
-using std::string;
 
 DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
     "Timeout for YSQL's yb-client read/write "
@@ -103,12 +101,6 @@ inline YBCStatus YBCStatusOK() {
   return nullptr;
 }
 
-YBCStatus YBCStatusNotSupport(const string& feature_name = std::string()) {
-  return ToYBCStatus(feature_name.empty()
-      ? STATUS(NotSupported, "Feature is not supported")
-      : STATUS_FORMAT(NotSupported, "Feature '$0' not supported", feature_name));
-}
-
 // Using a raw pointer here to fully control object initialization and destruction.
 pggate::PgApiImpl* pgapi;
 std::atomic<bool> pgapi_shutdown_done;
@@ -129,12 +121,15 @@ YBCStatus ExtractValueFromResult(Result<T> result, T* value) {
   });
 }
 
-YBCStatus ProcessYbctid(
-    const YBCPgYBTupleIdDescriptor& source,
-    const std::function<Status(PgOid, const Slice&)>& processor) {
-  return ToYBCStatus(pgapi->ProcessYBTupleId(
-      source,
-      std::bind(processor, source.table_oid, std::placeholders::_1)));
+template<class Processor>
+Status ProcessYbctidImpl(const YBCPgYBTupleIdDescriptor& source, const Processor& processor) {
+  auto ybctid = VERIFY_RESULT(pgapi->BuildTupleId(source));
+  return processor(source.table_oid, ybctid.AsSlice());
+}
+
+template<class Processor>
+YBCStatus ProcessYbctid(const YBCPgYBTupleIdDescriptor& source, const Processor& processor) {
+  return ToYBCStatus(ProcessYbctidImpl(source, processor));
 }
 
 Slice YbctidAsSlice(uint64_t ybctid) {
@@ -205,7 +200,7 @@ const YBCPgCallbacks *YBCGetPgCallbacks() {
 }
 
 YBCStatus YBCPgInitSession(const char *database_name) {
-  const string db_name(database_name ? database_name : "");
+  const std::string db_name(database_name ? database_name : "");
   return ToYBCStatus(pgapi->InitSession(db_name));
 }
 
@@ -605,7 +600,7 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
 
 YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
                                   YbTableProperties properties) {
-  CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
+  CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionListSize();
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
   properties->tablegroup_oid = table_desc->GetTablegroupOid();
@@ -646,14 +641,14 @@ static Status GetSplitPoints(YBCPgTableDesc table_desc,
   const Schema& schema = table_desc->schema();
   const auto& column_ids = table_desc->partition_schema().range_schema().column_ids;
   size_t num_range_key_columns = table_desc->num_range_key_columns();
-  size_t num_splits = table_desc->GetPartitionCount() - 1;
+  size_t num_splits = table_desc->GetPartitionListSize() - 1;
   docdb::KeyEntryValue v;
 
   // decode DocKeys
-  const auto& partitions_bounds = table_desc->GetPartitions();
+  const auto& partitions_bounds = table_desc->GetPartitionList();
   for (size_t split_idx = 0; split_idx < num_splits; ++split_idx) {
     // +1 skip the first empty string lower bound partition key
-    const std::string& column_bounds = partitions_bounds[split_idx + 1];
+    const auto& column_bounds = (partitions_bounds)[split_idx + 1];
     docdb::DocKeyDecoder decoder(column_bounds);
 
     for (size_t col_idx = 0; col_idx < num_range_key_columns; ++col_idx) {
@@ -1131,7 +1126,7 @@ YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
   if (typeentity == nullptr
       || typeentity->yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA
       || !typeentity->allow_for_primary_key) {
-    return YBCStatusNotSupport();
+    return ToYBCStatus(STATUS(NotSupported, "Feature is not supported"));
   }
 
   if (typeentity->datum_fixed_size > 0) {
@@ -1145,7 +1140,7 @@ YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
     return ToYBCStatus(status);
   }
 
-  string key_buf;
+  std::string key_buf;
   AppendToKey(val.value(), &key_buf);
   *type_size = key_buf.size();
   return YBCStatusOK();
@@ -1162,7 +1157,7 @@ YBCStatus YBCAppendDatumToKey(uint64_t data, const YBCPgTypeEntity *typeentity,
     return ToYBCStatus(status);
   }
 
-  string key_buf;
+  std::string key_buf;
   AppendToKey(val.value(), &key_buf);
   memcpy(key_ptr, key_buf.c_str(), key_buf.size());
   *bytes_written = key_buf.size();
@@ -1170,7 +1165,7 @@ YBCStatus YBCAppendDatumToKey(uint64_t data, const YBCPgTypeEntity *typeentity,
 }
 
 uint16_t YBCCompoundHash(const char *key, size_t length) {
-  return YBPartition::HashColumnCompoundValue(string(key, length));
+  return YBPartition::HashColumnCompoundValue(std::string_view(key, length));
 }
 
 //------------------------------------------------------------------------------------------------

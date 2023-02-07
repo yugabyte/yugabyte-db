@@ -345,9 +345,7 @@ public class Schedule extends Model {
     schedule.cronExpression = cronExpression;
     schedule.ownerUUID = ownerUUID;
     schedule.frequencyTimeUnit = frequencyTimeUnit;
-    schedule.userEmail =
-        ((UserWithFeatures) Context.current().args.get("user")).getUser().getEmail();
-
+    schedule.userEmail = Util.maybeGetEmailFromContext(Context.current.get());
     schedule.scheduleName =
         scheduleName != null ? scheduleName : "schedule-" + schedule.scheduleUUID;
     schedule.nextScheduleTaskTime = nextExpectedTaskTime(null, schedule);

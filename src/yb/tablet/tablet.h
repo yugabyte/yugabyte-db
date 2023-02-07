@@ -529,7 +529,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return clock_;
   }
 
-  docdb::DocReadContextPtr GetDocReadContext(const std::string& table_id = "") const override;
+  docdb::DocReadContextPtr GetDocReadContext() const override;
+  Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const override;
 
   Schema GetKeySchema(const std::string& table_id = "") const;
 

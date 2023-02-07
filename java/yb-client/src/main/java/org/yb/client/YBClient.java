@@ -1873,6 +1873,13 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public DeleteSnapshotResponse deleteSnapshot(
+      UUID snapshotUUID) throws Exception {
+    Deferred<DeleteSnapshotResponse> d =
+      asyncClient.deleteSnapshot(snapshotUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   /**
    * Analogous to {@link #shutdown()}.
    * @throws Exception if an error happens while closing the connections

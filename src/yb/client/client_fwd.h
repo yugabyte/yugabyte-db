@@ -105,6 +105,7 @@ struct YBqlWritePrimaryKeyComparator;
 
 using LocalTabletFilter = std::function<void(std::vector<const TabletId*>*)>;
 using VersionedTablePartitionListPtr = std::shared_ptr<const VersionedTablePartitionList>;
+using TablePartitionListPtr = std::shared_ptr<const TablePartitionList>;
 using TabletServersInfo = std::vector<YBTabletServerPlacementInfo>;
 using YBqlOpPtr = std::shared_ptr<YBqlOp>;
 using YBqlReadOpPtr = std::shared_ptr<YBqlReadOp>;

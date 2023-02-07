@@ -1,7 +1,9 @@
--- TODO: Remove the seperate transaction for pg_proc update after GH #13500 is fixed.
+-- TODO: Use update instead of delete and insert after #13500 is fixed.
+-- Also, use WHERE oid = 3318 after #11105 is fixed.
 BEGIN;
     SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
-    DELETE FROM pg_catalog.pg_proc WHERE proname = 'pg_stat_get_progress_info';
+    DELETE FROM pg_catalog.pg_proc WHERE proname = 'pg_stat_get_progress_info' AND
+        proargtypes = '25' AND pronamespace = 'pg_catalog'::regnamespace;
     INSERT INTO pg_catalog.pg_proc (
         oid, proname, pronamespace, proowner, prolang, procost, prorows, provariadic, protransform,
         prokind, prosecdef, proleakproof, proisstrict, proretset, provolatile, proparallel,

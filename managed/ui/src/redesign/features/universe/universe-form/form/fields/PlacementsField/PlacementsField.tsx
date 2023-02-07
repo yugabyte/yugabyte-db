@@ -41,7 +41,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
   });
 
   const renderHeader = (
-    <Box flex={1} mt={1} display="flex" flexDirection="row">
+    <Box flex={1} mt={1} display="flex" flexDirection="row" data-testid="PlacementsField-Container">
       <Box flex={2}>
         <YBLabel dataTestId="PlacementsField-AZNameLabel">
           {t('universeForm.cloudConfig.azNameLabel')}

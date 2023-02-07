@@ -96,6 +96,9 @@
 using std::string;
 using std::vector;
 
+using yb::test::Partitioning;
+using yb::test::kPartitioningArray;
+
 using namespace std::literals;  // NOLINT
 using namespace yb::client::kv_table_test; // NOLINT
 

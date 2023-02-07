@@ -62,11 +62,10 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
-using client::kv_table_test::Partitioning;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::TableIdentifierPB;
-
+using test::Partitioning;
 
 template <class TabletSplitBase>
 class XClusterTabletSplitITestBase : public TabletSplitBase {
@@ -314,7 +313,14 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   rpc::RpcController rpc;
   ASSERT_NOK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
   ASSERT_TRUE(change_resp.has_error());
-  ASSERT_TRUE(StatusFromPB(change_resp.error().status()).IsNotFound());
+  const auto status = StatusFromPB(change_resp.error().status());
+  // Depending on if the parent tablet has been inputted into every cdc_service's tablet_checkpoint_
+  // map, we may either return NotFound (pass all CheckTabletValidForStream checks, but then can't
+  // find tablet) or TabletSplit (from failing CheckTabletValidForStream on some tserver since the
+  // tablet can't be found).
+  // Either of these statuses is fine and means that this tablet no longer exists and was deleted.
+  LOG(INFO) << "GetChanges status: " << status;
+  ASSERT_TRUE(status.IsNotFound() || status.IsTabletSplit());
 }
 
 // For testing xCluster setups. Since most test utility functions expect there to be only one
@@ -471,7 +477,7 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
 
     SetNumTablets(producer_tablet_count);
     Schema schema;
-    BuildSchema(GetParam(), &schema);
+    client::kv_table_test::BuildSchema(GetParam(), &schema);
     schema.mutable_table_properties()->SetTransactional(
         GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);
     ASSERT_OK(client::kv_table_test::CreateTable(schema, NumTablets(), client_.get(), &table_));
@@ -1112,7 +1118,7 @@ std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
 INSTANTIATE_TEST_CASE_P(
     xClusterTabletMapTestITest,
     xClusterTabletMapTest,
-    ::testing::ValuesIn(client::kv_table_test::kPartitioningArray),
+    ::testing::ValuesIn(test::kPartitioningArray),
     TestParamToString<Partitioning>);
 
 }  // namespace yb
