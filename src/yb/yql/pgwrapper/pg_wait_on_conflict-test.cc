@@ -49,6 +49,7 @@ DECLARE_int32(wait_queue_poll_interval_ms);
 DECLARE_uint64(force_single_shard_waiter_retry_ms);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(transactions_status_poll_interval_ms);
+DECLARE_int32(ysql_max_write_restart_attempts);
 
 using namespace std::literals;
 
@@ -66,6 +67,7 @@ class PgWaitQueuesTest : public PgMiniTestBase {
     FLAGS_enable_deadlock_detection = true;
     FLAGS_TEST_select_all_status_tablets = true;
     FLAGS_force_single_shard_waiter_retry_ms = 10000;
+    FLAGS_ysql_max_write_restart_attempts = 0;
     PgMiniTestBase::SetUp();
   }
 
@@ -719,6 +721,7 @@ class PgTabletSplittingWaitQueuesTest : public PgTabletSplitTestBase,
     FLAGS_enable_wait_queues = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_enable_automatic_tablet_splitting = false;
+    FLAGS_ysql_max_write_restart_attempts = 0;
     PgTabletSplitTestBase::SetUp();
   }
 
@@ -749,6 +752,62 @@ TEST_F(PgTabletSplittingWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SplitTablet)) {
   UnblockWaitersAndValidate(&conn, kNumWaiters);
 }
 
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupUpdateAndSelectForShare)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("create tablegroup tg1"));
+  ASSERT_OK(conn.Execute("create table t1(k int, v int) tablegroup tg1"));
+  ASSERT_OK(conn.Execute("insert into t1 values(1, 11)"));
+
+  // txn1: update value to 111
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("update t1 set v=111 where k=1"));
+
+  // txn2: do select-for-share on the same row, should wait for txn1 to commit
+  std::thread th([&] {
+    auto conn2 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    auto value = conn2.FetchValue<int>("select v from t1 where k=1 for share");
+    // Should detect the conflict and raise serializable error.
+    ASSERT_NOK(value);
+    ASSERT_TRUE(value.status().message().Contains("All transparent retries exhausted"));
+  });
+
+  SleepFor(1s);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  th.join();
+}
+
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupSelectForShareAndUpdate)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("create tablegroup tg1"));
+  ASSERT_OK(conn.Execute("create table t1(k int, v int) tablegroup tg1"));
+  ASSERT_OK(conn.Execute("insert into t1 values(1, 11)"));
+
+  // txn1: lock the row in share mode
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  auto value = ASSERT_RESULT(conn.FetchValue<int>("select v from t1 where k=1 for share"));
+  ASSERT_EQ(value, 11);
+
+  // txn2: do an UPDATE on the same row, should wait for txn1 to commit
+  std::thread th([&] {
+    auto conn2 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    auto value = ASSERT_RESULT(conn2.FetchValue<int>("update t1 set v=111 where k=1 returning v"));
+    ASSERT_OK(conn2.Execute("COMMIT"));
+    ASSERT_EQ(value, 111);
+  });
+
+  SleepFor(1s);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  th.join();
+}
+
 class PgWaitQueueContentionStressTest : public PgMiniTestBase {
   static constexpr int kClientStatementTimeoutSeconds = 60;
 
@@ -758,6 +817,7 @@ class PgWaitQueueContentionStressTest : public PgMiniTestBase {
     FLAGS_enable_wait_queues = true;
     FLAGS_wait_queue_poll_interval_ms = 2;
     FLAGS_transactions_status_poll_interval_ms = 5;
+    FLAGS_ysql_max_write_restart_attempts = 0;
     PgMiniTestBase::SetUp();
   }
 

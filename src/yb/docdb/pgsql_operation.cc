@@ -183,14 +183,8 @@ Result<R> FetchDocKeyImpl(const Schema& schema,
   }
 }
 
-Result<string> FetchEncodedDocKey(const Schema& schema, const PgsqlReadRequestPB& request) {
-  return FetchDocKeyImpl<string>(
-      schema, request,
-      [](const auto& doc_key) { return doc_key.Encode().ToStringBuffer(); },
-      [](const auto& encoded_doc_key) { return encoded_doc_key; });
-}
-
-Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& request) {
+template<class T>
+Result<DocKey> FetchDocKey(const Schema& schema, const T& request) {
   return FetchDocKeyImpl<DocKey>(
       schema, request,
       [](const auto& doc_key) { return doc_key; },
@@ -1584,7 +1578,8 @@ Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatch
       RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), request_.wait_policy(), out));
     }
   } else {
-    AddIntent(VERIFY_RESULT(FetchEncodedDocKey(schema, request_)), request_.wait_policy(), out);
+    auto doc_key = VERIFY_RESULT(FetchDocKey(schema, request_));
+    AddIntent(doc_key.Encode().ToStringBuffer(), request_.wait_policy(), out);
   }
   return Status::OK();
 }
