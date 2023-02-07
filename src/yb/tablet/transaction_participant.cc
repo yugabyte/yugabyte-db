@@ -1617,39 +1617,43 @@ class TransactionParticipant::Impl
       std::lock_guard<std::mutex> lock(mutex_);
 
       ProcessRemoveQueueUnlocked(&min_running_notifier);
-      if (ANNOTATE_UNPROTECTED_READ(FLAGS_transactions_poll_check_aborted)) {
-        CheckForAbortedTransactions();
-      }
       CleanTransactionsQueue(&graceful_cleanup_queue_, &min_running_notifier);
+    }
+
+    if (ANNOTATE_UNPROTECTED_READ(FLAGS_transactions_poll_check_aborted)) {
+      CheckForAbortedTransactions();
     }
     CleanupStatusResolvers();
   }
 
-  void CheckForAbortedTransactions() REQUIRES(mutex_) {
-    if (transactions_.empty()) {
-      return;
-    }
-    auto now = participant_context_.Now();
-    auto& index = transactions_.get<AbortCheckTimeTag>();
+  void CheckForAbortedTransactions() EXCLUDES(mutex_) {
     TransactionStatusResolver* resolver = nullptr;
-    for (;;) {
-      auto& txn = **index.begin();
-      if (txn.external_transaction()) {
-        break;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (transactions_.empty()) {
+        return;
       }
-      if (txn.abort_check_ht() > now) {
-        break;
+      auto now = participant_context_.Now();
+      auto& index = transactions_.get<AbortCheckTimeTag>();
+      for (;;) {
+        auto& txn = **index.begin();
+        if (txn.external_transaction()) {
+          break;
+        }
+        if (txn.abort_check_ht() > now) {
+          break;
+        }
+        if (!resolver) {
+          resolver = &AddStatusResolver();
+        }
+        const auto& metadata = txn.metadata();
+        VLOG_WITH_PREFIX(4)
+            << "Check aborted: " << metadata.status_tablet << ", " << metadata.transaction_id;
+        resolver->Add(metadata.status_tablet, metadata.transaction_id);
+        CHECK(index.modify(index.begin(), [now](const auto& txn) {
+          txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusRequestSent);
+        }));
       }
-      if (!resolver) {
-        resolver = &AddStatusResolver();
-      }
-      const auto& metadata = txn.metadata();
-      VLOG_WITH_PREFIX(4)
-          << "Check aborted: " << metadata.status_tablet << ", " << metadata.transaction_id;
-      resolver->Add(metadata.status_tablet, metadata.transaction_id);
-      CHECK(index.modify(index.begin(), [now](const auto& txn) {
-        txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusRequestSent);
-      }));
     }
 
     // We don't introduce limit on number of status resolutions here, because we cannot predict

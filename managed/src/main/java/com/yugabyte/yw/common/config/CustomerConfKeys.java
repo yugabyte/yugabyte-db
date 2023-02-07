@@ -71,4 +71,13 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Option to enable/disable costs in UI",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> downloadHelmChartHttpTimeout =
+      new ConfKeyInfo<>(
+          "yb.releases.download_helm_chart_http_timeout",
+          ScopeType.CUSTOMER,
+          "Helm chart http download timeout",
+          "The timeout for downloading the Helm chart while importing a release using HTTP",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -2844,6 +2844,9 @@ ybBeginSample(Relation rel, int targrows)
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
+		/* Skip over dropped columns */
+		if (att->attisdropped)
+			continue;
 		YBCPgTypeAttrs type_attrs = { att->atttypmod };
 		YBCPgExpr   expr = YBCNewColumnRef(ybSample->handle,
 										   attnum,
