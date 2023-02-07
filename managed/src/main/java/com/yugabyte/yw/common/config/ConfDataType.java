@@ -119,13 +119,27 @@ public class ConfDataType<T> {
           "VersionCheckMode",
           VersionCheckMode.class,
           new EnumGetter<>(VersionCheckMode.class),
-          VersionCheckMode::valueOf);
+          (s) -> {
+            try {
+              return VersionCheckMode.valueOf(s);
+            } catch (Exception e) {
+              String failMsg = String.format("%s is not a valid value for desired key\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
   static ConfDataType<SkipCertValidationType> SkipCertValdationEnum =
       new ConfDataType<>(
           "SkipCertValidationType",
           SkipCertValidationType.class,
           new EnumGetter<>(SkipCertValidationType.class),
-          SkipCertValidationType::valueOf);
+          (s) -> {
+            try {
+              return SkipCertValidationType.valueOf(s);
+            } catch (Exception e) {
+              String failMsg = String.format("%s is not a valid value for desired key\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
 
   private final String name;
 
@@ -175,7 +189,12 @@ public class ConfDataType<T> {
   }
 
   private static <K> K parseStringAndApply(String s, BiFunction<Config, String, K> parser) {
-    Config c = ConfigFactory.parseString("key = " + s);
-    return parser.apply(c, "key");
+    try {
+      Config c = ConfigFactory.parseString("key = " + s);
+      return parser.apply(c, "key");
+    } catch (Exception e) {
+      String failMsg = String.format("%s is not a valid value for desired key\n", s);
+      throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+    }
   }
 }
