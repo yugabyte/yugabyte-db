@@ -59,7 +59,7 @@ sudo yum -y install libatomic
 Python 3.7 or higher is required.
 Since CentOS 7 does not include that in their package manager, this is nontrivial.
 One way is to compile from source.
-Here is an example using Python 3.7, but it is recommended to choose a higher version.
+Here is an example using Python 3.9.
 
 [Install packages for building python][python-packages].
 
@@ -73,8 +73,8 @@ Download python source.
 
 ```sh
 cd /tmp
-curl https://www.python.org/ftp/python/3.7.16/Python-3.7.16.tgz | tar xz
-cd Python-3.7.16
+curl https://www.python.org/ftp/python/3.9.16/Python-3.9.16.tgz | tar xz
+cd Python-3.9.16
 ```
 
 Make and install python to `/usr/local/bin`.
@@ -89,7 +89,7 @@ It is wise to choose to install it somewhere besides `/usr/bin` and with higher 
 One such location is `/usr/local/bin`.
 
 ```sh
-sudo ln -s /usr/local/bin/python3.7 /usr/local/bin/python3
+sudo ln -s /usr/local/bin/python3.9 /usr/local/bin/python3
 ```
 
 {{< note title="Note" >}}
