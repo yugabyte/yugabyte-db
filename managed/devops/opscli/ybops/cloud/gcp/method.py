@@ -108,7 +108,7 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
             "sourceImage": args.machine_image})
         return res["targetLink"]
 
-    # Not invoked. Just keeping if for consistency.
+    # Not invoked. Just keeping it for consistency.
     def delete_instance(self, args):
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
         self.cloud.get_admin().delete_instance(

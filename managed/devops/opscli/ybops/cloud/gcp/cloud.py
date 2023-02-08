@@ -110,9 +110,13 @@ class GcpCloud(AbstractCloud):
         return output
 
     def mount_disk(self, args, body):
+        logging.info("Mounting disk on host {} in zone {}; volume info is {}".format(
+                     args['search_pattern'], args['zone'], body))
         self.get_admin().mount_disk(args['zone'], args['search_pattern'], body)
 
     def unmount_disk(self, args, name):
+        logging.info("Unmounting disk {} from host {} in zone {}".format(
+                     name, args['search_pattern'], args['zone']))
         self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
 
     def stop_instance(self, args):
