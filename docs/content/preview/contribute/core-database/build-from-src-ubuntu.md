@@ -54,6 +54,7 @@ packages=(
   autoconf
   cmake
   curl
+  gettext
   git
   libtool
   locales
