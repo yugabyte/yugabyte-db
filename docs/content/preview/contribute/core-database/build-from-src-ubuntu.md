@@ -60,7 +60,6 @@ packages=(
   libtool
   libtool
   locales
-  maven
   ninja-build
   patchelf
   pkg-config
@@ -76,6 +75,12 @@ sudo locale-gen en_US.UTF-8
 ### Java
 
 {{% readfile "includes/java.md" %}}
+
+For Ubuntu 20.04, the `maven` package satisfies both requirements.
+
+```sh
+sudo apt-get install -y maven
+```
 
 ## Build the code
 

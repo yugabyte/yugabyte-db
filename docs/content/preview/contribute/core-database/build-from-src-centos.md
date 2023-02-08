@@ -81,6 +81,12 @@ There is no need to add any of those directories to `PATH`.
 
 {{% readfile "includes/java.md" %}}
 
+For Centos 7, the openjdk requirement can be satisfied by the package manager instead.
+
+```sh
+sudo yum install -y java-11-openjdk
+```
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
