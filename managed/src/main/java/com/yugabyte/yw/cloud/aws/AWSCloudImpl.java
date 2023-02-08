@@ -49,6 +49,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -72,6 +73,7 @@ import java.util.stream.Collectors;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toSet;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 // TODO - Better handling of UnauthorizedOperation. Ideally we should trigger alert so that
 // site admin knows about it
@@ -451,6 +453,12 @@ public class AWSCloudImpl implements CloudAPI {
       String message = "Error executing task {manageNodeGroup()}, error='{}'";
       throw new RuntimeException(message, e);
     }
+  }
+
+  @Override
+  public void validateInstanceTemplate(Provider provider, String instanceTemplate) {
+    throw new PlatformServiceException(
+        BAD_REQUEST, "Instance templates are currently not supported for AWS");
   }
 
   /**

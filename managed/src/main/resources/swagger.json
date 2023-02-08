@@ -3925,6 +3925,10 @@
     },
     "GCPRegionCloudInfo" : {
       "properties" : {
+        "instanceTemplate" : {
+          "description" : "The instance template to be used for nodes created in this region.",
+          "type" : "string"
+        },
         "ybImage" : {
           "description" : "The AMI to be used in this region.",
           "type" : "string"
