@@ -49,7 +49,7 @@ CentOS 7 is the recommended Linux development and production platform for Yugaby
 Update packages on your system, install development tools and additional packages:
 
 ```sh
-sudo yum update
+sudo yum update -y
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-devel python3 python3-pip python3-devel which
 sudo yum install -y cmake3 ctest3 ninja-build
