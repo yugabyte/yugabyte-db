@@ -364,8 +364,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement currPlacement,
       String masterAddresses,
       KubernetesPlacement newPlacement,
-      boolean userIntentChange) {
-
+      boolean instanceTypeChanged) {
     String ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
     boolean edit = newPlacement != null;
@@ -406,10 +405,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // If the new placement also has the AZ, we need to scale down. But if there
       // was a change in the instance type, the updateRemainingPod itself would have taken care
       // of the deployments' scale down.
-
       boolean keepDeployment = false;
       if (edit) {
-        keepDeployment = newPlacement.configs.containsKey(azUUID) && !userIntentChange;
+        keepDeployment = newPlacement.configs.containsKey(azUUID);
+        if (keepDeployment && instanceTypeChanged) {
+          continue;
+        }
       }
       if (keepDeployment) {
         PlacementInfo tempPI = new PlacementInfo();
