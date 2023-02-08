@@ -26,6 +26,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
+import javax.persistence.Transient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -75,6 +76,10 @@ public class AvailabilityZone extends Model {
   @Column(length = 80)
   @ApiModelProperty(value = "AZ secondary subnet", example = "secondary subnet id")
   public String secondarySubnet;
+
+  @Transient
+  @ApiModelProperty(hidden = true)
+  public String providerCode;
 
   @Deprecated
   @DbJson

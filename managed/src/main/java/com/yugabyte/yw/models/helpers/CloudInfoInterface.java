@@ -5,6 +5,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import java.util.Map;
 
+import com.google.common.base.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -77,7 +78,12 @@ public interface CloudInfoInterface {
       cloudInfo = new RegionDetails.RegionCloudInfo();
       regionDetails.cloudInfo = cloudInfo;
     }
-    CloudType cloudType = region.provider.getCloudCode();
+    CloudType cloudType = null;
+    if (region.provider != null) {
+      cloudType = CloudType.valueOf(region.provider.code);
+    } else if (!Strings.isNullOrEmpty(region.providerCode)) {
+      cloudType = CloudType.valueOf(region.providerCode);
+    }
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
 
@@ -92,7 +98,12 @@ public interface CloudInfoInterface {
       cloudInfo = new AvailabilityZoneDetails.AZCloudInfo();
       azDetails.cloudInfo = cloudInfo;
     }
-    CloudType cloudType = CloudType.valueOf(zone.region.provider.code);
+    CloudType cloudType = null;
+    if (zone.region != null) {
+      cloudType = CloudType.valueOf(zone.region.provider.code);
+    } else if (!Strings.isNullOrEmpty(zone.providerCode)) {
+      cloudType = CloudType.valueOf(zone.providerCode);
+    }
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
 
@@ -248,7 +259,14 @@ public interface CloudInfoInterface {
   }
 
   public static void setCloudProviderInfoFromConfig(Region region, Map<String, String> config) {
-    CloudType cloudType = region.provider.getCloudCode();
+    CloudType cloudType = null;
+    if (region.provider != null) {
+      cloudType = CloudType.valueOf(region.provider.code);
+    } else if (!Strings.isNullOrEmpty(region.providerCode)) {
+      cloudType = CloudType.valueOf(region.providerCode);
+    } else {
+      return;
+    }
     RegionDetails regionDetails = region.getRegionDetails();
     RegionDetails.RegionCloudInfo cloudInfo = regionDetails.getCloudInfo();
     if (cloudInfo == null) {
@@ -260,7 +278,14 @@ public interface CloudInfoInterface {
 
   public static void setCloudProviderInfoFromConfig(
       AvailabilityZone az, Map<String, String> config) {
-    CloudType cloudType = CloudType.valueOf(az.region.provider.code);
+    CloudType cloudType = null;
+    if (az.region != null) {
+      cloudType = CloudType.valueOf(az.region.provider.code);
+    } else if (!Strings.isNullOrEmpty(az.providerCode)) {
+      cloudType = CloudType.valueOf(az.providerCode);
+    } else {
+      return;
+    }
     AvailabilityZoneDetails azDetails = az.getAvailabilityZoneDetails();
     AvailabilityZoneDetails.AZCloudInfo cloudInfo = azDetails.getCloudInfo();
     if (cloudInfo == null) {
@@ -372,7 +397,7 @@ public interface CloudInfoInterface {
     return cloudInfo.getEnvVars();
   }
 
-  public static JsonNode mayBeMassageRequest(JsonNode requestBody) {
+  public static JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean isV2API) {
     // For Backward Compatiblity support.
     JsonNode config = requestBody.get("config");
     ObjectNode reqBody = (ObjectNode) requestBody;
@@ -382,7 +407,12 @@ public interface CloudInfoInterface {
         ObjectNode details = mapper.createObjectNode();
         ObjectNode cloudInfo = mapper.createObjectNode();
         ObjectNode gcpCloudInfo = mapper.createObjectNode();
-        JsonNode configFileContent = config.get("config_file_contents");
+        JsonNode configFileContent = config;
+        if (!isV2API) {
+          // UI_ONLY api passes the gcp creds config on `config_file_contents`.
+          // where v2 API version 1 passes on `config` only
+          configFileContent = config.get("config_file_contents");
+        }
 
         Boolean shouldUseHostCredentials =
             config.has("use_host_credentials") && config.get("use_host_credentials").asBoolean();

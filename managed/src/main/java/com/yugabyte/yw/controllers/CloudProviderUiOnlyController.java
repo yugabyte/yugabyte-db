@@ -47,7 +47,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
    */
   @ApiOperation(value = "UI_ONLY", nickname = "createCloudProvider", hidden = true)
   public Result create(UUID customerUUID) throws IOException {
-    JsonNode reqBody = CloudInfoInterface.mayBeMassageRequest(request().body().asJson());
+    JsonNode reqBody = CloudInfoInterface.mayBeMassageRequest(request().body().asJson(), false);
     CloudProviderFormData cloudProviderFormData =
         formFactory.getFormDataOrBadRequest(reqBody, CloudProviderFormData.class);
     fieldsValidator.validateFields(
