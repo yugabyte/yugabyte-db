@@ -58,7 +58,7 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
       channelConfig.setParams(params);
 
       Alert alert = ModelFactory.createAlert(defaultCustomer);
-      channel.sendNotification(defaultCustomer, alert, channelConfig);
+      channel.sendNotification(defaultCustomer, alert, channelConfig, null);
 
       RecordedRequest request = server.takeRequest();
       assertThat(request.getPath(), is(WEBHOOK_TEST_PATH));
@@ -109,7 +109,7 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
       Alert alert = ModelFactory.createAlert(defaultCustomer);
 
       assertThat(
-          () -> channel.sendNotification(defaultCustomer, alert, channelConfig),
+          () -> channel.sendNotification(defaultCustomer, alert, channelConfig, null),
           thrown(
               PlatformNotificationException.class,
               "Error sending WebHook message for alert Alert 1: "

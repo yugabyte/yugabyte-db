@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.Customer;
 import java.util.Collections;
 import java.util.List;
@@ -24,12 +25,13 @@ public class AlertChannelEmail extends AlertChannelBase {
   @Inject private EmailHelper emailHelper;
 
   @Override
-  public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
+  public void sendNotification(
+      Customer customer, Alert alert, AlertChannel channel, AlertChannelTemplates channelTemplates)
       throws PlatformNotificationException {
     log.debug("sendNotification {}", alert);
     AlertChannelEmailParams params = (AlertChannelEmailParams) channel.getParams();
-    String title = getNotificationTitle(alert, channel);
-    String text = getNotificationText(alert, channel);
+    String title = getNotificationTitle(alert, channel, channelTemplates);
+    String text = getNotificationText(alert, channel, channelTemplates);
 
     SmtpData smtpData =
         params.isDefaultSmtpSettings()
