@@ -895,5 +895,13 @@ export function validateHelmYAML(UniverseConfigureTaskParams) {
   return axios.post(`${ROOT_URL}/customers/${cUUID}/validate_kubernetes_overrides`, {
     ...UniverseConfigureTaskParams
   });
+}
 
+export async function fetchNodeDetails(universeUUID, nodeName) {
+  const customerUUID = localStorage.getItem('customerId');
+  try {
+    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/nodes/${nodeName}/details`);
+  } catch (e) {
+    throw e.response.data;
+  }
 }
