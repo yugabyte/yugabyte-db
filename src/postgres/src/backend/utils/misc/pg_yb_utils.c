@@ -2211,36 +2211,43 @@ getSplitPointsInfo(Oid relid, YBCPgTableDesc yb_tabledesc,
 {
 	Assert(yb_table_properties->num_tablets > 1);
 
-	/* Get key columns' YBCPgTypeEntity and YBCPgTypeAttrs */
 	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
 	const YBCPgTypeEntity *type_entities[num_range_key_columns];
 	YBCPgTypeAttrs type_attrs_arr[num_range_key_columns];
+	/*
+	 * Get key columns' YBCPgTypeEntity and YBCPgTypeAttrs.
+	 * For range-partitioned tables, use primary key to get key columns' type
+	 * info. For range-partitioned indexes, get key columns' type info from
+	 * indexes themselves.
+	 */
 	Relation rel = relation_open(relid, AccessShareLock);
+	bool is_table = rel->rd_rel->relkind == RELKIND_RELATION;
+	Relation index_rel = is_table
+							? relation_open(RelationGetPrimaryKeyIndex(rel),
+											AccessShareLock)
+							: rel;
+	Form_pg_index rd_index = index_rel->rd_index;
 	TupleDesc tupledesc = rel->rd_att;
-	Bitmapset *pkey = YBGetTablePrimaryKeyBms(rel);
-	AttrNumber attr_offset = YBGetFirstLowInvalidAttributeNumber(rel);
 
-	int key_idx = 0;
-	for (int i = 0; i < tupledesc->natts; ++i)
+	for (int i = 0; i < rd_index->indnkeyatts; ++i)
 	{
-		Form_pg_attribute attr = TupleDescAttr(tupledesc, i);
-		/* Key column */
-		if (bms_is_member(attr->attnum - attr_offset, pkey))
-		{
-			type_entities[key_idx] = YbDataTypeFromOidMod(InvalidAttrNumber,
-														  attr->atttypid);
-			YBCPgTypeAttrs type_attrs;
-			type_attrs.typmod = attr->atttypmod;
-			type_attrs_arr[key_idx] = type_attrs;
-			pkeys_atttypid[key_idx] = attr->atttypid;
-			++key_idx;
-		}
+		Form_pg_attribute attr =
+			TupleDescAttr(tupledesc, is_table ? rd_index->indkey.values[i] - 1
+											  : i);
+		type_entities[i] = YbDataTypeFromOidMod(InvalidAttrNumber,
+												attr->atttypid);
+		YBCPgTypeAttrs type_attrs;
+		type_attrs.typmod = attr->atttypmod;
+		type_attrs_arr[i] = type_attrs;
+		pkeys_atttypid[i] = attr->atttypid;
 	}
+	if (is_table)
+		relation_close(index_rel, AccessShareLock);
+	relation_close(rel, AccessShareLock);
 
 	/* Get Split point values as Postgres datums */
 	HandleYBStatus(YBCGetSplitPoints(yb_tabledesc, type_entities,
 									 type_attrs_arr, split_datums, has_null));
-	relation_close(rel, AccessShareLock);
 }
 
 /*
