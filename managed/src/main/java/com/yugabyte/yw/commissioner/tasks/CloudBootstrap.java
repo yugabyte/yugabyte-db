@@ -23,6 +23,8 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -118,12 +120,22 @@ public class CloudBootstrap extends CloudTaskBase {
       // List of zones for regions, to be used for only onprem usecase.
       public List<AvailabilityZone> azList;
 
+      // Instance template to use for new YB nodes.
+      // Default: Null.
+      // Required: False.
+      public String instanceTemplate = null;
+
       public static PerRegionMetadata fromRegion(Region region) {
         PerRegionMetadata perRegionMetadata = new PerRegionMetadata();
         perRegionMetadata.customImageId = region.getYbImage();
         perRegionMetadata.customSecurityGroupId = region.getSecurityGroupId();
         //    perRegionMetadata.subnetId = can only be set per zone
         perRegionMetadata.vpcId = region.getVnetName();
+        // Instance templates are currently only implemented for GCP.
+        if (Common.CloudType.valueOf(region.provider.code).equals(Common.CloudType.gcp)) {
+          GCPRegionCloudInfo g = CloudInfoInterface.get(region);
+          perRegionMetadata.instanceTemplate = g.instanceTemplate;
+        }
         //    perRegionMetadata.vpcCidr = never used
         if (region.zones == null || region.zones.size() == 0) {
           perRegionMetadata.azToSubnetIds = new HashMap<>();

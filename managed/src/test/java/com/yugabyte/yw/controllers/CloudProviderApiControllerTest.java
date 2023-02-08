@@ -52,15 +52,20 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RegionDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -73,6 +78,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -306,6 +312,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   private Provider buildProviderReq(String actualProviderCode, String actualProviderName) {
     Provider provider = new Provider();
+    provider.uuid = UUID.randomUUID();
     provider.code = actualProviderCode;
     provider.name = actualProviderName;
     provider.details = new ProviderDetails();
@@ -395,6 +402,77 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     } else {
       assertEquals(reqConfig.size(), config.size());
     }
+  }
+
+  @Test
+  public void testCreateProviderPassesInstanceTemplateToBootstrapParams() {
+    // Follow-up: Bootstrapping with instance template is tested by
+    // CloudBootstrapTest.testCloudBootstrapWithInstanceTemplate().
+    String code = "gcp"; // Instance template feature is only implemented for GCP currently.
+    String region = "us-west1";
+    String instanceTemplate = "test-template";
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
+        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+    Provider provider = buildProviderReq(code, code + "-Provider");
+    Map<String, String> reqConfig = new HashMap<>();
+    reqConfig.put("use_host_vpc", "true");
+    reqConfig.put("use_host_credentials", "true");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(provider, reqConfig);
+
+    addRegion(provider, region);
+    provider
+        .regions
+        .get(0)
+        .getRegionDetails()
+        .getCloudInfo()
+        .getGcp()
+        .setInstanceTemplate(instanceTemplate);
+    CloudAPI mockCloudAPI = mock(CloudAPI.class);
+    Mockito.doNothing().when(mockCloudAPI).validateInstanceTemplate(any(), any());
+    when(mockCloudAPI.isValidCreds(any(), any())).thenReturn(true);
+    when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
+
+    when(mockCloudQueryHelper.getRegionCodes(provider)).thenReturn(ImmutableList.of(region));
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenAnswer(
+            invocation -> {
+              CloudBootstrap.Params taskParams = invocation.getArgument(1);
+              CloudBootstrap.Params.PerRegionMetadata m = taskParams.perRegionMetadata.get(region);
+              assertEquals(instanceTemplate, m.instanceTemplate);
+              return UUID.randomUUID();
+            });
+    assertOk(createProvider(Json.toJson(provider)));
+    verify(mockCommissioner, times(1))
+        .submit(any(TaskType.class), any(CloudBootstrap.Params.class));
+  }
+
+  private void addRegion(Provider provider, String regionCode) {
+    Region region = new Region();
+    region.provider = provider;
+    region.code = regionCode;
+    region.name = "Region";
+    region.setYbImage("YB Image");
+    region.latitude = 0.0;
+    region.longitude = 0.0;
+    RegionDetails rd = new RegionDetails();
+    RegionDetails.RegionCloudInfo rdCloudInfo = new RegionDetails.RegionCloudInfo();
+    switch (provider.getCloudCode()) {
+      case gcp:
+        rdCloudInfo.setGcp(new GCPRegionCloudInfo());
+        break;
+      case aws:
+        rdCloudInfo.setAws(new AWSRegionCloudInfo());
+        break;
+      case kubernetes:
+        rdCloudInfo.setKubernetes(new KubernetesRegionInfo());
+        break;
+      case azu:
+        rdCloudInfo.setAzu(new AzureRegionCloudInfo());
+        break;
+    }
+    rd.setCloudInfo(rdCloudInfo);
+    region.setRegionDetails(rd);
+    provider.regions.add(region);
   }
 
   // Following tests wont be migrated because no k8s multi-region support:

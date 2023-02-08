@@ -67,8 +67,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -1435,6 +1437,16 @@ public class NodeManager extends DevopsBase {
             String bootScript = config.getString(BOOT_SCRIPT_PATH);
             if (!bootScript.isEmpty()) {
               bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
+            }
+
+            // Instance template feature is currently only implemented for GCP.
+            if (Common.CloudType.gcp.equals(userIntent.providerType)) {
+              GCPRegionCloudInfo g = CloudInfoInterface.get(taskParam.getRegion());
+              String instanceTemplate = g.getInstanceTemplate();
+              if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
+                commandArgs.add("--instance_template");
+                commandArgs.add(instanceTemplate);
+              }
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default

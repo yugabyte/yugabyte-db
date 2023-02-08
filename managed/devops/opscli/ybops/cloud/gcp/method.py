@@ -52,6 +52,8 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
                                  help="If to use preemptible instances.")
         self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
                                  default="scratch", help="Storage type for GCP instances.")
+        self.parser.add_argument("--instance_template",
+                                 help="Instance type template for GCP instances")
 
     def run_ansible_create(self, args):
         server_type = args.type
