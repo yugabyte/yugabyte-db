@@ -51,7 +51,7 @@ Update packages on your system, install development tools and additional package
 ```sh
 sudo yum update
 sudo yum groupinstall -y 'Development Tools'
-sudo yum -y install libatomic
+sudo yum -y install epel-release git libatomic libicu rsync
 ```
 
 ### Python 3
