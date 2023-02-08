@@ -1460,12 +1460,12 @@ void* YBCPgGetThreadLocalJumpBuffer() {
   return PgGetThreadLocalJumpBuffer();
 }
 
-void YBCPgSetThreadLocalErrMsg(const void* new_msg) {
-  PgSetThreadLocalErrMsg(new_msg);
+void* YBCPgSetThreadLocalErrStatus(void* new_status) {
+  return PgSetThreadLocalErrStatus(new_status);
 }
 
-const void* YBCPgGetThreadLocalErrMsg() {
-  return PgGetThreadLocalErrMsg();
+void* YBCPgGetThreadLocalErrStatus() {
+  return PgGetThreadLocalErrStatus();
 }
 
 void YBCStartSysTablePrefetching(

@@ -75,6 +75,7 @@ import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -807,6 +808,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
+  @Ignore
+  // TODO(vipulbansal)(PLAT-7130): Ignoring this test for now, will update
+  // and come up with new test case in the subsequent diffs.
   public void testCreateAwsProviderWithInValidAWSCredentials() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");

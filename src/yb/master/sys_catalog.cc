@@ -349,6 +349,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
     .partition = partitions[0],
     .tablet_data_state = tablet::TABLET_DATA_READY,
     .snapshot_schedules = {},
+    .hosted_services = {},
   }, data_root_dir));
 
   RaftConfigPB config;

@@ -3539,6 +3539,9 @@ Status CheckNumReplicas(const PlacementInfoPB& placement_info,
   return Status::OK();
 }
 
+std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
+  return StatefulServiceKind_Name(service_kind) + "_table";
+}
 } // namespace
 
 // Create a new table.
@@ -4790,6 +4793,60 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
   return s;
 }
 
+Status CatalogManager::CreateStatefulService(
+    const StatefulServiceKind& service_kind, const client::YBSchema& yb_schema) {
+  const string table_name = GetStatefulServiceTableName(service_kind);
+  // If the service table exists do nothing, otherwise create it.
+  if (VERIFY_RESULT(TableExists(kSystemNamespaceName, table_name))) {
+    return STATUS_FORMAT(AlreadyPresent, "Table $0 already created", table_name);
+  }
+
+  LOG(INFO) << "Creating stateful service table " << table_name << " for service "
+            << StatefulServiceKind_Name(service_kind);
+
+  // Set up a CreateTable request internally.
+  CreateTableRequestPB req;
+  CreateTableResponsePB resp;
+  req.set_name(table_name);
+  req.mutable_namespace_()->set_name(kSystemNamespaceName);
+  req.set_table_type(TableType::YQL_TABLE_TYPE);
+  req.set_num_tablets(1);
+  req.add_hosted_stateful_services(service_kind);
+
+  auto schema = yb::client::internal::GetSchema(yb_schema);
+
+  SchemaToPB(schema, req.mutable_schema());
+
+  req.mutable_schema()->mutable_table_properties()->set_num_tablets(1);
+
+  Status s = CreateTable(&req, &resp, /* RpcContext */ nullptr);
+  return s;
+}
+
+Status CatalogManager::CreateTestEchoService() {
+  static bool service_created = false;
+  if (service_created) {
+    return Status::OK();
+  }
+
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("timestamp")->HashPrimaryKey()->Type(DataType::TIMESTAMP);
+  schema_builder.AddColumn("text")->Type(DataType::STRING);
+
+  client::YBSchema yb_schema;
+  CHECK_OK(schema_builder.Build(&yb_schema));
+
+  auto s = CreateStatefulService(StatefulServiceKind::TEST_ECHO, yb_schema);
+  // It is possible that the table was already created. If so, there is nothing to do so we just
+  // ignore the "AlreadyPresent" error.
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+    return s;
+  }
+
+  service_created = true;
+  return Status::OK();
+}
+
 Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   TRACE("Locking table");
   auto l = table->LockForRead();
@@ -5011,6 +5068,8 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   metadata->set_namespace_name(namespace_name);
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
+  *metadata->mutable_hosted_stateful_services() = req.hosted_stateful_services();
+
   if (req.has_replication_info()) {
     metadata->mutable_replication_info()->CopyFrom(req.replication_info());
   }
@@ -5082,6 +5141,7 @@ TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
   // This is important: we are setting the first table id in the table_ids list
   // to be the id of the original table that creates the tablet.
   metadata->add_table_ids(table->id());
+
   return tablet;
 }
 

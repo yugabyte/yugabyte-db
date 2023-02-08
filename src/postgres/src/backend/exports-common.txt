@@ -1,6 +1,19 @@
-# src/backend/exports.txt
+# src/backend/exports-common.txt
 # Functions to be exported by postgres DLLs
 YbgInit
+
+# YbgStatus API
+YbgStatusErrorReportingError
+YbgStatusCreate
+YbgStatusDestroy
+YbgStatusIsError
+YbgStatusGetContext
+YbgStatusGetMessage
+YbgStatusGetMessageArgs
+YbgStatusGetSqlError
+YbgStatusGetFilename
+YbgStatusGetLineNumber
+YbgStatusGetFuncname
 
 # Memory Context API
 YbgCreateMemoryContext

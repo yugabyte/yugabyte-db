@@ -257,6 +257,16 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
 
   const TableId table_id = resp.superblock().primary_table_id();
   const bool colocated = resp.superblock().colocated();
+  auto& hosted_stateful_services = resp.superblock().hosted_stateful_services();
+  std::vector<StatefulServiceKind> hosted_services;
+  hosted_services.reserve(hosted_stateful_services.size());
+  for (auto& service_kind : hosted_stateful_services) {
+    SCHECK(
+        StatefulServiceKind_IsValid(service_kind), InvalidArgument,
+        Format("Invalid stateful service kind: $0", service_kind));
+    hosted_services.push_back((StatefulServiceKind)service_kind);
+  }
+
   const tablet::TableInfoPB* table_ptr = nullptr;
   for (auto& table_pb : kv_store->tables()) {
     if (table_pb.table_id() == table_id) {
@@ -355,7 +365,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         table.schema_version(), partition_schema);
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
     auto create_result = RaftGroupMetadata::CreateNew(
-        tablet::RaftGroupMetadataData {
+        tablet::RaftGroupMetadataData{
             .fs_manager = &fs_manager(),
             .table_info = table_info,
             .raft_group_id = tablet_id_,
@@ -363,6 +373,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
             .tablet_data_state = tablet::TABLET_DATA_COPYING,
             .colocated = colocated,
             .snapshot_schedules = {},
+            .hosted_services = hosted_services,
         },
         data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {

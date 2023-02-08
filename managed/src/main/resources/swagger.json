@@ -3925,6 +3925,10 @@
     },
     "GCPRegionCloudInfo" : {
       "properties" : {
+        "instanceTemplate" : {
+          "description" : "The instance template to be used for nodes created in this region.",
+          "type" : "string"
+        },
         "ybImage" : {
           "description" : "The AMI to be used in this region.",
           "type" : "string"
@@ -8513,6 +8517,11 @@
         "scopeUUID" : {
           "format" : "uuid",
           "type" : "string"
+        },
+        "sizeInBytes" : {
+          "description" : "Size in bytes of the support bundle",
+          "format" : "int64",
+          "type" : "integer"
         },
         "startDate" : {
           "format" : "date-time",
@@ -14295,6 +14304,12 @@
           "required" : true,
           "type" : "string"
         }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "validate",
+          "required" : false,
+          "type" : "boolean"
+        }, {
           "in" : "body",
           "name" : "CreateProviderRequest",
           "required" : true,
@@ -14633,6 +14648,49 @@
         } ],
         "summary" : "Get an access key",
         "tags" : [ "Access Keys" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editAccesskey",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "keyCode",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "access key edit form data",
+          "in" : "body",
+          "name" : "accesskey",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AccessKey"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AccessKey"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Modify an access key",
+        "tags" : [ "Access Keys" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
@@ -14651,6 +14709,12 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "validate",
+          "required" : false,
+          "type" : "boolean"
         }, {
           "description" : "edit provider form data",
           "in" : "body",

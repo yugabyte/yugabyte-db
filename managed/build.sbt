@@ -148,6 +148,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-sts" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
+  "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.

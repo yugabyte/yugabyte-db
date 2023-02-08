@@ -704,7 +704,8 @@ RaftGroupMetadata::RaftGroupMetadata(
       cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()),
       cdc_sdk_min_checkpoint_op_id_(OpId::Invalid()),
       cdc_sdk_safe_time_(HybridTime::kInvalid),
-      log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())) {
+      log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())),
+      hosted_services_(data.hosted_services) {
   CHECK(data.table_info->schema().has_column_ids());
   CHECK_GT(data.table_info->schema().num_key_columns(), 0);
   kv_store_.tables.emplace(primary_table_id_, data.table_info);
@@ -800,6 +801,13 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       active_restorations_.reserve(superblock.active_restorations().size());
       for (const auto& id : superblock.active_restorations()) {
         active_restorations_.push_back(VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(id)));
+      }
+    }
+
+    if (!superblock.hosted_stateful_services().empty()) {
+      hosted_services_.reserve(superblock.hosted_stateful_services().size());
+      for (auto& service_kind : superblock.hosted_stateful_services()) {
+        hosted_services_.push_back((StatefulServiceKind)service_kind);
       }
     }
   }
@@ -933,6 +941,14 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
     active_restorations.Reserve(narrow_cast<int>(active_restorations_.size()));
     for (const auto& id : active_restorations_) {
       active_restorations.Add()->assign(id.AsSlice().cdata(), id.size());
+    }
+  }
+
+  if (!hosted_services_.empty()) {
+    auto& hosted_services = *pb.mutable_hosted_stateful_services();
+    hosted_services.Reserve(narrow_cast<int>(hosted_services_.size()));
+    for (const auto& service_kind : hosted_services_) {
+      *hosted_services.Add() = service_kind;
     }
   }
 
@@ -1342,6 +1358,11 @@ bool RaftGroupMetadata::CleanupRestorations(
     }
   }
   return result;
+}
+
+std::vector<StatefulServiceKind> RaftGroupMetadata::GetHostedServiceList() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return hosted_services_;
 }
 
 Status RaftGroupMetadata::OldSchemaGC(
