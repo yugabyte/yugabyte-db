@@ -8,16 +8,4 @@ YugabyteDB core is written in C and C++, but the repository contains Java code n
 To build the Java part, you need:
 
 * Java Development Kit (JDK) 8 or 11.
-  JDK can be downloaded from [OpenJDK](http://jdk.java.net/archive), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 * [Apache Maven](https://maven.apache.org/) 3.3 or later.
-
-One option is to download the releases and put the bin directory on `PATH`.
-Here's an example on x64 Linux:
-
-```sh
-mkdir ~/tools
-cd ~/tools
-curl 'https://cdn.azul.com/zulu/bin/zulu11.62.17-ca-jdk11.0.18-linux_x64.tar.gz' | tar xz
-curl 'https://dlcdn.apache.org/maven/maven-3/3.8.7/binaries/apache-maven-3.8.7-bin.tar.gz' | tar xz
-echo 'export PATH=$HOME/tools/zulu11.62.17-ca-jdk11.0.18-linux_x64/bin:$HOME/tools/apache-maven-3.8.7/bin:$PATH' >>~/.bashrc
-```
