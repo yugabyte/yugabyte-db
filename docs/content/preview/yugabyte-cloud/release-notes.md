@@ -16,6 +16,16 @@ On this page:
 
 ## Releases
 
+### February 8, 2023
+
+**New Features**
+
+- Users can now request a [time-limited free trial](../managed-freetrial/) to explore all the YugabyteDB Managed features.
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.1](../../releases/release-notes/v2.16/#v2.16.1.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
 ### January 27, 2023
 
 **New Features**
@@ -43,7 +53,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.14.5 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.5](../../releases/release-notes/v2.14/#v2.14.5.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 ### December 12, 2022
 
