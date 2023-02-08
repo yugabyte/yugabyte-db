@@ -409,3 +409,41 @@ SELECT yb_get_range_split_clause('tbl_group_table'::regclass);
 DROP TABLE tbl_group_table;
 
 DROP TABLEGROUP tbl_group;
+
+-- Test the scenario where primary key columns' ordering in PRIMARY KEY
+-- constraint is different from the key column's ordering in CREATE TABLE
+-- statement.
+CREATE TABLE column_ordering_mismatch (
+  k2 TEXT,
+  v DOUBLE PRECISION,
+  k1 INT,
+  PRIMARY KEY (k1 ASC, k2 ASC)
+) SPLIT AT VALUES((1, '1'), (100, '100'));
+SELECT yb_get_range_split_clause('column_ordering_mismatch'::regclass);
+DROP TABLE column_ordering_mismatch;
+
+-- Test table PRIMARY KEY with INCLUDE clause
+CREATE TABLE tbl_with_include_clause (
+  k2 TEXT,
+  v DOUBLE PRECISION,
+  k1 INT,
+  PRIMARY KEY (k1 ASC, k2 ASC) INCLUDE (v)
+) SPLIT AT VALUES((1, '1'), (100, '100'));
+SELECT yb_get_range_split_clause('tbl_with_include_clause'::regclass);
+DROP TABLE tbl_with_include_clause;
+
+-- Test secondary index with duplicate columns and backwards order columns
+CREATE TABLE test_tbl (
+  k1 INT,
+  k2 TEXT,
+  k3 DOUBLE PRECISION
+);
+CREATE INDEX test_idx on test_tbl (
+  k3 ASC,
+  k2 ASC,
+  k1 ASC,
+  k3 DESC
+) SPLIT AT VALUES ((1.1, '11', 1, 1.1), (3.3, '33', 3, 3.3));
+SELECT yb_get_range_split_clause('test_idx'::regclass);
+DROP INDEX test_idx;
+DROP TABLE test_tbl;
