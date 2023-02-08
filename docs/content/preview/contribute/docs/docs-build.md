@@ -37,6 +37,14 @@ To run the docs site locally and edit the docs, you'll need:
 
 * **Go**: `brew install go` installs the latest version.
 
+* **Python**: You need `python` to be available somewhere in your shell path.
+
+    Recent versions of macOS have only a `python3` executable, as does the Homebrew install. Add a symlink somewhere in your PATH. To add a symlink to the system python, you can run a command such as the following:
+
+    ```sh
+    ln -s /usr/bin/python3 /usr/local/bin/python
+    ```
+
 * **A GitHub account**.
 
 * **Git client**: The system Git binary is out of date, but works. If you like, you can use Homebrew to get a newer version (`brew install git`).
