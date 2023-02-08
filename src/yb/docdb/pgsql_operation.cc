@@ -86,8 +86,8 @@ constexpr bool kYsqlPackedRowEnabled = false;
 constexpr bool kYsqlPackedRowEnabled = true;
 #endif
 
-DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal, false, kYsqlPackedRowEnabled,
-                         "Whether packed row is enabled for YSQL.");
+DEFINE_RUNTIME_bool(ysql_enable_packed_row, kYsqlPackedRowEnabled,
+                    "Whether packed row is enabled for YSQL.");
 
 DEFINE_UNKNOWN_bool(ysql_enable_packed_row_for_colocated_table, false,
                     "Whether to enable packed row for colocated tables.");
