@@ -190,8 +190,18 @@
     imageUrl = "/icons/database.svg"
 
 [[main]]
-  name = "YugabyteDB Managed"
+  name = "YugabyteDB Anywhere"
   weight = 2
+  identifier = "yugabytedb-anywhere-releases"
+  parent = "releases"
+  url = "/preview/releases/yba-releases/"
+  [main.params]
+    excludeVersion = true
+    imageUrl = "/icons/server.svg"
+
+[[main]]
+  name = "YugabyteDB Managed"
+  weight = 3
   identifier = "yugabytedb-managed-releases"
   parent = "releases"
   url = "/preview/yugabyte-cloud/release-notes/"
