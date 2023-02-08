@@ -152,7 +152,6 @@ To move a snapshot to external storage, gather all the relevant files from all t
 
     In practice, for each server, you would use the `--fs_data_dirs` flag, which is a comma-separated list of paths for the data. It is recommended to have different paths on separate disks.
 
-
 To obtain a snapshot of a multi-node cluster, you would access each node and copy the folders of only the leader tablets on that node. Because each tablet replica has a copy of the same data, there is no need to keep a copy for each replica.
 
 If you do not wish to keep the in-cluster snapshot, you can safely [delete it](#delete-a-snapshot).
@@ -217,7 +216,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
         tablet-111ab9d046d449d995ee9759bf32e028.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729/
     ```
 
-    For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster.
+    For each tablet, you need to copy only the contents of the snapshots folder (not the entire folder) on all tablet peers, and in any configured read replica cluster.
 
 1. [Restore the snapshot](#restore-a-snapshot).
 
