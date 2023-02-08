@@ -11,6 +11,9 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -148,7 +151,7 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
   public Result create(UUID customerUUID, boolean validate) {
-    JsonNode requestBody = request().body().asJson();
+    JsonNode requestBody = mayBeMassageRequest(request().body().asJson());
     Provider reqProvider =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -329,5 +332,41 @@ public class CloudProviderApiController extends AuthenticatedController {
             Audit.ActionType.Edit,
             request().body().asJson());
     return PlatformResults.withData(schedule);
+  }
+
+  // v2 API version 1 backward compatiblity support.
+  public JsonNode mayBeMassageRequest(JsonNode requestBody) {
+    JsonNode config = requestBody.get("config");
+    if (config == null) {
+      return requestBody;
+    }
+    String providerCode = requestBody.get("code").asText();
+    ObjectMapper mapper = Json.mapper();
+    JsonNode regions = requestBody.get("regions");
+    ArrayNode regionsNode = mapper.createArrayNode();
+    if (regions != null && regions.isArray()) {
+      for (JsonNode region : regions) {
+        ObjectNode regionWithProviderCode = mapper.createObjectNode();
+        regionWithProviderCode.put("providerCode", providerCode);
+        regionWithProviderCode.setAll((ObjectNode) region);
+        JsonNode zones = region.get("zones");
+        ArrayNode zonesNode = mapper.createArrayNode();
+        if (zones != null && zones.isArray()) {
+          for (JsonNode zone : zones) {
+            ObjectNode zoneWithProviderCode = mapper.createObjectNode();
+            zoneWithProviderCode.put("providerCode", providerCode);
+            zoneWithProviderCode.setAll((ObjectNode) zone);
+            zonesNode.add(zoneWithProviderCode);
+          }
+        }
+        regionWithProviderCode.remove("zones");
+        regionWithProviderCode.put("zones", zonesNode);
+        regionsNode.add(regionWithProviderCode);
+      }
+    }
+    ((ObjectNode) requestBody).remove("regions");
+    ((ObjectNode) requestBody).put("regions", regionsNode);
+
+    return CloudInfoInterface.mayBeMassageRequest(requestBody, true);
   }
 }
