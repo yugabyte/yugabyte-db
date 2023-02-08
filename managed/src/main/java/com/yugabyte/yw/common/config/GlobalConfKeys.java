@@ -256,6 +256,30 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Stable version for Yb-Controller",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybcAdminOperationTimeoutMs =
+      new ConfKeyInfo<>(
+          "ybc.timeout.admin_operation_timeout_ms",
+          ScopeType.GLOBAL,
+          "YBC admin operation timeout",
+          "YBC client timeout in milliseconds for admin operations",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
+      new ConfKeyInfo<>(
+          "ybc.timeout.socket_read_timeout_ms",
+          ScopeType.GLOBAL,
+          "YBC socket read timeout",
+          "YBC client socket read timeout in milliseconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybcOperationTimeoutMs =
+      new ConfKeyInfo<>(
+          "ybc.timeout.operation_timeout_ms",
+          ScopeType.GLOBAL,
+          "YBC operation timeout",
+          "YBC client timeout in milliseconds for operations",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableCertReload =
       new ConfKeyInfo<>(
           "yb.features.cert_reload.enabled",
