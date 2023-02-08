@@ -14648,6 +14648,49 @@
         } ],
         "summary" : "Get an access key",
         "tags" : [ "Access Keys" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editAccesskey",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "keyCode",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "access key edit form data",
+          "in" : "body",
+          "name" : "accesskey",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AccessKey"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AccessKey"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Modify an access key",
+        "tags" : [ "Access Keys" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {

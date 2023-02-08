@@ -93,6 +93,11 @@ public class AccessKey extends Model {
     public String getSshPrivateKeyContent() {
       return CommonUtils.getMaskedValue(sshPrivateKeyContent);
     }
+
+    @JsonIgnore
+    public String getUnMaskedSshPrivateKeyContent() {
+      return sshPrivateKeyContent;
+    }
   }
 
   public static String getDefaultKeyCode(Provider provider) {
@@ -111,6 +116,13 @@ public class AccessKey extends Model {
     return String.format(
         "yb-%s-%s-key-%s",
         Customer.get(provider.customerUUID).code, sanitizedProviderName, timestamp);
+  }
+
+  // Generates a new keycode by appending the timestamp to the
+  // exisitng keycode.
+  public static String getNewKeyCode(String keyCode) {
+    String timestamp = generateKeyCodeTimestamp();
+    return String.format("%s-%s", keyCode, timestamp);
   }
 
   public static String generateKeyCodeTimestamp() {
