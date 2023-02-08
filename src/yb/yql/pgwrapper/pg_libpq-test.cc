@@ -523,6 +523,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertAndDeleteOnTablesWit
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
   const auto num_iterations = 50;
+  const auto kTimeout = 60s;
 
   ASSERT_OK(conn1.Execute("CREATE TABLE IF NOT EXISTS t1 (a int PRIMARY KEY, b int)"));
   ASSERT_OK(conn1.Execute(
@@ -536,14 +537,14 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertAndDeleteOnTablesWit
 
     std::atomic<bool> stop = false;
     std::atomic<int> values_in_t1 = 50;
+    std::atomic<int> values_in_t2 = 0;
 
     // Insert rows in t2 on a separate thread.
-    std::thread insertion_thread([&conn2, &stop, &values_in_t1] {
-      int value_to_insert = 0;
-      while (!stop && value_to_insert < values_in_t1) {
+    std::thread insertion_thread([&conn2, &stop, &values_in_t1, &values_in_t2] {
+      while (!stop && values_in_t2 < values_in_t1 + 1) {
         ASSERT_OK(conn2.ExecuteFormat(
-            "INSERT INTO t2 VALUES ($0, $1)", value_to_insert, value_to_insert + 1));
-        value_to_insert++;
+            "INSERT INTO t2 VALUES ($0, $1)", values_in_t2, values_in_t2 + 1));
+        values_in_t2++;
       }
 
       // Verify insert prevention due to FK constraints.
@@ -558,6 +559,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertAndDeleteOnTablesWit
       ASSERT_OK(conn1.ExecuteFormat("INSERT INTO t1 values ($0, $1)", j, j + 1));
       values_in_t1++;
     }
+
+    // Wait till (9, 10) is inserted in t2 before we delete the row (10, 11) from t1.
+    ASSERT_OK(WaitFor([&values_in_t2] { return values_in_t2 >= 10; }, kTimeout,
+        Format("Wait till t2 has Row(9, 10)")));
 
     // Verify for CASCADE behaviour.
     ASSERT_OK(conn1.Execute("DELETE FROM t1 where a = 10"));
