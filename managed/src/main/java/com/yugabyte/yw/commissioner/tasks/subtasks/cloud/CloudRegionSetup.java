@@ -23,9 +23,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
-
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -105,6 +103,14 @@ public class CloudRegionSetup extends CloudTaskBase {
     String customSecurityGroupId = taskParams().metadata.customSecurityGroupId;
     if (customSecurityGroupId != null && !customSecurityGroupId.isEmpty()) {
       region.setSecurityGroupId(customSecurityGroupId);
+      region.update();
+    }
+    String instanceTemplate = taskParams().metadata.instanceTemplate;
+    if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
+      if (region.provider.getCloudCode().equals(Common.CloudType.gcp)) {
+        GCPRegionCloudInfo g = CloudInfoInterface.get(region);
+        g.setInstanceTemplate(instanceTemplate);
+      }
       region.update();
     }
 

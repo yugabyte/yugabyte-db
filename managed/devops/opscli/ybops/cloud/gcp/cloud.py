@@ -85,7 +85,8 @@ class GcpCloud(AbstractCloud):
             args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
             args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
             auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,
-            cloud_subnet_secondary=args.cloud_subnet_secondary)
+            cloud_subnet_secondary=args.cloud_subnet_secondary,
+            gcp_instance_template=args.instance_template)
 
     def create_disk(self, args, body):
         self.get_admin().create_disk(args.zone, args.instance_tags, body)

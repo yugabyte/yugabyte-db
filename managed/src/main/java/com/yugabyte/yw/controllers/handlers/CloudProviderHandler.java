@@ -190,7 +190,19 @@ public class CloudProviderHandler {
       }
     }
     provider.save();
+
     return provider;
+  }
+
+  private void validateInstanceTemplate(Provider provider, CloudBootstrap.Params taskParams) {
+    // Validate instance template, if provided. Only supported for GCP currently.
+    taskParams.perRegionMetadata.forEach(
+        (region, metadata) -> {
+          if (metadata.instanceTemplate != null) {
+            CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
+            cloudAPI.validateInstanceTemplate(provider, metadata.instanceTemplate);
+          }
+        });
   }
 
   public Provider createKubernetes(Customer customer, KubernetesProviderFormData formData) {
@@ -631,6 +643,7 @@ public class CloudProviderHandler {
         taskParams.perRegionMetadata.put(regionCode, new CloudBootstrap.Params.PerRegionMetadata());
       }
     }
+    validateInstanceTemplate(provider, taskParams);
 
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(
