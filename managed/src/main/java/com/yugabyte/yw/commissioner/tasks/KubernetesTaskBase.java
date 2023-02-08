@@ -277,7 +277,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         currNumTservers = currPlacement.tservers.getOrDefault(azUUID, 0);
         if (serverType == ServerType.TSERVER) {
           // Since we only want to roll the old pods and not the new ones.
-          numPods = currNumTservers;
+          numPods = newNumTservers > currNumTservers ? currNumTservers : newNumTservers;
           if (currNumTservers == 0) {
             continue;
           }
