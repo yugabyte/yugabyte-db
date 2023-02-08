@@ -36,7 +36,7 @@ type: indexpage
         <div class="title">Performance</div>
       </div>
       <div class="body">
-        Achieving high performance in DocDB.
+        High performance in DocDB.
       </div>
     </a>
   </div>

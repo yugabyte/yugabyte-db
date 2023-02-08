@@ -514,6 +514,7 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   static YBPgsqlWriteOpPtr NewInsert(const YBTablePtr& table, rpc::Sidecars* sidecars);
   static YBPgsqlWriteOpPtr NewUpdate(const YBTablePtr& table, rpc::Sidecars* sidecars);
   static YBPgsqlWriteOpPtr NewDelete(const YBTablePtr& table, rpc::Sidecars* sidecars);
+  static YBPgsqlWriteOpPtr NewFetchSequence(const YBTablePtr& table, rpc::Sidecars* sidecars);
 
  protected:
   virtual Type type() const override { return PGSQL_WRITE; }

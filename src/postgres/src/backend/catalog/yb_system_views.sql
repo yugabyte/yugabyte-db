@@ -709,10 +709,13 @@ CREATE VIEW pg_stat_activity AS
             S.backend_xid,
             s.backend_xmin,
             S.query,
-            S.backend_type
+            S.backend_type,
+            yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)
-        LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid);
+        LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)
+        LEFT JOIN (pg_stat_get_backend_idset() beid CROSS JOIN
+                   pg_stat_get_backend_pid(beid) pid) B ON B.pid = S.pid;
 
 CREATE VIEW pg_stat_replication AS
     SELECT
@@ -925,6 +928,31 @@ CREATE VIEW pg_stat_progress_copy AS
         S.param4 AS tuples_excluded
     FROM pg_stat_get_progress_info('COPY') AS S
         LEFT JOIN pg_database D ON S.datid = D.oid;
+
+CREATE VIEW pg_stat_progress_create_index AS
+	SELECT
+		S.pid AS pid, S.datid AS datid, D.datname AS datname,
+		S.relid AS relid,
+		CAST(S.param7 AS oid) AS index_relid,
+		CASE S.param1 WHEN 1 THEN 'CREATE INDEX NONCONCURRENTLY'
+					  WHEN 2 THEN 'CREATE INDEX CONCURRENTLY'
+					  WHEN 3 THEN 'REINDEX NONCONCURRENTLY'
+					  WHEN 4 THEN 'REINDEX CONCURRENTLY'
+					  END AS command,
+		CASE S.param10 WHEN 0 THEN 'initializing'
+					   WHEN 1 THEN 'backfilling'
+					   END AS phase,
+		S.param4 AS lockers_total,
+		S.param5 AS lockers_done,
+		S.param6 AS current_locker_pid,
+		S.param16 AS blocks_total,
+		S.param17 AS blocks_done,
+		S.param12 AS tuples_total,
+		S.param13 AS tuples_done,
+		S.param14 AS partitions_total,
+		S.param15 AS partitions_done
+	FROM pg_stat_get_progress_info('CREATE INDEX') AS S
+		LEFT JOIN pg_database D ON S.datid = D.oid;
 
 CREATE VIEW pg_user_mappings AS
     SELECT

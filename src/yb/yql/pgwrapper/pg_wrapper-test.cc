@@ -495,6 +495,7 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_max_connections=42");
     options->extra_tserver_flags.emplace_back("--ysql_log_min_duration_statement=13");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_expression_pushdown=false");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_bypass_cond_recheck=false");
   }
 };
 
@@ -503,6 +504,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_max_connections", "42"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_log_min_duration_statement", "13"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "false"));
 }
 
 class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
@@ -531,6 +533,8 @@ TEST_F_EX(
     PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestAutoFlagOnNewCluster), PgWrapperAutoFlagsTest) {
   // New clusters should start with Target value
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "true"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(true /* expect_target_value */));
 }
@@ -548,6 +552,8 @@ TEST_F_EX(
     PgWrapperAutoFlagsDisabledTest) {
   // Old clusters that have upgraded to new version should have Initial value
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
 }

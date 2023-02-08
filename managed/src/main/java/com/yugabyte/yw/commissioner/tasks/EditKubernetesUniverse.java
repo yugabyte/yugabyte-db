@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckStorageClass;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -286,9 +287,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
 
     if (!tserversToAdd.isEmpty()
-        && runtimeConfigFactory
-            .forUniverse(universe)
-            .getBoolean("yb.wait_for_lb_for_added_nodes")) {
+        && confGetter.getConfForScope(universe, UniverseConfKeys.waitForLbForAddedNodes)) {
       // If tservers have been added, we wait for the load to balance.
       createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }

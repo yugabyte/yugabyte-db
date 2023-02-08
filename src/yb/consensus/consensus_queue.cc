@@ -236,17 +236,20 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
 }
 
 void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
-  LockGuard lock(queue_lock_);
-  CHECK_EQ(queue_state_.state, State::kQueueConstructed);
-  log_cache_.Init(last_locally_replicated.ToPB<OpIdPB>());
-  queue_state_.last_appended = last_locally_replicated;
-  queue_state_.state = State::kQueueOpen;
-  local_peer_ = TrackPeerUnlocked(local_peer_pb_);
+  {
+    LockGuard lock(queue_lock_);
+    CHECK_EQ(queue_state_.state, State::kQueueConstructed);
+    log_cache_.Init(last_locally_replicated.ToPB<OpIdPB>());
+    queue_state_.last_appended = last_locally_replicated;
+    queue_state_.state = State::kQueueOpen;
+    local_peer_ = TrackPeerUnlocked(local_peer_pb_);
+  }  // Ensure that the queue_lock_ is released.
 
   if (context_) {
     context_->ListenNumSSTFilesChanged(std::bind(&PeerMessageQueue::NumSSTFilesChanged, this));
     installed_num_sst_files_changed_listener_ = true;
   }
+
 }
 
 void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,

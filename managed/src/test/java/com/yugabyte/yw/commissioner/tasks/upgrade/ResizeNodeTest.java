@@ -665,6 +665,64 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         DEFAULT_INSTANCE_TYPE, DEFAULT_VOLUME_SIZE, DEFAULT_INSTANCE_TYPE, NEW_VOLUME_SIZE);
   }
 
+  @Test
+  public void testChangingOnlyInstanceWithGFlags() {
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.tserverGFlags = ImmutableMap.of("tserverFlag", "123");
+    taskParams.masterGFlags = ImmutableMap.of("masterFlag", "123");
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, true, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(true, true);
+  }
+
+  @Test
+  public void testChangingOnlyInstanceWithTserverGFlags() {
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.tserverGFlags = ImmutableMap.of("tserverFlag", "123");
+    taskParams.masterGFlags = new HashMap<>();
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, false, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(false, true);
+  }
+
+  @Test
+  public void testChangingOnlyInstanceWithMasterGFlags() {
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.masterGFlags = ImmutableMap.of("masterFlag", "123");
+    taskParams.tserverGFlags = new HashMap<>();
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, true, false);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(true, false);
+  }
+
+  private void assertGflags(boolean updateMasterGflags, boolean updateTserverGflags) {
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent;
+    if (updateMasterGflags) {
+      assertEquals(newIntent.masterGFlags, ImmutableMap.of("masterFlag", "123"));
+    }
+    if (updateTserverGflags) {
+      assertEquals(newIntent.tserverGFlags, ImmutableMap.of("tserverFlag", "123"));
+    }
+  }
+
   private void assertDedicatedIntent(
       String newInstanceType,
       int newVolumeSize,
@@ -875,6 +933,26 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean changeInstance,
       boolean waitForMasterLeader,
       boolean isRf1) {
+    assertTasksSequence(
+        startPosition,
+        subTasks,
+        increaseVolume,
+        changeInstance,
+        waitForMasterLeader,
+        isRf1,
+        false,
+        false);
+  }
+
+  protected void assertTasksSequence(
+      int startPosition,
+      List<TaskInfo> subTasks,
+      boolean increaseVolume,
+      boolean changeInstance,
+      boolean waitForMasterLeader,
+      boolean isRf1,
+      boolean updateMasterGflags,
+      boolean updateTserverGflags) {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
@@ -890,11 +968,24 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             increaseVolume,
             changeInstance,
             waitForMasterLeader,
-            isRf1);
+            isRf1,
+            updateMasterGflags,
+            updateTserverGflags);
     position =
         assertTasksSequence(
-            subTasksByPosition, TSERVER, position, increaseVolume, changeInstance, false, isRf1);
+            subTasksByPosition,
+            TSERVER,
+            position,
+            increaseVolume,
+            changeInstance,
+            false,
+            isRf1,
+            updateMasterGflags,
+            updateTserverGflags);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PersistResizeNode);
+    if (updateMasterGflags || updateTserverGflags) {
+      assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateAndPersistGFlags);
+    }
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertEquals(position, subTasks.size() - 1);
   }
@@ -906,7 +997,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean increaseVolume,
       boolean changeInstance,
       boolean waitForMasterLeader,
-      boolean isRf1) {
+      boolean isRf1,
+      boolean updateMasterGflags,
+      boolean updateTserverGflags) {
     List<Integer> nodeIndexes =
         serverType == EITHER ? Arrays.asList(1, 3, 2) : Collections.singletonList(4);
 
@@ -922,7 +1015,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
           taskTypesSequence,
           paramsForTask,
           waitForMasterLeader,
-          isRf1);
+          isRf1,
+          updateMasterGflags,
+          updateTserverGflags);
 
       int idx = 0;
       log.debug(nodeName + " :" + taskTypesSequence);
@@ -951,6 +1046,19 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     return position;
   }
 
+  private List<TaskType> getTasksForInstanceResize(
+      boolean updateMasterGflags, boolean updateTserverGflags, boolean onlyTserver) {
+    List<TaskType> tasks = new ArrayList<>();
+    tasks.add(TaskType.ChangeInstanceType);
+    if (updateMasterGflags && !onlyTserver) {
+      tasks.add(TaskType.AnsibleConfigureServers);
+    }
+    if (updateTserverGflags) {
+      tasks.add(TaskType.AnsibleConfigureServers);
+    }
+    return tasks;
+  }
+
   private void createTasksTypesForNode(
       boolean onlyTserver,
       boolean increaseVolume,
@@ -958,10 +1066,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       List<TaskType> taskTypesSequence,
       Map<Integer, Map<String, Object>> paramsForTask,
       boolean waitForMasterLeader,
-      boolean isRf1) {
+      boolean isRf1,
+      boolean updateMasterGflags,
+      boolean updateTserverGflags) {
     List<TaskType> nodeUpgradeTasks = new ArrayList<>();
     if (changeInstance) {
-      nodeUpgradeTasks.add(TaskType.ChangeInstanceType);
+      nodeUpgradeTasks.addAll(
+          getTasksForInstanceResize(updateMasterGflags, updateTserverGflags, onlyTserver));
     }
     if (increaseVolume) {
       nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
@@ -1024,6 +1135,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   private ResizeNodeParams createResizeParams() {
     ResizeNodeParams taskParams = new ResizeNodeParams();
     RuntimeConfigEntry.upsertGlobal("yb.internal.allow_unsupported_instances", "true");
+    taskParams.universeUUID = defaultUniverse.universeUUID;
+    return taskParams;
+  }
+
+  private ResizeNodeParams createResizeParamsForCloud() {
+    ResizeNodeParams taskParams = new ResizeNodeParams();
+    RuntimeConfigEntry.upsertGlobal("yb.cloud.enabled", "true");
     taskParams.universeUUID = defaultUniverse.universeUUID;
     return taskParams;
   }

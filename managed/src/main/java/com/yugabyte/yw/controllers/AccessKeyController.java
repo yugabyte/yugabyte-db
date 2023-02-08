@@ -2,14 +2,12 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ProviderEditRestrictionManager;
-import com.yugabyte.yw.common.TemplateManager;
+import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -17,22 +15,17 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.mvc.Http.MultipartFormData;
-import play.mvc.Http.MultipartFormData.FilePart;
 import play.mvc.Result;
 
 @Api(
@@ -40,11 +33,7 @@ import play.mvc.Result;
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AccessKeyController extends AuthenticatedController {
 
-  @Inject AccessManager accessManager;
-
-  @Inject TemplateManager templateManager;
-
-  @Inject ProviderEditRestrictionManager providerEditRestrictionManager;
+  @Inject AccessKeyHandler accessKeyHandler;
 
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
@@ -88,28 +77,27 @@ public class AccessKeyController extends AuthenticatedController {
     return PlatformResults.withData(accessKeys);
   }
 
+  // TODO: Move this endpoint under region since this api is per region
   @ApiOperation(
-      nickname = "create_accesskey",
-      value = "Create an access key",
+      nickname = "createAccesskey",
+      value = "Create/Upload an access key for onprem Provider region",
+      notes = "UNSTABLE - This API will undergo changes in future.",
       response = AccessKey.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "AccessKeyFormData",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.AccessKeyFormData",
+          required = true))
   public Result create(UUID customerUUID, UUID providerUUID) {
     final Provider provider = Provider.getOrBadRequest(providerUUID);
-    AccessKeyFormData formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class).get();
-    formData = accessManager.setOrValidateRequestDataWithExistingKey(formData, providerUUID);
-    AccessKeyFormData finalFormData = formData;
+    AccessKeyFormData formData =
+        formFactory
+            .getFormDataOrBadRequest(AccessKeyFormData.class)
+            .get()
+            .setOrValidateRequestDataWithExistingKey(provider);
     AccessKey accessKey =
-        providerEditRestrictionManager.tryEditProvider(
-            providerUUID,
-            () -> {
-              try {
-                return create(customerUUID, provider, finalFormData);
-              } catch (IOException e) {
-                LOG.error("Failed to create access key", e);
-                throw new PlatformServiceException(
-                    INTERNAL_SERVER_ERROR,
-                    "Failed to create access key: " + e.getLocalizedMessage());
-              }
-            });
+        accessKeyHandler.create(customerUUID, provider, formData, request().body());
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -120,121 +108,35 @@ public class AccessKeyController extends AuthenticatedController {
     return PlatformResults.withData(accessKey);
   }
 
-  private AccessKey create(UUID customerUUID, Provider provider, AccessKeyFormData formData)
-      throws IOException {
-    UUID regionUUID = formData.regionUUID;
-    Region region = Region.getOrBadRequest(customerUUID, provider.uuid, regionUUID);
-    String keyCode = formData.keyCode;
-    String keyContent = formData.keyContent;
-    AccessManager.KeyType keyType = formData.keyType;
-    String sshUser = formData.sshUser;
-    Integer sshPort = formData.sshPort;
-    boolean airGapInstall = formData.airGapInstall;
-    boolean skipProvisioning = formData.skipProvisioning;
-    boolean setUpChrony = formData.setUpChrony;
-    List<String> ntpServers = formData.ntpServers;
-    boolean showSetUpChrony = formData.showSetUpChrony;
-    boolean passwordlessSudoAccess = formData.passwordlessSudoAccess;
-    boolean installNodeExporter = formData.installNodeExporter;
-    Integer nodeExporterPort = formData.nodeExporterPort;
-    String nodeExporterUser = formData.nodeExporterUser;
-    Integer expirationThresholdDays = formData.expirationThresholdDays;
-    AccessKey accessKey;
+  @ApiOperation(
+      nickname = "editAccesskey",
+      value = "Modify an access key",
+      response = AccessKey.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "accesskey",
+          value = "access key edit form data",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.models.AccessKey",
+          required = true))
+  public Result edit(UUID customerUUID, UUID providerUUID, String keyCode) {
+    // As part of access key edit we will be creating a new access key
+    // so that if the old key is associated with some universes remains
+    // functional by the time we shift completely to start using new generated keys.
 
-    LOG.info(
-        "Creating access key {} for customer {}, provider {}.", keyCode, customerUUID, provider);
+    final Provider provider = Provider.getOrBadRequest(providerUUID);
+    JsonNode requestBody = request().body().asJson();
+    AccessKey accessKey = formFactory.getFormDataOrBadRequest(requestBody, AccessKey.class);
 
-    if (setUpChrony
-        && region.provider.code.equals(onprem.name())
-        && (ntpServers == null || ntpServers.isEmpty())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "NTP servers not provided for on-premises provider for which chrony setup is desired");
-    }
-
-    if (region.provider.code.equals(onprem.name()) && sshUser == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "sshUser cannot be null for onprem providers.");
-    }
-
-    // Check if a public/private key was uploaded as part of the request
-    MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
-    if (multiPartBody != null) {
-      FilePart<File> filePart = multiPartBody.getFile("keyFile");
-      File uploadedFile = filePart.getFile();
-      if (keyType == null || uploadedFile == null) {
-        throw new PlatformServiceException(BAD_REQUEST, "keyType and keyFile params required.");
-      }
-      accessKey =
-          accessManager.uploadKeyFile(
-              region.uuid,
-              uploadedFile,
-              keyCode,
-              keyType,
-              sshUser,
-              sshPort,
-              airGapInstall,
-              skipProvisioning,
-              setUpChrony,
-              ntpServers,
-              showSetUpChrony);
-    } else if (keyContent != null && !keyContent.isEmpty()) {
-      if (keyType == null) {
-        throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
-      }
-      // Create temp file and fill with content
-      Path tempFile = Files.createTempFile(keyCode, keyType.getExtension());
-      Files.write(tempFile, keyContent.getBytes());
-
-      // Upload temp file to create the access key and return success/failure
-      accessKey =
-          accessManager.uploadKeyFile(
-              regionUUID,
-              tempFile.toFile(),
-              keyCode,
-              keyType,
-              sshUser,
-              sshPort,
-              airGapInstall,
-              skipProvisioning,
-              setUpChrony,
-              ntpServers,
-              showSetUpChrony);
-    } else {
-      accessKey =
-          accessManager.addKey(
-              regionUUID,
-              keyCode,
-              null,
-              sshUser,
-              sshPort,
-              airGapInstall,
-              skipProvisioning,
-              setUpChrony,
-              ntpServers,
-              showSetUpChrony);
-    }
-
-    // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
-    // and create a preprovision script
-    if (region.provider.code.equals(onprem.name())) {
-      templateManager.createProvisionTemplate(
-          accessKey,
-          airGapInstall,
-          passwordlessSudoAccess,
-          installNodeExporter,
-          nodeExporterPort,
-          nodeExporterUser,
-          setUpChrony,
-          ntpServers);
-    }
-
-    if (expirationThresholdDays != null) {
-      accessKey.updateExpirationDate(expirationThresholdDays);
-    }
-
-    accessKey.getKeyInfo().mergeFrom(provider.details);
-    return accessKey;
+    AccessKey newAccessKey = accessKeyHandler.edit(customerUUID, provider, accessKey, keyCode);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.AccessKey,
+            Objects.toString(newAccessKey.idKey, null),
+            Audit.ActionType.Edit,
+            request().body().asJson());
+    return PlatformResults.withData(newAccessKey);
   }
 
   @ApiOperation(

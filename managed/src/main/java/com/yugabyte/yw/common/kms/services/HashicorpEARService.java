@@ -12,7 +12,7 @@
 package com.yugabyte.yw.common.kms.services;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.HashicorpVaultAlgorithm;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
@@ -20,10 +20,8 @@ import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.KmsConfig;
-
 import java.util.UUID;
 import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,12 +31,14 @@ import org.slf4j.LoggerFactory;
  */
 public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultAlgorithm> {
   protected static final Logger LOG = LoggerFactory.getLogger(HashicorpEARService.class);
+  private final RuntimeConfGetter confGetter;
 
   static final String algorithm = "AES";
   static final int keySize = 256;
 
-  public HashicorpEARService() {
+  public HashicorpEARService(RuntimeConfGetter confGetter) {
     super(KeyProvider.HASHICORP);
+    this.confGetter = confGetter;
   }
 
   @Override
@@ -47,15 +47,14 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
   }
 
   @Override
-  protected ObjectNode createAuthConfigWithService(UUID configUUID, ObjectNode config) {
+  protected ObjectNode createAuthConfigWithService(UUID configUUID, ObjectNode authConfig) {
     ObjectNode result = null;
 
     try {
-
       // creates vault accessor object and validates the token
-      VaultSecretEngineBase engine = HashicorpEARServiceUtil.getVaultSecretEngine(config);
+      VaultSecretEngineBase engine = HashicorpEARServiceUtil.getVaultSecretEngine(authConfig);
       List<Object> ttlInfo = engine.getTTL();
-      result = config;
+      result = authConfig;
 
       LOG.debug(
           "Updating HC_VAULT_TTL_EXPIRY for createAuthConfigWithService with {} and {}",
@@ -70,6 +69,16 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
       LOG.error(errMsg, e);
     }
 
+    try {
+      // Check if key with given name in the authConfig exists, else create a new one.
+      HashicorpEARServiceUtil.createVaultKEK(configUUID, authConfig);
+    } catch (Exception e) {
+      LOG.error(
+          "Error while trying to check/create a key in the vault for config UUID '{}'.",
+          configUUID,
+          e);
+      return null;
+    }
     LOG.info("Returing from createAuthConfigWithService");
     return result;
   }
@@ -114,7 +123,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
     try {
       final ObjectNode authConfig = getAuthConfig(configUUID);
       // currently we use only KEK property of vault transit engine (created only if required)
-      HashicorpEARServiceUtil.createVaultKEK(universeUUID, configUUID, authConfig);
+      HashicorpEARServiceUtil.createVaultKEK(configUUID, authConfig);
     } catch (Exception e) {
       final String errMsg = "Error occurred creating encryption key";
       LOG.error(errMsg, e);

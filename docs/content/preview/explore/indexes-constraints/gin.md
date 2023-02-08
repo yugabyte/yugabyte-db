@@ -85,7 +85,7 @@ YugabyteDB GIN indexes are somewhat different from PostgreSQL GIN indexes:
 
 {{< note title="Setup" >}}
 
-Local multi-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
+Local multi-node cluster. See [Set up YugabyteDB universe](../../../explore/#set-up-yugabytedb-universe).
 
 {{< /note >}}
 

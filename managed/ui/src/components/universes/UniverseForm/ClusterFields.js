@@ -13,7 +13,8 @@ import {
   isEmptyObject,
   isNonEmptyArray,
   trimSpecialChars,
-  normalizeToValidPort
+  normalizeToValidPort,
+  isEmptyString
 } from '../../../utils/ObjectUtils';
 import {
   YBTextInput,
@@ -46,6 +47,7 @@ import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail'
 import { fetchSupportedReleases } from '../../../actions/universe';
 import { sortVersion } from '../../releases';
 import { HelmOverridesUniversePage } from './HelmOverrides';
+import { toast } from 'react-toastify';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -108,6 +110,9 @@ const UltraSSD_MIN_DISK_IOPS = 100;
 const UltraSSD_DISK_IOPS_MAX_PER_GB = 300;
 const UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 const UltraSSD_DISK_THROUGHPUT_CAP = 2500;
+
+const ASYNC_MAX_REPLICATION_FACTOR = 15;
+const ASYNC_MIN_REPLICATION_FACTOR = 1;
 
 const initialState = {
   universeName: '',
@@ -263,8 +268,7 @@ export default class ClusterFields extends Component {
           isReadOnlyExists: false,
           editNotAllowed: false,
           useSystemd: primaryClusterUserIntent.useSystemd,
-          enableEncryptionAtRest:
-            universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled
+          enableEncryptionAtRest: universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled
         };
       }
     } else {
@@ -388,16 +392,16 @@ export default class ClusterFields extends Component {
         clusterType === 'async'
           ? readOnlyCluster
             ? readOnlyCluster && {
-              ...readOnlyCluster.userIntent,
-              universeName: primaryCluster.userIntent.universeName,
-              ybcSoftwareVersion: primaryCluster.userIntent.ybcSoftwareVersion
-            }
+                ...readOnlyCluster.userIntent,
+                universeName: primaryCluster.userIntent.universeName,
+                ybcSoftwareVersion: primaryCluster.userIntent.ybcSoftwareVersion
+              }
             : primaryCluster && {
-              ...primaryCluster.userIntent,
-              universeName: primaryCluster.userIntent.universeName,
-              ybcSoftwareVersion: primaryCluster.userIntent.ybcSoftwareVersion,
-              universeOverrides: primaryCluster.userIntent.universeOverrides
-            }
+                ...primaryCluster.userIntent,
+                universeName: primaryCluster.userIntent.universeName,
+                ybcSoftwareVersion: primaryCluster.userIntent.ybcSoftwareVersion,
+                universeOverrides: primaryCluster.userIntent.universeOverrides
+              }
           : primaryCluster?.userIntent;
       const providerUUID = userIntent?.provider;
       const encryptionAtRestEnabled =
@@ -418,8 +422,8 @@ export default class ClusterFields extends Component {
           'async.enableEncryptionAtRest': encryptionAtRestEnabled,
           'async.useSystemd': userIntent.useSystemd,
           'async.tlsCertificateId': universeDetails.rootCA,
-          'async.numNodes' : userIntent.numNodes,
-          'async.replicationFactor' : userIntent.replicationFactor,
+          'async.numNodes': userIntent.numNodes,
+          'async.replicationFactor': userIntent.replicationFactor
         });
       }
       if (userIntent && providerUUID) {
@@ -447,8 +451,7 @@ export default class ClusterFields extends Component {
           enableYEDIS: userIntent.enableYEDIS,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
-          enableEncryptionAtRest:
-            universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled,
+          enableEncryptionAtRest: universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           storageType: storageType,
@@ -835,13 +838,13 @@ export default class ClusterFields extends Component {
     //hook from parent universeForm to check if any fields was changed
     const nodeDetailsSet =
       getPromiseState(currentUniverse).isSuccess() &&
-        getPromiseState(universeConfigTemplate).isSuccess()
+      getPromiseState(universeConfigTemplate).isSuccess()
         ? universeConfigTemplate.data.nodeDetailsSet
         : [];
     if (type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists)) {
       this.props.handleHasFieldChanged(
         this.hasFieldChanged() ||
-        !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet)
+          !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet)
       );
     } else {
       this.props.handleHasFieldChanged(true);
@@ -893,7 +896,7 @@ export default class ClusterFields extends Component {
       /*
        * Do not reset volume size and num volumes unless the
        * instance type is changed to ephemeral
-      */
+       */
       if (!isInstanceTypeChanged || isEphemeralAwsStorageInstance(instanceTypeCode)) {
         deviceInfo.volumeSize = volumeSize;
         deviceInfo.numVolumes = volumesList.length;
@@ -1316,20 +1319,34 @@ export default class ClusterFields extends Component {
         currentUniverse: { data }
       }
     } = this.props;
+
+    if(value === null ) return;
+
+    let valToUpdate = value;
+
+    if(value > ASYNC_MAX_REPLICATION_FACTOR){
+      toast.error(`Max Repilcation factor supported is ${ASYNC_MAX_REPLICATION_FACTOR}`);
+      valToUpdate = ASYNC_MAX_REPLICATION_FACTOR;
+    }
+    else if(value < ASYNC_MIN_REPLICATION_FACTOR){
+      toast.error(`Min Repilcation factor supported is ${ASYNC_MIN_REPLICATION_FACTOR}`);
+      valToUpdate = ASYNC_MIN_REPLICATION_FACTOR;
+    }
+
     const clusterExists = isDefinedNotNull(data.universeDetails)
       ? isEmptyObject(getClusterByType(data.universeDetails.clusters, clusterType))
       : null;
     const self = this;
 
     if (!clusterExists) {
-      this.setState({ nodeSetViaAZList: false, replicationFactor: value }, function () {
-        if (self.state.numNodes <= value) {
-          self.setState({ numNodes: value });
-          updateFormField(`${clusterType}.numNodes`, value);
+      this.setState({ nodeSetViaAZList: false, replicationFactor: valToUpdate }, function () {
+        if (self.state.numNodes <= valToUpdate) {
+          self.setState({ numNodes: valToUpdate });
+          updateFormField(`${clusterType}.numNodes`, valToUpdate);
         }
       });
     }
-    updateFormField(`${clusterType}.replicationFactor`, value);
+    updateFormField(`${clusterType}.replicationFactor`, valToUpdate);
   };
 
   hasFieldChanged = () => {
@@ -1393,8 +1410,8 @@ export default class ClusterFields extends Component {
         }
       } else {
         // Create flow
-        // eslint-disable-next-line no-lonely-if
-        if (isEmptyObject(universeConfigTemplate.data) || universeConfigTemplate.data == null) { // eslint-disable-line eqeqeq
+        // eslint-disable-next-line no-lonely-if, eqeqeq
+        if (isEmptyObject(universeConfigTemplate.data) || universeConfigTemplate.data == null) {
           this.props.submitConfigureUniverse(universeTaskParams);
         } else {
           const currentClusterConfiguration = getClusterByType(
@@ -1782,30 +1799,27 @@ export default class ClusterFields extends Component {
     function volumeTypeFormat(num) {
       return num + ' GB';
     }
-    const ebsTypesList =
-      cloud.ebsTypes?.sort().map(function (ebsType) {
-        return (
-          <option key={ebsType} value={ebsType}>
-            {API_UI_STORAGE_TYPES[ebsType]}
-          </option>
-        );
-      });
-    const gcpTypesList =
-      cloud.gcpTypes.data?.sort().map(function (gcpType) {
-        return (
-          <option key={gcpType} value={gcpType}>
-            {API_UI_STORAGE_TYPES[gcpType]}
-          </option>
-        );
-      });
-    const azuTypesList =
-      cloud.azuTypes.data?.sort().map?.(function (azuType) {
-        return (
-          <option key={azuType} value={azuType}>
-            {API_UI_STORAGE_TYPES[azuType]}
-          </option>
-        );
-      });
+    const ebsTypesList = cloud.ebsTypes?.sort().map(function (ebsType) {
+      return (
+        <option key={ebsType} value={ebsType}>
+          {API_UI_STORAGE_TYPES[ebsType]}
+        </option>
+      );
+    });
+    const gcpTypesList = cloud.gcpTypes.data?.sort().map(function (gcpType) {
+      return (
+        <option key={gcpType} value={gcpType}>
+          {API_UI_STORAGE_TYPES[gcpType]}
+        </option>
+      );
+    });
+    const azuTypesList = cloud.azuTypes.data?.sort().map?.(function (azuType) {
+      return (
+        <option key={azuType} value={azuType}>
+          {API_UI_STORAGE_TYPES[azuType]}
+        </option>
+      );
+    });
 
     let configList = cloud.authConfig.data ?? [];
     //feature flagging
@@ -2361,10 +2375,9 @@ export default class ClusterFields extends Component {
 
     let universeRegionList = [];
     if (self.state.providerSelected) {
-      universeRegionList =
-        cloud.regions.data?.map(function (regionItem) {
-          return { value: regionItem.uuid, label: regionItem.name };
-        });
+      universeRegionList = cloud.regions.data?.map(function (regionItem) {
+        return { value: regionItem.uuid, label: regionItem.name };
+      });
     }
 
     const universeRegionListWithNone = this.state.regionList && [
@@ -2372,21 +2385,21 @@ export default class ClusterFields extends Component {
         None
       </option>,
       isNonEmptyObject(cloud.regions.data) &&
-      this.state.regionList.map?.(function (regionItem) {
-        if (typeof regionItem === 'string') {
-          const region = cloud.regions.data.find((region) => region.uuid === regionItem);
-          regionItem = !isEmptyObject(region) ? { value: region.uuid, label: region.name } : null;
-        }
-        return isNonEmptyObject(regionItem) ? (
-          <option key={regionItem.value} value={regionItem.value}>
-            {regionItem.label}
-          </option>
-        ) : (
-          <option value="" key={`region-option-unknown`}>
-            Unknown region {regionItem}
-          </option>
-        );
-      })
+        this.state.regionList.map?.(function (regionItem) {
+          if (typeof regionItem === 'string') {
+            const region = cloud.regions.data.find((region) => region.uuid === regionItem);
+            regionItem = !isEmptyObject(region) ? { value: region.uuid, label: region.name } : null;
+          }
+          return isNonEmptyObject(regionItem) ? (
+            <option key={regionItem.value} value={regionItem.value}>
+              {regionItem.label}
+            </option>
+          ) : (
+            <option value="" key={`region-option-unknown`}>
+              Unknown region {regionItem}
+            </option>
+          );
+        })
     ];
 
     let universeInstanceTypeList = <option />;
@@ -2454,31 +2467,23 @@ export default class ClusterFields extends Component {
 
       universeInstanceTypeList = this.instanceTypeGroupsToOptions(groups);
     } else if (currentProviderCode === 'kubernetes') {
-      universeInstanceTypeList =
-        cloud.instanceTypes.data?.map(function (instanceTypeItem) {
-          return (
-            <option
-              key={instanceTypeItem.instanceTypeCode}
-              value={instanceTypeItem.instanceTypeCode}
-            >
-              {instanceTypeItem.instanceTypeName || instanceTypeItem.instanceTypeCode} (
-              {instanceTypeItem.numCores} {instanceTypeItem.numCores > 1 ? 'cores' : 'core'},{' '}
-              {instanceTypeItem.memSizeGB}GB RAM)
-            </option>
-          );
-        });
+      universeInstanceTypeList = cloud.instanceTypes.data?.map(function (instanceTypeItem) {
+        return (
+          <option key={instanceTypeItem.instanceTypeCode} value={instanceTypeItem.instanceTypeCode}>
+            {instanceTypeItem.instanceTypeName || instanceTypeItem.instanceTypeCode} (
+            {instanceTypeItem.numCores} {instanceTypeItem.numCores > 1 ? 'cores' : 'core'},{' '}
+            {instanceTypeItem.memSizeGB}GB RAM)
+          </option>
+        );
+      });
     } else {
-      universeInstanceTypeList =
-        cloud.instanceTypes.data?.map(function (instanceTypeItem) {
-          return (
-            <option
-              key={instanceTypeItem.instanceTypeCode}
-              value={instanceTypeItem.instanceTypeCode}
-            >
-              {instanceTypeItem.instanceTypeCode}
-            </option>
-          );
-        });
+      universeInstanceTypeList = cloud.instanceTypes.data?.map(function (instanceTypeItem) {
+        return (
+          <option key={instanceTypeItem.instanceTypeCode} value={instanceTypeItem.instanceTypeCode}>
+            {instanceTypeItem.instanceTypeCode}
+          </option>
+        );
+      });
     }
 
     let placementStatus = null;
@@ -2487,8 +2492,8 @@ export default class ClusterFields extends Component {
       clusterType === 'primary'
         ? getPrimaryCluster(_.get(self.props, 'universe.universeConfigTemplate.data.clusters', []))
         : getReadOnlyCluster(
-          _.get(self.props, 'universe.universeConfigTemplate.data.clusters', [])
-        );
+            _.get(self.props, 'universe.universeConfigTemplate.data.clusters', [])
+          );
     const placementCloud = getPlacementCloud(cluster);
     const regionAndProviderDefined =
       isNonEmptyArray(formValues[clusterType]?.regionList) &&
@@ -2522,8 +2527,8 @@ export default class ClusterFields extends Component {
       configTemplate && clusterType === 'primary'
         ? !!getPrimaryCluster(clusters)
         : clusterType === 'async'
-          ? !!getReadOnlyCluster(clusters)
-          : false;
+        ? !!getReadOnlyCluster(clusters)
+        : false;
     const enableGeoPartitioning =
       featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
     const azSelectorTable = (
@@ -2588,7 +2593,7 @@ export default class ClusterFields extends Component {
             </Col>
             <Col md={12}>
               <HelmOverridesUniversePage
-                getConfiguretaskParams={() => this.configureUniverseNodeList(false, true)}
+                getConfiguretaskParams={() => this.configureUniverseNodeList(true)}
                 setHelmOverridesData={this.updateHelmOverrides}
               />
             </Col>
@@ -2656,36 +2661,49 @@ export default class ClusterFields extends Component {
                 />
                 {clusterType === 'async'
                   ? [
-                    <Field
-                      key="numNodes"
-                      name={`${clusterType}.numNodes`}
-                      type="text"
-                      component={YBControlledNumericInputWithLabel}
-                      className={
-                        getPromiseState(this.props.universe.universeConfigTemplate).isLoading()
-                          ? 'readonly'
-                          : ''
-                      }
-                      data-yb-field="nodes"
-                      label={this.state.isKubernetesUniverse ? 'Pods' : 'Nodes'}
-                      onInputChanged={this.numNodesChanged}
-                      onLabelClick={this.numNodesClicked}
-                      val={this.state.numNodes}
-                      minVal={Number(this.state.replicationFactor)}
-                    />,
-                    <Field
-                      key="replicationFactor"
-                      name={`${clusterType}.replicationFactor`}
-                      type="text"
-                      component={YBControlledNumericInputWithLabel}
-                      label="Replication Factor"
-                      minVal={1}
-                      maxVal={15}
-                      onInputChanged={this.replicationFactorChanged}
-                      val={Number(this.state.replicationFactor)}
-                      disabled={isReadOnlyOnEdit}
-                    />
-                  ]
+                      <Field
+                        key="numNodes"
+                        name={`${clusterType}.numNodes`}
+                        type="text"
+                        component={YBControlledNumericInputWithLabel}
+                        className={
+                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading()
+                            ? 'readonly'
+                            : ''
+                        }
+                        data-yb-field="nodes"
+                        label={this.state.isKubernetesUniverse ? 'Pods' : 'Nodes'}
+                        onInputChanged={this.numNodesChanged}
+                        onLabelClick={this.numNodesClicked}
+                        val={this.state.numNodes}
+                        minVal={Number(this.state.replicationFactor)}
+                      />,
+                      <Field
+                        key="replicationFactor"
+                        name={`${clusterType}.replicationFactor`}
+                        type="number"
+                        component={YBControlledNumericInputWithLabel}
+                        label="Replication Factor"
+                        minVal={ASYNC_MIN_REPLICATION_FACTOR}
+                        maxVal={ASYNC_MAX_REPLICATION_FACTOR}
+                        onInputChanged={this.replicationFactorChanged}
+                        className={
+                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading() || getPromiseState(cloud.instanceTypes).isLoading()
+                            ? 'readonly'
+                            : ''
+                        }
+                        input={{
+                          onKeyDown:(e) => {
+                            (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() || getPromiseState(cloud.instanceTypes).isLoading()) && e.preventDefault();
+                          }
+                        }}
+                        onInputBlur={(e) => {
+                          if (isEmptyString(e.target.value)) { this.replicationFactorChanged(ASYNC_MIN_REPLICATION_FACTOR); }
+                          if (Number(e.target.value) !== this.state.replicationFactor) { this.replicationFactorChanged(e.target.value); }
+                        }}
+                        val={Number(this.state.replicationFactor)}
+                      />
+                    ]
                   : null}
               </div>
 
@@ -2786,14 +2804,12 @@ export default class ClusterFields extends Component {
               </div>
               {this.state.awsInstanceWithEphemeralStorage &&
                 (featureFlags.test['pausedUniverse'] ||
-                  featureFlags.released['pausedUniverse']) &&
-                  (
-                    <span className="aws-instance-with-ephemeral-storage-warning">
-                      ! Selected instance type is with ephemeral storage, If you will pause this
-                      universe your data will get lost.
-                    </span>
-                  )
-              }
+                  featureFlags.released['pausedUniverse']) && (
+                  <span className="aws-instance-with-ephemeral-storage-warning">
+                    ! Selected instance type is with ephemeral storage, If you will pause this
+                    universe your data will get lost.
+                  </span>
+                )}
             </Col>
           </Row>
 
@@ -2824,14 +2840,12 @@ export default class ClusterFields extends Component {
                   currentProvider.code === 'gcp' &&
                   this.state.gcpInstanceWithEphemeralStorage &&
                   (featureFlags.test['pausedUniverse'] ||
-                    featureFlags.released['pausedUniverse']) &&
-                    (
-                      <span className="gcp-ephemeral-storage-warning">
-                        ! Selected instance type is with ephemeral storage, If you will pause this
-                        universe your data will get lost.
-                      </span>
-                    )
-                }
+                    featureFlags.released['pausedUniverse']) && (
+                    <span className="gcp-ephemeral-storage-warning">
+                      ! Selected instance type is with ephemeral storage, If you will pause this
+                      universe your data will get lost.
+                    </span>
+                  )}
               </Col>
             </Row>
             <Row>

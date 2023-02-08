@@ -25,11 +25,10 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RotateAccessKeyFormData;
 import com.yugabyte.yw.forms.ScheduledAccessKeyRotateFormData;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -60,13 +59,17 @@ public class CloudProviderApiController extends AuthenticatedController {
       nickname = "getListOfProviders")
   public Result list(UUID customerUUID, String name, String code) {
     CloudType providerCode = code == null ? null : CloudType.valueOf(code);
-    return PlatformResults.withData(Provider.getAll(customerUUID, name, providerCode));
+    List<Provider> providers = Provider.getAll(customerUUID, name, providerCode);
+    providers.forEach(CloudInfoInterface::mayBeMassageResponse);
+    return PlatformResults.withData(providers);
   }
 
   @ApiOperation(value = "Get a cloud provider", response = Provider.class, nickname = "getProvider")
   public Result index(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return PlatformResults.withData(Provider.getOrBadRequest(customerUUID, providerUUID));
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    CloudInfoInterface.mayBeMassageResponse(provider);
+    return PlatformResults.withData(provider);
   }
 
   @ApiOperation(
@@ -111,14 +114,22 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true,
           paramType = "body"))
-  public Result edit(UUID customerUUID, UUID providerUUID) {
+  public Result edit(UUID customerUUID, UUID providerUUID, boolean validate) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    Provider editProviderReq =
-        formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
+
+    long universeCount = provider.getUniverseCount();
+    if (universeCount > 0) {
+      throw new PlatformServiceException(
+          FORBIDDEN,
+          String.format(
+              "There %s %d universe%s using this provider, cannot modify",
+              universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
+    }
+    JsonNode requestBody = request().body().asJson();
+    Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
-        cloudProviderHandler.editProvider(
-            customer, provider, editProviderReq, getFirstRegionCode(provider));
+        cloudProviderHandler.editProvider(customer, provider, editProviderReq, validate);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -129,32 +140,6 @@ public class CloudProviderApiController extends AuthenticatedController {
     return new YBPTask(taskUUID, providerUUID).asResult();
   }
 
-  @ApiOperation(value = "Patch a provider", response = YBPTask.class, nickname = "patchProvider")
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          value = "patch provider form data",
-          name = "PatchProviderRequest",
-          dataType = "com.yugabyte.yw.models.Provider",
-          required = true,
-          paramType = "body"))
-  public Result patch(UUID customerUUID, UUID providerUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    Provider editProviderReq =
-        formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
-    cloudProviderHandler.mergeProviderConfig(provider, editProviderReq);
-    cloudProviderHandler.editProvider(
-        customer, provider, editProviderReq, getFirstRegionCode(provider));
-    auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.CloudProvider,
-            providerUUID.toString(),
-            Audit.ActionType.Update,
-            Json.toJson(editProviderReq));
-    return YBPSuccess.withMessage("Patched provider: " + providerUUID);
-  }
-
   @ApiOperation(value = "Create a provider", response = YBPTask.class, nickname = "createProviders")
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -162,9 +147,10 @@ public class CloudProviderApiController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
-  public Result create(UUID customerUUID) {
+  public Result create(UUID customerUUID, boolean validate) {
     JsonNode requestBody = request().body().asJson();
-    Provider reqProvider = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
+    Provider reqProvider =
+        formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.customerUUID = customerUUID;
     CloudType providerCode = CloudType.valueOf(reqProvider.code);
@@ -174,11 +160,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     } else {
       providerEbean =
           cloudProviderHandler.createProvider(
-              customer,
-              providerCode,
-              reqProvider.name,
-              reqProvider.getUnmaskedConfig(),
-              getFirstRegionCode(reqProvider));
+              customer, providerCode, reqProvider.name, reqProvider, validate);
     }
 
     if (providerCode.isRequiresBootstrap()) {
@@ -316,13 +298,6 @@ public class CloudProviderApiController extends AuthenticatedController {
             .filter(schedule -> (schedule.getOwnerUUID().equals(providerUUID)))
             .collect(Collectors.toList());
     return PlatformResults.withData(accessKeyRotationSchedules);
-  }
-
-  private static String getFirstRegionCode(Provider provider) {
-    for (Region r : provider.regions) {
-      return r.code;
-    }
-    return null;
   }
 
   @ApiOperation(

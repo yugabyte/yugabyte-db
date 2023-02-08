@@ -150,7 +150,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
-  Result<bool> IsExternalTransaction(const TransactionId& transaction_id);
+  Result<IsExternalTransaction> IsExternalTransactionResult(
+      const TransactionId& transaction_id) override;
 
   void Cleanup(TransactionIdSet&& set) override;
 

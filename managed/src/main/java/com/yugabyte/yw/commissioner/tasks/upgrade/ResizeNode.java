@@ -2,14 +2,18 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -55,7 +59,35 @@ public class ResizeNode extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
+
+          UserIntent userIntentForFlags = getUserIntent();
+
+          boolean updateMasterFlags;
+          boolean updateTserverFlags;
+          if (taskParams().flagsProvided()) {
+            boolean changedByMasterFlags =
+                GFlagsUtil.syncGflagsToIntent(taskParams().masterGFlags, userIntentForFlags);
+            boolean changedByTserverFlags =
+                GFlagsUtil.syncGflagsToIntent(taskParams().tserverGFlags, userIntentForFlags);
+            log.debug(
+                "Intent changed by master {} by tserver {}",
+                changedByMasterFlags,
+                changedByTserverFlags);
+            updateMasterFlags =
+                (changedByMasterFlags || changedByTserverFlags)
+                    || !taskParams().masterGFlags.equals(getUserIntent().masterGFlags);
+            updateTserverFlags =
+                (changedByMasterFlags || changedByTserverFlags)
+                    || !taskParams().tserverGFlags.equals(getUserIntent().tserverGFlags);
+          } else {
+            updateMasterFlags = false;
+            updateTserverFlags = false;
+          }
+
           LinkedHashSet<NodeDetails> allNodes = fetchNodesForCluster();
+          // Since currently gflags are global (primary and read-replica nodes use the same gflags),
+          // we will need to roll all servers that weren't upgraded as part of the resize.
+          LinkedHashSet<NodeDetails> nodesNotUpdated = new LinkedHashSet<>(allNodes);
           // Create task sequence to resize allNodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
             LinkedHashSet<NodeDetails> clusterNodes =
@@ -78,9 +110,17 @@ public class ResizeNode extends UpgradeTaskBase {
                 justDeviceResizeNodes.add(node);
               }
             }
+            // The nodes that are being resized will be restarted, so the gflags can be
+            // upgraded in one go.
+            nodesNotUpdated.removeAll(instanceChangingNodes);
+
             createPreResizeNodeTasks(instanceChangingNodes, currentIntent);
             createRollingNodesUpgradeTaskFlow(
-                (nodes, processTypes) -> createResizeNodeTasks(nodes, userIntent, currentIntent),
+                (nodes, processTypes) -> {
+                  createResizeNodeTasks(nodes, userIntent, currentIntent);
+                  createGflagUpgradeTasks(
+                      nodes, userIntentForFlags, updateMasterFlags, updateTserverFlags);
+                },
                 instanceChangingNodes,
                 UpgradeContext.builder()
                     .reconfigureMaster(userIntent.replicationFactor > 1)
@@ -123,6 +163,35 @@ public class ResizeNode extends UpgradeTaskBase {
                     newMasterDiskSize,
                     Collections.singletonList(cluster.uuid))
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+          }
+          // Need to run gflag upgrades for the nodes that weren't updated.
+          if (updateMasterFlags || updateTserverFlags) {
+            List<NodeDetails> masterNodes =
+                nodesNotUpdated
+                    .stream()
+                    .filter(n -> n.isMaster && updateMasterFlags)
+                    .collect(Collectors.toList());
+            List<NodeDetails> tserverNodes =
+                nodesNotUpdated
+                    .stream()
+                    .filter(n -> n.isTserver && updateTserverFlags)
+                    .collect(Collectors.toList());
+            // Only rolling restart supported.
+            createRollingUpgradeTaskFlow(
+                (nodes, processTypes) ->
+                    createServerConfFileUpdateTasks(
+                        userIntentForFlags,
+                        nodes,
+                        processTypes,
+                        taskParams().masterGFlags,
+                        taskParams().tserverGFlags),
+                masterNodes,
+                tserverNodes,
+                RUN_BEFORE_STOPPING,
+                taskParams().ybcInstalled);
+            // Update the list of parameter key/values in the universe with the new ones.
+            updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
+                .setSubTaskGroupType(getTaskSubGroupType());
           }
         });
   }
@@ -250,5 +319,31 @@ public class ResizeNode extends UpgradeTaskBase {
     subTaskGroup.addSubTask(changeInstanceTypeTask);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  private void createGflagUpgradeTasks(
+      List<NodeDetails> allNodes,
+      UserIntent userIntentForFlags,
+      boolean updateMasterFlags,
+      boolean updateTserverFlags) {
+    for (NodeDetails node : allNodes) {
+      // Update the flags for the nodes if required.
+      if (updateMasterFlags && node.isMaster) {
+        createServerConfFileUpdateTasks(
+            userIntentForFlags,
+            ImmutableList.of(node),
+            ImmutableSet.of(ServerType.MASTER),
+            taskParams().masterGFlags,
+            taskParams().tserverGFlags);
+      }
+      if (updateTserverFlags && node.isTserver) {
+        createServerConfFileUpdateTasks(
+            userIntentForFlags,
+            ImmutableList.of(node),
+            ImmutableSet.of(ServerType.TSERVER),
+            taskParams().masterGFlags,
+            taskParams().tserverGFlags);
+      }
+    }
   }
 }

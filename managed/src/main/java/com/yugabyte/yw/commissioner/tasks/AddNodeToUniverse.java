@@ -23,20 +23,20 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import javax.inject.Inject;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 // Allows the addition of a node into a universe. Spawns the necessary processes - tserver
@@ -207,7 +207,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createStartMasterTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Add it into the master quorum.
-        createChangeConfigTask(currentNode, true, SubTaskGroupType.WaitForDataMigration);
+        createChangeConfigTask(currentNode, true, SubTaskGroupType.StartingNodeProcesses);
 
         // Mark node as a master in YW DB.
         // Do this last so that master addresses does not pick up current node.
@@ -216,7 +216,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         // Wait for master to be responsive.
         createWaitForServersTasks(nodeSet, ServerType.MASTER)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
       }
 
       // Bring up TServers, as needed.
@@ -231,14 +231,21 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         // Wait for new tablet servers to be responsive.
         createWaitForServersTasks(nodeSet, ServerType.TSERVER)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+        // [PLAT-5637] Wait for postgres server to be healthy if YSQL is enabled.
+        if (userIntent.enableYSQL) {
+          createWaitForServersTasks(nodeSet, ServerType.YSQLSERVER)
+              .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        }
       }
 
       if (universe.isYbcEnabled()) {
         createStartYbcTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Wait for yb-controller to be responsive on current node.
-        createWaitForYbcServerTask(nodeSet).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        createWaitForYbcServerTask(nodeSet)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
 
       // Update the swamper target file.
@@ -253,7 +260,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Wait for the master leader to hear from all tservers.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")) {
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.waitForLbForAddedNodes)) {
         // Wait for load to balance.
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
@@ -261,12 +268,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // For idempotency, ensure we run this block again as before the failure master would have
       // been added to DB and this block might not have been run.
       if (addMaster || (currentNode.isMaster && !isFirstTry())) {
-        // Update all tserver conf files with new master information.
-        createMasterInfoUpdateTask(universe, currentNode);
-
-        // Update the master addresses on the target universes whose source universe belongs to
-        // this task.
-        createXClusterConfigUpdateMasterAddressesTask();
+        // Update master addresses including xcluster with new master information.
+        createMasterInfoUpdateTask(universe, currentNode, null);
       }
 
       // Add node to load balancer.

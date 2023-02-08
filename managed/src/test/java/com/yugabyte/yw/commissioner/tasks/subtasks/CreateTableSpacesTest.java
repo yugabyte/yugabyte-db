@@ -18,6 +18,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
@@ -25,9 +26,11 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.TaskInfo.State;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.Universe;
+
 import java.util.List;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
@@ -187,6 +190,9 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
 
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateTableSpaces, taskParams);
+      // Set http context
+      Users defaultUser = ModelFactory.testUser(defaultCustomer);
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
           universe.universeUUID,

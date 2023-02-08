@@ -18,6 +18,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/master/catalog_entity_info.h"
@@ -227,6 +228,9 @@ Status CheckStatus(const Status& status, const char* action) {
   LOG(WARNING) << s;
   return s;
 }
+
+#define RETURN_ACTION_NOT_OK(expr, action) \
+  RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
 
 Status CheckLeaderStatus(const Status& status, const char* action) {
   return CheckIfNoLongerLeader(CheckStatus(status, action));
@@ -3168,12 +3172,12 @@ Status CatalogManager::RestoreSnapshotSchedule(
       MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
 
   // Disable splitting and then wait for all pending splits to complete before starting restoration.
-  DisableTabletSplittingInternal(disable_duration_ms, "PITR");
+  DisableTabletSplittingInternal(disable_duration_ms, kPitrFeatureName);
 
   bool inflight_splits_finished = false;
   while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
     // Wait for existing split operations to complete.
-    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */)) {
+    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */, deadline)) {
       inflight_splits_finished = true;
       break;
     }
@@ -3181,7 +3185,7 @@ Status CatalogManager::RestoreSnapshotSchedule(
   }
 
   if (!inflight_splits_finished) {
-    EnableTabletSplitting("PITR");
+    ReenableTabletSplitting(kPitrFeatureName);
     return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
   }
 
@@ -4886,18 +4890,17 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
 
   std::unordered_map<TableId, std::string> table_id_to_bootstrap_id;
 
-  if (req->producer_bootstrap_ids_size() > 0) {
+  if (!req->producer_bootstrap_ids().empty()) {
+    if (req->producer_table_ids().size() != req->producer_bootstrap_ids_size()) {
+      return STATUS(
+          InvalidArgument, "Bootstrap ids must be provided for all tables", req->ShortDebugString(),
+          MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
+    table_id_to_bootstrap_id.reserve(req->producer_table_ids().size());
     for (int i = 0; i < req->producer_table_ids().size(); i++) {
       table_id_to_bootstrap_id[req->producer_table_ids(i)] = req->producer_bootstrap_ids(i);
     }
-  }
-
-  // We assume that the list of table ids is unique.
-  if (req->producer_bootstrap_ids().size() > 0 &&
-      implicit_cast<size_t>(req->producer_table_ids().size()) != table_id_to_bootstrap_id.size()) {
-    return STATUS(InvalidArgument, "When providing bootstrap ids, "
-                  "the list of tables must be unique", req->ShortDebugString(),
-                  MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   auto ri = VERIFY_RESULT(CreateUniverseReplicationInfoForProducer(
@@ -4982,6 +4985,9 @@ void CatalogManager::MarkUniverseReplicationFailed(
   } else {
     l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
   }
+
+  LOG(WARNING) << "Universe replication " << universe->ToString()
+               << " failed: " << failure_status.ToString();
 
   universe->SetSetupUniverseReplicationErrorStatus(failure_status);
 
@@ -5165,26 +5171,50 @@ Status CatalogManager::IsTableBootstrapRequired(
   return Status::OK();
 }
 
-
-Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
-      scoped_refptr<UniverseReplicationInfo> universe,
-      const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
-      const TableId& producer_table,
-      const TableId& consumer_table) {
+Status CatalogManager::AddValidatedTableToUniverseReplication(
+    scoped_refptr<UniverseReplicationInfo> universe,
+    const TableId& producer_table,
+    const TableId& consumer_table) {
   auto l = universe->LockForWrite();
-  if (universe->id() == kSystemXClusterReplicationId) {
-    // We do this because the target doesn't know the source txn status table id until this
-    // callback.
-    *(l.mutable_data()->pb.add_tables()) = producer_table;
 
-    if (PREDICT_FALSE(FLAGS_TEST_fail_setup_system_universe_replication)) {
-      auto status = STATUS(IllegalState, "Cannot replicate system tables.");
-      MarkUniverseReplicationFailed(status, &l, universe);
-      return status;
-    }
+  auto map = l.mutable_data()->pb.mutable_validated_tables();
+  (*map)[producer_table] = consumer_table;
+
+  // TODO: end of config validation should be where SetupUniverseReplication exits back to user
+  LOG(INFO) << "UpdateItem in AddValidatedTable";
+
+  // Update sys_catalog.
+  RETURN_ACTION_NOT_OK(
+      sys_catalog_->Upsert(leader_ready_term(), universe),
+      "updating universe replication info in sys-catalog");
+  l.Commit();
+
+  return Status::OK();
+}
+
+Status CatalogManager::CreateCdcStreamsIfReplicationValidated(
+    scoped_refptr<UniverseReplicationInfo> universe,
+    const std::unordered_map<TableId, std::string>& table_bootstrap_ids) {
+  auto l = universe->LockForWrite();
+  if (l->is_deleted_or_failed()) {
+    // Nothing to do since universe is being deleted.
+    return STATUS(Aborted, "Universe is being deleted");
   }
-  auto master_addresses = l->pb.producer_master_addresses();
 
+  if (l.mutable_data()->pb.state() != SysUniverseReplicationEntryPB::INITIALIZING) {
+    VLOG_WITH_FUNC(2) << "Universe replication is in invalid state " << l->pb.state();
+
+    // Replication stream has already been validated, or is in FAILED state which cannot be
+    // recovered.
+    return Status::OK();
+  }
+
+  if (l.mutable_data()->pb.validated_tables_size() != l.mutable_data()->pb.tables_size()) {
+    // Replication stream is not yet ready. All the tables have to be validated.
+    return Status::OK();
+  }
+
+  auto master_addresses = l->pb.producer_master_addresses();
   auto res = universe->GetOrCreateCDCRpcTasks(master_addresses);
   if (!res.ok()) {
     MarkUniverseReplicationFailed(res.status(), &l, universe);
@@ -5195,32 +5225,17 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
             res.status().ToString()));
   }
   std::shared_ptr<CDCRpcTasks> cdc_rpc = *res;
-  vector<TableId> validated_tables;
-
-  if (l->is_deleted_or_failed()) {
-    // Nothing to do since universe is being deleted.
-    return STATUS(Aborted, "Universe is being deleted");
-  }
-
-  auto map = l.mutable_data()->pb.mutable_validated_tables();
-  (*map)[producer_table] = consumer_table;
 
   // Now, all tables are validated.
-  if (l.mutable_data()->pb.validated_tables_size() == l.mutable_data()->pb.tables_size()) {
-    l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::VALIDATED);
-    auto tbl_iter = l->pb.tables();
-    validated_tables.insert(validated_tables.begin(), tbl_iter.begin(), tbl_iter.end());
-  }
+  vector<TableId> validated_tables;
+  auto& tbl_iter = l->pb.tables();
+  validated_tables.insert(validated_tables.begin(), tbl_iter.begin(), tbl_iter.end());
 
-  // TODO: end of config validation should be where SetupUniverseReplication exits back to user
-  LOG(INFO) << "UpdateItem in AddValidatedTable";
-
+  l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::VALIDATED);
   // Update sys_catalog.
-  Status status = sys_catalog_->Upsert(leader_ready_term(), universe);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error during UpdateItem: " << status;
-    return CheckStatus(status, "updating universe replication info in sys-catalog");
-  }
+  RETURN_ACTION_NOT_OK(
+      sys_catalog_->Upsert(leader_ready_term(), universe),
+      "updating universe replication info in sys-catalog");
   l.Commit();
 
   // Create CDC stream for each validated table, after persisting the replication state change.
@@ -5263,8 +5278,17 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
   return Status::OK();
 }
 
+Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
+    scoped_refptr<UniverseReplicationInfo> universe,
+    const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+    const TableId& producer_table,
+    const TableId& consumer_table) {
+  RETURN_NOT_OK(AddValidatedTableToUniverseReplication(universe, producer_table, consumer_table));
+  return CreateCdcStreamsIfReplicationValidated(universe, table_bootstrap_ids);
+}
+
 void CatalogManager::GetTableSchemaCallback(
-    const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& info,
+    const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& producer_info,
     const std::unordered_map<TableId, std::string>& table_bootstrap_ids, const Status& s) {
   // First get the universe.
   scoped_refptr<UniverseReplicationInfo> universe;
@@ -5279,43 +5303,89 @@ void CatalogManager::GetTableSchemaCallback(
     }
   }
 
-  if (!s.ok()) {
-    MarkUniverseReplicationFailed(universe, s);
-    LOG(ERROR) << "Error getting schema for table " << info->table_id << ": " << s;
-    return;
+  string action = "getting schema for table";
+  auto status = s;
+  if (status.ok()) {
+    action = "validating table schema and creating CDC stream";
+    status = ValidateTableAndCreateCdcStreams(universe, producer_info, table_bootstrap_ids);
   }
 
-  // Validate the table schema.
-  GetTableSchemaResponsePB resp;
-  Status status = ValidateTableSchema(info, table_bootstrap_ids, &resp);
   if (!status.ok()) {
+    LOG(ERROR) << "Error " << action << ". Universe: " << universe_id
+               << ", Table: " << producer_info->table_id << ": " << status;
     MarkUniverseReplicationFailed(universe, status);
-    LOG(ERROR) << "Found error while validating table schema for table " << info->table_id
-               << ": " << status;
-    return;
+  }
+}
+
+Status CatalogManager::ValidateTableAndCreateCdcStreams(
+    scoped_refptr<UniverseReplicationInfo> universe,
+    const std::shared_ptr<client::YBTableInfo>& producer_info,
+    const std::unordered_map<TableId, std::string>& producer_bootstrap_ids) {
+  bool validate_and_add_table = true;
+
+  // Special handling for system tables like transaction status table.
+  // During setup with bootstrap the user may provide the transaction status table and its bootstrap
+  // id. These system tables are handled in kSystemXClusterReplicationId replication group, so
+  // remove them from the user replication group.
+  if (producer_info->table_name.namespace_name() == master::kSystemNamespaceName) {
+    auto l = universe->LockForWrite();
+    auto& replication_entry_pb = l.mutable_data()->pb;
+    if (universe->id() == kSystemXClusterReplicationId) {
+      // We do this because the target doesn't know the source txn status table id until this
+      // callback.
+      *(replication_entry_pb.add_tables()) = producer_info->table_id;
+
+      if (PREDICT_FALSE(FLAGS_TEST_fail_setup_system_universe_replication)) {
+        auto status = STATUS(IllegalState, "Cannot replicate system tables.");
+        MarkUniverseReplicationFailed(status, &l, universe);
+        return status;
+      }
+    } else {
+      const int tables_size = replication_entry_pb.tables_size();
+      int i = 0;
+      for (; i < tables_size; i++) {
+        if (replication_entry_pb.tables(i) == producer_info->table_id) {
+          replication_entry_pb.mutable_tables()->DeleteSubrange(i, 1);
+          break;
+        }
+      }
+      SCHECK_LT(
+          i, tables_size, NotFound,
+          Format("Expected to find System table $0", producer_info->table_id));
+
+      validate_and_add_table = false;
+    }
+
+    RETURN_ACTION_NOT_OK(
+        sys_catalog_->Upsert(leader_ready_term(), universe),
+        "updating system tables in universe replication");
+    l.Commit();
   }
 
-  if (universe->id() != kSystemXClusterReplicationId) {
-    // There is no bootstrap mechanism for the transaction status table, so don't check whether
-    // it is required.
-    status = IsBootstrapRequiredOnProducer(universe, info->table_id, table_bootstrap_ids);
+  if (validate_and_add_table) {
+    GetTableSchemaResponsePB consumer_schema;
+    RETURN_NOT_OK(ValidateTableSchema(producer_info, producer_bootstrap_ids, &consumer_schema));
+
+    // If Bootstrap Id is passed in then it must be provided for all tables.
+    SCHECK(
+        producer_bootstrap_ids.empty() || producer_bootstrap_ids.contains(producer_info->table_id),
+        NotFound,
+        Format("Bootstrap id not found for table $0", producer_info->table_name.ToString()));
+
+    // System tables like transaction status table can be much older than the user tables begin
+    // added. Only check them if the BootstrapId has been passed in to ensure the checkpoint is
+    // still valid.
+    if (producer_info->table_name.namespace_name() != master::kSystemNamespaceName ||
+        producer_bootstrap_ids.contains(producer_info->table_id)) {
+      RETURN_NOT_OK(
+          IsBootstrapRequiredOnProducer(universe, producer_info->table_id, producer_bootstrap_ids));
+    }
+
+    RETURN_NOT_OK(AddValidatedTableToUniverseReplication(
+        universe, producer_info->table_id, consumer_schema.identifier().table_id()));
   }
 
-  if (!status.ok()) {
-    MarkUniverseReplicationFailed(universe, status);
-    LOG(ERROR) << "Found error while checking if bootstrap is required for table " << info->table_id
-               << ": " << status;
-  }
-
-  status = AddValidatedTableAndCreateCdcStreams(universe,
-                                                table_bootstrap_ids,
-                                                info->table_id,
-                                                resp.identifier().table_id());
-  if (!status.ok()) {
-    LOG(ERROR) << "Found error while adding validated table to system catalog: " << info->table_id
-               << ": " << status;
-    return;
-  }
+  return CreateCdcStreamsIfReplicationValidated(universe, producer_bootstrap_ids);
 }
 
 void CatalogManager::GetTablegroupSchemaCallback(
@@ -6162,9 +6232,9 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
 Status CatalogManager::DeleteUniverseReplicationUnlocked(
     scoped_refptr<UniverseReplicationInfo> universe) {
   // Assumes that caller has locked universe.
-  RETURN_NOT_OK_PREPEND(
+  RETURN_ACTION_NOT_OK(
       sys_catalog_->Delete(leader_ready_term(), universe),
-      Substitute("An error occurred while updating sys-catalog, universe_id: $0", universe->id()));
+      Format("updating sys-catalog, universe_id: $0", universe->id()));
 
   // Remove it from the map.
   LockGuard lock(mutex_);
@@ -8132,8 +8202,8 @@ void CatalogManager::PrepareRestore() {
   is_catalog_loaded_ = false;
 }
 
-void CatalogManager::EnableTabletSplitting(const std::string& feature) {
-  DisableTabletSplittingInternal(MonoDelta::FromMilliseconds(0), feature);
+void CatalogManager::ReenableTabletSplitting(const std::string& feature) {
+  super::ReenableTabletSplittingInternal(feature);
 }
 
 void CatalogManager::ScheduleXClusterNSReplicationAddTableTask() {

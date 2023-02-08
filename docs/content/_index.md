@@ -1,8 +1,8 @@
 ---
 title: Documentation
 headerTitle: Documentation
-description: Find the guides, examples, and reference material you need to evaluate YugabyteDB, build scalable applications, and learn distributed SQL.
-headcontent: Find the guides, examples, and reference material you need to evaluate YugabyteDB, build scalable applications, and learn distributed SQL.
+description: Guides, examples, and reference material you need to evaluate YugabyteDB database, build scalable applications, and learn distributed SQL.
+headcontent: Evaluate YugabyteDB, build scalable applications, and learn distributed SQL.
 type: indexpage
 layout: list
 breadcrumbDisable: true
@@ -24,7 +24,7 @@ resources:
     title="Get Started in the Cloud"
     description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required."
     buttonText="Get started"
-    buttonUrl="/preview/quick-start-yugabytedb-managed/"
+    buttonUrl="/preview/yugabyte-cloud/cloud-quickstart/"
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 

@@ -65,4 +65,18 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pitr/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Perform point-in-time recovery</div>
+      </div>
+      <div class="body">
+        Use YugabyteDB Anywhere to recover universe data from a specific point in time.
+      </div>
+    </a>
+  </div>
+
+
+
 </div>

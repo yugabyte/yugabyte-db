@@ -98,6 +98,12 @@ class TabletServerServiceProxy;
 
 namespace client {
 
+struct NamespaceInfo {
+    master::NamespaceIdentifierPB id;
+    master::SysNamespaceEntryPB_State state;
+    bool colocated;
+};
+
 namespace internal {
 class ClientMasterRpcBase;
 }
@@ -256,6 +262,10 @@ class YBClient {
   Status BackfillIndex(const TableId& table_id, bool wait = true,
                        CoarseTimePoint deadline = CoarseTimePoint());
 
+  Status GetIndexBackfillProgress(
+      const std::vector<TableId>& index_ids,
+      google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteTable(const YBTableName& table_name, bool wait = true);
@@ -411,8 +421,8 @@ class YBClient {
                                const std::string& role_name);
 
   // List all namespace identifiers.
-  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces();
-  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces(
+Result<std::vector<NamespaceInfo>> ListNamespaces();
+Result<std::vector<NamespaceInfo>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
 
   // Get namespace information.
@@ -431,7 +441,8 @@ class YBClient {
   Status CreateTablegroup(const std::string& namespace_name,
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
-                          const std::string& tablespace_id);
+                          const std::string& tablespace_id,
+                          const TransactionMetadata* txn);
 
   Status DeleteTablegroup(const std::string& tablegroup_id);
 
@@ -560,7 +571,7 @@ class YBClient {
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-      GetTableLocationsCallback callback);
+      PartitionsOnly partitions_only, GetTableLocationsCallback callback);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
@@ -748,6 +759,9 @@ class YBClient {
 
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
+
+  // Provide the completion status of 'txn' to the YB-Master.
+  Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
 
   Result<bool> CheckIfPitrActive();
 

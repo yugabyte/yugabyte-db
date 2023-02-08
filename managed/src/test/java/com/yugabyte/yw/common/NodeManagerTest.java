@@ -55,7 +55,10 @@ import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -129,6 +132,8 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock ReleaseManager releaseManager;
 
   @Mock RuntimeConfigFactory runtimeConfigFactory;
+
+  @Mock RuntimeConfGetter mockConfGetter;
 
   @Mock ConfigHelper mockConfigHelper;
 
@@ -504,6 +509,9 @@ public class NodeManagerTest extends FakeDBApplication {
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
 
     when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
+    when(mockConfGetter.getConfForScope(
+            any(Provider.class), eq(ProviderConfKeys.universeBootScript)))
+        .thenReturn("");
     when(mockAppConfig.getString(eq("yb.security.default.access.key")))
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
@@ -511,6 +519,37 @@ public class NodeManagerTest extends FakeDBApplication {
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(nodeAgentClient.maybeGetNodeAgentClient(any())).thenReturn(Optional.empty());
     createTempFile("node_manager_test_ca.crt", "test-cert");
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ybcEnableVervbose)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.nfsDirs)))
+        .thenReturn("/tmp/nfs,/nfs");
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ybNumReleasesToKeepCloud)))
+        .thenReturn(2);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ybNumReleasesToKeepDefault)))
+        .thenReturn(3);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleStrategy)))
+        .thenReturn("linear");
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ansibleConnectionTimeoutSecs)))
+        .thenReturn(60);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleVerbosity)))
+        .thenReturn(0);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleDebug)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ansibleDiffAlways)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.dbMemPostgresMaxMemMb)))
+        .thenReturn(0);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleLocalTemp)))
+        .thenReturn("/tmp/ansible_tmp/");
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -766,7 +805,7 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--cloud_subnet_secondary");
             expectedCommand.add(createParams.secondarySubnetId);
           }
-          String ybImage = testData.region.ybImage;
+          String ybImage = testData.region.getYbImage();
           if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
             expectedCommand.add(ybImage);
@@ -796,7 +835,7 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (cloud.equals(Common.CloudType.gcp)) {
-          String ybImage = testData.region.ybImage;
+          String ybImage = testData.region.getYbImage();
           if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
             expectedCommand.add(ybImage);
@@ -2171,7 +2210,9 @@ public class NodeManagerTest extends FakeDBApplication {
         params.setProperty("processType", serverType);
         params.gflags.put(GFlagsUtil.FS_DATA_DIRS, "/some/other"); // will be removed on conflict
         params.gflags.put(
-            GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all ::1/128 trust"); // will be merged
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            "host all all ::1/128 trust,"
+                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \""); // will be merged
         params.gflags.put(GFlagsUtil.UNDEFOK, "use_private_ip"); // will be merged
         params.gflags.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:1990"); // port replace
         params.gflags.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3"); // port append
@@ -2186,9 +2227,15 @@ public class NodeManagerTest extends FakeDBApplication {
 
         when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
         when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
+        when(mockConfGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
+            .thenReturn(false);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
         when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(true);
+        when(mockConfGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
+            .thenReturn(true);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
         verify(shellProcessHandler, times(3)).run(captor.capture(), anyMap(), anyString());
@@ -2201,7 +2248,10 @@ public class NodeManagerTest extends FakeDBApplication {
         Map<String, String> copy = new TreeMap<>(params.gflags);
         copy.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
         copy.put(
-            GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all ::1/128 trust,local all yugabyte trust");
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            "host all all ::1/128 trust,"
+                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                + "local all yugabyte trust");
         copy.remove(GFlagsUtil.FS_DATA_DIRS);
         copy.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
@@ -2211,7 +2261,10 @@ public class NodeManagerTest extends FakeDBApplication {
         Map<String, String> copy2 = new TreeMap<>(params.gflags);
         copy2.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
         copy2.put(
-            GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all ::1/128 trust,local all yugabyte trust");
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            "host all all ::1/128 trust,"
+                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                + "local all yugabyte trust");
         copy2.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy2.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
         assertEquals(copy2, new TreeMap<>(gflagsNotFiltered));

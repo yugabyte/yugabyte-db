@@ -8,10 +8,12 @@ import static play.libs.Json.toJson;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
+import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
@@ -39,6 +41,25 @@ public class YsqlQueryExecutor {
   private static final String DEFAULT_DB_PASSWORD = Util.DEFAULT_YSQL_PASSWORD;
   private static final String DB_ADMIN_ROLE_NAME = Util.DEFAULT_YSQL_ADMIN_ROLE_NAME;
   private static final String PRECREATED_DB_ADMIN = "yb_db_admin";
+
+  // This is the list of users that are created by default by the database.
+  // Therefore, we don't want to allow YBA to delete them.
+  private static final ImmutableSet<String> NON_DELETABLE_USERS =
+      ImmutableSet.of(
+          "postgres",
+          "pg_monitor",
+          "pg_read_all_settings",
+          "pg_read_all_stats",
+          "pg_stat_scan_tables",
+          "pg_signal_backend",
+          "pg_read_server_files",
+          "pg_write_server_files",
+          "pg_execute_server_program",
+          "yb_extension",
+          "yb_fdw",
+          "yb_db_admin",
+          "yugabyte",
+          "yb_superuser");
 
   private static final String DEL_PG_ROLES_CMD_1 =
       "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
@@ -192,6 +213,89 @@ public class YsqlQueryExecutor {
       response.put("error", "Failed to parse response: " + e.getMessage());
     }
     return response;
+  }
+
+  public void dropUser(Universe universe, DatabaseUserDropFormData data) {
+    boolean isCloudEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+
+    if (!isCloudEnabled) {
+      throw new PlatformServiceException(Http.Status.METHOD_NOT_ALLOWED, "Feature not allowed.");
+    }
+
+    // trim the username to make sure it does not contain spaces
+    data.username = data.username.trim();
+
+    LOG.info("Removing user='{}' for universe='{}'", data.username, universe.name);
+    if (NON_DELETABLE_USERS.contains(data.username)) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "Cannot delete user: " + data.username + ". This is a system user.");
+    }
+
+    String query = String.format("DROP USER \"%s\"; ", data.username);
+
+    try {
+      runUserDbCommands(query, data.dbName, universe);
+      LOG.info("Dropped user '{}' for universe '{}'", data.username, universe.name);
+    } catch (PlatformServiceException e) {
+      if (e.getHttpStatus() == Http.Status.BAD_REQUEST
+          && e.getMessage().contains("does not exist")) {
+        LOG.warn("User '{}' does not exist for universe '{}'", data.username, universe.name);
+      } else {
+        LOG.error("Error dropping user '{}' for universe '{}'", data.username, universe.name, e);
+        throw e;
+      }
+    }
+  }
+
+  public void createRestrictedUser(Universe universe, DatabaseUserFormData data) {
+    boolean isCloudEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+
+    if (!isCloudEnabled) {
+      throw new PlatformServiceException(Http.Status.METHOD_NOT_ALLOWED, "Feature not allowed.");
+    }
+
+    // trim the username to make sure it does not contain spaces
+    data.username = data.username.trim();
+
+    LOG.info("Creating restricted user='{}' for universe='{}'", data.username, universe.name);
+
+    StringBuilder createUserWithPrivileges = new StringBuilder();
+
+    createUserWithPrivileges
+        .append(
+            String.format(
+                "CREATE USER \"%s\" PASSWORD '%s'; ",
+                data.username, Util.escapeSingleQuotesOnly(data.password)))
+        .append(
+            String.format(
+                "GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO \"%1$s\"; ", data.username))
+        .append(DEL_PG_ROLES_CMD_1);
+
+    try {
+      runUserDbCommands(createUserWithPrivileges.toString(), data.dbName, universe);
+      LOG.info("Created restricted user and deleted dependencies");
+    } catch (PlatformServiceException e) {
+      if (e.getHttpStatus() == Http.Status.BAD_REQUEST
+          && e.getMessage().contains("already exists")) {
+        // User exists, we should still try and run the rest of the tasks
+        // since they are idempotent.
+        LOG.warn(String.format("Restricted user already exists, skipping...\n%s", e.getMessage()));
+      } else {
+        throw e;
+      }
+    }
+
+    StringBuilder resetPgStatStatements = new StringBuilder();
+    resetPgStatStatements.append(DEL_PG_ROLES_CMD_2).append(" SELECT pg_stat_statements_reset(); ");
+    runUserDbCommands(resetPgStatStatements.toString(), data.dbName, universe);
+    LOG.info(
+        "Dropped unrequired roles and assigned permissions to the restricted user='{}' for"
+            + " universe='{}'",
+        data.username,
+        universe.name);
   }
 
   public void createUser(Universe universe, DatabaseUserFormData data) {

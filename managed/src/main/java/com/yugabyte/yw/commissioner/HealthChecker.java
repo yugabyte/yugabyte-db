@@ -31,6 +31,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -39,7 +40,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AlertingData;
@@ -116,8 +119,6 @@ public class HealthChecker {
   private static final String MAX_NUM_THREADS_NODE_CHECK_KEY =
       "yb.health.max_num_parallel_node_checks";
 
-  private static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
-
   public static final String READ_WRITE_TEST_PARAM = "yb.metrics.db_read_write_test";
 
   private final Environment environment;
@@ -139,6 +140,8 @@ public class HealthChecker {
   private final MetricService metricService;
 
   private final RuntimeConfigFactory runtimeConfigFactory;
+
+  private final RuntimeConfGetter confGetter;
 
   // The thread pool executor for parallelized health checks for multiple universes.
   private final ExecutorService universeExecutor;
@@ -168,6 +171,7 @@ public class HealthChecker {
       EmailHelper emailHelper,
       MetricService metricService,
       RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter,
       ApplicationLifecycle lifecycle,
       NodeUniverseManager nodeUniverseManager) {
     this(
@@ -178,6 +182,7 @@ public class HealthChecker {
         emailHelper,
         metricService,
         runtimeConfigFactory,
+        confGetter,
         lifecycle,
         nodeUniverseManager,
         createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
@@ -192,6 +197,7 @@ public class HealthChecker {
       EmailHelper emailHelper,
       MetricService metricService,
       RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter,
       ApplicationLifecycle lifecycle,
       NodeUniverseManager nodeUniverseManager,
       ExecutorService universeExecutor,
@@ -203,6 +209,7 @@ public class HealthChecker {
     this.emailHelper = emailHelper;
     this.metricService = metricService;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.confGetter = confGetter;
     this.lifecycle = lifecycle;
     this.universeExecutor = universeExecutor;
     this.nodeExecutor = nodeExecutor;
@@ -436,7 +443,7 @@ public class HealthChecker {
   }
 
   public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
-    if (!runtimeConfigFactory.forUniverse(u).getBoolean("yb.health.trigger_api.enabled")) {
+    if (!confGetter.getConfForScope(u, UniverseConfKeys.enableTriggerAPI)) {
       throw new PlatformServiceException(BAD_REQUEST, "Manual health check is disabled.");
     }
     // We hardcode the parameters here as this is currently a cloud-only feature
@@ -644,9 +651,7 @@ public class HealthChecker {
       potentialStartTime = lastTask.getCompletionTime().getTime();
     }
     boolean testReadWrite =
-        runtimeConfigFactory
-            .forUniverse(params.universe)
-            .getBoolean(HealthChecker.READ_WRITE_TEST_PARAM);
+        confGetter.getConfForScope(params.universe, UniverseConfKeys.dbReadWriteTest);
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       UserIntent userIntent = cluster.userIntent;
       Provider provider = Provider.get(UUID.fromString(userIntent.provider));
@@ -815,9 +820,9 @@ public class HealthChecker {
   private List<NodeData> checkNodes(Universe universe, List<NodeInfo> nodes) {
     // Check if it should log the output of the command.
     boolean shouldLogOutput =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.health.logOutput");
+        confGetter.getConfForScope(universe, UniverseConfKeys.healthLogOutput);
     int nodeCheckTimeoutSec =
-        runtimeConfigFactory.forUniverse(universe).getInt("yb.health.nodeCheckTimeoutSec");
+        confGetter.getConfForScope(universe, UniverseConfKeys.nodeCheckTimeoutSec);
 
     Map<String, CompletableFuture<Details>> nodeChecks = new HashMap<>();
     for (NodeInfo nodeInfo : nodes) {
@@ -901,7 +906,12 @@ public class HealthChecker {
     }
 
     String scriptPath =
-        (nodeInfo.isK8s() ? K8S_NODE_YW_DATA_DIR : nodeInfo.getYbHomeDir()) + "/bin/node_health.py";
+        Paths.get(
+                (nodeInfo.isK8s()
+                    ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR
+                    : nodeInfo.getYbHomeDir()),
+                "/bin/node_health.py")
+            .toString();
     if (uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) {
       log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
       String generatedScriptPath = generateNodeCheckScript(universe.universeUUID, nodeInfo);

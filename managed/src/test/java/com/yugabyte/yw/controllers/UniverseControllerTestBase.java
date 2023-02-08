@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -83,11 +84,12 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock RuntimeConfGetter mockConfGetter;
   @Mock protected play.Configuration mockAppConfig;
 
   private HealthChecker healthChecker;
   protected Customer customer;
-  private Users user;
+  protected Users user;
   protected KmsConfig kmsConfig;
   protected String authToken;
   protected YBClientService mockService;

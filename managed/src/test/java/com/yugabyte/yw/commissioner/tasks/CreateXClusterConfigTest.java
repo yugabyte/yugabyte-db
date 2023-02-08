@@ -20,16 +20,19 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -73,6 +76,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   private String sourceUniverseName;
   private UUID sourceUniverseUUID;
   private Universe sourceUniverse;
+  private Users defaultUser;
   private String targetUniverseName;
   private UUID targetUniverseUUID;
   private Universe targetUniverse;
@@ -96,6 +100,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     super.setUp();
 
     defaultCustomer = testCustomer("CreateXClusterConfig-test-customer");
+    defaultUser = ModelFactory.testUser(defaultCustomer);
 
     configName = "CreateXClusterConfigTest-test-config";
 
@@ -190,6 +195,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             Collections.emptyMap());
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
+
+      // Set http context.
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
           targetUniverse.universeUUID,

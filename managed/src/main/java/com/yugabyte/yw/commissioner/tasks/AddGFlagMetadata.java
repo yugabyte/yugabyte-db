@@ -12,7 +12,6 @@ import com.yugabyte.yw.forms.AbstractTaskParams;
 import java.io.InputStream;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AddGFlagMetadata extends AbstractTaskBase {
@@ -31,6 +30,7 @@ public class AddGFlagMetadata extends AbstractTaskBase {
   }
 
   public static class Params extends AbstractTaskParams {
+
     public String version;
     public ReleaseMetadata releaseMetadata;
     public List<String> requiredGFlagsFileList;
@@ -47,21 +47,12 @@ public class AddGFlagMetadata extends AbstractTaskBase {
       ReleaseMetadata releaseMetadata = taskParams().releaseMetadata;
       List<String> requiredGFlagsFileList = taskParams().requiredGFlagsFileList;
       String version = taskParams().version;
-      if (StringUtils.isEmpty(releaseMetadata.filePath)) {
-        throw new RuntimeException(
-            "Cannot add gFlags metadata for version: "
-                + version
-                + " as no DB package path was specified.");
-      }
       try (InputStream tarGZIPInputStream =
           releaseManager.getTarGZipDBPackageInputStream(version, releaseMetadata)) {
         gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
             tarGZIPInputStream, version, requiredGFlagsFileList, taskParams().releasesPath);
       } catch (Exception e) {
-        log.error(
-            "Error in fetching GFlags metadata from the location: {}: {} ",
-            releaseMetadata.filePath,
-            e);
+        log.error("Error in fetching GFlags metadata: {}", e.getMessage());
         throw new RuntimeException(e);
       }
     } catch (RuntimeException e) {

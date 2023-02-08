@@ -7,13 +7,16 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -73,30 +76,56 @@ public class AvailabilityZone extends Model {
   @ApiModelProperty(value = "AZ secondary subnet", example = "secondary subnet id")
   public String secondarySubnet;
 
+  @Deprecated
   @DbJson
   @Column(columnDefinition = "TEXT")
   @ApiModelProperty(value = "AZ configuration values")
   public Map<String, String> config;
 
+  @Encrypted
+  @DbJson
+  @Column(columnDefinition = "TEXT")
+  @ApiModelProperty
+  public AvailabilityZoneDetails details = new AvailabilityZoneDetails();
+
   @ApiModelProperty(value = "Path to Kubernetes configuration file", accessMode = READ_ONLY)
   public String getKubeconfigPath() {
-    Map<String, String> configMap = this.getUnmaskedConfig();
+    Map<String, String> configMap = CloudInfoInterface.fetchEnvVars(this);
     return configMap.getOrDefault("KUBECONFIG", null);
   }
 
+  @Deprecated
+  @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    this.config = configMap;
+    if (configMap != null && !configMap.isEmpty()) {
+      CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+    }
   }
 
+  @Deprecated
   public void updateConfig(Map<String, String> configMap) {
-    Map<String, String> config = getUnmaskedConfig();
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(this);
     config.putAll(configMap);
     setConfig(config);
   }
 
+  @JsonProperty("details")
+  public void setAvailabilityZoneDetails(AvailabilityZoneDetails azDetails) {
+    this.details = azDetails;
+  }
+
+  @JsonProperty("details")
+  public AvailabilityZoneDetails getMaskAvailabilityZoneDetails() {
+    CloudInfoInterface.maskAvailabilityZoneDetails(this);
+    return details;
+  }
+
   @JsonIgnore
-  public Map<String, String> getUnmaskedConfig() {
-    return this.config == null ? new HashMap<>() : this.config;
+  public AvailabilityZoneDetails getAvailabilityZoneDetails() {
+    if (details == null) {
+      details = new AvailabilityZoneDetails();
+    }
+    return details;
   }
 
   /** Query Helper for Availability Zone with primary key */
@@ -122,12 +151,48 @@ public class AvailabilityZone extends Model {
 
   public static AvailabilityZone createOrThrow(
       Region region, String code, String name, String subnet, String secondarySubnet) {
+    return createOrThrow(
+        region, code, name, subnet, secondarySubnet, new AvailabilityZoneDetails());
+  }
+
+  public static AvailabilityZone createOrThrow(
+      Region region,
+      String code,
+      String name,
+      String subnet,
+      String secondarySubnet,
+      AvailabilityZoneDetails details) {
     try {
       AvailabilityZone az = new AvailabilityZone();
       az.region = region;
       az.code = code;
       az.name = name;
       az.subnet = subnet;
+      az.setAvailabilityZoneDetails(details);
+      az.secondarySubnet = secondarySubnet;
+      az.save();
+      return az;
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to create zone: " + code);
+    }
+  }
+
+  @Deprecated
+  public static AvailabilityZone createOrThrow(
+      Region region,
+      String code,
+      String name,
+      String subnet,
+      String secondarySubnet,
+      Map<String, String> config) {
+    try {
+      AvailabilityZone az = new AvailabilityZone();
+      az.region = region;
+      az.code = code;
+      az.name = name;
+      az.subnet = subnet;
+      az.setConfig(config);
       az.secondarySubnet = secondarySubnet;
       az.save();
       return az;

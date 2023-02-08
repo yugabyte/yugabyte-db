@@ -351,6 +351,9 @@ Result<scoped_refptr<master::TableInfo>> FindTable(
 
 Status WaitForInitDb(MiniCluster* cluster);
 
+// Counts the total number of external transactions on coordinator tablets.
+size_t CountExternalTransactions(MiniCluster* cluster);
+
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
 
 tserver::MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id);

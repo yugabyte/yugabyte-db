@@ -89,6 +89,7 @@ html {
 
       > div {
         display: flex;
+        align-items: flex-start;
         max-width: 100%;
         width: 100%;
       }
@@ -151,7 +152,8 @@ html {
   .td-main {
     .td-sidebar-toc.d-xl-block {
       width: 252px !important;
-      padding-left: 40px;
+      padding-left: 0;
+      margin-left: 40px;
     }
   }
 }

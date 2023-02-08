@@ -44,15 +44,19 @@
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_auth_members.h"
+#include "catalog/pg_cast.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
@@ -1316,13 +1320,21 @@ YBLoadRelations()
 		/*
 		 * Insert newly created relation into relcache hash table if needed:
 		 * a. If it's not already there (e.g. new table or initialization).
-		 * b. If it's a regular (non-system) table it could be changed (e.g. by an 'ALTER').
+		 * b. If it's a regular (non-system) table it could be changed (e.g. by
+		 *    an 'ALTER').
+		 * c. If it's a system view it could still be changed, either via YSQL
+		 *    upgrade or manually.
 		 */
 		Relation tmp_rel;
 		RelationIdCacheLookup(relid, tmp_rel);
-		/* Ignore update of existing sys relation as it can't be changed without DB upgrade. */
-		if (tmp_rel && IsSystemRelation(tmp_rel))
+
+		/* Non-view system relations cannot currently be altered. */
+		if (tmp_rel && IsSystemRelation(tmp_rel) &&
+			tmp_rel->rd_rel->relkind != RELKIND_VIEW)
+		{
 			continue;
+		}
+
 		/* get information from the pg_class_tuple */
 		Form_pg_class relp  = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 
@@ -1923,6 +1935,8 @@ YBIsDBConnectionValid()
 void
 YBPreloadRelCache()
 {
+	bool prefetch_additional_tables = *YBCGetGFlags()->ysql_catalog_preload_additional_tables;
+
 	/*
 	 * During the cache loading process postgres reads the data from multiple sys tables.
 	 * It is reasonable to prefetch all these tables in one shot.
@@ -1942,6 +1956,11 @@ YBPreloadRelCache()
 	YbRegisterSysTableForPrefetching(TypeRelationId);                  // pg_type
 	YbRegisterSysTableForPrefetching(NamespaceRelationId);             // pg_namespace
 	YbRegisterSysTableForPrefetching(AuthIdRelationId);                // pg_authid
+	if (prefetch_additional_tables)
+	{
+		YbRegisterSysTableForPrefetching(CastRelationId);                  // pg_cast
+		YbRegisterSysTableForPrefetching(AccessMethodOperatorRelationId);  // pg_amop
+	}
 
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 	{
@@ -1981,6 +2000,12 @@ YBPreloadRelCache()
 	YbPreloadCatalogCache(TYPEOID, TYPENAMENSP);        // pg_type
 	YbPreloadCatalogCache(NAMESPACEOID, NAMESPACENAME); // pg_namespace
 	YbPreloadCatalogCache(AUTHOID, AUTHNAME);           // pg_authid
+	if (prefetch_additional_tables)
+	{
+		YbPreloadCatalogCache(AMOPOPID, AMOPSTRATEGY);      // pg_amop
+		YbPreloadCatalogCache(AMPROCNUM, -1);               // pg_amproc
+		YbPreloadCatalogCache(CASTSOURCETARGET, -1);        // pg_cast
+	}
 
 	YBLoadRelationsResult relations_result = YBLoadRelations();
 
@@ -4602,7 +4627,10 @@ RelationCacheInitializePhase3(void)
 	 * In YB mode initialize the relache at the beginning so that we need
 	 * fewer cache lookups in steady state.
 	 */
-	if (IsYugaByteEnabled() && (needNewCacheFile || YBCIsInitDbModeEnvVarSet()))
+	if (IsYugaByteEnabled() &&
+		(needNewCacheFile ||
+		 YBCIsInitDbModeEnvVarSet() ||
+		 *YBCGetGFlags()->ysql_enable_read_request_caching))
 	{
 		YBPreloadRelCache();
 	}
@@ -6468,6 +6496,16 @@ load_relcache_init_file(bool shared)
 	 * correct init file name for the to-be-resolved MyDatabaseId.
 	 */
 	if (shared && YBIsDBCatalogVersionMode())
+		return false;
+
+	/*
+	 * YB mode uses local-tserver prefetching instead of relcache file.
+	 * TODO: either put this under a GUC variable or remove the old code
+	 * below.
+	 */
+	if (IsYugaByteEnabled() &&
+		*YBCGetGFlags()->ysql_catalog_preload_additional_tables &&
+		!YBIsDBCatalogVersionMode())
 		return false;
 
 	RelCacheInitFileName(initfilename, shared);

@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
@@ -35,14 +36,15 @@ import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -51,8 +53,10 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -60,7 +64,9 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
+@Slf4j
 public class AccessKeyControllerTest extends FakeDBApplication {
+
   Provider defaultProvider;
   Customer defaultCustomer;
   Users defaultUser;
@@ -73,7 +79,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   public void before() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
-    defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    defaultProvider = ModelFactory.onpremProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "us-west-2", "yb-image");
   }
 
@@ -99,43 +105,6 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
   }
 
-  private AccessKeyFormData createFormData(
-      String keyCode,
-      UUID regionUUID,
-      AccessManager.KeyType keyType,
-      String keyContent,
-      String sshUser,
-      Integer sshPort,
-      boolean passwordlessSudoAccess,
-      boolean airGapInstall,
-      boolean installNodeExporter,
-      String nodeExporterUser,
-      Integer nodeExporterPort,
-      boolean skipProvisioning,
-      boolean setUpChrony,
-      List<String> ntpServers,
-      boolean showSetUpChrony,
-      Integer expirationThresholdDays) {
-    AccessKeyFormData formData = new AccessKeyFormData();
-    formData.keyCode = keyCode;
-    formData.regionUUID = regionUUID;
-    formData.keyType = keyType;
-    formData.keyContent = keyContent;
-    formData.sshUser = sshUser;
-    formData.sshPort = sshPort;
-    formData.passwordlessSudoAccess = passwordlessSudoAccess;
-    formData.airGapInstall = airGapInstall;
-    formData.installNodeExporter = installNodeExporter;
-    formData.nodeExporterUser = nodeExporterUser;
-    formData.nodeExporterPort = nodeExporterPort;
-    formData.skipProvisioning = skipProvisioning;
-    formData.setUpChrony = setUpChrony;
-    formData.ntpServers = ntpServers;
-    formData.showSetUpChrony = showSetUpChrony;
-    formData.expirationThresholdDays = expirationThresholdDays;
-    return formData;
-  }
-
   private Result createAccessKey(
       UUID providerUUID, String keyCode, boolean uploadFile, boolean useRawString) {
     return createAccessKey(
@@ -148,7 +117,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
         true,
         false,
         false,
-        null);
+        Collections.emptyList());
   }
 
   private Result createAccessKey(
@@ -231,7 +200,9 @@ public class AccessKeyControllerTest extends FakeDBApplication {
       bodyJson.put("expirationThresholdDays", expirationThresholdDays);
       if (ntpServers != null) {
         ArrayNode arrayNode = Json.newArray();
-        for (String server : ntpServers) arrayNode.add(server);
+        for (String server : ntpServers) {
+          arrayNode.add(server);
+        }
         bodyJson.putArray("ntpServers").addAll(arrayNode);
       }
       return FakeApiHelper.doRequestWithAuthTokenAndBody(
@@ -339,26 +310,6 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAccessKeyWithInvalidProviderUUID() {
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code",
-            defaultRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            true,
-            true,
-            "prometheus",
-            9300,
-            false,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     Result result =
         assertPlatformException(() -> createAccessKey(UUID.randomUUID(), "foo", false, false));
     assertBadRequest(result, "provider");
@@ -371,63 +322,22 @@ public class AccessKeyControllerTest extends FakeDBApplication {
         assertPlatformException(() -> createAccessKey(defaultProvider.uuid, null, false, false));
     JsonNode node = Json.parse(contentAsString(result));
     assertErrorNodeValue(node, "keyCode", "This field is required");
-    assertErrorNodeValue(node, "regionUUID", "This field is required");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
-  public void testCreateAccessKeyWithDifferentProviderUUID() {
-    Provider gcpProvider = ModelFactory.gcpProvider(ModelFactory.testCustomer("fb", "foo@bar.com"));
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code",
-            defaultRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            true,
-            true,
-            "prometheus",
-            9300,
-            false,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
+  public void testCreateAccessKeyWithZewroRegionProvider() {
+    Provider differentProvider =
+        ModelFactory.onpremProvider(ModelFactory.testCustomer("fb", "foo@bar.com"));
     Result result =
-        assertPlatformException(() -> createAccessKey(gcpProvider.uuid, "key-code", false, false));
-    assertBadRequest(result, "Invalid Provider/Region UUID");
+        assertPlatformException(
+            () -> createAccessKey(differentProvider.uuid, "key-code", false, false));
+    assertInternalServerError(result, "No regions.");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
   public void testCreateAccessKeyInDifferentRegion() {
-    AccessKey accessKey =
-        AccessKey.create(defaultProvider.uuid, "key-code", new AccessKey.KeyInfo());
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code",
-            defaultRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            true,
-            true,
-            "prometheus",
-            9300,
-            false,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     when(mockAccessManager.addKey(
             defaultRegion.uuid,
             "key-code",
@@ -437,9 +347,11 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             true,
             false,
             false,
-            null,
+            Collections.emptyList(),
             true))
-        .thenReturn(accessKey);
+        .thenAnswer(
+            invocation ->
+                AccessKey.create(defaultProvider.uuid, "key-code", new AccessKey.KeyInfo()));
     Result result = createAccessKey(defaultProvider.uuid, "key-code", false, false);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
@@ -450,28 +362,6 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAccessKeyWithoutKeyFile() {
-    AccessKey accessKey =
-        AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            defaultRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            true,
-            true,
-            "prometheus",
-            9300,
-            false,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     when(mockAccessManager.addKey(
             defaultRegion.uuid,
             "key-code-1",
@@ -481,9 +371,9 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             true,
             false,
             false,
-            null,
+            Collections.emptyList(),
             true))
-        .thenReturn(accessKey);
+        .thenAnswer(i -> AccessKey.create(defaultProvider.uuid, "key-code-1", new KeyInfo()));
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, false);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
@@ -497,28 +387,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
-    AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code-1", keyInfo);
     ArgumentCaptor<File> updatedFile = ArgumentCaptor.forClass(File.class);
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            defaultRegion.uuid,
-            AccessManager.KeyType.PRIVATE,
-            "PRIVATE KEY DATA",
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            false,
-            true,
-            "prometheus",
-            9300,
-            false,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     when(mockAccessManager.uploadKeyFile(
             eq(defaultRegion.uuid),
             any(File.class),
@@ -529,9 +398,9 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             eq(false),
             eq(false),
             eq(false),
-            eq(null),
+            eq(Collections.emptyList()),
             eq(true)))
-        .thenReturn(accessKey);
+        .thenAnswer(i -> AccessKey.create(defaultProvider.uuid, "key-code-1", keyInfo));
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", true, false);
     verify(mockAccessManager, times(1))
         .uploadKeyFile(
@@ -544,7 +413,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             eq(false),
             eq(false),
             eq(false),
-            eq(null),
+            eq(Collections.emptyList()),
             eq(true));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
@@ -564,28 +433,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
-    AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code-1", keyInfo);
     ArgumentCaptor<File> updatedFile = ArgumentCaptor.forClass(File.class);
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            defaultRegion.uuid,
-            AccessManager.KeyType.PRIVATE,
-            "PRIVATE KEY DATA",
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            true,
-            true,
-            "prometheus",
-            9300,
-            false,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     when(mockAccessManager.uploadKeyFile(
             eq(defaultRegion.uuid),
             any(File.class),
@@ -596,9 +444,9 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             eq(true),
             eq(false),
             eq(false),
-            eq(null),
+            eq(Collections.emptyList()),
             eq(true)))
-        .thenReturn(accessKey);
+        .thenAnswer(i -> AccessKey.create(defaultProvider.uuid, "key-code-1", keyInfo));
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, true);
     verify(mockAccessManager, times(1))
         .uploadKeyFile(
@@ -611,7 +459,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             eq(true),
             eq(false),
             eq(false),
-            eq(null),
+            eq(Collections.emptyList()),
             eq(true));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
@@ -628,26 +476,6 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAccessKeyWithException() {
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            defaultRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            true,
-            true,
-            "prometheus",
-            9300,
-            false,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     when(mockAccessManager.addKey(
             defaultRegion.uuid,
             "key-code-1",
@@ -657,7 +485,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             true,
             false,
             false,
-            null,
+            Collections.emptyList(),
             true))
         .thenThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, "Something went wrong!!"));
     Result result =
@@ -671,28 +499,6 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   public void testCreateAccessKeyWithoutPasswordlessSudoAccessSuccess() {
     Provider onpremProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.onprem);
     Region onpremRegion = Region.create(onpremProvider, "onprem-a", "onprem-a", "yb-image");
-    AccessKey accessKey =
-        AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            onpremRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            false,
-            true,
-            true,
-            "prometheus",
-            9300,
-            false,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     when(mockAccessManager.addKey(
             onpremRegion.uuid,
             "key-code-1",
@@ -702,9 +508,10 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             true,
             false,
             false,
-            null,
+            Collections.emptyList(),
             true))
-        .thenReturn(accessKey);
+        .thenAnswer(
+            i -> AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo()));
     Result result =
         createAccessKey(
             onpremProvider.uuid,
@@ -716,41 +523,25 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             false,
-            null);
+            Collections.emptyList());
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
     verify(mockTemplateManager, times(1))
-        .createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus", false, null);
+        .createProvisionTemplate(
+            AccessKey.getLatestKey(onpremProvider.uuid),
+            true,
+            false,
+            true,
+            9300,
+            "prometheus",
+            false,
+            Collections.emptyList());
   }
 
   @Test
   public void testCreateAccessKeyWithoutPasswordlessSudoAccessError() {
-    Provider onpremProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.onprem);
-    Region onpremRegion = Region.create(onpremProvider, "onprem-a", "onprem-a", "yb-image");
-    AccessKey accessKey =
-        AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            onpremRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            false,
-            false,
-            true,
-            "prometheus",
-            9300,
-            false,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     when(mockAccessManager.addKey(
-            onpremRegion.uuid,
+            defaultRegion.uuid,
             "key-code-1",
             null,
             DEFAULT_SUDO_SSH_USER,
@@ -758,28 +549,37 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             false,
-            null,
+            Collections.emptyList(),
             true))
-        .thenReturn(accessKey);
+        .thenAnswer(
+            i -> AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo()));
     doThrow(
             new PlatformServiceException(
                 INTERNAL_SERVER_ERROR, "Unable to create access key: key-code-1"))
         .when(mockTemplateManager)
-        .createProvisionTemplate(accessKey, false, false, true, 9300, "prometheus", false, null);
+        .createProvisionTemplate(
+            any(AccessKey.class),
+            eq(false),
+            eq(false),
+            eq(true),
+            eq(9300),
+            eq("prometheus"),
+            eq(false),
+            eq(Collections.emptyList()));
     Result result =
         assertPlatformException(
             () ->
                 createAccessKey(
-                    onpremProvider.uuid,
+                    defaultProvider.uuid,
                     "key-code-1",
                     false,
                     false,
-                    onpremRegion,
+                    defaultRegion,
                     false,
                     false,
                     false,
                     false,
-                    null));
+                    Collections.emptyList()));
     assertErrorResponse(result, "Unable to create access key: key-code-1");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -788,28 +588,6 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   public void testCreateAccessKeySkipProvisioning() {
     Provider onpremProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.onprem);
     Region onpremRegion = Region.create(onpremProvider, "onprem-a", "onprem-a", "yb-image");
-    AccessKey accessKey =
-        AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            onpremRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            false,
-            true,
-            true,
-            "prometheus",
-            9300,
-            true,
-            false,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     when(mockAccessManager.addKey(
             onpremRegion.uuid,
             "key-code-1",
@@ -819,9 +597,11 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             true,
             true,
             false,
-            null,
+            Collections.emptyList(),
             true))
-        .thenReturn(accessKey);
+        .thenAnswer(
+            invocation ->
+                AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo()));
     Result result =
         createAccessKey(
             onpremProvider.uuid,
@@ -833,37 +613,26 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             true,
             false,
-            null);
+            Collections.emptyList());
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
     verify(mockTemplateManager, times(1))
-        .createProvisionTemplate(accessKey, true, false, true, 9300, "prometheus", false, null);
+        .createProvisionTemplate(
+            AccessKey.getLatestKey(onpremProvider.uuid),
+            true,
+            false,
+            true,
+            9300,
+            "prometheus",
+            false,
+            Collections.emptyList());
   }
 
   @Test
   public void testCreateAccessKeySetUpNTP() {
-    AccessKey accessKey =
-        AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            defaultRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            false,
-            true,
-            "prometheus",
-            9300,
-            false,
-            true,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
+    List<String> serverList = new ArrayList<>();
+    serverList.add("0.yb.pool.ntp.org");
+    serverList.add("1.yb.pool.ntp.org");
     when(mockAccessManager.addKey(
             defaultRegion.uuid,
             "key-code-1",
@@ -873,9 +642,10 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             true,
-            null,
+            serverList,
             true))
-        .thenReturn(accessKey);
+        .thenAnswer(
+            i -> AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo()));
     Result result =
         createAccessKey(
             defaultProvider.uuid,
@@ -887,38 +657,16 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             true,
-            null);
+            serverList);
     assertOk(result);
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
   @Test
   public void testCreateAccessKeySetUpNTPWithList() {
-    List<String> serverList = new ArrayList<String>();
+    List<String> serverList = new ArrayList<>();
     serverList.add("0.yb.pool.ntp.org");
     serverList.add("1.yb.pool.ntp.org");
-    AccessKey accessKey =
-        AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            defaultRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            false,
-            true,
-            "prometheus",
-            9300,
-            false,
-            true,
-            serverList,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     when(mockAccessManager.addKey(
             defaultRegion.uuid,
             "key-code-1",
@@ -930,7 +678,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             true,
             serverList,
             true))
-        .thenReturn(accessKey);
+        .thenAnswer(
+            i -> AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo()));
     Result result =
         createAccessKey(
             defaultProvider.uuid,
@@ -949,70 +698,27 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAccessKeySetUpNTPWithoutListOnPrem() {
-    Provider onPremProvider = ModelFactory.onpremProvider(defaultCustomer);
-    Region onPremRegion = Region.create(onPremProvider, "us-west-2", "us-west-2", "yb-image");
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            onPremRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            false,
-            true,
-            "prometheus",
-            9300,
-            false,
-            true,
-            null,
-            true,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
     Result result =
         assertPlatformException(
             () ->
                 createAccessKey(
-                    onPremProvider.uuid,
+                    defaultProvider.uuid,
                     "key-code-1",
                     false,
                     false,
-                    onPremRegion,
+                    defaultRegion,
                     false,
                     false,
                     false,
                     true,
-                    null));
+                    Collections.emptyList()));
     assertBadRequest(result, "NTP servers not provided");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
   public void testCreateAccessKeyWithShowSetUpChronyFalse() {
-    AccessKey accessKey =
-        AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            defaultRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            false,
-            true,
-            "prometheus",
-            9300,
-            false,
-            true,
-            null,
-            false,
-            null);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
+    List<String> ntpServerList = ImmutableList.of("0.yb.pool.ntp.org", "1.yb.pool.ntp.org");
     when(mockAccessManager.addKey(
             defaultRegion.uuid,
             "key-code-1",
@@ -1022,9 +728,12 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             true,
-            null,
+            ntpServerList,
             false))
-        .thenReturn(accessKey);
+        .then(
+            invocation ->
+                AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo()));
+
     Result result =
         createAccessKey(
             defaultProvider.uuid,
@@ -1036,7 +745,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             true,
-            null,
+            ntpServerList,
             false,
             null);
     assertOk(result);
@@ -1046,45 +755,23 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testCreateAccessKeyWithExpirationThresholdDays() {
     Integer expirationThresholdDays = 365;
-    AccessKey accessKey =
-        AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
-    accessKey.updateExpirationDate(expirationThresholdDays);
-    AccessKeyFormData formData =
-        createFormData(
-            "key-code-1",
-            defaultRegion.uuid,
-            null,
-            null,
-            DEFAULT_SUDO_SSH_USER,
-            SSH_PORT,
-            true,
-            false,
-            true,
-            "prometheus",
-            9300,
-            false,
-            true,
-            null,
-            false,
-            expirationThresholdDays);
-    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
-        .thenReturn(formData);
+    final String keyCode = "key-code-1";
     when(mockAccessManager.addKey(
             defaultRegion.uuid,
-            "key-code-1",
+            keyCode,
             null,
             DEFAULT_SUDO_SSH_USER,
             SSH_PORT,
             false,
             false,
-            true,
-            null,
+            false,
+            Collections.emptyList(),
             false))
-        .thenReturn(accessKey);
+        .thenAnswer(i -> AccessKey.create(defaultProvider.uuid, keyCode, new KeyInfo()));
     Result result =
         createAccessKey(
             defaultProvider.uuid,
-            "key-code-1",
+            keyCode,
             false,
             false,
             defaultRegion,
@@ -1092,7 +779,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             false,
-            null,
+            Collections.emptyList(),
             false,
             expirationThresholdDays);
 
@@ -1101,7 +788,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     AccessKey createdAccessKey = Json.fromJson(json, AccessKey.class);
     assertEquals(
-        accessKey.getExpirationDate().toString(), createdAccessKey.getExpirationDate().toString());
+        AccessKey.getLatestKey(defaultProvider.uuid).getExpirationDate().toString(),
+        createdAccessKey.getExpirationDate().toString());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 

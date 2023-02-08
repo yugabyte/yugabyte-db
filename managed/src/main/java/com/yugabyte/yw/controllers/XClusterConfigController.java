@@ -901,7 +901,7 @@ public class XClusterConfigController extends AuthenticatedController {
       }
 
       if (xClusterConfig.status == XClusterConfig.XClusterConfigStatusType.Failed
-          && formData.tables.size() != tableIds.size()) {
+          && formData.tables.size() < xClusterConfig.getTableIdsExcludeIndexTables().size()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "Per DB/table xCluster config restart cannot be done because the creation of the "

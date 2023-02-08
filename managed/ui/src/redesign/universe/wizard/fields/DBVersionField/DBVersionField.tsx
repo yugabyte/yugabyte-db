@@ -4,7 +4,6 @@ import { Controller, useFormContext } from 'react-hook-form';
 import { Select } from '../../../../uikit/Select/Select';
 import { ErrorMessage } from '../../../../uikit/ErrorMessage/ErrorMessage';
 import { DBConfigFormValue } from '../../steps/db/DBConfig';
-import { ControllerRenderProps } from '../../../../helpers/types';
 import { api, QUERY_KEY } from '../../../../helpers/api';
 import { sortVersionStrings } from '../../../../../utils/ObjectUtils';
 import './DBVersionField.scss';
@@ -22,7 +21,12 @@ const FIELD_NAME = 'ybSoftwareVersion';
 const ERROR_NO_DB_VERSION = 'DB Version value is required';
 
 export const DBVersionField: FC<DBVersionFieldProps> = ({ disabled }) => {
-  const { control, errors, getValues, setValue } = useFormContext<DBConfigFormValue>();
+  const {
+    control,
+    formState: { errors },
+    getValues,
+    setValue
+  } = useFormContext<DBConfigFormValue>();
   const { data } = useQuery(QUERY_KEY.getDBVersions, api.getDBVersions, {
     onSuccess: (data) => {
       // pre-select first available db version
@@ -44,11 +48,7 @@ export const DBVersionField: FC<DBVersionFieldProps> = ({ disabled }) => {
         control={control}
         name={FIELD_NAME}
         rules={{ required: ERROR_NO_DB_VERSION }}
-        render={({
-          onChange,
-          onBlur,
-          value: dbVersionFormValue
-        }: ControllerRenderProps<string | null>) => (
+        render={({ field: { onChange, onBlur, value: dbVersionFormValue } }) => (
           <Select<DBVersionOption>
             isSearchable
             isClearable={false}

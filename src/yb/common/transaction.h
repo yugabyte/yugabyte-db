@@ -188,6 +188,9 @@ class TransactionStatusManager {
 
   virtual const TabletId& tablet_id() const = 0;
 
+  virtual Result<IsExternalTransaction> IsExternalTransactionResult(
+      const TransactionId& transaction_id) = 0;
+
  private:
   friend class RequestScope;
 

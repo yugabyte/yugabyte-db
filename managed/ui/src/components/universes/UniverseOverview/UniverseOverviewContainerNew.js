@@ -25,6 +25,7 @@ function mapStateToProps(state) {
 
   return {
     currentCustomer: state.customer.currentCustomer,
+    runtimeConfigs: state.customer.runtimeConfigs,
     alerts: state.customer.alerts,
     layout: state.customer.layout,
     tasks: state.tasks,

@@ -2160,10 +2160,11 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
     // Finalize the execution.  We will send this result to users, and they send us subsequent
     // requests if the paging state is not empty.
     // 1. Case no child: The result is already in the node.
-    // 1. Case fully_covered index: The result is in child_select node.
-    // 2. Case partially_covered index:
+    // 2. Case fully_covered index: The result is in child_select node except the schema version in
+    // paging state which is from the parent node.
+    // 3. Case partially_covered index:
     //    - The result and row-counter are kept in parent node.
-    //    - The paging state is in the child node.
+    //    - The paging state is in the child node except the schema version from the parent node.
     if (!tnode_context->HasPendingOperations() && !child_context->HasPendingOperations()) {
       RETURN_NOT_OK(tnode_context->ComposeRowsResultForUser(child_select,
                                                             false /* for_new_batches */));

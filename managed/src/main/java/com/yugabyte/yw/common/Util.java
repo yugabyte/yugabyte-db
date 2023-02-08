@@ -21,9 +21,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.ApiModel;
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -40,6 +42,8 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
@@ -51,6 +55,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
@@ -70,6 +75,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http.Context;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
@@ -442,6 +448,16 @@ public class Util {
   // positive integer if v1 is newer than v2, a negative integer if v1
   // is older than v2.
   public static int compareYbVersions(String v1, String v2, boolean suppressFormatError) {
+    // After the second dash, a user can add anything, and it will be ignored.
+    String[] v1Parts = v1.split("-", 3);
+    if (v1Parts.length > 2) {
+      v1 = v1Parts[0] + "-" + v1Parts[1];
+    }
+    String[] v2Parts = v2.split("-", 3);
+    if (v2Parts.length > 2) {
+      v2 = v2Parts[0] + "-" + v2Parts[1];
+    }
+
     Pattern versionPattern = Pattern.compile(YBA_VERSION_REGEX);
     Matcher v1Matcher = versionPattern.matcher(v1);
     Matcher v2Matcher = versionPattern.matcher(v2);
@@ -492,6 +508,20 @@ public class Util {
     }
 
     throw new RuntimeException("Unable to parse YB version strings");
+  }
+
+  public static void ensureYbVersionFormatValidOrThrow(String ybVersion) {
+    // Phony comparison to check the version format.
+    compareYbVersions(ybVersion, "0.0.0.0-b0", false /* suppressFormatError */);
+  }
+
+  public static boolean isYbVersionFormatValid(String ybVersion) {
+    try {
+      ensureYbVersionFormatValidOrThrow(ybVersion);
+      return true;
+    } catch (Exception ignore) {
+      return false;
+    }
   }
 
   public static String escapeSingleQuotesOnly(String src) {
@@ -651,6 +681,7 @@ public class Util {
     try {
       new ObjectMapper().treeToValue(jsonNode, toValueType);
     } catch (JsonProcessingException e) {
+      LOG.info(e.getMessage());
       return false;
     }
     return true;
@@ -841,5 +872,38 @@ public class Util {
       }
     }
     return nodeIp;
+  }
+
+  public static String computeFileChecksum(Path filePath, String checksumAlgorithm)
+      throws Exception {
+    checksumAlgorithm = checksumAlgorithm.toUpperCase();
+    if (checksumAlgorithm.equals("SHA1")) {
+      checksumAlgorithm = "SHA-1";
+    } else if (checksumAlgorithm.equals("SHA256")) {
+      checksumAlgorithm = "SHA-256";
+    }
+    MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
+    try (DigestInputStream dis =
+        new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
+      while (dis.read() != -1) ; // Empty loop to clear the data
+      md = dis.getMessageDigest();
+      // Convert the digest to String.
+      StringBuilder result = new StringBuilder();
+      for (byte b : md.digest()) {
+        result.append(String.format("%02x", b));
+      }
+      return result.toString().toLowerCase();
+    }
+  }
+
+  public static String maybeGetEmailFromContext(Context context) {
+    String userEmail =
+        Optional.ofNullable(context)
+            .map(context1 -> (UserWithFeatures) context1.args.get("user"))
+            .map(UserWithFeatures::getUser)
+            .map(Users::getEmail)
+            .map(Object::toString)
+            .orElse("Unknown");
+    return userEmail;
   }
 }

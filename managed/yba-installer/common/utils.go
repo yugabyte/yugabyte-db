@@ -74,7 +74,7 @@ func DetectOS() string {
 }
 
 // GetVersion gets the version at execution time so that yba-installer
-// installs the correct version of Yugabyte Anywhere.
+// installs the correct version of YugabyteDB Anywhere.
 func GetVersion() string {
 
 	// locate the version metadata json file in the same dir as the yba-ctl
@@ -481,7 +481,7 @@ func setYamlValue(filePath string, yamlPath string, value string) {
 	if len(matchNodes) != 1 {
 		log.Fatal(fmt.Sprintf("yamlPath %s is not accurate", yamlPath))
 	}
-	matchNodes[0].Value = value
+	matchNodes[0].SetString(value)
 
 	finalYaml, err := yaml.Marshal(&root)
 	if err != nil {
@@ -552,4 +552,22 @@ func GetValidParent(dir string) (string, error) {
 		_, curError = os.Stat(curDir)
 	}
 	return curDir, curError
+}
+
+// RunFromInstalled will return if yba-ctl is an "installed" yba-ctl, or one from a new release.
+func RunFromInstalled() bool {
+	path, err := os.Executable()
+	if err != nil {
+		panic("unable to determine executable path: " + err.Error())
+	}
+
+	// Regex for "installed paths" of yba-ctl
+	matcher, err := regexp.Compile("(?:/opt/yba-ctl/yba-ctl)|(?:/usr/bin/yba-ctl)|" +
+		"(?:/opt/yugabyte/software/.*/yba_installer/yba-ctl)")
+	if err != nil {
+		panic("bad regex: " + err.Error())
+	}
+
+	// If we have a match, we are running from the installed yba-ctl.
+	return matcher.MatchString(path)
 }

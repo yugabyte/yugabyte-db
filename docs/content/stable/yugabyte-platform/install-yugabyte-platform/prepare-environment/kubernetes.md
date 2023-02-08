@@ -79,6 +79,40 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm install -n kube-system --version 2.13.2 kube-state-metrics prometheus-community/kube-state-metrics
 ```
 
+## Storage class considerations
+
+The type of volume provisioned for YugabyteDB Anywhere and YugabyteDB depends on the Kubernetes storage class being used. Consider following points when choosing or creating a storage class:
+
+1. It is recommended to set volume binding mode on a storage class to `WaitForFirstConsumer` for dynamically-provisioned volumes. This delays provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints are respected.
+
+   However, scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments. The volume may be created in a location or zone that is not accessible to the pod causing the failure.
+
+   For more information, see [Kubernetes: volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode).
+
+   On Google Cloud Provider (GCP), if you choose not to set binding mode to `WaitForFirstConsumer`, you might use regional persistent disks to replicate data between two zones in the same region on Google Kubernetes Engine (GKE). This can be used by the pod when it reschedules to another node in a different zone. For more information, see the following:
+   - [Google Kubernetes Engine: persistent volumes and dynamic provisioning](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
+   - [Google Cloud: regional persistent disks](https://cloud.google.com/compute/docs/disks/high-availability-regional-persistent-disk)
+
+
+1. Use an SSD-based storage class and an extent-based file system (XFS), as per recommendations provided in [Deployment checklist - Disks](../../../../deploy/checklist/#disks).
+
+1. Set the `allowVolumeExpansion` to `true`. This allows you to expand the volumes later by performing additional steps if you run out of disk space. Note that some storage providers might not support this setting. For more information, see [Expanding Persistent Volumes Claims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#expanding-persistent-volumes-claims).
+
+The following is a sample storage class YAML file for Google Kubernetes Engine (GKE). You are expected to modify it to suit your Kubernetes cluster:
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: yb-storage
+provisioner: kubernetes.io/gce-pd
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: pd-ssd
+  fstype: xfs
+```
+
 ## Specify ulimit and remember the location of core dumps
 
 The core dump collection in Kubernetes requires special care due to the fact that `core_pattern` is not isolated in cgroup drivers.

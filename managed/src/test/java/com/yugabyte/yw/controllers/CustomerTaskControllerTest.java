@@ -19,6 +19,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
@@ -34,6 +35,9 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.models.Customer;
@@ -43,11 +47,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
+
 import java.util.Calendar;
-import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.Optional;
 import java.util.stream.IntStream;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -67,6 +72,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
+  @Mock RuntimeConfGetter mockConfGetter;
+
   @InjectMocks private CustomerTaskController controller;
 
   @Before
@@ -74,7 +81,6 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     universe = createUniverse(customer.getCustomerId());
-    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
   }
 
   @Test
@@ -149,6 +155,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       String customTypeName,
       ObjectNode responseJson) {
     UUID taskUUID = UUID.randomUUID();
+    // Set http context
+    TestUtils.setFakeHttpContext(user);
     TaskInfo taskInfo = new TaskInfo(taskInfoType);
     taskInfo.setTaskUUID(taskUUID);
     taskInfo.setTaskDetails(Json.newObject());
@@ -526,7 +534,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
   @Test
   public void testTaskHistoryLimit() {
-    when(config.getInt(CustomerTaskController.CUSTOMER_TASK_DB_QUERY_LIMIT)).thenReturn(25);
+    when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.taskDbQueryLimit)))
+        .thenReturn(25);
     IntStream.range(0, 100)
         .forEach(
             i ->

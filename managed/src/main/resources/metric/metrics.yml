@@ -413,7 +413,8 @@ redis_rpcs_per_sec_all:
 
 redis_server_rpc_p95:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.95|max"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -473,7 +474,8 @@ redis_server_rpc_p95:
 
 redis_server_rpc_p99:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.99|max"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -1782,7 +1784,7 @@ ysql_connections:
     export_type: "ysql_export"
     saved_name: "yb_ysqlserver_connection_total|yb_ysqlserver_active_connection_total"
   group_by: "saved_name"
-  panel_group: "YSQL Connections"
+  panel_group: "YSQL Ops & Latency"
   layout:
     title: "Total YSQL Connections"
     xaxis:
@@ -1791,6 +1793,24 @@ ysql_connections:
       alias:
         "yb_ysqlserver_active_connection_total": "Active"
         "yb_ysqlserver_connection_total": "Total"
+
+ysql_connections_per_sec:
+  metric: ""
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_new_connection_total|yb_ysqlserver_connection_over_limit_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Connections / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_new_connection_total": "New"
+        "yb_ysqlserver_connection_over_limit_total": "Rejected"
 
 ysql_server_advanced_rpc_per_second:
   metric: "rpc_irate_rps"
@@ -1842,7 +1862,8 @@ ysql_sql_advanced_latency:
 
 ysql_server_rpc_p95:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.95|max"
+  range: true
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1865,7 +1886,8 @@ ysql_server_rpc_p95:
 
 ysql_server_rpc_p99:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.99|max"
+  range: true
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1938,7 +1960,8 @@ cql_sql_latency:
 
 cql_server_rpc_p95:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.95|max"
+  range: true
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
@@ -1962,7 +1985,8 @@ cql_server_rpc_p95:
 
 cql_server_rpc_p99:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.99|max"
+  range: true
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"

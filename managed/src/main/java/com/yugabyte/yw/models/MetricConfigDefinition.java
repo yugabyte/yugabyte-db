@@ -249,7 +249,12 @@ public class MetricConfigDefinition {
         }
       }
       for (String functionName : functions) {
-        queryStr = String.format("%s(%s)", functionName, queryStr);
+        if (functionName.startsWith("quantile_over_time")) {
+          String percentile = functionName.split("[.]")[1];
+          queryStr = String.format("quantile_over_time(0.%s, %s)", percentile, queryStr);
+        } else {
+          queryStr = String.format("%s(%s)", functionName, queryStr);
+        }
       }
     }
 

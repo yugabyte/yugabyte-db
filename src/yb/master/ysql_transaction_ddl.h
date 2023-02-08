@@ -19,6 +19,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -91,7 +92,9 @@ class YsqlTransactionDdl {
                          bool has_ysql_ddl_txn_state,
                          std::function<Status(bool /* is_success */)> complete_callback);
 
-  Result<bool> PgEntryExists(TableId tableId, Result<uint32_t> entry_oid, TableId relfilenode_oid);
+  Result<bool> PgEntryExists(TableId tableId,
+                             PgOid entry_oid,
+                             boost::optional<PgOid> relfilenode_oid);
 
   Result<bool> PgSchemaChecker(const scoped_refptr<TableInfo>& table);
 
@@ -115,7 +118,7 @@ class YsqlTransactionDdl {
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> GetPgCatalogTableScanIterator(
       const TableId& pg_catalog_table_id,
       const std::string& oid_col_name,
-      uint32_t oid_value,
+      PgOid oid_value,
       std::vector<GStringPiece> col_names,
       Schema *projection);
 

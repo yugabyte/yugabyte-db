@@ -217,8 +217,9 @@ class TransactionParticipant::Impl
       return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
-    if (metadata.external_transaction) {
-      CHECK(!metadata.status_tablet.empty()) << "Adding metadata with no status tablet";
+    if (metadata.external_transaction && metadata.status_tablet.empty()) {
+      return STATUS(InvalidArgument, Format("For external transaction $0, status tablet is empty",
+                                             metadata.transaction_id));
     }
     transactions_.insert(std::make_shared<RunningTransaction>(
         metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this));
@@ -1105,7 +1106,8 @@ class TransactionParticipant::Impl
     return metadata;
   }
 
-  Result<bool> IsExternalTransaction(const TransactionId& transaction_id) {
+  Result<IsExternalTransaction> IsExternalTransactionResult(
+      const TransactionId& transaction_id) {
     auto lock_and_iterator = LockAndFind(transaction_id,
                                          "is external transaction"s,
                                          TransactionLoadFlags{TransactionLoadFlag::kMustExist});
@@ -1615,39 +1617,43 @@ class TransactionParticipant::Impl
       std::lock_guard<std::mutex> lock(mutex_);
 
       ProcessRemoveQueueUnlocked(&min_running_notifier);
-      if (ANNOTATE_UNPROTECTED_READ(FLAGS_transactions_poll_check_aborted)) {
-        CheckForAbortedTransactions();
-      }
       CleanTransactionsQueue(&graceful_cleanup_queue_, &min_running_notifier);
+    }
+
+    if (ANNOTATE_UNPROTECTED_READ(FLAGS_transactions_poll_check_aborted)) {
+      CheckForAbortedTransactions();
     }
     CleanupStatusResolvers();
   }
 
-  void CheckForAbortedTransactions() REQUIRES(mutex_) {
-    if (transactions_.empty()) {
-      return;
-    }
-    auto now = participant_context_.Now();
-    auto& index = transactions_.get<AbortCheckTimeTag>();
+  void CheckForAbortedTransactions() EXCLUDES(mutex_) {
     TransactionStatusResolver* resolver = nullptr;
-    for (;;) {
-      auto& txn = **index.begin();
-      if (txn.external_transaction()) {
-        break;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (transactions_.empty()) {
+        return;
       }
-      if (txn.abort_check_ht() > now) {
-        break;
+      auto now = participant_context_.Now();
+      auto& index = transactions_.get<AbortCheckTimeTag>();
+      for (;;) {
+        auto& txn = **index.begin();
+        if (txn.external_transaction()) {
+          break;
+        }
+        if (txn.abort_check_ht() > now) {
+          break;
+        }
+        if (!resolver) {
+          resolver = &AddStatusResolver();
+        }
+        const auto& metadata = txn.metadata();
+        VLOG_WITH_PREFIX(4)
+            << "Check aborted: " << metadata.status_tablet << ", " << metadata.transaction_id;
+        resolver->Add(metadata.status_tablet, metadata.transaction_id);
+        CHECK(index.modify(index.begin(), [now](const auto& txn) {
+          txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusRequestSent);
+        }));
       }
-      if (!resolver) {
-        resolver = &AddStatusResolver();
-      }
-      const auto& metadata = txn.metadata();
-      VLOG_WITH_PREFIX(4)
-          << "Check aborted: " << metadata.status_tablet << ", " << metadata.transaction_id;
-      resolver->Add(metadata.status_tablet, metadata.transaction_id);
-      CHECK(index.modify(index.begin(), [now](const auto& txn) {
-        txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusRequestSent);
-      }));
     }
 
     // We don't introduce limit on number of status resolutions here, because we cannot predict
@@ -1855,8 +1861,9 @@ void TransactionParticipant::Cleanup(TransactionIdSet&& set) {
   return impl_->Cleanup(std::move(set), this);
 }
 
-Result<bool> TransactionParticipant::IsExternalTransaction(const TransactionId& transaction_id) {
-  return impl_->IsExternalTransaction(transaction_id);
+Result<IsExternalTransaction> TransactionParticipant::IsExternalTransactionResult(
+    const TransactionId& transaction_id) {
+  return impl_->IsExternalTransactionResult(transaction_id);
 }
 
 Status TransactionParticipant::ProcessReplicated(const ReplicatedData& data) {

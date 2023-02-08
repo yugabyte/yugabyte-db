@@ -461,7 +461,12 @@ export interface RunTimeConfigData {
   configID: number;
   configKey: string;
   configValue: string;
+  configTags: string[];
   isConfigInherited: boolean;
+  displayName: string;
+  helpTxt: string;
+  type: string;
+  scope: string;
 }
 
 export enum RunTimeConfigScope {
@@ -469,4 +474,12 @@ export enum RunTimeConfigScope {
   UNIVERSE = 'UNIVERSE',
   PROVIDER = 'PROVIDER',
   CUSTOMER = 'CUSTOMER'
+}
+
+export interface RuntimeConfigScopeProps {
+  configTagFilter: string[];
+  fetchRuntimeConfigs: (scope?: string) => void;
+  setRuntimeConfig: (key: string, value: string, scope?: string) => void;
+  deleteRunTimeConfig: (key: string, scope?: string) => void;
+  resetRuntimeConfigs: () => void;
 }

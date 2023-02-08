@@ -5,6 +5,7 @@ package com.yugabyte.yw.scheduler;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -16,15 +17,19 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+
 import java.util.Date;
 import java.util.UUID;
-import org.apache.commons.lang.time.DateUtils;
+
+import org.apache.commons.lang3.time.DateUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -38,6 +43,7 @@ public class SchedulerTest extends FakeDBApplication {
 
   private static Commissioner mockCommissioner;
   private CustomerConfig s3StorageConfig;
+  private Users defaultUser;
   com.yugabyte.yw.scheduler.Scheduler scheduler;
   Customer defaultCustomer;
   PlatformScheduler mockPlatformScheduler;
@@ -48,8 +54,10 @@ public class SchedulerTest extends FakeDBApplication {
     mockCommissioner = mock(Commissioner.class);
     defaultCustomer = ModelFactory.testCustomer();
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST28");
-
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     scheduler = new Scheduler(mockPlatformScheduler, mockCommissioner);
+    // Set http context
+    TestUtils.setFakeHttpContext(defaultUser);
   }
 
   @Test
@@ -112,8 +120,9 @@ public class SchedulerTest extends FakeDBApplication {
     s.updateNextScheduleTaskTime(dt);
     s.setCronExpression("0 0 * * *");
     s.save();
-    when(mockCommissioner.submit(any(), any()))
-        .thenThrow(new PlatformServiceException(SERVICE_UNAVAILABLE, "you shall not pass"));
+    doThrow(new PlatformServiceException(SERVICE_UNAVAILABLE, "you shall not pass"))
+        .when(mockCommissioner)
+        .submit(any(), any());
     scheduler.scheduleRunner();
     s = Schedule.getOrBadRequest(s.scheduleUUID);
     Date next = s.getNextScheduleTaskTime();

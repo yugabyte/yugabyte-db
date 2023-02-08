@@ -3,19 +3,22 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Path;
 import java.util.List;
-import org.yb.ybc.CloudStoreSpec;
+import org.apache.commons.io.FileUtils;
 import play.api.Play;
 
 public interface CloudUtil extends StorageUtil {
 
   public static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
   public static final String SUCCESS = "success";
+  int FILE_DOWNLOAD_BUFFER_SIZE = 8 * 1024;
 
   public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
       throws Exception;
@@ -27,6 +30,12 @@ public interface CloudUtil extends StorageUtil {
 
   public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
       throws Exception;
+
+  default void downloadCloudFile(CustomerConfigData configData, String cloudPath, Path destination)
+      throws Exception {
+    FileUtils.copyInputStreamToFile(
+        getCloudFileInputStream(configData, cloudPath), destination.toFile());
+  }
 
   public static <T extends CloudUtil> T getCloudUtil(String configType) {
     switch (configType) {

@@ -116,10 +116,9 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
+- [Request a free trial](../../yugabyte-cloud/managed-freetrial/) to try out bigger clusters with more resources.
 - Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
-- Upgrade to a fault tolerant [single- or multi-region cluster](../../yugabyte-cloud/cloud-basics/create-clusters/) to access bigger clusters with more resources.
-
-To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{% support-cloud %}} for trial credits.
+- [Add a payment method](../../yugabyte-cloud/cloud-admin/cloud-billing-profile/) to upgrade to a fault-tolerant [single- or multi-region cluster](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 
 ### Can I migrate my Sandbox to a Dedicated cluster?
 
@@ -149,7 +148,7 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series.
 
-By default, new Dedicated clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. You can choose the preview track when you create the cluster.
+By default, new Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. You can choose the preview track when you create the cluster.
 
 Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either preview or stable).
 
@@ -204,7 +203,7 @@ The Fault Tolerance of a cluster determines how resilient the cluster is to fail
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
-For multi-region deployments, you can deploy a variety of topologies, including synchronously replicated, geo-level partitioned, cross-cluster, and read replicas. For more information, refer to [Topologies](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
+For multi-region deployments, you can deploy a variety of topologies, including synchronously replicated, geo-level partitioned, <!-- cross-cluster, --> and read replicas. For more information, refer to [Topologies](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 
 Sandbox clusters are limited to a single node in a single region.
 

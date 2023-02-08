@@ -19,10 +19,12 @@
 #include "yb/tools/yb-backup-test_base_ent.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/flags.h"
 
 using namespace std::chrono_literals;
 using namespace std::literals;
 
+DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(TEST_partitioning_version);
 
 namespace {
@@ -55,6 +57,7 @@ class YBBackupTestNumTablets : public YBBackupTest {
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
     options->extra_tserver_flags.push_back("--cleanup_split_tablets_interval_sec=1");
+    options->extra_tserver_flags.push_back("--ysql_enable_packed_row=false");
   }
 
   string default_db_ = "yugabyte";

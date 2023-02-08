@@ -124,6 +124,7 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
     (RedisConfigSet)
     (RedisConfigGet)
     (ReservePgsqlOids)
+    (GetIndexBackfillProgress)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(

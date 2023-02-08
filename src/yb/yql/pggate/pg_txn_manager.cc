@@ -31,7 +31,6 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
-#include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/util/flags.h"
@@ -234,7 +233,7 @@ uint64_t PgTxnManager::NewPriority(TxnPriorityRequirement txn_priority_requireme
 Status PgTxnManager::CalculateIsolation(bool read_only_op,
                                         TxnPriorityRequirement txn_priority_requirement,
                                         uint64_t* in_txn_limit) {
-  if (ddl_mode_) {
+  if (IsDdlMode()) {
     VLOG_TXN_STATE(2);
     return Status::OK();
   }
@@ -313,7 +312,7 @@ Status PgTxnManager::RestartTransaction() {
 
 /* This is called at the start of each statement in READ COMMITTED isolation level */
 Status PgTxnManager::ResetTransactionReadPoint() {
-  RSTATUS_DCHECK(!ddl_mode_, IllegalState,
+  RSTATUS_DCHECK(!IsDdlMode(), IllegalState,
                  "READ COMMITTED semantics don't apply to DDL transactions");
   read_time_manipulation_ = tserver::ReadTimeManipulation::RESET;
   read_time_for_follower_reads_ = HybridTime();
@@ -339,7 +338,7 @@ Status PgTxnManager::FinishTransaction(Commit commit) {
   // If a DDL operation during a DDL txn fails the txn will be aborted before we get here.
   // However if there are failures afterwards (i.e. during COMMIT or catalog version increment),
   // then we might get here with a ddl_txn_. Clean it up in that case.
-  if (ddl_mode_ && !commit) {
+  if (IsDdlMode() && !commit) {
     RETURN_NOT_OK(ExitSeparateDdlTxnMode(commit));
   }
 
@@ -355,7 +354,7 @@ Status PgTxnManager::FinishTransaction(Commit commit) {
   }
 
   VLOG_TXN_STATE(2) << (commit ? "Committing" : "Aborting") << " transaction.";
-  Status status = client_->FinishTransaction(commit, DdlMode::kFalse);
+  Status status = client_->FinishTransaction(commit, DdlType::NonDdl);
   VLOG_TXN_STATE(2) << "Transaction " << (commit ? "commit" : "abort") << " status: " << status;
   ResetTxnAndSession();
   return status;
@@ -380,28 +379,43 @@ void PgTxnManager::ResetTxnAndSession() {
 }
 
 Status PgTxnManager::EnterSeparateDdlTxnMode() {
-  RSTATUS_DCHECK(!ddl_mode_, IllegalState,
+  RSTATUS_DCHECK(!IsDdlMode(), IllegalState,
                  "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG_TXN_STATE(2);
-  ddl_mode_ = true;
+  ddl_type_ = DdlType::DdlWithoutDocdbSchemaChanges;
   VLOG_TXN_STATE(2);
   return Status::OK();
 }
 
 Status PgTxnManager::ExitSeparateDdlTxnMode(Commit commit) {
   VLOG_TXN_STATE(2);
-  if (!ddl_mode_) {
+  if (!IsDdlMode()) {
     RSTATUS_DCHECK(!commit, IllegalState, "Commit ddl txn called when not in a DDL transaction");
     return Status::OK();
   }
-  RETURN_NOT_OK(client_->FinishTransaction(commit, DdlMode::kTrue));
-  ddl_mode_ = false;
+  RETURN_NOT_OK(client_->FinishTransaction(commit, ddl_type_));
+  ddl_type_ = DdlType::NonDdl;
   return Status::OK();
+}
+
+void PgTxnManager::SetDdlHasSyscatalogChanges() {
+  if (IsDdlMode()) {
+    ddl_type_ = DdlType::DdlWithDocdbSchemaChanges;
+    return;
+  }
+  // There are only 2 cases where we may be performing DocDB schema changes outside of DDL mode:
+  // 1. During initdb, when we do not use a transaction at all.
+  // 2. When yb_non_ddl_txn_for_sys_tables_allowed is set. Here we would use a regular transaction.
+  // DdlWithDocdbSchemaChanges is mainly used for DDL atomicity, which is disabled for the PG
+  // system catalog tables. Both cases above are primarily used for modifying the system catalog,
+  // so there is no need to set this flag here.
+  DCHECK(YBCIsInitDbModeEnvVarSet() ||
+         (IsTxnInProgress() && yb_non_ddl_txn_for_sys_tables_allowed));
 }
 
 std::string PgTxnManager::TxnStateDebugStr() const {
   return YB_CLASS_TO_STRING(
-      ddl_mode,
+      ddl_type,
       read_only,
       deferrable,
       txn_in_progress,
@@ -410,12 +424,12 @@ std::string PgTxnManager::TxnStateDebugStr() const {
 }
 
 uint64_t PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
-  if (!ddl_mode_ && !txn_in_progress_) {
+  if (!IsDdlMode() && !txn_in_progress_) {
     ++txn_serial_no_;
     active_sub_transaction_id_ = 0;
   }
   options->set_isolation(isolation_level_);
-  options->set_ddl_mode(ddl_mode_);
+  options->set_ddl_mode(IsDdlMode());
   options->set_txn_serial_no(txn_serial_no_);
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
 
@@ -435,7 +449,7 @@ uint64_t PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options)
     options->set_defer_read_point(true);
     need_defer_read_point_ = false;
   }
-  if (!ddl_mode_) {
+  if (!IsDdlMode()) {
     // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
     // kDdl mode for sometime, we should keep read_time_manipulation_ as is so that once YSQL
     // switches back to kDdl mode, the read_time_manipulation_ is not lost.

@@ -224,7 +224,6 @@ Status TabletPeer::InitTabletPeer(
     }
     tablet_ = tablet;
     tablet_weak_ = tablet;
-    proxy_cache_ = proxy_cache;
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.
     log_atomic_ = log.get();
@@ -303,7 +302,7 @@ Status TabletPeer::InitTabletPeer(
         clock_,
         this,
         messenger,
-        proxy_cache_,
+        proxy_cache,
         log_.get(),
         server_mem_tracker,
         tablet_->mem_tracker(),
@@ -320,12 +319,12 @@ Status TabletPeer::InitTabletPeer(
 
     prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
 
-    ChangeConfigReplicated(RaftConfig()); // Set initial flag value.
-
     // "Publish" the tablet object right before releasing the lock.
     tablet_obj_state_.store(TabletObjectState::kAvailable, std::memory_order_release);
   }
   // End of lock scope for lock_.
+
+  ChangeConfigReplicated(RaftConfig()); // Set initial flag value.
 
   RETURN_NOT_OK(prepare_thread_->Start());
 
@@ -1027,6 +1026,23 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   }
 
   return min_index;
+}
+
+Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() const {
+  if (VERIFY_RESULT(shared_tablet_safe())->table_type() ==
+      TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
+    // earliest required log record. This will be the CREATED\PENDING log record of the oldest
+    // active transaction.
+    auto index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+    if (index > 0) {
+      index--;
+    }
+    // Term does not matter, so can be set to 0.
+    return OpId(0, index);
+  }
+
+  return GetLatestLogEntryOpId();
 }
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {

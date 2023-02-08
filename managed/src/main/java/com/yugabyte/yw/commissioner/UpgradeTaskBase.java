@@ -2,13 +2,24 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -79,11 +90,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   public void runUpgrade(Runnable upgradeLambda) {
     try {
       isBlacklistLeaders =
-          runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
+          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaders);
       leaderBacklistWaitTimeMs =
-          runtimeConfigFactory
-              .forUniverse(getUniverse())
-              .getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
+          confGetter.getConfForScope(
+              getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
@@ -298,7 +308,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
         if (processType == ServerType.MASTER && context.reconfigureMaster && activeRole) {
           createWaitForMasterLeaderTask().setSubTaskGroupType(subGroupType);
-          createChangeConfigTask(node, false /* isAdd */, subGroupType, true /* useHostPort */);
+          createChangeConfigTask(node, false /* isAdd */, subGroupType);
         }
       }
       if (!context.runBeforeStopping) {
@@ -550,6 +560,77 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  protected void createServerConfFileUpdateTasks(
+      UserIntent userIntent,
+      List<NodeDetails> nodes,
+      Set<ServerType> processTypes,
+      Map<String, String> masterGflags,
+      Map<String, String> tserverGflags) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      subTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(
+              userIntent, node, getSingle(processTypes), masterGflags, tserverGflags));
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected AnsibleConfigureServers getAnsibleConfigureServerTask(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      NodeDetails node,
+      ServerType processType,
+      Map<String, String> masterGflags,
+      Map<String, String> tserverGflags) {
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(
+            userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
+    if (processType.equals(ServerType.MASTER)) {
+      params.gflags = masterGflags;
+      params.gflagsToRemove =
+          GFlagsUtil.getDeletedGFlags(getUserIntent().masterGFlags, masterGflags);
+    } else {
+      params.gflags = tserverGflags;
+      params.gflagsToRemove =
+          GFlagsUtil.getDeletedGFlags(getUserIntent().tserverGFlags, tserverGflags);
+    }
+    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    return task;
+  }
+
+  protected void checkForbiddenToOverrideGFlags(
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      Universe universe,
+      ServerType processType,
+      Map<String, String> newGFlags,
+      Config config) {
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(
+            userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
+
+    String errorMsg =
+        GFlagsUtil.checkForbiddenToOverride(node, params, userIntent, universe, newGFlags, config);
+    if (errorMsg != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          errorMsg
+              + ". It is not advised to set these internal gflags. If you want to do it"
+              + " forcefully - set runtime config value for "
+              + "'yb.gflags.allow_user_override' to 'true'");
+    }
   }
 
   protected ServerType getSingle(Set<ServerType> processTypes) {

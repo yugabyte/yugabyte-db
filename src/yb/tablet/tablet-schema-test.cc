@@ -132,6 +132,27 @@ class TestTabletSchema : public YBTabletTest {
   }
 };
 
+// Verify that RowIterator can still be used safely after schema change.
+TEST_F(TestTabletSchema, TestRowIteratorWithAlterSchema) {
+  std::atomic<bool> stop(false);
+  SchemaBuilder builder1(*tablet()->metadata()->schema());
+  auto iter = ASSERT_RESULT(tablet()->NewRowIterator(builder1.BuildWithoutIds()));
+  std::thread thread([&stop, &iter] {
+    // 1. Wait for AlterSchema to finish by sleeping 3 seconds.
+    while (!stop.load(std::memory_order_acquire)) {
+      SleepFor(MonoDelta::FromMilliseconds(100));
+    }
+    // 3. Previous schema context should be preserved even after schema change.
+    iter->IsNextStaticColumn();
+  });
+  SchemaBuilder builder2(*tablet()->metadata()->schema());
+  ASSERT_OK(builder2.RenameColumn("c1", "c1_renamed"));
+  // 2. Change schema when the other thread is waiting.
+  AlterSchema(builder2.Build());
+  stop.store(true, std::memory_order_release);
+  thread.join();
+}
+
 // Read from a tablet using a projection schema with columns not present in
 // the original schema. Verify that the server reject the request.
 TEST_F(TestTabletSchema, TestRead) {

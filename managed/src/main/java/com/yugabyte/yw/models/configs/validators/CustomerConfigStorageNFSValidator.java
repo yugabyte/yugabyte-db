@@ -9,7 +9,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData.RegionLo
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 public class CustomerConfigStorageNFSValidator extends ConfigDataValidator {
 

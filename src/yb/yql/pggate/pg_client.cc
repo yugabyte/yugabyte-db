@@ -101,6 +101,27 @@ std::string PrettyFunctionName(const char* name) {
   return result;
 }
 
+client::VersionedTablePartitionList BuildTablePartitionList(
+    const tserver::PgTablePartitionsPB& partitionsPB, const PgObjectId& table_id) {
+  client::VersionedTablePartitionList partition_list;
+  partition_list.version = partitionsPB.version();
+  const auto& keys = partitionsPB.keys();
+  if (PREDICT_FALSE(FLAGS_TEST_index_read_multiple_partitions && keys.size() > 1)) {
+    // It is required to simulate tablet splitting. This is done by reducing number of partitions.
+    // Only middle element is used to split table into 2 partitions.
+    // DocDB partition schema like [, 12, 25, 37, 50, 62, 75, 87] will be interpret by YSQL
+    // as [, 50].
+    partition_list.keys = {PartitionKey(), keys[keys.size() / 2]};
+    static auto key_printer = [](const auto& key) { return Slice(key).ToDebugHexString(); };
+    LOG(INFO) << "Partitions for " << table_id << " are joined."
+              << " source: " << yb::ToString(keys, key_printer)
+              << " result: " << yb::ToString(partition_list.keys, key_printer);
+  } else {
+    partition_list.keys.assign(keys.begin(), keys.end());
+  }
+  return partition_list;
+}
+
 } // namespace
 
 class PgClient::Impl {
@@ -189,34 +210,30 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
 
-    auto partitions = std::make_shared<client::VersionedTablePartitionList>();
-    partitions->version = resp.partitions().version();
-    const auto& keys = resp.partitions().keys();
-    if (PREDICT_FALSE(FLAGS_TEST_index_read_multiple_partitions && keys.size() > 1)) {
-      // It is required to simulate tablet splitting. This is done by reducing number of partitions.
-      // Only middle element is used to split table into 2 partitions.
-      // DocDB partition schema like [, 12, 25, 37, 50, 62, 75, 87] will be interpret by YSQL
-      // as [, 50].
-      partitions->keys = {PartitionKey(), keys[keys.size() / 2]};
-      static auto key_printer = [](const auto& key) { return Slice(key).ToDebugHexString(); };
-      LOG(INFO) << "Partitions for " << table_id << " are joined."
-                << " source: " << ToString(keys, key_printer)
-                << " result: " << ToString(partitions->keys, key_printer);
-    } else {
-      partitions->keys.assign(keys.begin(), keys.end());
-    }
-
     auto result = make_scoped_refptr<PgTableDesc>(
-        table_id, resp.info(), std::move(partitions));
+        table_id, resp.info(), BuildTablePartitionList(resp.partitions(), table_id));
     RETURN_NOT_OK(result->Init());
     return result;
   }
 
-  Status FinishTransaction(Commit commit, DdlMode ddl_mode) {
+  Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id) {
+    tserver::PgGetTablePartitionListRequestPB req;
+    req.set_table_id(table_id.GetYbTableId());
+
+    tserver::PgGetTablePartitionListResponsePB resp;
+    RETURN_NOT_OK(proxy_->GetTablePartitionList(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    return BuildTablePartitionList(resp.partitions(), table_id);
+  }
+
+  Status FinishTransaction(Commit commit, DdlType ddl_type) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_commit(commit);
-    req.set_ddl_mode(ddl_mode);
+    req.set_ddl_mode(ddl_type != DdlType::NonDdl);
+    req.set_has_docdb_schema_changes(ddl_type == DdlType::DdlWithDocdbSchemaChanges);
+
     tserver::PgFinishTransactionResponsePB resp;
 
     RETURN_NOT_OK(proxy_->FinishTransaction(req, &resp, PrepareController()));
@@ -319,6 +336,38 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->UpdateSequenceTuple(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.skipped();
+  }
+
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         bool is_db_catalog_version_mode,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle) {
+    tserver::PgFetchSequenceTupleRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_db_oid(db_oid);
+    req.set_seq_oid(seq_oid);
+    if (is_db_catalog_version_mode) {
+      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      req.set_ysql_db_catalog_version(ysql_catalog_version);
+    } else {
+      req.set_ysql_catalog_version(ysql_catalog_version);
+    }
+    req.set_fetch_count(fetch_count);
+    req.set_inc_by(inc_by);
+    req.set_min_value(min_value);
+    req.set_max_value(max_value);
+    req.set_cycle(cycle);
+
+    tserver::PgFetchSequenceTupleResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->FetchSequenceTuple(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return std::make_pair(resp.first_value(), resp.last_value());
   }
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
@@ -482,6 +531,25 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
+                                uint64_t** backfill_statuses) {
+    tserver::PgGetIndexBackfillProgressRequestPB req;
+    tserver::PgGetIndexBackfillProgressResponsePB resp;
+
+    for (const auto& index_id : index_ids) {
+      index_id.ToPB(req.add_index_ids());
+    }
+
+    RETURN_NOT_OK(proxy_->GetIndexBackfillProgress(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    uint64_t* backfill_status = *backfill_statuses;
+    for (const auto entry : resp.rows_processed_entries()) {
+      *backfill_status = entry;
+      backfill_status++;
+    }
+    return Status::OK();
+  }
+
   Result<int32> TabletServerCount(bool primary_only) {
     if (tablet_server_count_cache_[primary_only] > 0) {
       return tablet_server_count_cache_[primary_only];
@@ -638,8 +706,13 @@ Result<PgTableDescPtr> PgClient::OpenTable(
   return impl_->OpenTable(table_id, reopen, invalidate_cache_time);
 }
 
-Status PgClient::FinishTransaction(Commit commit, DdlMode ddl_mode) {
-  return impl_->FinishTransaction(commit, ddl_mode);
+Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
+    const PgObjectId& table_id) {
+  return impl_->GetTablePartitionList(table_id);
+}
+
+Status PgClient::FinishTransaction(Commit commit, DdlType ddl_type) {
+  return impl_->FinishTransaction(commit, ddl_type);
 }
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
@@ -671,6 +744,12 @@ Result<client::YBTableName> PgClient::DropTable(
 Status PgClient::BackfillIndex(
     tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline) {
   return impl_->BackfillIndex(req, deadline);
+}
+
+Status PgClient::GetIndexBackfillProgress(
+    const std::vector<PgObjectId>& index_ids,
+    uint64_t** backfill_statuses) {
+  return impl_->GetIndexBackfillProgress(index_ids, backfill_statuses);
 }
 
 Result<int32> PgClient::TabletServerCount(bool primary_only) {
@@ -722,6 +801,21 @@ Result<bool> PgClient::UpdateSequenceTuple(int64_t db_oid,
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
       expected_last_val, expected_is_called);
 }
+
+Result<std::pair<int64_t, int64_t>> PgClient::FetchSequenceTuple(int64_t db_oid,
+                                                                 int64_t seq_oid,
+                                                                 uint64_t ysql_catalog_version,
+                                                                 bool is_db_catalog_version_mode,
+                                                                 uint32_t fetch_count,
+                                                                 int64_t inc_by,
+                                                                 int64_t min_value,
+                                                                 int64_t max_value,
+                                                                 bool cycle) {
+  return impl_->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      min_value, max_value, cycle);
+}
+
 
 Result<std::pair<int64_t, bool>> PgClient::ReadSequenceTuple(int64_t db_oid,
                                                              int64_t seq_oid,

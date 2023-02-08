@@ -139,6 +139,12 @@ DEFINE_RUNTIME_PG_FLAG(int32, log_min_duration_statement, -1,
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true,
     "Push supported expressions from ysql down to DocDB for evaluation.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
+    "Push down strict inequality filters");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false, true,
+    "Bypass index condition recheck at the YSQL layer if the condition was pushed down.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,
     "Delay in milliseconds between stages of online index build. Set high to give online "
     "transactions more time to complete.");
@@ -147,9 +153,13 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
     "\"database\" and \"tablet\".");
 
-DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_state_change, "",
-    "Block the given index state change from proceeding. Valid names are indisready, getsafetime,"
-    " and indisvalid. For testing purposes.");
+DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_phase, "",
+    "Block the given index phase from proceeding. Valid names are indisready, build,"
+    " indisvalid and finish. For testing purposes.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_sequence_pushdown, kLocalVolatile, false, true,
+    "Allow nextval() to fetch the value range and advance the sequence value "
+    "in a single operation");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
