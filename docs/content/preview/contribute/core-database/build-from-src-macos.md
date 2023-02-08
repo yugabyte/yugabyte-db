@@ -72,7 +72,7 @@ YugabyteDB build scripts require at least Bash version 4. Make sure that `bash -
 
 {{% readfile "includes/java.md" %}}
 
-Both requirements can be satisfied by Homebrew, but take care that the `maven` install doesn't install a newer JDK:
+Both requirements can be satisfied by Homebrew, but take care that the `maven` install doesn't upgrade JDK:
 
 ```sh
 brew install openjdk@11
