@@ -868,7 +868,8 @@ class GoogleCloudAdmin():
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
                         assign_static_public_ip=False, ssh_keys=None, boot_script=None,
-                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None):
+                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None,
+                        gcp_instance_template=None):
         # Name of the project that target VPC network belongs to.
         host_project = self.get_host_project()
 
@@ -987,12 +988,20 @@ class GoogleCloudAdmin():
         for _ in range(num_volumes):
             body["disks"].append(disk_config)
 
+        args = {
+            "project": self.project,
+            "zone": zone,
+            "body": body
+        }
         logging.info("[app] About to create GCP VM {} in region {}.".format(
             instance_name, region))
-        self.waiter.wait(self.compute.instances().insert(
-            project=self.project,
-            zone=zone,
-            body=body).execute(), zone=zone)
+        if gcp_instance_template:
+            template_url_format = "projects/{}/global/instanceTemplates/{}"
+            template_url = template_url_format.format(self.project, gcp_instance_template)
+            logging.info("[app] Creating VM {} using instance template {}"
+                         .format(instance_name, gcp_instance_template))
+            args["sourceInstanceTemplate"] = template_url
+        self.waiter.wait(self.compute.instances().insert(**args).execute(), zone=zone)
         logging.info("[app] Created GCP VM {}".format(instance_name))
 
     def get_console_output(self, zone, instance_name):
