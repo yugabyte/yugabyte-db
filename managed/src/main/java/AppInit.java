@@ -191,7 +191,7 @@ public class AppInit {
       backupGC.start();
 
       // Cleanup orphan snapshots
-      snapshotCleanup.deleteOrphanSnapshots();
+      snapshotCleanup.start();
 
       perfAdvisorScheduler.start();
 
