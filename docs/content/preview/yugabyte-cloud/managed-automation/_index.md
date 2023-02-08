@@ -16,7 +16,7 @@ type: indexpage
 Use the following automation tools to manage your YugabyteDB Managed account and clusters:
 
 | Automation | Description |
-| :--- | :--- |
+| :--------- | :---------- |
 | [API](https://api-docs.yugabyte.com/docs/managed-apis) | Deploy and manage database clusters using a REST API. |
 | [Terraform provider](https://registry.terraform.io/providers/yugabyte/ybm/latest) | Provider for automating YugabyteDB Managed resources that are accessible via the API. |
 | [CLI](managed-cli/) | Manage YugabyteDB Managed resources from the command line. |
