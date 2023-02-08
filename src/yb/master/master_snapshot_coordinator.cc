@@ -1242,6 +1242,11 @@ class MasterSnapshotCoordinator::Impl {
             LOG(WARNING) << "Table " << table_id << " does not exist";
             continue;
           }
+          // Ignore if deleted or hidden.
+          if (!(*table_info_result)->IsOperationalForClient()) {
+            LOG(WARNING) << "Table " << table_id << " has been deleted";
+            continue;
+          }
           task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
         }
       }

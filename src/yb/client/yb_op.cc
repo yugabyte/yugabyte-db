@@ -189,9 +189,9 @@ Status InitHashPartitionKey(
     }
   } else if (!request->partition_column_values().empty()) {
     // If hashed columns are set, use them to compute the exact key and set the bounds
-    std::string temp;
-    RETURN_NOT_OK(partition_schema.EncodePgsqlKey(request->partition_column_values(), &temp));
-    SetPartitionKey(temp, request);
+    SetPartitionKey(
+        VERIFY_RESULT(partition_schema.EncodePgsqlHash(request->partition_column_values())),
+        request);
 
     // Make sure given key is not smaller than lower bound (if any)
     if (request->has_hash_code()) {
@@ -422,9 +422,9 @@ Status InitWritePartitionKey(
     }
 
     // Computing the partition_key.
-    std::string temp;
-    RETURN_NOT_OK(partition_schema.EncodePgsqlKey(request->partition_column_values(), &temp));
-    SetPartitionKey(temp, request);
+    SetPartitionKey(
+        VERIFY_RESULT(partition_schema.EncodePgsqlHash(request->partition_column_values())),
+        request);
     return Status::OK();
   } else {
     // Range partitioned table

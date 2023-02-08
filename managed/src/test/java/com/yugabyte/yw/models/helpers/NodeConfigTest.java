@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
@@ -39,6 +40,7 @@ public class NodeConfigTest extends FakeDBApplication {
 
   private SettableRuntimeConfigFactory runtimeConfigFactory;
   private NodeConfigValidator nodeConfigValidator;
+  private NodeAgentClient nodeAgentClient;
   private AccessKey accessKey;
 
   @Mock ShellProcessHandler shellProcessHandler;
@@ -48,8 +50,9 @@ public class NodeConfigTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     provider = ModelFactory.onpremProvider(customer);
     runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
-
-    nodeConfigValidator = new NodeConfigValidator(runtimeConfigFactory, shellProcessHandler);
+    nodeAgentClient = app.injector().instanceOf(NodeAgentClient.class);
+    nodeConfigValidator =
+        new NodeConfigValidator(runtimeConfigFactory, shellProcessHandler, nodeAgentClient);
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";

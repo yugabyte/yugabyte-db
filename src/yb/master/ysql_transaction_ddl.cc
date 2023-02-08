@@ -28,15 +28,21 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status_log.h"
-#include "yb/util/flags.h"
+
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_UNKNOWN_int32(ysql_transaction_bg_task_wait_ms, 200,
   "Amount of time the catalog manager background task thread waits "
   "between runs");
+
+DEFINE_test_flag(bool, skip_transaction_verification, false,
+    "Test only flag to keep the txn metadata in SysTablesEntryPB and skip"
+    " transaction verification on the master");
 
 using std::string;
 using std::vector;
@@ -142,6 +148,9 @@ void YsqlTransactionDdl::VerifyTransaction(
     scoped_refptr<TableInfo> table,
     bool has_ysql_ddl_txn_state,
     std::function<Status(bool)> complete_callback) {
+  if (FLAGS_TEST_skip_transaction_verification) {
+    return;
+  }
 
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_bg_task_wait_ms));
 

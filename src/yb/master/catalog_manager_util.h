@@ -109,7 +109,8 @@ class CatalogManagerUtil {
       const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
 
   static void GetAllAffinitizedZones(
-      const ReplicationInfoPB& replication_info, std::vector<AffinitizedZonesSet>* affinitized_zones);
+      const ReplicationInfoPB& replication_info,
+      std::vector<AffinitizedZonesSet>* affinitized_zones);
 
   static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 
@@ -174,6 +175,16 @@ class CatalogManagerUtil {
       const TableId& table_id, const std::string& table_name, const TableType& table_type,
       const Schema& schema, uint32_t schema_version, const PartitionSchema& partition_schema,
       tablet::TableInfoPB* pb);
+
+  // If the table is already hidden or deleted then treats it as a duplicate delete request.
+  // Don't invoke this function if attempting to hard delete an already hidden table.
+  static bool IsDuplicateDeleteTableRequest(const scoped_refptr<TableInfo>& table) {
+    if (!table->IsOperationalForClient()) {
+      LOG(INFO) << "Table " << table->id() << " is already deleted. Duplicate request.";
+      return true;
+    }
+    return false;
+  }
 
  private:
   CatalogManagerUtil();

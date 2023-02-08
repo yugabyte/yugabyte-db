@@ -5727,6 +5727,10 @@ Status CatalogManager::DeleteTable(
     return Status::OK();
   }
 
+  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
+    return Status::OK();
+  }
+
   // For now, only disable dropping YCQL tables under xCluster replication.
   bool result = table->GetTableType() == YQL_TABLE_TYPE && IsCdcEnabled(*table);
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
@@ -5833,6 +5837,13 @@ Status CatalogManager::DeleteTable(
 // IMPORTANT: If modifying, consider updating DeleteYsqlDBTables(), the bulk deletion API.
 Status CatalogManager::DeleteTableInternal(
     const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
+
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+
+  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
+    return Status::OK();
+  }
+
   auto schedules_to_tables_map = VERIFY_RESULT(
       MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
 

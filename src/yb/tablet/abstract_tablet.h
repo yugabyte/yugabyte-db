@@ -35,7 +35,8 @@ class AbstractTablet {
  public:
   virtual ~AbstractTablet() {}
 
-  virtual docdb::DocReadContextPtr GetDocReadContext(const std::string& table_id = "") const = 0;
+  virtual docdb::DocReadContextPtr GetDocReadContext() const = 0;
+  virtual Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const = 0;
 
   virtual const docdb::YQLStorageIf& QLStorage() const = 0;
 

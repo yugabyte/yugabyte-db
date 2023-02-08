@@ -20,6 +20,7 @@ const AntSwitch = withStyles((theme: Theme) => {
       height: 24,
       marginRight: 8,
       padding: 0,
+      overflow: 'visible',
       display: 'flex'
     },
     switchBase: {

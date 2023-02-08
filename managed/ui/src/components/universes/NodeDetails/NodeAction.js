@@ -142,9 +142,13 @@ export default class NodeAction extends Component {
       disableStop,
       disableRemove,
       disabled,
-      clusterType
+      clusterType,
+      isKubernetes
     } = this.props;
-    const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
+    const allowedActions = isKubernetes
+      ? currentRow.allowedActions.filter((actionType) => actionType !== 'REBOOT')
+      : currentRow.allowedActions;
+    const actionButtons = allowedActions.map((actionType) => {
       const btnId = _.uniqueId('node_action_btn_');
       const isDisabled =
         disabled ||

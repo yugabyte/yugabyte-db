@@ -627,7 +627,7 @@ class UniverseDetail extends Component {
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         )}
-                      {!universePaused && !useSystemd && (
+                      {!universePaused && !useSystemd && !isItKubernetesUniverse && (
                         <YBMenuItem
                           disabled={updateInProgress || onPremSkipProvisioning}
                           onClick={showUpgradeSystemdModal}

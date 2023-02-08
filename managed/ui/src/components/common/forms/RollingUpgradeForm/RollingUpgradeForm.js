@@ -30,19 +30,6 @@ import { HelmOverridesModal } from '../../../universes/UniverseForm/HelmOverride
 
 import './RollingUpgradeForm.scss';
 
-const GFLAG_UPDATE_OPTIONS = [
-  { value: 'Rolling', label: 'Apply all changes using a rolling restart (slower, zero downtime)' },
-  {
-    value: 'Non-Rolling',
-    label: 'Apply all changes immediately, using a concurrent restart (faster, some downtime)'
-  },
-  {
-    value: 'Non-Restart',
-    label:
-      'Apply all changes which do not require a restart immediately; apply remaining changes the next time the database is restarted'
-  }
-];
-
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
     super(props);
@@ -396,6 +383,30 @@ export default class RollingUpgradeForm extends Component {
         );
       }
       case 'gFlagsModal': {
+        //checks if tags are not runtime , runtime flags changes apply without restart
+        const isNotRuntime = formValues?.gFlags.some((f) => !f?.tags?.includes('runtime'));
+        const GFLAG_UPDATE_OPTIONS = [
+          {
+            value: 'Rolling',
+            label: 'Apply all changes using a rolling restart (slower, zero downtime)'
+          },
+          {
+            value: 'Non-Rolling',
+            label:
+              'Apply all changes immediately, using a concurrent restart (faster, some downtime)'
+          },
+          {
+            value: 'Non-Restart',
+            label:
+              'Apply all changes which do not require a restart immediately;' +
+              `${
+                isNotRuntime
+                  ? 'apply remaining changes the next time the database is restarted'
+                  : ''
+              }`
+          }
+        ];
+
         return (
           <YBModal
             className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}

@@ -132,7 +132,7 @@ class GcpCloud(AbstractCloud):
             raise YBOpsRuntimeError("Host {} cannot be stopped while in '{}' state".format(
                 instance['name'], instance_state))
 
-    def start_instance(self, args, ssh_ports):
+    def start_instance(self, args, server_ports):
         instance = self.get_admin().get_instances(args['zone'], args['search_pattern'])
         if not instance:
             logging.error("Host {} does not exist".format(args['search_pattern']))
@@ -149,7 +149,7 @@ class GcpCloud(AbstractCloud):
         else:
             raise YBOpsRuntimeError("Host {} cannot be started while in '{}' state".format(
                 instance['name'], instance_state))
-        self.wait_for_ssh_ports(instance['private_ip'], instance['name'], ssh_ports)
+        self.wait_for_server_ports(instance['private_ip'], instance['name'], server_ports)
 
     def delete_instance(self, args, filters=None):
         host_info = self.get_host_info(args, filters=filters)
@@ -166,9 +166,9 @@ class GcpCloud(AbstractCloud):
         self.get_admin().delete_instance(
             args.region, args.zone, args.search_pattern, has_static_ip=args.delete_static_public_ip)
 
-    def reboot_instance(self, host_info, ssh_ports):
+    def reboot_instance(self, host_info, server_ports):
         self.admin.reboot_instance(host_info['zone'], host_info['name'])
-        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+        self.wait_for_server_ports(host_info["private_ip"], host_info["id"], server_ports)
 
     def get_regions(self, args):
         regions_we_know_of = self.get_admin().get_regions()

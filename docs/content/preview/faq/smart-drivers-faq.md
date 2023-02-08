@@ -50,7 +50,7 @@ Different language drivers initialize connections in different ways, but in all 
 For example, In JDBC, you change the URL to use the load balance property:
 
 ```java
-string yburl = "jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true"
+String yburl = "jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true";
 DriverManager.getConnection(yburl);
 ```
 

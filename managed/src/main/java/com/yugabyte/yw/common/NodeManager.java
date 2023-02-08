@@ -163,7 +163,7 @@ public class NodeManager extends DevopsBase {
     Remove_Authorized_Key,
     Reboot,
     RunHooks,
-    Wait_For_SSH,
+    Wait_For_Connection,
     Hard_Reboot
   }
 
@@ -274,7 +274,7 @@ public class NodeManager extends DevopsBase {
       if ((params instanceof AnsibleCreateServer.Params
               || params instanceof AnsibleSetupServer.Params)
           && providerType.equals(Common.CloudType.aws)
-          && type != NodeCommandType.Wait_For_SSH) {
+          && type != NodeCommandType.Wait_For_Connection) {
         subCommand.add("--key_pair_name");
         subCommand.add(accessKeyCode);
         // Also we will add the security group information for create
@@ -291,7 +291,7 @@ public class NodeManager extends DevopsBase {
     // security group is only used during Azure create instance method
     if (params instanceof AnsibleCreateServer.Params
         && providerType.equals(Common.CloudType.azu)
-        && type != NodeCommandType.Wait_For_SSH) {
+        && type != NodeCommandType.Wait_For_Connection) {
       Region r = params.getRegion();
       String customSecurityGroupId = r.getSecurityGroupId();
       if (customSecurityGroupId != null) {
@@ -318,7 +318,7 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Update_Mounted_Disks
             || type == NodeCommandType.Reboot
             || type == NodeCommandType.Change_Instance_Type
-            || type == NodeCommandType.Wait_For_SSH)
+            || type == NodeCommandType.Wait_For_Connection)
         && providerDetails.sshUser != null) {
       subCommand.add("--ssh_user");
       if (StringUtils.isNotBlank(sshUser)) {
@@ -696,7 +696,7 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--http_remote_download");
           ybServerPackage = releaseMetadata.http.paths.x86_64;
           subcommand.add("--http_package_checksum");
-          subcommand.add(releaseMetadata.http.paths.x86_64Checksum);
+          subcommand.add(releaseMetadata.http.paths.x86_64Checksum.toLowerCase());
         } else {
           ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
         }
@@ -1976,7 +1976,7 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
-      case Wait_For_SSH:
+      case Wait_For_Connection:
       case Hard_Reboot:
         {
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));

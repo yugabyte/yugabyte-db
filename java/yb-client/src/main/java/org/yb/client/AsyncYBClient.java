@@ -1306,6 +1306,19 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Delete snapshot method.
+   * @param snapshotUUID        Snapshot UUID of snapshot to be deleted.
+   * @return  a deferred object that yields a snapshot delete response.
+   */
+  public Deferred<DeleteSnapshotResponse> deleteSnapshot(UUID snapshotUUID) {
+    checkIsClosed();
+    DeleteSnapshotRequest request =
+        new DeleteSnapshotRequest(this.masterTable, snapshotUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
    * Change Master Configuration request handler.
    *
    * @param host        Master host that is being added or removed.

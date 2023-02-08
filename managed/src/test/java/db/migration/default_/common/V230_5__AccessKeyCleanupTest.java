@@ -32,8 +32,9 @@ import org.junit.runner.RunWith;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
-public class V224__AccessKeyCleanupTest extends FakeDBApplication {
+public class V230_5__AccessKeyCleanupTest extends FakeDBApplication {
 
+  // TODO make the test use tmp entities if this proves to be a problem.
   private Provider awsProvider;
   private Provider gcpProvider;
 
@@ -86,8 +87,9 @@ public class V224__AccessKeyCleanupTest extends FakeDBApplication {
   public void empty(boolean isOldProvider) {
     if (isOldProvider) {
       awsProvider.details = null;
+      awsProvider.save();
     }
-    V224__AccessKeyCleanup.migrateAllAccessKeys();
+    V230_5__AccessKeyCleanup.migrateAllAccessKeys();
     awsProvider.refresh();
     assertNull(awsProvider.details.sshUser);
     assertEquals(22, awsProvider.details.sshPort.intValue());
@@ -113,7 +115,7 @@ public class V224__AccessKeyCleanupTest extends FakeDBApplication {
     if (isOldProvider) {
       gcpProvider.details = null;
     }
-    V224__AccessKeyCleanup.migrateAllAccessKeys();
+    V230_5__AccessKeyCleanup.migrateAllAccessKeys();
     gcpProvider.refresh();
     assertEquals("sbapat", gcpProvider.details.sshUser);
     assertEquals(9022, gcpProvider.details.sshPort.intValue());
