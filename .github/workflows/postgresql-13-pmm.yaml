@@ -1,5 +1,5 @@
 name: postgresql-13-pmm-integration
-on: push
+on: [push]
 
 jobs:
   build:

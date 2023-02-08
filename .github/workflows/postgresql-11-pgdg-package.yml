@@ -1,5 +1,5 @@
 name: postgresql-11-pgdg-package
-on: [push]
+on: [pull_request]
 
 jobs:
   build:

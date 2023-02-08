@@ -1,5 +1,5 @@
 name: postgresql-11-pmm-integration
-on: push
+on: [push]
 
 jobs:
   build:
