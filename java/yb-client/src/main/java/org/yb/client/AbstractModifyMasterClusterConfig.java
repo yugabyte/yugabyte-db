@@ -37,12 +37,21 @@ public abstract class AbstractModifyMasterClusterConfig {
   }
 
   public CatalogEntityInfo.SysClusterConfigEntryPB doCall() throws Exception {
-    CatalogEntityInfo.SysClusterConfigEntryPB newConfig = modifyConfig(getConfig());
-    ChangeMasterClusterConfigResponse changeResp = ybClient.changeMasterClusterConfig(newConfig);
-    if (changeResp.hasError()) {
-      throw new RuntimeException("ChangeConfig hit error: " + changeResp.errorMessage());
+    long sleepTimeMs = 2000;
+    for (int i = 0; i < 3; i++){
+      CatalogEntityInfo.SysClusterConfigEntryPB newConfig = modifyConfig(getConfig());
+      ChangeMasterClusterConfigResponse changeResp = ybClient.changeMasterClusterConfig(newConfig);
+      if (changeResp.hasError()) {
+        // On config version mismatch, retry with a back off.
+        if (changeResp.ErrorCode() == MasterTypes.MasterErrorPB.CONFIG_VERSION_MISMATCH){
+          Thread.sleep(sleepTimeMs);
+          sleepTimeMs = sleepTimeMs * 2;
+          continue;
+        }
+        throw new RuntimeException("ChangeConfig hit error: " + changeResp.errorMessage());
+      }
+      break;
     }
-
     return getConfig();
   }
 
