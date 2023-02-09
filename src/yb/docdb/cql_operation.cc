@@ -256,6 +256,20 @@ Status CheckUserTimestampForCollections(const UserTimeMicros user_timestamp) {
 QLWriteOperation::QLWriteOperation(
     std::reference_wrapper<const QLWriteRequestPB> request,
     DocReadContextPtr doc_read_context,
+    std::shared_ptr<IndexMap> index_map,
+    const Schema* unique_index_key_schema,
+    const TransactionOperationContext& txn_op_context)
+    : DocOperationBase(request),
+      doc_read_context_(std::move(doc_read_context)),
+      index_map_holder_(std::move(index_map)),
+      index_map_(*index_map_holder_),
+      unique_index_key_schema_(unique_index_key_schema),
+      txn_op_context_(txn_op_context)
+{}
+
+QLWriteOperation::QLWriteOperation(
+    std::reference_wrapper<const QLWriteRequestPB> request,
+    DocReadContextPtr doc_read_context,
     std::reference_wrapper<const IndexMap> index_map,
     const Schema* unique_index_key_schema,
     const TransactionOperationContext& txn_op_context)

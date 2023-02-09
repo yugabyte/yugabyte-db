@@ -852,7 +852,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
+  std::shared_ptr<docdb::SchemaPackingStorage> PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info);
 
