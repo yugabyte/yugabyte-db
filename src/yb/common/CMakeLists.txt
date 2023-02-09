@@ -89,10 +89,12 @@ set(COMMON_SRCS
   roles_permissions.cc
   row_mark.cc
   snapshot.cc
+  termination_monitor.cc
   transaction.cc
   transaction_error.cc
   ybc_util.cc
   ybc-internal.cc
+  llvm_profile_dumper.cc
   )
 
 set(COMMON_LIBS
