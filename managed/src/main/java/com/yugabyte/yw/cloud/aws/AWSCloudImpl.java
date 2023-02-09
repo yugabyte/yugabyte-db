@@ -17,6 +17,12 @@ import com.amazonaws.services.ec2.model.DescribeImagesResult;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsRequest;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsResult;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.ec2.model.DescribeSecurityGroupsRequest;
+import com.amazonaws.services.ec2.model.DescribeSecurityGroupsResult;
+import com.amazonaws.services.ec2.model.DescribeSubnetsRequest;
+import com.amazonaws.services.ec2.model.DescribeSubnetsResult;
+import com.amazonaws.services.ec2.model.DescribeVpcsRequest;
+import com.amazonaws.services.ec2.model.DescribeVpcsResult;
 import com.amazonaws.services.ec2.model.DryRunResult;
 import com.amazonaws.services.ec2.model.Filter;
 import com.amazonaws.services.ec2.model.Image;
@@ -24,6 +30,9 @@ import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceTypeOffering;
 import com.amazonaws.services.ec2.model.LocationType;
 import com.amazonaws.services.ec2.model.Reservation;
+import com.amazonaws.services.ec2.model.SecurityGroup;
+import com.amazonaws.services.ec2.model.Subnet;
+import com.amazonaws.services.ec2.model.Vpc;
 import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancing;
 import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancingClientBuilder;
 import com.amazonaws.services.elasticloadbalancingv2.model.Action;
@@ -737,6 +746,49 @@ public class AWSCloudImpl implements CloudAPI {
       LOG.error("AMI details extraction failed: ", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "AMI details extraction failed: " + e.getMessage());
+    }
+  }
+
+  public SecurityGroup describeSecurityGroupsOrBadRequest(Provider provider, Region region) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeSecurityGroupsRequest request =
+          new DescribeSecurityGroupsRequest().withGroupIds(region.getSecurityGroupId());
+      DescribeSecurityGroupsResult result = ec2Client.describeSecurityGroups(request);
+      return result.getSecurityGroups().get(0);
+    } catch (AmazonServiceException e) {
+      LOG.error("Security group details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Security group extraction failed: " + e.getMessage());
+    }
+  }
+
+  public Vpc describeVpcOrBadRequest(Provider provider, Region region) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeVpcsRequest request = new DescribeVpcsRequest().withVpcIds(region.getVnetName());
+      DescribeVpcsResult result = ec2Client.describeVpcs(request);
+      return result.getVpcs().get(0);
+    } catch (AmazonServiceException e) {
+      LOG.error("Vpc details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Vpc details extraction failed: " + e.getMessage());
+    }
+  }
+
+  public List<Subnet> describeSubnetsOrBadRequest(Provider provider, Region region) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeSubnetsRequest request =
+          new DescribeSubnetsRequest()
+              .withSubnetIds(
+                  region.zones.stream().map(zone -> zone.subnet).collect(Collectors.toList()));
+      DescribeSubnetsResult result = ec2Client.describeSubnets(request);
+      return result.getSubnets();
+    } catch (AmazonServiceException e) {
+      LOG.error("Subnet details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Subnet details extraction failed: " + e.getMessage());
     }
   }
 }
