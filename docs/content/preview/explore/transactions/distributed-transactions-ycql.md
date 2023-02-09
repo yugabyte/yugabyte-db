@@ -31,7 +31,7 @@ type: docs
 
 </ul>
 
-The best way to understand distributed transactions in YugabyteDB is through examples. Before you can start, you need to [create a YugabyteDB universe](../../#set-up-yugabytedb-universe).
+The best way to understand distributed transactions in YugabyteDB is through examples. Before you can start, you need to [set up a local single-node YugabyteDB universe or a Sandbox cluster in YugabyteDB Managed](../../#set-up-yugabytedb-universe).
 
 ## Create a table
 
@@ -69,7 +69,7 @@ where keyspace_name='banking' AND table_name = 'accounts';
 
 ## Insert sample data
 
-Seed the table with sample data, as follows:
+Populate the table with sample data, as follows:
 
 ```sql
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('John', 'savings', 1000);
