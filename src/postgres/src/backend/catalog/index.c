@@ -80,8 +80,10 @@
 #include "utils/tqual.h"
 
 /*  YB includes. */
+#include "commands/progress.h"
 #include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
+#include "pgstat.h"
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_index_pg_class_oid = InvalidOid;
@@ -1312,6 +1314,11 @@ index_create(Relation heapRelation,
 	}
 	else
 	{
+		if (IsYugaByteEnabled() && !concurrent && !invalid &&
+			yb_test_block_index_phase[0] != '\0')
+			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+										"backfill",
+										"non-concurrent index backfill");
 		index_build(heapRelation, indexRelation, indexInfo, isprimary, false,
 					true);
 	}
@@ -1321,6 +1328,13 @@ index_create(Relation heapRelation,
 	 * of transaction.  Closing the heap is caller's responsibility.
 	 */
 	index_close(indexRelation, NoLock);
+
+	if (IsYugaByteEnabled() && !concurrent && !invalid &&
+		yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"postbackfill",
+									"operations after a non-concurrent "
+									"index backfill");
 
 	return indexRelationId;
 }
@@ -2415,6 +2429,10 @@ index_build(Relation heapRelation,
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
 
+	if (IsYugaByteEnabled())
+		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
+									 YB_PROGRESS_CREATEIDX_BACKFILLING);
+
 	/*
 	 * Call the access method's build procedure
 	 */
@@ -2732,6 +2750,7 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 	BlockNumber root_blkno = InvalidBlockNumber;
 	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
 	MemoryContext oldcontext = GetCurrentMemoryContext();
+	int			yb_tuples_done = 0;
 
 	/*
 	 * sanity checks
@@ -3159,7 +3178,12 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 		if (predicate != NULL)
 		{
 			if (!ExecQual(predicate, econtext))
+			{
+				if (IsYBRelation(indexRelation) && !indexInfo->ii_Concurrent)
+					pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
+												 ++yb_tuples_done);
 				continue;
+			}
 		}
 
 		/*
@@ -3215,7 +3239,12 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 		}
 
 		if (IsYBRelation(indexRelation))
+		{
 			MemoryContextReset(econtext->ecxt_per_tuple_memory);
+			if (!indexInfo->ii_Concurrent)
+				pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
+											 ++yb_tuples_done);
+		}
 	}
 
 	if (IsYBRelation(indexRelation))

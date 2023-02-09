@@ -549,6 +549,7 @@ Result<std::string> GetString(PGresult* result, int row, int column) {
 }
 
 Result<std::string> ToString(PGresult* result, int row, int column) {
+  constexpr Oid NAMEOID = 19;
   constexpr Oid INT8OID = 20;
   constexpr Oid INT4OID = 23;
   constexpr Oid TEXTOID = 25;
@@ -568,6 +569,7 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
       return std::to_string(VERIFY_RESULT(GetInt32(result, row, column)));
     case FLOAT8OID:
       return std::to_string(VERIFY_RESULT(GetDouble(result, row, column)));
+    case NAMEOID: FALLTHROUGH_INTENDED;
     case TEXTOID: FALLTHROUGH_INTENDED;
     case BPCHAROID: FALLTHROUGH_INTENDED;
     case VARCHAROID:

@@ -602,6 +602,9 @@ class PgApiImpl {
 
   Result<client::TabletServersInfo> ListTabletServers();
 
+  Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
+                                  uint64_t** backfill_statuses);
+
   void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version, bool should_use_cache);
   void StopSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;

@@ -508,12 +508,13 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
- * Block index state changes:
- * - "indisready": indislive to indisready
- * - "getsafetime": indisready to backfill (specifically, the get safe time)
- * - "indisvalid": backfill to indisvalid
+ * Block the given index creation phase.
+ * - "indisready": index state change to indisready
+ *   (not supported for non-concurrent)
+ * - "backfill": index backfill phase
+ * - "postbackfill": post-backfill operations like validation and event triggers
  */
-extern char *yb_test_block_index_state_change;
+extern char *yb_test_block_index_phase;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for

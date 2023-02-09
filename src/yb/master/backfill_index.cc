@@ -1002,6 +1002,11 @@ Status BackfillTable::MarkIndexesAsDesired(
           idx_pb->clear_backfill_error_message();
         }
         idx_pb->clear_is_backfill_deferred();
+        // We clear the backfill job upon completion - however, we want to persist the number
+        // of indexed table rows completed, so we record the information in the index info PB.
+        // For partial indexes, the number of rows processed includes non-matching rows of
+        // the indexed table.
+        idx_pb->set_num_rows_processed_by_backfill_job(number_rows_processed_);
       }
     }
     RETURN_NOT_OK(

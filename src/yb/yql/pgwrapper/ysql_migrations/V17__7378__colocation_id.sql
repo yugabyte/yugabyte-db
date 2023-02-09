@@ -5,7 +5,8 @@ UPDATE pg_catalog.pg_proc SET
   proallargtypes = '{26,20,20,16,26,26}',
   proargmodes    = '{i,o,o,o,o,o}',
   proargnames    = '{table_oid,num_tablets,num_hash_key_columns,is_colocated,tablegroup_oid,colocation_id}'
-WHERE proname = 'yb_table_properties' AND pronamespace = 'pg_catalog'::regnamespace;
+WHERE proname = 'yb_table_properties' AND proargtypes = '26' AND
+  pronamespace = 'pg_catalog'::regnamespace;
 
 -- Replace tablegroup reloption with tablegroup_oid.
 -- Note that this will skip pg_class rows with no reloptions, and we're fine with it.

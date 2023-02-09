@@ -150,9 +150,9 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
     "\"database\" and \"tablet\".");
 
-DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_state_change, "",
-    "Block the given index state change from proceeding. Valid names are indisready, getsafetime,"
-    " and indisvalid. For testing purposes.");
+DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_phase, "",
+    "Block the given index phase from proceeding. Valid names are indisready, build,"
+    " indisvalid and finish. For testing purposes.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_sequence_pushdown, kLocalVolatile, false, true,
     "Allow nextval() to fetch the value range and advance the sequence value "

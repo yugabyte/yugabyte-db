@@ -4398,13 +4398,13 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"yb_test_block_index_state_change", PGC_SIGHUP, DEVELOPER_OPTIONS,
-			gettext_noop("Block the given index state change."),
-			gettext_noop("Valid values are \"indisready\", \"getsafetime\","
-						 " and \"indisvalid\". Any other value is ignored."),
+		{"yb_test_block_index_phase", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Block the given index creation phase."),
+			gettext_noop("Valid values are \"indisready\", \"backfill\", "
+						 " and \"postbackfill\". Any other value is ignored."),
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_test_block_index_state_change,
+		&yb_test_block_index_phase,
 		"",
 		/* Could add a check function, but it's not worth the bother. */
 		NULL, NULL, NULL

@@ -226,6 +226,11 @@ message IndexInfoPB {
 
   // Where clause for partial index.
   optional WherePredicateSpecPB where_predicate_spec = 33;
+
+  // When the backfill job on this index is cleared, this field is set to the number of indexed
+  // table rows processed by the backfill job. The (default) value is zero, otherwise.
+  // For partial indexes, this includes non-matching rows of the indexed table.
+  optional uint64 num_rows_processed_by_backfill_job = 34;
 }
 
 // The possible order modes for clients.

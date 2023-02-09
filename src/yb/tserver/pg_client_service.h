@@ -47,6 +47,7 @@ namespace tserver {
     (FinishTransaction) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
+    (GetIndexBackfillProgress) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
     (Heartbeat) \

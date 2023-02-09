@@ -37,6 +37,7 @@
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -92,6 +93,9 @@ class PgClient {
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
 
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
+
+  Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
+                                  uint64_t** backfill_statuses);
 
   Result<int32> TabletServerCount(bool primary_only);
 
