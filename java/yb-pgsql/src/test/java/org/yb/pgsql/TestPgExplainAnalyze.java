@@ -343,7 +343,7 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
             INDEX_NAME, TABLE_NAME, alias),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.greater(0))
-            .storageWriteRequests(Checkers.equal(206))
+            .storageWriteRequests(Checkers.equal(1))
             .storageExecutionTime(Checkers.greater(0.0))
             .plan(makePlanBuilder()
                 .nodeType(NODE_MODIFY_TABLE)
@@ -453,7 +453,7 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
             INDEX_NAME, TABLE_NAME, alias),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(2))
-            .storageWriteRequests(Checkers.equal(206))
+            .storageWriteRequests(Checkers.equal(1))
             .storageExecutionTime(Checkers.greater(0.0))
             .plan(makePlanBuilder()
                 .nodeType(NODE_MODIFY_TABLE)
@@ -500,7 +500,7 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
             TABLE_NAME),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(1))
-            .storageWriteRequests(Checkers.equal(6))
+            .storageWriteRequests(Checkers.equal(1))
             .storageExecutionTime(Checkers.greater(0.0))
             .plan(makePlanBuilder()
                 .nodeType(NODE_MODIFY_TABLE)
