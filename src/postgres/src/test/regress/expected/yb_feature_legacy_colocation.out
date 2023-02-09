@@ -599,7 +599,7 @@ DROP DATABASE colocation_test;
 -- Test syntax change as a result of Colocation GA change
 -- Fail: only one of 'colocation' and 'colocated' options can be specified in CREATE DATABASE
 CREATE DATABASE colocation_test colocated = true colocation = true;
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 LINE 1: CREATE DATABASE colocation_test colocated = true colocation ...
                                         ^
 HINT:  Use 'colocation' instead of 'colocated'.
@@ -608,7 +608,7 @@ LINE 1: CREATE DATABASE colocation_test colocated = true colocation ...
                                                          ^
 -- Succeed with deprecated warning: create a colocated database using old syntax
 CREATE DATABASE colocation_test colocated = true;
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 LINE 1: CREATE DATABASE colocation_test colocated = true;
                                         ^
 HINT:  Use 'colocation' instead of 'colocated'.
@@ -623,7 +623,7 @@ ERROR:  cannot specify both of 'colocation' and 'colocated' options
 HINT:  Use 'colocation' instead of 'colocated'.
 -- Succeed with deprecated warning: create a colocated table using old syntax
 CREATE TABLE tbl_colocated (k INT, v INT) WITH (colocated = true);
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 HINT:  Use 'colocation' instead of 'colocated'.
 -- Succeed: create a colocated table using new syntax
 CREATE TABLE tbl_colocation (k INT, v INT) WITH (colocation = true);
