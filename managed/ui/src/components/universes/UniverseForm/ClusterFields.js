@@ -2693,6 +2693,7 @@ export default class ClusterFields extends Component {
                             : ''
                         }
                         input={{
+                          name: `${clusterType}.replicationFactor`,
                           onKeyDown:(e) => {
                             (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() || getPromiseState(cloud.instanceTypes).isLoading()) && e.preventDefault();
                           }
