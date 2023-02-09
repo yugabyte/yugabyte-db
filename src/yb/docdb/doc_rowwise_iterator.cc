@@ -97,8 +97,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter)
-    : projection_(*projection),
-      projection_owner_(std::move(projection)),
+    : projection_owner_(std::move(projection)),
+      projection_(*projection_owner_),
       doc_read_context_(doc_read_context),
       txn_op_context_(txn_op_context),
       deadline_(deadline),
@@ -112,16 +112,16 @@ DocRowwiseIterator::DocRowwiseIterator(
 
 DocRowwiseIterator::DocRowwiseIterator(
     std::unique_ptr<Schema> projection,
-    const std::shared_ptr<DocReadContext>& doc_read_context,
+    std::shared_ptr<DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter)
-    : projection_(*projection),
-      projection_owner_(std::move(projection)),
-      doc_read_context_(*doc_read_context),
-      doc_read_context_user_(doc_read_context),
+    : projection_owner_(std::move(projection)),
+      projection_(*projection_owner_),
+      doc_read_context_holder_(std::move(doc_read_context)),
+      doc_read_context_(*doc_read_context_holder_),
       txn_op_context_(txn_op_context),
       deadline_(deadline),
       read_time_(read_time),

@@ -114,7 +114,7 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 TableInfo::TableInfo(const std::string& log_prefix_, PrivateTag)
     : log_prefix(log_prefix_),
       doc_read_context(new docdb::DocReadContext(log_prefix)),
-      index_map(std::make_unique<IndexMap>()) {
+      index_map(std::make_shared<IndexMap>()) {
 }
 
 TableInfo::TableInfo(const std::string& tablet_log_prefix,
@@ -135,7 +135,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(log_prefix, schema, schema_version)),
-      index_map(std::make_unique<IndexMap>(index_map)),
+      index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(std::move(partition_schema)) {
@@ -156,7 +156,7 @@ TableInfo::TableInfo(const TableInfo& other,
           ? std::make_shared<docdb::DocReadContext>(
               *other.doc_read_context, schema, schema_version)
           : std::make_shared<docdb::DocReadContext>(*other.doc_read_context)),
-      index_map(std::make_unique<IndexMap>(index_map)),
+      index_map(std::make_shared<IndexMap>(index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(other.partition_schema),
@@ -173,7 +173,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       log_prefix(other.log_prefix),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
           *other.doc_read_context, std::min(min_schema_version, other.schema_version))),
-      index_map(std::make_unique<IndexMap>(*other.index_map)),
+      index_map(std::make_shared<IndexMap>(*other.index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
@@ -1562,7 +1562,7 @@ std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) 
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info =
       table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
-  return std::shared_ptr<IndexMap>(table_info, table_info->index_map.get());
+  return table_info->index_map;
 }
 
 SchemaVersion RaftGroupMetadata::schema_version(
