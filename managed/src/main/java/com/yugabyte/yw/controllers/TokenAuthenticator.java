@@ -83,7 +83,7 @@ public class TokenAuthenticator extends Action.Simple {
     this.jwtVerifier = jwtVerifier;
   }
 
-  private Users getCurrentAuthenticatedUser(Http.Context ctx) {
+  public Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
     Users user = null;
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
