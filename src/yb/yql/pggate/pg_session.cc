@@ -680,6 +680,11 @@ Result<client::TabletServersInfo> PgSession::ListTabletServers() {
   return pg_client_.ListLiveTabletServers(false);
 }
 
+Status PgSession::GetIndexBackfillProgress(std::vector<PgObjectId> index_ids,
+                                           uint64_t** backfill_statuses) {
+  return pg_client_.GetIndexBackfillProgress(index_ids, backfill_statuses);
+}
+
 bool PgSession::ShouldUseFollowerReads() const {
   return pg_txn_manager_->ShouldUseFollowerReads();
 }

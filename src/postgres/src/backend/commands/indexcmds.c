@@ -67,8 +67,10 @@
 
 /* YB includes. */
 #include "catalog/pg_database.h"
+#include "commands/progress.h"
 #include "commands/tablegroup.h"
 #include "pg_yb_utils.h"
+#include "pgstat.h"
 
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
@@ -380,6 +382,26 @@ DefineIndex(Oid relationId,
 	root_save_nestlevel = NewGUCNestLevel();
 
 	/*
+	 * Start progress report.  If we're building a partition, this was already
+	 * done.
+	 */
+	if (!OidIsValid(parentIndexId))
+	{
+		pgstat_progress_start_command(PROGRESS_COMMAND_CREATE_INDEX,
+									  relationId);
+		pgstat_progress_update_param(PROGRESS_CREATEIDX_COMMAND,
+									 stmt->concurrent ?
+									 PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY :
+									 PROGRESS_CREATEIDX_COMMAND_CREATE);
+	}
+
+	/*
+	 * No index OID to report yet
+	 */
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
+								 InvalidOid);
+
+	/*
 	 * count key attributes in index
 	 */
 	numberOfKeyAttributes = list_length(stmt->indexParams);
@@ -411,6 +433,21 @@ DefineIndex(Oid relationId,
 	 * its metadata. Stronger lock will be taken later.
 	 */
 	rel = heap_open(relationId, AccessShareLock);
+
+	if (IsYugaByteEnabled())
+	{
+		const int	cols[] = {
+			PROGRESS_CREATEIDX_PHASE,
+			PROGRESS_CREATEIDX_TUPLES_TOTAL,
+			PROGRESS_CREATEIDX_TUPLES_DONE,
+		};
+		const int64	values[] = {
+			YB_PROGRESS_CREATEIDX_INITIALIZING,
+			rel->rd_rel->reltuples,
+			0
+		};
+		pgstat_progress_update_multi_param(3, cols, values);
+	}
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are run
@@ -1171,6 +1208,11 @@ DefineIndex(Oid relationId,
 		SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
 
 		heap_close(rel, NoLock);
+
+		/* If this is the top-level index, we're done */
+		if (!OidIsValid(parentIndexId))
+			pgstat_progress_end_command();
+
 		return address;
 	}
 
@@ -1208,6 +1250,9 @@ DefineIndex(Oid relationId,
 			bool		invalidate_parent = false;
 			TupleDesc	parentDesc;
 			Oid		   *opfamOids;
+
+			pgstat_progress_update_param(PROGRESS_CREATEIDX_PARTITIONS_TOTAL,
+										 nparts);
 
 			memcpy(part_oids, partdesc->oids, sizeof(Oid) * nparts);
 
@@ -1381,6 +1426,8 @@ DefineIndex(Oid relationId,
 										   child_save_sec_context);
 				}
 
+				pgstat_progress_update_param(PROGRESS_CREATEIDX_PARTITIONS_DONE,
+											 i + 1);
 				pfree(attmap);
 			}
 
@@ -1417,6 +1464,8 @@ DefineIndex(Oid relationId,
 		 */
 		AtEOXact_GUC(false, root_save_nestlevel);
 		SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
+		if (!OidIsValid(parentIndexId))
+			pgstat_progress_end_command();
 		return address;
 	}
 
@@ -1427,6 +1476,11 @@ DefineIndex(Oid relationId,
 	{
 		/* Close the heap and we're done, in the non-concurrent case */
 		heap_close(rel, NoLock);
+
+		/* If this is the top-level index, we're done. */
+		if (!OidIsValid(parentIndexId))
+			pgstat_progress_end_command();
+
 		return address;
 	}
 
@@ -1474,6 +1528,13 @@ DefineIndex(Oid relationId,
 	pg_usleep(yb_index_state_flags_update_delay * 1000);
 
 	StartTransactionCommand();
+
+	/*
+	 * The index is now visible, so we can report the OID.
+	 */
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
+								 indexRelationId);
+
 	YBIncrementDdlNestingLevel();
 
 	/*
@@ -1497,6 +1558,10 @@ DefineIndex(Oid relationId,
 
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel();
+
+	if (IsYugaByteEnabled())
+		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
+									 YB_PROGRESS_CREATEIDX_BACKFILLING);
 
 	/* TODO(jason): handle exclusion constraints, possibly not here. */
 
@@ -1522,6 +1587,8 @@ DefineIndex(Oid relationId,
 	 * Last thing to do is release the session-level lock on the parent table.
 	 */
 	UnlockRelationIdForSession(&heaprelid, ShareUpdateExclusiveLock);
+
+	pgstat_progress_end_command();
 
 	return address;
 }

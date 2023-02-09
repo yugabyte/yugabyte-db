@@ -589,6 +589,10 @@ void YBCPgResetCatalogReadTime();
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
+YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
+                                      uint64_t** backfill_statuses,
+                                      int num_indexes);
+
 void YBCStartSysTablePrefetching();
 
 void YBCStopSysTablePrefetching();

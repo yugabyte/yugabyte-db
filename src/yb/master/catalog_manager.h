@@ -312,6 +312,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                              LaunchBackfillIndexForTableResponsePB* resp,
                                              rpc::RpcContext* rpc);
 
+  // Gets the progress of ongoing index backfills.
+  Status GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
+                                  GetIndexBackfillProgressResponsePB* resp,
+                                  rpc::RpcContext* rpc);
+
   // Delete the specified table.
   //
   // The RPC context is provided for logging/tracing purposes,

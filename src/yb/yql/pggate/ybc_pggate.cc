@@ -1204,6 +1204,16 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
   return YBCStatusOK();
 }
 
+YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
+                                      uint64_t** backfill_statuses,
+                                      int num_indexes) {
+  std::vector<PgObjectId> index_ids;
+  for (int i = 0; i < num_indexes; ++i) {
+    index_ids.emplace_back(PgObjectId(database_oids[i], index_oids[i]));
+  }
+  return ToYBCStatus(pgapi->GetIndexBackfillProgress(index_ids, backfill_statuses));
+}
+
 //------------------------------------------------------------------------------------------------
 // Thread-local variables.
 //------------------------------------------------------------------------------------------------

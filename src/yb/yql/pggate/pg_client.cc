@@ -458,6 +458,25 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
+                                uint64_t** backfill_statuses) {
+    tserver::PgGetIndexBackfillProgressRequestPB req;
+    tserver::PgGetIndexBackfillProgressResponsePB resp;
+
+    for (const auto& index_id : index_ids) {
+      index_id.ToPB(req.add_index_ids());
+    }
+
+    RETURN_NOT_OK(proxy_->GetIndexBackfillProgress(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    uint64_t* backfill_status = *backfill_statuses;
+    for (const auto entry : resp.rows_processed_entries()) {
+      *backfill_status = entry;
+      backfill_status++;
+    }
+    return Status::OK();
+  }
+
   Result<int32> TabletServerCount(bool primary_only) {
     if (tablet_server_count_cache_[primary_only] > 0) {
       return tablet_server_count_cache_[primary_only];
@@ -618,6 +637,12 @@ Result<client::YBTableName> PgClient::DropTable(
 Status PgClient::BackfillIndex(
     tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline) {
   return impl_->BackfillIndex(req, deadline);
+}
+
+Status PgClient::GetIndexBackfillProgress(
+    const std::vector<PgObjectId>& index_ids,
+    uint64_t** backfill_statuses) {
+  return impl_->GetIndexBackfillProgress(index_ids, backfill_statuses);
 }
 
 Result<int32> PgClient::TabletServerCount(bool primary_only) {
