@@ -100,7 +100,7 @@ static uint64_t yb_last_known_catalog_cache_version =
 
 uint64_t YBGetActiveCatalogCacheVersion() {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
-	    YBGetDdlNestingLevel() > 0)
+		YBGetDdlNestingLevel() > 0)
 		return yb_catalog_cache_version + 1;
 
 	return yb_catalog_cache_version;
@@ -141,8 +141,8 @@ YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
 	YbUpdateLastKnownCatalogCacheVersion(yb_catalog_cache_version);
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
-		        (errmsg("set local catalog version: %" PRIu64,
-		                yb_catalog_cache_version)));
+				(errmsg("set local catalog version: %" PRIu64,
+						yb_catalog_cache_version)));
 
 }
 
@@ -156,8 +156,8 @@ YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version)
 void
 YbResetCatalogCacheVersion()
 {
-  yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
-  yb_pgstat_set_catalog_version(yb_catalog_cache_version);
+	yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
 /** These values are lazily initialized based on corresponding environment variables. */
@@ -246,7 +246,7 @@ YbIsTempRelation(Relation relation)
 bool IsRealYBColumn(Relation rel, int attrNum)
 {
 	return (attrNum > 0 && !TupleDescAttr(rel->rd_att, attrNum - 1)->attisdropped) ||
-	       (rel->rd_rel->relhasoids && attrNum == ObjectIdAttributeNumber);
+		   (rel->rd_rel->relhasoids && attrNum == ObjectIdAttributeNumber);
 }
 
 bool IsYBSystemColumn(int attrNum)
@@ -266,8 +266,8 @@ YBNeedRetryAfterCacheRefresh(ErrorData *edata)
 AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
 {
 	return IsYBRelation(relation)
-	       ? YBFirstLowInvalidAttributeNumber
-	       : FirstLowInvalidHeapAttributeNumber;
+		   ? YBFirstLowInvalidAttributeNumber
+		   : FirstLowInvalidHeapAttributeNumber;
 }
 
 AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
@@ -293,8 +293,8 @@ AttrNumber YBBmsIndexToAttnum(Relation rel, int idx)
  * subtracting minattr from attributes.
  */
 static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
-                                        AttrNumber minattr,
-                                        bool includeYBSystemColumns)
+										AttrNumber minattr,
+										bool includeYBSystemColumns)
 {
 	Oid            dboid         = YBCGetDatabaseOid(rel);
 	int            natts         = RelationGetNumberOfAttributes(rel);
@@ -313,9 +313,9 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 
 		YBCPgColumnInfo column_info = {0};
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_tabledesc,
-		                                           attnum,
+												   attnum,
 												   &column_info),
-		                        ybc_tabledesc);
+								ybc_tabledesc);
 
 		if (column_info.is_hash || column_info.is_primary)
 		{
@@ -329,15 +329,15 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 Bitmapset *YBGetTablePrimaryKeyBms(Relation rel)
 {
 	return GetTablePrimaryKeyBms(rel,
-	                             YBGetFirstLowInvalidAttributeNumber(rel) /* minattr */,
-	                             false /* includeYBSystemColumns */);
+								 YBGetFirstLowInvalidAttributeNumber(rel) /* minattr */,
+								 false /* includeYBSystemColumns */);
 }
 
 Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel)
 {
 	return GetTablePrimaryKeyBms(rel,
-	                             YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
-	                             true /* includeYBSystemColumns */);
+								 YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
+								 true /* includeYBSystemColumns */);
 }
 
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
@@ -1274,8 +1274,8 @@ GetActualStmtNode(PlannedStmt *pstmt)
 }
 
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-                                 bool *is_catalog_version_increment,
-                                 bool *is_breaking_catalog_change)
+								 bool *is_catalog_version_increment,
+								 bool *is_breaking_catalog_change)
 {
 	/* Assume the worst. */
 	*is_catalog_version_increment = true;
@@ -1464,7 +1464,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			break;
 
 		case T_DropdbStmt:
-		    /*
+			/*
 			 * We already invalidate all connections to that DB by dropping it
 			 * so nothing to do on the cache side.
 			 */
@@ -1557,7 +1557,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * not metadata--unless the data itself is metadata (system index).
 			 * It could be nice to force a cache refresh when fixing a system
 			 * index corruption, but just because a system index is REINDEXed
-			 * doesn't mean it had a corruption.  If there's a system index
+			 * doesn't mean it had a corruption. If there's a system index
 			 * corruption, manual intervention is already needed, so might as
 			 * well let the user deal with refreshing clients.
 			 */
@@ -1604,8 +1604,8 @@ static void YBTxnDdlProcessUtility(
 	bool is_catalog_version_increment = true;
 	bool is_breaking_catalog_change = true;
 	bool is_txn_ddl = IsTransactionalDdlStatement(pstmt,
-	                                              &is_catalog_version_increment,
-	                                              &is_breaking_catalog_change);
+												  &is_catalog_version_increment,
+												  &is_breaking_catalog_change);
 
 	if (is_txn_ddl) {
 		YBIncrementDdlNestingLevel();
@@ -1676,11 +1676,11 @@ void YBGetAndResetOperationFlushRpcStats(uint64_t *count, uint64_t *wait_time) {
 }
 
 bool YBReadFromFollowersEnabled() {
-  return yb_read_from_followers;
+	return yb_read_from_followers;
 }
 
 int32_t YBFollowerReadStalenessMs() {
-  return yb_follower_read_staleness_ms;
+	return yb_follower_read_staleness_ms;
 }
 
 YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs) {
@@ -2103,7 +2103,7 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
 	 * Use fast path if possible.
 	 *
 	 * We've already verified that the input string is well-formed in the
-	 * current encoding.  If it contains no quotes and, in the case of
+	 * current encoding. If it contains no quotes and, in the case of
 	 * literal-escaping, no backslashes, then we can just copy it directly to
 	 * the output buffer, adding the necessary quotes.
 	 *
@@ -2622,7 +2622,7 @@ YBComputeNonCSortKey(Oid collation_id, const char* value, int64_t bytes) {
 
 #ifdef USE_ICU
 	int32_t		ulen = -1;
-	UChar	   *uchar = NULL;
+	UChar		*uchar = NULL;
 #endif
 
 #ifdef USE_ICU
@@ -2636,7 +2636,7 @@ YBComputeNonCSortKey(Oid collation_id, const char* value, int64_t bytes) {
 
 	/*
 	 * Loop: Call strxfrm() or ucol_getSortKey(), possibly enlarge buffer,
-	 * and try again.  Both of these functions have the result buffer
+	 * and try again. Both of these functions have the result buffer
 	 * content undefined if the result did not fit, so we need to retry
 	 * until everything fits.
 	 */
@@ -2717,12 +2717,12 @@ void YBGetCollationInfo(
 		 *   CREATE TABLE t (id text[] COLLATE "en_US.utf8");
 		 *
 		 * GIN indexes have null categories, so ybgin indexes pass the category
-		 * number down using GIN_NULL type.  Even if the column is collatable,
+		 * number down using GIN_NULL type. Even if the column is collatable,
 		 * nulls should be unaffected by collation.
 		 *
 		 * pg_trgm GIN indexes have key type int32 but also valid collation for
-		 * regex purposes on the indexed type text.  Add an exception here for
-		 * int32.  Since this relaxes the assert for other situations involving
+		 * regex purposes on the indexed type text. Add an exception here for
+		 * int32. Since this relaxes the assert for other situations involving
 		 * int32, a proper fix should be done in the future.
 		 */
 		Assert(collation_id == InvalidOid ||
@@ -2780,8 +2780,8 @@ void YBGetCollationInfo(
 }
 
 static bool YBNeedCollationEncoding(const YBCPgColumnInfo *column_info) {
-  /* We only need collation encoding for range keys. */
-  return (column_info->is_primary && !column_info->is_hash);
+	/* We only need collation encoding for range keys. */
+	return (column_info->is_primary && !column_info->is_hash);
 }
 
 void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr, const YBCPgColumnInfo *column_info) {
@@ -2992,8 +2992,8 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		default:
 		{
 			ereport(FATAL,
-			        (errcode(ERRCODE_INTERNAL_ERROR),
-			         errmsg("Sys table '%d' is not yet intended for preloading", sys_table_id)));
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Sys table '%d' is not yet intended for preloading", sys_table_id)));
 
 		}
 	}
@@ -3015,24 +3015,24 @@ bool YBCIsRegionLocal(Relation rel) {
 }
 
 bool check_yb_xcluster_consistency_level(char** newval, void** extra, GucSource source) {
-  int newConsistency = XCLUSTER_CONSISTENCY_TABLET;
-  if (strcmp(*newval, "tablet") == 0) {
-    newConsistency = XCLUSTER_CONSISTENCY_TABLET;
-  } else if (strcmp(*newval, "database") == 0) {
-    newConsistency = XCLUSTER_CONSISTENCY_DATABASE;
-  } else {
-    return false;
-  }
+	int newConsistency = XCLUSTER_CONSISTENCY_TABLET;
+	if (strcmp(*newval, "tablet") == 0)
+		newConsistency = XCLUSTER_CONSISTENCY_TABLET;
+	else if (strcmp(*newval, "database") == 0)
+		newConsistency = XCLUSTER_CONSISTENCY_DATABASE;
+	else
+		return false;
 
-  *extra = malloc(sizeof(int));
-  if (!*extra) return false;
-  *((int*)*extra) = newConsistency;
+	*extra = malloc(sizeof(int));
+	if (!*extra)
+		return false;
+	*((int*)*extra) = newConsistency;
 
-  return true;
+	return true;
 }
 
 void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
-  yb_xcluster_consistency_level = *((int*)extra);
+	yb_xcluster_consistency_level = *((int*)extra);
 }
 
 void YBCheckServerAccessIsAllowed() {
