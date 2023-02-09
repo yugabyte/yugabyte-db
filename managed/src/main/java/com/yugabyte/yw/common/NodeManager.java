@@ -703,14 +703,10 @@ public class NodeManager extends DevopsBase {
       gflags.put("start_redis_proxy", "false");
     }
     if (userIntent.enableYCQL) {
-      gflags.put(
-          "cql_proxy_webserver_port",
-          Integer.toString(taskParam.communicationPorts.yqlServerHttpPort));
+      gflags.put("cql_proxy_webserver_port", Integer.toString(node.yqlServerHttpPort));
     }
     if (userIntent.enableYSQL) {
-      gflags.put(
-          "pgsql_proxy_webserver_port",
-          Integer.toString(taskParam.communicationPorts.ysqlServerHttpPort));
+      gflags.put("pgsql_proxy_webserver_port", Integer.toString(node.ysqlServerHttpPort));
     }
     if (runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB) > 0) {
       gflags.put("postmaster_cgroup", YSQL_CGROUP_PATH);
