@@ -33,9 +33,16 @@ class QLWriteOperation :
  public:
   QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
                    DocReadContextPtr doc_read_context,
+                   std::shared_ptr<IndexMap> index_map,
+                   const Schema* unique_index_key_schema,
+                   const TransactionOperationContext& txn_op_context);
+
+  QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+                   DocReadContextPtr doc_read_context,
                    std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContext& txn_op_context);
+
   ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
@@ -146,7 +153,8 @@ class QLWriteOperation :
       bfql::TSOpcode op_code,
       RowPacker* row_packer);
 
-  docdb::DocReadContextPtr doc_read_context_;
+  const docdb::DocReadContextPtr doc_read_context_;
+  const std::shared_ptr<IndexMap> index_map_holder_;
   const IndexMap& index_map_;
   const Schema* unique_index_key_schema_ = nullptr;
 

@@ -1205,9 +1205,9 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   const auto read_time = read_hybrid_time
       ? read_hybrid_time
       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
-  auto result = std::make_unique<DocRowwiseIterator>(
-      std::move(mapped_projection), *table_info->doc_read_context, txn_op_ctx,
-      doc_db(), deadline, read_time, &pending_non_abortable_op_counter_);
+  auto result = std::make_unique<DocRowwiseIterator>(std::move(mapped_projection),
+                  table_info->doc_read_context, txn_op_ctx, doc_db(), deadline, read_time,
+                  &pending_non_abortable_op_counter_);
   RETURN_NOT_OK(result->Init(table_type_, sub_doc_key));
   return std::move(result);
 }
@@ -2041,11 +2041,6 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   RSTATUS_DCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation->schema())), InvalidArgument,
                  "Schema keys cannot be altered");
 
-  // Abortable read/write operations could be long and they shouldn't access metadata_ without
-  // locks, so no need to wait for them here.
-  auto op_pause = PauseReadWriteOperations(Abortable::kFalse);
-  RETURN_NOT_OK(op_pause);
-
   // If the current version >= new version, there is nothing to do.
   if (current_table_info->schema_version >= operation->schema_version()) {
     LOG_WITH_PREFIX(INFO)
@@ -2068,10 +2063,11 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
     }
   }
 
-  metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
-                      operation->schema_version(), current_table_info->table_id);
   if (operation->has_new_table_name()) {
-    metadata_->SetTableName(current_table_info->namespace_name, operation->new_table_name());
+    metadata_->SetSchemaAndTableName(
+        *operation->schema(), operation->index_map(), deleted_cols,
+        operation->schema_version(), current_table_info->namespace_name,
+        operation->new_table_name(), current_table_info->table_id);
     if (table_metrics_entity_) {
       table_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
       table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
@@ -2080,6 +2076,9 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
       tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
       tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
     }
+  } else {
+    metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
+                         operation->schema_version(), current_table_info->table_id);
   }
 
   // Clear old index table metadata cache.
@@ -3221,8 +3220,9 @@ Status Tablet::DebugDump(vector<string> *lines) {
 void Tablet::DocDBDebugDump(vector<string> *lines) {
   LOG_STRING(INFO, lines) << "Dumping tablet:";
   LOG_STRING(INFO, lines) << "---------------------------";
+  auto primary_schema_packing_storage = PrimarySchemaPackingStorage();
   docdb::DocDBDebugDump(
-      regular_db_.get(), LOG_STRING(INFO, lines), PrimarySchemaPackingStorage(),
+      regular_db_.get(), LOG_STRING(INFO, lines), *primary_schema_packing_storage,
       docdb::StorageDbType::kRegular);
 }
 
@@ -3356,24 +3356,26 @@ Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reas
 std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
   if (!regular_db_) return "";
 
-  const auto& schema_packing_storage = PrimarySchemaPackingStorage();
+  auto schema_packing_storage = PrimarySchemaPackingStorage();
   if (!include_intents) {
-    return docdb::DocDBDebugDumpToStr(doc_db().WithoutIntents(), schema_packing_storage);
+    return docdb::DocDBDebugDumpToStr(doc_db().WithoutIntents(),
+        *schema_packing_storage);
   }
 
-  return docdb::DocDBDebugDumpToStr(doc_db(), schema_packing_storage);
+  return docdb::DocDBDebugDumpToStr(doc_db(), *schema_packing_storage);
 }
 
 void Tablet::TEST_DocDBDumpToContainer(
     IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
-  const auto& schema_packing_storage = PrimarySchemaPackingStorage();
+  auto schema_packing_storage = PrimarySchemaPackingStorage();
   if (!include_intents) {
-    return docdb::DocDBDebugDumpToContainer(doc_db().WithoutIntents(), schema_packing_storage, out);
+    return docdb::DocDBDebugDumpToContainer(doc_db().WithoutIntents(),
+        *schema_packing_storage, out);
   }
 
-  return docdb::DocDBDebugDumpToContainer(doc_db(), schema_packing_storage, out);
+  return docdb::DocDBDebugDumpToContainer(doc_db(), *schema_packing_storage, out);
 }
 
 void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
@@ -3382,13 +3384,13 @@ void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
     return;
   }
 
-  const auto& schema_packing_storage = PrimarySchemaPackingStorage();
+  auto schema_packing_storage = PrimarySchemaPackingStorage();
   docdb::DumpRocksDBToLog(
-      regular_db_.get(), schema_packing_storage, StorageDbType::kRegular, LogPrefix());
+      regular_db_.get(), *schema_packing_storage, StorageDbType::kRegular, LogPrefix());
 
   if (include_intents && intents_db_) {
     docdb::DumpRocksDBToLog(
-        intents_db_.get(), schema_packing_storage, StorageDbType::kIntents, LogPrefix());
+        intents_db_.get(), *schema_packing_storage, StorageDbType::kIntents, LogPrefix());
   }
 }
 
@@ -3972,8 +3974,10 @@ void Tablet::RegisterOperationFilter(OperationFilter* filter) {
   operation_filters_.push_back(*filter);
 }
 
-const docdb::SchemaPackingStorage& Tablet::PrimarySchemaPackingStorage() {
-  return metadata_->primary_table_info()->doc_read_context->schema_packing_storage;
+std::shared_ptr<docdb::SchemaPackingStorage> Tablet::PrimarySchemaPackingStorage() {
+  auto doc_read_context = metadata_->primary_table_info()->doc_read_context;
+  return std::shared_ptr<docdb::SchemaPackingStorage>(doc_read_context,
+      &doc_read_context->schema_packing_storage);
 }
 
 void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
@@ -3988,7 +3992,7 @@ void Tablet::UnregisterOperationFilterUnlocked(OperationFilter* filter) {
 docdb::DocReadContextPtr Tablet::GetDocReadContext(const std::string& table_id) const {
   auto table_info = table_id.empty()
       ? metadata_->primary_table_info() : CHECK_RESULT(metadata_->GetTableInfo(table_id));
-  return docdb::DocReadContextPtr(table_info, table_info->doc_read_context.get());
+  return table_info->doc_read_context;
 }
 
 Schema Tablet::GetKeySchema(const std::string& table_id) const {
