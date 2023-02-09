@@ -278,8 +278,7 @@ public class Region extends Model {
 
   @JsonProperty("details")
   public RegionDetails getMaskRegionDetails() {
-    CloudInfoInterface.maskRegionDetails(this);
-    return details;
+    return CloudInfoInterface.maskRegionDetails(this);
   }
 
   @JsonIgnore

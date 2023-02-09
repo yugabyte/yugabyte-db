@@ -59,12 +59,17 @@ public interface CloudInfoInterface {
     if (providerDetails == null) {
       providerDetails = new ProviderDetails();
     }
+    CloudType cloudType = provider.getCloudCode();
+    return get(providerDetails, maskSensitiveData, cloudType);
+  }
+
+  public static <T extends CloudInfoInterface> T get(
+      ProviderDetails providerDetails, Boolean maskSensitiveData, CloudType cloudType) {
     ProviderDetails.CloudInfo cloudInfo = providerDetails.getCloudInfo();
     if (cloudInfo == null) {
       cloudInfo = new ProviderDetails.CloudInfo();
       providerDetails.cloudInfo = cloudInfo;
     }
-    CloudType cloudType = provider.getCloudCode();
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
 
@@ -73,16 +78,21 @@ public interface CloudInfoInterface {
     if (regionDetails == null) {
       regionDetails = new RegionDetails();
     }
-    RegionDetails.RegionCloudInfo cloudInfo = regionDetails.getCloudInfo();
-    if (cloudInfo == null) {
-      cloudInfo = new RegionDetails.RegionCloudInfo();
-      regionDetails.cloudInfo = cloudInfo;
-    }
     CloudType cloudType = null;
     if (region.provider != null) {
       cloudType = CloudType.valueOf(region.provider.code);
     } else if (!Strings.isNullOrEmpty(region.providerCode)) {
       cloudType = CloudType.valueOf(region.providerCode);
+    }
+    return get(regionDetails, maskSensitiveData, cloudType);
+  }
+
+  public static <T extends CloudInfoInterface> T get(
+      RegionDetails regionDetails, Boolean maskSensitiveData, CloudType cloudType) {
+    RegionDetails.RegionCloudInfo cloudInfo = regionDetails.getCloudInfo();
+    if (cloudInfo == null) {
+      cloudInfo = new RegionDetails.RegionCloudInfo();
+      regionDetails.cloudInfo = cloudInfo;
     }
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
@@ -93,16 +103,21 @@ public interface CloudInfoInterface {
     if (azDetails == null) {
       azDetails = new AvailabilityZoneDetails();
     }
-    AvailabilityZoneDetails.AZCloudInfo cloudInfo = azDetails.getCloudInfo();
-    if (cloudInfo == null) {
-      cloudInfo = new AvailabilityZoneDetails.AZCloudInfo();
-      azDetails.cloudInfo = cloudInfo;
-    }
     CloudType cloudType = null;
     if (zone.region != null) {
       cloudType = CloudType.valueOf(zone.region.provider.code);
     } else if (!Strings.isNullOrEmpty(zone.providerCode)) {
       cloudType = CloudType.valueOf(zone.providerCode);
+    }
+    return get(azDetails, maskSensitiveData, cloudType);
+  }
+
+  public static <T extends CloudInfoInterface> T get(
+      AvailabilityZoneDetails azDetails, Boolean maskSensitiveData, CloudType cloudType) {
+    AvailabilityZoneDetails.AZCloudInfo cloudInfo = azDetails.getCloudInfo();
+    if (cloudInfo == null) {
+      cloudInfo = new AvailabilityZoneDetails.AZCloudInfo();
+      azDetails.cloudInfo = cloudInfo;
     }
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
@@ -235,16 +250,25 @@ public interface CloudInfoInterface {
     }
   }
 
-  public static void maskProviderDetails(Provider provider) {
-    get(provider, true);
+  public static ProviderDetails maskProviderDetails(Provider provider) {
+    JsonNode detailsJson = Json.toJson(provider.details);
+    ProviderDetails details = Json.fromJson(detailsJson, ProviderDetails.class);
+    get(details, true, provider.getCloudCode());
+    return details;
   }
 
-  public static void maskRegionDetails(Region region) {
-    get(region, true);
+  public static RegionDetails maskRegionDetails(Region region) {
+    JsonNode detailsJson = Json.toJson(region.details);
+    RegionDetails details = Json.fromJson(detailsJson, RegionDetails.class);
+    get(details, true, region.provider.getCloudCode());
+    return details;
   }
 
-  public static void maskAvailabilityZoneDetails(AvailabilityZone zone) {
-    get(zone, true);
+  public static AvailabilityZoneDetails maskAvailabilityZoneDetails(AvailabilityZone zone) {
+    JsonNode detailsJson = Json.toJson(zone.details);
+    AvailabilityZoneDetails details = Json.fromJson(detailsJson, AvailabilityZoneDetails.class);
+    get(details, true, zone.region.provider.getCloudCode());
+    return details;
   }
 
   public static void setCloudProviderInfoFromConfig(Provider provider, Map<String, String> config) {

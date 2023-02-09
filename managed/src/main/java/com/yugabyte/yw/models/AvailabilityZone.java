@@ -121,8 +121,7 @@ public class AvailabilityZone extends Model {
 
   @JsonProperty("details")
   public AvailabilityZoneDetails getMaskAvailabilityZoneDetails() {
-    CloudInfoInterface.maskAvailabilityZoneDetails(this);
-    return details;
+    return CloudInfoInterface.maskAvailabilityZoneDetails(this);
   }
 
   @JsonIgnore
