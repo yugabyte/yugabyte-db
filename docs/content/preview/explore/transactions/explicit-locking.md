@@ -36,7 +36,7 @@ The following types of row locks are supported:
 
 The following example uses the `FOR UPDATE` row lock with the [fail-on-conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked.
 
-Before you can start using the example, you need to [set up a YugabyteDB universe](../../#set-up-yugabytedb-universe). When done, create an example table with sample data, as follows:
+Before you can start using the example, you need to [set up a YugabyteDB universe](../../#set-up-yugabytedb-universe). When done, create an example table and populate it with sample data, as follows:
 
 ```sql
 yugabyte=# CREATE TABLE t (k VARCHAR, v VARCHAR);

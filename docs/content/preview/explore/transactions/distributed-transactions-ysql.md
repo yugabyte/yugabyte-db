@@ -46,7 +46,7 @@ CREATE TABLE accounts (
 );
 ```
 
-Insert sample data into the table:
+Execute the following statements to insert sample data into the table:
 
 ```sql
 INSERT INTO accounts VALUES ('John', 'savings', 1000);
@@ -55,7 +55,7 @@ INSERT INTO accounts VALUES ('Smith', 'savings', 2000);
 INSERT INTO accounts VALUES ('Smith', 'checking', 50);
 ```
 
-Display the contents of the table:
+Display the contents of the table, as follows:
 
 ```sql
 yugabyte=# SELECT * FROM accounts;
@@ -152,7 +152,7 @@ Each update performed as a part of the transaction is replicated across multiple
 
 ### Concurrency control
 
-[Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are optimistic and pessimistic.
+[Concurrency control](../../../architecture/transactions/concurrency-control/) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are optimistic and pessimistic.
 
 YugabyteDB currently supports optimistic concurrency control, with pessimistic concurrency control being worked on actively.
 
