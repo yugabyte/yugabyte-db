@@ -82,6 +82,9 @@ Don't forget to add JDK binaries to `PATH`, ensuring this version takes preceden
 For example,
 
 ```sh
+# On apple silicon mac.
+echo 'export PATH="/opt/local/homebrew/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
+# On intel mac.
 echo 'export PATH="/usr/local/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
 ```
 
