@@ -571,7 +571,6 @@ void RemoteTablet::GetRemoteTabletServers(
 bool RemoteTablet::IsLocalRegion() {
   auto tservers = GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
   for (const auto &tserver : tservers) {
-    LOG(INFO) << "TSERVER" << tserver->ToString();
     if (!tserver->IsLocalRegion()) {
       return false;
     }
