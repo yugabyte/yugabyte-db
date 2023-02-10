@@ -70,6 +70,10 @@ DEFINE_RUNTIME_int32(txn_slow_op_threshold_ms, 0,
     "disables printing the collected traces.");
 TAG_FLAG(txn_slow_op_threshold_ms, advanced);
 
+DEFINE_RUNTIME_bool(txn_print_trace_on_error, false,
+    "Controls whether to always print txn traces on error.");
+TAG_FLAG(txn_print_trace_on_error, advanced);
+
 DEFINE_UNKNOWN_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
               "Interval of transaction heartbeat in usec.");
 DEFINE_UNKNOWN_bool(transaction_disable_heartbeat_in_tests, false,
@@ -78,6 +82,9 @@ DECLARE_uint64(max_clock_skew_usec);
 
 DEFINE_UNKNOWN_bool(auto_promote_nonlocal_transactions_to_global, true,
             "Automatically promote transactions touching data outside of region to global.");
+
+DEFINE_RUNTIME_bool(log_failed_txn_metadata, false, "Log metadata about failed transactions.");
+TAG_FLAG(log_failed_txn_metadata, advanced);
 
 DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
                  "Inject delay before processing flushed operations by transaction.");
@@ -247,7 +254,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // aborted without doing anything, so we set time_spent to 0 for these transactions.
     const auto time_spent = now - (start_ == CoarseTimePoint() ? now : start_);
     if ((trace_ && trace_->must_print())
-           || (threshold > 0 && ToMilliseconds(time_spent) > threshold)) {
+           || (threshold > 0 && ToMilliseconds(time_spent) > threshold)
+           || (FLAGS_txn_print_trace_on_error && !status_.ok())) {
       LOG(INFO) << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
         << (trace_ ? trace_->DumpToString(true) : "Not collected");
     } else if (trace_) {
@@ -1907,6 +1915,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (status_.ok()) {
       status_ = status.CloneAndPrepend(operation);
       state_.store(TransactionState::kAborted, std::memory_order_release);
+
+      if (FLAGS_log_failed_txn_metadata) {
+        LOG_WITH_PREFIX(INFO) << operation << " failed, status=" << status
+                              << ", metadata=" << AsString(metadata_)
+                              << ", state=" << AsString(state_)
+                              << ", old_status_tablet_state=" << AsString(old_status_tablet_state_)
+                              << ", tablets=" << AsString(tablets_);
+      }
     }
   }
 
