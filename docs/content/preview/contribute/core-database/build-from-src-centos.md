@@ -58,7 +58,7 @@ sudo yum -y install epel-release git libatomic libicu rsync
 
 Python 3.7 or higher is required.
 Since CentOS 7 does not include that in the package manager, this is nontrivial.
-One way is to compile from source.
+One way is to get it is to compile from source.
 Here is an example using Python 3.9.
 
 [Install packages for building python][python-packages].
