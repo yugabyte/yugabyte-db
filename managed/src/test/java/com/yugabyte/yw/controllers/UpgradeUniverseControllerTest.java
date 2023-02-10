@@ -96,7 +96,6 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
-import play.test.WithApplication;
 
 @RunWith(JUnitParamsRunner.class)
 public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseTest {
