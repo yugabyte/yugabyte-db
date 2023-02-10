@@ -11,6 +11,9 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -28,7 +31,6 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -115,7 +117,7 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true,
           paramType = "body"))
-  public Result edit(UUID customerUUID, UUID providerUUID) {
+  public Result edit(UUID customerUUID, UUID providerUUID, boolean validate) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
@@ -130,8 +132,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     JsonNode requestBody = request().body().asJson();
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
-        cloudProviderHandler.editProvider(
-            customer, provider, editProviderReq, getFirstRegionCode(provider));
+        cloudProviderHandler.editProvider(customer, provider, editProviderReq, validate);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -149,8 +150,8 @@ public class CloudProviderApiController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
-  public Result create(UUID customerUUID) {
-    JsonNode requestBody = request().body().asJson();
+  public Result create(UUID customerUUID, boolean validate) {
+    JsonNode requestBody = mayBeMassageRequest(request().body().asJson());
     Provider reqProvider =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -162,11 +163,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     } else {
       providerEbean =
           cloudProviderHandler.createProvider(
-              customer,
-              providerCode,
-              reqProvider.name,
-              reqProvider,
-              getFirstRegionCode(reqProvider));
+              customer, providerCode, reqProvider.name, reqProvider, validate);
     }
 
     if (providerCode.isRequiresBootstrap()) {
@@ -306,13 +303,6 @@ public class CloudProviderApiController extends AuthenticatedController {
     return PlatformResults.withData(accessKeyRotationSchedules);
   }
 
-  private static String getFirstRegionCode(Provider provider) {
-    for (Region r : provider.regions) {
-      return r.code;
-    }
-    return null;
-  }
-
   @ApiOperation(
       value = "Edit a access key rotation schedule",
       response = Schedule.class,
@@ -342,5 +332,41 @@ public class CloudProviderApiController extends AuthenticatedController {
             Audit.ActionType.Edit,
             request().body().asJson());
     return PlatformResults.withData(schedule);
+  }
+
+  // v2 API version 1 backward compatiblity support.
+  public JsonNode mayBeMassageRequest(JsonNode requestBody) {
+    JsonNode config = requestBody.get("config");
+    if (config == null) {
+      return requestBody;
+    }
+    String providerCode = requestBody.get("code").asText();
+    ObjectMapper mapper = Json.mapper();
+    JsonNode regions = requestBody.get("regions");
+    ArrayNode regionsNode = mapper.createArrayNode();
+    if (regions != null && regions.isArray()) {
+      for (JsonNode region : regions) {
+        ObjectNode regionWithProviderCode = mapper.createObjectNode();
+        regionWithProviderCode.put("providerCode", providerCode);
+        regionWithProviderCode.setAll((ObjectNode) region);
+        JsonNode zones = region.get("zones");
+        ArrayNode zonesNode = mapper.createArrayNode();
+        if (zones != null && zones.isArray()) {
+          for (JsonNode zone : zones) {
+            ObjectNode zoneWithProviderCode = mapper.createObjectNode();
+            zoneWithProviderCode.put("providerCode", providerCode);
+            zoneWithProviderCode.setAll((ObjectNode) zone);
+            zonesNode.add(zoneWithProviderCode);
+          }
+        }
+        regionWithProviderCode.remove("zones");
+        regionWithProviderCode.put("zones", zonesNode);
+        regionsNode.add(regionWithProviderCode);
+      }
+    }
+    ((ObjectNode) requestBody).remove("regions");
+    ((ObjectNode) requestBody).put("regions", regionsNode);
+
+    return CloudInfoInterface.mayBeMassageRequest(requestBody, true);
   }
 }

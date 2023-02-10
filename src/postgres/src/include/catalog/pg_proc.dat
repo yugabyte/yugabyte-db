@@ -10365,6 +10365,12 @@
   proargnames => '{table_oid,range_split_clause}',
   prosrc => 'yb_get_range_split_clause' },
 
+{ oid => '8035',
+  descr => 'statistics: YB catalog version of this backend',
+  proname => 'yb_pg_stat_get_backend_catalog_version', provolatile => 's',
+  proparallel => 'r', prorettype => 'int8', proargtypes => 'int4',
+  prosrc => 'yb_pg_stat_get_backend_catalog_version' },
+
 { oid => '8042', descr => 'get the region of the currently connected node',
   proname => 'yb_server_region', provolatile => 's',
   prorettype => 'varchar', proargtypes => '',

@@ -55,7 +55,7 @@ public class AlertChannelSlackTest extends FakeDBApplication {
       channel.setParams(params);
 
       Alert alert = ModelFactory.createAlert(defaultCustomer);
-      alertChannelSlack.sendNotification(defaultCustomer, alert, channel);
+      alertChannelSlack.sendNotification(defaultCustomer, alert, channel, null);
 
       RecordedRequest request = server.takeRequest();
       assertThat(request.getPath(), is(SLACK_TEST_PATH));
@@ -80,7 +80,7 @@ public class AlertChannelSlackTest extends FakeDBApplication {
       Alert alert = ModelFactory.createAlert(defaultCustomer);
 
       assertThat(
-          () -> alertChannelSlack.sendNotification(defaultCustomer, alert, channel),
+          () -> alertChannelSlack.sendNotification(defaultCustomer, alert, channel, null),
           thrown(
               PlatformNotificationException.class,
               "Error sending Slack message for alert Alert 1: "

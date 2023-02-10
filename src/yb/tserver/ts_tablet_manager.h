@@ -178,7 +178,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const Partition& partition,
       consensus::RaftConfigPB config,
       const bool colocated = false,
-      const std::vector<SnapshotScheduleId>& snapshot_schedules = {});
+      const std::vector<SnapshotScheduleId>& snapshot_schedules = {},
+      const std::unordered_set<StatefulServiceKind>& hosted_services = {});
 
   Status ApplyTabletSplit(
       tablet::SplitOperation* operation, log::Log* raft_log,

@@ -171,6 +171,7 @@ class Waiter():
     def wait(self, operation, region=None, zone=None):
         # This allows easier chaining of waits on functions that are NOOPs if items already exist.
         if operation is None:
+            logging.warning("Returning waiting for a None Operation")
             return
         retry_count = 0
         name = operation["name"]
@@ -582,6 +583,7 @@ class GoogleCloudAdmin():
     def create_disk(self, zone, instance_tags, body):
         if instance_tags is not None:
             body.update({"labels": json.loads(instance_tags)})
+        # Create a persistent disk with wait
         operation = self.compute.disks().insert(project=self.project,
                                                 zone=zone,
                                                 body=body).execute()
@@ -642,6 +644,7 @@ class GoogleCloudAdmin():
             self.compute.disks().delete(project=self.project, zone=zone, disk=disk_name).execute()
 
     def mount_disk(self, zone, instance, body):
+        logging.info("Attaching disk on instance {} in zone {}".format(instance, zone))
         operation = self.compute.instances().attachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,
@@ -649,6 +652,7 @@ class GoogleCloudAdmin():
         return self.waiter.wait(operation, zone=zone)
 
     def unmount_disk(self, zone, instance, name):
+        logging.info("Detaching disk {} from instance {}".format(name, instance))
         operation = self.compute.instances().detachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,
@@ -868,7 +872,8 @@ class GoogleCloudAdmin():
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
                         assign_static_public_ip=False, ssh_keys=None, boot_script=None,
-                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None):
+                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None,
+                        gcp_instance_template=None):
         # Name of the project that target VPC network belongs to.
         host_project = self.get_host_project()
 
@@ -987,12 +992,20 @@ class GoogleCloudAdmin():
         for _ in range(num_volumes):
             body["disks"].append(disk_config)
 
+        args = {
+            "project": self.project,
+            "zone": zone,
+            "body": body
+        }
         logging.info("[app] About to create GCP VM {} in region {}.".format(
             instance_name, region))
-        self.waiter.wait(self.compute.instances().insert(
-            project=self.project,
-            zone=zone,
-            body=body).execute(), zone=zone)
+        if gcp_instance_template:
+            template_url_format = "projects/{}/global/instanceTemplates/{}"
+            template_url = template_url_format.format(self.project, gcp_instance_template)
+            logging.info("[app] Creating VM {} using instance template {}"
+                         .format(instance_name, gcp_instance_template))
+            args["sourceInstanceTemplate"] = template_url
+        self.waiter.wait(self.compute.instances().insert(**args).execute(), zone=zone)
         logging.info("[app] Created GCP VM {}".format(instance_name))
 
     def get_console_output(self, zone, instance_name):

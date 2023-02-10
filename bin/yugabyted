@@ -115,8 +115,8 @@ PREREQS_ERROR_MSGS = {
         'we recommend installing chrony package.',
 }
 QUICK_START_LINKS = {
-    'mac' : 'https://docs.yugabyte.com/latest/quick-start/install/macos/',
-    'linux' : 'https://docs.yugabyte.com/latest/quick-start/install/linux/',
+    'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
+    'linux' : 'https://docs.yugabyte.com/preview/quick-start/linux/',
 }
 LINUX_PREREQS_CMDS = {
     'transparent_hugepages' : 'cat /sys/kernel/mm/transparent_hugepage/enabled',
@@ -618,6 +618,9 @@ class ControlScript(object):
 
     # Configuring the data placement policy
     def configure_data_placement(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
 
         # to-do: can be removed after multi-region and geo-replicated feature is implemented
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
@@ -861,6 +864,10 @@ class ControlScript(object):
 
     # Configuring encryption at rest
     def configure_encrypt_at_rest(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
         status_details = []
         has_errors = False
 
@@ -1052,13 +1059,15 @@ class ControlScript(object):
 
     # Checks whether the prerequisites are met or not
     def prereqs_check(self, ulimits=False):
-        help_msg = "Review the following docs and rerun the start command.\n"
+        help_msg = ""
         if OS_NAME == "Linux":
             check = self.linux_prereqs_check()
-            help_msg+=('Quick start for Linux: '+QUICK_START_LINKS['linux']+'\n')
+            help_msg = "Please review the \'Quick start for Linux\' docs and rerun "\
+                "the start command: " + Output.make_underline(QUICK_START_LINKS['linux'])+'\n'
         else:
             check = self.mac_prereqs_check()
-            help_msg+=('Quick start for Mac: '+QUICK_START_LINKS['mac']+'\n')
+            help_msg+="Please review the \'Quick start for macOS\' docs and rerun "\
+                "the start command: "+ Output.make_underline(QUICK_START_LINKS['mac'])+'\n'
 
         prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn = check
 
@@ -1067,8 +1076,10 @@ class ControlScript(object):
         for prereq in prereqs_failed:
             failed_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
         warning_msg = ""
+        warnings = []
         for prereq in prereqs_warn:
             warning_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
+            warnings.append(PREREQS_ERROR_MSGS[prereq])
         ulimit_msg = {
             'open_files' :"- "+PREREQS_ERROR_MSGS['open_files']+"\n",
             'max_user_processes' :"- "+PREREQS_ERROR_MSGS['max_user_processes']+"\n",
@@ -1077,7 +1088,7 @@ class ControlScript(object):
         final_msg = ""
         check_status = None
         if prereqs_failed_flag:
-            final_msg += (Output.make_red("FAILED") + msg)
+            final_msg += (Output.ANIMATION_FAIL + " " + Output.make_red("FAILED") + ": " + msg)
             final_msg += (failed_msg+warning_msg)
             if ulimits:
                 for ulimit in ulimits:
@@ -1085,21 +1096,20 @@ class ControlScript(object):
             final_msg += ("\n"+help_msg+"\n")
             check_status = Output.ANIMATION_FAIL
         elif prereqs_warn_flag:
-            final_msg += (Output.make_yellow("WARNING") + msg)
-            final_msg += warning_msg
+            final_msg = warnings
             if ulimits:
                 for ulimit in ulimits:
-                    final_msg+=ulimit_msg[ulimit]
-            final_msg += ("\n"+help_msg+"\n")
+                    final_msg.append(PREREQS_ERROR_MSGS[ulimit])
+            final_msg.append(help_msg)
             check_status = Output.ANIMATION_WARNING
         elif ulimits:
-            final_msg += (Output.make_yellow("WARNING") + msg)
+            final_msg = []
             for ulimit in ulimits:
-                final_msg+=ulimit_msg[ulimit]
-            final_msg += ("\n"+help_msg+"\n")
+                final_msg.append(PREREQS_ERROR_MSGS[ulimit])
+            final_msg.append(help_msg)
             check_status = Output.ANIMATION_WARNING
         else:
-            final_msg = "System checks"
+            final_msg = Output.ANIMATION_SUCCESS + " " + "System checks"
             check_status = Output.ANIMATION_SUCCESS
 
         result = {
@@ -1388,8 +1398,9 @@ class ControlScript(object):
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
-                Output.init_animation("Running system checks...")
-
+                # Output.init_animation("Running system checks...")
+                warnings = []
+                warning_help_msg=""
                 ulimits_failed = self.script.set_rlimits(print_info=True)
                 if ulimits_failed:
                     msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
@@ -1399,10 +1410,16 @@ class ControlScript(object):
                     self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
 
                 prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
-                Output.update_animation(msg=prereqs_check_result['msg'],
-                    status=prereqs_check_result['status'])
-                if prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.log(msg=prereqs_check_result['msg'], level=logging.ERROR)
+                # Output.update_animation(msg=prereqs_check_result['msg'],
+                #     status=prereqs_check_result['status'])
+                if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
+                    Output.print_out(prereqs_check_result['msg'])
+                elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
+                    warnings.extend(prereqs_check_result['msg'][:-1])
+                    warning_help_msg = prereqs_check_result['msg'][-1]
+                elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
+                    Output.log(msg=prereqs_check_result['msg'],
+                        level=logging.ERROR)
 
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
@@ -1432,8 +1449,7 @@ class ControlScript(object):
                     Output.update_animation("Encryption in Transit and " +
                         "Password Authentication enabled")
                 else:
-                    Output.print_and_log(Output.make_yellow(Output.ANIMATION_WARNING +
-                        " WARNING:") + " Cluster started in an insecure mode without " +
+                    warnings.append("Cluster started in an insecure mode without " +
                         "authentication and encryption enabled. For non-production use only, " +
                         "not to be used without firewalls blocking the internet traffic.")
 
@@ -1474,6 +1490,15 @@ class ControlScript(object):
             if is_first_install and not join_ip:
                 self.first_install_init_auth()
 
+            if warnings:
+                warning_msg = "\n" + Output.make_yellow(Output.ANIMATION_WARNING +
+                    " WARNINGS") + ":\n"
+
+                for msg in warnings:
+                    warning_msg += "- " + msg + "\n"
+                if warning_help_msg:
+                    warning_msg += warning_help_msg
+
             if is_first_run:
                 status = self.get_status_string() + \
                     "{} YugabyteDB started successfully! To load a sample dataset, " \
@@ -1491,6 +1516,9 @@ class ControlScript(object):
 
                 if len(self.setup_env_init.get_ysql_password()) > 99:
                     status = status + Output.make_red(YSQL_PASSWORD_LENGTH_WARNING)
+
+                if warnings:
+                    Output.print_out(warning_msg)
 
                 Output.print_out(status)
 

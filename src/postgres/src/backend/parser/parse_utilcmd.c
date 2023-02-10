@@ -474,7 +474,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	else if (colocated_option_specified)
 		ereport(WARNING,
 				(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
-				 errmsg("'colocated' syntax will be deprecated in a future release"),
+				 errmsg("'colocated' syntax is deprecated and will be removed in a future release"),
 				 errhint("Use 'colocation' instead of 'colocated'.")));
 
 	if (IsYsqlUpgrade && cxt.isSystem &&

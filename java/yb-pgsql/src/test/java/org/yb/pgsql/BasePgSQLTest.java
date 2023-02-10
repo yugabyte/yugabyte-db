@@ -1515,6 +1515,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return doesQueryPlanContainsSubstring(stmt, query, "Filter:");
   }
 
+  /** Whether or not this query pushes down a filter condition */
+  protected boolean doesPushdownCondition(Statement stmt, String query) throws SQLException {
+    return doesQueryPlanContainsSubstring(stmt, query, "Remote Filter:");
+  }
+
   /**
    * Return whether this select query uses a partitioned index in an IndexScan for ordering.
    */

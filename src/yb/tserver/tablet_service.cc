@@ -1386,9 +1386,18 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   for (const auto& id : req->snapshot_schedules()) {
     snapshot_schedules.push_back(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(id)));
   }
+
+  std::unordered_set<StatefulServiceKind> hosted_services;
+  for (auto& service_kind : req->hosted_stateful_services()) {
+    SCHECK(
+        StatefulServiceKind_IsValid(service_kind), InvalidArgument,
+        Format("Invalid stateful service kind: $0", service_kind));
+    hosted_services.insert((StatefulServiceKind)service_kind);
+  }
+
   status = ResultToStatus(server_->tablet_manager()->CreateNewTablet(
-      table_info, req->tablet_id(), partition, req->config(), req->colocated(),
-      snapshot_schedules));
+      table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
+      hosted_services));
   if (PREDICT_FALSE(!status.ok())) {
     return status.IsAlreadyPresent()
         ? status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_ALREADY_EXISTS))

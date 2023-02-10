@@ -655,6 +655,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   void SetMatview();
 
+  google::protobuf::RepeatedField<int> GetHostedStatefulServices() const;
+
  private:
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
