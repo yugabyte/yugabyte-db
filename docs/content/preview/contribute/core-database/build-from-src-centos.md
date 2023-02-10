@@ -154,6 +154,15 @@ export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 
 [ccache]: https://ccache.dev
 
+### GCC (optional)
+
+To be able to compile with GCC, install devtoolset.
+
+```sh
+sudo yum install -y centos-release-scl
+sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
+```
+
 ### Java
 
 {{% readfile "includes/java.md" %}}
