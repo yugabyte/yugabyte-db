@@ -28,7 +28,9 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -255,9 +257,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       }
       // Check AMI info.
       if (customImageId) {
-        assertEquals(r.ybImage, metadata.customImageId);
+        assertEquals(r.getYbImage(), metadata.customImageId);
       } else {
-        assertEquals(r.ybImage, defaultImage);
+        assertEquals(r.getYbImage(), defaultImage);
       }
     }
   }
@@ -545,5 +547,27 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     assertEquals(Failure, taskInfo.getTaskState());
     Region r = Region.getByCode(defaultProvider, "us-west-1");
     assertNull(r);
+  }
+
+  @Test
+  public void testCloudBootstrapWithInstanceTemplate() throws InterruptedException {
+    String region = "us-west1";
+    JsonNode zoneInfo =
+        Json.parse(
+            String.format(
+                "{\"%s\": {\"zones\": [\"zone-1\"], \"subnetworks\": [\"subnet-0\"]}}", region));
+    CloudBootstrap.Params taskParams = getBaseTaskParams();
+    CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
+        new CloudBootstrap.Params.PerRegionMetadata();
+    createPerRegionMetadata(region, false, false, perRegionMetadata);
+    String instanceTemplate = "TestInstanceTemplate";
+    perRegionMetadata.instanceTemplate = instanceTemplate;
+    taskParams.perRegionMetadata.put(region, perRegionMetadata);
+    taskParams.providerUUID = gcpProvider.uuid;
+    validateCloudBootstrapSuccess(
+        taskParams, zoneInfo, ImmutableList.of(region), "gcp", false, false, false, false);
+    Provider provider = Provider.get(taskParams.providerUUID);
+    GCPRegionCloudInfo g = CloudInfoInterface.get(provider.regions.get(0));
+    assertEquals(instanceTemplate, g.getInstanceTemplate());
   }
 }

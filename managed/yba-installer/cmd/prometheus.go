@@ -5,7 +5,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +130,11 @@ func (prom Prometheus) Start() {
 
 func (prom Prometheus) Stop() {
 
+	if prom.Status().Status != common.StatusRunning {
+		log.Debug(prom.name + " is already stopped")
+		return
+	}
+
 	if common.HasSudoAccess() {
 
 		arg1 := []string{"stop", "prometheus"}
@@ -171,16 +178,21 @@ func (prom Prometheus) Restart() {
 
 }
 
-// Uninstall uninstalls prometheus and optionally removes all data.
+// Uninstall stops prometheus and optionally removes all data.
 func (prom Prometheus) Uninstall(removeData bool) {
 	prom.Stop()
 
 	if common.HasSudoAccess() {
 		err := os.Remove(prom.SystemdFileLocation)
 		if err != nil {
-			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
-				err.Error(), prom.SystemdFileLocation))
+			pe := err.(*fs.PathError)
+			if !errors.Is(pe.Err, fs.ErrNotExist) {
+				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
+					err.Error(), prom.SystemdFileLocation))
+			}
 		}
+		// reload systemd daemon
+		common.RunBash(common.Systemctl, []string{"daemon-reload"})
 	}
 
 	if removeData {

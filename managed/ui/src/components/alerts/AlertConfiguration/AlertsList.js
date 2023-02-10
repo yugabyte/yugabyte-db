@@ -119,7 +119,11 @@ const getTag = (type) => {
   return <span className="name-tag">{type}</span>;
 };
 
-const NO_DESTINATION_MSG = <span className='no-destination-msg'><i className='fa fa-exclamation-triangle' aria-hidden='true'/> No Destination</span>;
+const NO_DESTINATION_MSG = (
+  <span className="no-destination-msg">
+    <i className="fa fa-exclamation-triangle" aria-hidden="true" /> No Destination
+  </span>
+);
 
 export const AlertsList = (props) => {
   const [alertList, setAlertList] = useState([]);
@@ -166,7 +170,7 @@ export const AlertsList = (props) => {
     });
 
     alertDestinations().then((res) => {
-      setDefaultDestination(res.find((destination) => destination.defaultDestination));
+      setDefaultDestination(res?.find((destination) => destination.defaultDestination));
       setAlertDestinationList(res);
     });
   };
@@ -174,33 +178,33 @@ export const AlertsList = (props) => {
   useEffect(onInit, []);
 
   const formatName = (cell, row) => {
-
     const Tag = getTag(row.targetType);
 
     let name = row.name;
 
-    if(filters[FILTER_TYPE_NAME] && !isAlertListLoading){
-
+    if (filters[FILTER_TYPE_NAME] && !isAlertListLoading) {
       const searchText = filters[FILTER_TYPE_NAME];
       const index = row.name.toLowerCase().indexOf(searchText.toLowerCase());
-      
-      name = (<span>
-        {row?.name?.substr(0, index)}
-        <span className='highlight'>{row?.name?.substr(index, searchText.length)}</span>
-        {row?.name?.substr(index+searchText.length)}
-      </span>);
+
+      name = (
+        <span>
+          {row?.name?.substr(0, index)}
+          <span className="highlight">{row?.name?.substr(index, searchText.length)}</span>
+          {row?.name?.substr(index + searchText.length)}
+        </span>
+      );
     }
-    
+
     if (!row.active) {
       return (
         <span className="alert-inactive" title={row.name}>
-          <span className='alert-name'>{name}</span> (Inactive) {Tag}
+          <span className="alert-name">{name}</span> (Inactive) {Tag}
         </span>
       );
     }
     return (
       <span title={row.name}>
-        <span className='alert-name'>{name}&nbsp;</span> {Tag}
+        <span className="alert-name">{name}&nbsp;</span> {Tag}
       </span>
     );
   };
@@ -270,9 +274,9 @@ export const AlertsList = (props) => {
       .map((destination) => {
         return destination.uuid === row.destinationUUID
           ? {
-            value: destination.uuid,
-            label: destination.name
-          }
+              value: destination.uuid,
+              label: destination.name
+            }
           : null;
       })
       .filter((res) => res !== null);
@@ -290,8 +294,8 @@ export const AlertsList = (props) => {
     const currentDestination = destination[0]?.value
       ? destination[0]?.value
       : row.defaultDestination
-        ? '<default>'
-        : '<empty>';
+      ? '<default>'
+      : '<empty>';
     const targetType = row.target.all ? 'allUniverses' : 'selectedUniverses';
     const univerList =
       isNonEmptyArray(row.target.uuids) &&
@@ -337,7 +341,6 @@ export const AlertsList = (props) => {
    */
   const onDeleteConfig = (row) => {
     deleteAlertConfig(row.uuid).then(() => {
-
       const reqPayload = preparePayloadForAlertReq();
       alertConfigs(reqPayload).then((res) => {
         setAlertList(res);
@@ -357,7 +360,9 @@ export const AlertsList = (props) => {
     return (
       <span>
         {targetUniverse.map((u) => (
-          <div key={u.universeUUID} title={u.name}>{u.name}</div>
+          <div key={u.universeUUID} title={u.name}>
+            {u.name}
+          </div>
         ))}
       </span>
     );
@@ -430,11 +435,14 @@ export const AlertsList = (props) => {
 
   const decideDropdownMenuPos = (rowIndex, sizePerPage, totalRecords, currentPage) => {
     //display the menu at the bottom for the top five records
-    if(rowIndex < 5){
+    if (rowIndex < 5) {
       return false;
     }
     //display the menu at the top for the last five records
-    const itemsPresentInCurrentPage = Math.min(sizePerPage ,totalRecords - (currentPage * sizePerPage));
+    const itemsPresentInCurrentPage = Math.min(
+      sizePerPage,
+      totalRecords - currentPage * sizePerPage
+    );
 
     return itemsPresentInCurrentPage - rowIndex < 5;
   };
@@ -666,12 +674,12 @@ export const AlertsList = (props) => {
               options={{
                 ...options,
                 sizePerPage,
-                onSizePerPageList : setSizePerPage
+                onSizePerPageList: setSizePerPage
               }}
               pagination
               condensed
               ref={bootstrapTableRef}
-              maxHeight='500px'
+              maxHeight="500px"
             >
               <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
               <TableHeaderColumn
@@ -739,7 +747,16 @@ export const AlertsList = (props) => {
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="configActions"
-                dataFormat={(cell, row, _, rowIndex) => formatConfigActions(cell, row, rowIndex, sizePerPage, alertList.length, options.page)}
+                dataFormat={(cell, row, _, rowIndex) =>
+                  formatConfigActions(
+                    cell,
+                    row,
+                    rowIndex,
+                    sizePerPage,
+                    alertList.length,
+                    options.page
+                  )
+                }
                 columnClassName="yb-actions-cell"
                 className="yb-actions-cell"
                 width="5%"

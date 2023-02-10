@@ -1,0 +1,27 @@
+version: '3'
+
+services:
+  odyssey:
+    build:
+      dockerfile: ./docker/Dockerfile
+      context: .
+    environment:
+      CMAKE_BUILD_TYPE: "${CMAKE_BUILD_TYPE:-Debug}"
+    networks:
+      od_net:
+        ipv4_address: 192.168.233.15
+
+  openldapr:
+    image: "osixia/openldap:1.5.0"
+    networks:
+      od_net:
+        ipv4_address: 192.168.233.16
+
+networks:
+  od_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+       - subnet: 192.168.233.0/24
+         #       - gateway: 192.168.233.1

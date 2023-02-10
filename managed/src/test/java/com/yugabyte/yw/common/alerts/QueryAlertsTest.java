@@ -104,6 +104,7 @@ public class QueryAlertsTest extends FakeDBApplication {
             alertService,
             alertConfigurationService,
             alertChannelService,
+            app.injector().instanceOf(AlertChannelTemplateService.class),
             alertDestinationService,
             channelsManager,
             metricService);

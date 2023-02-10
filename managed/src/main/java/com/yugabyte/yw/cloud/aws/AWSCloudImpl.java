@@ -1,16 +1,25 @@
 package com.yugabyte.yw.cloud.aws;
 
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.toSet;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.amazonaws.AmazonServiceException;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.ec2.model.DescribeImagesRequest;
+import com.amazonaws.services.ec2.model.DescribeImagesResult;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsRequest;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsResult;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.DryRunResult;
 import com.amazonaws.services.ec2.model.Filter;
+import com.amazonaws.services.ec2.model.Image;
 import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceTypeOffering;
 import com.amazonaws.services.ec2.model.LocationType;
@@ -39,24 +48,33 @@ import com.amazonaws.services.elasticloadbalancingv2.model.TargetTypeEnum;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
+import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.amazonaws.services.kms.model.DisableKeyRequest;
 import com.amazonaws.services.kms.model.ScheduleKeyDeletionRequest;
 import com.amazonaws.services.kms.model.Tag;
+import com.amazonaws.services.route53.AmazonRoute53;
+import com.amazonaws.services.route53.AmazonRoute53ClientBuilder;
+import com.amazonaws.services.route53.model.GetHostedZoneRequest;
+import com.amazonaws.services.route53.model.GetHostedZoneResult;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
+import com.amazonaws.services.securitytoken.model.AWSSecurityTokenServiceException;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeID;
-import org.apache.commons.collections.CollectionUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -65,18 +83,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.mapping;
-import static java.util.stream.Collectors.toSet;
+import org.apache.commons.collections.CollectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 // TODO - Better handling of UnauthorizedOperation. Ideally we should trigger alert so that
-// site admin knows about it
 public class AWSCloudImpl implements CloudAPI {
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
 
   public AmazonElasticLoadBalancing getELBClient(Provider provider, String regionCode) {
-    return getELBClientInternal(provider.getUnmaskedConfig(), regionCode);
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+    return getELBClientInternal(config, regionCode);
   }
 
   private AmazonElasticLoadBalancing getELBClientInternal(
@@ -90,7 +108,8 @@ public class AWSCloudImpl implements CloudAPI {
 
   // TODO use aws sdk 2.x and switch to async
   public AmazonEC2 getEC2Client(Provider provider, String regionCode) {
-    return getEC2ClientInternal(provider.getUnmaskedConfig(), regionCode);
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+    return getEC2ClientInternal(config, regionCode);
   }
 
   private AmazonEC2 getEC2ClientInternal(Map<String, String> config, String regionCode) {
@@ -158,61 +177,73 @@ public class AWSCloudImpl implements CloudAPI {
   }
 
   @Override
-  public boolean isValidCreds(Map<String, String> config, String region) {
-    try {
-      AmazonEC2 ec2Client = getEC2ClientInternal(config, region);
-      DryRunResult<DescribeInstancesRequest> dryRunResult =
-          ec2Client.dryRun(new DescribeInstancesRequest());
-      if (!dryRunResult.isSuccessful()) {
-        LOG.error(dryRunResult.getDryRunResponse().getMessage());
-        return false;
-      }
-      return dryRunResult.isSuccessful();
-    } catch (Exception e) {
-      LOG.error(e.getMessage());
-      return false;
-    }
+  public boolean isValidCreds(Provider provider, String region) {
+    // TODO: Remove this function once the validators are added for all cloud provider.
+    return true;
   }
 
   @Override
   public boolean isValidCredsKms(ObjectNode config, UUID customerUUID) {
     try {
-      AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
-      // Create a key.
-      String keyDescription =
-          "Fake key to test the authenticity of the credentials. It is scheduled to be deleted. "
-              + "DO NOT USE.";
-      ObjectNode keyPolicy = Json.newObject().put("Version", "2012-10-17");
-      ObjectNode keyPolicyStatement = Json.newObject();
-      keyPolicyStatement.put("Effect", "Allow");
-      keyPolicyStatement.put("Resource", "*");
-      ArrayNode keyPolicyActions =
-          Json.newArray()
-              .add("kms:Create*")
-              .add("kms:Put*")
-              .add("kms:DisableKey")
-              .add("kms:ScheduleKeyDeletion");
-      keyPolicyStatement.set("Principal", Json.newObject().put("AWS", "*"));
-      keyPolicyStatement.set("Action", keyPolicyActions);
-      keyPolicy.set("Statement", Json.newArray().add(keyPolicyStatement));
-      CreateKeyRequest keyReq =
-          new CreateKeyRequest()
-              .withDescription(keyDescription)
-              .withPolicy(new ObjectMapper().writeValueAsString(keyPolicy))
-              .withTags(
-                  new Tag().withTagKey("customer-uuid").withTagValue(customerUUID.toString()),
-                  new Tag().withTagKey("usage").withTagValue("validate-aws-key-authenticity"),
-                  new Tag().withTagKey("status").withTagValue("deleted"));
-      CreateKeyResult result = kmsClient.createKey(keyReq);
-      // Disable and schedule the key for deletion. The minimum waiting period for deletion is 7
-      // days on AWS.
-      String keyArn = result.getKeyMetadata().getArn();
-      DisableKeyRequest req = new DisableKeyRequest().withKeyId(keyArn);
-      kmsClient.disableKey(req);
-      ScheduleKeyDeletionRequest scheduleKeyDeletionRequest =
-          new ScheduleKeyDeletionRequest().withKeyId(keyArn).withPendingWindowInDays(7);
-      kmsClient.scheduleKeyDeletion(scheduleKeyDeletionRequest);
-      return true;
+      if (config.has(AwsKmsAuthConfigField.CMK_ID.fieldName)) {
+        String cmkId = config.get(AwsKmsAuthConfigField.CMK_ID.fieldName).asText();
+        AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
+
+        // Test if key exists
+        DescribeKeyResult describeKeyResult = AwsEARServiceUtil.describeKey(config, cmkId);
+
+        // Test if GenerateDataKeyWithoutPlaintext permission exists
+        byte[] randomEncryptedBytes =
+            AwsEARServiceUtil.generateDataKey(null, config, cmkId, "AES", 256);
+
+        // Test if Decrypt permission exists
+        byte[] decryptedBytes =
+            AwsEARServiceUtil.decryptUniverseKey(null, randomEncryptedBytes, config);
+
+        if (decryptedBytes != null && decryptedBytes.length > 0) {
+          return true;
+        } else {
+          return false;
+        }
+      } else {
+        AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, config);
+        // Create a key.
+        String keyDescription =
+            "Fake key to test the authenticity of the credentials. It is scheduled to be deleted. "
+                + "DO NOT USE.";
+        ObjectNode keyPolicy = Json.newObject().put("Version", "2012-10-17");
+        ObjectNode keyPolicyStatement = Json.newObject();
+        keyPolicyStatement.put("Effect", "Allow");
+        keyPolicyStatement.put("Resource", "*");
+        ArrayNode keyPolicyActions =
+            Json.newArray()
+                .add("kms:Create*")
+                .add("kms:Put*")
+                .add("kms:DisableKey")
+                .add("kms:ScheduleKeyDeletion");
+        keyPolicyStatement.set("Principal", Json.newObject().put("AWS", "*"));
+        keyPolicyStatement.set("Action", keyPolicyActions);
+        keyPolicy.set("Statement", Json.newArray().add(keyPolicyStatement));
+        CreateKeyRequest keyReq =
+            new CreateKeyRequest()
+                .withDescription(keyDescription)
+                .withPolicy(new ObjectMapper().writeValueAsString(keyPolicy))
+                .withTags(
+                    new Tag().withTagKey("customer-uuid").withTagValue(customerUUID.toString()),
+                    new Tag().withTagKey("usage").withTagValue("validate-aws-key-authenticity"),
+                    new Tag().withTagKey("status").withTagValue("deleted"));
+        CreateKeyResult result = kmsClient.createKey(keyReq);
+        // Disable and schedule the key for deletion. The minimum waiting period for
+        // deletion is 7
+        // days on AWS.
+        String keyArn = result.getKeyMetadata().getArn();
+        DisableKeyRequest req = new DisableKeyRequest().withKeyId(keyArn);
+        kmsClient.disableKey(req);
+        ScheduleKeyDeletionRequest scheduleKeyDeletionRequest =
+            new ScheduleKeyDeletionRequest().withKeyId(keyArn).withPendingWindowInDays(7);
+        kmsClient.scheduleKeyDeletion(scheduleKeyDeletionRequest);
+        return true;
+      }
     } catch (Exception e) {
       LOG.error(e.getMessage());
       return false;
@@ -425,6 +456,12 @@ public class AWSCloudImpl implements CloudAPI {
     }
   }
 
+  @Override
+  public void validateInstanceTemplate(Provider provider, String instanceTemplate) {
+    throw new PlatformServiceException(
+        BAD_REQUEST, "Instance templates are currently not supported for AWS");
+  }
+
   /**
    * Check if the target group and the nodes inside the group have the correct protocol/port. Check
    * that the target group only contains the provided list of nodes.
@@ -446,7 +483,8 @@ public class AWSCloudImpl implements CloudAPI {
       TargetGroup targetGroup = getTargetGroup(lbClient, targetGroupArn);
       boolean validProtocol = targetGroup.getProtocol().equals(protocol);
       boolean validPort = targetGroup.getPort() == port;
-      // If protocol or port incorrect then create new target group and update listener
+      // If protocol or port incorrect then create new target group and update
+      // listener
       if (!validProtocol || !validPort) {
         String targetGroupName = targetGroup.getTargetGroupName();
         throw new Exception(
@@ -630,5 +668,75 @@ public class AWSCloudImpl implements CloudAPI {
       if (tag.getKey().equals("node-uuid")) uuid = tag.getValue();
     }
     return new NodeID(name, uuid);
+  }
+
+  public GetCallerIdentityResult getStsClientOrBadRequest(Map<String, String> configMap) {
+    try {
+      AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(configMap);
+      AWSSecurityTokenService stsClient =
+          AWSSecurityTokenServiceClientBuilder.standard()
+              .withCredentials(credentialsProvider)
+              .build();
+      return stsClient.getCallerIdentity(new GetCallerIdentityRequest());
+    } catch (AWSSecurityTokenServiceException e) {
+      LOG.error("AWS Provider validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "AWS access and secret keys validation failed: " + e.getMessage());
+    }
+  }
+
+  public boolean dryRunDescribeInstanceOrBadRequest(
+      Map<String, String> configMap, String regionCode) {
+    try {
+      AmazonEC2 ec2Client = getEC2ClientInternal(configMap, regionCode);
+      DryRunResult<DescribeInstancesRequest> dryRunResult =
+          ec2Client.dryRun(new DescribeInstancesRequest());
+      if (!dryRunResult.isSuccessful()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, dryRunResult.getDryRunResponse().getMessage());
+      }
+      return true;
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("AWS Provider validation dry run failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Dry run of AWS DescribeInstances failed: " + e.getMessage());
+    }
+  }
+
+  public String getPrivateKeyOrBadRequest(String privateKeyString) {
+    try {
+      return CertificateHelper.getPrivateKey(privateKeyString).getAlgorithm();
+    } catch (RuntimeException e) {
+      LOG.error("Private key Algorithm extraction failed: ", e);
+      throw new PlatformServiceException(BAD_REQUEST, "Could not fetch private key algorithm");
+    }
+  }
+
+  public GetHostedZoneResult getHostedZoneOrBadRequest(
+      Map<String, String> configMap, String hostedZoneId) {
+    try {
+      AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(configMap);
+      AmazonRoute53 client =
+          AmazonRoute53ClientBuilder.standard().withCredentials(credentialsProvider).build();
+      GetHostedZoneRequest request = new GetHostedZoneRequest().withId(hostedZoneId);
+      return client.getHostedZone(request);
+    } catch (AmazonServiceException | PlatformServiceException e) {
+      LOG.error("Hosted Zone validation failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Hosted Zone validation failed: " + e.getMessage());
+    }
+  }
+
+  public Image describeImageOrBadRequest(Provider provider, Region region, String imageId) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeImagesRequest request = new DescribeImagesRequest().withImageIds(imageId);
+      DescribeImagesResult result = ec2Client.describeImages(request);
+      return result.getImages().get(0);
+    } catch (AmazonServiceException e) {
+      LOG.error("AMI details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "AMI details extraction failed: " + e.getMessage());
+    }
   }
 }

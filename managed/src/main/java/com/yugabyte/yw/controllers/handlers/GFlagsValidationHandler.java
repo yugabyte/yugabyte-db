@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
@@ -41,6 +42,23 @@ public class GFlagsValidationHandler {
       ImmutableSet.of(
           Pattern.compile("^.*_test.*$", CASE_INSENSITIVE),
           Pattern.compile("^.*test_.*$", CASE_INSENSITIVE));
+
+  private static final Map<String, List<String>> TSERVER_GFLAG_PERMISSIBLE_VALUE =
+      ImmutableMap.<String, List<String>>builder()
+          .put(
+              "ysql_default_transaction_isolation",
+              ImmutableList.of("serializable", "read committed", "read repeatable"))
+          .build();
+
+  private static final Map<String, List<String>> MASTER_GFLAG_PERMISSIBLE_VALUE =
+      ImmutableMap.<String, List<String>>builder().build();
+
+  private static final Map<ServerType, Map<String, List<String>>>
+      GFLAGS_PERMISSIBLE_VALUES_PER_SERVER =
+          ImmutableMap.<ServerType, Map<String, List<String>>>builder()
+              .put(ServerType.MASTER, MASTER_GFLAG_PERMISSIBLE_VALUE)
+              .put(ServerType.TSERVER, TSERVER_GFLAG_PERMISSIBLE_VALUE)
+              .build();
 
   public List<GFlagDetails> listGFlags(
       String version, String gflag, String serverType, Boolean mostUsedGFlags) throws IOException {
@@ -113,10 +131,16 @@ public class GFlagsValidationHandler {
     GFlagDetails gflagDetails = gflags.get(gflag.name);
     if (gflagDetails != null) {
       validationDetails.exist = true;
-      if (serverType == ServerType.MASTER) {
-        validationDetails.error = checkValueType(gflag.masterValue, gflagDetails.type);
-      } else {
-        validationDetails.error = checkValueType(gflag.tserverValue, gflagDetails.type);
+      String gflagValue = serverType == ServerType.MASTER ? gflag.masterValue : gflag.tserverValue;
+      validationDetails.error = checkValueType(gflagValue, gflagDetails.type);
+      if (StringUtils.isEmpty(validationDetails.error)) {
+        if (GFLAGS_PERMISSIBLE_VALUES_PER_SERVER.get(serverType).containsKey(gflag.name)
+            && !GFLAGS_PERMISSIBLE_VALUES_PER_SERVER
+                .get(serverType)
+                .get(gflag.name)
+                .contains(gflagValue)) {
+          validationDetails.error = "Given value is not valid";
+        }
       }
     }
     return validationDetails;

@@ -17,6 +17,11 @@ const AZURE_REGIONS = [
     zones: ['westus2-1', 'westus2-2', 'westus2-3']
   },
   {
+    region: 'westus3',
+    name: 'West US 3',
+    zones: ['westus3-1', 'westus3-2', 'westus3-3']
+  },
+  {
     region: 'westcentralus',
     name: 'West Central US',
     zones: ['westcentralus']

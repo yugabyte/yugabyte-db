@@ -17,12 +17,9 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.RecoverableException;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
-
 import javax.inject.Inject;
-
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -58,19 +55,11 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
 
   // Helper API to update the db for the current node with the given state.
   public void setNodeState(NodeDetails.NodeState state) {
-    // Persist the desired node information into the DB.
-    UniverseUpdater updater =
-        nodeStateUpdater(
-            taskParams().universeUUID,
-            taskParams().nodeName,
-            NodeStatus.builder().nodeState(state).build());
-    saveUniverseDetails(updater);
+    saveNodeStatus(taskParams().nodeName, NodeStatus.builder().nodeState(state).build());
   }
 
   public void setNodeStatus(NodeStatus nodeStatus) {
-    UniverseUpdater updater =
-        nodeStateUpdater(taskParams().universeUUID, taskParams().nodeName, nodeStatus);
-    saveUniverseDetails(updater);
+    saveNodeStatus(taskParams().nodeName, nodeStatus);
   }
 
   @Override

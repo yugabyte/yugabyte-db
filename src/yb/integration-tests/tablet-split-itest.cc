@@ -96,6 +96,9 @@
 using std::string;
 using std::vector;
 
+using yb::test::Partitioning;
+using yb::test::kPartitioningArray;
+
 using namespace std::literals;  // NOLINT
 using namespace yb::client::kv_table_test; // NOLINT
 
@@ -200,6 +203,9 @@ TEST_P(TabletSplitITestWithIsolationLevel, SplitSingleTablet) {
 
   ASSERT_OK(cluster_->RestartSync());
 
+  // Wait previous writes to be replicated and LB to stabilize as we are going to check all peers.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(
+      RegularBuildVsDebugVsSanitizers(10s, 20s, 30s)));
   ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows * 2));
 }
 
@@ -1364,27 +1370,43 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
   CreateTable();
 
   int key = 1;
+  size_t num_tablets = 0;
   const auto num_tservers = cluster_->num_tablet_servers();
 
-  size_t num_tablets = 0;
-  // Test that we split at split_threshold_bytes until we reach tablet_count_limit.
+  auto enable_splitting_and_wait_for_completion = [&]() -> Status {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+    SleepForBgTaskIters(2);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    LOG(INFO) << "Waiting for tablet splitting";
+    RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+      return IsSplittingComplete(master_admin_proxy.get(), false /* wait_for_parent_deletion */);
+    }, 30s * kTimeMultiplier, "Wait for IsTabletSplittingComplete"));
+    LOG(INFO) << "Tablet splitting is complete";
+    return Status::OK();
+  };
+
   auto test_phase = [&](
-      int kNumRowsPerBatch, size_t tablet_count_per_node_limit, uint64_t split_threshold_bytes,
+      int num_rows_per_batch, size_t tablet_leaders_per_node_limit, uint64_t split_threshold_bytes,
       uint64_t next_threshold_bytes) {
-    bool first_iter = true;
+    // At this point, no tablet should have enough data to split since each tablet should have
+    // ~split_threshold_bytes of data from the previous round (or 0 bytes for the low phase), which
+    // is less than this round's split_threshold_bytes. Verify that they do not split.
+    for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
+      ASSERT_LT(peer->shared_tablet()->GetCurrentVersionSstFilesSize(), split_threshold_bytes);
+    }
+    ASSERT_OK(enable_splitting_and_wait_for_completion());
+    for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
+      ASSERT_FALSE(peer->shared_tablet()->MayHaveOrphanedPostSplitData());
+    }
+
+    // Write data until we hit tablet_count_per_node_limit tablet leaders per node. We should not
+    // have more than next_threshold_bytes in any tablet at any time in this phase.
     do {
-      ASSERT_OK(WriteRowsAndFlush(kNumRowsPerBatch, key));
-      key += kNumRowsPerBatch;
+      ASSERT_OK(WriteRowsAndFlush(num_rows_per_batch, key));
+      key += num_rows_per_batch;
 
       // Give splitting a chance to run, then wait for any splits to complete.
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
-      SleepForBgTaskIters(2);
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-      LOG(INFO) << "Waiting for tablet splitting";
-      ASSERT_OK(WaitFor([&]() -> Result<bool> {
-        return IsSplittingComplete(master_admin_proxy.get(), false /* wait_for_parent_deletion */);
-      }, 30s * kTimeMultiplier, "Wait for IsTabletSplittingComplete"));
-      LOG(INFO) << "Tablet splitting is complete";
+      ASSERT_OK(enable_splitting_and_wait_for_completion());
 
       vector<tablet::TabletPeerPtr> split_peers;
       std::unordered_map<TabletId, uint64_t> max_split_peer_size;
@@ -1394,13 +1416,8 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
         LOG(INFO) << Format("Tablet peer: $0 on tserver $1 with size $2 (before compaction).",
             tablet_id, peer->permanent_uuid(), peer_size);
 
+        ASSERT_LT(peer_size, next_threshold_bytes);
         if (peer->shared_tablet()->MayHaveOrphanedPostSplitData()) {
-          // Asserts that no tablets split in the first iteration, to ensure that a tablet will not
-          // split with insufficient data. We expect to have insufficient data because in the first
-          // iteration, each tablet should have ~split_threshold_bytes of data from the previous
-          // round (or 0 bytes for the low phase), which is less than this round's
-          // split_threshold_bytes.
-          ASSERT_FALSE(first_iter) << "Did not expect a split in the first iteration.";
           max_split_peer_size[tablet_id] = std::max(max_split_peer_size[tablet_id], peer_size);
           split_peers.push_back(peer);
         }
@@ -1422,11 +1439,10 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
             rocksdb::CompactionReason::kManualCompaction));
       }
 
-      // Return once we hit the tablet count limit for this phase.
+      // Return once we hit the tablet leader count limit for this phase.
       num_tablets = ListActiveTabletIdsForTable(cluster_.get(), table_->id()).size();
       LOG(INFO) << "Num tablets: " << num_tablets;
-      first_iter = false;
-    } while (num_tablets / num_tservers < tablet_count_per_node_limit);
+    } while (num_tablets / num_tservers < tablet_leaders_per_node_limit);
   };
 
   LOG(INFO) << "Starting low phase test.";
@@ -1680,9 +1696,7 @@ TEST_F(AutomaticTabletSplitITest, IncludeTasksInOutstandingSplits) {
   // Allow no new splits. The stalled split task should resume after the pause is removed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   auto catalog_mgr = ASSERT_RESULT(catalog_manager());
-  ASSERT_OK(WaitFor([&]() {
-    return !catalog_mgr->tablet_split_manager()->IsRunning();
-  }, 10s, "Wait for tablet split manager to stop running."));
+  ASSERT_OK(catalog_mgr->tablet_split_manager()->WaitUntilIdle());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(kInitialNumTablets + 1, /* expected_non_split_tablets */
                                          1 /* expected_split_tablets */));

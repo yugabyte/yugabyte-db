@@ -125,15 +125,15 @@ class RpcShellClient(object):
             output.stderr = str(e)
         return output
 
-    def read_iterfile(self, user, in_path, out_path, chunk_size=1024):
+    def read_iterfile(self, user, in_path, out_path, chmod=0, chunk_size=1024):
         file_info = FileInfo()
         file_info.filename = out_path
-        yield UploadFileRequest(user=user, fileInfo=file_info)
+        yield UploadFileRequest(chmod=chmod, user=user, fileInfo=file_info)
         with open(in_path, mode='rb') as f:
             while True:
                 chunk = f.read(chunk_size)
                 if chunk:
-                    yield UploadFileRequest(user=user, chunkData=chunk)
+                    yield UploadFileRequest(user=user, chmod=chmod, chunkData=chunk)
                 else:
                     return
 
@@ -141,10 +141,10 @@ class RpcShellClient(object):
         """
         Transfer a file from local to the remote node agent.
         """
-
+        chmod = kwargs.get('chmod', 0)
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
         stub = NodeAgentStub(self.channel)
-        stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path),
+        stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
                         timeout=timeout_sec)
 
     def fetch_file(self, in_path, out_path, **kwargs):

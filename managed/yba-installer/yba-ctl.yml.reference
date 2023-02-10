@@ -18,7 +18,7 @@ host: ""
 server_cert_path: "" 
 server_key_path: ""
 
-# Linux user which will run all services that make up Yugabyte Anywhere.
+# Linux user which will run all services that make up YugabyteDB Anywhere.
 # With default settings, the user "yugabyte" will be created and used.
 # If customized, the specified user is assumed to exist and will be used.
 # Cannot be modified after installation.
@@ -123,7 +123,7 @@ postgres:
       enabled: true # yba-ctl will set up its own postgres
       port: 5432
       restartSeconds: 10 # restart interval on exit
-      locale:en_US.UTF-8 # Locale for initdb
+      locale: en_US.UTF-8 # Locale for initdb
 
    # Specify the connection parameters to an existing postgres db.
    # A database named 'yugaware' must already be created on this host.

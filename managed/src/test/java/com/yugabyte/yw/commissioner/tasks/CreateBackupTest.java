@@ -19,15 +19,17 @@ import static org.mockito.Mockito.when;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.Users;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,12 +46,14 @@ import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes;
+import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateBackupTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
   private CustomerConfig storageConfig;
+  private Users defaultUser;
   private static final UUID TABLE_1_UUID = UUID.randomUUID();
   private static final UUID TABLE_2_UUID = UUID.randomUUID();
   private static final UUID TABLE_3_UUID = UUID.randomUUID();
@@ -64,6 +68,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
 
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     storageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "bar");
     List<TableInfo> tableInfoList = new ArrayList<>();
     List<TableInfo> tableInfoList1 = new ArrayList<>();
@@ -149,6 +154,8 @@ public class CreateBackupTest extends CommissionerBaseTest {
   private TaskInfo submitTask(ITaskParams backupTableParams) {
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateBackup, backupTableParams);
+      // Set http context
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
           defaultUniverse.universeUUID,

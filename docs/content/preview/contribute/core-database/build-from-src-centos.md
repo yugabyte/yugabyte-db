@@ -49,7 +49,7 @@ CentOS 7 is the recommended Linux development and production platform for Yugaby
 Update packages on your system, install development tools and additional packages:
 
 ```sh
-sudo yum update
+sudo yum update -y
 sudo yum groupinstall -y 'Development Tools'
 sudo yum -y install epel-release git libatomic libicu rsync
 ```
@@ -155,13 +155,21 @@ echo 'export YB_CCACHE_DIR=$HOME/.cache/yb_ccache' >>$HOME/.bashrc
 
 {{% readfile "includes/java.md" %}}
 
-The openjdk requirement is satisfied with the package manager.
+The openjdk requirement can be satisfied by the package manager.
 
 ```sh
 sudo yum install -y java-11-openjdk
 ```
 
-Maven needs to be download/installed manually.
+Maven can be downloaded/installed manually.
+For example,
+
+```sh
+mkdir ~/tools
+cd ~/tools
+curl 'https://dlcdn.apache.org/maven/maven-3/3.8.7/binaries/apache-maven-3.8.7-bin.tar.gz' | tar xz
+echo 'export PATH=$HOME/tools/apache-maven-3.8.7/bin:$PATH' >>~/.bashrc
+```
 
 ## Build the code
 

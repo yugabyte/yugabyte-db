@@ -6,6 +6,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import io.prometheus.client.CollectorRegistry;
@@ -44,11 +45,16 @@ public class TaskGarbageCollector {
 
   private final PlatformScheduler platformScheduler;
   private final RuntimeConfGetter confGetter;
+  private final RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject
-  public TaskGarbageCollector(PlatformScheduler platformScheduler, RuntimeConfGetter confGetter) {
+  public TaskGarbageCollector(
+      PlatformScheduler platformScheduler,
+      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter) {
     this.platformScheduler = platformScheduler;
     this.confGetter = confGetter;
+    this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
   @VisibleForTesting
@@ -118,7 +124,7 @@ public class TaskGarbageCollector {
 
   /** The interval at which the gc checker will run. */
   private Duration gcCheckInterval() {
-    return confGetter.getStaticConf().getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
+    return runtimeConfigFactory.globalRuntimeConf().getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
   }
 
   /** For how many days to retain a completed task before garbage collecting it. */

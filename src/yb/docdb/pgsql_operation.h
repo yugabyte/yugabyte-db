@@ -86,6 +86,7 @@ class PgsqlWriteOperation :
   Status ApplyUpdate(const DocOperationApplyData& data);
   Status ApplyDelete(const DocOperationApplyData& data, const bool is_persist_needed);
   Status ApplyTruncateColocated(const DocOperationApplyData& data);
+  Status ApplyFetchSequence(const DocOperationApplyData& data);
 
   Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);

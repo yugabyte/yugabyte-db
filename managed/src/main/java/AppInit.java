@@ -4,6 +4,7 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
@@ -12,8 +13,9 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
-import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.RecommendationGarbageCollector;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
@@ -22,7 +24,7 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellLogsManager;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.SnapshotCleanup;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -52,6 +54,8 @@ import play.Logger;
 /** We will use this singleton to do actions specific to the app environment, like db seed etc. */
 @Singleton
 public class AppInit {
+
+  private static final long MAX_APP_INITIALIZATION_TIME = 30;
 
   @Inject
   public AppInit(
@@ -85,40 +89,15 @@ public class AppInit {
       Config config,
       SupportBundleCleanup supportBundleCleanup,
       NodeAgentPoller nodeAgentPoller,
-      YbcUpgrade ybcUpgrade)
+      YbcUpgrade ybcUpgrade,
+      RecommendationGarbageCollector perfRecGC,
+      SnapshotCleanup snapshotCleanup,
+      @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
 
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
-
-    String version = ConfigHelper.getCurrentVersion(application);
-
-    String previousSoftwareVersion =
-        configHelper
-            .getConfig(ConfigHelper.ConfigType.YugawareMetadata)
-            .getOrDefault("version", "")
-            .toString();
-
-    boolean isPlatformDowngradeAllowed =
-        application.configuration().getBoolean("yb.is_platform_downgrade_allowed");
-
-    if (Util.compareYbVersions(previousSoftwareVersion, version, true) > 0
-        && !isPlatformDowngradeAllowed) {
-
-      String msg =
-          String.format(
-              "Platform does not support version downgrades, %s"
-                  + " has downgraded to %s. Shutting down. To override this check"
-                  + " (not recommended) and continue startup,"
-                  + " set the application config setting yb.is_platform_downgrade_allowed"
-                  + "or the environment variable"
-                  + " YB_IS_PLATFORM_DOWNGRADE_ALLOWED to true."
-                  + " Otherwise, upgrade your YBA version back to or above %s to proceed.",
-              previousSoftwareVersion, version, previousSoftwareVersion);
-
-      throw new RuntimeException(msg);
-    }
 
     if (!environment.isTest()) {
       // Check if we have provider data, if not, we need to seed the database
@@ -135,20 +114,16 @@ public class AppInit {
       }
 
       boolean ywFileDataSynced =
-          Boolean.valueOf(
+          Boolean.parseBoolean(
               configHelper
                   .getConfig(ConfigHelper.ConfigType.FileDataSync)
                   .getOrDefault("synced", "false")
                   .toString());
-
-      if (!ywFileDataSynced) {
-        String storagePath = appConfig.getString("yb.storage.path");
-        configHelper.syncFileData(storagePath, false);
-      }
+      String storagePath = appConfig.getString("yb.storage.path");
+      configHelper.syncFileData(storagePath, ywFileDataSynced);
 
       if (mode.equals("PLATFORM")) {
         String devopsHome = appConfig.getString("yb.devops.home");
-        String storagePath = appConfig.getString("yb.storage.path");
         if (devopsHome == null || devopsHome.length() == 0) {
           throw new RuntimeException("yb.devops.home is not set in application.conf");
         }
@@ -206,6 +181,7 @@ public class AppInit {
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
       alertsGC.start();
+      perfRecGC.start();
 
       setUniverseKey.start();
       // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
@@ -214,8 +190,10 @@ public class AppInit {
       // Schedule garbage collection of backups
       backupGC.start();
 
-      // Schedule perf advisor data retrieval
-      // perfAdvisorScheduler.start();
+      // Cleanup orphan snapshots
+      snapshotCleanup.deleteOrphanSnapshots();
+
+      perfAdvisorScheduler.start();
 
       // Cleanup old support bundles
       supportBundleCleanup.start();
@@ -238,6 +216,14 @@ public class AppInit {
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
+
+      long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
+      String elapsedStr = String.valueOf(elapsed);
+      if (elapsed > MAX_APP_INITIALIZATION_TIME) {
+        Logger.warn("Completed initialization in " + elapsedStr + " seconds.");
+      } else {
+        Logger.info("Completed initialization in " + elapsedStr + " seconds.");
+      }
 
       Logger.info("AppInit completed");
     }

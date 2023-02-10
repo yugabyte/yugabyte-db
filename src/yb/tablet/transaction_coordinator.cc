@@ -61,6 +61,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -102,11 +103,15 @@ DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
 DEFINE_test_flag(bool, disable_apply_committed_transactions, false,
                  "Should we disable the apply of committed transactions.");
 
-DEFINE_RUNTIME_int32(max_external_transaction_retry_delay_ms, 5000,
-                     "The max amount of delay for sending a new apply external transaction "
-                     "request.");
+DEFINE_RUNTIME_uint32(external_transaction_apply_rpc_limit, 0,
+                      "Limit on the number of outstanding APPLY external transaction rpcs sent to "
+                      "involved tablets at a given time. If set to 0, the default is half "
+                      "--rpc_workers_limit.");
 
 DECLARE_bool(enable_deadlock_detection);
+DECLARE_int32(rpc_workers_limit);
+
+DECLARE_uint32(external_transaction_retention_window_secs);
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -114,7 +119,15 @@ using namespace std::placeholders;
 namespace yb {
 namespace tablet {
 
-std::chrono::microseconds GetTransactionTimeout() {
+std::chrono::microseconds GetTransactionTimeout(bool is_external) {
+  if (is_external) {
+    // For externally sourced transactions, use the retention window defined by
+    // --_external_transaction_retention_window_secs as the timeout.
+    auto retention_window_micros = static_cast<int64_t>(
+        GetAtomicFlag(&FLAGS_external_transaction_retention_window_secs) *
+        MonoTime::kMicrosecondsPerSecond);
+    return std::chrono::microseconds(retention_window_micros);
+  }
   const double timeout = GetAtomicFlag(&FLAGS_transaction_max_missed_heartbeat_periods) *
                          GetAtomicFlag(&FLAGS_transaction_heartbeat_usec);
   // Cast to avoid -Wimplicit-int-float-conversion.
@@ -123,9 +136,15 @@ std::chrono::microseconds GetTransactionTimeout() {
       : std::chrono::microseconds(static_cast<int64_t>(timeout));
 }
 
-namespace {
+uint32_t GetExternalTransactionApplyRpcLimit() {
+  auto limit = GetAtomicFlag(&FLAGS_external_transaction_apply_rpc_limit);
+  if (limit > 0) {
+    return limit;
+  }
+  return GetAtomicFlag(&FLAGS_rpc_workers_limit) / 2;
+}
 
-constexpr uint32_t kInitialExternalTransactionRetryDelayMs = 100;
+namespace {
 
 struct NotifyApplyingData {
   TabletId tablet;
@@ -136,10 +155,6 @@ struct NotifyApplyingData {
   bool is_external;
   // Only for external/xcluster transactions. How long to wait before retrying a failed apply
   // transaction.
-  CoarseBackoffWaiter backoff_waiter = CoarseBackoffWaiter(
-    CoarseTimePoint::max(),
-    GetAtomicFlag(&FLAGS_max_external_transaction_retry_delay_ms) * 1ms,
-    kInitialExternalTransactionRetryDelayMs * 1ms);
   std::string ToString() const {
     return Format("{ tablet: $0 transaction: $1 commit_time: $2 sealed: $3 is_external $4}",
                   tablet, transaction, commit_time, sealed, is_external);
@@ -238,14 +253,11 @@ class TransactionState {
 
   // Whether this transaction expired at specified time.
   bool ExpiredAt(HybridTime now) const {
-    if (is_external()) {
-      return false;
-    }
     if (ShouldBeCommitted() || ShouldBeInStatus(TransactionStatus::SEALED)) {
       return false;
     }
     const int64_t passed = now.GetPhysicalValueMicros() - last_touch_.GetPhysicalValueMicros();
-    if (std::chrono::microseconds(passed) > GetTransactionTimeout()) {
+    if (std::chrono::microseconds(passed) > GetTransactionTimeout(is_external())) {
       return true;
     }
     return false;
@@ -1248,6 +1260,17 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     ExecutePostponedLeaderActions(&actions);
   }
 
+  size_t TEST_CountExternalTransactions() {
+    std::lock_guard<std::mutex> lock(managed_mutex_);
+    auto count = 0;
+    for (const auto& transaction : managed_transactions_) {
+      if (transaction.is_external()) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   size_t test_count_transactions() {
     std::lock_guard<std::mutex> lock(managed_mutex_);
     return managed_transactions_.size();
@@ -1494,6 +1517,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
     VLOG_WITH_PREFIX(3) << "Notify applying: " << action.ToString();
 
+    if (action.is_external && ++num_outstanding_apply_external_transaction_rpcs_ >
+                              GetExternalTransactionApplyRpcLimit()) {
+      // We are at the limit for the number of outstanding apply RPCs, return here and let the Poll
+      // loop take care of retrying.
+      num_outstanding_apply_external_transaction_rpcs_--;
+      YB_LOG_EVERY_N_SECS(INFO, 5) << "Throttling external transaction apply rpcs, reached the "
+                                   << "threshold of " <<  GetExternalTransactionApplyRpcLimit();
+      return;
+    }
+
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(action.tablet);
     req.set_propagated_hybrid_time(now.ToUint64());
@@ -1522,12 +1555,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                const tserver::UpdateTransactionResponsePB& resp) {
             client::UpdateClock(resp, &context_);
             rpcs_.Unregister(handle);
-            if (status.ok()) {
-              return;
+            if (action.is_external) {
+              num_outstanding_apply_external_transaction_rpcs_--;
+              if (status.ok() || status.IsTryAgain()) {
+               // Either the apply was successful, or we are trying to apply an external transaction
+               // on a tablet that is not caught up to commit_ht. Return and let the Poll loop take
+               // care of the retry.
+                return;
+              }
             }
-            if (action.is_external && status.IsTryAgain()) {
-              // We are trying to apply an external transaction on a tablet that is not caught up
-              // to commit_ht. Return and let the Poll loop take care of the retry.
+            if (status.ok()) {
               return;
             }
             LOG_WITH_PREFIX(WARNING)
@@ -1700,7 +1737,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         LOG_WITH_PREFIX(INFO)
             << __func__ << ", now: " << now << ", first: " << txn.ToString()
             << ", expired: " << txn.ExpiredAt(now) << ", timeout: "
-            << MonoDelta(GetTransactionTimeout()) << ", passed: "
+            << MonoDelta(GetTransactionTimeout(txn.is_external())) << ", passed: "
             << MonoDelta::FromMicroseconds(
                    now.GetPhysicalValueMicros() - txn.last_touch().GetPhysicalValueMicros());
       }
@@ -1751,6 +1788,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   ManagedTransactions managed_transactions_;
 
   std::atomic<bool> deleting_{false};
+  std::atomic<uint32_t> num_outstanding_apply_external_transaction_rpcs_;
   std::condition_variable last_transaction_finished_;
 
   // Actions that should be executed after mutex is unlocked.
@@ -1783,6 +1821,10 @@ void TransactionCoordinator::ProcessAborted(const AbortedData& data) {
 
 int64_t TransactionCoordinator::PrepareGC(std::string* details) {
   return impl_->PrepareGC(details);
+}
+
+size_t TransactionCoordinator::TEST_CountExternalTransactions() const {
+  return impl_->TEST_CountExternalTransactions();
 }
 
 size_t TransactionCoordinator::test_count_transactions() const {

@@ -1123,6 +1123,166 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(5); \
         )#");
 }
 
+TEST_P(DocDBTestWrapper, ListInsertAndDeleteTest) {
+  DocKey doc_key(KeyEntryValues("list_test", 231));
+  KeyBytes encoded_doc_key = doc_key.Encode();
+  ASSERT_OK(InsertSubDocument(
+      DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), HybridTime(100)));
+
+  auto write_list = [&](const std::vector<int>& children, const int logical_time) {
+    QLValuePB list;
+    int64_t idx = 1;
+    for (const auto& child : children) {
+      AddMapValue(idx++, child, &list);
+    }
+    ValueRef value_ref(list);
+    value_ref.set_write_instruction(bfql::TSOpcode::kListAppend);
+    ASSERT_OK(InsertSubDocument(
+        DocPath(encoded_doc_key, KeyEntryValue("list")), value_ref, HybridTime(logical_time)));
+  };
+
+  write_list({1, 2, 3, 4, 5}, 200);
+  write_list({6, 7, 8}, 300);
+
+  VerifyDocument(
+      doc_key, HybridTime(350),
+      R"#(
+  {
+    "list": {
+      ArrayIndex(1): 6,
+      ArrayIndex(2): 7,
+      ArrayIndex(3): 8
+    }
+  }
+        )#");
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
+      R"#(
+SubDocKey(DocKey([], ["list_test", 231]), [HT{ physical: 0 logical: 100 }]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list"; HT{ physical: 0 logical: 300 }]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list"; HT{ physical: 0 logical: 200 }]) -> {}
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(1); \
+    HT{ physical: 0 logical: 300 w: 1 }]) -> 6
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(1); \
+    HT{ physical: 0 logical: 200 w: 1 }]) -> 1
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(2); \
+    HT{ physical: 0 logical: 300 w: 2 }]) -> 7
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(2); \
+    HT{ physical: 0 logical: 200 w: 2 }]) -> 2
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(3); \
+    HT{ physical: 0 logical: 300 w: 3 }]) -> 8
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(3); \
+    HT{ physical: 0 logical: 200 w: 3 }]) -> 3
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(4); \
+    HT{ physical: 0 logical: 200 w: 4 }]) -> 4
+SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(5); \
+    HT{ physical: 0 logical: 200 w: 5 }]) -> 5
+        )#");
+
+  // Replacing cql index 1 with tombstone should work as expected
+  ASSERT_OK(ReplaceInList(
+      DocPath(encoded_doc_key, KeyEntryValue("list")), 1, ValueRef(ValueEntryType::kTombstone),
+      ReadHybridTime::SingleTime(HybridTime(400)), HybridTime(500), rocksdb::kDefaultQueryId));
+  VerifyDocument(
+      doc_key, HybridTime(500),
+      R"#(
+  {
+    "list": {
+      ArrayIndex(1): 6,
+      ArrayIndex(3): 8
+    }
+  }
+        )#");
+  VerifyDocument(
+      doc_key, HybridTime(450),
+      R"#(
+  {
+    "list": {
+      ArrayIndex(1): 6,
+      ArrayIndex(2): 7,
+      ArrayIndex(3): 8
+    }
+  }
+        )#");
+}
+
+TEST_P(DocDBTestWrapper, MapInsertAndDeleteTest) {
+  DocKey doc_key(KeyEntryValues("map_test", 231));
+  KeyBytes encoded_doc_key = doc_key.Encode();
+  ASSERT_OK(InsertSubDocument(
+      DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), HybridTime(100)));
+
+  auto write_map = [&](const std::map<std::string, std::string>& values, const int logical_time) {
+    QLValuePB map_value;
+    for (const auto& child : values) {
+      AddMapValue(child.first, child.second, &map_value);
+    }
+    ValueRef value_ref(map_value);
+    value_ref.set_write_instruction(bfql::TSOpcode::kMapExtend);
+    ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key), value_ref, HybridTime(logical_time)));
+  };
+
+  write_map({{"mk1", "mv1"}, {"mk2", "mv2"}, {"mk3", "mv3"}}, 200);
+  write_map({{"mk3", "mv3_updated"}, {"mk4", "mv4"}, {"mk5", "mv5"}, {"mk6", "mv6"}}, 300);
+
+  VerifyDocument(
+      doc_key, HybridTime(350),
+      R"#(
+  {
+    "mk3": "mv3_updated",
+    "mk4": "mv4",
+    "mk5": "mv5",
+    "mk6": "mv6"
+  }
+        )#");
+  VerifyDocument(
+      doc_key, HybridTime(250),
+      R"#(
+  {
+    "mk1": "mv1",
+    "mk2": "mv2",
+    "mk3": "mv3"
+  }
+        )#");
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(
+      R"#(
+          SubDocKey($0, [HT{ physical: 0 logical: 300 }]) -> {}
+          SubDocKey($0, [HT{ physical: 0 logical: 200 }]) -> {}
+          SubDocKey($0, [HT{ physical: 0 logical: 100 }]) -> {}
+          SubDocKey($0, ["mk1"; HT{ physical: 0 logical: 200 w: 1 }]) -> "mv1"
+          SubDocKey($0, ["mk2"; HT{ physical: 0 logical: 200 w: 2 }]) -> "mv2"
+          SubDocKey($0, ["mk3"; HT{ physical: 0 logical: 300 w: 1 }]) -> "mv3_updated"
+          SubDocKey($0, ["mk3"; HT{ physical: 0 logical: 200 w: 3 }]) -> "mv3"
+          SubDocKey($0, ["mk4"; HT{ physical: 0 logical: 300 w: 2 }]) -> "mv4"
+          SubDocKey($0, ["mk5"; HT{ physical: 0 logical: 300 w: 3 }]) -> "mv5"
+          SubDocKey($0, ["mk6"; HT{ physical: 0 logical: 300 w: 4 }]) -> "mv6"
+          )#",
+      doc_key.ToString()));
+
+  // Deleting key mk5 and mk3 should work as expected.
+  ASSERT_OK(DeleteSubDoc(DocPath(encoded_doc_key, KeyEntryValue("mk5")), HybridTime(450)));
+  ASSERT_OK(DeleteSubDoc(DocPath(encoded_doc_key, KeyEntryValue("mk3")), HybridTime(500)));
+
+  VerifyDocument(
+      doc_key, HybridTime(500),
+      R"#(
+  {
+    "mk4": "mv4",
+    "mk6": "mv6"
+  }
+        )#");
+  VerifyDocument(
+      doc_key, HybridTime(450),
+      R"#(
+  {
+    "mk3": "mv3_updated",
+    "mk4": "mv4",
+    "mk6": "mv6"
+  }
+        )#");
+}
+
 TEST_P(DocDBTestWrapper, ExpiredValueCompactionTest) {
   const DocKey doc_key(KeyEntryValues("k1"));
   const MonoDelta one_ms = 1ms;

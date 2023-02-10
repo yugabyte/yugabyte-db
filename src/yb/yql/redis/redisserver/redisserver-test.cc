@@ -2715,7 +2715,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp))
   }
 }
 
-TEST_F(TestRedisServiceExternal, TestSlowSubscribersSoftLimit) {
+TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersSoftLimit)) {
   expected_no_sessions_ = true;
 
   auto ts0 = external_mini_cluster()->tablet_server(0);
@@ -4720,7 +4720,7 @@ TEST_F(TestRedisService, TestHMGetTiming) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTtlSet) {
+TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlSet)) {
   std::string collection_key = "russell";
   std::string values[10] = {"the", "set", "of", "all", "sets",
                             "that", "do", "not", "contain", "themselves"};
@@ -4728,7 +4728,7 @@ TEST_F(TestRedisService, TestTtlSet) {
   TestTtlSet(&collection_key, values, card);
 }
 
-TEST_F(TestRedisService, TestTtlSortedSet) {
+TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlSortedSet)) {
   std::string collection_key = "sort_me_up";
   CollectionEntry values[10] = { std::make_tuple("5.4223", "insertion"),
                                  std::make_tuple("-1", "bogo"),

@@ -356,6 +356,11 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
     if (!op_response) {
       continue;
     }
+
+    if (op_response->has_partition_list_version()) {
+      table_->SetLatestKnownPartitionListVersion(op_response->partition_list_version());
+    }
+
     rows_affected_count_ += op_response->rows_affected_count();
     if (!op_response->has_rows_data_sidecar()) {
       continue;
@@ -582,14 +587,14 @@ void PgDocReadOp::InitializeYbctidOperators() {
     // To honor the indexing order of ybctid values, for each batch of ybctid-binds, select all rows
     // in the batch and then order them before returning result to Postgres layer.
     wait_for_batch_completion_ = true;
-    ClonePgsqlOps(table_->GetPartitionCount());
+    ClonePgsqlOps(table_->GetPartitionListSize());
   } else {
     // Second and later batches. Reuse all state variables.
     ResetInactivePgsqlOps();
   }
 }
 
-LWPgsqlReadRequestPB *PgDocReadOp::PrepareReadReq() {
+LWPgsqlReadRequestPB* PgDocReadOp::PrepareReadReq() {
   // Set the index at the start of inactive operators.
   auto op_count = pgsql_ops_.size();
   auto op_index = active_op_count_;
@@ -602,19 +607,22 @@ LWPgsqlReadRequestPB *PgDocReadOp::PrepareReadReq() {
   return &req;
 }
 
-bool PgDocReadOp::HasNextPermutation() {
+bool PgDocReadOp::HasNextPermutation() const {
   return next_permutation_idx_ < total_permutation_count_;
 }
 
-bool PgDocReadOp::GetNextPermutation(std::vector<const LWPgsqlExpressionPB *> *permutation) {
-  if (!HasNextPermutation())
+bool PgDocReadOp::GetNextPermutation(std::vector<const LWPgsqlExpressionPB *>* permutation) {
+  if (!HasNextPermutation()) {
     return false;
-  int pos = next_permutation_idx_++;
-  for (auto partition_exprs_it : partition_exprs_) {
-    if (partition_exprs_it.empty())
-      continue;
+  }
 
-    int sel_idx = pos % partition_exprs_it.size();
+  auto pos = next_permutation_idx_++;
+  for (const auto& partition_exprs_it : partition_exprs_) {
+    if (partition_exprs_it.empty()) {
+      continue;
+    }
+
+    auto sel_idx = pos % partition_exprs_it.size();
     pos /= partition_exprs_it.size();
     auto expr = partition_exprs_it[sel_idx];
     permutation->push_back(expr);
@@ -622,17 +630,18 @@ bool PgDocReadOp::GetNextPermutation(std::vector<const LWPgsqlExpressionPB *> *p
   return true;
 }
 
-void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB *> &exprs,
-                                  LWPgsqlReadRequestPB *read_req) {
+void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB *>& exprs,
+                                  LWPgsqlReadRequestPB* read_req) const {
   const size_t hash_column_count = table_->num_hash_key_columns();
   std::vector<const LWPgsqlExpressionPB *> hash_exprs(hash_column_count,
     nullptr);
   std::vector<std::pair<size_t, const LWPgsqlExpressionPB *>> range_exprs;
   auto cond_iter = read_op_->read_request().partition_column_values().begin();
   size_t index = 0;
-  for (auto expr : exprs) {
-    if (hash_exprs[index] != nullptr)
+  for (auto* expr : exprs) {
+    if (hash_exprs[index]) {
       continue;
+    }
 
     if (expr->value().has_tuple_value()) {
       const auto& lhs_key_cols = *cond_iter->condition().operands().begin();
@@ -642,8 +651,8 @@ void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB *>
       for (const auto& lhs_elem : lhs_key_cols.tuple().elems()) {
         // Get the value for this column in the tuple.
         size_t tup_c_idx = lhs_elem.column_id() - table_->schema().first_column_id();
-        LWPgsqlExpressionPB *pgexpr =
-          new LWPgsqlExpressionPB(&val_it->arena());
+        auto* pgexpr =
+          val_it->arena().NewArenaObject<LWPgsqlExpressionPB>();
         *pgexpr->mutable_value() = *val_it;
 
         if (tup_c_idx < hash_column_count) {
@@ -663,18 +672,18 @@ void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB *>
 
   index = 0;
   // Bind all hash column values.
-  auto it = read_req->mutable_partition_column_values()->begin();
-  while (it != read_req->mutable_partition_column_values()->end()) {
+  for (auto it = read_req->mutable_partition_column_values()->begin();
+       it != read_req->mutable_partition_column_values()->end();
+       ++it) {
     *it = *hash_exprs[index++];
-    ++it;
   }
 
   // Deal with any range columns that are in this tuple IN.
   // Create an equality condition for each column
   for (auto [c_idx, pgexpr] : range_exprs) {
     read_req->mutable_condition_expr()->mutable_condition()->set_op(QL_OP_AND);
-    auto op = read_req->mutable_condition_expr()->mutable_condition()->add_operands();
-    auto pgcond = op->mutable_condition();
+    auto* op = read_req->mutable_condition_expr()->mutable_condition()->add_operands();
+    auto* pgcond = op->mutable_condition();
     pgcond->set_op(QL_OP_EQUAL);
     pgcond->add_operands()->set_column_id(table_.ColumnForIndex(c_idx).id());
     *pgcond->add_operands() = *pgexpr;
@@ -684,17 +693,19 @@ void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB *>
 bool PgDocReadOp::PopulateNextHashPermutationOps() {
   InitializeHashPermutationStates();
 
+  std::vector<const LWPgsqlExpressionPB*> current_permutation;
+  current_permutation.reserve(partition_exprs_.size());
   // Fill inactive operators with new hash permutations.
-  LWPgsqlReadRequestPB *read_req;
-  while (HasNextPermutation() && (read_req = PrepareReadReq()) != nullptr) {
-
-    std::vector<const LWPgsqlExpressionPB *> current_permutation;
-    if(!GetNextPermutation(&current_permutation))
-      return true;
-
-    BindPermutation(current_permutation, read_req);
+  while (HasNextPermutation()) {
+    auto* read_req = PrepareReadReq();
+    if (!read_req) {
+      return false;
+    }
+    current_permutation.clear();
+    GetNextPermutation(&current_permutation);
+  BindPermutation(current_permutation, read_req);
   }
-  return !HasNextPermutation();
+  return true;
 }
 
 // Collect hash expressions to prepare for generating permutations.
@@ -708,9 +719,9 @@ void PgDocReadOp::InitializeHashPermutationStates() {
 
   // Initialize partition_exprs_.
   // Reorganize the input arguments from Postgres to prepre for permutation generation.
-  const size_t hash_column_count = table_->num_hash_key_columns();
+  auto hash_column_count = table_->num_hash_key_columns();
   partition_exprs_.resize(hash_column_count);
-  size_t c_idx = 0;
+  auto c_idx = 0;
   for (const auto& col_expr : read_op_->read_request().partition_column_values()) {
     if (col_expr.has_condition()) {
       auto it = ++col_expr.condition().operands().begin();
@@ -725,12 +736,13 @@ void PgDocReadOp::InitializeHashPermutationStates() {
 
   // Calculate the total number of permutations to be generated.
   total_permutation_count_ = 1;
-  for (auto& exprs : partition_exprs_) {
+  for (const auto& exprs : partition_exprs_) {
     // If exprs is empty that means this column is part of a
     // tuple condition that has already been accounted for by a
     // previous column
-    if (exprs.size() > 0)
+    if (exprs.size() > 0) {
       total_permutation_count_ *= exprs.size();
+    }
   }
 
   // Create operators, one operation per partition, up to FLAGS_ysql_request_limit.
@@ -738,11 +750,12 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   // TODO(neil) The control variable "ysql_request_limit" should be applied to ALL statements, but
   // at the moment, the number of operators never exceeds the number of tablets except for hash
   // permutation operation, so the work on this GFLAG can be done when it is necessary.
-  int max_op_count = std::min(total_permutation_count_, FLAGS_ysql_request_limit);
+  auto max_op_count = std::min(total_permutation_count_,
+      implicit_cast<size_t>(FLAGS_ysql_request_limit));
   ClonePgsqlOps(max_op_count);
 
   // Clear the original partition expressions as it will be replaced with hash permutations.
-  for (int op_index = 0; op_index < max_op_count; op_index++) {
+  for (size_t op_index = 0; op_index < max_op_count; ++op_index) {
     auto& read_request = GetReadReq(op_index);
     read_request.mutable_partition_column_values()->clear();
     for (size_t i = 0; i < hash_column_count; ++i) {
@@ -763,7 +776,7 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
   // Create batch operators, one per partition, to execute in parallel.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
-  ClonePgsqlOps(table_->GetPartitionCount());
+  ClonePgsqlOps(table_->GetPartitionListSize());
   // Set "parallelism_level_" to control how many operators can be sent at one time.
   //
   // TODO(neil) The calculation for this control variable should be applied to ALL operators, but
@@ -782,7 +795,7 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
   }
 
   // Assign partitions to operators.
-  const auto& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
@@ -804,11 +817,11 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
 
 Result<bool> PgDocReadOp::PopulateSamplingOps() {
   // Create one PgsqlOp per partition
-  ClonePgsqlOps(table_->GetPartitionCount());
+  ClonePgsqlOps(table_->GetPartitionListSize());
   // Partitions are sampled sequentially, one at a time
   parallelism_level_ = 1;
   // Assign partitions to operators.
-  const auto& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
@@ -853,7 +866,7 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   // Seek the tablet of the given key.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
-  const std::vector<std::string>& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   const auto& partition_key = std::find(
       partition_keys.begin(),
       partition_keys.end(),
@@ -1074,7 +1087,7 @@ LWPgsqlReadRequestPB& PgDocReadOp::GetReadReq(size_t op_index) {
 }
 
 Result<bool> PgDocReadOp::SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition) {
-  const auto& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   const std::string default_upper_bound;
   const auto& upper_bound = (partition < partition_keys.size() - 1)
       ? partition_keys[partition + 1]

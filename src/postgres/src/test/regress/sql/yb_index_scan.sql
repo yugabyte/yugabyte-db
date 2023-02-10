@@ -19,10 +19,18 @@ SELECT * FROM pk_desc ORDER BY k DESC;
 EXPLAIN (COSTS OFF) SELECT * FROM pk_desc ORDER BY k NULLS FIRST;
 SELECT * FROM pk_desc ORDER BY k NULLS FIRST;
 
+-- Testing yb_pushdown_strict_inequality
+SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
+/*+Set(yb_pushdown_strict_inequality false)*/ SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
+
 CREATE TABLE  pk_multi(h int, r int, v text, PRIMARY KEY(h, r DESC));
 INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(1, 3, '1-3');
 EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE h = 1;
 SELECT * FROM pk_multi WHERE h = 1;
+
+-- We should still get correct results even if hash key is unset
+/*+IndexScan(pk_multi pk_multi_pkey)*/ EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE r IN (5,3,9,2);
+/*+IndexScan(pk_multi pk_multi_pkey)*/ SELECT * FROM pk_multi WHERE r IN (5,3,9,2);
 
 EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
 SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);

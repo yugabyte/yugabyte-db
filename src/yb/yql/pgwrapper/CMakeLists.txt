@@ -130,17 +130,9 @@ if(NOT "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
        "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
 endif()
 
-if ("${YB_BUILD_TYPE}" STREQUAL "tsan")
-  # Don't build the initial sys catalog snapshot target automatically in TSAN. But still create the
-  # target so it could be built explicitly.
-  add_custom_target(
-    initial_sys_catalog_snapshot  # Don't add "ALL" here.
-    COMMAND ${gen_initial_sys_catalog_snapshot_cmd})
-else()
-  add_custom_target(
-    initial_sys_catalog_snapshot ALL
-    COMMAND ${gen_initial_sys_catalog_snapshot_cmd})
-endif()
+add_custom_target(
+  initial_sys_catalog_snapshot ALL
+  COMMAND ${gen_initial_sys_catalog_snapshot_cmd})
 
 add_dependencies(
   initial_sys_catalog_snapshot

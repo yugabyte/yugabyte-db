@@ -39,6 +39,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -601,7 +602,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
     params.put("nodePrefix", "demo");
-    Universe u1 = createUniverse("demo", customer.getCustomerId());
+    Universe u1 = createUniverse("demo", customer.getCustomerId(), CloudType.kubernetes);
     Provider provider =
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
@@ -648,7 +649,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
     params.put("nodePrefix", "demo");
-    Universe u1 = createUniverse("demo", customer.getCustomerId());
+    Universe u1 = createUniverse("demo", customer.getCustomerId(), CloudType.kubernetes);
     if (helmNewNamingStyle) {
       u1 =
           Universe.saveDetails(
@@ -676,7 +677,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertValue(filters, "namespace", "demo");
     if (helmNewNamingStyle) {
-      assertValue(filters, "pod_name", "demo-(.*)-yb-tserver-(.*)");
+      assertValue(filters, "pod_name", "ybdemo-jjk0-yb-tserver-(.*)");
     } else {
       assertNull(filters.get("pod_name"));
     }

@@ -498,10 +498,12 @@ public class AsyncYBClient implements AutoCloseable {
                                                        String streamId, String tabletId,
                                                        long term,
                                                        long index,
-                                                       boolean initialCheckpoint) {
+                                                       boolean initialCheckpoint,
+                                                       boolean bootstrap,
+                                                       Long cdcsdkSafeTime) {
     checkIsClosed();
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
-      tabletId, term, index, initialCheckpoint);
+      tabletId, term, index, initialCheckpoint, bootstrap, cdcsdkSafeTime);
     Deferred<SetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
@@ -1299,6 +1301,19 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     ListSnapshotsRequest request =
         new ListSnapshotsRequest(this.masterTable, snapshotUUID, listDeletedSnapshots);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Delete snapshot method.
+   * @param snapshotUUID        Snapshot UUID of snapshot to be deleted.
+   * @return  a deferred object that yields a snapshot delete response.
+   */
+  public Deferred<DeleteSnapshotResponse> deleteSnapshot(UUID snapshotUUID) {
+    checkIsClosed();
+    DeleteSnapshotRequest request =
+        new DeleteSnapshotRequest(this.masterTable, snapshotUUID);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

@@ -12,15 +12,6 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../row-level-geo-partitioning/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
-
 Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics, and transparent schema change propagation across the regions would benefit from this feature.
 
 Geo-partitioning allows you to move data closer to users to:
@@ -105,6 +96,10 @@ Next, create the parent table that contains a `geo_partition` column which is us
         created_at TIMESTAMP DEFAULT NOW()
     ) PARTITION BY LIST (geo_partition);
     ```
+
+{{< note title="Note" >}}
+You can set geo_partition to be **DEFAULT [yb_server_region()](../../../api/ysql/exprs/geo_partitioning_helper_functions/func_yb_server_region)** to partition based on regions. This way, insertions to the local partitioned table don't have to specify the geo_partition column value.
+{{< /note >}}
 
 1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `bank_transactions_eu`, another for the India region called `bank_transactions_india,` and a third partition for US region called `bank_transactions_us`. Create any required indexes for each partition, making sure to associate each index with the same tablespace as that of the partition table.
 

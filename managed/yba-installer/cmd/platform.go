@@ -5,7 +5,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,6 +129,8 @@ func (plat Platform) createNecessaryDirectories() {
 
 func (plat Platform) untarDevopsAndYugawarePackages() {
 
+	log.Info("Extracting devops and yugaware pacakges.")
+
 	packageFolderPath := plat.yugabyteDir()
 
 	files, err := os.ReadDir(packageFolderPath)
@@ -144,12 +148,12 @@ func (plat Platform) untarDevopsAndYugawarePackages() {
 				log.Fatal("Error in starting the File Extraction process.")
 			}
 
-			log.Info("Extracting archive at " + devopsTgzPath)
+			log.Debug("Extracting archive at " + devopsTgzPath)
 			if err := tar.Untar(rExtract, packageFolderPath+"/devops",
 				tar.WithMaxUntarSize(-1)); err != nil {
 				log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", devopsTgzPath, err.Error()))
 			}
-			log.Info("Completed extracting archive at " + devopsTgzPath +
+			log.Debug("Completed extracting archive at " + devopsTgzPath +
 				" -> " + packageFolderPath + "/devops")
 
 		} else if strings.Contains(f.Name(), "yugaware") && strings.Contains(f.Name(), "tar") {
@@ -161,12 +165,12 @@ func (plat Platform) untarDevopsAndYugawarePackages() {
 				log.Fatal("Error in starting the File Extraction process.")
 			}
 
-			log.Info("Extracting archive at " + yugawareTgzPath)
+			log.Debug("Extracting archive at " + yugawareTgzPath)
 			if err := tar.Untar(rExtract, packageFolderPath+"/yugaware",
 				tar.WithMaxUntarSize(-1)); err != nil {
 				log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", yugawareTgzPath, err.Error()))
 			}
-			log.Info("Completed extracting archive at " + yugawareTgzPath +
+			log.Debug("Completed extracting archive at " + yugawareTgzPath +
 				" -> " + packageFolderPath + "/yugaware")
 
 		}
@@ -252,9 +256,11 @@ func (plat Platform) Start() {
 
 // Stop the YBA platform service.
 func (plat Platform) Stop() {
-
+	if plat.Status().Status != common.StatusRunning {
+		log.Debug(plat.name + " is already stopped")
+		return
+	}
 	if common.HasSudoAccess() {
-
 		arg1 := []string{"stop", filepath.Base(plat.SystemdFileLocation)}
 		common.RunBash(common.Systemctl, arg1)
 
@@ -309,9 +315,14 @@ func (plat Platform) Uninstall(removeData bool) {
 	if common.HasSudoAccess() {
 		err := os.Remove(plat.SystemdFileLocation)
 		if err != nil {
-			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
-				err.Error(), plat.SystemdFileLocation))
+			pe := err.(*fs.PathError)
+			if !errors.Is(pe.Err, fs.ErrNotExist) {
+				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
+					pe.Error(), plat.SystemdFileLocation))
+			}
 		}
+		// reload systemd daemon
+		common.RunBash(common.Systemctl, []string{"daemon-reload"})
 	}
 
 	// Optionally remove data

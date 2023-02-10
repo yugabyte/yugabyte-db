@@ -8,14 +8,12 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
 
-var skippedPreflightChecks []string
-
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "The install command is installs Yugabyte Anywhere onto your operating system.",
+	Short: "The install command is installs YugabyteDB Anywhere onto your operating system.",
 	Long: `
         The install command is the main workhorse command for YBA Installer that
-        will install the version of Yugabyte Anywhere associated with your downloaded version
+        will install the version of YugabyteDB Anywhere associated with your downloaded version
         of YBA Installer onto your host Operating System. Can also perform an install while skipping
         certain preflight checks if desired.
         `,
@@ -56,7 +54,7 @@ var installCmd = &cobra.Command{
 
 		common.PostInstall()
 		common.PrintStatus(statuses...)
-		log.Info("Successfully installed Yugabyte Anywhere!")
+		log.Info("Successfully installed YugabyteDB Anywhere!")
 	},
 }
 
@@ -64,5 +62,9 @@ func init() {
 	installCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
 		[]string{}, "Preflight checks to skip")
 	installCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
-	rootCmd.AddCommand(installCmd)
+
+	// Install must be run from directory of yba version
+	if !common.RunFromInstalled() {
+		rootCmd.AddCommand(installCmd)
+	}
 }

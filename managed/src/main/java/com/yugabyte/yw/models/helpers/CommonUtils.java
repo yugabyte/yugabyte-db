@@ -101,6 +101,8 @@ public class CommonUtils {
           "AZU_KEY_NAME",
           "AZU_KEY_ALGORITHM",
           "AZU_KEY_SIZE",
+          // Hashicorp KMS fields
+          "HC_VAULT_KEY_NAME",
           "KEYSPACETABLELIST",
           // General API field
           "KEYSPACE");
@@ -117,7 +119,7 @@ public class CommonUtils {
       return true;
     }
 
-    // Needed for GCP KMS UI - more specifically listKMSConfigs()
+    // Needed for KMS UI - more specifically listKMSConfigs()
     // Can add more exclusions if required
     if (excludedFieldNames.contains(ucFieldname)) {
       return false;
@@ -173,6 +175,27 @@ public class CommonUtils {
     return isStrictlySensitiveField(key) || (value == null) || value.length() < 5
         ? MASKED_FIELD_VALUE
         : value.replaceAll(maskRegex, "*");
+  }
+
+  public static JsonNode getMaskedValue(JsonNode value, List<String> toMaskKeys) {
+    if (value == null) {
+      return value;
+    }
+    ObjectNode jsonNodeValue = (ObjectNode) value;
+    for (String key : toMaskKeys) {
+      if (jsonNodeValue.has(key)) {
+        String keyValue = jsonNodeValue.get(key).toString();
+        jsonNodeValue.put(key, keyValue.replaceAll(maskRegex, "*"));
+      }
+    }
+    return value;
+  }
+
+  public static String getMaskedValue(String value) {
+    if (value == null) {
+      return value;
+    }
+    return value.replaceAll(maskRegex, "*");
   }
 
   @SuppressWarnings("unchecked")

@@ -478,13 +478,15 @@ class AwsCloud(AbstractCloud):
         instance.terminate()
         instance.wait_until_terminated()
 
-    def reboot_instance(self, host_info, ssh_ports):
+    def reboot_instance(self, host_info, server_ports):
         boto3.client('ec2', region_name=host_info['region']).reboot_instances(
             InstanceIds=[host_info["id"]]
         )
-        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+        self.wait_for_server_ports(host_info["private_ip"], host_info["name"], server_ports)
 
     def mount_disk(self, host_info, vol_id, label):
+        logging.info("Mounting volume {} on host {} in zone {}; label {}".format(
+                     vol_id, host_info['id'], label))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.attach_volume(
             Device=label,
@@ -495,6 +497,7 @@ class AwsCloud(AbstractCloud):
         waiter.wait(VolumeIds=[vol_id])
 
     def unmount_disk(self, host_info, vol_id):
+        logging.info("Unmounting volume {} from host {}".format(vol_id, host_info['id']))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.detach_volume(VolumeId=vol_id, InstanceId=host_info['id'])
         waiter = ec2.get_waiter('volume_available')
@@ -571,7 +574,7 @@ class AwsCloud(AbstractCloud):
         except ClientError as e:
             logging.error(e)
 
-    def start_instance(self, host_info, ssh_ports):
+    def start_instance(self, host_info, server_ports):
         ec2 = boto3.resource('ec2', host_info["region"])
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -587,8 +590,8 @@ class AwsCloud(AbstractCloud):
                 }
                 instance.wait_until_running(WaiterConfig=wait_config)
             # The OS boot up may take some time,
-            # so retry until the instance allows SSH connection.
-            self.wait_for_ssh_ports(host_info["private_ip"], host_info["id"], ssh_ports)
+            # so retry until the instance allows connection to either SSH or RPC.
+            self.wait_for_server_ports(host_info["private_ip"], host_info["id"], server_ports)
         except ClientError as e:
             logging.error(e)
         finally:

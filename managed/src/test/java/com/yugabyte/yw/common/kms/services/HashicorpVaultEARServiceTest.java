@@ -13,42 +13,41 @@ package com.yugabyte.yw.common.kms.services;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.mockStatic;
 
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultEARServiceUtilTest;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
-
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-
 import play.libs.Json;
-
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Base64;
-
-import static org.mockito.Mockito.mockStatic;
 import org.mockito.MockedStatic;
 import org.mockito.junit.MockitoJUnitRunner;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @RunWith(MockitoJUnitRunner.class)
 public class HashicorpVaultEARServiceTest extends FakeDBApplication {
-
   public static final Logger LOG = LoggerFactory.getLogger(HashicorpVaultEARServiceTest.class);
 
   private class TestEncryptionAtRestService extends HashicorpEARService {
     // private static final Logger LOG = LoggerFactory.getLogger(TestEncryptionAtRestService.class);
+
+    public TestEncryptionAtRestService(RuntimeConfGetter confGetter) {
+      super(confGetter);
+      // TODO Auto-generated constructor stub
+    }
 
     @Override
     public ObjectNode getAuthConfig(UUID configUUID) {
@@ -57,27 +56,26 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
       n.put(HashicorpVaultConfigParams.HC_VAULT_TOKEN, VaultEARServiceUtilTest.vaultToken);
       n.put(HashicorpVaultConfigParams.HC_VAULT_ENGINE, VaultEARServiceUtilTest.sEngine);
       n.put(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH, VaultEARServiceUtilTest.mountPath);
+      n.put(HashicorpVaultConfigParams.HC_VAULT_KEY_NAME, VaultEARServiceUtilTest.keyName);
       return n;
     }
   }
 
   public boolean MOCK_RUN;
-
   UUID testUniUUID = UUID.randomUUID();
   UUID testConfigUUID = UUID.randomUUID();
   TestEncryptionAtRestService encryptionService;
   EncryptionAtRestConfig config;
-
   MockedStatic<HashicorpEARServiceUtil> mockUtil;
-
   String mockEnrData;
+  public ObjectNode fakeAuthConfig;
 
   @Before
   public void setUp() {
     MOCK_RUN = VaultEARServiceUtilTest.MOCK_RUN;
 
-    encryptionService = new TestEncryptionAtRestService();
-
+    encryptionService = new TestEncryptionAtRestService(null);
+    fakeAuthConfig = encryptionService.getAuthConfig(testConfigUUID);
     config = new EncryptionAtRestConfig();
     config.kmsConfigUUID = testConfigUUID;
     mockEnrData = "vault:v1:DCSAyVIIPF1t49p+OaYsX3R9PmJAtcxf6bVS3bE8Tg0kcbHypligQGAb0eLMU1";
@@ -92,7 +90,7 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
   @Test
   public void testGetServiceSingleton() {
     EncryptionAtRestService newService =
-        new EncryptionAtRestManager().getServiceInstance("HASHICORP");
+        new EncryptionAtRestManager(null).getServiceInstance("HASHICORP");
     assertEquals(KeyProvider.HASHICORP.getServiceInstance().hashCode(), newService.hashCode());
   }
 
@@ -101,7 +99,7 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
 
     if (MOCK_RUN) return;
 
-    ObjectNode input = encryptionService.getAuthConfig(testConfigUUID);
+    ObjectNode input = fakeAuthConfig;
     assertNotNull(input);
     ObjectNode result = encryptionService.createAuthConfigWithService(testConfigUUID, input);
     assertNotNull(result);
@@ -113,11 +111,11 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
     if (MOCK_RUN) return;
 
     ObjectNode result =
-        encryptionService.createAuthConfigWithService(
-            testConfigUUID, encryptionService.getAuthConfig(testConfigUUID));
+        encryptionService.createAuthConfigWithService(testConfigUUID, fakeAuthConfig);
     assertNotNull(result);
     assertNotNull(result.get(HashicorpVaultConfigParams.HC_VAULT_TTL));
     assertNotNull(result.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY));
+    assertNotNull(result.get(HashicorpVaultConfigParams.HC_VAULT_KEY_NAME));
 
     LOG.info(
         "TTL is {} and Expiry is {}",
@@ -137,17 +135,15 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
 
       // mock getVaultKeyForUniverse
       mockUtil
-          .when(() -> HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID))
+          .when(
+              () -> HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID, fakeAuthConfig))
           .thenCallRealMethod();
 
-      key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID);
+      key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID, fakeAuthConfig);
 
       // mock createVaultKEK
       mockUtil
-          .when(
-              () ->
-                  HashicorpEARServiceUtil.createVaultKEK(
-                      testUniUUID, testConfigUUID, encryptionService.getAuthConfig(testConfigUUID)))
+          .when(() -> HashicorpEARServiceUtil.createVaultKEK(testConfigUUID, fakeAuthConfig))
           .thenReturn(key);
 
       // mock generateUniverseKey
@@ -155,14 +151,10 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
           .when(
               () ->
                   HashicorpEARServiceUtil.generateUniverseKey(
-                      testUniUUID,
-                      testConfigUUID,
-                      "AES",
-                      256,
-                      encryptionService.getAuthConfig(testConfigUUID)))
+                      testUniUUID, testConfigUUID, "AES", 256, fakeAuthConfig))
           .thenReturn(mockEnrData.getBytes(StandardCharsets.UTF_8));
     } else {
-      key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID);
+      key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID, fakeAuthConfig);
       encryptedKeySize = 89;
     }
 
@@ -187,17 +179,15 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
 
       // mock getVaultKeyForUniverse
       mockUtil
-          .when(() -> HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID))
+          .when(
+              () -> HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID, fakeAuthConfig))
           .thenCallRealMethod();
 
-      key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID);
+      key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID, fakeAuthConfig);
 
       // mock createVaultKEK
       mockUtil
-          .when(
-              () ->
-                  HashicorpEARServiceUtil.createVaultKEK(
-                      testUniUUID, testConfigUUID, encryptionService.getAuthConfig(testConfigUUID)))
+          .when(() -> HashicorpEARServiceUtil.createVaultKEK(testConfigUUID, fakeAuthConfig))
           .thenReturn(key);
 
       // mock generateUniverseKey
@@ -205,14 +195,10 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
           .when(
               () ->
                   HashicorpEARServiceUtil.generateUniverseKey(
-                      testUniUUID,
-                      testConfigUUID,
-                      "AES",
-                      256,
-                      encryptionService.getAuthConfig(testConfigUUID)))
+                      testUniUUID, testConfigUUID, "AES", 256, fakeAuthConfig))
           .thenReturn(mockEnrData.getBytes(StandardCharsets.UTF_8));
     } else {
-      key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID);
+      key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID, fakeAuthConfig);
       encryptedKeySize = 89;
     }
 
@@ -231,17 +217,14 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
 
     byte[] keyRef = null;
     boolean hardcodedKey = false;
-    String key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID);
+    String key = HashicorpEARServiceUtil.getVaultKeyForUniverse(testConfigUUID, fakeAuthConfig);
     int encryptedKeySize = 0;
 
     if (MOCK_RUN) {
       encryptedKeySize = mockEnrData.length();
       // mock createVaultKEK
       mockUtil
-          .when(
-              () ->
-                  HashicorpEARServiceUtil.createVaultKEK(
-                      testUniUUID, testConfigUUID, encryptionService.getAuthConfig(testConfigUUID)))
+          .when(() -> HashicorpEARServiceUtil.createVaultKEK(testConfigUUID, fakeAuthConfig))
           .thenReturn(key);
 
       // mock generateUniverseKey
@@ -249,11 +232,7 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
           .when(
               () ->
                   HashicorpEARServiceUtil.generateUniverseKey(
-                      testUniUUID,
-                      testConfigUUID,
-                      "AES",
-                      256,
-                      encryptionService.getAuthConfig(testConfigUUID)))
+                      testUniUUID, testConfigUUID, "AES", 256, fakeAuthConfig))
           .thenReturn(mockEnrData.getBytes(StandardCharsets.UTF_8));
     } else {
       encryptedKeySize = 89;
@@ -282,10 +261,7 @@ public class HashicorpVaultEARServiceTest extends FakeDBApplication {
           .when(
               () ->
                   HashicorpEARServiceUtil.decryptUniverseKey(
-                      testUniUUID,
-                      testConfigUUID,
-                      keyRef1,
-                      encryptionService.getAuthConfig(testConfigUUID)))
+                      testUniUUID, testConfigUUID, keyRef1, fakeAuthConfig))
           .thenReturn(Base64.getDecoder().decode(mockUniverseKey));
     }
 

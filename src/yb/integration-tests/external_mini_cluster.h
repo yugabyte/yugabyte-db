@@ -214,6 +214,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status Start(rpc::Messenger* messenger = nullptr);
 
   // Restarts the cluster. Requires that it has been Shutdown() first.
+  // TODO: #14902 Shutdown the process if it is running.
   Status Restart();
 
   // Like the previous method but performs initialization synchronously, i.e.  this will wait for
@@ -563,6 +564,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   DISALLOW_COPY_AND_ASSIGN(ExternalMiniCluster);
 };
 
+YB_STRONGLY_TYPED_BOOL(SafeShutdown);
+
 class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
  public:
   class StringListener {
@@ -602,13 +605,16 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Return true if we have explicitly shut down the process.
   bool IsShutdown() const;
 
+  // Was SIGKILL used to shutdown the process?
+  bool WasUnsafeShutdown() const;
+
   // Return true if the process is still running.  This may return false if the process crashed,
   // even if we didn't explicitly call Shutdown().
   bool IsProcessAlive() const;
 
   bool IsProcessPaused() const;
 
-  virtual void Shutdown();
+  virtual void Shutdown(SafeShutdown safe_shutdown = SafeShutdown::kFalse);
 
   std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 
@@ -763,6 +769,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   std::unique_ptr<Subprocess> process_;
   bool is_paused_ = false;
+  bool sigkill_used_for_shutdown_ = false;
 
   std::unique_ptr<server::ServerStatusPB> status_;
 
@@ -862,6 +869,7 @@ class ExternalTabletServer : public ExternalDaemon {
   void UpdateMasterAddress(const std::vector<HostPort>& master_addrs);
 
   // Restarts the daemon. Requires that it has previously been shutdown.
+  // TODO: #14902 Shutdown the process if it is running.
   Status Restart(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       std::vector<std::pair<std::string, std::string>> flags = {});

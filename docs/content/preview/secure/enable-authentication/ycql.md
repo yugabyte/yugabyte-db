@@ -137,6 +137,43 @@ You should see the following output.
 (3 rows)
 ```
 
+#### Reset password for a superuser
+
+Superusers can alter the passwords of other users including the admin user. However, if you have lost or forgotten the password of the only superuser, you can reset the password. To do this, you need to set the [ycql_allow_non_authenticated_password_reset](../../../reference/configuration/yb-tserver/#ycql-allow-non-authenticated-password-reset) YB-TServer flag to true.
+To enable the password reset feature, you must first set the [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag to false.
+
+For example, to reset the password for the admin superuser created in [Create a superuser](#create-a-superuser), do the following:
+
+1. Set `use_cassandra_authentication` to `false` and `ycql_allow_non_authenticated_password_reset` to `true` as follows:
+
+    ```sh
+    ./bin/yb-tserver \
+      --tserver_master_addrs <master addresses> \
+      --use_cassandra_authentication=false \
+      --ycql_allow_non_authenticated_password_reset=true
+    ```
+
+1. Change the password using `ycqlsh` as follows:
+
+    ```cql
+    cassandra@ycqlsh> ALTER ROLE admin WITH PASSWORD = <updatedPassword>
+    ```
+
+1. Set `use_cassandra_authentication` to `true` and `ycql_allow_non_authenticated_password_reset` to `false` as follows:
+
+    ```sh
+    ./bin/yb-tserver \
+      --tserver_master_addrs <master addresses> \
+      --use_cassandra_authentication=true \
+      --ycql_allow_non_authenticated_password_reset=false
+    ```
+
+1. Login to `ycqlsh` with the updated password as follows:
+
+    ```sh
+    ./bin/ycqlsh -u admin -p <updatedPassword>
+    ```
+
 ## Connect using non-default credentials
 
 You can connect to a YCQL cluster with authentication enabled as follows:

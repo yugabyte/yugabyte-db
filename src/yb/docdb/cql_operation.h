@@ -32,9 +32,16 @@ class QLWriteOperation :
  public:
   QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
                    DocReadContextPtr doc_read_context,
+                   std::shared_ptr<IndexMap> index_map,
+                   const Schema* unique_index_key_schema,
+                   const TransactionOperationContext& txn_op_context);
+
+  QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+                   DocReadContextPtr doc_read_context,
                    std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContext& txn_op_context);
+
   ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
@@ -123,6 +130,15 @@ class QLWriteOperation :
       IntentAwareIterator* iter, const SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);
 
+  // Deletes an element (key/index) from a subscripted column.
+  //
+  // data - apply data that is updated per the operations performed.
+  // column_schema - schema of the column from which the element will be deleted.
+  // column_value - request proto identifying the element in the column and it's new value (empty).
+  // column_id - the id of the subscripted column.
+  Status DeleteSubscriptedColumnElement(
+      const DocOperationApplyData& data, const ColumnSchema& column_schema,
+      const QLColumnValuePB& column_value, ColumnId column_id);
   Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
@@ -145,7 +161,8 @@ class QLWriteOperation :
       bfql::TSOpcode op_code,
       RowPacker* row_packer);
 
-  docdb::DocReadContextPtr doc_read_context_;
+  const docdb::DocReadContextPtr doc_read_context_;
+  const std::shared_ptr<IndexMap> index_map_holder_;
   const IndexMap& index_map_;
   const Schema* unique_index_key_schema_ = nullptr;
 

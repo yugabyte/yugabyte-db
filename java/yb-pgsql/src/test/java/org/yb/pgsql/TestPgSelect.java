@@ -46,6 +46,13 @@ import static org.yb.AssertionWrappers.*;
 public class TestPgSelect extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_packed_row", "false");
+    return flagMap;
+  }
+
   @Test
   public void testWhereClause() throws Exception {
     List<Row> allRows = setupSimpleTable("test_where");

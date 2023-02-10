@@ -76,6 +76,15 @@ public class RuntimeConfigEntry extends Model {
         .findOneOrEmpty();
   }
 
+  public static List<RuntimeConfigEntry> get(UUID scope, List<String> paths) {
+    return RuntimeConfigEntry.find
+        .query()
+        .where()
+        .eq("scope_uuid", scope)
+        .in("path", paths)
+        .findList();
+  }
+
   public static RuntimeConfigEntry getOrBadRequest(UUID scope, String path) {
     RuntimeConfigEntry runtimeConfigEntry = get(scope, path);
     if (runtimeConfigEntry == null)

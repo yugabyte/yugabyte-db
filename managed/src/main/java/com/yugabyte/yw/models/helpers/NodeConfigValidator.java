@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
@@ -17,6 +18,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AccessKey.MigratedKeyInfoFields;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.NodeConfig.Operation;
 import com.yugabyte.yw.models.helpers.NodeConfig.Type;
@@ -25,6 +27,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import javax.inject.Inject;
@@ -45,11 +48,16 @@ public class NodeConfigValidator {
 
   private final ShellProcessHandler shellProcessHandler;
 
+  private final NodeAgentClient nodeAgentClient;
+
   @Inject
   public NodeConfigValidator(
-      RuntimeConfigFactory runtimeConfigFactory, ShellProcessHandler shellProcessHandler) {
+      RuntimeConfigFactory runtimeConfigFactory,
+      ShellProcessHandler shellProcessHandler,
+      NodeAgentClient nodeAgentClient) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.shellProcessHandler = shellProcessHandler;
+    this.nodeAgentClient = nodeAgentClient;
   }
 
   @Builder
@@ -111,8 +119,13 @@ public class NodeConfigValidator {
         nodeData.nodeConfigs == null ? new HashSet<>() : new HashSet<>(nodeData.nodeConfigs);
     ImmutableMap.Builder<Type, ValidationResult> resultsBuilder = ImmutableMap.builder();
 
-    boolean canSshNode = sshIntoNode(provider, nodeData, operation);
-    nodeConfigs.add(new NodeConfig(Type.SSH_ACCESS, String.valueOf(canSshNode)));
+    boolean canConnect = sshIntoNode(provider, nodeData, operation);
+    nodeConfigs.add(new NodeConfig(Type.SSH_ACCESS, String.valueOf(canConnect)));
+
+    if (operation == Operation.CONFIGURE && nodeAgentClient.isClientEnabled()) {
+      canConnect = connectToNodeAgent(provider, nodeData, operation);
+      nodeConfigs.add(new NodeConfig(Type.NODE_AGENT_ACCESS, String.valueOf(canConnect)));
+    }
 
     for (NodeConfig nodeConfig : nodeConfigs) {
       ValidationData input =
@@ -284,6 +297,14 @@ public class NodeConfigValidator {
           return input.getOperation() == Operation.CONFIGURE
               || CollectionUtils.isNotEmpty(keyInfo.ntpServers);
         }
+      case SSH_ACCESS:
+        {
+          return input.getOperation() == Operation.PROVISION || !nodeAgentClient.isClientEnabled();
+        }
+      case NODE_AGENT_ACCESS:
+        {
+          return input.getOperation() == Operation.CONFIGURE && nodeAgentClient.isClientEnabled();
+        }
       case CHRONYD_RUNNING:
       case RSYNC:
       case XXHASH:
@@ -382,5 +403,20 @@ public class NodeConfigValidator {
     ShellResponse response = shellProcessHandler.run(commandList, shellProcessContext);
 
     return response.isSuccess();
+  }
+
+  public boolean connectToNodeAgent(
+      Provider provider, NodeInstanceData nodeData, Operation operation) {
+    Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(nodeData.ip);
+    if (optional.isPresent()) {
+      NodeAgent nodeAgent = optional.get();
+      try {
+        nodeAgentClient.ping(nodeAgent);
+        return true;
+      } catch (RuntimeException e) {
+        log.error("Failed to connect to node agent {} - {}", nodeAgent.uuid, e.getMessage());
+      }
+    }
+    return false;
   }
 }

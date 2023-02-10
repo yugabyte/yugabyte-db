@@ -207,26 +207,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Use the **Zone** field to select a zone label that should match the value of failure domain zone label on the nodes. `topology.kubernetes.io/zone` would place the pods in that zone.
 
-1. Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and the following guidelines are taken into consideration:
-
-   - Volume binding mode should be set to `WaitForFirstConsumer`, as described in [Configure storage class volume binding](../../../troubleshoot/universe-issues/#configure-storage-class-volume-binding).
-
-   - An SSD-based storage class and an extent-based file system (XFS) should be used, as per recommendations provided in [Deployment checklist - Disks](../../../../deploy/checklist/#disks).
-
-     The following is a sample storage class YAML file for Google Kubernetes Engine (GKE). You are expected to modify it to suit your Kubernetes cluster:
-
-      ```yaml
-      kind: StorageClass
-      metadata:
-      	name: yb-storage
-      provisioner: kubernetes.io/gce-pd
-      volumeBindingMode: WaitForFirstConsumer
-      allowVolumeExpansion: true
-      reclaimPolicy: Delete
-      parameters:
-      	type: pd-ssd
-      	fstype: xfs
-      ```
+1. Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
 
 1. Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
@@ -280,7 +261,7 @@ The following overrides are available:
 
   YugabyteDB servers and other components communicate with each other using the Kubernetes Fully Qualified Domain Names (FQDN). The default domain is `cluster.local`.
 
-- Overrides to add annotations at StatefulSet-level:
+- Overrides to add annotations at StatefulSet level:
 
   ```yml
   networkAnnotation:
@@ -288,7 +269,7 @@ The following overrides are available:
     annotation2: 'bar'
   ```
 
-- Overrides to add custom resource allocation for YB-Master and YB-TServer pods. This overrides instance types selected in the YugabyteDB Anywhere universe creation flow:
+- Overrides to add custom resource allocation for YB-Master and YB-TServer pods:
 
   ```yml
   resource:
@@ -308,15 +289,18 @@ The following overrides are available:
         memory: 4Gi
   ```
 
+  This overrides instance types selected in the YugabyteDB Anywhere universe creation flow.
+
 - Overrides to enable Istio compatibility:
 
   ```yml
-  istioCompatibility: enabled: true
+  istioCompatibility:
+    enabled: true
   ```
 
   This is required when Istio is used with Kubernetes.
 
-- Overrides to publish Node-IP as the server broadcast address:
+- Overrides to publish node IP as the server broadcast address.
 
   By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration: 
 

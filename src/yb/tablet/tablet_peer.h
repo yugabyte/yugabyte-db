@@ -317,6 +317,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // to it.
   Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
 
+  // Returns the latest log index for non transaction tables and the minimum log index for
+  // transaction tables.
+  Result<OpId> GetCdcBootstrapOpIdByTableType() const;
+
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
   // Returns a non-ok status if the tablet isn't running.
@@ -476,7 +480,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   TabletWeakPtr tablet_weak_;
   std::atomic<TabletObjectState> tablet_obj_state_{TabletObjectState::kUninitialized};
 
-  rpc::ProxyCache* proxy_cache_;
   std::shared_ptr<consensus::RaftConsensus> consensus_;
   std::unique_ptr<TabletStatusListener> status_listener_;
   simple_spinlock prepare_replicate_lock_;

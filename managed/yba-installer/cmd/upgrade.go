@@ -9,11 +9,11 @@ import (
 
 var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
-	Short: "The upgrade command is used to upgrade an existing Yugabyte Anywhere installation.",
+	Short: "The upgrade command is used to upgrade an existing YugabyteDB Anywhere installation.",
 	Long: `
    The execution of the upgrade command will upgrade an already installed version of Yugabyte
    Anywhere present on your operating system, to the upgrade version associated with your download
-	 of YBA Installer. Please make sure that you have installed Yugabyte Anywhere using the install
+	 of YBA Installer. Please make sure that you have installed YugabyteDB Anywhere using the install
 	 command prior to executing the upgrade command.
    `,
 	Args: cobra.NoArgs,
@@ -27,10 +27,10 @@ var upgradeCmd = &cobra.Command{
 		common.SetWorkflowUpgrade()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		errors := preflight.Run(preflight.UpgradeChecks)
-		if len(errors) > 0 {
-			preflight.PrintPreflightResults(errors)
-			log.Fatal("all preflight checks must pass to upgrade")
+		results := preflight.Run(preflight.UpgradeChecks, skippedPreflightChecks...)
+		if preflight.ShouldFail(results) {
+			preflight.PrintPreflightResults(results)
+			log.Fatal("preflight failed")
 		}
 
 		/* This is the postgres major version upgrade workflow!
@@ -85,5 +85,10 @@ var upgradeCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(upgradeCmd)
+	// Upgrade can only be run from the new version, not from the installed path
+	upgradeCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
+		[]string{}, "Preflight checks to skip")
+	if !common.RunFromInstalled() {
+		rootCmd.AddCommand(upgradeCmd)
+	}
 }

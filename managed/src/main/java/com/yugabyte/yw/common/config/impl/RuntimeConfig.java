@@ -22,7 +22,6 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
 import java.util.function.Supplier;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -93,7 +92,7 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
       throw new UnsupportedOperationException("Unsupported Scope: " + scope);
     }
     super.deleteValueInternal(path);
-    LOG.trace("After setValue {}", this);
+    LOG.trace("After deleteEntry {}", this);
     return this;
   }
 }

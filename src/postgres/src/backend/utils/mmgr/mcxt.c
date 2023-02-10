@@ -189,8 +189,9 @@ MemoryContext SetThreadLocalCurrentMemoryContext(MemoryContext memctx)
 	return (MemoryContext) YBCPgSetThreadLocalCurrentMemoryContext(memctx);
 }
 
-MemoryContext CreateThreadLocalCurrentMemoryContext(MemoryContext parent,
-													const char *name)
+MemoryContext
+CreateThreadLocalMemoryContext(MemoryContext parent,
+							   const char *name)
 {
 	return AllocSetContextCreateExtended(parent, name, ALLOCSET_START_SMALL_SIZES);
 }

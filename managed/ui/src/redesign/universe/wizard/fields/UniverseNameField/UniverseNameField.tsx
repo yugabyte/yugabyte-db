@@ -1,13 +1,13 @@
 import _ from 'lodash';
 import React, { FC, useState } from 'react';
 import { Controller, useFormContext } from 'react-hook-form';
-import { Input } from '../../../../uikit/Input/Input';
-import YBLoadingCircleIcon from '../../../../../components/common/indicators/YBLoadingCircleIcon';
+import { YBInput } from '../../../../components';
 import { api } from '../../../../helpers/api';
 import { trimSpecialChars } from '../../../../../utils/ObjectUtils';
 import { ErrorMessage } from '../../../../uikit/ErrorMessage/ErrorMessage';
 import { useWhenMounted } from '../../../../helpers/hooks';
 import { CloudConfigFormValue } from '../../steps/cloud/CloudConfig';
+import YBLoadingCircleIcon from '../../../../../components/common/indicators/YBLoadingCircleIcon';
 import './UniverseNameField.scss';
 
 const ERROR_NAME_IN_USE = 'Universe already exists';
@@ -22,7 +22,10 @@ interface UniverseNameFieldProps {
 const FIELD_NAME = 'universeName';
 
 export const UniverseNameField: FC<UniverseNameFieldProps> = ({ disabled }) => {
-  const { control, errors } = useFormContext<CloudConfigFormValue>();
+  const {
+    control,
+    formState: { errors }
+  } = useFormContext<CloudConfigFormValue>();
   const [isValidating, setIsValidating] = useState(false);
   const whenMounted = useWhenMounted();
 
@@ -41,9 +44,8 @@ export const UniverseNameField: FC<UniverseNameFieldProps> = ({ disabled }) => {
       // skip exceptions happened due to canceling previous request
       if (!api.isRequestCancelError(error)) {
         // empty "error.response" usually means network error, so show default message from browser
-        errorMessage = error.response
-          ? _.get(error, 'response.data.error', ERROR_NAME_IN_USE)
-          : error.message;
+        errorMessage = _.get(error, 'response.data.error', ERROR_NAME_IN_USE);
+
         whenMounted(() => setIsValidating(false));
       }
     }
@@ -57,10 +59,7 @@ export const UniverseNameField: FC<UniverseNameFieldProps> = ({ disabled }) => {
         control={control}
         name={FIELD_NAME}
         rules={{ validate }}
-        as={Input}
-        // props below are forwarded to Input component
-        disabled={disabled}
-        invalid={!isValidating && !!errors[FIELD_NAME]?.message ? 'yes' : ''}
+        render={({ field: { onChange, value } }) => <YBInput onChange={onChange} value={value} />}
       />
       {isValidating && (
         <div className="universe-name-field__validation-spinner">

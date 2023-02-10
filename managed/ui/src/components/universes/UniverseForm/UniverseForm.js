@@ -11,8 +11,9 @@ import {
   isNonEmptyObject,
   isDefinedNotNull,
   isNonEmptyString,
-  isNonEmptyArray
-, isEmptyObject } from '../../../utils/ObjectUtils';
+  isNonEmptyArray,
+  isEmptyObject
+} from '../../../utils/ObjectUtils';
 import { YBButton, YBModal } from '../../../components/common/forms/fields';
 import { UniverseResources } from '../UniverseResources';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
@@ -143,7 +144,9 @@ class UniverseForm extends Component {
         const responseData = response?.payload?.data;
         if (responseData) {
           this.transitionToDefaultRoute(responseData.universeUUID);
-          toast.success(`Creating universe "${responseData.name}"`, { autoClose: TOAST_DISMISS_TIME_MS });
+          toast.success(`Creating universe "${responseData.name}"`, {
+            autoClose: TOAST_DISMISS_TIME_MS
+          });
         }
       });
     } else if (type === 'Async') {
@@ -252,11 +255,11 @@ class UniverseForm extends Component {
       });
     }
     universeTaskParams.clusterOperation = isEdit ? 'EDIT' : 'CREATE';
-    if(!isEdit){
+    if (!isEdit) {
       universeTaskParams.enableYbc =
-      this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
+        this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
     }
-    
+
     universeTaskParams.ybcSoftwareVersion = '';
   };
 
@@ -522,7 +525,7 @@ class UniverseForm extends Component {
       const currentProvider = self.getCurrentProvider(formValues[clusterType].provider).code;
       if (clusterType === 'primary') {
         const masterArr = [];
-          const tServerArr = [];
+        const tServerArr = [];
         if (isNonEmptyArray(formValues?.primary?.gFlags)) {
           formValues.primary.gFlags.forEach((flag) => {
             // eslint-disable-next-line no-prototype-builtins
@@ -555,23 +558,23 @@ class UniverseForm extends Component {
           clusterIntent.azOverrides = formValues[clusterType].azOverrides;
         }
       } else if (isDefinedNotNull(formValues.primary)) {
-          clusterIntent.tserverGFlags =
-            (formValues.primary.tserverGFlags.filter((tserverFlag) => {
+        clusterIntent.tserverGFlags =
+          formValues?.primary?.tserverGFlags
+            ?.filter((tserverFlag) => {
               return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
-              })
-              .map((tserverFlag) => {
-                return { name: tserverFlag.name, value: tserverFlag.value.trim() };
-              })) ||
-            {};
-        } else {
-          const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent
-            .tserverGFlags;
-          const tserverGFlags = [];
-          Object.entries(existingTserverGFlags).forEach(([key, value]) =>
-            tserverGFlags.push({ name: key, value: value.trim() })
-          );
-          clusterIntent.tserverGFlags = tserverGFlags;
-        }
+            })
+            .map((tserverFlag) => {
+              return { name: tserverFlag.name, value: tserverFlag.value.trim() };
+            }) || {};
+      } else {
+        const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent
+          .tserverGFlags;
+        const tserverGFlags = [];
+        Object.entries(existingTserverGFlags).forEach(([key, value]) =>
+          tserverGFlags.push({ name: key, value: value.trim() })
+        );
+        clusterIntent.tserverGFlags = tserverGFlags;
+      }
       return clusterIntent;
     };
 
@@ -748,24 +751,24 @@ class UniverseForm extends Component {
           </h2>
         );
       } else if (type === 'Create') {
-          return createUniverseTitle;
-        } else {
-          return (
-            <h2 className="content-title">
-              {primaryUniverseName}
-              <span>
-                <i className="fa fa-chevron-right"></i>
-                {this.props.type} Universe
-              </span>
-              <Link
-                className="try-new-ui-link"
-                to={`/universe/${universe.currentUniverse.data.universeUUID}/edit/primary`}
-              >
-                Try New UI
-              </Link>
-            </h2>
-          );
-        }
+        return createUniverseTitle;
+      } else {
+        return (
+          <h2 className="content-title">
+            {primaryUniverseName}
+            <span>
+              <i className="fa fa-chevron-right"></i>
+              {this.props.type} Universe
+            </span>
+            <Link
+              className="try-new-ui-link"
+              to={`/universe/${universe.currentUniverse.data.universeUUID}/edit/primary`}
+            >
+              Try New UI
+            </Link>
+          </h2>
+        );
+      }
     })(this.props);
 
     let clusterForm = <span />;
@@ -819,24 +822,24 @@ class UniverseForm extends Component {
     if (type === 'Create') {
       submitTextLabel = 'Create';
     } else if (type === 'Async') {
-        if (readOnlyCluster) {
-          submitTextLabel = 'Edit Read Replica';
-        } else {
-          submitTextLabel = 'Add Read Replica';
-        }
+      if (readOnlyCluster) {
+        submitTextLabel = 'Edit Read Replica';
       } else {
-        submitTextLabel = 'Save';
+        submitTextLabel = 'Add Read Replica';
       }
+    } else {
+      submitTextLabel = 'Save';
+    }
 
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
       ? universeConfigTemplate.data.nodeDetailsSet.filter(
-        (node) =>
-          node.nodeName &&
+          (node) =>
+            node.nodeName &&
             (type === 'Async'
               ? node.nodeName.includes('readonly')
               : !node.nodeName.includes('readonly'))
-      )
+        )
       : [];
 
     const resizePossible = this.isResizePossible();
@@ -1158,7 +1161,10 @@ class UniverseForm extends Component {
         >
           {clusterForm}
           <div className="form-action-button-container">
-            <UniverseResources resources={universe.universeResourceTemplate.data}>
+            <UniverseResources
+              resources={universe.universeResourceTemplate.data}
+              runtimeConfigs={this.props.runtimeConfigs}
+            >
               <YBButton
                 btnClass="btn btn-default universe-form-submit-btn"
                 btnText="Cancel"

@@ -340,13 +340,16 @@ class OnPremNodesList extends Component {
             pullRight
           >
             <MenuItem
-              onClick={self.showConfirmPrecheckModal.bind(self, row)}
+              onClick={!precheckDisabled ? self.showConfirmPrecheckModal.bind(self, row) : null}
               disabled={precheckDisabled}
             >
               <i className="fa fa-play-circle-o" />
               Perform check
             </MenuItem>
-            <MenuItem onClick={self.showConfirmDeleteModal.bind(self, row)} disabled={row.inUse}>
+            <MenuItem
+              onClick={!row.inUse ? self.showConfirmDeleteModal.bind(self, row) : null}
+              disabled={row.inUse}
+            >
               <i className={`fa fa-trash`} />
               Delete node
             </MenuItem>
@@ -355,7 +358,8 @@ class OnPremNodesList extends Component {
       );
     };
 
-    const onPremSetupReference = 'https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/';
+    const onPremSetupReference =
+      'https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/';
     let provisionMessage = <span />;
     const onPremProvider = this.findProvider();
     if (isDefinedNotNull(onPremProvider)) {
@@ -365,18 +369,18 @@ class OnPremNodesList extends Component {
       if (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.skipProvisioning) {
         provisionMessage = (
           <Alert bsStyle="warning" className="pre-provision-message">
-            You need to pre-provision your nodes, If the Provider SSH User has sudo privileges
-            you can execute the following script on the {YUGABYTE_TITLE} <b> yugaware </b>
-            container -or- the  YugabyteDB Anywhere host machine depending on your deployment
-            type once for each instance that you add here.
+            You need to pre-provision your nodes, If the Provider SSH User has sudo privileges you
+            can execute the following script on the {YUGABYTE_TITLE} <b> yugaware </b>
+            container -or- the YugabyteDB Anywhere host machine depending on your deployment type
+            once for each instance that you add here.
             <YBCodeBlock>
               {onPremKey.keyInfo.provisionInstanceScript + ' --ip '}
               <b>{'<IP Address> '}</b>
               {'--mount_points '}
               <b>{'<instance type mount points>'}</b>
             </YBCodeBlock>
-            See the On-premises Provider <a href={onPremSetupReference}> documentation </a> for 
-            more details if the <b> Provider SSH User</b>  does not have <b>sudo</b> privileges.
+            See the On-premises Provider <a href={onPremSetupReference}> documentation </a> for more
+            details if the <b> Provider SSH User</b> does not have <b>sudo</b> privileges.
           </Alert>
         );
       }
@@ -387,49 +391,49 @@ class OnPremNodesList extends Component {
     );
     const regionFormTemplate = isNonEmptyArray(currentCloudRegions)
       ? currentCloudRegions
-        .filter((regionItem) => regionItem.active)
-        .map(function (regionItem, idx) {
-          const zoneOptions = regionItem.zones
-            .filter((zoneItem) => zoneItem.active)
-            .map(function (zoneItem, zoneIdx) {
+          .filter((regionItem) => regionItem.active)
+          .map(function (regionItem, idx) {
+            const zoneOptions = regionItem.zones
+              .filter((zoneItem) => zoneItem.active)
+              .map(function (zoneItem, zoneIdx) {
+                return (
+                  <option key={zoneItem + zoneIdx} value={zoneItem.code}>
+                    {zoneItem.code}
+                  </option>
+                );
+              });
+            const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
               return (
-                <option key={zoneItem + zoneIdx} value={zoneItem.code}>
-                  {zoneItem.code}
+                <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
+                  {machineTypeItem.instanceTypeCode}
                 </option>
               );
             });
-          const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
-            return (
-              <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
-                {machineTypeItem.instanceTypeCode}
+            zoneOptions.unshift(
+              <option key={-1} value={''}>
+                Select
               </option>
             );
-          });
-          zoneOptions.unshift(
-            <option key={-1} value={''}>
+            machineTypeOptions.unshift(
+              <option key={-1} value={''}>
                 Select
-            </option>
-          );
-          machineTypeOptions.unshift(
-            <option key={-1} value={''}>
-                Select
-            </option>
-          );
-          return (
-            <div key={`instance${idx}`}>
-              <div className="instance-region-type">{regionItem.code}</div>
-              <div className="form-field-grid">
-                <FieldArray
-                  name={`instances.${regionItem.code}`}
-                  component={InstanceTypeForRegion}
-                  zoneOptions={zoneOptions}
-                  machineTypeOptions={machineTypeOptions}
-                  formType={'modal'}
-                />
+              </option>
+            );
+            return (
+              <div key={`instance${idx}`}>
+                <div className="instance-region-type">{regionItem.code}</div>
+                <div className="form-field-grid">
+                  <FieldArray
+                    name={`instances.${regionItem.code}`}
+                    component={InstanceTypeForRegion}
+                    zoneOptions={zoneOptions}
+                    machineTypeOptions={machineTypeOptions}
+                    formType={'modal'}
+                  />
+                </div>
               </div>
-            </div>
-          );
-        })
+            );
+          })
       : null;
     const deleteConfirmationText = `Are you sure you want to delete node${
       isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.nodeName

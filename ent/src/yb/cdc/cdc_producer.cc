@@ -429,7 +429,8 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
   const auto& transaction_status = transaction_state.status();
   if (transaction_status != TransactionStatus::APPLYING &&
       transaction_status != TransactionStatus::COMMITTED &&
-      transaction_status != TransactionStatus::CREATED) {
+      transaction_status != TransactionStatus::CREATED &&
+      transaction_status != TransactionStatus::PENDING) {
     // This is an unsupported transaction status.
     return Status::OK();
   }
@@ -454,6 +455,10 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
       }
       break;
     }
+    case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
+    // If transaction status tablet log is GCed, or we bootstrap it is possible that that first
+    // record we see for the transaction is the PENDING record. This can be treated as a CREATED
+    // record which is idempotent.
     case TransactionStatus::CREATED: {
       record->set_operation(CDCRecordPB::TRANSACTION_CREATED);
       break;
@@ -515,9 +520,17 @@ Status GetChangesForXCluster(const std::string& stream_id,
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.
   RequestScope request_scope;
+  consensus::ReadOpsResult read_ops;
 
-  auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->
-    ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index, deadline));
+  {
+    auto consensus = tablet_peer ? tablet_peer->shared_consensus() : nullptr;
+    SCHECK(
+        consensus != nullptr, NotFound, Format("Tablet id $0 not found", tablet_peer->tablet_id()));
+
+    read_ops = VERIFY_RESULT(
+        consensus->ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index, deadline));
+  }
+
   ScopedTrackedConsumption consumption;
   if (read_ops.read_from_disk_size && mem_tracker) {
     consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);

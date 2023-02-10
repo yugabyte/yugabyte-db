@@ -392,6 +392,93 @@ class PgApiImpl::Interrupter {
 
 //--------------------------------------------------------------------------------------------------
 
+void PgApiImpl::TupleIdBuilder::Prepare() {
+  // Arena's start block size (kStartBlockSize) is 4kB, there is no reason to reset it after
+  // building each key. Reset it after building 8 keys.
+  if (((++counter_) & 0x7) == 0) {
+    arena_.Reset(ResetMode::kKeepFirst);
+  }
+  doc_key_.Clear();
+}
+
+Result<docdb::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
+    PgSession* session, const YBCPgYBTupleIdDescriptor& descr) {
+  Prepare();
+  auto target_desc = VERIFY_RESULT(session->LoadTable(
+      PgObjectId(descr.database_oid, descr.table_oid)));
+  const auto num_keys = target_desc->num_key_columns();
+  SCHECK_EQ(
+      descr.nattrs, num_keys,
+      Corruption, "Number of key components does not match column description");
+  const auto num_hash_keys = target_desc->num_hash_key_columns();
+  const auto num_range_keys = num_keys - num_hash_keys;
+  LWPgsqlExpressionPB temp_expr_pb(&arena_);
+  ArenaList<LWPgsqlExpressionPB> hashed_values(&arena_);
+  auto& hashed_components = doc_key_.hashed_group();
+  auto& range_components = doc_key_.range_group();
+  hashed_components.reserve(num_hash_keys);
+  range_components.reserve(num_range_keys);
+  auto* attrs_end = descr.attrs + descr.nattrs;
+  std::string new_row_id_holder;
+  // DocDB API requires that partition columns must be listed in their created-order.
+  // Order from target_desc should be used as attributes sequence may have different order.
+  for (auto i : Range(num_keys)) {
+    PgColumn column(target_desc->schema(), i);
+    const auto* attr = std::find_if(
+        descr.attrs, attrs_end,
+        [attr_num = column.attr_num()](const auto& attr) {
+            return attr_num == attr.attr_num;
+        });
+    SCHECK(
+        attr != attrs_end,
+        InvalidArgument, Format("Key attribute number $0 not found", column.attr_num()));
+
+    // Suppose we are processing range component
+    auto* values = &range_components;
+    auto* expr_pb = &temp_expr_pb;
+    if (column.is_partition()) {
+      // Hashed component
+      values = &hashed_components;
+      expr_pb = &hashed_values.emplace_back();
+    }
+
+    if (attr->is_null) {
+      values->emplace_back(docdb::KeyEntryType::kNullLow);
+      continue;
+    }
+    if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
+      SCHECK(new_row_id_holder.empty(), Corruption, "Multiple kYBRowId attribute detected");
+      new_row_id_holder = session->GenerateNewRowid();
+      expr_pb->mutable_value()->ref_binary_value(new_row_id_holder);
+    } else {
+      const auto& collation_info = attr->collation_info;
+      auto value = arena_.NewObject<PgConstant>(
+          &arena_, attr->type_entity, collation_info.collate_is_valid_non_c,
+          collation_info.sortkey, attr->datum, false);
+      SCHECK_EQ(
+          column.internal_type(), value->internal_type(),
+          Corruption, "Attribute value type does not match column type");
+      expr_pb->ref_value(VERIFY_RESULT(value->Eval()));
+    }
+    values->push_back(docdb::KeyEntryValue::FromQLValuePB(
+        expr_pb->value(), column.desc().sorting_type()));
+  }
+
+  SCHECK_EQ(
+      hashed_components.size(), num_hash_keys,
+      Corruption, "Number of hashed components does not match column description");
+  SCHECK_EQ(
+      range_components.size(), num_range_keys,
+      Corruption, "Number of range components does not match column description");
+  if (!hashed_values.empty()) {
+    doc_key_.set_hash(VERIFY_RESULT(
+        target_desc->partition_schema().PgsqlHashColumnCompoundValue(hashed_values)));
+  }
+  return doc_key_.Encode();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 PgApiImpl::PgApiImpl(
     PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
     YBCPgCallbacks callbacks)
@@ -564,6 +651,25 @@ Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
   return Status::OK();
 }
 
+Status PgApiImpl::FetchSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     bool is_db_catalog_version_mode,
+                                     uint32_t fetch_count,
+                                     int64_t inc_by,
+                                     int64_t min_value,
+                                     int64_t max_value,
+                                     bool cycle,
+                                     int64_t *first_value,
+                                     int64_t *last_value) {
+  auto res = VERIFY_RESULT(pg_session_->FetchSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      min_value, max_value, cycle));
+  *first_value = res.first;
+  *last_value = res.second;
+  return Status::OK();
+}
+
 Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
                                     int64_t seq_oid,
                                     uint64_t ysql_catalog_version,
@@ -700,6 +806,9 @@ Status PgApiImpl::NewCreateTablegroup(const char *database_name,
                                       const PgOid tablegroup_oid,
                                       const PgOid tablespace_oid,
                                       PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Tablegroup is being created outside of DDL mode");
   auto stmt = std::make_unique<PgCreateTablegroup>(pg_session_, database_name,
                                                    database_oid, tablegroup_oid, tablespace_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
@@ -796,6 +905,7 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
@@ -867,6 +977,7 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
   return pg_stmt->Exec();
 }
@@ -1065,7 +1176,7 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_TABLE)) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTable*>(handle)->Exec();
 }
 
@@ -1153,86 +1264,8 @@ Status PgApiImpl::DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values,
   return down_cast<PgDml*>(handle)->Fetch(natts, values, isnulls, syscols, has_data);
 }
 
-Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
-                                   const YBTupleIdProcessor& processor) {
-  auto target_desc = VERIFY_RESULT(pg_session_->LoadTable(
-      PgObjectId(descr.database_oid, descr.table_oid)));
-  SCHECK_EQ(descr.nattrs, target_desc->num_key_columns(), Corruption,
-            "Number of key components does not match column description");
-  vector<docdb::KeyEntryValue> *values = nullptr;
-  PgsqlExpressionPB *expr_pb;
-  PgsqlExpressionPB temp_expr_pb;
-  google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
-  vector<docdb::KeyEntryValue> hashed_components, range_components;
-  hashed_components.reserve(target_desc->num_hash_key_columns());
-  range_components.reserve(target_desc->num_key_columns() - target_desc->num_hash_key_columns());
-  size_t remain_attr = descr.nattrs;
-  // DocDB API requires that partition columns must be listed in their created-order.
-  // Order from target_desc should be used as attributes sequence may have different order.
-  for (size_t i : Range(target_desc->schema().columns().size())) {
-    PgColumn column(target_desc->schema(), i);
-    for (auto attr = descr.attrs, end = descr.attrs + descr.nattrs; attr != end; ++attr) {
-      if (attr->attr_num == column.attr_num()) {
-        if (!column.is_primary()) {
-          return STATUS_SUBSTITUTE(
-              InvalidArgument, "Attribute number $0 not a primary attribute", attr->attr_num);
-        }
-        if (column.is_partition()) {
-          // Hashed component.
-          values = &hashed_components;
-          expr_pb = hashed_values.Add();
-        } else {
-          // Range component.
-          values = &range_components;
-          expr_pb = &temp_expr_pb;
-        }
-
-        if (attr->is_null) {
-          values->emplace_back(docdb::KeyEntryType::kNullLow);
-        } else {
-          if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
-            expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());
-          } else {
-            const YBCPgCollationInfo& collation_info = attr->collation_info;
-            ThreadSafeArena arena;
-            PgConstant value(
-                &arena, attr->type_entity, collation_info.collate_is_valid_non_c,
-                collation_info.sortkey, attr->datum, false);
-            SCHECK_EQ(column.internal_type(), value.internal_type(), Corruption,
-                      "Attribute value type does not match column type");
-            auto* temp_value = VERIFY_RESULT(value.Eval());
-            if (temp_value) {
-              temp_value->ToGoogleProtobuf(expr_pb->mutable_value());
-            }
-          }
-          values->push_back(docdb::KeyEntryValue::FromQLValuePB(
-              expr_pb->value(), column.desc().sorting_type()));
-        }
-
-        if (--remain_attr == 0) {
-          SCHECK_EQ(hashed_components.size(), target_desc->num_hash_key_columns(), Corruption,
-                    "Number of hashed components does not match column description");
-          SCHECK_EQ(range_components.size(),
-                    target_desc->num_key_columns() - target_desc->num_hash_key_columns(),
-                    Corruption, "Number of range components does not match column description");
-          if (hashed_values.empty()) {
-            return processor(docdb::DocKey(std::move(range_components)).Encode());
-          }
-          string partition_key;
-          const PartitionSchema& partition_schema = target_desc->partition_schema();
-          RETURN_NOT_OK(partition_schema.EncodePgsqlKey(hashed_values, &partition_key));
-          const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-
-          return processor(
-              docdb::DocKey(hash, std::move(hashed_components),
-                std::move(range_components)).Encode());
-        }
-        break;
-      }
-    }
-  }
-
-  return STATUS_FORMAT(Corruption, "Not all attributes ($0) were resolved", remain_attr);
+Result<docdb::KeyBytes> PgApiImpl::BuildTupleId(const YBCPgYBTupleIdDescriptor& descr) {
+    return tuple_id_builder_.Build(pg_session_.get(), descr);
 }
 
 Status PgApiImpl::StartOperationsBuffering() {
@@ -1830,17 +1863,24 @@ Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
   return pg_session_->ListTabletServers();
 }
 
+Status PgApiImpl::GetIndexBackfillProgress(std::vector<PgObjectId> oids,
+                                           uint64_t** backfill_statuses) {
+  return pg_session_->GetIndexBackfillProgress(oids, backfill_statuses);
+}
+
 Status PgApiImpl::ValidatePlacement(const char *placement_info) {
   return pg_session_->ValidatePlacement(placement_info);
 }
 
-void PgApiImpl::StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
+void PgApiImpl::StartSysTablePrefetching(
+    uint64_t latest_known_ysql_catalog_version, bool should_use_cache) {
   if (pg_sys_table_prefetcher_) {
     DLOG(FATAL) << "Sys table prefetching was started already";
   }
 
-  CHECK(!pg_session_->HasCatalogReadPoint());
-  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(latest_known_ysql_catalog_version));
+  CHECK(!pg_session_->catalog_read_time());
+  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(
+      latest_known_ysql_catalog_version,  should_use_cache));
 }
 
 void PgApiImpl::StopSysTablePrefetching() {
@@ -1849,6 +1889,10 @@ void PgApiImpl::StopSysTablePrefetching() {
   } else {
     pg_sys_table_prefetcher_.reset();
   }
+}
+
+bool PgApiImpl::IsSysTablePrefetchingStarted() const {
+  return static_cast<bool>(pg_sys_table_prefetcher_);
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(

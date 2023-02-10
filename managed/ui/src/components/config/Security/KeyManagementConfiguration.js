@@ -413,6 +413,7 @@ class KeyManagementConfiguration extends Component {
               component={YBFormInput}
               placeholder={'CMK ID'}
               className={'kube-provider-input-field'}
+              disabled={isEdit}
             />
           </Col>
           <Col lg={1} className="config-zone-tooltip">

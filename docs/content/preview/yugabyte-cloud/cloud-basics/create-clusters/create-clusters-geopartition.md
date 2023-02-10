@@ -3,7 +3,6 @@ title: Partition by region
 linkTitle: Partition by region
 description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
 headcontent: Use geo-partitioning to pin data to regions
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-geopartition
@@ -27,6 +26,8 @@ To view your cluster tablespaces, you can enter the following command:
 ```sql
 SELECT * FROM pg_tablespace;
 ```
+
+Note that data pinned to a single region via tablespaces is not replicated to other regions, and remains subject to the fault tolerance of the cluster (Node- or Availability Zone-level).
 
 For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
 
