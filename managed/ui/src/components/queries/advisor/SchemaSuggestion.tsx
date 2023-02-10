@@ -5,7 +5,7 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import lightBulbIcon from '../images/lightbulb.svg';
 import arrowRightIcon from '../images/arrow-right-alt.svg';
 import { EXTERNAL_LINKS } from '../helpers/const';
-import { IndexSchemaRecommendation } from '../../../redesign/helpers/dtos';
+import { IndexSchemaRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
 export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary }) => {
@@ -24,12 +24,9 @@ export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary 
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}
           </span>
-
         </div>
         <ul className="schemaRecList">
-          <li>
-            {t('clusterDetail.performance.advisor.DropIndex')}
-          </li>
+          <li>{t('clusterDetail.performance.advisor.DropIndex')}</li>
           <li>
             {t('clusterDetail.performance.advisor.RangeSharding')}
             <a
@@ -45,10 +42,7 @@ export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary 
         </ul>
       </div>
       <div className="recommendationClass">
-        <BootstrapTable
-          data={data}
-          pagination={data?.length > 10}
-        >
+        <BootstrapTable data={data} pagination={data?.length > 10}>
           <TableHeaderColumn
             dataField="index_name"
             isKey={true}

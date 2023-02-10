@@ -8,6 +8,7 @@ import { YBLabel, YBAutoComplete } from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import { UniverseFormData, Provider, DEFAULT_CLOUD_CONFIG } from '../../../utils/dto';
 import { PROVIDER_FIELD } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface ProvidersFieldProps {
   disabled?: boolean;
@@ -23,6 +24,7 @@ export const ProvidersField = ({
   filterByProvider
 }: ProvidersFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
+  const classes = useFormFieldStyles();
   const { t } = useTranslation();
   const { data, isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList);
 
@@ -59,7 +61,7 @@ export const ProvidersField = ({
               <YBLabel dataTestId="ProvidersField-Label">
                 {t('universeForm.cloudConfig.providerField')}
               </YBLabel>
-              <Box flex={1}>
+              <Box flex={1} className={classes.defaultTextBox}>
                 <YBAutoComplete
                   loading={isLoading}
                   value={(value as unknown) as Record<string, string>}

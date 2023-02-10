@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import lightBulbIcon from '../images/lightbulb.svg';
 import { EXTERNAL_LINKS } from '../helpers/const';
-import { CpuUsageRecommendation } from '../../../redesign/helpers/dtos';
+import { CpuUsageRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
 export const CpuUsage: FC<CpuUsageRecommendation> = ({ summary }) => {
