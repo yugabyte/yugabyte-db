@@ -6233,6 +6233,21 @@
       "required" : [ "buildNumber" ],
       "type" : "object"
     },
+    "PerProcessFlags" : {
+      "properties" : {
+        "value" : {
+          "additionalProperties" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "type" : "object"
+        }
+      },
+      "required" : [ "value" ],
+      "type" : "object"
+    },
     "PerfAdvisorSettingsFormData" : {
       "properties" : {
         "connection_skew_interval_mins" : {
@@ -8635,6 +8650,24 @@
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
+    "SpecificGFlags" : {
+      "properties" : {
+        "inheritFromPrimary" : {
+          "type" : "boolean"
+        },
+        "perAZ" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProcessFlags"
+          },
+          "type" : "object"
+        },
+        "perProcessFlags" : {
+          "$ref" : "#/definitions/PerProcessFlags"
+        }
+      },
+      "required" : [ "inheritFromPrimary", "perAZ", "perProcessFlags" ],
+      "type" : "object"
+    },
     "StateChangeAuditInfo" : {
       "properties" : {
         "customerId" : {
@@ -10878,6 +10911,9 @@
         "replicationFactor" : {
           "format" : "int32",
           "type" : "integer"
+        },
+        "specificGFlags" : {
+          "$ref" : "#/definitions/SpecificGFlags"
         },
         "tserverGFlags" : {
           "additionalProperties" : {
