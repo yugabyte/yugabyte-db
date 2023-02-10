@@ -129,18 +129,20 @@ However, those cases may require additional, undocumented steps.
 
 ### Ninja
 
-It is recommended to use ninja for faster build.
+It is recommended to use [Ninja][ninja] for faster build.
 
 ```sh
 sudo yum install -y ninja-build
 ```
 
-By default, build will prefer using ninja over make if it exists.
-If you want to use make, specify build option `--make`.
+By default, build will prefer using Ninja over Make if it exists.
+If you want to use Make, specify build option `--make`.
+
+[ninja]: https://ninja-build.org
 
 ### Ccache
 
-It is recommended to use ccache for faster build.
+It is recommended to use [Ccache][ccache] for faster build.
 
 ```sh
 sudo yum install -y ccache
@@ -151,6 +153,8 @@ Set `YB_CCACHE_DIR` in your `.bashrc` or equivalent:
 ```sh
 echo 'export YB_CCACHE_DIR=$HOME/.cache/yb_ccache' >>$HOME/.bashrc
 ```
+
+[ccache]: https://ccache.dev
 
 ### Java
 
