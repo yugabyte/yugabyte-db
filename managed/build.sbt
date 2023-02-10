@@ -558,10 +558,18 @@ lazy val swagger = project
 
     swaggerGen := Def.taskDyn {
       // Consider generating this only in managedResources
-      val file = (resourceDirectory in Compile in root).value / "swagger.json"
+      val swaggerJson = (resourceDirectory in Compile in root).value / "swagger.json"
+      val swaggerStrictJson = (resourceDirectory in Compile in root).value / "swagger-strict.json"
       Def.sequential(
         (Test / runMain )
-          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerJson"),
+        // swagger-strict.json excludes deprecated apis
+        // For ex use '--exclude_deprecated 2.15.0.0' to drop APIs deprecated before a version
+        // or use '--exclude_deprecated 24m' to drop APIs deprecated before 2 years
+        // or use '--exclude_deprecated 2020-12-21' (YYYY-MM-DD format) to drop since date
+        // or use '--exclude_deprecated all' to drop all deprecated APIs
+        (Test / runMain )
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerStrictJson --exclude_deprecated 24m"),
       )
     }.value
   )
