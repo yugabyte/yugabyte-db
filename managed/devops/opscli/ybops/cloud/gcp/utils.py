@@ -171,6 +171,7 @@ class Waiter():
     def wait(self, operation, region=None, zone=None):
         # This allows easier chaining of waits on functions that are NOOPs if items already exist.
         if operation is None:
+            logging.warning("Returning waiting for a None Operation")
             return
         retry_count = 0
         name = operation["name"]
@@ -582,6 +583,7 @@ class GoogleCloudAdmin():
     def create_disk(self, zone, instance_tags, body):
         if instance_tags is not None:
             body.update({"labels": json.loads(instance_tags)})
+        # Create a persistent disk with wait
         operation = self.compute.disks().insert(project=self.project,
                                                 zone=zone,
                                                 body=body).execute()
@@ -642,6 +644,7 @@ class GoogleCloudAdmin():
             self.compute.disks().delete(project=self.project, zone=zone, disk=disk_name).execute()
 
     def mount_disk(self, zone, instance, body):
+        logging.info("Attaching disk on instance {} in zone {}".format(instance, zone))
         operation = self.compute.instances().attachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,
@@ -649,6 +652,7 @@ class GoogleCloudAdmin():
         return self.waiter.wait(operation, zone=zone)
 
     def unmount_disk(self, zone, instance, name):
+        logging.info("Detaching disk {} from instance {}".format(name, instance))
         operation = self.compute.instances().detachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,

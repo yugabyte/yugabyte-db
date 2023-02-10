@@ -485,6 +485,8 @@ class AwsCloud(AbstractCloud):
         self.wait_for_server_ports(host_info["private_ip"], host_info["name"], server_ports)
 
     def mount_disk(self, host_info, vol_id, label):
+        logging.info("Mounting volume {} on host {} in zone {}; label {}".format(
+                     vol_id, host_info['id'], label))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.attach_volume(
             Device=label,
@@ -495,6 +497,7 @@ class AwsCloud(AbstractCloud):
         waiter.wait(VolumeIds=[vol_id])
 
     def unmount_disk(self, host_info, vol_id):
+        logging.info("Unmounting volume {} from host {}".format(vol_id, host_info['id']))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.detach_volume(VolumeId=vol_id, InstanceId=host_info['id'])
         waiter = ec2.get_waiter('volume_available')

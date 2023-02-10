@@ -805,9 +805,10 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
 
     if (!superblock.hosted_stateful_services().empty()) {
+      hosted_services_.clear();
       hosted_services_.reserve(superblock.hosted_stateful_services().size());
       for (auto& service_kind : superblock.hosted_stateful_services()) {
-        hosted_services_.push_back((StatefulServiceKind)service_kind);
+        hosted_services_.insert((StatefulServiceKind)service_kind);
       }
     }
   }
@@ -1360,7 +1361,7 @@ bool RaftGroupMetadata::CleanupRestorations(
   return result;
 }
 
-std::vector<StatefulServiceKind> RaftGroupMetadata::GetHostedServiceList() const {
+std::unordered_set<StatefulServiceKind> RaftGroupMetadata::GetHostedServiceList() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return hosted_services_;
 }

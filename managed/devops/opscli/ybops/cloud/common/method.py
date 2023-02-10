@@ -554,7 +554,15 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
         except Exception as e:
             logging.exception(e)
             if unmounted:
-                self._mount_root_volume(host_info, current_root_volume)
+                # Note: This doesn't work if VM image upgrade has already been done successfully
+                # at least once before. The boot disk name will no longer correlate directly with
+                # the instance name(id).
+                old_disk_url = os.path.join(
+                    args.replacement_disk[:args.replacement_disk.rfind('/')], id)
+                self._mount_root_volume(host_info, old_disk_url)
+                logging.warning("Mounted the original volume {} on {} before failing".format(
+                                old_disk_url, id))
+            raise e
         finally:
             server_ports = self.get_server_ports_to_check(args)
             self.cloud.start_instance(host_info, server_ports)
@@ -846,12 +854,14 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
     def callback(self, args):
         unique_string = ''.join(random.choice(string.ascii_lowercase) for i in range(6))
         args.search_pattern = "{}-".format(unique_string) + args.search_pattern
-        vid = self.create_master_volume(args)
-        output = [vid]
+        volume_id = self.create_master_volume(args)
+        output = [volume_id]
         num_disks = int(args.num_disks) - 1
 
+        # Now clone and create the remaining disks if any as the machine image is the same
         if num_disks > 0:
-            output.extend(self.cloud.clone_disk(args, vid, num_disks))
+            logging.info("Cloning {} other disks using volume_id {}".format(num_disks, volume_id))
+            output.extend(self.cloud.clone_disk(args, volume_id, num_disks))
 
         logging.info("==> Created volumes {}".format(output))
         print(json.dumps(output))
