@@ -82,7 +82,7 @@ Don't forget to add JDK binaries to `PATH`, ensuring this version takes preceden
 For example,
 
 ```sh
-echo ‘export PATH=“/usr/local/opt/openjdk@11/bin:$PATH”’ >>~/.bashrc
+echo 'export PATH="/usr/local/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
 ```
 
 ## Build the code
