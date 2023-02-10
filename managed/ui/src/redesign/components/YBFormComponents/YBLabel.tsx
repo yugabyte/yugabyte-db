@@ -1,25 +1,30 @@
 import React, { FC } from 'react';
 import { Box, makeStyles } from '@material-ui/core';
 
-const useYBLabelStyles = makeStyles(() => ({
-  container: {
-    width: '150px',
+interface YBLabelProps {
+  dataTestId?: string;
+  width?: string;
+}
+
+const useYBLabelStyles = makeStyles((theme) => ({
+  root: ({ width }: YBLabelProps) => ({
+    width: width ?? '170px',
     alignItems: 'center',
     display: 'flex',
     fontSize: '13px',
-    fontWeight: 500
-  }
+    fontWeight: 500,
+    fontFamily: 'Inter',
+    color: theme.palette.ybacolors.labelBackground,
+    fontStyle: 'normal'
+  })
 }));
 
-interface YBLabelProps {
-  dataTestId?: string;
-}
+export const YBLabel: FC<YBLabelProps> = (props) => {
+  const classes = useYBLabelStyles(props);
 
-export const YBLabel: FC<YBLabelProps> = ({ children, dataTestId }) => {
-  const classes = useYBLabelStyles();
   return (
-    <Box className={classes.container} data-testid={dataTestId}>
-      {children}
+    <Box className={classes.root} data-testid={props.dataTestId}>
+      {props.children}
     </Box>
   );
 };

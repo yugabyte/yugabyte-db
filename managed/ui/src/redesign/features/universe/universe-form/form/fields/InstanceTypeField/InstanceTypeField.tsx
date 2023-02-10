@@ -1,4 +1,5 @@
-import React, { ChangeEvent, FC } from 'react';
+import React, { ChangeEvent, ReactElement } from 'react';
+import { useSelector } from 'react-redux';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
@@ -12,14 +13,24 @@ import {
   getDefaultInstanceType,
   isEphemeralAwsStorageInstance
 } from './InstanceTypeFieldHelper';
+import { NodeType } from '../../../../../../utils/dtos';
 import {
   CloudType,
   InstanceType,
   InstanceTypeWithGroup,
+  MasterPlacementMode,
   StorageType,
   UniverseFormData
 } from '../../../utils/dto';
-import { INSTANCE_TYPE_FIELD, PROVIDER_FIELD, DEVICE_INFO_FIELD } from '../../../utils/constants';
+import {
+  INSTANCE_TYPE_FIELD,
+  PROVIDER_FIELD,
+  DEVICE_INFO_FIELD,
+  MASTER_INSTANCE_TYPE_FIELD,
+  MASTER_DEVICE_INFO_FIELD,
+  MASTER_PLACEMENT_FIELD
+} from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 const getOptionLabel = (op: Record<string, string>): string => {
   if (!op) return '';
@@ -37,16 +48,30 @@ const renderOption = (option: Record<string, string>) => {
   return <>{getOptionLabel(option)}</>;
 };
 
-export const InstanceTypeField: FC = () => {
+interface InstanceTypeFieldProps {
+  isDedicatedMasterField?: boolean;
+}
+
+export const InstanceTypeField = ({
+  isDedicatedMasterField
+}: InstanceTypeFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
+  const classes = useFormFieldStyles();
   const { t } = useTranslation();
+  const nodeTypeTag = isDedicatedMasterField ? NodeType.Master : NodeType.TServer;
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
-  const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
+  const deviceInfo = isDedicatedMasterField
+    ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
+    : useWatch({ name: DEVICE_INFO_FIELD });
+  const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
+
+  // To set value based on master or tserver field in dedicated mode
+  const UPDATE_FIELD = isDedicatedMasterField ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
-    setValue(INSTANCE_TYPE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
+    setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
   };
 
   //fetch run time configs
@@ -64,11 +89,11 @@ export const InstanceTypeField: FC = () => {
       enabled: !!provider?.uuid,
       onSuccess: (data) => {
         // set default/first item as instance type after provider changes
-        if (!getValues(INSTANCE_TYPE_FIELD) && provider?.code && data.length) {
+        if (!getValues(UPDATE_FIELD) && provider?.code && data.length) {
           const defaultInstanceType =
             getDefaultInstanceType(provider.code, providerRuntimeConfigs) ??
             data[0].instanceTypeCode;
-          setValue(INSTANCE_TYPE_FIELD, defaultInstanceType, { shouldValidate: true });
+          setValue(UPDATE_FIELD, defaultInstanceType, { shouldValidate: true });
         }
       }
     }
@@ -78,7 +103,7 @@ export const InstanceTypeField: FC = () => {
     const getProviderRuntimeConfigs = async () => {
       await providerConfigsRefetch();
       //Reset instance type after provider change
-      setValue(INSTANCE_TYPE_FIELD, null);
+      setValue(UPDATE_FIELD, null);
       //refetch instances based on changed provider
       refetch();
     };
@@ -89,7 +114,7 @@ export const InstanceTypeField: FC = () => {
 
   return (
     <Controller
-      name={INSTANCE_TYPE_FIELD}
+      name={UPDATE_FIELD}
       control={control}
       rules={{
         required: t('universeForm.validation.required', {
@@ -110,11 +135,23 @@ export const InstanceTypeField: FC = () => {
           deviceInfo?.storageType === StorageType.Scratch;
 
         return (
-          <Box display="flex" width="100%" data-testid="InstanceTypeField-Container">
-            <YBLabel dataTestId="InstanceTypeField-Label">
+          <Box
+            display="flex"
+            width="100%"
+            data-testid={`InstanceTypeField-${nodeTypeTag}-Container`}
+            mt={2}
+          >
+            <YBLabel dataTestId={`InstanceTypeField-${nodeTypeTag}-Label`}>
               {t('universeForm.instanceConfig.instanceType')}
             </YBLabel>
-            <Box flex={1}>
+            <Box
+              flex={1}
+              className={
+                masterPlacement === MasterPlacementMode.COLOCATED
+                  ? classes.defaultTextBox
+                  : classes.instanceConfigTextBox
+              }
+            >
               <YBAutoComplete
                 loading={isLoading}
                 value={(value as unknown) as Record<string, string>}
@@ -125,7 +162,7 @@ export const InstanceTypeField: FC = () => {
                 ybInputProps={{
                   error: !!fieldState.error,
                   helperText: fieldState.error?.message,
-                  'data-testid': 'InstanceTypeField-AutoComplete'
+                  'data-testid': `InstanceTypeField-${nodeTypeTag}-AutoComplete`
                 }}
                 groupBy={
                   [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code)
@@ -135,7 +172,10 @@ export const InstanceTypeField: FC = () => {
               />
 
               {(isAWSEphemeralStorage || isGCPEphemeralStorage) && (
-                <YBHelper dataTestId="InstanceTypeField-Helper" variant={YBHelperVariants.warning}>
+                <YBHelper
+                  dataTestId={`InstanceTypeField-${nodeTypeTag}-Helper`}
+                  variant={YBHelperVariants.warning}
+                >
                   {t('universeForm.instanceConfig.ephemeralStorage')}
                 </YBHelper>
               )}
