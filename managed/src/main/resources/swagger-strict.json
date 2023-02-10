@@ -6170,6 +6170,36 @@
           "description" : "Enable/disable perf advisor runs for the universe",
           "type" : "boolean"
         },
+        "hot_shard_interval_mins" : {
+          "description" : "Perf Advisor hot shard check interval",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "hot_shard_minimal_reads" : {
+          "description" : "Perf advisor hot shard minimal reads",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "hot_shard_minimal_writes" : {
+          "description" : "Perf advisor hot shard minimal writes",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "hot_shard_read_skew_threshold_pct" : {
+          "description" : "Perf Advisor hot shard read skew threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
+        "hot_shard_write_skew_threshold_pct" : {
+          "description" : "Perf Advisor hot shard write skew threshold",
+          "format" : "double",
+          "minimum" : 1,
+          "type" : "number"
+        },
         "query_skew_interval_mins" : {
           "description" : "Perf advisor query skew check interval",
           "format" : "int32",
@@ -6270,7 +6300,7 @@
           "type" : "integer"
         },
         "recommendationType" : {
-          "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE", "REJECTED_CONNECTIONS" ],
+          "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE", "REJECTED_CONNECTIONS", "HOT_SHARD" ],
           "type" : "string"
         },
         "stateChangeAuditInfoList" : {
@@ -6326,7 +6356,7 @@
         },
         "types" : {
           "items" : {
-            "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE", "REJECTED_CONNECTIONS" ],
+            "enum" : [ "UNUSED_INDEX", "RANGE_SHARDING", "QUERY_LOAD_SKEW", "CONNECTION_SKEW", "CPU_SKEW", "CPU_USAGE", "REJECTED_CONNECTIONS", "HOT_SHARD" ],
             "type" : "string"
           },
           "type" : "array",
