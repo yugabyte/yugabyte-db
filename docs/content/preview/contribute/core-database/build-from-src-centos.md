@@ -120,7 +120,8 @@ In order for the build script to write under those directories, it needs proper 
 One way to do that is as follows:
 
 ```sh
-sudo mkdir -m 777 /opt/yb-build
+sudo mkdir /opt/yb-build
+sudo chown $(whoami) /opt/yb-build
 ```
 
 Alternatively, the build options `--no-download-thirdparty` and/or `--no-linuxbrew` can be specified.
