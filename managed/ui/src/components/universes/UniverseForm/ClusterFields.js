@@ -47,6 +47,7 @@ import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail'
 import { fetchSupportedReleases } from '../../../actions/universe';
 import { sortVersion } from '../../releases';
 import { HelmOverridesUniversePage } from './HelmOverrides';
+import { toast } from 'react-toastify';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -1319,22 +1320,33 @@ export default class ClusterFields extends Component {
       }
     } = this.props;
 
-    if(value === null || value > ASYNC_MAX_REPLICATION_FACTOR || value < ASYNC_MIN_REPLICATION_FACTOR) return;
-    
+    if(value === null ) return;
+
+    let valToUpdate = value;
+
+    if(value > ASYNC_MAX_REPLICATION_FACTOR){
+      toast.error(`Max Repilcation factor supported is ${ASYNC_MAX_REPLICATION_FACTOR}`);
+      valToUpdate = ASYNC_MAX_REPLICATION_FACTOR;
+    }
+    else if(value < ASYNC_MIN_REPLICATION_FACTOR){
+      toast.error(`Min Repilcation factor supported is ${ASYNC_MIN_REPLICATION_FACTOR}`);
+      valToUpdate = ASYNC_MIN_REPLICATION_FACTOR;
+    }
+
     const clusterExists = isDefinedNotNull(data.universeDetails)
       ? isEmptyObject(getClusterByType(data.universeDetails.clusters, clusterType))
       : null;
     const self = this;
 
     if (!clusterExists) {
-      this.setState({ nodeSetViaAZList: false, replicationFactor: value }, function () {
-        if (self.state.numNodes <= value) {
-          self.setState({ numNodes: value });
-          updateFormField(`${clusterType}.numNodes`, value);
+      this.setState({ nodeSetViaAZList: false, replicationFactor: valToUpdate }, function () {
+        if (self.state.numNodes <= valToUpdate) {
+          self.setState({ numNodes: valToUpdate });
+          updateFormField(`${clusterType}.numNodes`, valToUpdate);
         }
       });
     }
-    updateFormField(`${clusterType}.replicationFactor`, value);
+    updateFormField(`${clusterType}.replicationFactor`, valToUpdate);
   };
 
   hasFieldChanged = () => {
@@ -2675,6 +2687,17 @@ export default class ClusterFields extends Component {
                         minVal={ASYNC_MIN_REPLICATION_FACTOR}
                         maxVal={ASYNC_MAX_REPLICATION_FACTOR}
                         onInputChanged={this.replicationFactorChanged}
+                        className={
+                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading() || getPromiseState(cloud.instanceTypes).isLoading()
+                            ? 'readonly'
+                            : ''
+                        }
+                        input={{
+                          name: `${clusterType}.replicationFactor`,
+                          onKeyDown:(e) => {
+                            (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() || getPromiseState(cloud.instanceTypes).isLoading()) && e.preventDefault();
+                          }
+                        }}
                         onInputBlur={(e) => {
                           if (isEmptyString(e.target.value)) { this.replicationFactorChanged(ASYNC_MIN_REPLICATION_FACTOR); }
                           if (Number(e.target.value) !== this.state.replicationFactor) { this.replicationFactorChanged(e.target.value); }

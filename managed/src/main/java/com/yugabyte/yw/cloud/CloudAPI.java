@@ -71,4 +71,6 @@ public interface CloudAPI {
       List<NodeID> nodeIDs,
       String protocol,
       List<Integer> ports);
+
+  void validateInstanceTemplate(Provider provider, String instanceTemplate);
 }

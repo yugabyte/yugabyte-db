@@ -275,6 +275,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // This is called at the end of CreateTable.
   Status CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc);
 
+  Status CreateStatefulService(
+      const StatefulServiceKind& service_kind, const client::YBSchema& yb_schema);
+
+  Status CreateTestEchoService();
+
   // Get the information about an in-progress create operation.
   Status IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                            IsCreateTableDoneResponsePB* resp) override;
@@ -1069,6 +1074,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
+
+  FRIEND_TEST(StatefulServiceTest, TestStatefulService);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.

@@ -141,4 +141,24 @@ public class FileUtils {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
+
+  /**
+   * Returns the size of the file in bytes. Returns 0 in case the file doesn't exist.
+   *
+   * @param filePath path of the file
+   * @return Size of file in bytes
+   */
+  public static long getFileSize(String filePath) {
+    long fileSize;
+
+    try {
+      File file = new File(filePath);
+      fileSize = file.length();
+    } catch (Exception e) {
+      LOG.error(String.format("Cannot open or get size of file with pathname {}", filePath), e);
+      fileSize = 0;
+    }
+
+    return fileSize;
+  }
 }

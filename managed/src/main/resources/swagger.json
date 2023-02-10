@@ -422,6 +422,32 @@
         "type" : "object"
       } ]
     },
+    "AlertChannelTemplates" : {
+      "description" : "Alert channel templates",
+      "properties" : {
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "textTemplate" : {
+          "description" : "Notification text template",
+          "type" : "string"
+        },
+        "titleTemplate" : {
+          "description" : "Notification title template",
+          "type" : "string"
+        },
+        "type" : {
+          "description" : "Channel type",
+          "enum" : [ "Email", "Slack", "PagerDuty", "WebHook" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "textTemplate", "type" ],
+      "type" : "object"
+    },
     "AlertChannelWebHookParams" : {
       "allOf" : [ {
         "$ref" : "#/definitions/AlertChannelParams"
@@ -1039,6 +1065,61 @@
       "required" : [ "settings" ],
       "type" : "object"
     },
+    "AlertTemplateVariable" : {
+      "description" : "Alert template variable",
+      "properties" : {
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "defaultValue" : {
+          "description" : "Default value",
+          "maxLength" : 2147483647,
+          "minLength" : 1,
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Name",
+          "maxLength" : 100,
+          "minLength" : 1,
+          "type" : "string"
+        },
+        "possibleValues" : {
+          "description" : "Possible values",
+          "items" : {
+            "type" : "string"
+          },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "uuid" : {
+          "description" : "Variable UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "defaultValue", "name", "possibleValues" ],
+      "type" : "object"
+    },
+    "AlertTemplateVariablesFormData" : {
+      "properties" : {
+        "variables" : {
+          "items" : {
+            "$ref" : "#/definitions/AlertTemplateVariable"
+          },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
+          "type" : "array"
+        }
+      },
+      "required" : [ "variables" ],
+      "type" : "object"
+    },
     "AlertingData" : {
       "description" : "Alerting configuration",
       "properties" : {
@@ -1117,7 +1198,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -3925,6 +4006,10 @@
     },
     "GCPRegionCloudInfo" : {
       "properties" : {
+        "instanceTemplate" : {
+          "description" : "The instance template to be used for nodes created in this region.",
+          "type" : "string"
+        },
         "ybImage" : {
           "description" : "The AMI to be used in this region.",
           "type" : "string"
@@ -5491,7 +5576,7 @@
       "description" : "A node configuration.",
       "properties" : {
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
           "type" : "string"
         },
         "value" : {
@@ -8514,6 +8599,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "sizeInBytes" : {
+          "description" : "Size in bytes of the support bundle",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "startDate" : {
           "format" : "date-time",
           "type" : "string"
@@ -11093,7 +11183,7 @@
           "type" : "boolean"
         },
         "type" : {
-          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YQL_SERVER_HTTP_PORT", "YQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT" ],
           "type" : "string"
         },
         "value" : {
@@ -11740,6 +11830,131 @@
         "tags" : [ "Access Keys" ]
       }
     },
+    "/api/v1/customers/{cUUID}/alert_channel_templates" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAlertChannelTemplates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertChannelTemplates"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all alert channel templates",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_channel_templates/{acType}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteAlertChannelTemplates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "acType",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete alert channel templates",
+        "tags" : [ "Alerts" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getAlertChannelTemplates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "acType",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertChannelTemplates"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get alert channel templates",
+        "tags" : [ "Alerts" ]
+      },
+      "post" : {
+        "description" : "",
+        "operationId" : "setAlertChannelTemplates",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "acType",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "SetAlertChannelTemplatesRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertChannelTemplates"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertChannelTemplates"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Set alert channel templates",
+        "tags" : [ "Alerts" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/alert_channels" : {
       "get" : {
         "description" : "",
@@ -12383,6 +12598,101 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Delete an alert template settings",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_template_variables" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAlertTemplateVariables",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertTemplateVariable"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List alert template variables",
+        "tags" : [ "Alerts" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editAlertTemplateVariables",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "EditAlertTemplateVariablesRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertTemplateVariablesFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertTemplateVariable"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Crete or update alert template variables",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_template_variables/{variableUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteAlertTemplateVariables",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "variableUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete an alert template variables",
         "tags" : [ "Alerts" ]
       }
     },
@@ -14295,6 +14605,12 @@
           "required" : true,
           "type" : "string"
         }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "validate",
+          "required" : false,
+          "type" : "boolean"
+        }, {
           "in" : "body",
           "name" : "CreateProviderRequest",
           "required" : true,
@@ -14633,6 +14949,49 @@
         } ],
         "summary" : "Get an access key",
         "tags" : [ "Access Keys" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editAccesskey",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "keyCode",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "access key edit form data",
+          "in" : "body",
+          "name" : "accesskey",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AccessKey"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AccessKey"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Modify an access key",
+        "tags" : [ "Access Keys" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
@@ -14651,6 +15010,12 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "validate",
+          "required" : false,
+          "type" : "boolean"
         }, {
           "description" : "edit provider form data",
           "in" : "body",

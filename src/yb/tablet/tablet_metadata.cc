@@ -114,7 +114,7 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 TableInfo::TableInfo(const std::string& log_prefix_, PrivateTag)
     : log_prefix(log_prefix_),
       doc_read_context(new docdb::DocReadContext(log_prefix)),
-      index_map(std::make_unique<IndexMap>()) {
+      index_map(std::make_shared<IndexMap>()) {
 }
 
 TableInfo::TableInfo(const std::string& tablet_log_prefix,
@@ -135,7 +135,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(log_prefix, schema, schema_version)),
-      index_map(std::make_unique<IndexMap>(index_map)),
+      index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(std::move(partition_schema)) {
@@ -156,7 +156,7 @@ TableInfo::TableInfo(const TableInfo& other,
           ? std::make_shared<docdb::DocReadContext>(
               *other.doc_read_context, schema, schema_version)
           : std::make_shared<docdb::DocReadContext>(*other.doc_read_context)),
-      index_map(std::make_unique<IndexMap>(index_map)),
+      index_map(std::make_shared<IndexMap>(index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(other.partition_schema),
@@ -173,7 +173,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       log_prefix(other.log_prefix),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
           *other.doc_read_context, std::min(min_schema_version, other.schema_version))),
-      index_map(std::make_unique<IndexMap>(*other.index_map)),
+      index_map(std::make_shared<IndexMap>(*other.index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(other.schema_version),
       partition_schema(other.partition_schema),
@@ -704,7 +704,8 @@ RaftGroupMetadata::RaftGroupMetadata(
       cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()),
       cdc_sdk_min_checkpoint_op_id_(OpId::Invalid()),
       cdc_sdk_safe_time_(HybridTime::kInvalid),
-      log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())) {
+      log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())),
+      hosted_services_(data.hosted_services) {
   CHECK(data.table_info->schema().has_column_ids());
   CHECK_GT(data.table_info->schema().num_key_columns(), 0);
   kv_store_.tables.emplace(primary_table_id_, data.table_info);
@@ -800,6 +801,14 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       active_restorations_.reserve(superblock.active_restorations().size());
       for (const auto& id : superblock.active_restorations()) {
         active_restorations_.push_back(VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(id)));
+      }
+    }
+
+    if (!superblock.hosted_stateful_services().empty()) {
+      hosted_services_.clear();
+      hosted_services_.reserve(superblock.hosted_stateful_services().size());
+      for (auto& service_kind : superblock.hosted_stateful_services()) {
+        hosted_services_.insert((StatefulServiceKind)service_kind);
       }
     }
   }
@@ -933,6 +942,14 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
     active_restorations.Reserve(narrow_cast<int>(active_restorations_.size()));
     for (const auto& id : active_restorations_) {
       active_restorations.Add()->assign(id.AsSlice().cdata(), id.size());
+    }
+  }
+
+  if (!hosted_services_.empty()) {
+    auto& hosted_services = *pb.mutable_hosted_stateful_services();
+    hosted_services.Reserve(narrow_cast<int>(hosted_services_.size()));
+    for (const auto& service_kind : hosted_services_) {
+      *hosted_services.Add() = service_kind;
     }
   }
 
@@ -1344,6 +1361,11 @@ bool RaftGroupMetadata::CleanupRestorations(
   return result;
 }
 
+std::unordered_set<StatefulServiceKind> RaftGroupMetadata::GetHostedServiceList() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return hosted_services_;
+}
+
 Status RaftGroupMetadata::OldSchemaGC(
     const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions) {
   bool need_flush = false;
@@ -1541,7 +1563,7 @@ std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) 
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info =
       table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
-  return std::shared_ptr<IndexMap>(table_info, table_info->index_map.get());
+  return table_info->index_map;
 }
 
 SchemaVersion RaftGroupMetadata::schema_version(

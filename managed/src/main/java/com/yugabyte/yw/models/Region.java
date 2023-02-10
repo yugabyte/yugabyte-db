@@ -8,6 +8,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.base.Strings;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -50,6 +51,7 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
+import javax.persistence.Transient;
 import org.apache.commons.collections.CollectionUtils;
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -122,6 +124,10 @@ public class Region extends Model {
     this.active = active;
   }
 
+  @Transient
+  @ApiModelProperty(hidden = true)
+  public String providerCode;
+
   @Encrypted
   @DbJson
   @Column(columnDefinition = "TEXT")
@@ -139,12 +145,20 @@ public class Region extends Model {
         .count();
   }
 
+  @JsonProperty("securityGroupId")
   public void setSecurityGroupId(String securityGroupId) {
     Provider p = this.provider;
-    if (p.getCloudCode() == CloudType.aws) {
+    CloudType cloudType = null;
+    // v2 API version 1 backward compatiblity support.
+    if (p != null) {
+      cloudType = p.getCloudCode();
+    } else if (!Strings.isNullOrEmpty(this.providerCode)) {
+      cloudType = CloudType.valueOf(this.providerCode);
+    }
+    if (cloudType == CloudType.aws) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setSecurityGroupId(securityGroupId);
-    } else if (p.getCloudCode() == CloudType.azu) {
+    } else if (cloudType == CloudType.azu) {
       AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setSecurityGroupId(securityGroupId);
     }
@@ -160,12 +174,20 @@ public class Region extends Model {
     return sgNode == null || sgNode.isEmpty() ? null : sgNode;
   }
 
+  @JsonProperty("vnetName")
   public void setVnetName(String vnetName) {
     Provider p = this.provider;
-    if (p.getCloudCode() == CloudType.aws) {
+    CloudType cloudType = null;
+    // v2 API version 1 backward compatiblity support.
+    if (p != null) {
+      cloudType = p.getCloudCode();
+    } else if (!Strings.isNullOrEmpty(this.providerCode)) {
+      cloudType = CloudType.valueOf(this.providerCode);
+    }
+    if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setVnet(vnetName);
-    } else if (p.getCloudCode() == CloudType.azu) {
+    } else if (cloudType.equals(CloudType.azu)) {
       AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setVnet(vnetName);
     }
@@ -183,7 +205,14 @@ public class Region extends Model {
 
   public void setArchitecture(Architecture arch) {
     Provider p = this.provider;
-    if (p.getCloudCode() == CloudType.aws) {
+    CloudType cloudType = null;
+    // v2 API version 1 backward compatiblity support.
+    if (p != null) {
+      cloudType = p.getCloudCode();
+    } else if (!Strings.isNullOrEmpty(this.providerCode)) {
+      cloudType = CloudType.valueOf(this.providerCode);
+    }
+    if (cloudType == CloudType.aws) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setArch(arch);
     }
@@ -210,13 +239,20 @@ public class Region extends Model {
 
   public void setYbImage(String ybImage) {
     Provider p = this.provider;
-    if (p.getCloudCode().equals(CloudType.aws)) {
+    CloudType cloudType = null;
+    // v2 API version 1 backward compatiblity support.
+    if (p != null) {
+      cloudType = p.getCloudCode();
+    } else if (!Strings.isNullOrEmpty(this.providerCode)) {
+      cloudType = CloudType.valueOf(this.providerCode);
+    }
+    if (cloudType.equals(CloudType.aws)) {
       AWSRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setYbImage(ybImage);
-    } else if (p.getCloudCode().equals(CloudType.gcp)) {
+    } else if (cloudType.equals(CloudType.gcp)) {
       GCPRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setYbImage(ybImage);
-    } else if (p.getCloudCode().equals(CloudType.azu)) {
+    } else if (cloudType.equals(CloudType.azu)) {
       AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(this);
       regionCloudInfo.setYbImage(ybImage);
     }
@@ -230,7 +266,9 @@ public class Region extends Model {
   @Deprecated
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+    if (configMap != null && !configMap.isEmpty()) {
+      CloudInfoInterface.setCloudProviderInfoFromConfig(this, configMap);
+    }
   }
 
   @JsonProperty("details")
@@ -240,8 +278,7 @@ public class Region extends Model {
 
   @JsonProperty("details")
   public RegionDetails getMaskRegionDetails() {
-    CloudInfoInterface.maskRegionDetails(this);
-    return details;
+    return CloudInfoInterface.maskRegionDetails(this);
   }
 
   @JsonIgnore

@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.alerts;
 
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.Customer;
 
 public interface AlertChannelInterface {
@@ -13,6 +14,7 @@ public interface AlertChannelInterface {
    *
    * @return An error if the action failed, or null otherwise.
    */
-  void sendNotification(Customer customer, Alert alert, AlertChannel channel)
+  void sendNotification(
+      Customer customer, Alert alert, AlertChannel channel, AlertChannelTemplates channelTemplates)
       throws PlatformNotificationException;
 }

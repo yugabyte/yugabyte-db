@@ -243,6 +243,16 @@ Status HandleResponse(uint64_t session_id,
     return ProcessUsedReadTime(session_id, op, resp, used_read_time);
   }
 
+  if (response.error_status().size() > 0) {
+    // We do not currently expect more than one status, when we do, we need to decide how to handle
+    // them. Possible options: aggregate multiple statuses into one, discard all but one, etc.
+    DCHECK_EQ(response.error_status().size(), 1) << "Too many error statuses in the response";
+    for (const auto& pb : response.error_status()) {
+      return StatusFromPB(pb);
+    }
+  }
+
+  // Older nodes may still use deprecated fields for status, so keep legacy handling
   auto status = STATUS(
       QLError, response.error_message(), Slice(), PgsqlRequestStatus(response.status()));
 
