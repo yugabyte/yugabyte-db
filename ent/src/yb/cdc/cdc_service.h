@@ -59,6 +59,7 @@ static const char* const kRetentionSec = "retention_sec";
 static const char* const kSourceType = "source_type";
 static const char* const kCheckpointType = "checkpoint_type";
 static const char* const kIdType = "id_type";
+static const char* const kStreamState = "state";
 static const char* const kNamespaceId = "NAMESPACEID";
 static const char* const kTableId = "TABLEID";
 static const char* const kCDCSDKSafeTime = "cdc_sdk_safe_time";

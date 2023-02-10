@@ -4430,6 +4430,12 @@ Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
 
   stream_info->mutable_options()->CopyFrom(stream_lock->options());
 
+  if (stream_lock->pb.has_state() && id_type_option_value == cdc::kNamespaceId) {
+    auto state_option = stream_info->add_options();
+    state_option->set_key(cdc::kStreamState);
+    state_option->set_value(master::SysCDCStreamEntryPB::State_Name(stream_lock->pb.state()));
+  }
+
   return Status::OK();
 }
 
