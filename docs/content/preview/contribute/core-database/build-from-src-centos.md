@@ -148,7 +148,8 @@ sudo yum install -y ccache
 Set `YB_CCACHE_DIR` in your `.bashrc` or equivalent:
 
 ```sh
-echo 'export YB_CCACHE_DIR=$HOME/.cache/yb_ccache' >>$HOME/.bashrc
+# You may also want to add the following line to your .bashrc or equivalent.
+export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 ```
 
 [ccache]: https://ccache.dev
@@ -170,7 +171,8 @@ For example,
 mkdir ~/tools
 cd ~/tools
 curl 'https://dlcdn.apache.org/maven/maven-3/3.9.0/binaries/apache-maven-3.9.0-bin.tar.gz' | tar xz
-echo 'export PATH=$HOME/tools/apache-maven-3.9.0/bin:$PATH' >>~/.bashrc
+# You may also want to add the following line to your .bashrc or equivalent.
+export PATH="$HOME/tools/apache-maven-3.9.0/bin:$PATH"
 ```
 
 ## Build the code
