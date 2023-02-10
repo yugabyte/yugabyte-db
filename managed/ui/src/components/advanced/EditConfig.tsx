@@ -6,7 +6,7 @@ import { Field } from 'formik';
 import { YBModalForm } from '../common/forms';
 import { YBFormInput, YBFormSelect } from '../common/forms/fields';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
-import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/helpers/dtos';
+import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos';
 import { isEmptyObject } from '../../utils/ObjectUtils';
 
 const EDIT_CONFIG_BOOLEAN_TYPE_OPTIONS = [

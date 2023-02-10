@@ -33,6 +33,15 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Enforces users to enter password for YSQL/YCQL during Universe creation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> isDedicatedNodesEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.enable_dedicated_nodes",
+          ScopeType.CUSTOMER,
+          "Enable dedicated nodes",
+          "Gives the option to place master and tserver nodes separately "
+              + "during create/edit universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> taskDbQueryLimit =
       new ConfKeyInfo<>(
           "yb.customer_task_db_query_limit",
