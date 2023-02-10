@@ -983,24 +983,12 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
   // Generate a stream id by calling CreateCDCStream, and also setup the stream in the master.
   std::unordered_map<std::string, std::string> options = GetCreateCDCStreamOptions(req);
 
-  CDCStreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-      client()->CreateCDCStream(ns_id, options, false /*active*/),
-      CDCError(CDCErrorPB::INTERNAL_ERROR));
-
+  // Filter out tables with PK
   master::NamespaceIdentifierPB ns_identifier;
   ns_identifier.set_id(ns_id);
   auto table_list = VERIFY_RESULT_OR_SET_CODE(
       client()->ListUserTables(ns_identifier), CDCError(CDCErrorPB::INTERNAL_ERROR));
-
-  options.erase(kIdType);
-
-  std::vector<client::YBOperationPtr> ops;
-  std::vector<TableId> table_ids;
-  std::vector<CDCStreamId> stream_ids;
-
-  auto cdc_state_table =
-      VERIFY_RESULT_OR_SET_CODE(GetCdcStateTable(), CDCError(CDCErrorPB::INTERNAL_ERROR));
-
+  std::vector<client::YBTableName> required_tables;
   for (const auto& table_iter : table_list) {
     std::shared_ptr<client::YBTable> table;
 
@@ -1020,10 +1008,27 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
       RETURN_NOT_OK_SET_CODE(CheckCdcCompatibility(table), CDCError(CDCErrorPB::INVALID_REQUEST));
     }
 
+    required_tables.push_back(table_iter);
+  }
+
+  bool set_active = required_tables.empty();
+  CDCStreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
+      client()->CreateCDCStream(ns_id, options, set_active),
+      CDCError(CDCErrorPB::INTERNAL_ERROR));
+
+  options.erase(kIdType);
+
+  std::vector<client::YBOperationPtr> ops;
+  std::vector<TableId> table_ids;
+  std::vector<CDCStreamId> stream_ids;
+
+  auto cdc_state_table =
+      VERIFY_RESULT_OR_SET_CODE(GetCdcStateTable(), CDCError(CDCErrorPB::INTERNAL_ERROR));
+
+  for (const auto& table_iter : required_tables) {
     // We only change the stream's state to "ACTIVE", while we are inserting the last table for the
     // stream.
-    bool set_active = table_iter == table_list.back();
-
+    bool set_active = table_iter == required_tables.back();
     const CDCStreamId stream_id = VERIFY_RESULT_OR_SET_CODE(
         client()->CreateCDCStream(table_iter.table_id(), options, set_active, db_stream_id),
         CDCError(CDCErrorPB::INTERNAL_ERROR));
