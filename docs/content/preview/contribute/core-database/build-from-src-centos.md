@@ -196,6 +196,8 @@ In that case, increase the nofile limit in `/etc/security/limits.conf`:
 * - nofile 1048576
 ```
 
+Start a new shell session, and check the limit increase with `ulimit -n`.
+
 Run the `yb_release` script to build a release package:
 
 ```output.sh
