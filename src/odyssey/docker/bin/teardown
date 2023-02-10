@@ -1,0 +1,7 @@
+#!/bin/bash
+# Try to stop odyssey
+ody-stop
+
+# Try to stop postgresql
+pg_ctlcluster 14 main stop > /dev/null 2>&1
+

@@ -261,8 +261,7 @@ public class Provider extends Model {
 
   @JsonProperty("details")
   public ProviderDetails getMaskProviderDetails() {
-    CloudInfoInterface.maskProviderDetails(this);
-    return details;
+    return CloudInfoInterface.maskProviderDetails(this);
   }
 
   @JsonIgnore

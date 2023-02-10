@@ -94,7 +94,7 @@ struct TableInfo {
   std::string log_prefix;
   // The table schema, secondary index map, index info (for index table only) and schema version.
   const std::shared_ptr<docdb::DocReadContext> doc_read_context;
-  std::unique_ptr<IndexMap> index_map;
+  const std::shared_ptr<IndexMap> index_map;
   std::unique_ptr<IndexInfo> index_info;
   SchemaVersion schema_version = 0;
 
@@ -232,7 +232,7 @@ struct RaftGroupMetadataData {
   TabletDataState tablet_data_state;
   bool colocated = false;
   std::vector<SnapshotScheduleId> snapshot_schedules;
-  std::vector<StatefulServiceKind> hosted_services;
+  std::unordered_set<StatefulServiceKind> hosted_services;
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -573,7 +573,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<docdb::CompactionSchemaInfo> ColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
-  std::vector<StatefulServiceKind> GetHostedServiceList() const;
+  std::unordered_set<StatefulServiceKind> GetHostedServiceList() const;
 
   const KvStoreInfo& TEST_kv_store() const {
     return kv_store_;
@@ -683,7 +683,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   const std::string log_prefix_;
 
-  std::vector<StatefulServiceKind> hosted_services_;
+  std::unordered_set<StatefulServiceKind> hosted_services_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };
