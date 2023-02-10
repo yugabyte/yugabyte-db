@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -145,8 +146,10 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
   private void createXClusterSourceRootCertDirPathGFlagTasks() {
     Universe targetUniverse = getUniverse();
     UniverseDefinitionTaskParams targetUniverseDetails = targetUniverse.getUniverseDetails();
+    UniverseDefinitionTaskParams.Cluster targetPrimaryCluster =
+        targetUniverseDetails.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent targetPrimaryUserIntent =
-        targetUniverseDetails.getPrimaryCluster().userIntent;
+        targetPrimaryCluster.userIntent;
     List<XClusterConfig> xClusterConfigsAsTarget =
         XClusterConfig.getByTargetUniverseUUID(targetUniverse.universeUUID);
 
@@ -158,14 +161,14 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
       targetUniverseDetails.xClusterInfo.sourceRootCertDirPath =
           manualSourceRootCertDirPath.toString();
-      targetPrimaryUserIntent.masterGFlags.remove(
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
-      targetPrimaryUserIntent.tserverGFlags.remove(
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+      GFlagsUtil.removeGFlag(
+          targetPrimaryUserIntent,
+          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          ServerType.TSERVER,
+          ServerType.MASTER);
     } else {
       targetUniverseDetails.xClusterInfo.sourceRootCertDirPath =
-          XClusterConfigTaskBase.getProducerCertsDir(
-              targetUniverseDetails.getPrimaryCluster().userIntent.provider);
+          XClusterConfigTaskBase.getProducerCertsDir(targetPrimaryUserIntent.provider);
     }
     log.debug(
         "sourceRootCertDirPath={} will be used", targetUniverseDetails.getSourceRootCertDirPath());
@@ -232,7 +235,10 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     // nodes, and it should regenerate the conf files.
     if (manualSourceRootCertDirPath != null) {
       updateGFlagsPersistTasks(
-              targetPrimaryUserIntent.masterGFlags, targetPrimaryUserIntent.tserverGFlags)
+              targetPrimaryCluster,
+              targetPrimaryUserIntent.masterGFlags,
+              targetPrimaryUserIntent.tserverGFlags,
+              targetPrimaryUserIntent.specificGFlags)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     } else {
       createGFlagsOverrideTasks(targetUniverse.getMasters(), ServerType.MASTER);

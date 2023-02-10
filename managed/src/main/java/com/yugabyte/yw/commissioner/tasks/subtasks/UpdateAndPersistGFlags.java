@@ -13,13 +13,16 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,6 +38,8 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public Map<String, String> masterGFlags;
     public Map<String, String> tserverGFlags;
+    public List<UUID> clusterUUIDs;
+    public SpecificGFlags specificGFlags;
   }
 
   protected Params taskParams() {
@@ -64,14 +69,21 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
                 throw new RuntimeException(msg);
               }
 
-              // Update the gflags.
-              UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-              userIntent.masterGFlags = taskParams().masterGFlags;
-              userIntent.tserverGFlags = taskParams().tserverGFlags;
-              GFlagsUtil.syncGflagsToIntent(userIntent.tserverGFlags, userIntent);
-              GFlagsUtil.syncGflagsToIntent(userIntent.masterGFlags, userIntent);
+              List<Cluster> clusterList;
+              if (taskParams().clusterUUIDs != null && taskParams().clusterUUIDs.size() > 0) {
+                clusterList =
+                    universeDetails
+                        .clusters
+                        .stream()
+                        .filter(c -> taskParams().clusterUUIDs.contains(c.uuid))
+                        .collect(Collectors.toList());
+              } else {
+                clusterList = universeDetails.clusters;
+              }
 
-              for (Cluster cluster : universeDetails.getReadOnlyClusters()) {
+              // Update the gflags.
+              for (Cluster cluster : clusterList) {
+                cluster.userIntent.specificGFlags = taskParams().specificGFlags;
                 cluster.userIntent.masterGFlags = taskParams().masterGFlags;
                 cluster.userIntent.tserverGFlags = taskParams().tserverGFlags;
                 GFlagsUtil.syncGflagsToIntent(cluster.userIntent.tserverGFlags, cluster.userIntent);
