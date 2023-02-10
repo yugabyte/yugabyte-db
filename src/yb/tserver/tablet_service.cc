@@ -1387,12 +1387,12 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
     snapshot_schedules.push_back(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(id)));
   }
 
-  std::vector<StatefulServiceKind> hosted_services;
+  std::unordered_set<StatefulServiceKind> hosted_services;
   for (auto& service_kind : req->hosted_stateful_services()) {
     SCHECK(
         StatefulServiceKind_IsValid(service_kind), InvalidArgument,
         Format("Invalid stateful service kind: $0", service_kind));
-    hosted_services.push_back((StatefulServiceKind)service_kind);
+    hosted_services.insert((StatefulServiceKind)service_kind);
   }
 
   status = ResultToStatus(server_->tablet_manager()->CreateNewTablet(
