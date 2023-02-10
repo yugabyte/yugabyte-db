@@ -109,6 +109,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -153,6 +154,7 @@ import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -1654,15 +1656,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Creates a task to persist customized gflags to be used by server processes. */
   public SubTaskGroup updateGFlagsPersistTasks(
       Map<String, String> masterGFlags, Map<String, String> tserverGFlags) {
+    return updateGFlagsPersistTasks(null, masterGFlags, tserverGFlags, null);
+  }
+
+  /** Creates a task to persist customized gflags to be used by server processes. */
+  public SubTaskGroup updateGFlagsPersistTasks(
+      @Nullable Cluster cluster,
+      Map<String, String> masterGFlags,
+      Map<String, String> tserverGFlags,
+      @Nullable SpecificGFlags specificGFlags) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("UpdateAndPersistGFlags", executor);
     UpdateAndPersistGFlags.Params params = new UpdateAndPersistGFlags.Params();
     params.universeUUID = taskParams().universeUUID;
     params.masterGFlags = masterGFlags;
     params.tserverGFlags = tserverGFlags;
+    params.specificGFlags = specificGFlags;
+    if (cluster != null) {
+      params.clusterUUIDs = Collections.singletonList(cluster.uuid);
+    }
     UpdateAndPersistGFlags task = createTask(UpdateAndPersistGFlags.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

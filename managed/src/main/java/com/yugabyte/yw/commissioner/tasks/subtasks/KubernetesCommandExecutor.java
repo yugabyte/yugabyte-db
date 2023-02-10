@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -531,10 +532,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> regionConfig = new HashMap<String, String>();
 
     Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
-    UniverseDefinitionTaskParams.UserIntent userIntent =
+
+    UniverseDefinitionTaskParams.Cluster cluster =
         taskParams().isReadOnlyCluster
-            ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
-            : u.getUniverseDetails().getPrimaryCluster().userIntent;
+            ? u.getUniverseDetails().getReadOnlyClusters().get(0)
+            : u.getUniverseDetails().getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null) {
@@ -832,13 +835,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     partition.put("master", taskParams().masterPartition);
     overrides.put("partition", partition);
 
-    UUID placementUuid =
-        taskParams().isReadOnlyCluster
-            ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
-            : u.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID placementUuid = cluster.uuid;
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Go over master flags.
-    Map<String, Object> masterOverrides = new HashMap<String, Object>(userIntent.masterGFlags);
+    Map<String, Object> masterOverrides =
+        new HashMap<>(
+            GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, u.getUniverseDetails().clusters));
     if (placementCloud != null && masterOverrides.get("placement_cloud") == null) {
       masterOverrides.put("placement_cloud", placementCloud);
     }
@@ -862,7 +864,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Go over tserver flags.
     Map<String, Object> tserverOverrides =
-        new HashMap<String, Object>(primaryClusterIntent.tserverGFlags);
+        new HashMap<String, Object>(
+            GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, u.getUniverseDetails().clusters));
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverOverrides.put("enable_ysql", "false");
@@ -924,7 +927,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // loadbalancers, so the annotations will be at the provider level.
     // TODO (Arnav): Update this to use overrides created at the provider, region or
     // zone level.
-    Map<String, Object> annotations = new HashMap<String, Object>();
+    Map<String, Object> annotations;
     String overridesYAML = null;
     if (!azConfig.containsKey("OVERRIDES")) {
       if (!regionConfig.containsKey("OVERRIDES")) {
@@ -939,7 +942,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     if (overridesYAML != null) {
-      annotations = (HashMap<String, Object>) yaml.load(overridesYAML);
+      annotations = yaml.load(overridesYAML);
       if (annotations != null) {
         HelmUtils.mergeYaml(overrides, annotations);
       }
