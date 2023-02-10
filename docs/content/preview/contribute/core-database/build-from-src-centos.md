@@ -127,7 +127,7 @@ sudo chown $(whoami) /opt/yb-build
 Alternatively, the build options `--no-download-thirdparty` and/or `--no-linuxbrew` can be specified.
 However, those cases may require additional, undocumented steps.
 
-### Ninja
+### Ninja (optional)
 
 It is recommended to use [Ninja][ninja] for faster build.
 
@@ -140,7 +140,7 @@ If you want to use Make, specify build option `--make`.
 
 [ninja]: https://ninja-build.org
 
-### Ccache
+### Ccache (optional)
 
 It is recommended to use [Ccache][ccache] for faster build.
 
@@ -180,7 +180,7 @@ echo 'export PATH=$HOME/tools/apache-maven-3.9.0/bin:$PATH' >>~/.bashrc
 
 {{% readfile "includes/build-the-code.md" %}}
 
-### Build release package
+### Build release package (optional)
 
 Additional packages are needed in order to build yugabyted-ui:
 
