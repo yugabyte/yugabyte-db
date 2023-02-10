@@ -94,7 +94,7 @@ struct TableInfo {
   std::string log_prefix;
   // The table schema, secondary index map, index info (for index table only) and schema version.
   const std::shared_ptr<docdb::DocReadContext> doc_read_context;
-  std::unique_ptr<IndexMap> index_map;
+  const std::shared_ptr<IndexMap> index_map;
   std::unique_ptr<IndexInfo> index_info;
   SchemaVersion schema_version = 0;
 
