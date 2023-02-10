@@ -168,8 +168,8 @@ For example,
 ```sh
 mkdir ~/tools
 cd ~/tools
-curl 'https://dlcdn.apache.org/maven/maven-3/3.8.7/binaries/apache-maven-3.8.7-bin.tar.gz' | tar xz
-echo 'export PATH=$HOME/tools/apache-maven-3.8.7/bin:$PATH' >>~/.bashrc
+curl 'https://dlcdn.apache.org/maven/maven-3/3.9.0/binaries/apache-maven-3.9.0-bin.tar.gz' | tar xz
+echo 'export PATH=$HOME/tools/apache-maven-3.9.0/bin:$PATH' >>~/.bashrc
 ```
 
 ## Build the code
