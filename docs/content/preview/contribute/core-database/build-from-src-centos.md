@@ -135,9 +135,6 @@ It is recommended to use [Ninja][ninja] for faster build.
 sudo yum install -y ninja-build
 ```
 
-By default, build will prefer using Ninja over Make if it exists.
-If you want to use Make, specify build option `--make`.
-
 [ninja]: https://ninja-build.org
 
 ### Ccache (optional)
