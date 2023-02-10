@@ -158,7 +158,7 @@ export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 
 {{% readfile "includes/java.md" %}}
 
-The openjdk requirement can be satisfied by the package manager.
+The JDK requirement can be satisfied by the package manager.
 
 ```sh
 sudo yum install -y java-11-openjdk
