@@ -344,6 +344,7 @@ message RowMessage {
     DDL      = 5;
     TRUNCATE = 6;
     READ     = 7;
+    SAFEPOINT= 8;
   }
 
   optional bytes  transaction_id = 1;
@@ -367,6 +368,7 @@ message RowMessage {
 
   // truncate info
   optional yb.tserver.TruncateRequestPB truncate_request_info = 13;
+  optional uint64 record_time = 14;
 }
 
 message CDCSDKProtoRecordPB {

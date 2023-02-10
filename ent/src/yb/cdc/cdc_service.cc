@@ -209,7 +209,7 @@ struct TabletCheckpointInfo {
 struct CDCStateMetadataInfo {
   ProducerTabletInfo producer_tablet_info;
 
-  mutable std::string commit_timestamp;
+  mutable uint64_t commit_timestamp;
   mutable std::shared_ptr<Schema> current_schema;
   mutable OpId last_streamed_op_id;
   mutable SchemaVersion current_schema_version;
@@ -265,7 +265,7 @@ class CDCServiceImpl::Impl {
 
   void UpdateCDCStateMetadata(
       const ProducerTabletInfo& producer_tablet,
-      const std::string& timestamp,
+      const uint64_t& timestamp,
       const std::shared_ptr<Schema>& schema,
       const OpId& op_id,
       const uint32_t current_schema_version) {
@@ -1612,7 +1612,7 @@ void CDCServiceImpl::GetChanges(
             &CDCServiceImpl::UpdateChildrenTabletsOnSplitOp, this, producer_tablet, _1, session),
         mem_tracker, &msgs_holder, resp, &last_readable_index, get_changes_deadline);
   } else {
-    std::string commit_timestamp;
+    uint64_t commit_timestamp;
     OpId last_streamed_op_id;
     auto cached_schema_info = impl_->GetOrAddSchema(producer_tablet, req->need_schema_info());
 
@@ -1730,6 +1730,7 @@ void CDCServiceImpl::GetChanges(
     // If snapshot operation or before image is enabled, don't allow compaction.
     HybridTime cdc_sdk_safe_time =
         record.record_type == CDCRecordType::ALL || cdc_sdk_op_id.write_id() == -1
+            // TODO(abharadwaj): The safe time should be from  the req rather than from the response
             ? HybridTime::FromPB(resp->safe_hybrid_time())
             : HybridTime::kInvalid;
     if (UpdateCheckpointRequired(record, cdc_sdk_op_id, &force_update)) {

@@ -116,6 +116,7 @@ DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 DECLARE_int32(cdc_snapshot_batch_size);
 DECLARE_bool(TEST_cdc_snapshot_failure);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(cdc_populate_safepoint_record);
 DECLARE_string(vmodule);
 
 namespace yb {
@@ -427,6 +428,35 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
         RETURN_NOT_OK(conn.ExecuteFormat(statement, table_name));
       }
     }
+    if (flag) {
+      RETURN_NOT_OK(conn.Execute("COMMIT"));
+    } else {
+      RETURN_NOT_OK(conn.Execute("ABORT"));
+    }
+    return Status::OK();
+  }
+
+  Status WriteRowsToTwoTables(
+      uint32_t start, uint32_t end, Cluster* cluster, bool flag, const char* const first_table_name,
+      const char* const second_table_name, uint32_t num_cols = 2) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
+
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    for (uint32_t i = start; i < end; ++i) {
+      uint32_t value = i;
+      std::stringstream statement_buff;
+      statement_buff << "INSERT INTO $0 VALUES (";
+      for (uint32_t iter = 0; iter < num_cols; ++value, ++iter) {
+        statement_buff << value << ",";
+      }
+
+      std::string statement(statement_buff.str());
+      statement.at(statement.size() - 1) = ')';
+      RETURN_NOT_OK(conn.ExecuteFormat(statement, first_table_name));
+      RETURN_NOT_OK(conn.ExecuteFormat(statement, second_table_name));
+    }
+
     if (flag) {
       RETURN_NOT_OK(conn.Execute("COMMIT"));
     } else {
@@ -5780,6 +5810,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointWithHigherTse
     ASSERT_FALSE(resp.has_error());
   }
 }
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentPersistencyAfterTabletSplit)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
@@ -10621,6 +10652,300 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLeadershipChangeAndSnapshotAf
   auto checkpoint_after_leadership_change =
       OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index());
   ASSERT_GT(checkpoint_after_leadership_change, checkpoint_after_snapshot);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeOfTransactionRecords)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
+
+  uint64_t begin_record_commit_time = 0;
+  for (auto const& record : change_resp_1.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN) {
+      begin_record_commit_time = record.row_message().commit_time();
+    } else if (
+        record.row_message().op() == RowMessage::INSERT ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      ASSERT_NE(begin_record_commit_time, 0);
+      ASSERT_EQ(record.row_message().commit_time(), begin_record_commit_time);
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeIncreasesForTransactions)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
+
+  uint64_t commit_time_first_txn = 0;
+  for (auto const& record : change_resp_1.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN) {
+      commit_time_first_txn = record.row_message().commit_time();
+      break;
+    }
+  }
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  change_resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  LOG(INFO) << "Number of records after second transaction: " << change_resp_1.records().size();
+
+  uint64_t commit_time_second_txn = 0;
+  for (auto const& record : change_resp_1.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN) {
+      commit_time_second_txn = record.row_message().commit_time();
+      break;
+    }
+  }
+
+  ASSERT_GE(commit_time_second_txn, commit_time_first_txn);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeOrderAcrossMultiTableTransactions)) {
+  FLAGS_cdc_populate_safepoint_record = true;
+  FLAGS_cdc_max_stream_intent_records = 100;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  constexpr static const char* const second_table_name = "test_table_1";
+  auto second_table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, second_table_name, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_second_table;
+  ASSERT_OK(test_client()->GetTablets(
+      second_table, 0, &tablets_second_table, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets_second_table.size(), num_tablets);
+
+  TableId first_table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId second_table_id =
+      ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, second_table_name));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+  resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets_second_table));
+  ASSERT_FALSE(resp.has_error());
+
+  // Insert some records in two separate transaction, affecting two tables. The promary key of each
+  // row will be sorted in order of insert.
+  ASSERT_OK(WriteRowsToTwoTables(0, 2, &test_cluster_, true, kTableName, second_table_name));
+  ASSERT_OK(WriteRowsToTwoTables(2, 4, &test_cluster_, true, kTableName, second_table_name));
+
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  ASSERT_OK(test_client()->FlushTables(
+      {second_table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  LOG(INFO) << "inserted two transactions";
+
+  std::vector<CDCSDKProtoRecordPB> combined_records;
+  combined_records.reserve(500);
+  GetChangesResponsePB change_resp;
+  bool first_iter = true;
+  // Collect all cdcsdk records from first table into a single vector: 'combined_records'
+  while (true) {
+    if (first_iter) {
+      change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+      first_iter = false;
+    } else {
+      change_resp =
+          ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+    }
+
+    if (change_resp.cdc_sdk_proto_records_size() == 1) {
+      break;
+    }
+
+    bool seen_safepoint_record = false;
+    for (const auto& cdc_sdk_record : change_resp.cdc_sdk_proto_records()) {
+      if (cdc_sdk_record.row_message().op() == RowMessage::SAFEPOINT) {
+        seen_safepoint_record = true;
+      } else if (cdc_sdk_record.row_message().op() != RowMessage::DDL) {
+        combined_records.push_back(cdc_sdk_record);
+      }
+    }
+    ASSERT_TRUE(seen_safepoint_record);
+  }
+  LOG(INFO) << "Got all records from the first table";
+
+  // Collect all cdcsdk records from the second table into a single vector: 'combined_records'
+  first_iter = true;
+  while (true) {
+    if (first_iter) {
+      change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_second_table));
+      first_iter = false;
+    } else {
+      change_resp = ASSERT_RESULT(
+          GetChangesFromCDC(stream_id, tablets_second_table, &change_resp.cdc_sdk_checkpoint()));
+    }
+
+    if (change_resp.cdc_sdk_proto_records_size() == 1) {
+      break;
+    }
+
+    bool seen_safepoint_record = false;
+    for (const auto& cdc_sdk_record : change_resp.cdc_sdk_proto_records()) {
+      if (cdc_sdk_record.row_message().op() == RowMessage::SAFEPOINT) {
+        seen_safepoint_record = true;
+      } else if (cdc_sdk_record.row_message().op() != RowMessage::DDL) {
+        combined_records.push_back(cdc_sdk_record);
+      }
+    }
+    ASSERT_TRUE(seen_safepoint_record);
+  }
+  LOG(INFO) << "Got all records from the second table";
+
+  // Sort the combined records based on the commit and record times.
+  std::sort(
+      combined_records.begin(), combined_records.end(),
+      [](const CDCSDKProtoRecordPB& left, const CDCSDKProtoRecordPB& right) {
+        if (left.row_message().commit_time() != right.row_message().commit_time()) {
+          return left.row_message().commit_time() < right.row_message().commit_time();
+        } else if (
+            left.row_message().op() == RowMessage::BEGIN &&
+            right.row_message().op() != RowMessage::BEGIN) {
+          return true;
+        } else if (
+            left.row_message().op() == RowMessage::COMMIT &&
+            right.row_message().op() != RowMessage::COMMIT) {
+          return false;
+        } else if (
+            right.row_message().op() == RowMessage::BEGIN &&
+            left.row_message().op() != RowMessage::BEGIN) {
+          return false;
+        } else if (
+            right.row_message().op() == RowMessage::COMMIT &&
+            left.row_message().op() != RowMessage::COMMIT) {
+          return true;
+        } else if (left.row_message().has_record_time() && right.row_message().has_record_time()) {
+          return left.row_message().record_time() < right.row_message().record_time();
+        }
+
+        return false;
+      });
+
+  // Filter out only insert records from the combined list into two separate lists based on source
+  // table.
+  std::vector<int32> table1_seen_record_pks, table2_seen_record_pks;
+  for (auto iter = combined_records.begin(); iter != combined_records.end(); ++iter) {
+    if (iter->row_message().op() != RowMessage::BEGIN &&
+        iter->row_message().op() != RowMessage::COMMIT) {
+      if (iter->row_message().table() == kTableName) {
+        table1_seen_record_pks.push_back(iter->row_message().new_tuple(0).datum_int32());
+      } else if (iter->row_message().table() == second_table_name) {
+        table2_seen_record_pks.push_back(iter->row_message().new_tuple(0).datum_int32());
+      }
+    }
+  }
+
+  // Assert that the records are sorted in primary key (i.e order of insertion is maintained) after
+  // combining all the records and sorting based on commit and record times.
+  ASSERT_TRUE(std::is_sorted(table1_seen_record_pks.begin(), table1_seen_record_pks.end()));
+  ASSERT_TRUE(std::is_sorted(table2_seen_record_pks.begin(), table2_seen_record_pks.end()));
+  ASSERT_EQ(table1_seen_record_pks.size(), table2_seen_record_pks.size());
+}
+
+TEST_F(
+    CDCSDKYsqlTest,
+    YB_DISABLE_TEST_IN_TSAN(TestCommitTimeRecordTimeAndSafepointRecordForSnapshot)) {
+  FLAGS_cdc_populate_safepoint_record = true;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_cdc_snapshot_batch_size = 10;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Invalid()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // Commit a transaction with 1000 rows.
+  ASSERT_OK(WriteRowsHelper(1 /* start */, 1001 /* end */, &test_cluster_, true));
+
+  // Insert 1000 single shard transactions
+  ASSERT_OK(WriteRows(1001 /* start */, 2001 /* end */, &test_cluster_));
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  int count = 0;
+  GetChangesResponsePB change_resp_updated;
+  while (true) {
+    change_resp_updated = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+
+    uint64_t expected_commit_time = 0;
+    uint64_t expected_record_time = 0;
+    bool seen_safepoint_record = false;
+    for (const auto& record : change_resp_updated.cdc_sdk_proto_records()) {
+      if (record.row_message().op() == RowMessage::READ) {
+        if (expected_commit_time == 0 && expected_record_time == 0) {
+          expected_commit_time = record.row_message().commit_time();
+          expected_record_time = record.row_message().record_time();
+        } else {
+          ASSERT_EQ(record.row_message().commit_time(), expected_commit_time);
+          ASSERT_EQ(record.row_message().record_time(), expected_record_time);
+        }
+
+        count += 1;
+      } else if (record.row_message().op() == RowMessage::SAFEPOINT) {
+        seen_safepoint_record = true;
+      }
+    }
+    ASSERT_EQ(seen_safepoint_record, true);
+
+    change_resp = change_resp_updated;
+    if (change_resp_updated.cdc_sdk_checkpoint().key().empty() &&
+        change_resp_updated.cdc_sdk_checkpoint().write_id() == 0 &&
+        change_resp_updated.cdc_sdk_checkpoint().snapshot_time() == 0) {
+      break;
+    }
+  }
+  ASSERT_EQ(count, 2000);
 }
 
 }  // namespace enterprise
