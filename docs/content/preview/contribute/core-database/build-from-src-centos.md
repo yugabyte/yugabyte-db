@@ -133,21 +133,12 @@ sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
 
 {{% readfile "includes/java.md" %}}
 
-The JDK requirement can be satisfied by the package manager.
+Both requirements can be satisfied by the package manager.
 
 ```sh
-sudo yum install -y java-11-openjdk
-```
-
-Maven can be downloaded/installed manually.
-For example,
-
-```sh
-mkdir ~/tools
-cd ~/tools
-curl 'https://dlcdn.apache.org/maven/maven-3/3.9.0/binaries/apache-maven-3.9.0-bin.tar.gz' | tar xz
+sudo yum install -y java-1.8.0-openjdk rh-maven35
 # You may also want to add the following line to your .bashrc or equivalent.
-export PATH="$HOME/tools/apache-maven-3.9.0/bin:$PATH"
+source /opt/rh/rh-maven35/enable
 ```
 
 ## Build the code
