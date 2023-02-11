@@ -65,13 +65,6 @@ sudo yum -y install rh-python38
 source /opt/rh/rh-python38/enable
 ```
 
-{{< note title="Note" >}}
-
-If encountering python-related issues during build, it may be that you are still using the previous build's virtualenv.
-That virtualenv can be cleaned using the `--clean-venv` build option.
-
-{{< /note >}}
-
 ### Cmake 3
 
 Cmake 3.17.3 or higher is required.
