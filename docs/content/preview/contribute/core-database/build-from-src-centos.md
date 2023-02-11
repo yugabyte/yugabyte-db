@@ -94,7 +94,7 @@ One way to do that is as follows:
 
 ```sh
 sudo mkdir /opt/yb-build
-sudo chown $(whoami) /opt/yb-build
+sudo chown "$(whoami)" /opt/yb-build
 ```
 
 Alternatively, the build options `--no-download-thirdparty` and/or `--no-linuxbrew` can be specified.
