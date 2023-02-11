@@ -65,9 +65,9 @@ sudo yum -y install rh-python38
 scl load rh-python38
 ```
 
-### Cmake 3
+### CMake 3
 
-Cmake 3.17.3 or higher is required.
+CMake 3.17.3 or higher is required.
 The package manager has that, but we still need to link the name `cmake` to `cmake3`.
 Do similarly for `ctest`.
 
