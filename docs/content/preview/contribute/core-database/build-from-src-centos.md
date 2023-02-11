@@ -122,7 +122,8 @@ export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 
 ### GCC (optional)
 
-To be able to compile with GCC, install devtoolset.
+To be able to compile with GCC, install the following packages.
+Substitute the version number to the one you plan on using.
 
 ```sh
 sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
