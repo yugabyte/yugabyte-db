@@ -185,6 +185,20 @@ ALTER TABLE tab_range_nonkey2 RENAME TO tab_range_nonkey2_renamed;
 SELECT * FROM tab_range_nonkey2_renamed;
 SELECT * FROM tab_range_nonkey2;
 
+-- Alter colocated table ADD PRIMARY KEY
+CREATE TABLE tbl_no_pk (k INT, v INT) WITH (colocation = true);
+\d tbl_no_pk
+INSERT INTO tbl_no_pk (k, v) VALUES (1, 1), (2, 2), (3, 3);
+ALTER TABLE tbl_no_pk ADD PRIMARY KEY (k ASC);
+\d tbl_no_pk
+SELECT * FROM tbl_no_pk ORDER BY k;
+
+-- Alter colocated table "DROP PRIMARY KEY"
+ALTER TABLE tbl_no_pk DROP CONSTRAINT tbl_no_pk_pkey;
+\d tbl_no_pk
+SELECT * FROM tbl_no_pk ORDER BY k;
+DROP TABLE tbl_no_pk;
+
 -- DROP TABLE
 
 -- drop colocated table with default index
@@ -288,6 +302,9 @@ CREATE UNIQUE INDEX unique_idx ON test_role_table(v);
 SELECT rolname FROM pg_roles JOIN pg_class
 ON pg_roles.oid = pg_class.relowner WHERE pg_class.relname = 'unique_idx';
 RESET SESSION AUTHORIZATION;
+
+-- The default tablegroup cannot be used explicitly
+CREATE TABLE invalid_tbl (k int) TABLEGROUP "default";
 
 -- Drop database
 \c yugabyte

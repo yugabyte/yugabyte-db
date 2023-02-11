@@ -545,6 +545,55 @@ SELECT * FROM tab_range_nonkey2;
 ERROR:  relation "tab_range_nonkey2" does not exist
 LINE 1: SELECT * FROM tab_range_nonkey2;
                       ^
+-- Alter colocated table ADD PRIMARY KEY
+CREATE TABLE tbl_no_pk (k INT, v INT) WITH (colocation = true);
+\d tbl_no_pk
+             Table "public.tbl_no_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           |          |
+ v      | integer |           |          |
+Colocation: true
+
+INSERT INTO tbl_no_pk (k, v) VALUES (1, 1), (2, 2), (3, 3);
+ALTER TABLE tbl_no_pk ADD PRIMARY KEY (k ASC);
+\d tbl_no_pk
+             Table "public.tbl_no_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+ v      | integer |           |          |
+Indexes:
+    "tbl_no_pk_pkey" PRIMARY KEY, lsm (k ASC), colocation: true
+Colocation: true
+
+SELECT * FROM tbl_no_pk ORDER BY k;
+ k | v
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+-- Alter colocated table "DROP PRIMARY KEY"
+ALTER TABLE tbl_no_pk DROP CONSTRAINT tbl_no_pk_pkey;
+\d tbl_no_pk
+             Table "public.tbl_no_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+ v      | integer |           |          |
+Colocation: true
+
+SELECT * FROM tbl_no_pk ORDER BY k;
+ k | v
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+DROP TABLE tbl_no_pk;
 -- DROP TABLE
 -- drop colocated table with default index
 DROP TABLE tab_range;
@@ -711,7 +760,7 @@ AND objid = 'tbl'::regclass AND refclassid = 'pg_yb_tablegroup'::regclass
 AND refobjid = pg_yb_tablegroup.oid AND grpname = 'default';
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype | grpname | grpowner | grptablespace | grpacl | grpoptions
 ---------+-------+----------+------------+----------+-------------+---------+---------+----------+---------------+--------+------------
-    1259 | 16511 |        0 |       8036 |    16514 |           0 | n       | default |       10 |             0 |        |
+    1259 | 16524 |        0 |       8036 |    16527 |           0 | n       | default |       10 |             0 |        |
 (1 row)
 
 DROP TABLEGROUP "default";
@@ -749,6 +798,9 @@ ON pg_roles.oid = pg_class.relowner WHERE pg_class.relname = 'unique_idx';
 (1 row)
 
 RESET SESSION AUTHORIZATION;
+-- The default tablegroup cannot be used explicitly
+CREATE TABLE invalid_tbl (k int) TABLEGROUP "default";
+ERROR:  cannot use tablegroups in a colocated database
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;

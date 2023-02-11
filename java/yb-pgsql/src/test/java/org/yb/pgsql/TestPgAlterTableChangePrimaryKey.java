@@ -529,7 +529,7 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
     }
 
     try (Connection conn2 = getConnectionBuilder().withDatabase("clc").connect();
-        Statement stmt = conn2.createStatement()) {
+         Statement stmt = conn2.createStatement()) {
       stmt.executeUpdate("CREATE TABLE normal_table (id int PRIMARY KEY)");
       stmt.executeUpdate("INSERT INTO normal_table VALUES (1)");
       stmt.executeUpdate("INSERT INTO normal_table VALUES (2)");
@@ -590,6 +590,13 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
           new Row("normal_table_pkey", null, null, null),
           new Row("nopk_c", true, "default", 20003),
           new Row("nopk_nc", false, null, null)));
+
+      assertRowList(stmt, "SELECT * FROM nopk_c ORDER BY id", Arrays.asList(
+          new Row(3),
+          new Row(4)));
+      assertRowList(stmt, "SELECT * FROM nopk_nc ORDER BY id", Arrays.asList(
+          new Row(5),
+          new Row(6)));
     }
   }
 
