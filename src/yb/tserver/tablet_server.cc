@@ -639,17 +639,14 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
     LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
                         << new_breaking_version;
   }
-  auto pg_client_service = pg_client_service_.lock();
-  if (pg_client_service) {
-    LOG(INFO) << "Invalidating PgTableCache cache since catalog version incremented";
-    pg_client_service->InvalidateTableCache();
-  }
+  InvalidatePgTableCache();
 }
 
 void TabletServer::SetYsqlDBCatalogVersions(
   const master::DBCatalogVersionDataPB& db_catalog_version_data) {
   std::lock_guard<simple_spinlock> l(lock_);
 
+  bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
   for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
     const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
@@ -730,6 +727,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     }
 
     if (row_inserted || row_updated) {
+      catalog_changed = true;
       // Set the new catalog version in shared memory at slot shm_index.
       shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), new_version);
       if (FLAGS_log_ysql_catalog_versions) {
@@ -745,6 +743,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
        it != ysql_db_catalog_version_map_.end();) {
     const uint32_t db_oid = it->first;
     if (db_oid_set.count(db_oid) == 0) {
+      // This means the entry for db_oid no longer exists.
+      catalog_changed = true;
       auto shm_index = it->second.shm_index;
       CHECK(shm_index >= 0 &&
             shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions)) << shm_index;
@@ -758,6 +758,11 @@ void TabletServer::SetYsqlDBCatalogVersions(
     } else {
       ++it;
     }
+  }
+  if (catalog_changed) {
+    // TODO(myang): see how to only invalidate per-database tables.
+    // https://github.com/yugabyte/yugabyte-db/issues/16114.
+    InvalidatePgTableCache();
   }
 }
 
@@ -858,6 +863,14 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
     }
   }
   return Status::OK();
+}
+
+void TabletServer::InvalidatePgTableCache() {
+  auto pg_client_service = pg_client_service_.lock();
+  if (pg_client_service) {
+    LOG(INFO) << "Invalidating the entire PgTableCache cache since catalog version incremented";
+    pg_client_service->InvalidateTableCache();
+  }
 }
 
 }  // namespace tserver
