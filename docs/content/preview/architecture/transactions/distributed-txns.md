@@ -85,3 +85,16 @@ After a transaction is committed, the following two fields are set:
 
 - Commit hybrid timestamp: This timestamp is chosen as the current hybrid time at the transaction status tablet at the moment of appending the transaction committed entry to its Raft log. It is then used as the final MVCC timestamp for regular records that replace the transaction's provisional records when provisional records are being applied and cleaned up.
 - List of IDs of participating tablets: After a transaction commits, the final set of tablets to which the transaction has written is known. The tablet server managing the transaction sends this list to the transaction status tablet as part of the commit message, and the transaction status tablet makes sure that all participating tablets are notified of the transaction's committed status. This process might take multiple retries, and the transaction record can only be cleaned up after this is done.
+
+## Impact of Failures
+
+The Provisional Records are written to all the replicas of the tablets responsible for the keys being modified in a transaction. When a node with the tablet that has received the provisional records or is about to receive the provisional records fails, a new leader is elected for the tablet within a few seconds(`~2s`) as described in [Leader Failure](../../core-functions/high-availability/#tablet-peer-leader-failure). The transaction simply proceeds further with the newly elected leader. In this case, the time taken for the transaction to complete increases by the time taken for the leader election.
+
+The transaction manager (typically, the node the client is connected to) sends heartbeats to the tablets containing the provisional records of the transaction. When the coordinator fails, the heartbeats stop and the provisional records remain uncommitted in the respective tablets.  Provisional records that do not get heartbeats become stale after certain time. Clients connected to the failed coordinator will receive an error message: 
+
+```sql
+FATAL:  57P01: terminating connection due to unexpected postmaster exit
+LOCATION:  secure_read, be-secure.c:199
+FATAL:  XX000: Network error: recvmsg error: Connection refused
+```
+At this juncture, it would be the responsibility of the client to retry the transaction. Other clients with transactions that were waiting on the transactions handled by the failed coordinator, will have to wait for the transaction's provisional records and locks to expire and then proceed normally. In this case, the time taken for the other transactions to complete increases by about `5s`.
