@@ -16,6 +16,7 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/master/cdc_consumer_registry_service.h"
 
 namespace yb {
 
@@ -817,6 +818,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const TableId& table_id, const std::list<scoped_refptr<CDCStreamInfo>>& streams);
   void RemoveTableFromCDCSDKUnprocessedSet(
       const TableId& table_id, const scoped_refptr<CDCStreamInfo>& stream);
+
+  void ClearXReplState() REQUIRES(mutex_);
+  Status LoadXReplStream() REQUIRES(mutex_);
+  Status LoadUniverseReplication() REQUIRES(mutex_);
+
+  // Check if this tablet is being kept for xcluster replication or cdcsdk.
+  bool RetainedByXRepl(const TabletId& tablet_id);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
