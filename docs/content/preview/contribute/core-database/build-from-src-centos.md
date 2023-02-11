@@ -51,45 +51,18 @@ Update packages on your system, install development tools and additional package
 ```sh
 sudo yum update -y
 sudo yum groupinstall -y 'Development Tools'
-sudo yum install -y epel-release git libatomic libicu rsync
+sudo yum install -y centos-release-scl epel-release git libatomic libicu rsync
 ```
 
 ### Python 3
 
 Python 3.7 or higher is required.
-Since CentOS 7 does not include that in the package manager, this is nontrivial.
-One way is to get it is to compile from source.
-Here is an example using Python 3.9.
-
-[Install packages for building python][python-packages].
-
-```
-sudo yum -y install gcc make zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel openssl-devel tk-devel libffi-devel xz-devel
-```
-
-[python-packages]: https://github.com/pyenv/pyenv/wiki#suggested-build-environment
-
-Download python source.
+The following example installs Python 3.8.
 
 ```sh
-cd /tmp
-curl https://www.python.org/ftp/python/3.9.16/Python-3.9.16.tgz | tar xz
-cd Python-3.9.16
-```
-
-Make and install python to `/usr/local/bin`.
-
-```sh
-./configure --enable-optimizations
-sudo make altinstall
-```
-
-Create a symlink named `python3`.
-It is wise to choose to install it somewhere besides `/usr/bin` and with higher precedence because the package manager's Python 3.6 may overwrite the symlink.
-One such location is `/usr/local/bin`.
-
-```sh
-sudo ln -s /usr/local/bin/python3.9 /usr/local/bin/python3
+sudo yum -y install rh-python38
+# You may also want to add the following line to your .bashrc or equivalent.
+source /opt/rh/rh-python38/enable
 ```
 
 {{< note title="Note" >}}
@@ -159,7 +132,6 @@ export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 To be able to compile with GCC, install devtoolset.
 
 ```sh
-sudo yum install -y centos-release-scl
 sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
 ```
 
