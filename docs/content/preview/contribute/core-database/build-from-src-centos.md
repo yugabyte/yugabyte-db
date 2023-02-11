@@ -82,7 +82,7 @@ sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ### /opt/yb-build
 
 By default, when running build, thirdparty libraries are not built, and pre-built libraries are downloaded.
-We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party dependencies on CentOS.
+We also use [Linuxbrew][linuxbrew] to provide some of the third-party dependencies on CentOS.
 The build scripts automatically install these in directories under `/opt/yb-build`.
 In order for the build script to write under those directories, it needs proper permissions.
 One way to do that is as follows:
@@ -94,6 +94,8 @@ sudo chown "$(whoami)" /opt/yb-build
 
 Alternatively, the build options `--no-download-thirdparty` and/or `--no-linuxbrew` can be specified.
 However, those cases may require additional, undocumented steps.
+
+[linuxbrew]: https://github.com/linuxbrew/brew
 
 ### Ninja (optional)
 
