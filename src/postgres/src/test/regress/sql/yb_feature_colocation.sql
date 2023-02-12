@@ -212,6 +212,14 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 \dt
 \di
 
+-- Test colocated tables/indexes with SPLIT INTO/SPLIT AT
+CREATE TABLE invalid_tbl_split_into (k INT) SPLIT INTO 10 TABLETS;
+CREATE TABLE invalid_tbl_split_at (k INT) SPLIT AT VALUES ((100));
+CREATE TABLE test_tbl (k INT);
+CREATE INDEX invalid_idx_split_into ON test_tbl (k) SPLIT INTO 10 TABLETS;
+CREATE INDEX invalid_idx_split_at ON test_tbl (k) SPLIT AT VALUES ((100));
+DROP TABLE test_tbl;
+
 -- drop database
 \c yugabyte
 DROP DATABASE colocation_test;
