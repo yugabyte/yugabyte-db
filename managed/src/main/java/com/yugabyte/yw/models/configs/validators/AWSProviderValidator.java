@@ -16,10 +16,9 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
@@ -42,16 +41,20 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
 
   @Override
   public void validate(Provider provider) {
-    Map<String, String> configMap = CloudInfoInterface.fetchEnvVars(provider);
+    // To guarantee that we can safely fall back to the default provider,
+    // the user should either submit both keys and their secret or leave them as null.
+    checkMissingKeys(provider);
 
-    // validate Access and secret keys
+    // validate access
     try {
-      if (checkKeysExists(configMap)) {
-        awsCloudImpl.getStsClientOrBadRequest(configMap);
-      }
+      awsCloudImpl.getStsClientOrBadRequest(provider);
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
-        throwBeanValidatorError("KEYS", e.getMessage());
+        if (awsCloudImpl.checkKeysExists(provider)) {
+          throwBeanValidatorError("KEYS", e.getMessage());
+        } else {
+          throwBeanValidatorError("IAM", e.getMessage());
+        }
       }
       throw e;
     }
@@ -81,8 +84,8 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     // validate hosted zone id
     try {
       String hostedZoneId = provider.details.cloudInfo.aws.awsHostedZoneId;
-      if (checkKeysExists(configMap) && !StringUtils.isEmpty(hostedZoneId)) {
-        awsCloudImpl.getHostedZoneOrBadRequest(configMap, hostedZoneId);
+      if (!StringUtils.isEmpty(hostedZoneId)) {
+        awsCloudImpl.getHostedZoneOrBadRequest(provider, hostedZoneId);
       }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
@@ -92,28 +95,28 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
 
     // validate Region and its details
-    if (checkKeysExists(configMap) && provider.regions != null) {
+    if (provider.regions != null) {
       for (Region region : provider.regions) {
         validateAMI(provider, region);
         validateVpc(provider, region);
         validateSgAndPort(provider, region);
         validateSubnets(provider, region);
+        dryRun(provider, region);
       }
+    } else {
+      throwBeanValidatorError("REGION", "Provider must have at least one region");
     }
+  }
 
-    // dry run DescribeInstances
-    if (checkKeysExists(configMap)) {
-      for (Region region : provider.regions) {
-        String fieldDetails = "DRY_RUN." + region.code;
-        try {
-          awsCloudImpl.dryRunDescribeInstanceOrBadRequest(configMap, region.code);
-        } catch (PlatformServiceException e) {
-          if (e.getHttpStatus() == BAD_REQUEST) {
-            throwBeanValidatorError(fieldDetails, e.getMessage());
-          }
-          throw e;
-        }
+  private void dryRun(Provider provider, Region region) {
+    String fieldDetails = "DRY_RUN." + region.code;
+    try {
+      awsCloudImpl.dryRunDescribeInstanceOrBadRequest(provider, region.code);
+    } catch (PlatformServiceException e) {
+      if (e.getHttpStatus() == BAD_REQUEST) {
+        throwBeanValidatorError(fieldDetails, e.getMessage());
       }
+      throw e;
     }
   }
 
@@ -230,9 +233,13 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
   }
 
-  private boolean checkKeysExists(Map<String, String> configMap) {
-    return configMap != null
-        && !StringUtils.isEmpty(configMap.get("AWS_ACCESS_KEY_ID"))
-        && !StringUtils.isEmpty(configMap.get("AWS_SECRET_ACCESS_KEY"));
+  private void checkMissingKeys(Provider provider) {
+    AWSCloudInfo cloudInfo = provider.getProviderDetails().getCloudInfo().getAws();
+    String accessKey = cloudInfo.awsAccessKeyID;
+    String accessKeySecret = cloudInfo.awsAccessKeySecret;
+    if ((StringUtils.isEmpty(accessKey) && !StringUtils.isEmpty(accessKeySecret))
+        || (!StringUtils.isEmpty(accessKey) && StringUtils.isEmpty(accessKeySecret))) {
+      throwBeanValidatorError("KEYS", "Please provide both access key and its secret");
+    }
   }
 }
