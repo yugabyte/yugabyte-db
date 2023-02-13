@@ -258,8 +258,8 @@ You can add replicas to an existing primary cluster as needed. Refer to [Read re
 
 - [DocDB replication layer](../../../architecture/docdb-replication/)
 - Webinar: [Engineering Around the Physics of Latency](https://vimeo.com/548171949)
-- Blog: [9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/)
-- Blog: [Geo-partitioning of Data in YugabyteDB](https://blog.yugabyte.com/geo-partitioning-of-data-in-yugabytedb/)
+- Blog: [9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://www.yugabyte.com/blog/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/)
+- Blog: [Geo-partitioning of Data in YugabyteDB](https://www.yugabyte.com/blog/geo-partitioning-of-data-in-yugabytedb/)
 
 ## Next steps
 

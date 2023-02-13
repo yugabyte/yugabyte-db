@@ -88,8 +88,8 @@ YugabyteDB's distributed consensus based replication design, in 3-DC deployments
 
 A few blog posts that highlight how YugabyteDB differs from Apache Cassandra are below.
 
-- [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight Transactions & Secondary Indexes](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/)
-- [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance)
-- [DynamoDB vs MongoDB vs Cassandra for Fast Growing Geo-Distributed Apps](https://blog.yugabyte.com/dynamodb-vs-mongodb-vs-cassandra-for-fast-growing-geo-distributed-apps/)
-- [YugabyteDB 1.1 New Feature: Document Data Modeling with the JSON Data Type](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-document-data-modeling-with-json-data-type/)
-- [YugabyteDB 1.1 New Feature: Speeding Up Queries with Secondary Indexes](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/)
+- [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight Transactions & Secondary Indexes](https://www.yugabyte.com/blog/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/)
+- [Building a Strongly Consistent Cassandra with Better Performance](https://www.yugabyte.com/blog/building-a-strongly-consistent-cassandra-with-better-performance)
+- [DynamoDB vs MongoDB vs Cassandra for Fast Growing Geo-Distributed Apps](https://www.yugabyte.com/blog/dynamodb-vs-mongodb-vs-cassandra-for-fast-growing-geo-distributed-apps/)
+- [YugabyteDB 1.1 New Feature: Document Data Modeling with the JSON Data Type](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-document-data-modeling-with-json-data-type/)
+- [YugabyteDB 1.1 New Feature: Speeding Up Queries with Secondary Indexes](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/)
