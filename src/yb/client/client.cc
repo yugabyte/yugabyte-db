@@ -980,9 +980,10 @@ Status YBClient::IsDeleteNamespaceInProgress(const std::string& namespace_name,
                                             deadline, delete_in_progress);
 }
 
-YBNamespaceAlterer* YBClient::NewNamespaceAlterer(
+std::unique_ptr<YBNamespaceAlterer> YBClient::NewNamespaceAlterer(
     const string& namespace_name, const std::string& namespace_id) {
-  return new YBNamespaceAlterer(this, namespace_name, namespace_id);
+  return std::unique_ptr<YBNamespaceAlterer>(new YBNamespaceAlterer(
+      this, namespace_name, namespace_id));
 }
 
 Result<vector<NamespaceInfo>> YBClient::ListNamespaces(
