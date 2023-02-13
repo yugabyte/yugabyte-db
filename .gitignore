@@ -13,3 +13,6 @@ regression.*
 /results/
 /tmp_check/
 /RPMS/
+
+# Documentation artifacts
+docs/_build
