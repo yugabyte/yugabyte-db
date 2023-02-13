@@ -82,7 +82,7 @@ Complete the **Advanced** section as follows:
 - Use the **Enable IPV6** field to specify whether or not you want to use IPV6 networking for connections between database servers. This setting is disabled by default.
 - Use the **Enable Public Network Access** field to specify whether or not to assign a load balancer or nodeport for connecting to the database endpoints over the internet. This setting is disabled by default.
 
-### Configure g-flags
+### Configure G-Flags
 
 Optionally, complete the **G-Flags** section as follows:
 
@@ -94,9 +94,9 @@ Optionally, complete the **G-Flags** section as follows:
 
   - [Edit configuration flags](../../manage-deployments/edit-config-flags)
 
-  - [YB Master configuration flags](../../../reference/configuration/yb-master/#configuration-flags)
+  - [YB-Master configuration flags](../../../reference/configuration/yb-master/#configuration-flags)
 
-  - [YB T-Server configuration flags](../../../reference/configuration/yb-tserver/#configuration-flags)
+  - [YB-TServer configuration flags](../../../reference/configuration/yb-tserver/#configuration-flags)
 
 ### Configure Helm overrides
 
@@ -159,5 +159,5 @@ You can create a connection to a node as follows:
 
 ## Connect to the universe
 
-For information on how to connect to the universe from the Kubernetes cluster, as well as remotely, see [Connecting YugabyteDB clusters](../../../deploy/kubernetes/clients/#connecting-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
+For information on how to connect to the universe from the Kubernetes cluster, as well as remotely, see [Connect YugabyteDB clusters](../../../deploy/kubernetes/clients/#connect-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
 
