@@ -130,9 +130,8 @@ public class CreateBackup extends UniverseTaskBase {
           if (!currentBackup.baseBackupUUID.equals(currentBackup.backupUUID)) {
             Backup baseBackup =
                 Backup.getOrBadRequest(params().customerUUID, currentBackup.baseBackupUUID);
-            baseBackup.onIncrementCompletion(currentBackup.getCreateTime());
-            // Unset expiry time for increment, only the base backup's expiry is what we need.
             currentBackup.onCompletion();
+            baseBackup.onIncrementCompletion(currentBackup.getCreateTime());
           } else {
             currentBackup.onCompletion();
           }
