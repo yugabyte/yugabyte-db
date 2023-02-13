@@ -28,7 +28,6 @@ from enum import Enum
 from ybops.common.colors import Colors
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils.remote_shell import RemoteShell
-from ybops.utils.ssh import SSHClient
 
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
@@ -409,32 +408,25 @@ class ValidationResult(Enum):
         return json.dumps({"state": self.name, "message": self.value})
 
 
-def validate_instance(host_name, port, username, ssh_key_file, mount_paths, **kwargs):
-    """This method tries to ssh to the host with the username provided on the port, executes a
+def validate_instance(connect_options, mount_paths, **kwargs):
+    """This method tries to connect to the host with the username provided on the port, executes a
     simple ls statement on the provided mount path and checks that the OS is centos-7. It returns
     0 if succeeded, 1 if ssh failed, 2 if mount path failed, or 3 if the OS was incorrect.
     Args:
-        host_name (str): SSH host IP address
-        port (int): SSH port
-        username (str): SSH username
-        ssh_key_file (str): SSH key file
-        mount_paths (tuple): String paths to the mount points of each drive on the instance
+        connect_options (dict): See RemoteShell for details.
     Returns:
         (dict): return success/failure code and corresponding message (0 = success, 1-3 = failure)
     """
-    ssh2_enabled = kwargs.get('ssh2_enabled', False)
-    ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
-
     try:
-        ssh_client.connect(host_name, username, ssh_key_file, port)
+        remote_shell = RemoteShell(connect_options)
         for path in [mount_path.strip() for mount_path in mount_paths]:
             path = '"' + re.sub('[`"]', '', path) + '"'
-            stdout = ssh_client.exec_command("ls -a " + path + "", output_only=True)
+            stdout = remote_shell.exec_command("ls -a " + path + "", output_only=True)
             if len(stdout) == 0:
                 return ValidationResult.INVALID_MOUNT_POINTS
 
         os_check_cmd = "source /etc/os-release && echo \"$NAME $VERSION_ID\""
-        _, output, _ = ssh_client.exec_command(os_check_cmd)
+        _, output, _ = remote_shell.exec_command(os_check_cmd)
         if len(output) == 0 or output[0].strip().lower() != "centos linux 7":
             return ValidationResult.INVALID_OS
 
@@ -444,63 +436,51 @@ def validate_instance(host_name, port, username, ssh_key_file, mount_paths, **kw
         logging.error("[app] Failed to execute remote command: {}".format(ex))
         return ValidationResult.UNREACHABLE
     finally:
-        ssh_client.close_connection()
+        if remote_shell:
+            remote_shell.close()
 
 
-def validate_cron_status(host_name, port, username, ssh_key_file, **kwargs):
-    """This method tries to ssh to the host with the username provided on the port, checks if
-    our expected cronjobs are present, and returns true if they are. Any failure, including SSH
-    issues will cause it to return false.
+def validate_cron_status(connect_options, **kwargs):
+    """This method tries to connect to the host with the username provided on the port, checks if
+    our expected cronjobs are present, and returns true if they are. Any failure, including
+    connection issues will cause it to return false.
     Args:
-        host_name (str): SSH host IP address
-        port (int): SSH port
-        username (str): SSH username
-        ssh_key_file (str): SSH key file
+        connect_options (dict): See RemoteShell for details.
     Returns:
         bool: true if all cronjobs are present, false otherwise (or if errored)
     """
-    ssh2_enabled = kwargs.get('ssh2_enabled', False)
-    ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
-
     try:
-        ssh_client.connect(host_name, username, ssh_key_file, port)
-        stdout = ssh_client.exec_command("crontab -l", output_only=True)
+        remote_shell = RemoteShell(connect_options)
+        stdout = remote_shell.exec_command("crontab -l", output_only=True)
         cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
         return all(c in stdout for c in cronjobs)
     except YBOpsRuntimeError as ex:
         logging.error("Failed to validate cronjobs: {}".format(ex))
         return False
     finally:
-        ssh_client.close_connection()
+        if remote_shell:
+            remote_shell.close()
 
 
-def remote_exec_command(host_name, port, username, ssh_key_file, cmd, **kwargs):
+def remote_exec_command(connect_options, cmd, **kwargs):
     """This method will execute the given cmd on remote host and return the output.
     Args:
-        host_name (str): SSH host IP address
-        port (int): SSH port
-        username (str): SSH username
-        ssh_key_file (str): SSH key file
-        cmd (str): Command to run
-        timeout (int): Time in seconds to wait before aborting
-        retry_delay (int): Time in seconds to wait between subsequent retries
+        connect_options (dict): See RemoteShell for details.
     Returns:
         rc (int): returncode
         stdout (str): output log
         stderr (str): error logs
     """
-    ssh2_enabled = kwargs.get('ssh2_enabled', False)
-    ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
-
     try:
-        ssh_client.connect(host_name, username, ssh_key_file, port)
-        rc, stdout, stderr = ssh_client.exec_command(cmd)
+        remote_shell = RemoteShell(connect_options)
+        rc, stdout, stderr = remote_shell.exec_command(cmd)
         return rc, stdout, stderr
     except YBOpsRuntimeError as e:
         logging.error("Failed to execute remote command: {}".format(e))
         return 1, None, None  # treat this as a non-zero return code
     finally:
-        ssh_client.close_connection()
+        if remote_shell:
+            remote_shell.close()
 
 
 def get_or_create(getter):
@@ -562,10 +542,10 @@ def linux_get_ip_address(ifname):
 
 
 # Given a comma separated string of paths on a remote host
-# and ssh_options to connect to the remote host
+# and connect_options to connect to the remote host
 # returns a comma separated string of the root mount paths for those paths
-def get_mount_roots(ssh_options, paths):
-    remote_shell = RemoteShell(ssh_options)
+def get_mount_roots(connect_options, paths):
+    remote_shell = RemoteShell(connect_options)
     remote_cmd = 'df --output=target {}'.format(" ".join(paths.split(",")))
     # Example output of the df cmd
     # $ df --output=target /bar/foo/rnd /storage/abc

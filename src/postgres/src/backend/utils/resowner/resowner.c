@@ -545,7 +545,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		/* Ditto for JIT contexts */
 		while (ResourceArrayGetAny(&(owner->jitarr), &foundres))
 		{
-			JitContext *context = (JitContext *) PointerGetDatum(foundres);
+			JitContext *context = (JitContext *) DatumGetPointer(foundres);
 
 			jit_release_context(context);
 		}

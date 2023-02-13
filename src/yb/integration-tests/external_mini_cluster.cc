@@ -161,10 +161,6 @@ DEFINE_UNKNOWN_string(external_daemon_heap_profile_prefix, "",
               "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
               "suffix for external mini-cluster daemons.");
 
-DEFINE_UNKNOWN_bool(external_daemon_safe_shutdown, false,
-            "Shutdown external daemons using SIGTERM first. Disabled by default to avoid "
-            "interfering with kill-testing.");
-
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
 
@@ -292,13 +288,12 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
   opts_.AdjustMasterRpcPorts();
   // These "extra mini cluster options" are added in the end of the command line.
   const auto common_extra_flags = {
+      "--TEST_running_test=true"s,
       "--enable_tracing"s,
       Format("--memory_limit_hard_bytes=$0", kDefaultMemoryLimitHardBytes),
       Format("--never_fsync=$0", FLAGS_never_fsync),
       (opts.log_to_file ? "--alsologtostderr"s : "--logtostderr"s),
-      (IsTsan() ? "--rpc_slow_query_threshold_ms=20000"s :
-          "--rpc_slow_query_threshold_ms=10000"s)
-  };
+      Format("--rpc_slow_query_threshold_ms=$0", NonTsanVsTsan("10000", "20000"))};
   for (auto* extra_flags : {&opts_.extra_master_flags, &opts_.extra_tserver_flags}) {
     // Common default extra flags are inserted in the beginning so that they can be overridden by
     // caller-specified flags.
@@ -410,13 +405,13 @@ void ExternalMiniCluster::Shutdown(NodeSelectionMode mode) {
   if (mode == ALL) {
     for (const scoped_refptr<ExternalMaster>& master : masters_) {
       if (master) {
-        master->Shutdown();
+        master->Shutdown(SafeShutdown::kTrue);
       }
     }
   }
 
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
-    ts->Shutdown();
+    ts->Shutdown(SafeShutdown::kTrue);
   }
   running_ = false;
 }
@@ -2309,6 +2304,8 @@ bool ExternalDaemon::IsShutdown() const {
   return process_.get() == nullptr;
 }
 
+bool ExternalDaemon::WasUnsafeShutdown() const { return sigkill_used_for_shutdown_; }
+
 bool ExternalDaemon::IsProcessAlive() const {
   if (IsShutdown()) {
     return false;
@@ -2330,17 +2327,22 @@ pid_t ExternalDaemon::pid() const {
   return process_->pid();
 }
 
-void ExternalDaemon::Shutdown() {
-  if (!process_) return;
-
-  LOG_WITH_PREFIX(INFO) << "Starting Shutdown()";
+void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
+  if (!process_) {
+    return;
+  }
 
   // Before we kill the process, store the addresses. If we're told to start again we'll reuse
   // these.
   bound_rpc_ = bound_rpc_hostport();
   bound_http_ = bound_http_hostport();
 
+  LOG_WITH_PREFIX(INFO) << "Starting Shutdown()";
+
+  const auto start_time = CoarseMonoClock::Now();
+  auto process_name_and_pid = exe_;
   if (IsProcessAlive()) {
+    process_name_and_pid = ProcessNameAndPidStr();
     // In coverage builds, ask the process nicely to flush coverage info
     // before we kill -9 it. Otherwise, we never get any coverage from
     // external clusters.
@@ -2350,39 +2352,46 @@ void ExternalDaemon::Shutdown() {
       // The child process has been configured using the HEAPPROFILESIGNAL environment variable to
       // create a heap profile on receiving kHeapProfileSignal.
       static const int kWaitMs = 100;
-      LOG(INFO) << "Sending signal " << kHeapProfileSignal << " to " << ProcessNameAndPidStr()
-                << " to capture a heap profile. Waiting for " << kWaitMs << " ms afterwards.";
+      LOG_WITH_PREFIX(INFO) << "Sending signal " << kHeapProfileSignal << " to "
+                            << process_name_and_pid << " to capture a heap profile. Waiting for "
+                            << kWaitMs << " ms afterwards.";
       WARN_NOT_OK(process_->Kill(kHeapProfileSignal), "Killing process failed");
       std::this_thread::sleep_for(std::chrono::milliseconds(kWaitMs));
     }
 
-    if (FLAGS_external_daemon_safe_shutdown) {
+    if (safe_shutdown) {
+      constexpr auto max_graceful_shutdown_wait = 1min * kTimeMultiplier;
       // We put 'SIGTERM' in quotes because an unquoted one would be treated as a test failure
       // by our regular expressions in common-test-env.sh.
-      LOG(INFO) << "Terminating " << ProcessNameAndPidStr() << " using 'SIGTERM' signal";
+      LOG_WITH_PREFIX(INFO) << "Terminating " << process_name_and_pid << " using 'SIGTERM' signal";
       WARN_NOT_OK(process_->Kill(SIGTERM), "Killing process failed");
-      int total_delay_ms = 0;
-      int current_delay_ms = 10;
-      for (int i = 0; i < 10 && IsProcessAlive(); ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(current_delay_ms));
-        total_delay_ms += current_delay_ms;
-        current_delay_ms += 10;  // will sleep for 10ms, then 20ms, etc.
+      CoarseBackoffWaiter waiter(start_time + max_graceful_shutdown_wait, 100ms);
+      while (IsProcessAlive()) {
+        YB_LOG_EVERY_N_SECS(INFO, 1)
+            << LogPrefix() << "Waiting for process termination: " << process_name_and_pid;
+        if (!waiter.Wait()) {
+          break;
+        }
       }
 
       if (IsProcessAlive()) {
-        LOG(INFO) << "The process " << ProcessNameAndPidStr() << " is still running after "
-                  << total_delay_ms << " ms, will send SIGKILL";
+        LOG_WITH_PREFIX(INFO) << "The process " << process_name_and_pid
+                              << " is still running after " << CoarseMonoClock::Now() - start_time
+                              << " ms, will send SIGKILL";
       }
     }
 
     if (IsProcessAlive()) {
-      LOG(INFO) << "Killing " << ProcessNameAndPidStr() << " with SIGKILL";
+      LOG_WITH_PREFIX(INFO) << "Killing " << process_name_and_pid << " with SIGKILL";
+      sigkill_used_for_shutdown_ = true;
       WARN_NOT_OK(process_->Kill(SIGKILL), "Killing process failed");
     }
   }
   int ret = 0;
-  WARN_NOT_OK(process_->Wait(&ret), "Waiting on " + exe_);
+  WARN_NOT_OK(process_->Wait(&ret), Format("$0 Waiting on $1", LogPrefix(), process_name_and_pid));
   process_.reset();
+  LOG_WITH_PREFIX(INFO) << "Process " << process_name_and_pid << " shutdown completed in "
+                        << CoarseMonoClock::Now() - start_time << "ms";
 }
 
 void ExternalDaemon::FlushCoverage() {

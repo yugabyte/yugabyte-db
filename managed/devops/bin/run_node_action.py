@@ -291,7 +291,7 @@ def main():
                      .format(args.ip, args.port, str(e)))
     elif args.node_type == 'rpc':
         rpc_options = {
-            "connection_type": "rpc",
+            "connection_type": "node_agent_rpc",
             "node_agent_user":  YB_USERNAME if args.user is None else args.user,
             "node_agent_ip": args.node_agent_ip,
             "node_agent_port": args.node_agent_port,

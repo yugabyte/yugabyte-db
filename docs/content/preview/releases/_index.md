@@ -1,8 +1,8 @@
 ---
-title: Releases overview
-headerTitle: Releases overview
-linkTitle: Releases overview
-description: An overview of the preview and current stable releases, and upcoming releases.
+title: YugabyteDB releases overview
+headerTitle: YugabyteDB releases overview
+linkTitle: YugabyteDB releases
+description: An overview of the preview and current stable YugabyteDB database releases, and upcoming releases.
 image: /images/section_icons/index/quick_start.png
 aliases:
   - /preview/releases/releases-overview/
@@ -55,6 +55,10 @@ The information in this section is a summary for convenience only. For complete 
 | [v2.12](release-notes/v2.12/) | {{< yb-eol-dates "v2.12" release >}} | {{< yb-eol-dates "v2.12" EOM >}} | {{< yb-eol-dates "v2.12" EOL >}} |
 | [v2.8](release-notes/v2.8/) | {{< yb-eol-dates "v2.8" release >}} | {{< yb-eol-dates "v2.8" EOM >}} | {{< yb-eol-dates "v2.8" EOL >}} |
 
+{{< tip title="YugabyteDB Anywhere release notes have moved" >}}
+Starting with v2.17, the [release notes for YugabyteDB Anywhere](yba-releases/) have moved to [their own page](yba-releases/v2.17/).
+{{< /tip >}}
+
 ### Releases at end of life (EOL) {#eol-releases}
 
 The following releases are no longer supported:
@@ -88,7 +92,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.16 (STS) | December 12, 2022 |
+| v2.18 (STS) | Early 2023 |
 | v2.19 | Early 2023 |
 
 ## Recommended release series for projects

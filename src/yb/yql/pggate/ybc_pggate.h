@@ -636,9 +636,9 @@ void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
 
 void* YBCPgGetThreadLocalJumpBuffer();
 
-void YBCPgSetThreadLocalErrMsg(const void* new_msg);
+void* YBCPgSetThreadLocalErrStatus(void* new_status);
 
-const void* YBCPgGetThreadLocalErrMsg();
+void* YBCPgGetThreadLocalErrStatus();
 
 void YBCPgResetCatalogReadTime();
 

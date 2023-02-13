@@ -511,14 +511,14 @@ class PgDocReadOp : public PgDocOp {
 
   // Helper functions for PopulateNextHashPermutationOps
   // Prepares a new read request from the pool of inactive operators.
-  LWPgsqlReadRequestPB *PrepareReadReq();
+  LWPgsqlReadRequestPB* PrepareReadReq();
   // True if the next call to GetNextPermutation will not fail.
-  bool HasNextPermutation();
+  bool HasNextPermutation() const;
   // Gets the next possible permutation of partition_exprs.
-  bool GetNextPermutation(std::vector<const LWPgsqlExpressionPB *> *exprs);
+  bool GetNextPermutation(std::vector<const LWPgsqlExpressionPB*>* exprs);
   // Binds a given permutation of partition expressions to the given read request.
-  void BindPermutation(const std::vector<const LWPgsqlExpressionPB *> &exprs,
-                       LWPgsqlReadRequestPB *read_op);
+  void BindPermutation(const std::vector<const LWPgsqlExpressionPB*>& exprs,
+                       LWPgsqlReadRequestPB* read_op) const;
 
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
@@ -596,8 +596,8 @@ class PgDocReadOp : public PgDocOp {
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // there are 1*2*3*1 = 6 possible permutation.
   // As such, this field will take on values 0 through 5.
-  int total_permutation_count_ = 0;
-  int next_permutation_idx_ = 0;
+  size_t total_permutation_count_ = 0;
+  size_t next_permutation_idx_ = 0;
 
   // Used internally for PopulateNextHashPermutationOps to holds all partition expressions.
   // Elements correspond to a hash columns, in the same order as they were defined

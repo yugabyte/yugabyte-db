@@ -54,7 +54,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
                      RWOperationCounter* pending_op_counter = nullptr);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
-                     const std::shared_ptr<DocReadContext>& doc_read_context,
+                     std::shared_ptr<DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
@@ -151,15 +151,15 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // Returns OK if row_key_ is pointing to a system key.
   Status ValidateSystemKey();
 
-  const Schema& projection_;
+  const std::unique_ptr<Schema> projection_owner_;
   // Used to maintain ownership of projection_.
   // Separate field is used since ownership could be optional.
-  const std::unique_ptr<Schema> projection_owner_;
+  const Schema& projection_;
 
   // The schema for all columns, not just the columns we're scanning.
-  const DocReadContext& doc_read_context_;
+  const std::shared_ptr<DocReadContext> doc_read_context_holder_;
   // Used to maintain ownership of doc_read_context_.
-  const std::shared_ptr<DocReadContext> doc_read_context_user_;
+  const DocReadContext& doc_read_context_;
 
   const TransactionOperationContext txn_op_context_;
 

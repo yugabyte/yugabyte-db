@@ -287,6 +287,9 @@ public class GFlagsUtil {
     ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
     ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
 
+    if (taskParam.enableNodeToNodeEncrypt) {
+      ybcFlags.put(CERT_NODE_FILENAME, node.cloudInfo.private_ip);
+    }
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
     }

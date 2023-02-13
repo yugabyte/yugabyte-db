@@ -83,7 +83,7 @@ public class TokenAuthenticator extends Action.Simple {
     this.jwtVerifier = jwtVerifier;
   }
 
-  private Users getCurrentAuthenticatedUser(Http.Context ctx) {
+  public Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
     Users user = null;
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
@@ -268,6 +268,9 @@ public class TokenAuthenticator extends Action.Simple {
     if (requestType.equals("POST") && READ_POST_ENDPOINTS.contains(endPoint)) {
       return true;
     }
+
+    if (endPoint.endsWith("/update_profile")) return true;
+
     // If the user is readonly, then don't get any further access.
     if (user.getRole() == Role.ReadOnly) {
       return false;

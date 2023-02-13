@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.alerts.AlertChannelInterface;
 import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import org.apache.commons.lang3.StringUtils;
 
 abstract class AlertChannelBase implements AlertChannelInterface {
@@ -38,8 +39,11 @@ abstract class AlertChannelBase implements AlertChannelInterface {
    * @return the notification title
    */
   @VisibleForTesting
-  String getNotificationTitle(Alert alert, AlertChannel channel) {
+  String getNotificationTitle(Alert alert, AlertChannel channel, AlertChannelTemplates templates) {
     String template = channel.getParams().getTitleTemplate();
+    if (StringUtils.isEmpty(template) && templates != null) {
+      template = templates.getTitleTemplate();
+    }
     if (StringUtils.isEmpty(template)) {
       template = DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE;
     }
@@ -55,8 +59,11 @@ abstract class AlertChannelBase implements AlertChannelInterface {
    * @return
    */
   @VisibleForTesting
-  String getNotificationText(Alert alert, AlertChannel channel) {
+  String getNotificationText(Alert alert, AlertChannel channel, AlertChannelTemplates templates) {
     String template = channel.getParams().getTextTemplate();
+    if (StringUtils.isEmpty(template) && templates != null) {
+      template = templates.getTextTemplate();
+    }
     if (StringUtils.isEmpty(template)) {
       template = DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;
     }

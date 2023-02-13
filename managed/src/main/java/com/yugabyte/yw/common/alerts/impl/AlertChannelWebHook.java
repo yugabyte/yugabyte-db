@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.alerts.impl.AlertManagerWebHookV4.Status;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -35,7 +36,8 @@ public class AlertChannelWebHook extends AlertChannelWebBase {
   }
 
   @Override
-  public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
+  public void sendNotification(
+      Customer customer, Alert alert, AlertChannel channel, AlertChannelTemplates channelTemplates)
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelWebHookParams params = (AlertChannelWebHookParams) channel.getParams();

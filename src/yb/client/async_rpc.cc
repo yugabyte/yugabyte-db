@@ -311,6 +311,8 @@ void AsyncRpc::Failed(const Status& status) {
         PgsqlResponsePB* resp = down_cast<YBPgsqlOp*>(yb_op)->mutable_response();
         resp->set_status(status.IsTryAgain() ? PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR
                                              : PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+        StatusToPB(status, resp->add_error_status());
+        // For backward compatibility set also deprecated fields
         resp->set_error_message(error_message);
         const uint8_t* pg_err_ptr = status.ErrorData(PgsqlErrorTag::kCategory);
         if (pg_err_ptr != nullptr) {
