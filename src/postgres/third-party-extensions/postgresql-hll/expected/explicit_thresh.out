@@ -1,0 +1,280 @@
+-- ----------------------------------------------------------------
+-- Regression tests for explicit threshold control.
+-- ----------------------------------------------------------------
+SELECT hll_set_output_version(1);
+ hll_set_output_version 
+------------------------
+                      1
+(1 row)
+
+-- Should become explicit.
+SELECT hll_add(E'\\x118c49'::hll, hll_hash_integer(1,0));
+         hll_add          
+--------------------------
+ \x128c498895a3f5af28cafe
+(1 row)
+
+-- Also explicit.
+SELECT hll_add(hll_empty(12,5,256,1), hll_hash_integer(1,0));
+         hll_add          
+--------------------------
+ \x128c498895a3f5af28cafe
+(1 row)
+
+-- ----------------
+-- Should go straight to sparse.
+SELECT hll_add(hll_empty(12,5,0,1),
+           hll_hash_integer(1,0));
+    hll_add     
+----------------
+ \x138c40afe180
+(1 row)
+
+-- Should stay sparse.
+SELECT hll_add(
+       hll_add(hll_empty(12,5,0,1),
+           hll_hash_integer(1,0)),
+           hll_hash_integer(2,0));
+      hll_add       
+--------------------
+ \x138c40afe1db0040
+(1 row)
+
+-- ----------------
+-- Should stay explicit for one add.
+SELECT hll_add(hll_empty(12,5,1,1),
+           hll_hash_integer(1,0));
+         hll_add          
+--------------------------
+ \x128c418895a3f5af28cafe
+(1 row)
+
+-- But not on the second add.
+SELECT hll_add(
+       hll_add(hll_empty(12,5,1,1),
+           hll_hash_integer(1,0)),
+           hll_hash_integer(2,0));
+      hll_add       
+--------------------
+ \x138c41afe1db0040
+(1 row)
+
+-- Nor the third.
+SELECT hll_add(
+       hll_add(
+       hll_add(hll_empty(12,5,1,1),
+           hll_hash_integer(1,0)),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(3,0));
+        hll_add         
+------------------------
+ \x138c4113b157f0ed8020
+(1 row)
+
+-- ----------------
+-- Should stay explicit for two adds.
+SELECT hll_add(hll_empty(12,5,2,1),
+           hll_hash_integer(1,0));
+         hll_add          
+--------------------------
+ \x128c428895a3f5af28cafe
+(1 row)
+
+SELECT hll_add(
+       hll_add(hll_empty(12,5,2,1),
+           hll_hash_integer(1,0)),
+           hll_hash_integer(2,0));
+                 hll_add                  
+------------------------------------------
+ \x128c428895a3f5af28cafeda0ce907e4355b60
+(1 row)
+
+-- Not explicit anymore.
+SELECT hll_add(
+       hll_add(
+       hll_add(hll_empty(12,5,2,1),
+           hll_hash_integer(1,0)),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(3,0));
+        hll_add         
+------------------------
+ \x138c4213b157f0ed8020
+(1 row)
+
+-- ----------------
+-- Should stay explicit for four adds.
+SELECT hll_add(hll_empty(12,5,4,1),
+           hll_hash_integer(1,0));
+         hll_add          
+--------------------------
+ \x128c438895a3f5af28cafe
+(1 row)
+
+SELECT hll_add(
+       hll_add(hll_empty(12,5,4,1),
+           hll_hash_integer(1,0)),
+           hll_hash_integer(2,0));
+                 hll_add                  
+------------------------------------------
+ \x128c438895a3f5af28cafeda0ce907e4355b60
+(1 row)
+
+SELECT hll_add(
+       hll_add(
+       hll_add(hll_empty(12,5,4,1),
+           hll_hash_integer(1,0)),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(3,0));
+                         hll_add                          
+----------------------------------------------------------
+ \x128c438895a3f5af28cafeda0ce907e4355b604848de7f7bd2a13b
+(1 row)
+
+SELECT hll_add(
+       hll_add(
+       hll_add(
+       hll_add(hll_empty(12,5,4,1),
+           hll_hash_integer(1,0)),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(3,0)),
+           hll_hash_integer(4,0));
+                                 hll_add                                  
+--------------------------------------------------------------------------
+ \x128c438895a3f5af28cafeda0ce907e4355b601cc3e945c98357f04848de7f7bd2a13b
+(1 row)
+
+-- Not anymore.
+SELECT hll_add(
+       hll_add(
+       hll_add(
+       hll_add(
+       hll_add(hll_empty(12,5,4,1),
+           hll_hash_integer(1,0)),
+           hll_hash_integer(2,0)),
+           hll_hash_integer(3,0)),
+           hll_hash_integer(4,0)),
+           hll_hash_integer(5,0));
+            hll_add             
+--------------------------------
+ \x138c4313b13f8066fcb5fc3b6008
+(1 row)
+
+-- ----------------------------------------------------------------
+-- Should stay explicit.
+SELECT E'\\x128C09810F076F2EFC7D5781A8E923DD4D727381F60023440AC8F3826E20FD0E1C755783418A43C9E2536983D2657BAECEC77085B2C833BF06C38B85EC2FB805FEB9C08A577647206737E98B67F1909C4FBA238C8826ECCD18A1328CB8A65A27F9A2E58E332D3E1C1E8B018E53D45009306837913A1E408B1D83BE927DA34AE676FD6893BCD79BF47657EB957033B0E2A1F9EF96191BCB8D84D1D4967B18FF84CF372697034327A4CA49DE97688D9A869A43E097A62AAE1CE1D2D59839BEC0D573CC36993FFAAC3DD9DCAE9A1713EF73725EDB9A9EACDD27AC70F69B2F47DFF8D609AE9B7A4FEC37666D559BF0AB70FDA186F89DF0868CB5304B979DFD45C697433E799F94C56130B117AFA161FD0F8E175DABA16236AF4726E653A195A90A5F74A02AA3330817521EEDFBA3507CEC7C8EFFEEA4DDFD7A022356FAA708B69996145FD2A7B975333A92C45DA7F504C22BBD8883A8AD40BD99DD3136A8EEBA810AD4107CA97A88A733A3635EAAC55193F00B6ABEAB770C1E27FE3A96AD16681AD304ED0FAE103F67A4732B8FAE78848FA95BB4F0AFB9EA12A8A60235B0F42EFD18F185B4B10788ABF2A627C5B1E81C4F73418369B2347427BE5DBA99B2F219105C2C8EF9B4F4AAD6DAA3018BB500D980CEE8DEBEB52629581B1E9F38B54991A7EE2ADA3DB5E83A5EF27FA458B676ED1B4AD57B1BB72FC20093D243C3B7A270C97E9F60B1B81558085FA73AF4B92EE2526D66F7A9B947C25F6AA0B1C3BAD5BD98CA753A7CBB1AD57319B89CD8BE4D78B4EA777902BE67281D8C16DFB3BE75C448B47B885BBE8724958A2DD547C1307F3E3DC82B19C31B272386EBD3D5C38570F6A6B16AAFC389BD7042E65615C541D6E99556AD8DC64C7451D5E4A410C6E8E17A0B8565C1C72586EF2CA395AFC727BFDF07262E4FC806DD068E0D83DFC95F393EE574D488CA08660086D78399CDB9F2FDBD2C68A3CE23684A013E0402CE9C8E990D340AD0CF54F0AA63651486D0D651B83055D98FD1D6B47BFAE04129D2F0690082673069D466A4F678408E51D618BCBB1713D866D9820F495DE4B9B2DB6CAD89234C26B9DCC981DD4C9389A1E05E8BB7D36479F5E15F18764DE26865E16EEA095E95B9D6E301AEBCD7FB18E9E3D10F4B6322D8EBE6E47D0415918BC6E843946AFF559A84E8DA7FF35746346DEB978C5E6478F1EFEDCBFA7EE0C17F12EDD9AB37B9A86FDBEFE49DA97CB1C23BF022C44555C715F6F09B04B38DD7AEE4F22C88BD8D437311F27B5DB0E9340CFCF57471D55DBD1460F660CDAB03F03B06F6B55BBA28DA1B7EF75C6B35F73E591BF7BED9D4B5F30868F816C1F65ECBE466F94D2F8F21555B84FBACA654EDD11944FBFC9419F653B5F3FCB2B9C023BDBB04FF1C2921C7C365D1FFBD34EDA309EBA8FFCA7C3CF7CD7EFA0149546ADA2D4A210190E5722719B812023E1F61A788768802BC36ABAEFB97D8060A8F1F743E41B70643CE33D5392E620732E58C48B4D31207960AD1274EEC3C07A0D2BAFBC4365507B297476AEA276C0823D06F731E8CEC0849965B6A8A6D0B09CFCA9645744B6F0ACC38CA90A4D6950B30199E6FBA2E590D64E5396A4AC48C0D978892127108BD0FD8CBD2A1668FF10FFF3E568ECFA66110BDDBC4CC046AEB12B1D54A424D4E8612F4CE0A47E70565130958F67D24CBFF15B0439A464B33C71849E2AEE12079F019893C0C103E358E1C3AE416CC2D17901C490FFF8BDF2A0D1DA44FA4DBE9B4E31DB004FA8A0CEBCC1EADC56CFDEBFC791FA8EADDA7813B5D21328CC6AD76D9B12156396BA820C494219447B20A81CDAB23C77CB6E11760A5245B99B846685CFB273B251498B9637A27D40052777179E828209046C2FD1CE6285A7ADF6C9BDC52293A22A87C7B822429C1271B6FFAEEE02AE7D5475682E8792C32B6A13E130F7E2CFACDAD91AF54BC2D5FC77A0AC38F852D9500937CCDC8C02DBCD0FAFAC582322F48F6FC00551A97325A3CBC4186C4B53462FEEF714A0E44347536F04629644834ECBFF843E13794352CCCFC0946B8F0353E0B46E91ADDFC35A150F45BE711D637B4C5D368130F6A397DAC5A505F4A38399B1127B3186EEF3A6716B6650B37A43AAAF949857A41BB3BB019028551C8493C067E67A65FE8523D36145A51288B1B3E05CF2AB6FF496C3ED4466534CE7F0E3F19AE90B58263303F9CF5B2E040E3CD40136A78605D79B84141BECDB31896FD43E73111AE07DA894433E27F945114A945737AA1DCFE7648471C7A3075A27BFF47AE2F865A746FF549C0F7D5C58DAD7D4AC6A258049BD6E64B4752645E76F39E4DA9780D75AF0A6B4DD1665B6856D4F84E75A7D7BECC1DF94EDF2D538BCC83F950B87C338B76F32F50BF8C06E0FE08FE50DFF83F87E1D33B510EC2A8DC498C4551D864D5E42B8A76529A72B2DBDE8F4B552CF1E4A8AB85DD55677ABC4A6D6CC05674E0EAC7181CFD58F6F13D28CA7A365956D8037CB505725958C47B349399765998A979DF2DDFB85A9429AB90400CD25D84AD4C134DE91E5E7F961E93A35FF45EA819B7306D3C885F377E4255EDABB25FE907945CE6C0A16034F743F87AA74260D1D9429FBCAA0860ED6DD80CC3E3CB6383C322196D1EC464FF526FD87CE3E765AD3780E9F97898668AEA231012C91268FB0E6F684DF9926C58FAFCA44F68D16D2B5F0F78EB98D66D7DC0B998C0780F6DC4CCC1230752666E98008FF328B47571765F290D2BB87E71C7E89C4494F41271D144CC0032659B71DE0513743DE1B971F76602BFC11BCF73754B1443CE1E1E74124CCF336150F8752BD6E456B21CC7769E177BE0E0B66F76BE1268218DAE37784EE11732089EF97A8A8099020BE0747B528BF8134C9D4F7B5B54D144123AEB7DCFBF351DDE1AE2'::hll(12,5,256,0);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   hll                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ \x128c09810f076f2efc7d5781a8e923dd4d727381f60023440ac8f3826e20fd0e1c755783418a43c9e2536983d2657baecec77085b2c833bf06c38b85ec2fb805feb9c08a577647206737e98b67f1909c4fba238c8826eccd18a1328cb8a65a27f9a2e58e332d3e1c1e8b018e53d45009306837913a1e408b1d83be927da34ae676fd6893bcd79bf47657eb957033b0e2a1f9ef96191bcb8d84d1d4967b18ff84cf372697034327a4ca49de97688d9a869a43e097a62aae1ce1d2d59839bec0d573cc36993ffaac3dd9dcae9a1713ef73725edb9a9eacdd27ac70f69b2f47dff8d609ae9b7a4fec37666d559bf0ab70fda186f89df0868cb5304b979dfd45c697433e799f94c56130b117afa161fd0f8e175daba16236af4726e653a195a90a5f74a02aa3330817521eedfba3507cec7c8effeea4ddfd7a022356faa708b69996145fd2a7b975333a92c45da7f504c22bbd8883a8ad40bd99dd3136a8eeba810ad4107ca97a88a733a3635eaac55193f00b6abeab770c1e27fe3a96ad16681ad304ed0fae103f67a4732b8fae78848fa95bb4f0afb9ea12a8a60235b0f42efd18f185b4b10788abf2a627c5b1e81c4f73418369b2347427be5dba99b2f219105c2c8ef9b4f4aad6daa3018bb500d980cee8debeb52629581b1e9f38b54991a7ee2ada3db5e83a5ef27fa458b676ed1b4ad57b1bb72fc20093d243c3b7a270c97e9f60b1b81558085fa73af4b92ee2526d66f7a9b947c25f6aa0b1c3bad5bd98ca753a7cbb1ad57319b89cd8be4d78b4ea777902be67281d8c16dfb3be75c448b47b885bbe8724958a2dd547c1307f3e3dc82b19c31b272386ebd3d5c38570f6a6b16aafc389bd7042e65615c541d6e99556ad8dc64c7451d5e4a410c6e8e17a0b8565c1c72586ef2ca395afc727bfdf07262e4fc806dd068e0d83dfc95f393ee574d488ca08660086d78399cdb9f2fdbd2c68a3ce23684a013e0402ce9c8e990d340ad0cf54f0aa63651486d0d651b83055d98fd1d6b47bfae04129d2f0690082673069d466a4f678408e51d618bcbb1713d866d9820f495de4b9b2db6cad89234c26b9dcc981dd4c9389a1e05e8bb7d36479f5e15f18764de26865e16eea095e95b9d6e301aebcd7fb18e9e3d10f4b6322d8ebe6e47d0415918bc6e843946aff559a84e8da7ff35746346deb978c5e6478f1efedcbfa7ee0c17f12edd9ab37b9a86fdbefe49da97cb1c23bf022c44555c715f6f09b04b38dd7aee4f22c88bd8d437311f27b5db0e9340cfcf57471d55dbd1460f660cdab03f03b06f6b55bba28da1b7ef75c6b35f73e591bf7bed9d4b5f30868f816c1f65ecbe466f94d2f8f21555b84fbaca654edd11944fbfc9419f653b5f3fcb2b9c023bdbb04ff1c2921c7c365d1ffbd34eda309eba8ffca7c3cf7cd7efa0149546ada2d4a210190e5722719b812023e1f61a788768802bc36abaefb97d8060a8f1f743e41b70643ce33d5392e620732e58c48b4d31207960ad1274eec3c07a0d2bafbc4365507b297476aea276c0823d06f731e8cec0849965b6a8a6d0b09cfca9645744b6f0acc38ca90a4d6950b30199e6fba2e590d64e5396a4ac48c0d978892127108bd0fd8cbd2a1668ff10fff3e568ecfa66110bddbc4cc046aeb12b1d54a424d4e8612f4ce0a47e70565130958f67d24cbff15b0439a464b33c71849e2aee12079f019893c0c103e358e1c3ae416cc2d17901c490fff8bdf2a0d1da44fa4dbe9b4e31db004fa8a0cebcc1eadc56cfdebfc791fa8eadda7813b5d21328cc6ad76d9b12156396ba820c494219447b20a81cdab23c77cb6e11760a5245b99b846685cfb273b251498b9637a27d40052777179e828209046c2fd1ce6285a7adf6c9bdc52293a22a87c7b822429c1271b6ffaeee02ae7d5475682e8792c32b6a13e130f7e2cfacdad91af54bc2d5fc77a0ac38f852d9500937ccdc8c02dbcd0fafac582322f48f6fc00551a97325a3cbc4186c4b53462feef714a0e44347536f04629644834ecbff843e13794352cccfc0946b8f0353e0b46e91addfc35a150f45be711d637b4c5d368130f6a397dac5a505f4a38399b1127b3186eef3a6716b6650b37a43aaaf949857a41bb3bb019028551c8493c067e67a65fe8523d36145a51288b1b3e05cf2ab6ff496c3ed4466534ce7f0e3f19ae90b58263303f9cf5b2e040e3cd40136a78605d79b84141becdb31896fd43e73111ae07da894433e27f945114a945737aa1dcfe7648471c7a3075a27bff47ae2f865a746ff549c0f7d5c58dad7d4ac6a258049bd6e64b4752645e76f39e4da9780d75af0a6b4dd1665b6856d4f84e75a7d7becc1df94edf2d538bcc83f950b87c338b76f32f50bf8c06e0fe08fe50dff83f87e1d33b510ec2a8dc498c4551d864d5e42b8a76529a72b2dbde8f4b552cf1e4a8ab85dd55677abc4a6d6cc05674e0eac7181cfd58f6f13d28ca7a365956d8037cb505725958c47b349399765998a979df2ddfb85a9429ab90400cd25d84ad4c134de91e5e7f961e93a35ff45ea819b7306d3c885f377e4255edabb25fe907945ce6c0a16034f743f87aa74260d1d9429fbcaa0860ed6dd80cc3e3cb6383c322196d1ec464ff526fd87ce3e765ad3780e9f97898668aea231012c91268fb0e6f684df9926c58fafca44f68d16d2b5f0f78eb98d66d7dc0b998c0780f6dc4ccc1230752666e98008ff328b47571765f290d2bb87e71c7e89c4494f41271d144cc0032659b71de0513743de1b971f76602bfc11bcf73754b1443ce1e1e74124ccf336150f8752bd6e456b21cc7769e177be0e0b66f76be1268218dae37784ee11732089ef97a8a8099020be0747b528bf8134c9d4f7b5b54d144123aeb7dcfbf351dde1ae2
+(1 row)
+
+-- Should become sparse
+SELECT hll_add(E'\\x128C49810F076F2EFC7D5781A8E923DD4D727381F60023440AC8F3826E20FD0E1C755783418A43C9E2536983D2657BAECEC77085B2C833BF06C38B85EC2FB805FEB9C08A577647206737E98B67F1909C4FBA238C8826ECCD18A1328CB8A65A27F9A2E58E332D3E1C1E8B018E53D45009306837913A1E408B1D83BE927DA34AE676FD6893BCD79BF47657EB957033B0E2A1F9EF96191BCB8D84D1D4967B18FF84CF372697034327A4CA49DE97688D9A869A43E097A62AAE1CE1D2D59839BEC0D573CC36993FFAAC3DD9DCAE9A1713EF73725EDB9A9EACDD27AC70F69B2F47DFF8D609AE9B7A4FEC37666D559BF0AB70FDA186F89DF0868CB5304B979DFD45C697433E799F94C56130B117AFA161FD0F8E175DABA16236AF4726E653A195A90A5F74A02AA3330817521EEDFBA3507CEC7C8EFFEEA4DDFD7A022356FAA708B69996145FD2A7B975333A92C45DA7F504C22BBD8883A8AD40BD99DD3136A8EEBA810AD4107CA97A88A733A3635EAAC55193F00B6ABEAB770C1E27FE3A96AD16681AD304ED0FAE103F67A4732B8FAE78848FA95BB4F0AFB9EA12A8A60235B0F42EFD18F185B4B10788ABF2A627C5B1E81C4F73418369B2347427BE5DBA99B2F219105C2C8EF9B4F4AAD6DAA3018BB500D980CEE8DEBEB52629581B1E9F38B54991A7EE2ADA3DB5E83A5EF27FA458B676ED1B4AD57B1BB72FC20093D243C3B7A270C97E9F60B1B81558085FA73AF4B92EE2526D66F7A9B947C25F6AA0B1C3BAD5BD98CA753A7CBB1AD57319B89CD8BE4D78B4EA777902BE67281D8C16DFB3BE75C448B47B885BBE8724958A2DD547C1307F3E3DC82B19C31B272386EBD3D5C38570F6A6B16AAFC389BD7042E65615C541D6E99556AD8DC64C7451D5E4A410C6E8E17A0B8565C1C72586EF2CA395AFC727BFDF07262E4FC806DD068E0D83DFC95F393EE574D488CA08660086D78399CDB9F2FDBD2C68A3CE23684A013E0402CE9C8E990D340AD0CF54F0AA63651486D0D651B83055D98FD1D6B47BFAE04129D2F0690082673069D466A4F678408E51D618BCBB1713D866D9820F495DE4B9B2DB6CAD89234C26B9DCC981DD4C9389A1E05E8BB7D36479F5E15F18764DE26865E16EEA095E95B9D6E301AEBCD7FB18E9E3D10F4B6322D8EBE6E47D0415918BC6E843946AFF559A84E8DA7FF35746346DEB978C5E6478F1EFEDCBFA7EE0C17F12EDD9AB37B9A86FDBEFE49DA97CB1C23BF022C44555C715F6F09B04B38DD7AEE4F22C88BD8D437311F27B5DB0E9340CFCF57471D55DBD1460F660CDAB03F03B06F6B55BBA28DA1B7EF75C6B35F73E591BF7BED9D4B5F30868F816C1F65ECBE466F94D2F8F21555B84FBACA654EDD11944FBFC9419F653B5F3FCB2B9C023BDBB04FF1C2921C7C365D1FFBD34EDA309EBA8FFCA7C3CF7CD7EFA0149546ADA2D4A210190E5722719B812023E1F61A788768802BC36ABAEFB97D8060A8F1F743E41B70643CE33D5392E620732E58C48B4D31207960AD1274EEC3C07A0D2BAFBC4365507B297476AEA276C0823D06F731E8CEC0849965B6A8A6D0B09CFCA9645744B6F0ACC38CA90A4D6950B30199E6FBA2E590D64E5396A4AC48C0D978892127108BD0FD8CBD2A1668FF10FFF3E568ECFA66110BDDBC4CC046AEB12B1D54A424D4E8612F4CE0A47E70565130958F67D24CBFF15B0439A464B33C71849E2AEE12079F019893C0C103E358E1C3AE416CC2D17901C490FFF8BDF2A0D1DA44FA4DBE9B4E31DB004FA8A0CEBCC1EADC56CFDEBFC791FA8EADDA7813B5D21328CC6AD76D9B12156396BA820C494219447B20A81CDAB23C77CB6E11760A5245B99B846685CFB273B251498B9637A27D40052777179E828209046C2FD1CE6285A7ADF6C9BDC52293A22A87C7B822429C1271B6FFAEEE02AE7D5475682E8792C32B6A13E130F7E2CFACDAD91AF54BC2D5FC77A0AC38F852D9500937CCDC8C02DBCD0FAFAC582322F48F6FC00551A97325A3CBC4186C4B53462FEEF714A0E44347536F04629644834ECBFF843E13794352CCCFC0946B8F0353E0B46E91ADDFC35A150F45BE711D637B4C5D368130F6A397DAC5A505F4A38399B1127B3186EEF3A6716B6650B37A43AAAF949857A41BB3BB019028551C8493C067E67A65FE8523D36145A51288B1B3E05CF2AB6FF496C3ED4466534CE7F0E3F19AE90B58263303F9CF5B2E040E3CD40136A78605D79B84141BECDB31896FD43E73111AE07DA894433E27F945114A945737AA1DCFE7648471C7A3075A27BFF47AE2F865A746FF549C0F7D5C58DAD7D4AC6A258049BD6E64B4752645E76F39E4DA9780D75AF0A6B4DD1665B6856D4F84E75A7D7BECC1DF94EDF2D538BCC83F950B87C338B76F32F50BF8C06E0FE08FE50DFF83F87E1D33B510EC2A8DC498C4551D864D5E42B8A76529A72B2DBDE8F4B552CF1E4A8AB85DD55677ABC4A6D6CC05674E0EAC7181CFD58F6F13D28CA7A365956D8037CB505725958C47B349399765998A979DF2DDFB85A9429AB90400CD25D84AD4C134DE91E5E7F961E93A35FF45EA819B7306D3C885F377E4255EDABB25FE907945CE6C0A16034F743F87AA74260D1D9429FBCAA0860ED6DD80CC3E3CB6383C322196D1EC464FF526FD87CE3E765AD3780E9F97898668AEA231012C91268FB0E6F684DF9926C58FAFCA44F68D16D2B5F0F78EB98D66D7DC0B998C0780F6DC4CCC1230752666E98008FF328B47571765F290D2BB87E71C7E89C4494F41271D144CC0032659B71DE0513743DE1B971F76602BFC11BCF73754B1443CE1E1E74124CCF336150F8752BD6E456B21CC7769E177BE0E0B66F76BE1268218DAE37784EE11732089EF97A8A8099020BE0747B528BF8134C9D4F7B5B54D144123AEB7DCFBF351DDE1AE2'::hll(12,5,256,1),
+hll_hash_integer(1,0));
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       hll_add                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ \x138c4902a1034841d040f810a11852882c441ec10f808948c4c8426c118b28db8c6e4437631c308ea0475823de12242119108d4c4763266093984b5425ca2311098904cbc2660233b09af08da486f4238b19cc90e78277c43c319e384f2c479a23d509ef90f8067ce23f922011904048241448122c0917468c014661236851d4290c14880a460d250695214b51a5e0538c29e014f80aa38555c2aca55722ac70566c4b5e15b422e0897444bba45f30afb058542c901653132a859844cde16880b4a85ae44dcc16f8237d05bf42e4c174213b609dc06f2017940bd205ea42f5e17c513ec05fa42fd6180f0c09060dc50923852142d9219450cc18682c3c8a1f8310648980c518a2f4b18038d1146b063a431d618f00c798e3f8d20419121c8d864785288196c1cbb0663c332419a124d71a6c4336419b80ce00675833bc39e80cf7867c033ea1a0815068a88474461a360d1c0e8f434d65a76253e06a1035121a960d4b86a64355e2abe15681eb8835d62af40d7f0ec0496081b060d8c8ac6c96ba1b6f1dbf06e10371e2b971dd40aec8578c4bcc15e786ffc786c3c3c16229314838f21c880e5707300598e1cd25e6c0739839d84cfb0e7e1f3f43a162d0f16a7875545aae1d680ebe8b6345b563df90efd8b7f03c3c1e3717221b93c5ca24e5917310b9e43d0c3ebe0f6207b6c3dc02ee417778bbe49df41f0e0f8907ce03e964f6a2fbf17e149f661fb80fe907f6c5fdc1ff127fa07fd440
+(1 row)
+
+-- ----------------------------------------------------------------
+-- Test auto explicit threshold values.
+-- ----------------------------------------------------------------
+-- ((((2^12 * 5) + 7) / 8) / 8) = 320
+SELECT hll_print(hll_empty(12,5,-1,1));
+                         hll_print                         
+-----------------------------------------------------------
+ EMPTY, nregs=4096, nbits=5, expthresh=-1(320), sparseon=1
+(1 row)
+
+-- ((((2^10 * 5) + 7) / 8) / 8) = 80
+SELECT hll_print(hll_empty(10,5,-1,1));
+                        hll_print                         
+----------------------------------------------------------
+ EMPTY, nregs=1024, nbits=5, expthresh=-1(80), sparseon=1
+(1 row)
+
+-- ((((2^10 * 4) + 7) / 8) / 8) = 64
+SELECT hll_print(hll_empty(10,4,-1,1));
+                        hll_print                         
+----------------------------------------------------------
+ EMPTY, nregs=1024, nbits=4, expthresh=-1(64), sparseon=1
+(1 row)
+
+-- ((((2^10 * 3) + 7) / 8) / 8) = 48
+SELECT hll_print(hll_empty(10,3,-1,1));
+                        hll_print                         
+----------------------------------------------------------
+ EMPTY, nregs=1024, nbits=3, expthresh=-1(48), sparseon=1
+(1 row)
+
+-- ((((2^2 * 5) + 7) / 8) / 8) = 0
+SELECT hll_print(hll_empty(2,5,-1,1));
+                      hll_print                       
+------------------------------------------------------
+ EMPTY, nregs=4, nbits=5, expthresh=-1(0), sparseon=1
+(1 row)
+
+-- ((((2^4 * 5) + 7) / 8) / 8) = 1
+SELECT hll_print(hll_empty(4,5,-1,1));
+                       hll_print                       
+-------------------------------------------------------
+ EMPTY, nregs=16, nbits=5, expthresh=-1(1), sparseon=1
+(1 row)
+
+-- ((((2^4 * 4) + 7) / 8) / 8) = 1
+SELECT hll_print(hll_empty(4,4,-1,1));
+                       hll_print                       
+-------------------------------------------------------
+ EMPTY, nregs=16, nbits=4, expthresh=-1(1), sparseon=1
+(1 row)
+
+-- ----------------------------------------------------------------
+-- Test auto explicit threshold action.
+-- ----------------------------------------------------------------
+-- Should have auto-explicit value of 2.
+-- ((((2^5 * 5) + 7) / 8) / 8) = 2
+SELECT hll_print(hll_empty(5,5,-1,1));
+                       hll_print                       
+-------------------------------------------------------
+ EMPTY, nregs=32, nbits=5, expthresh=-1(2), sparseon=1
+(1 row)
+
+-- Empty
+SELECT hll_empty(5,5,-1,1);
+ hll_empty 
+-----------
+ \x11857f
+(1 row)
+
+-- Explicit
+SELECT hll_add(
+           hll_empty(5,5,-1,1), 
+               hll_hash_integer(1,0));
+         hll_add          
+--------------------------
+ \x12857f8895a3f5af28cafe
+(1 row)
+
+-- Explicit
+SELECT hll_add(
+       hll_add(
+           hll_empty(5,5,-1,1), 
+               hll_hash_integer(1,0)),
+               hll_hash_integer(2,0));
+                 hll_add                  
+------------------------------------------
+ \x12857f8895a3f5af28cafeda0ce907e4355b60
+(1 row)
+
+-- Now Sparse
+SELECT hll_add(
+       hll_add(
+       hll_add(
+           hll_empty(5,5,-1,1), 
+               hll_hash_integer(1,0)),
+               hll_hash_integer(2,0)),
+               hll_hash_integer(3,0));
+     hll_add      
+------------------
+ \x13857f00761f04
+(1 row)
+
