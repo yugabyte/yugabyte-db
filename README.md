@@ -194,7 +194,7 @@ Basically `pg_hint_plan` does not require `CREATE EXTENSION`. Simply loading it 
     LOAD
     postgres=#
 
-Do `CREATE EXTENSION` and `SET pg_hint_plan.enable_hint_tables TO on` if you are planning to hint tables.
+Do `CREATE EXTENSION` and `SET pg_hint_plan.enable_hint_tables TO on` if you are planning to use the hint table.
 
 ## Unistallation
 
@@ -405,7 +405,7 @@ Planner chooses any executable plans when the enforced plan cannot be executed.
 
 #### Queries in ECPG
 
-ECPG removes comments in queries written as embedded SQLs so hints cannot be passed form those queries. The only exception is that `EXECUTE` command passes given string unmodifed. Please consider hint tables in the case.
+ECPG removes comments in queries written as embedded SQLs so hints cannot be passed form those queries. The only exception is that `EXECUTE` command passes given string unmodifed. Please consider using the hint table in the case.
 
 #### Work with `pg_stat_statements`
 
