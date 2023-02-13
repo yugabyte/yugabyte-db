@@ -236,7 +236,7 @@ Do `CREATE EXTENSION` and `SET pg_hint_plan.enable_hint_tables TO on` if you are
 
 `pg_hint_plan` works for queries in PL/pgSQL scripts with some restrictions.
 
--   Hints affect only on the following kind of queires.
+-   Hints affect only on the following kind of queries.
     -   Queries that returns one row. (`SELECT`, `INSERT`, `UPDATE` and `DELETE`)
     -   Queries that returns multiple rows. (`RETURN QUERY`)
     -   Dynamic SQL statements. (`EXECUTE`)
