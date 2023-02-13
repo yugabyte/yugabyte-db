@@ -1,7 +1,8 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/mixins.scss';
-@import '../../_style/colors.scss';
+@use "sass:color";
+@use '../../_style/mixins.scss';
+@use '../../_style/colors.scss';
 
 .form-section-title {
   font-size: 1.2em;
@@ -32,7 +33,7 @@
       margin-bottom: 8px !important;
     }
     span {
-      color: $YB_LOGO_SUB !important;
+      color: colors.$YB_LOGO_SUB !important;
       font-size: 18px;
       font-weight: 700;
       font-family: 'Inter';
@@ -158,7 +159,7 @@
       display: block;
     }
     span {
-      color: rgba($YB_SIDEBAR_TEXT, 0.5);
+      color: rgba(colors.$YB_SIDEBAR_TEXT, 0.5);
       display: inline-block;
       margin: 0 0 10px 0;
     }
@@ -167,7 +168,7 @@
 
 .dark-background {
   color: #fff;
-  background: $YB_VIOLET;
+  background: colors.$YB_VIOLET;
   height: auto;
   min-height: 100%;
   overflow: auto;
@@ -183,14 +184,14 @@
 
     &::-webkit-input-placeholder,
     &::-webkit-placeholder {
-      color: $YB_SIDEBAR_ICON;
+      color: colors.$YB_SIDEBAR_ICON;
       font-weight: 300;
       font-size: 15px;
     }
 
     &:placeholder-shown,
     &::placeholder {
-      color: $YB_SIDEBAR_ICON;
+      color: colors.$YB_SIDEBAR_ICON;
       font-weight: 300;
       font-size: 15px;
     }
@@ -198,7 +199,7 @@
     &::-moz-placeholder,
     &:-ms-input-placeholder,
     &:-moz-placeholder {
-      color: $YB_SIDEBAR_ICON;
+      color: colors.$YB_SIDEBAR_ICON;
       font-weight: 300;
       font-size: 15px;
     }
@@ -235,32 +236,32 @@
 
   .form-control {
     border: 0.5px solid transparent;
-    background-color: $YB_VIOLET_DARK;
+    background-color: colors.$YB_VIOLET_DARK;
 
     &:hover {
-      background-color: lighten($YB_VIOLET_DARK, 3%);
+      background-color: color.adjust(colors.$YB_VIOLET_DARK, $lightness: 3%);
     }
     color: #fff;
     box-shadow: none;
-    @include transition(0.35s);
+    @include mixins.transition(0.35s);
 
     &:focus {
-      @include transition(0.35s);
-      border: 0.5px solid rgba($YB_ORANGE, 0.6);
-      background-color: lighten($YB_VIOLET_DARK, 3%);
+      @include mixins.transition(0.35s);
+      border: 0.5px solid rgba(colors.$YB_ORANGE, 0.6);
+      background-color: color.adjust(colors.$YB_VIOLET_DARK, $lightness: 3%);
       box-shadow: inset 0 2px 3px black;
     }
   }
 
   .has-error {
     .form-control {
-      border-color: rgba($YB_FAIL_COLOR, 0.6) !important;
-      color: $YB_FAIL_COLOR !important;
+      border-color: rgba(colors.$YB_FAIL_COLOR, 0.6) !important;
+      color: colors.$YB_FAIL_COLOR !important;
     }
 
     .help-block {
       display: inline-block;
-      background-color: $YB_FAIL_COLOR;
+      background-color: colors.$YB_FAIL_COLOR;
       color: #fff !important;
       font-weight: 500;
       font-size: 12px;
@@ -358,7 +359,7 @@
     .Select-control {
       min-height: 42px;
       padding-bottom: 4px;
-      border-color: $YB_GRAY;
+      border-color: colors.$YB_GRAY;
       box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
       .Select-arrow {
         border-color: #555 transparent transparent;
@@ -384,7 +385,7 @@
         width: 20px;
         height: 20px;
         border-radius: 50%;
-        background-color: $YB_ORANGE;
+        background-color: colors.$YB_ORANGE;
         margin-top: 6px;
         margin-right: 3px;
       }
@@ -448,7 +449,7 @@
   border-radius: 7px;
   height: 42px;
   padding: 0 12px;
-  border-color: $YB_GRAY;
+  border-color: colors.$YB_GRAY;
 
   &select:after {
     content: '';
@@ -457,8 +458,8 @@
     background: #000;
   }
   &:focus {
-    border-color: rgba($YB_ORANGE, 0.5);
-    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075), 0 0 8px rgba($YB_ORANGE, 0.2);
+    border-color: rgba(colors.$YB_ORANGE, 0.5);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075), 0 0 8px rgba(colors.$YB_ORANGE, 0.2);
   }
 }
 
@@ -538,7 +539,7 @@
   margin: 5px 0px 5px;
   height: 1px;
   width: auto;
-  background-color: $YB_GRAY_HOVER;
+  background-color: colors.$YB_GRAY_HOVER;
 }
 
 // TODO: to be removed when universeForm migrated to Formik
@@ -560,7 +561,7 @@
 
   .input-select__option {
     .input-select__option-icon {
-      color: $YB_ORANGE;
+      color: colors.$YB_ORANGE;
       font-size: 1.4em;
       line-height: 1em;
       margin-right: 10px;
@@ -572,7 +573,7 @@
     }
   }
   .input-select__single-value-icon {
-    color: $YB_ORANGE;
+    color: colors.$YB_ORANGE;
     font-size: 1.3em;
     line-height: 1em;
     margin-right: 10px;
@@ -623,11 +624,11 @@
 
   li:hover {
     label {
-      color: $YB_ORANGE;
+      color: colors.$YB_ORANGE;
     }
 
     .check {
-      border: 2px solid $YB_ORANGE;
+      border: 2px solid colors.$YB_ORANGE;
     }
   }
 
@@ -635,7 +636,7 @@
     position: absolute;
     left: 45%;
     margin: 0 auto;
-    border: 2px solid $YB_DARK_GRAY;
+    border: 2px solid colors.$YB_DARK_GRAY;
     background: #ffffff;
     border-radius: 100%;
     height: 20px;
@@ -660,7 +661,7 @@
   }
 
   input[type='radio']:checked ~ .check::before {
-    background: $YB_ORANGE;
+    background: colors.$YB_ORANGE;
   }
 }
 
