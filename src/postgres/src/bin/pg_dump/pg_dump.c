@@ -16142,7 +16142,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 								  fmtId(index->dobj.name));
 
 				bool doing_hash = false;
-				for (int n = 0; n < index->indnattrs; n++)
+				for (int n = 0; n < index->indnkeyattrs; n++)
 				{
 					char *col_name = tbinfo->attnames[index->indkeys[n] - 1];
 					int indoption = index->indoptions[n];
@@ -16170,6 +16170,18 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				}
 				if (doing_hash)
 					appendPQExpBuffer(q, ") HASH");
+
+				/* PRIMARY KEY INDEX has included columns. */
+				if (index->indnkeyattrs < index->indnattrs)
+					appendPQExpBuffer(q, ") INCLUDE (");
+
+				for (int n = index->indnkeyattrs; n < index->indnattrs; ++n)
+				{
+					if (n > index->indnkeyattrs)
+						appendPQExpBuffer(q, ", ");
+					char *col_name = tbinfo->attnames[index->indkeys[n] - 1];
+					appendPQExpBuffer(q, "%s", fmtId(col_name));
+				}
 
 				appendPQExpBuffer(q, ")");
 

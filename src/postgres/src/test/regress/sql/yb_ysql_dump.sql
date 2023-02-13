@@ -125,3 +125,18 @@ CREATE INDEX ON tr2(c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.
 ------------------------------------
 -- Extensions
 CREATE EXTENSION pg_hint_plan;
+
+------------------------------------------------
+-- Test included columns with primary key index and included columns with non-primary key index
+------------------------------------------------
+CREATE TABLE range_tbl_pk_with_include_clause (k2 TEXT, v DOUBLE PRECISION, k1 INT, PRIMARY KEY (k1 ASC, k2 ASC) INCLUDE (v)) SPLIT AT VALUES((1, '1'), (100, '100'));
+
+CREATE UNIQUE INDEX unique_idx_with_include_clause ON range_tbl_pk_with_include_clause (k1, k2) INCLUDE (v);
+
+CREATE TABLE hash_tbl_pk_with_include_clause (k2 TEXT, v DOUBLE PRECISION, k1 INT, PRIMARY KEY ((k1, k2) HASH) INCLUDE (v)) SPLIT INTO 8 TABLETS;
+
+CREATE UNIQUE INDEX non_unique_idx_with_include_clause ON hash_tbl_pk_with_include_clause (k1, k2) INCLUDE (v);
+
+CREATE TABLE range_tbl_pk_with_multiple_included_columns (col1 INT, col2 INT, col3 INT, col4 INT, PRIMARY KEY (col1 ASC, col2 ASC) INCLUDE (col3, col4));
+
+CREATE TABLE hash_tbl_pk_with_multiple_included_columns (col1 INT, col2 INT, col3 INT, col4 INT, PRIMARY KEY (col1 HASH, col2 ASC) INCLUDE (col3, col4));
