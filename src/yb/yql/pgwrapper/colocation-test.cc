@@ -17,7 +17,25 @@
 namespace yb {
 namespace pgwrapper {
 
-class ColocationConcurrencyTest : public LibPqTestBase {
+// Tests that exercise functionality specific to the colocation feature.
+
+class ColocatedDBTest : public LibPqTestBase {
+ protected:
+  Result<PGConn> CreateColocatedDB(std::string db_name) {
+    PGConn conn = VERIFY_RESULT(ConnectToDB("yugabyte"));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", db_name));
+    return ConnectToDB(db_name);
+  }
+};
+
+TEST_F(ColocatedDBTest, TestMasterToTServerRetryAddTableToTablet) {
+  auto conn = ASSERT_RESULT(CreateColocatedDB("test_db"));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_duplicate_addtabletotablet_request", "true"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_tbl1 (key INT PRIMARY KEY, value TEXT)"));
+}
+
+class ColocationConcurrencyTest : public ColocatedDBTest {
  protected:
   const int num_iterations = 15;
   const std::string database_name = "yugabyte";
@@ -51,9 +69,7 @@ void ColocationConcurrencyTest::InsertDataIntoTable(
 
 // Concurrent DML on table 1 + truncate table 2, where table 1 & 2 are colocated.
 TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertAndTruncateOnSeparateTables)) {
-  PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
-  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
-  conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
+  PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   CreateTables(&conn1, 2);
 
@@ -94,9 +110,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertAndTruncateOnSep
 TEST_F(
     ColocationConcurrencyTest,
     YB_DISABLE_TEST_IN_TSAN(InsertUsingGenerateSeriesAndTruncateOnSeparateTables)) {
-  PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
-  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
-  conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
+  PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   CreateTables(&conn1, 2);
 
@@ -137,9 +151,7 @@ TEST_F(
 
 // Concurrent DML on table 1 + index backfill on table 2, where table 1 & 2 are colocated.
 TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertAndIndexBackfillOnSeparateTables)) {
-  PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
-  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
-  conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
+  PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   CreateTables(&conn1, 2);
 
@@ -192,9 +204,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertAndIndexBackfill
 // Concurrent DML(Insert,Update, delete) + index backfill on same table, where table is colocated.
 TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(UpdateAndIndexBackfillOnSameTable)) {
   GTEST_SKIP();
-  PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
-  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
-  conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
+  PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   CreateTables(&conn1, 1);
 
@@ -250,9 +260,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(UpdateAndIndexBackfill
 
 // Concurrent DDL (Create + Truncate) on different colocated tables.
 TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(CreateAndTruncateOnSeparateTables)) {
-  PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
-  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
-  conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
+  PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   CreateTables(&conn1, 2);
 
@@ -292,9 +300,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(CreateAndTruncateOnSep
 
 // Concurrent DMLs (delete, update) on different colocated tables, with unique constraints.
 TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(UpdateAndDeleteOnSeparateTables)) {
-  PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
-  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
-  conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
+  PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t1 (a int, b int, UNIQUE(a,b))"));
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t2 (i int UNIQUE, j int)"));
