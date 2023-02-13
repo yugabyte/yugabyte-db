@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .highlighted-stats-panel {
   max-width: 500px;
@@ -32,7 +32,7 @@
   }
 
   .tile_count .yb-resource-count {
-    border-left: 1px solid $YB_GRAY_HOVER;
+    border-left: 1px solid colors.$YB_GRAY_HOVER;
     padding: 0 50px;
     text-align: center;
     margin: 0;

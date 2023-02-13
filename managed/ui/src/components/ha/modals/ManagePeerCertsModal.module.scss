@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .formInstructionsContainer {
     margin-bottom: 10px;
@@ -13,7 +13,7 @@
     }
 
     .errorContainer {
-        color: $YB_FAIL_COLOR;
+        color: colors.$YB_FAIL_COLOR;
         white-space: pre-wrap;
     }
 

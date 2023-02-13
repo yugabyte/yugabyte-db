@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .create-provider-label-text {
   font-size: 26px;
@@ -18,7 +18,7 @@
 }
 
 .input-feedback {
-  color: $YB_ERROR_TEXT_COLOR;
+  color: colors.$YB_ERROR_TEXT_COLOR;
   margin-bottom: 1rem;
 }
 

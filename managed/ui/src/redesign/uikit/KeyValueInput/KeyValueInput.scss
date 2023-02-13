@@ -1,4 +1,4 @@
-@import '../common';
+@use '../common';
 
 .key-value-input {
   padding: 12px 0;
@@ -23,13 +23,13 @@
   &__icon {
     margin-left: 10px;
     cursor: pointer;
-    fill: $YB_TEXT_1;
+    fill: common.$YB_TEXT_1;
     width: 22px;
   }
 
   &__add-row-btn {
     font-size: 14px;
-    color: $YB_TEXT_2;
+    color: common.$YB_TEXT_2;
     margin-top: 12px;
   }
 }

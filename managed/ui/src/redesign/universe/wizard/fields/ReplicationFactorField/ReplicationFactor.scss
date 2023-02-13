@@ -1,15 +1,15 @@
-@import '../../../../uikit/common';
+@use '../../../../uikit/common';
 
 .replication-factor {
   display: inline-flex;
-  background-color: $YB_PAGE_BACKGROUND;
-  border: 1px solid $YB_BORDER_1;
-  border-radius: $INPUT_BORDER_RADIUS;
+  background-color: common.$YB_PAGE_BACKGROUND;
+  border: 1px solid common.$YB_BORDER_1;
+  border-radius: common.$INPUT_BORDER_RADIUS;
   overflow: hidden;
   height: 44px;
 
   &--disabled {
-    background-color: $YB_BORDER_1;
+    background-color: common.$YB_BORDER_1;
     pointer-events: none;
   }
 
@@ -19,20 +19,20 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: $YB_TEXT_1;
+    color: common.$YB_TEXT_1;
     font-size: 16px;
     font-weight: 600;
-    font-family: $YB_FONT_FAMILY;
+    font-family: common.$YB_FONT_FAMILY;
     cursor: pointer;
     user-select: none;
 
     &:not(:last-child) {
-      border-right: 1px solid $YB_BORDER_1;
+      border-right: 1px solid common.$YB_BORDER_1;
     }
 
     &--selected {
-      color: $YB_PAGE_BACKGROUND;
-      background-color: $YB_CTA;
+      color: common.$YB_PAGE_BACKGROUND;
+      background-color: common.$YB_CTA;
     }
   }
 }
