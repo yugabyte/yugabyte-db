@@ -23,9 +23,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
-
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -58,22 +56,37 @@ public class CloudRegionSetup extends CloudTaskBase {
   public void run() {
     CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
     String regionCode = taskParams().regionCode;
+    Provider provider = getProvider();
     if (Region.getByCode(getProvider(), regionCode) != null) {
       throw new RuntimeException("Region " + regionCode + " already setup");
     }
-    if (!regionMetadata.containsKey(regionCode)) {
+    if (!regionMetadata.containsKey(regionCode)
+        && !provider.getCloudCode().equals(Common.CloudType.onprem)) {
       throw new RuntimeException("Region " + regionCode + " metadata not found");
     }
-    JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
-    Provider provider = getProvider();
-    final Region region = Region.createWithMetadata(provider, regionCode, metaData);
+    Region createdRegion = null;
+    if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
+      // Create the onprem region using the config provided.
+      createdRegion =
+          Region.create(
+              provider,
+              regionCode,
+              taskParams().metadata.regionName,
+              taskParams().metadata.customImageId,
+              taskParams().metadata.latitude,
+              taskParams().metadata.longitude);
+    } else {
+      JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
+      createdRegion = Region.createWithMetadata(provider, regionCode, metaData);
+    }
+    final Region region = createdRegion;
     String customImageId = taskParams().metadata.customImageId;
     if (customImageId != null && !customImageId.isEmpty()) {
       region.setYbImage(customImageId);
       region.update();
     } else {
       switch (Common.CloudType.valueOf(provider.code)) {
-          // Intentional fallthrough as both AWS and GCP should be covered the same way.
+          // Intentional fallthrough for AWS, Azure & GCP should be covered the same way.
         case aws:
         case gcp:
         case azu:
@@ -90,6 +103,14 @@ public class CloudRegionSetup extends CloudTaskBase {
     String customSecurityGroupId = taskParams().metadata.customSecurityGroupId;
     if (customSecurityGroupId != null && !customSecurityGroupId.isEmpty()) {
       region.setSecurityGroupId(customSecurityGroupId);
+      region.update();
+    }
+    String instanceTemplate = taskParams().metadata.instanceTemplate;
+    if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
+      if (region.provider.getCloudCode().equals(Common.CloudType.gcp)) {
+        GCPRegionCloudInfo g = CloudInfoInterface.get(region);
+        g.setInstanceTemplate(instanceTemplate);
+      }
       region.update();
     }
 
@@ -213,6 +234,16 @@ public class CloudRegionSetup extends CloudTaskBase {
             zone ->
                 region.zones.add(
                     AvailabilityZone.createOrThrow(region, zone, zone, subnet, secondarySubnet)));
+        break;
+      case onprem:
+        region.zones = new ArrayList<>();
+        taskParams()
+            .metadata
+            .azList
+            .forEach(
+                zone ->
+                    region.zones.add(
+                        AvailabilityZone.createOrThrow(region, zone.code, zone.name, null, null)));
         break;
       default:
         throw new RuntimeException(

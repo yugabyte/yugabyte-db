@@ -40,15 +40,15 @@ The database getting overloaded with writes can also result in compactions not b
 
 ### WAL writes are too slow
 
-If WAL writes are slow, then writes experience higher latency which creates a natural form of admission control. The frequency of data getting synced to disk is controlled by the `durable_wal_write` flag. Note that fsync is disabled by default because YugabyteDB is expected to run in a Replication Factor 3 mode where each shard/tablet is replicated onto 3 independent fault domains such as hosts, availability zones, regions, or clouds. If enabled, every single write into DocDB, YugabyteDB's underlying document store, will be synchronized to disk before its execution is deemed successful. So, although there will be an increase in safety, there will be a hit to performance.
+If WAL writes are slow, then writes experience higher latency which creates a natural form of admission control. The frequency of data getting synchronized to disk is controlled by the `durable_wal_write` flag. Note that `fsync` is disabled by default, as YugabyteDB is expected to run in a Replication Factor 3 mode where each tablet is replicated onto three independent fault domains such as hosts, availability zones, regions, or clouds. Enabling `fsync` means that every write into DocDB (YugabyteDB's underlying document store) must be synchronized to disk before its execution is deemed successful. This increase in safety brings a corresponding performance decrease.
 
 ### Limited disk IOPS or bandwidth
 
-In many cloud environments, the disk IOPS and/or the network bandwidth is rate-throttled. Holistically, if there are such disk constraints (limits on IOPS / bandwidth), that results in a back-pressure across all disk writes in the system, and would therefore manifest as one of the above conditions.
+In many cloud environments, disk IOPS and network bandwidth are rate-limited. Such disk constraints (limits on IOPS and bandwidth) result in a back-pressure across all disk writes in the system, and manifest as one of the preceding conditions.
 
 ## Write throttling triggers
 
-YugabyteDB defines the following triggers for throttling incoming writes.
+YugabyteDB defines the following triggers for throttling incoming writes:
 
 ### Stop writes trigger
 

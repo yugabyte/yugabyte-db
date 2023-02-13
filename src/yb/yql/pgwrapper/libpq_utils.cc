@@ -576,6 +576,7 @@ Result<PGResultPtr> PGConn::CopyEnd() {
 
 Result<std::string> ToString(PGresult* result, int row, int column) {
   constexpr Oid BOOLOID = 16;
+  constexpr Oid NAMEOID = 19;
   constexpr Oid INT8OID = 20;
   constexpr Oid INT2OID = 21;
   constexpr Oid INT4OID = 23;
@@ -605,6 +606,7 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
       return yb::ToString(VERIFY_RESULT(GetValue<float>(result, row, column)));
     case FLOAT8OID:
       return yb::ToString(VERIFY_RESULT(GetValue<double>(result, row, column)));
+    case NAMEOID: FALLTHROUGH_INTENDED;
     case TEXTOID: FALLTHROUGH_INTENDED;
     case BPCHAROID: FALLTHROUGH_INTENDED;
     case VARCHAROID: FALLTHROUGH_INTENDED;
@@ -667,8 +669,12 @@ std::string PqEscapeIdentifier(const std::string& input) {
   return output;
 }
 
-bool HasTryAgain(const Status& status) {
-  return status.ToString().find("Try again:") != std::string::npos;
+bool HasTransactionError(const Status& status) {
+  const auto& message = status.ToString();
+  return message.find("conflicts with higher priority transaction:") != std::string::npos ||
+         message.find("Transaction aborted:") != std::string::npos ||
+         message.find("expired or aborted by a conflict:") != std::string::npos ||
+         message.find("Unknown transaction, could be recently aborted:") != std::string::npos;
 }
 
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)

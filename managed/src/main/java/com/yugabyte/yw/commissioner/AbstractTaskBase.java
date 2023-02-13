@@ -29,7 +29,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
-import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -162,8 +161,7 @@ public abstract class AbstractTaskBase implements ITask {
     return Util.convertStringToJson(response.message);
   }
 
-  public UniverseUpdater nodeStateUpdater(
-      final UUID universeUUID, final String nodeName, final NodeStatus nodeStatus) {
+  public UniverseUpdater nodeStateUpdater(final String nodeName, final NodeStatus nodeStatus) {
     UniverseUpdater updater =
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -177,7 +175,7 @@ public abstract class AbstractTaskBase implements ITask {
               nodeName,
               currentStatus,
               nodeStatus,
-              universeUUID);
+              universe.universeUUID);
           nodeStatus.fillNodeStates(node);
           if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
             node.cloudInfo.private_ip = null;

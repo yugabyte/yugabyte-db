@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.List;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 
@@ -105,6 +106,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "Single connection mode makes it work even on tiny DB nodes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybEditWaitForLeadersOnPreferred =
+      new ConfKeyInfo<>(
+          "yb.edit.wait_for_leaders_on_preferred",
+          ScopeType.UNIVERSE,
+          "YB Edit Wait For Leaders On Preferred Only",
+          "Controls whether we perform the createWaitForLeadersOnPreferredOnly subtask"
+              + "in editUniverse",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> ybNumReleasesToKeepDefault =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_default",
@@ -497,5 +507,64 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Performance Advisor rejected connections interval mins",
           "Defines time interval for rejected connections recommendation check, in minutes",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Double> perfAdvisorHotShardWriteSkewThresholdPct =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_write_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard write skew threshold",
+          "Defines max difference between average node writes and hot shard node writes before "
+              + "hot shard recommendation is raised",
+          ConfDataType.DoubleType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Double> perfAdvisorHotShardReadSkewThresholdPct =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_read_skew_threshold_pct",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard read skew threshold",
+          "Defines max difference between average node reads and hot shard node reads before "
+              + "hot shard recommendation is raised",
+          ConfDataType.DoubleType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> perfAdvisorHotShardIntervalMins =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_interval_mins",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard interval mins",
+          "Defines time interval for hot hard recommendation check, in minutes",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> perfAdvisorHotShardMinimalWrites =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_min_node_writes",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard minimal writes",
+          "Defines min writes for hot shard recommendation to be raised",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> perfAdvisorHotShardMinimalReads =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.hot_shard_min_node_reads",
+          ScopeType.UNIVERSE,
+          "Performance Advisor hot shard minimal reads",
+          "Defines min reads for hot shard recommendation to be raised",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<SkipCertValidationType> tlsSkipCertValidation =
+      new ConfKeyInfo<>(
+          "yb.tls.skip_cert_validation",
+          ScopeType.UNIVERSE,
+          "Skip TLS Cert Validation",
+          "Used to skip certificates validation for the configure phase."
+              + "Possible values - ALL, HOSTNAME, NONE",
+          ConfDataType.SkipCertValdationEnum,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> deleteOrphanSnapshotOnStartup =
+      new ConfKeyInfo<>(
+          "yb.snapshot_cleanup.delete_orphan_on_startup",
+          ScopeType.UNIVERSE,
+          "Clean Orphan snapshots",
+          "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

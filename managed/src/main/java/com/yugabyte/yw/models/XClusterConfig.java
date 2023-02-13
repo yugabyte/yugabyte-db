@@ -265,6 +265,27 @@ public class XClusterConfig extends Model {
     return getTableIdsWithReplicationSetup(true /* done */);
   }
 
+  @JsonIgnore
+  public Set<String> getTableIds(boolean includeMainTables, boolean includeIndexTables) {
+    if (!includeMainTables && !includeIndexTables) {
+      throw new IllegalArgumentException(
+          "Both includeMainTables and includeIndexTables cannot be false");
+    }
+    if (includeMainTables && includeIndexTables) {
+      return this.getTables();
+    }
+    return this.tables
+        .stream()
+        .filter(table -> table.indexTable == includeIndexTables)
+        .map(table -> table.tableId)
+        .collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public Set<String> getTableIdsExcludeIndexTables() {
+    return getTableIds(true /* includeMainTables */, false /* includeIndexTables */);
+  }
+
   public void setTables(Set<String> tableIds) {
     setTables(tableIds, null /* tableIdsNeedBootstrap */);
   }

@@ -524,6 +524,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "list_namespaces", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->ListAllNamespaces(),
+                              "Unable to list namespaces");
+        return Status::OK();
+      });
+
+  Register(
       "delete_namespace", " <namespace>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 1) {

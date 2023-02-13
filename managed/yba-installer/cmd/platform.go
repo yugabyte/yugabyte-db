@@ -5,7 +5,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -254,9 +256,11 @@ func (plat Platform) Start() {
 
 // Stop the YBA platform service.
 func (plat Platform) Stop() {
-
+	if plat.Status().Status != common.StatusRunning {
+		log.Debug(plat.name + " is already stopped")
+		return
+	}
 	if common.HasSudoAccess() {
-
 		arg1 := []string{"stop", filepath.Base(plat.SystemdFileLocation)}
 		common.RunBash(common.Systemctl, arg1)
 
@@ -307,14 +311,15 @@ func (plat Platform) Uninstall(removeData bool) {
 	// Stop running platform service
 	plat.Stop()
 
-	// Clean up Conf
-
 	// Clean up systemd file
 	if common.HasSudoAccess() {
 		err := os.Remove(plat.SystemdFileLocation)
 		if err != nil {
-			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
-				err.Error(), plat.SystemdFileLocation))
+			pe := err.(*fs.PathError)
+			if !errors.Is(pe.Err, fs.ErrNotExist) {
+				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
+					pe.Error(), plat.SystemdFileLocation))
+			}
 		}
 		// reload systemd daemon
 		common.RunBash(common.Systemctl, []string{"daemon-reload"})

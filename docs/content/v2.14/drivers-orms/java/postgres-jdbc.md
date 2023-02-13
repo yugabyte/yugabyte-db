@@ -90,7 +90,7 @@ Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/
 Example JDBC URL for connecting to YugabyteDB cluster enabled with on the wire SSL encryption.
 
 ```java
-string yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
+String yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt";
 Connection conn = DriverManager.getConnection(yburl);
 ```
 

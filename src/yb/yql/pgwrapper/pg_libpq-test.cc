@@ -202,7 +202,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
     auto s = conn.Execute("DELETE FROM t");
     if (!s.ok()) {
-      ASSERT_TRUE(HasTryAgain(s)) << s;
+      ASSERT_TRUE(HasTransactionError(s)) << s;
       continue;
     }
     for (int k = 0; k != kKeys; ++k) {
@@ -222,7 +222,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
         auto res = connection.Fetch("SELECT * FROM t");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           return;
         }
         auto columns = PQnfields(res->get());
@@ -240,9 +240,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
               "UPDATE t SET color = $1 WHERE key = $0", key, color);
           if (!status.ok()) {
             auto msg = status.message().ToBuffer();
-            // Missing metadata means that transaction was aborted and cleaned.
-            ASSERT_TRUE(HasTryAgain(status) ||
-                        msg.find("Missing metadata") != std::string::npos) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             break;
           }
         }
@@ -1486,7 +1484,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), "Conflicts with higher priority transaction");
+  ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
 

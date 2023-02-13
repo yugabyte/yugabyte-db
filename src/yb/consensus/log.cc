@@ -1736,8 +1736,8 @@ Status Log::SwitchToAllocatedSegment() {
   // Set the new segment's schema.
   {
     SharedLock<decltype(schema_lock_)> l(schema_lock_);
-    SchemaToPB(*schema_, header.mutable_schema());
-    header.set_schema_version(schema_version_);
+    SchemaToPB(*schema_, header.mutable_deprecated_schema());
+    header.set_deprecated_schema_version(schema_version_);
   }
 
   RETURN_NOT_OK(new_segment->WriteHeaderAndOpen(header));

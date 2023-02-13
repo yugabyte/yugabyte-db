@@ -6,8 +6,10 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"node-agent/app/task"
 	pb "node-agent/generated/service"
@@ -85,6 +87,20 @@ func loadTLSCredentials() (credentials.TransportCredentials, error) {
 	return credentials.NewTLS(tlsConfig), nil
 }
 
+func removeFileIfPresent(filename string) error {
+	stat, err := os.Stat(filename)
+	if err == nil {
+		if stat.IsDir() {
+			err = errors.New("Path already exists as a directory")
+		} else {
+			err = os.Remove(filename)
+		}
+	} else if errors.Is(err, fs.ErrNotExist) {
+		err = nil
+	}
+	return err
+}
+
 func (server *RPCServer) Stop() {
 	if server.gServer != nil {
 		server.gServer.GracefulStop()
@@ -155,6 +171,7 @@ func (s *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error {
 	fileInfo := req.GetFileInfo()
 	filename := fileInfo.GetFilename()
 	username := req.GetUser()
+	chmod := req.GetChmod()
 	userAcc, err := user.Current()
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
@@ -173,7 +190,21 @@ func (s *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error {
 	if !filepath.IsAbs(filename) {
 		filename = filepath.Join(userAcc.HomeDir, filename)
 	}
-	file, err := os.Create(filename)
+	if chmod == 0 {
+		// Do not care about file perm.
+		// Set the default file mode in golang.
+		chmod = 0666
+	} else {
+		// Get stat to remove the file if it exists because OpenFile does not change perm of
+		// existing files. It simply truncates.
+		err = removeFileIfPresent(filename)
+		if err != nil {
+			util.FileLogger().Errorf("Error in deleting existing file %s - %s", filename, err.Error())
+			return status.Error(codes.Internal, err.Error())
+		}
+		util.FileLogger().Infof("Setting file permission for %s to %o", filename, chmod)
+	}
+	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_RDWR|os.O_CREATE, fs.FileMode(chmod))
 	if err != nil {
 		util.FileLogger().Errorf("Error in creating file %s - %s", filename, err.Error())
 		return status.Error(codes.Internal, err.Error())

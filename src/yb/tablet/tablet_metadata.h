@@ -93,8 +93,8 @@ struct TableInfo {
 
   std::string log_prefix;
   // The table schema, secondary index map, index info (for index table only) and schema version.
-  const std::unique_ptr<docdb::DocReadContext> doc_read_context;
-  std::unique_ptr<IndexMap> index_map;
+  const std::shared_ptr<docdb::DocReadContext> doc_read_context;
+  const std::shared_ptr<IndexMap> index_map;
   std::unique_ptr<IndexInfo> index_info;
   SchemaVersion schema_version = 0;
 
@@ -232,6 +232,7 @@ struct RaftGroupMetadataData {
   TabletDataState tablet_data_state;
   bool colocated = false;
   std::vector<SnapshotScheduleId> snapshot_schedules;
+  std::unordered_set<StatefulServiceKind> hosted_services;
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -247,8 +248,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // use in the respective directories.
   // If empty string is passed in, it will be randomly chosen.
   static Result<RaftGroupMetadataPtr> CreateNew(
-      const RaftGroupMetadataData& data, const std::string& data_root_dir = std::string(),
-      const std::string& wal_root_dir = std::string());
+      const RaftGroupMetadataData& data, const std::string& data_root_dir = {},
+      const std::string& wal_root_dir = {});
 
   // Load existing metadata from disk.
   static Result<RaftGroupMetadataPtr> Load(FsManager* fs_manager, const RaftGroupId& raft_group_id);
@@ -572,6 +573,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<docdb::CompactionSchemaInfo> ColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
+  std::unordered_set<StatefulServiceKind> GetHostedServiceList() const;
+
   const KvStoreInfo& TEST_kv_store() const {
     return kv_store_;
   }
@@ -587,8 +590,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Constructor for creating a new Raft group.
   explicit RaftGroupMetadata(
-      const RaftGroupMetadataData& data, const std::string& data_dir,
-      const std::string& wal_dir);
+      const RaftGroupMetadataData& data, const std::string& data_dir, const std::string& wal_dir);
 
   // Constructor for loading an existing Raft group.
   RaftGroupMetadata(FsManager* fs_manager, const RaftGroupId& raft_group_id);
@@ -680,6 +682,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 
   const std::string log_prefix_;
+
+  std::unordered_set<StatefulServiceKind> hosted_services_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

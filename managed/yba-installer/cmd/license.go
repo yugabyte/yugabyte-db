@@ -35,15 +35,15 @@ var validateLicenseCmd = &cobra.Command{
 			lic, err = license.FromFile(licensePath)
 		}
 		if err != nil {
-			fmt.Println("No licensing found for Yugabyte Anywhere.")
+			fmt.Println("No licensing found for YugabyteDB Anywhere.")
 			os.Exit(1)
 		}
 
 		if !pubkey.Validate(lic.Sha256Data(), lic.Signature) {
-			fmt.Println("Found an invalid license for Yugabyte Anywhere")
+			fmt.Println("Found an invalid license for YugabyteDB Anywhere")
 			os.Exit(1)
 		}
-		fmt.Println("Found valid Yugabyte Anywhere license.")
+		fmt.Println("Found valid YugabyteDB Anywhere license.")
 	},
 }
 

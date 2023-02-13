@@ -425,7 +425,7 @@ DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
 // Change the default value of this flag to false once we declare Colocation GA.
-DEFINE_NON_RUNTIME_bool(ysql_legacy_colocated_database_creation, true,
+DEFINE_NON_RUNTIME_bool(ysql_legacy_colocated_database_creation, false,
             "Whether to create a legacy colocated database using pre-Colocation GA implementation");
 TAG_FLAG(ysql_legacy_colocated_database_creation, advanced);
 
@@ -3539,6 +3539,9 @@ Status CheckNumReplicas(const PlacementInfoPB& placement_info,
   return Status::OK();
 }
 
+std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
+  return StatefulServiceKind_Name(service_kind) + "_table";
+}
 } // namespace
 
 // Create a new table.
@@ -3945,16 +3948,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
         std::unordered_set<ColocationId> colocation_ids;
         colocation_ids.reserve(tablet_lock.data().pb.table_ids().size());
-        if (!req.has_colocation_id()) {
-          for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
-            DCHECK(!table_id.empty());
-            const auto colocated_table_info = GetTableInfoUnlocked(table_id);
-            if (!colocated_table_info) {
-              // Needed because of #11129, should be replaced with DCHECK after the fix.
-              continue;
-            }
-            colocation_ids.insert(colocated_table_info->GetColocationId());
+        for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
+          DCHECK(!table_id.empty());
+          const auto colocated_table_info = GetTableInfoUnlocked(table_id);
+          if (!colocated_table_info) {
+            // Needed because of #11129, should be replaced with DCHECK after the fix.
+            continue;
           }
+          colocation_ids.insert(colocated_table_info->GetColocationId());
         }
 
         colocation_id = VERIFY_RESULT(
@@ -4792,6 +4793,60 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
   return s;
 }
 
+Status CatalogManager::CreateStatefulService(
+    const StatefulServiceKind& service_kind, const client::YBSchema& yb_schema) {
+  const string table_name = GetStatefulServiceTableName(service_kind);
+  // If the service table exists do nothing, otherwise create it.
+  if (VERIFY_RESULT(TableExists(kSystemNamespaceName, table_name))) {
+    return STATUS_FORMAT(AlreadyPresent, "Table $0 already created", table_name);
+  }
+
+  LOG(INFO) << "Creating stateful service table " << table_name << " for service "
+            << StatefulServiceKind_Name(service_kind);
+
+  // Set up a CreateTable request internally.
+  CreateTableRequestPB req;
+  CreateTableResponsePB resp;
+  req.set_name(table_name);
+  req.mutable_namespace_()->set_name(kSystemNamespaceName);
+  req.set_table_type(TableType::YQL_TABLE_TYPE);
+  req.set_num_tablets(1);
+  req.add_hosted_stateful_services(service_kind);
+
+  auto schema = yb::client::internal::GetSchema(yb_schema);
+
+  SchemaToPB(schema, req.mutable_schema());
+
+  req.mutable_schema()->mutable_table_properties()->set_num_tablets(1);
+
+  Status s = CreateTable(&req, &resp, /* RpcContext */ nullptr);
+  return s;
+}
+
+Status CatalogManager::CreateTestEchoService() {
+  static bool service_created = false;
+  if (service_created) {
+    return Status::OK();
+  }
+
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("timestamp")->HashPrimaryKey()->Type(DataType::TIMESTAMP);
+  schema_builder.AddColumn("text")->Type(DataType::STRING);
+
+  client::YBSchema yb_schema;
+  CHECK_OK(schema_builder.Build(&yb_schema));
+
+  auto s = CreateStatefulService(StatefulServiceKind::TEST_ECHO, yb_schema);
+  // It is possible that the table was already created. If so, there is nothing to do so we just
+  // ignore the "AlreadyPresent" error.
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+    return s;
+  }
+
+  service_created = true;
+  return Status::OK();
+}
+
 Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   TRACE("Locking table");
   auto l = table->LockForRead();
@@ -5013,6 +5068,8 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   metadata->set_namespace_name(namespace_name);
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
+  *metadata->mutable_hosted_stateful_services() = req.hosted_stateful_services();
+
   if (req.has_replication_info()) {
     metadata->mutable_replication_info()->CopyFrom(req.replication_info());
   }
@@ -5084,6 +5141,7 @@ TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
   // This is important: we are setting the first table id in the table_ids list
   // to be the id of the original table that creates the tablet.
   metadata->add_table_ids(table->id());
+
   return tablet;
 }
 
@@ -5560,6 +5618,8 @@ Status CatalogManager::LaunchBackfillIndexForTable(
 Status CatalogManager::MarkIndexInfoFromTableForDeletion(
     const TableId& indexed_table_id, const TableId& index_table_id, bool multi_stage,
     DeleteTableResponsePB* resp) {
+  LOG(INFO) << "MarkIndexInfoFromTableForDeletion table " << indexed_table_id
+            << " index " << index_table_id << " multi_stage=" << multi_stage;
   // Lookup the indexed table and verify if it exists.
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
@@ -5592,6 +5652,7 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
 
 Status CatalogManager::DeleteIndexInfoFromTable(
     const TableId& indexed_table_id, const TableId& index_table_id) {
+  LOG(INFO) << "DeleteIndexInfoFromTable table " << indexed_table_id << " index " << index_table_id;
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
     LOG(WARNING) << "Indexed table " << indexed_table_id << " for index " << index_table_id
@@ -5635,6 +5696,74 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   return Status::OK();
 }
 
+Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
+                                                GetIndexBackfillProgressResponsePB* resp,
+                                                rpc::RpcContext* rpc) {
+  VLOG(1) << "Get Index Backfill Progress request " << req->ShortDebugString();
+
+  // Note: the caller expects the ordering of the indexes in the response PB to be the
+  // same as that in the request PB.
+  for (const auto& index_id : req->index_ids()) {
+    // Retrieve the number of rows processed by the backfill job.
+    // When the backfill job is live, the num_rows_processed field in the indexed table's
+    // BackfillJobPB would give us the desired information. For backfill jobs that haven't been
+    // created or have completed/failed (and been cleared) the num_rows_processed field in the
+    // IndexInfoPB would give us the desired information.
+    // The following cases are possible:
+    // 1) The index or the indexed table is not found: the information can't be determined so
+    //    we set the num_rows_processed to 0.
+    // 2) The backfill job hasn't been created: we use IndexInfoPB's num_rows_processed (in this
+    //    case the value of this field is the default value 0).
+    // 3) The backfill job is live: we use BackfillJobPB's num_rows_processed.
+    // 4) The backfill job was successful/unsuccessful and cleared after completion:
+    //    we use IndexInfoPB's num_rows_processed.
+    // Notes:
+    // a) We are safe from concurrency issues when reading the backfill state and
+    // the index info's num_rows_processed because the updation for these two fields happens
+    // within the same LockForWrite in BackfillTable::MarkIndexesAsDesired.
+    auto index_table = GetTableInfo(index_id);
+    if (index_table == nullptr) {
+      LOG_WITH_FUNC(INFO) << "Requested Index " << index_id << " not found";
+      // No backfill job can be found for this index - set the rows processed to 0.
+      resp->add_rows_processed_entries(0);
+      continue;
+    }
+
+    // Get indexed table's TableInfo.
+    auto indexed_table = GetTableInfo(index_table->indexed_table_id());
+    if (indexed_table == nullptr) {
+      LOG_WITH_FUNC(INFO) << "Indexed table for requested index " << index_id << " not found";
+      // No backfill job can be found for this index - set the rows processed to 0.
+      resp->add_rows_processed_entries(0);
+      continue;
+    }
+
+    auto l = indexed_table->LockForRead();
+    if (l->pb.backfill_jobs_size() >= 1) {
+      // Currently we do not support multiple backfill jobs, so there can only be one outstanding
+      // backfill job. So the first (and only) backfill job at the 0th index is the only
+      // live job we need to look at.
+      DCHECK_EQ(l->pb.backfill_jobs_size(), 1) << "Expected 1 in-progress backfill job. "
+          "Found: " << l->pb.backfill_jobs_size();
+      // Check if the desired index is being backfilled by the live backfill job.
+      const auto& backfill_job = l->pb.backfill_jobs(0);
+      if (backfill_job.backfill_state().find(index_id) != backfill_job.backfill_state().end()) {
+        resp->add_rows_processed_entries(backfill_job.num_rows_processed());
+        continue;
+      }
+    }
+    // Find the desired index's IndexInfoPB from the indexed table's TableInfo.
+    for (const auto& index_info_pb : l->pb.indexes()) {
+      if (index_info_pb.table_id() == index_id) {
+        resp->add_rows_processed_entries(index_info_pb.num_rows_processed_by_backfill_job());
+        break;
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::ScheduleDeleteTable(const scoped_refptr<TableInfo>& table) {
   return background_tasks_thread_pool_->SubmitFunc([this, table]() {
     DeleteTableRequestPB del_tbl_req;
@@ -5655,6 +5784,10 @@ Status CatalogManager::DeleteTable(
 
   if (PREDICT_FALSE(FLAGS_TEST_keep_docdb_table_on_ysql_drop_table) &&
       table->GetTableType() == PGSQL_TABLE_TYPE) {
+    return Status::OK();
+  }
+
+  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
     return Status::OK();
   }
 
@@ -5764,6 +5897,13 @@ Status CatalogManager::DeleteTable(
 // IMPORTANT: If modifying, consider updating DeleteYsqlDBTables(), the bulk deletion API.
 Status CatalogManager::DeleteTableInternal(
     const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
+
+  scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
+
+  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
+    return Status::OK();
+  }
+
   auto schedules_to_tables_map = VERIFY_RESULT(
       MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
 
@@ -6168,8 +6308,8 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   auto l = table->LockForRead();
 
   if (!l->started_deleting() && !l->started_hiding()) {
-    LOG(WARNING) << "Servicing IsDeleteTableDone request for table id "
-                 << req->table_id() << ": NOT deleted";
+    LOG(WARNING) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
+                 << ": NOT deleted in state " << l->state_name();
     Status s = STATUS(IllegalState, "The object was NOT deleted", l->pb.state_msg());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
@@ -8620,6 +8760,27 @@ Result<SnapshotScheduleId> CatalogManager::FindCoveringScheduleForObject(
   return StronglyTypedUuid<SnapshotScheduleId_Tag>::Nil();
 }
 
+Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<NamespaceInfo>& database) {
+  SharedLock lock(mutex_);
+  for (const auto& table : tables_->GetAllTables()) {
+    auto ltm = table->LockForRead();
+    if (table->namespace_id() != database->id()) {
+      continue;
+    }
+    if (IsCdcEnabledUnlocked(*table)) {
+      LOG(ERROR) << "Error deleting database: " << database->id() << ", table: " << table->id()
+                 << " is under replication"
+                 << ". Cannot delete a database that contains tables under replication.";
+      return STATUS_FORMAT(
+          InvalidCommand, Format(
+                              "Table: $0 is under replication. Cannot delete a database that "
+                              "contains tables under replication.",
+                              table->id()));
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
                                          DeleteNamespaceResponsePB* resp,
                                          rpc::RpcContext* rpc) {
@@ -8837,6 +8998,11 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
         "Cannot delete database which has schedule: $0, request: $1",
         covering_schedule_id, req->ShortDebugString());
   }
+
+  // Only allow YSQL database deletion if it does not contain any replicated tables. No need to
+  // check this for YCQL keyspaces, as YCQL does not allow drops of non-empty keyspaces, regardless
+  // of their replication status.
+  RETURN_NOT_OK(CheckIfDatabaseHasReplication(database));
 
   // Set the Namespace to DELETING.
   TRACE("Locking database");
@@ -9156,6 +9322,9 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
     ns->set_id(namespace_info.id());
     ns->set_name(namespace_info.name());
     ns->set_database_type(namespace_info.database_type());
+
+    resp->add_states(namespace_info.state());
+    resp->add_colocated(namespace_info.colocated());
   }
   return Status::OK();
 }
@@ -9507,11 +9676,6 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
-void CatalogManager::DisableTabletSplittingInternal(
-    const MonoDelta& duration, const std::string& feature) {
-  tablet_split_manager_.DisableSplittingFor(duration, feature);
-}
-
 Status CatalogManager::DisableTabletSplitting(
     const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
     rpc::RpcContext* rpc) {
@@ -9520,7 +9684,17 @@ Status CatalogManager::DisableTabletSplitting(
   return Status::OK();
 }
 
-bool CatalogManager::IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion) {
+void CatalogManager::DisableTabletSplittingInternal(
+    const MonoDelta& duration, const std::string& feature) {
+  tablet_split_manager_.DisableSplittingFor(duration, feature);
+}
+
+void CatalogManager::ReenableTabletSplittingInternal(const std::string& feature) {
+  tablet_split_manager_.ReenableSplittingFor(feature);
+}
+
+bool CatalogManager::IsTabletSplittingCompleteInternal(
+    bool wait_for_parent_deletion, CoarseTimePoint deadline) {
   vector<TableInfoPtr> tables;
   {
     SharedLock lock(mutex_);
@@ -9529,7 +9703,9 @@ bool CatalogManager::IsTabletSplittingCompleteInternal(bool wait_for_parent_dele
     tables = std::vector(std::begin(tables_it), std::end(tables_it));
   }
   for (const auto& table : tables) {
-    if (!tablet_split_manager_.IsTabletSplittingComplete(*table, wait_for_parent_deletion)) {
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table,
+                                                         wait_for_parent_deletion,
+                                                         deadline)) {
       return false;
     }
   }
@@ -9540,7 +9716,7 @@ Status CatalogManager::IsTabletSplittingComplete(
     const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
     rpc::RpcContext* rpc) {
   resp->set_is_tablet_splitting_complete(
-      IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion()));
+      IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion(), rpc->GetClientDeadline()));
   return Status::OK();
 }
 

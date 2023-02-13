@@ -96,6 +96,9 @@
 using std::string;
 using std::vector;
 
+using yb::test::Partitioning;
+using yb::test::kPartitioningArray;
+
 using namespace std::literals;  // NOLINT
 using namespace yb::client::kv_table_test; // NOLINT
 
@@ -200,6 +203,9 @@ TEST_P(TabletSplitITestWithIsolationLevel, SplitSingleTablet) {
 
   ASSERT_OK(cluster_->RestartSync());
 
+  // Wait previous writes to be replicated and LB to stabilize as we are going to check all peers.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(
+      RegularBuildVsDebugVsSanitizers(10s, 20s, 30s)));
   ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows * 2));
 }
 
@@ -1690,9 +1696,7 @@ TEST_F(AutomaticTabletSplitITest, IncludeTasksInOutstandingSplits) {
   // Allow no new splits. The stalled split task should resume after the pause is removed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   auto catalog_mgr = ASSERT_RESULT(catalog_manager());
-  ASSERT_OK(WaitFor([&]() {
-    return !catalog_mgr->tablet_split_manager()->IsRunning();
-  }, 10s, "Wait for tablet split manager to stop running."));
+  ASSERT_OK(catalog_mgr->tablet_split_manager()->WaitUntilIdle());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(kInitialNumTablets + 1, /* expected_non_split_tablets */
                                          1 /* expected_split_tablets */));

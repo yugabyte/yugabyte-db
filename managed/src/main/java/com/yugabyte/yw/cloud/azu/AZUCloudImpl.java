@@ -4,6 +4,7 @@ package com.yugabyte.yw.cloud.azu;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
@@ -14,6 +15,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class AZUCloudImpl implements CloudAPI {
 
@@ -57,4 +60,10 @@ public class AZUCloudImpl implements CloudAPI {
       List<NodeID> nodeIDs,
       String protocol,
       List<Integer> ports) {}
+
+  @Override
+  public void validateInstanceTemplate(Provider provider, String instanceTemplate) {
+    throw new PlatformServiceException(
+        BAD_REQUEST, "Instance templates are currently not supported for Azure");
+  }
 }

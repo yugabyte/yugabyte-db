@@ -14,6 +14,7 @@ package com.yugabyte.yw.common.kms.services;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.GcpAlgorithm;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -26,10 +27,12 @@ import com.yugabyte.yw.models.KmsConfig;
  */
 public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
   private GcpEARServiceUtil gcpEARServiceUtil;
+  private final RuntimeConfGetter confGetter;
   public static final int numBytes = 32;
 
-  public GcpEARService() {
+  public GcpEARService(RuntimeConfGetter confGetter) {
     super(KeyProvider.GCP);
+    this.confGetter = confGetter;
   }
 
   public GcpEARServiceUtil getGcpEarServiceUtil() {

@@ -35,6 +35,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -46,11 +47,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
+
 import java.util.Calendar;
-import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.Optional;
 import java.util.stream.IntStream;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -153,6 +155,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       String customTypeName,
       ObjectNode responseJson) {
     UUID taskUUID = UUID.randomUUID();
+    // Set http context
+    TestUtils.setFakeHttpContext(user);
     TaskInfo taskInfo = new TaskInfo(taskInfoType);
     taskInfo.setTaskUUID(taskUUID);
     taskInfo.setTaskDetails(Json.newObject());

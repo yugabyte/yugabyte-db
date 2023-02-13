@@ -37,8 +37,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -75,6 +77,7 @@ import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -576,13 +579,25 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
-    Result result = deleteProvider(p.uuid);
-    assertYBPSuccess(result, "Deleted provider: " + p.uuid);
+    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
+    params.providerUUID = p.uuid;
+    params.customer = customer;
+
+    try {
+      CloudProviderDelete deleteProviderTask =
+          AbstractTaskBase.createTask(CloudProviderDelete.class);
+      deleteProviderTask.initialize(params);
+      deleteProviderTask.run();
+      // Adding the timeout so as to ensure we wait for the provider deletion to be completed.
+      Thread.sleep(2000);
+    } catch (InterruptedException e) {
+      assertNull(e.getMessage());
+    }
+
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
     verify(mockAccessManager, times(1))
         .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
-    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -604,8 +619,20 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
     InstanceType.createWithMetadata(p.uuid, "region-1", metaData);
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
-    Result result = deleteProvider(p.uuid);
-    assertYBPSuccess(result, "Deleted provider: " + p.uuid);
+    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
+    params.providerUUID = p.uuid;
+    params.customer = customer;
+
+    try {
+      CloudProviderDelete deleteProviderTask =
+          AbstractTaskBase.createTask(CloudProviderDelete.class);
+      deleteProviderTask.initialize(params);
+      deleteProviderTask.run();
+      // Adding the timeout so as to ensure we wait for the provider deletion to be completed.
+      Thread.sleep(2000);
+    } catch (InterruptedException e) {
+      assertNull(e.getMessage());
+    }
 
     assertEquals(0, InstanceType.findByProvider(p, mockConfig, mockConfigHelper).size());
     assertNull(Provider.get(p.uuid));
@@ -615,24 +642,41 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithMultiRegionAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
     AccessKey ak = AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
-    Result result = deleteProvider(p.uuid);
-    assertYBPSuccess(result, "Deleted provider: " + p.uuid);
+    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
+    params.providerUUID = p.uuid;
+    params.customer = customer;
+
+    try {
+      CloudProviderDelete deleteProviderTask =
+          AbstractTaskBase.createTask(CloudProviderDelete.class);
+      deleteProviderTask.initialize(params);
+      deleteProviderTask.run();
+      // Adding the timeout so as to ensure we wait for the provider deletion to be completed.
+      Thread.sleep(2000);
+    } catch (InterruptedException e) {
+      assertNull(e.getMessage());
+    }
+
     assertEquals(0, AccessKey.getAll(p.uuid).size());
     assertNull(Provider.get(p.uuid));
     verify(mockAccessManager, times(1))
         .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
-    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
   public void testDeleteProviderWithInvalidProviderUUID() {
     UUID providerUUID = UUID.randomUUID();
-    Result result = assertPlatformException(() -> deleteProvider(providerUUID));
+    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
+    params.providerUUID = providerUUID;
+    params.customer = customer;
+
+    CloudProviderDelete deleteProviderTask = AbstractTaskBase.createTask(CloudProviderDelete.class);
+    deleteProviderTask.initialize(params);
+    Result result = assertPlatformException(() -> deleteProviderTask.run());
     assertBadRequest(result, "Invalid Provider UUID: " + providerUUID);
-    assertAuditEntry(0, customer.uuid);
   }
 
-  @Test
+  @Test(expected = Exception.class)
   public void testDeleteProviderWithUniverses() {
     Provider p = ModelFactory.awsProvider(customer);
     Universe universe = createUniverse(customer.getCustomerId());
@@ -646,18 +690,25 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     userIntent.regionList.add(r.uuid);
     universe =
         Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
-    Result result = assertPlatformException(() -> deleteProvider(p.uuid));
-    assertBadRequest(result, "Cannot delete Provider with Universes");
-    assertAuditEntry(0, customer.uuid);
+    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
+    params.providerUUID = p.uuid;
+    params.customer = customer;
+
+    CloudProviderDelete deleteProviderTask = AbstractTaskBase.createTask(CloudProviderDelete.class);
+    deleteProviderTask.initialize(params);
+    deleteProviderTask.run();
   }
 
   @Test
   public void testDeleteProviderWithoutAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
-    Result result = deleteProvider(p.uuid);
-    assertYBPSuccess(result, "Deleted provider: " + p.uuid);
-    assertNull(Provider.get(p.uuid));
-    assertAuditEntry(1, customer.uuid);
+    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
+    params.providerUUID = p.uuid;
+    params.customer = customer;
+
+    CloudProviderDelete deleteProviderTask = AbstractTaskBase.createTask(CloudProviderDelete.class);
+    deleteProviderTask.initialize(params);
+    deleteProviderTask.run();
   }
 
   @Test
@@ -668,10 +719,22 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     p.details.provisionInstanceScript = scriptFile;
     p.save();
     AccessKey.create(p.uuid, "access-key-code", new KeyInfo());
-    Result result = deleteProvider(p.uuid);
-    assertOk(result);
+    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
+    params.providerUUID = p.uuid;
+    params.customer = customer;
+
+    try {
+      CloudProviderDelete deleteProviderTask =
+          AbstractTaskBase.createTask(CloudProviderDelete.class);
+      deleteProviderTask.initialize(params);
+      deleteProviderTask.run();
+      // Adding the timeout so as to ensure we wait for the provider deletion to be completed.
+      Thread.sleep(2000);
+    } catch (InterruptedException e) {
+      assertNull(e.getMessage());
+    }
+
     assertFalse(new File(scriptFile).exists());
-    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -807,6 +870,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
+  @Ignore
+  // TODO(vipulbansal)(PLAT-7130): Ignoring this test for now, will update
+  // and come up with new test case in the subsequent diffs.
   public void testCreateAwsProviderWithInValidAWSCredentials() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");

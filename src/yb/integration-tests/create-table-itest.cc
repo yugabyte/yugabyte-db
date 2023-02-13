@@ -322,6 +322,7 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
   vector<string> master_flags;
 
   ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
+  master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
   ASSERT_OK(
       client_->CreateNamespace("colocation_test", boost::none /* db */, "" /* creator */,
@@ -333,8 +334,8 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
     string ns_id;
     auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
     for (const auto& ns : namespaces) {
-      if (ns.name() == "colocation_test") {
-        ns_id = ns.id();
+      if (ns.id.name() == "colocation_test") {
+        ns_id = ns.id.id();
         break;
       }
     }
@@ -471,8 +472,8 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest))
   {
     auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
     for (const auto& ns : namespaces) {
-      if (ns.name() == namespace_name) {
-        namespace_id = ns.id();
+      if (ns.id.name() == namespace_name) {
+        namespace_id = ns.id.id();
         break;
       }
     }

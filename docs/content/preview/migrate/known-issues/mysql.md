@@ -32,70 +32,7 @@ This page documents known issues you may encounter and suggested workarounds whe
 
 **GitHub**: [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188)
 
-**Description**: Exporting double precision values near MAX/MIN value results in an _out of range_ error.
-
-**Workaround**: All float style data types are exported to double precision value in YugabyteDB. You can manually edit post export, or by editing the `DATA_TYPE` directive in the ora2pg base configuration file before starting export.
-
-**Example**
-
-An example schema on the source MySQL database is as follows:
-
-```sql
-CREATE TABLE floating_point_types(
-    float_type float,
-    double_type double,
-    double_precision_type DOUBLE PRECISION,
-    real_type REAL
-);
-```
-
-The exported schema is as follows:
-
-```sql
-CREATE TABLE floating_point_types (
-    float_type double precision,
-    double_type double precision,
-    double_precision_type double precision,
-    real_type double precision
-);
-```
-
-Suggested changes to the schema can be done using one of the following options:
-
-- Edit the `/etc/yb-voyager/base-ora2pg.conf` file before exporting schema, using the `DATA_TYPE` directive.
-
-    Default value: DATA_TYPE
-
-    The following table describes the data types and its values:
-
-    | DATA_TYPE | Description |
-    |:--------- | :---------- |
-    | VARCHAR2/NVARCHAR2 | varchar |
-    | DATE/TIMESTAMP | timestamp |
-    | LONG/CLOB/NCLOB | text |
-    | LONG RAW/BLOB/BFILE/RAW | bytea |
-    | UROWI/ROWID | oid |
-    | FLOAT/DOUBLE PRECISION/BINARY_FLOAT/BINARY_DOUBLE | double precision |
-    | DEC/DECIMAL | decimal |
-    | INT/INTEGER | numeric |
-    | REAL | real |
-    | SMALLINT | smallint |
-    | XMLTYPE | xml |
-    | BINARY_INTEGER/PLS_INTEGER | integer |
-    | TIMESTAMP WITH TIME ZONE/TIMESTAMP WITH LOCAL TIME ZONE | timestamp with time zone |
-
-    Replace the mapping wherever needed, using valid YugabyteDB data types.
-
-- Edit the exported schema files as follows:
-
-    ```sql
-    CREATE TABLE floating_point_types (
-        float_type double precision, /*can be replaced with any other float-like data type*/
-        double_type double precision,
-        double_precision_type double precision,
-        real_type real
-    );
-    ```
+**Description**: Exporting double precision values near MAX/MIN value may result in an _out of range_ error. This is due to the difference in maximum supported precision values between the two databases. While MySQL supports up to 17 precision values, YugabyteDB supports up to 15.
 
 ---
 
@@ -203,11 +140,13 @@ Suggested workaround is as follows:
 
 An example schema on the source database is as follows:
 
+```sql
 CREATE TABLE address (
-     address_id int,
-     add point,
-     location GEOMETRY NOT NULL
+  address_id int,
+  add point,
+  location GEOMETRY NOT NULL
 );
+```
 
 ---
 
@@ -542,8 +481,8 @@ The exported schema is as follows:
 
 ```sql
 CREATE TABLE text_types (
-    id numeric(10),
-	tt text DEFAULT _utf8mb4\'c\',
+    id bigint,
+	  tt text DEFAULT _utf8mb4\'c\',
     te text DEFAULT _utf8mb4\'abc\',
     mt text DEFAULT _utf8mb4\'abc\',
     lt text DEFAULT _utf8mb4\'abc\'
@@ -554,7 +493,7 @@ Suggested changes to the schema is to remove the encoding as follows:
 
 ```sql
 CREATE TABLE text_types (
-    id numeric(10),
+    id bigint,
     tt text DEFAULT 'c',
     te text DEFAULT 'abc',
     mt text DEFAULT 'abc',

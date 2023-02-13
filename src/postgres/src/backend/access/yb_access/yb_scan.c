@@ -1324,7 +1324,8 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 								  YBCIsRegionLocal(relation),
 								  &ybScan->handle));
 
-	ybScan->is_full_cond_bound = yb_bypass_cond_recheck;
+	ybScan->is_full_cond_bound = yb_bypass_cond_recheck &&
+								 yb_pushdown_strict_inequality;
 
 	/*
 	 * Set up the arrays to store the search intervals for each PG/YSQL
@@ -2071,7 +2072,7 @@ ybc_keys_match(HeapTuple tup, YbScanDesc ybScan, bool *recheck)
 
 HeapTuple
 ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan,
-								bool *recheck)
+					  bool *recheck)
 {
 	HeapTuple   tup      = NULL;
 
@@ -2843,6 +2844,9 @@ ybBeginSample(Relation rel, int targrows)
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
+		/* Skip over dropped columns */
+		if (att->attisdropped)
+			continue;
 		YBCPgTypeAttrs type_attrs = { att->atttypmod };
 		YBCPgExpr   expr = YBCNewColumnRef(ybSample->handle,
 										   attnum,

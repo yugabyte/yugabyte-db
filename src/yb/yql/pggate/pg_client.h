@@ -38,6 +38,7 @@
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -83,6 +84,8 @@ class PgClient {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
 
+  Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
+
   Status FinishTransaction(Commit commit, DdlType ddl_type);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
@@ -99,6 +102,9 @@ class PgClient {
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
 
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
+
+  Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
+                                  uint64_t** backfill_statuses);
 
   Result<int32> TabletServerCount(bool primary_only);
 
@@ -127,6 +133,16 @@ class PgClient {
                                    bool is_called,
                                    std::optional<int64_t> expected_last_val,
                                    std::optional<bool> expected_is_called);
+
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         bool is_db_catalog_version_mode,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle);
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,

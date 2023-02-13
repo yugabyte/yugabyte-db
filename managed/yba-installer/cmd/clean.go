@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"log"
+
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 )
@@ -8,12 +10,21 @@ import (
 func cleanCmd() *cobra.Command {
 	var removeData bool
 	clean := &cobra.Command{
-		Use:   "clean",
-		Short: "The clean command uninstalls your Yugabyte Anywhere instance.",
+		Use:   "clean [--all]",
+		Short: "The clean command uninstalls your YugabyteDB Anywhere instance.",
 		Long: `
-    	The clean command performs a complete removal of your Yugabyte Anywhere
+    	The clean command performs a complete removal of your YugabyteDB Anywhere
     	Instance by stopping all services and (optionally) removing data directories.`,
 		Args: cobra.MaximumNArgs(1),
+		// Confirm with the user before deleting ALL data.
+		PreRun: func(cmd *cobra.Command, args []string) {
+			if removeData {
+				prompt := "--all was specified. This will delete all data with no way to recover. Continue?"
+				if !common.UserConfirm(prompt, common.DefaultNo) {
+					log.Fatal("Stopping clean")
+				}
+			}
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 
 			// TODO: Only clean up per service.
@@ -32,5 +43,8 @@ func cleanCmd() *cobra.Command {
 }
 
 func init() {
-	rootCmd.AddCommand(cleanCmd())
+	// Clean must be run from installed yba-ctl
+	if common.RunFromInstalled() {
+		rootCmd.AddCommand(cleanCmd())
+	}
 }

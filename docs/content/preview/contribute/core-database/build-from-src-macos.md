@@ -59,7 +59,7 @@ Install the following packages using Homebrew:
 
 ```sh
 brew install autoconf automake bash ccache cmake coreutils gnu-tar libtool \
-             maven ninja pkg-config pstree wget python
+             ninja pkg-config pstree wget python
 ```
 
 {{< note title="Note" >}}
@@ -71,6 +71,22 @@ YugabyteDB build scripts require at least Bash version 4. Make sure that `bash -
 ### Java
 
 {{% readfile "includes/java.md" %}}
+
+Both requirements can be satisfied by Homebrew:
+
+```sh
+brew install openjdk@11 maven
+```
+
+Don't forget to add JDK binaries to `PATH`, ensuring this version takes precedence.
+For example,
+
+```sh
+# On apple silicon mac.
+echo 'export PATH="/opt/local/homebrew/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
+# On intel mac.
+echo 'export PATH="/usr/local/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
+```
 
 ## Build the code
 

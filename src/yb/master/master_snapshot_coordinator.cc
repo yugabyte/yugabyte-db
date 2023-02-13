@@ -20,6 +20,7 @@
 #include <boost/asio/io_context.hpp>
 
 #include "yb/common/common_types_util.h"
+#include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -1241,6 +1242,11 @@ class MasterSnapshotCoordinator::Impl {
             LOG(WARNING) << "Table " << table_id << " does not exist";
             continue;
           }
+          // Ignore if deleted or hidden.
+          if (!(*table_info_result)->IsOperationalForClient()) {
+            LOG(WARNING) << "Table " << table_id << " has been deleted";
+            continue;
+          }
           task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
         }
       }
@@ -1728,7 +1734,7 @@ class MasterSnapshotCoordinator::Impl {
 
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
-      context_.EnableTabletSplitting("PITR");
+      context_.ReenableTabletSplitting(kPitrFeatureName);
     }
   }
 

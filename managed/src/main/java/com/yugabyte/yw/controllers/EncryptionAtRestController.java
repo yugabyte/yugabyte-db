@@ -115,9 +115,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         if (formData.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
           try {
-            Function<ObjectNode, String> token =
-                new SmartKeyEARService()::retrieveSessionAuthorization;
-            token.apply(formData);
+            ((SmartKeyEARService) keyManager.getServiceInstance(KeyProvider.SMARTKEY.name()))
+                .retrieveSessionAuthorization(formData);
           } catch (Exception e) {
             throw new PlatformServiceException(BAD_REQUEST, "Invalid API Key.");
           }

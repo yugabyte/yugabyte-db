@@ -148,6 +148,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-sts" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
+  "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -434,9 +435,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b13"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.38-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b19"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b15"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.39-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b20"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -557,10 +558,18 @@ lazy val swagger = project
 
     swaggerGen := Def.taskDyn {
       // Consider generating this only in managedResources
-      val file = (resourceDirectory in Compile in root).value / "swagger.json"
+      val swaggerJson = (resourceDirectory in Compile in root).value / "swagger.json"
+      val swaggerStrictJson = (resourceDirectory in Compile in root).value / "swagger-strict.json"
       Def.sequential(
         (Test / runMain )
-          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerJson"),
+        // swagger-strict.json excludes deprecated apis
+        // For ex use '--exclude_deprecated 2.15.0.0' to drop APIs deprecated before a version
+        // or use '--exclude_deprecated 24m' to drop APIs deprecated before 2 years
+        // or use '--exclude_deprecated 2020-12-21' (YYYY-MM-DD format) to drop since date
+        // or use '--exclude_deprecated all' to drop all deprecated APIs
+        (Test / runMain )
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerStrictJson --exclude_deprecated 24m"),
       )
     }.value
   )

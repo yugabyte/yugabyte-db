@@ -109,6 +109,17 @@ using LockablePgClientSession = Lockable<PgClientSession>;
 using PgClientSessionLocker = Locker<PgClientSession>;
 using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
 
+void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB* partition_list) {
+  const auto table_partition_list = table->GetVersionedPartitions();
+  const auto& partition_keys = partition_list->mutable_keys();
+  partition_keys->Clear();
+  partition_keys->Reserve(narrow_cast<int>(table_partition_list->keys.size()));
+  for (const auto& key : table_partition_list->keys) {
+    *partition_keys->Add() = key;
+  }
+  partition_list->set_version(table_partition_list->version);
+}
+
 } // namespace
 
 template <class T>
@@ -215,19 +226,28 @@ class PgClientServiceImpl::Impl {
     if (req.reopen()) {
       table_cache_.Invalidate(req.table_id());
     }
-    RETURN_NOT_OK(table_cache_.GetInfo(
-        req.table_id(), resp->mutable_info(), resp->mutable_partitions()));
+
+    client::YBTablePtr table;
+    RETURN_NOT_OK(table_cache_.GetInfo(req.table_id(), &table, resp->mutable_info()));
+    tserver::GetTablePartitionList(table, resp->mutable_partitions());
+    return Status::OK();
+  }
+
+  Status GetTablePartitionList(
+      const PgGetTablePartitionListRequestPB& req,
+      PgGetTablePartitionListResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto table = VERIFY_RESULT(table_cache_.Get(req.table_id()));
+    tserver::GetTablePartitionList(table, resp->mutable_partitions());
     return Status::OK();
   }
 
   Status GetDatabaseInfo(
       const PgGetDatabaseInfoRequestPB& req, PgGetDatabaseInfoResponsePB* resp,
       rpc::RpcContext* context) {
-    RETURN_NOT_OK(client().GetNamespaceInfo(
+    return client().GetNamespaceInfo(
         GetPgsqlNamespaceId(req.oid()), "" /* namespace_name */, YQL_DATABASE_PGSQL,
-        resp->mutable_info()));
-
-    return Status::OK();
+        resp->mutable_info());
   }
 
   Status IsInitDbDone(
@@ -303,6 +323,16 @@ class PgClientServiceImpl::Impl {
       server.ToPB(resp->mutable_servers()->Add());
     }
     return Status::OK();
+  }
+
+  Status GetIndexBackfillProgress(
+      const PgGetIndexBackfillProgressRequestPB& req, PgGetIndexBackfillProgressResponsePB* resp,
+      rpc::RpcContext* context) {
+    std::vector<TableId> index_ids;
+    for (const auto& index_id : req.index_ids()) {
+      index_ids.emplace_back(PgObjectId::GetYbTableIdFromPB(index_id));
+    }
+    return client().GetIndexBackfillProgress(index_ids, resp->mutable_rows_processed_entries());
   }
 
   Status ValidatePlacement(

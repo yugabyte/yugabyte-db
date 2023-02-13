@@ -105,10 +105,10 @@ public class AlertChannelEmailTest extends FakeDBApplication {
       assertThrows(
           PlatformNotificationException.class,
           () -> {
-            are.sendNotification(defaultCustomer, alert, channel);
+            are.sendNotification(defaultCustomer, alert, channel, null);
           });
     } else {
-      are.sendNotification(defaultCustomer, alert, channel);
+      are.sendNotification(defaultCustomer, alert, channel, null);
     }
     verify(emailHelper, exceptionExpected ? never() : times(1))
         .sendEmail(
@@ -130,7 +130,7 @@ public class AlertChannelEmailTest extends FakeDBApplication {
     assertThrows(
         PlatformNotificationException.class,
         () -> {
-          are.sendNotification(defaultCustomer, alert, channel);
+          are.sendNotification(defaultCustomer, alert, channel, null);
         });
   }
 }

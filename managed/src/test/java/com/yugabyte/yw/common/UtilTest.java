@@ -22,9 +22,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.Date;
@@ -42,6 +46,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.apache.commons.lang3.RandomStringUtils;
+import play.mvc.Http.Context;
 
 @RunWith(JUnitParamsRunner.class)
 public class UtilTest extends FakeDBApplication {
@@ -440,5 +446,44 @@ public class UtilTest extends FakeDBApplication {
   })
   public void testBase36hash(String output, String input) {
     assertEquals(output, Util.base36hash(input));
+  }
+
+  @Test
+  public void testGetFileSize() {
+    int maxChars = (int) 1e6; // ~ 2 MB
+    int minChars = 1;
+
+    String data = RandomStringUtils.randomAlphabetic(minChars, maxChars);
+    Path tmpFilePath = Paths.get(TestHelper.createTempFile(data));
+
+    long actualFileSize = data.getBytes().length;
+    long fileSize = FileUtils.getFileSize(tmpFilePath.toString());
+
+    org.apache.commons.io.FileUtils.deleteQuietly(new File(tmpFilePath.toString()));
+
+    assertTrue(fileSize == actualFileSize);
+    assertTrue(Files.notExists(tmpFilePath));
+  }
+
+  @Test
+  public void testMaybeGetEmailFromContext() {
+    Customer defaultCustomer = ModelFactory.testCustomer();
+    Users defaultUser = ModelFactory.testUser(defaultCustomer);
+    // Case 1: Happy path
+    TestUtils.setFakeHttpContext(defaultUser, "sg@yftt.com");
+    String userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    assertEquals(userEmail, "sg@yftt.com");
+    // Case 2: getUser is null
+    TestUtils.setFakeHttpContext(null, "ok@g.com");
+    userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    assertEquals(userEmail, "Unknown");
+    // Case 3: getEmail is null
+    TestUtils.setFakeHttpContext(defaultUser, null);
+    userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    assertEquals(userEmail, "Unknown");
+    // Case 4: empty
+    TestUtils.setFakeHttpContext(defaultUser, "");
+    userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    assertEquals(userEmail, "");
   }
 }

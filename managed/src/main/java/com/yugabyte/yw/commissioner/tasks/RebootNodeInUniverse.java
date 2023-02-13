@@ -107,12 +107,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
 
       if (currentNode.isMaster) {
         // Start the master.
-        createStartMasterTasks(Collections.singleton(currentNode))
-            .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-
-        // Wait for the master to be responsive.
-        createWaitForServersTasks(Collections.singleton(currentNode), ServerType.MASTER)
-            .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+        createStartMasterProcessTasks(Collections.singleton(currentNode));
 
         createWaitForServerReady(
                 currentNode, ServerType.MASTER, getSleepTimeForProcess(ServerType.MASTER))

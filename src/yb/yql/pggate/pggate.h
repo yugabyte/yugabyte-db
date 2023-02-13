@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -23,6 +22,9 @@
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
+
+#include "yb/docdb/key_bytes.h"
+#include "yb/docdb/doc_key.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -35,6 +37,7 @@
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_mem.h"
@@ -185,6 +188,18 @@ class PgApiImpl {
                              int64_t last_val,
                              bool is_called,
                              bool* skipped);
+
+  Status FetchSequenceTuple(int64_t db_oid,
+                            int64_t seq_oid,
+                            uint64_t ysql_catalog_version,
+                            bool is_db_catalog_version_mode,
+                            uint32_t fetch_count,
+                            int64_t inc_by,
+                            int64_t min_value,
+                            int64_t max_value,
+                            bool cycle,
+                            int64_t *first_value,
+                            int64_t *last_value);
 
   Status ReadSequenceTuple(int64_t db_oid,
                            int64_t seq_oid,
@@ -439,9 +454,7 @@ class PgApiImpl {
   Status DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
                                bool is_null, const YBCPgTypeEntity *type_entity);
 
-  using YBTupleIdProcessor = std::function<Status(const Slice&)>;
-  Status ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
-                          const YBTupleIdProcessor& processor);
+  Result<docdb::KeyBytes> BuildTupleId(const YBCPgYBTupleIdDescriptor& descr);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
@@ -603,7 +616,10 @@ class PgApiImpl {
 
   Result<client::TabletServersInfo> ListTabletServers();
 
-  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
+  Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
+                                  uint64_t** backfill_statuses);
+
+  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version, bool should_use_cache);
   void StopSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
@@ -622,6 +638,18 @@ class PgApiImpl {
 
  private:
   class Interrupter;
+
+  class TupleIdBuilder {
+   public:
+    Result<docdb::KeyBytes> Build(PgSession* session, const YBCPgYBTupleIdDescriptor& descr);
+
+   private:
+    void Prepare();
+
+    ThreadSafeArena arena_;
+    docdb::DocKey doc_key_;
+    size_t counter_ = 0;
+  };
 
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
@@ -656,6 +684,7 @@ class PgApiImpl {
   std::optional<std::pair<PgOid, int32_t>> catalog_version_db_index_;
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.
   std::unique_ptr<tserver::PgGetTserverCatalogVersionInfoResponsePB> catalog_version_info_;
+  TupleIdBuilder tuple_id_builder_;
 };
 
 }  // namespace pggate

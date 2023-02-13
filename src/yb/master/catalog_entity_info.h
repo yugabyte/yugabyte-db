@@ -360,6 +360,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return is_hiding() || is_hidden();
   }
 
+  bool started_hiding_or_deleting() const {
+    return started_hiding() || started_deleting();
+  }
+
   // Return the table's name.
   const TableName& name() const {
     return pb.name();
@@ -414,6 +418,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
 
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
 
+  const std::string& state_name() const {
+    return SysTablesEntryPB_State_Name(pb.state());
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };
@@ -450,6 +458,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool is_running() const;
   bool is_deleted() const;
+  bool IsOperationalForClient() const {
+    auto l = LockForRead();
+    return !l->started_hiding_or_deleting();
+  }
 
   std::string ToString() const override;
   std::string ToStringWithState() const;
@@ -642,6 +654,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id);
 
   void SetMatview();
+
+  google::protobuf::RepeatedField<int> GetHostedStatefulServices() const;
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;

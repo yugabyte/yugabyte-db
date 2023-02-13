@@ -529,7 +529,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return clock_;
   }
 
-  docdb::DocReadContextPtr GetDocReadContext(const std::string& table_id = "") const override;
+  docdb::DocReadContextPtr GetDocReadContext() const override;
+  Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const override;
 
   Schema GetKeySchema(const std::string& table_id = "") const;
 
@@ -873,7 +874,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
+  std::shared_ptr<docdb::SchemaPackingStorage> PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info);
 

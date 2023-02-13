@@ -328,25 +328,6 @@ int64_t TotalByteSizeForMessage(const LWReplicateMsg& msg) {
   return msg_size;
 }
 
-Status UpdateResultHeaderSchemaFromSegment(
-    log::LogReader* log_reader, const int64_t segment_seq_num, ReadOpsResult* result) {
-  const auto segment_result = log_reader->GetSegmentBySequenceNumber(segment_seq_num);
-  if (!segment_result.ok()) {
-    if (segment_result.status().IsNotFound()) {
-      // Just ignore that.
-      return Status::OK();
-    }
-    // Return error.
-    return segment_result.status();
-  }
-  const auto& header = (*segment_result)->header();
-  if (header.has_schema()) {
-    result->header_schema.CopyFrom(header.schema());
-    result->header_schema_version = header.schema_version();
-  }
-  return Status::OK();
-}
-
 } // anonymous namespace
 
 Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index, size_t max_size_bytes) {
@@ -420,13 +401,8 @@ Result<ReadOpsResult> LogCache::ReadOps(
       RETURN_NOT_OK_PREPEND(
           log_->GetLogReader()->ReadReplicatesInRange(
               next_index, up_to, remaining_space, &raw_replicate_ptrs, &starting_op_segment_seq_num,
-              &result.header_schema, &(result.header_schema_version), deadline),
+              deadline),
           Substitute("Failed to read ops $0..$1", next_index, up_to));
-
-      if ((starting_op_segment_seq_num != -1) && !result.header_schema.IsInitialized()) {
-        RETURN_NOT_OK(UpdateResultHeaderSchemaFromSegment(
-            log_->GetLogReader(), starting_op_segment_seq_num, &result));
-      }
 
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
       LOG_WITH_PREFIX(INFO)
@@ -442,10 +418,6 @@ Result<ReadOpsResult> LogCache::ReadOps(
           break;
         }
         result.messages.push_back(msg);
-        if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
-          msg->change_metadata_request().schema().ToGoogleProtobuf(&result.header_schema);
-          result.header_schema_version = msg->change_metadata_request().schema_version();
-        }
         result.read_from_disk_size += current_message_size;
         next_index++;
       }
@@ -453,8 +425,6 @@ Result<ReadOpsResult> LogCache::ReadOps(
       const auto seg_num_result = log_->GetLogReader()->LookupOpWalSegmentNumber(next_index);
       if (seg_num_result.ok()) {
         starting_op_segment_seq_num = *seg_num_result;
-        RETURN_NOT_OK(UpdateResultHeaderSchemaFromSegment(
-            log_->GetLogReader(), starting_op_segment_seq_num, &result));
       } else if (!seg_num_result.status().IsNotFound()) {
         // Unexpected error - to be handled by the caller.
         return seg_num_result.status();
@@ -478,10 +448,6 @@ Result<ReadOpsResult> LogCache::ReadOps(
         }
 
         result.messages.push_back(msg);
-        if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
-          msg->change_metadata_request().schema().ToGoogleProtobuf(&result.header_schema);
-          result.header_schema_version = msg->change_metadata_request().schema_version();
-        }
         next_index++;
       }
     }

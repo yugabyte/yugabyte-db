@@ -62,6 +62,7 @@ Status TabletHarness::Create(bool first_time) {
     .partition = partition.second,
     .tablet_data_state = TABLET_DATA_READY,
     .snapshot_schedules = {},
+    .hosted_services = {},
   }));
   if (options_.enable_metrics) {
     metrics_registry_.reset(new MetricRegistry());
