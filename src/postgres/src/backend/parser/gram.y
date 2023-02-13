@@ -11097,7 +11097,7 @@ createdb_opt_name:
 				{
 					ereport(WARNING,
     						(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
-							 errmsg("'colocated' syntax will be deprecated in a future release"),
+							 errmsg("'colocated' syntax is deprecated and will be removed in a future release"),
 							 errhint("Use 'colocation' instead of 'colocated'."),
 							 parser_errposition(@1)));
 					$$ = pstrdup($1);
@@ -17504,6 +17504,6 @@ ybc_deprecated_feature_warning(int pos, core_yyscan_t yyscanner, const char *fea
 {
 	ereport(WARNING,
 		(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
-		 errmsg("'%s' feature will be deprecated in a future release", feature),
+		 errmsg("'%s' feature is deprecated and will be removed in a future release", feature),
 		 parser_errposition(pos)));
 }

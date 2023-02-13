@@ -78,7 +78,7 @@ Status GetChangesForCDCSDK(
     client::YBClient* client,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
-    std::string* commit_timestamp,
+    uint64_t* commit_timestamp,
     std::shared_ptr<Schema>* cached_schema,
     uint32_t* cached_schema_version,
     OpId* last_streamed_op_id,

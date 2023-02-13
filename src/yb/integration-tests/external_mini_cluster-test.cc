@@ -150,4 +150,22 @@ TEST_F(EMCTest, TestUniquePorts) {
   }
 }
 
+TEST_F(EMCTest, YB_DISABLE_TEST_IN_TSAN(TestYSQLShutdown)) {
+  ExternalMiniClusterOptions opts;
+  opts.num_masters = master_peer_ports_.size();
+  opts.num_tablet_servers = 3;
+  opts.master_rpc_ports = master_peer_ports_;
+  opts.enable_ysql = true;
+
+  ExternalMiniCluster cluster(opts);
+  ASSERT_OK(cluster.Start());
+
+  cluster.Shutdown();
+  for (const auto& server : cluster.daemons()) {
+    if (server) {
+      ASSERT_FALSE(server->WasUnsafeShutdown());
+    }
+  }
+}
+
 } // namespace yb

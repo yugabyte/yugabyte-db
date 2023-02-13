@@ -725,7 +725,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     RaftConfigPB config,
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
-    const std::vector<StatefulServiceKind>& hosted_services) {
+    const std::unordered_set<StatefulServiceKind>& hosted_services) {
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
