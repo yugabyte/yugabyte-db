@@ -74,6 +74,7 @@ public class PerfAdvisorController extends AuthenticatedController {
   @Inject private StateChangeAuditInfoService stateChangeAuditInfoService;
   @Inject private SettableRuntimeConfigFactory configFactory;
   @Inject private RuntimeConfService runtimeConfService;
+  @Inject private TokenAuthenticator tokenAuthenticator;
 
   @Inject private PerfAdvisorScheduler perfAdvisorScheduler;
 
@@ -253,8 +254,10 @@ public class PerfAdvisorController extends AuthenticatedController {
     PerfAdvisorSettingsWithDefaults result =
         new PerfAdvisorSettingsWithDefaults().setDefaultSettings(defaultSettings);
 
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
     String configString =
-        runtimeConfService.getKeyIfPresent(customerUUID, universeUUID, PERF_ADVISOR_SETTINGS_KEY);
+        runtimeConfService.getKeyIfPresent(
+            customerUUID, universeUUID, PERF_ADVISOR_SETTINGS_KEY, isSuperAdmin);
     if (StringUtils.isEmpty(configString)) {
       return PlatformResults.withData(result);
     }
@@ -291,8 +294,9 @@ public class PerfAdvisorController extends AuthenticatedController {
             .root()
             .render();
 
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
     runtimeConfService.setKey(
-        customerUUID, universeUUID, PERF_ADVISOR_SETTINGS_KEY, settingsString);
+        customerUUID, universeUUID, PERF_ADVISOR_SETTINGS_KEY, settingsString, isSuperAdmin);
 
     auditService()
         .createAuditEntryWithReqBody(
