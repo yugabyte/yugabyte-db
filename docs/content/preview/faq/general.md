@@ -113,7 +113,7 @@ YugabyteDB feature highlights are listed below.
 
 YugabyteDB has had the following major (stable) releases:
 
-- [v2.16]() in December 2022
+- [v2.16](https://www.yugabyte.com/blog/yugabytedb-216/) in December 2022
 - [v2.14](https://blog.yugabyte.com/announcing-yugabytedb-2-14-higher-performance-and-security/) in July 2022.
 - [v2.12](https://blog.yugabyte.com/announcing-yugabytedb-2-12/) in February 2022. (There was no v2.10 release.)
 - [v2.8](https://blog.yugabyte.com/announcing-yugabytedb-2-8/) in November 2021.
@@ -121,11 +121,11 @@ YugabyteDB has had the following major (stable) releases:
 - [v2.4](https://blog.yugabyte.com/announcing-yugabytedb-2-4/) in January 2021.
 - [v2.2](https://blog.yugabyte.com/announcing-yugabytedb-2-2-distributed-sql-made-easy/) in July 2020.
 - [v2.1](https://blog.yugabyte.com/yugabytedb-2-1-is-ga-scaling-new-heights-with-distributed-sql/) in February 2020.
-- [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/ ) in September 2019.
+- [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/) in September 2019.
 - [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019.
 - [v1.2](https://blog.yugabyte.com/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019.
 - [v1.1](https://blog.yugabyte.com/announcing-yugabyte-db-1-1-and-company-update/) in September 2018.
-- [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018.
+- [v1.0](https://www.yugabyte.com/blog/announcing-yugabyte-db-1-0) in May 2018.
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017.
 
 Releases, including upcoming releases, are outlined on the [Releases Overview](/preview/releases/) page. The roadmap for this release can be found on [GitHub](https://github.com/yugabyte/yugabyte-db#whats-being-worked-on).
