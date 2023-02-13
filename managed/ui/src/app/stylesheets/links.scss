@@ -1,16 +1,16 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 a {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   text-decoration: none;
 }
 
 a:focus,
 a:hover,
 a:active {
-  color: $YB_ORANGE_HOVER;
+  color: colors.$YB_ORANGE_HOVER;
   text-decoration: none;
 }
 a,

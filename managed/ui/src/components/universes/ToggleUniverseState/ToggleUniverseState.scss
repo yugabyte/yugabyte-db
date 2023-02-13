@@ -1,5 +1,5 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .warning {
-  color: $YB_WARNING_COLOR;
+  color: colors.$YB_WARNING_COLOR;
 }
