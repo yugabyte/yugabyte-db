@@ -104,7 +104,7 @@ The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means Postgr
 
 - YugabyteDB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, YugabyteDB ensures that developers can get started quickly using a language they are already comfortable with.
 
-- YugabyteDB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed, strongly-consistent storage architecture that YugabyteDB provides. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugabyteDB.
+- YugabyteDB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed, strongly-consistent storage architecture that YugabyteDB provides. For such existing applications, you should modify your previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as you migrate to YugabyteDB.
 
 ## YSQL compatibility with PostgreSQL
 
@@ -147,16 +147,16 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 
 ### CQL features that are either unnecessary or disallowed in YCQL
 
-1. Lightweight transactions for compare-and-set operations (such as incrementing integers) are unnecessary because YCQL achieves single row linearizability by default.
+1. Lightweight transactions for compare-and-set operations, such as incrementing integers, are unnecessary because YCQL achieves single-row linearizability by default.
 1. Tunable write consistency is disallowed in YCQL because writes are committed at quorum using Raft replication protocol.
 
-This [blog](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/) goes into the details of YCQL vs Apache Cassandra architecture and is recommended for further reading.
+For additional information, see [The Truth Behind Tunable Consistency, Lightweight Transactions, and Secondary Indexes](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/).
 
 ### Do INSERTs do "upserts" by default? How do I insert data only if it is absent?
 
 By default, inserts overwrite data on primary key collisions. So INSERTs do an upsert. This an intended CQL feature. In order to insert data only if the primary key is not already present,  add a clause "IF NOT EXISTS" to the INSERT statement. This will cause the INSERT fail if the row exists.
 
-Here is an example from CQL:
+Following is an example from CQL:
 
 ```sql
 INSERT INTO mycompany.users (id, lastname, firstname)
