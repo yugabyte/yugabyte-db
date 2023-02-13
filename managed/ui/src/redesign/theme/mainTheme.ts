@@ -255,15 +255,14 @@ export const mainTheme = createTheme({
     },
     MuiCheckbox: {
       root: {
-        // color: colors.primary[600],
-        '& .MuiSvgIcon-root': {
-          width: 20,
-          height: 20
+      '& .MuiSvgIcon-root': {
+          width: 16,
+          height: 16,
+          color: colors.primary[600]
         }
       },
       colorPrimary: {
-        // color: colors.primary[600],
-        '&&.Mui-checked': {
+        '&.Mui-checked': {
           color: colors.orange[500]
         }
       }
@@ -470,7 +469,8 @@ export const mainTheme = createTheme({
       },
       icon: {
         color: colors.grey[600],
-        right: 2
+        right: 2,
+        top: 'auto'
       }
     },
     MuiPaper: {
@@ -537,6 +537,7 @@ export const mainTheme = createTheme({
     MuiFormControlLabel: {
       root: {
         marginLeft: 0,
+        marginBottom: 0,
 
         '&$disabled': {
           cursor: 'not-allowed',

@@ -187,7 +187,7 @@ export const useLaunchUniverse = () => {
 
             await api.universeEdit(finalPayload, universe.universeUUID);
           } else {
-            console.log('Nothing to update - no fields changed');
+            console.warn('Nothing to update - no fields changed');
           }
           break;
         }

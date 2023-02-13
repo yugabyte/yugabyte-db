@@ -13,6 +13,7 @@ import {
   PROVIDER_FIELD,
   RESET_AZ_FIELD
 } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface PlacementsFieldProps {
   disabled: boolean;
@@ -26,6 +27,8 @@ const DEFAULT_MIN_NUM_NODE = 1;
 export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const classes = useFormFieldStyles();
+
   //watchers
   const replicationFactor = useWatch({ name: REPLICATION_FACTOR_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
@@ -47,7 +50,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
           {t('universeForm.cloudConfig.azNameLabel')}
         </YBLabel>
       </Box>
-      <Box flexShrink={1} width="150px">
+      <Box flexShrink={1} width={isPrimary ? '110px' : '100px'}>
         <YBLabel dataTestId="PlacementsField-IndividualUnitLabel">
           {provider?.code === CloudType.kubernetes
             ? t('universeForm.cloudConfig.azPodsLabel')
@@ -55,7 +58,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
         </YBLabel>
       </Box>
       {isPrimary && (
-        <Box flexShrink={1} width="100px">
+        <Box flexShrink={1} width="76px">
           <YBLabel dataTestId="PlacementsField-PreferredLabel">
             {t('universeForm.cloudConfig.preferredAZLabel')}
           </YBLabel>
@@ -85,8 +88,8 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
       const prefferedAZField = `${PLACEMENTS_FIELD}.${index}.isAffinitized` as any;
 
       return (
-        <Box flex={1} display="flex" mb={1} flexDirection="row" key={field.id}>
-          <Box flex={2} mr={0.5}>
+        <Box flex={1} display="flex" mb={2} flexDirection="row" key={field.id}>
+          <Box flex={2} mr={1} flexShrink={1} className={classes.defaultTextBox}>
             <YBSelect
               fullWidth
               disabled={isLoading}
@@ -105,7 +108,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
               ))}
             </YBSelect>
           </Box>
-          <Box flexShrink={1} width="150px" mr={0.5}>
+          <Box flexShrink={1} width="96px" mr={1}>
             <Controller
               control={control}
               name={`${PLACEMENTS_FIELD}.${index}.numNodesInAZ` as const}
@@ -129,9 +132,8 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
             />
           </Box>
           {isPrimary && (
-            <Box flexShrink={1} display="flex" alignItems="center" width="100px">
+            <Box flexShrink={1} alignItems="center" mt={1}>
               <YBCheckbox
-                size="medium"
                 name={prefferedAZField}
                 onChange={(e) => {
                   setValue(prefferedAZField, e.target.checked);

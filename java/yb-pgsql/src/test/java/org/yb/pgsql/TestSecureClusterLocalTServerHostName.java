@@ -14,13 +14,13 @@
 package org.yb.pgsql;
 
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.util.Map;
 
 // This class runs all the tests from TestSecureCluster but all tservers in cluster are started
 // with extra argument 'use_node_hostname_for_local_tserver=true'
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestSecureClusterLocalTServerHostName extends TestSecureCluster {
   public TestSecureClusterLocalTServerHostName() throws Exception {
     super();

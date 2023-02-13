@@ -33,7 +33,7 @@ export const ResizeNodeModal: FC<RNModalProps> = ({ open, universeData, onClose 
     try {
       await api.resizeNodes(finalPayload, uuid);
     } catch (e) {
-      console.log(e);
+      console.error(e);
     } finally {
       transitToUniverse(uuid);
     }

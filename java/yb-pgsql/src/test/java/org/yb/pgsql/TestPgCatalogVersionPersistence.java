@@ -30,9 +30,9 @@ import static org.yb.AssertionWrappers.assertFalse;
 
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBCluster;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(YBTestRunnerNonTsanOnly.class)
+@RunWith(YBTestRunner.class)
 public class TestPgCatalogVersionPersistence extends BasePgSQLTest {
 
   protected static final Logger LOG =

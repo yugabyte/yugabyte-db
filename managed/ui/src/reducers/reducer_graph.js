@@ -15,6 +15,7 @@ import { DEFAULT_GRAPH_FILTER } from '../components/metrics/index';
 const INITIAL_STATE = {
   graphFilter: DEFAULT_GRAPH_FILTER,
   metrics: {},
+  masterMetrics: {},
   loading: false,
   error: null,
   universeMetricList: [],
@@ -38,20 +39,40 @@ export default function (state = INITIAL_STATE, action) {
         ...metricData[action.panelType],
         ...action.payload.data
       };
-      return { ...state, metrics: metricData, loading: false };
+      const responseData = {
+        ...state,
+        loading: false
+      };
+      if (!action.isMasterMetrics) {
+        responseData.metrics = metricData;
+      } else {
+        responseData.masterMetrics = metricData;
+      }
+      return responseData;
     }
     case SELECTED_METRIC_TYPE_TAB:
       return { ...state, tabName: action.tabName };
     case QUERY_METRICS_FAILURE: {
       const metricData = state.metrics;
       metricData[action.panelType] = { error: true };
-      return { ...state, metrics: metricData, error: action.payload.response, loading: false };
+      const responseData = {
+        ...state,
+        error: action.payload.response,
+        loading: false
+      };
+      if (!action.isMasterMetrics) {
+        responseData.metrics = metricData;
+      } else {
+        responseData.masterMetrics = metricData;
+      }
+      return responseData;
     }
     case RESET_METRICS:
       // Graph Filter needs to be reset when user jumps to metrics view in different places
       return {
         ...state,
         metrics: {},
+        masterMetrics: {},
         loading: false,
         panelType: null,
         graphFilter: DEFAULT_GRAPH_FILTER

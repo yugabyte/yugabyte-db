@@ -209,7 +209,7 @@ Status LogIndex::IndexChunk::Open() {
                                         MAP_SHARED, fd_, 0));
   if (mapping_ == MAP_FAILED) {
     mapping_ = nullptr;
-    return STATUS(IOError, "Unable to mmap()", Errno(err));
+    return STATUS(IOError, "Unable to mmap()", Errno(errno));
   }
 
   return Status::OK();
