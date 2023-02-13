@@ -1807,4 +1807,52 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("DROP DATABASE yb2");
     }
   }
+
+  @Test
+  public void testIncludedColumns() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE range_tbl_pk_with_include_clause (" +
+                   " k2 TEXT," +
+                   " v DOUBLE PRECISION," +
+                   " k1 INT," +
+                   " PRIMARY KEY (k1 ASC, k2 ASC) INCLUDE (v)" +
+                   ") SPLIT AT VALUES((1, '1'), (100, '100'))");
+      stmt.execute("CREATE UNIQUE INDEX unique_idx_with_include_clause ON " +
+                   "range_tbl_pk_with_include_clause (k1, k2) INCLUDE (v)");
+      stmt.execute("CREATE TABLE hash_tbl_pk_with_include_clause (" +
+                   " k2 TEXT," +
+                   " v DOUBLE PRECISION," +
+                   " k1 INT," +
+                   " PRIMARY KEY ((k1, k2) HASH) INCLUDE (v)" +
+                   ") SPLIT INTO 8 TABLETS");
+      stmt.execute("CREATE UNIQUE INDEX non_unique_idx_with_include_clause ON " +
+                   "hash_tbl_pk_with_include_clause (k1, k2) INCLUDE (v);");
+
+      stmt.execute("INSERT INTO range_tbl_pk_with_include_clause VALUES ('a', 1.1, 100), " +
+                   "('b', 2.2, 200), ('c', 3.3, 300)");
+      stmt.execute("INSERT INTO hash_tbl_pk_with_include_clause VALUES ('c', 3.3, 300), " +
+                   "('b', 2.2, 200), ('a', 1.1, 100)");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM range_tbl_pk_with_include_clause ORDER BY k2",
+                  new Row("a", 1.1, 100), new Row("b", 2.2, 200), new Row("c", 3.3, 300));
+      assertQuery(stmt, "SELECT * FROM hash_tbl_pk_with_include_clause ORDER BY k1",
+                  new Row("a", 1.1, 100), new Row("b", 2.2, 200), new Row("c", 3.3, 300));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
 }
