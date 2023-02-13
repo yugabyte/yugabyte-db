@@ -4,16 +4,14 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -97,6 +95,21 @@ public class SnapshotCleanup {
         .stream()
         .filter(sI -> upperBound > 0 ? (sI.getSnapshotTime() <= upperBound) : true)
         .collect(Collectors.toList());
+  }
+
+  public void start() {
+    Thread snapshotCleanerThread =
+        new Thread(
+            () -> {
+              try {
+                LOG.info("Started Orphan snapshot cleanup task");
+                deleteOrphanSnapshots();
+                LOG.info("Orphan snapshot cleanup task complete");
+              } catch (Exception e) {
+                LOG.warn("Orphan snapshot cleanup task failed", e);
+              }
+            });
+    snapshotCleanerThread.start();
   }
 
   public void deleteOrphanSnapshots() {

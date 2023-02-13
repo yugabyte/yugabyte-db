@@ -6,6 +6,7 @@ import static java.util.stream.Collectors.toSet;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.amazonaws.AmazonServiceException;
+import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -17,6 +18,12 @@ import com.amazonaws.services.ec2.model.DescribeImagesResult;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsRequest;
 import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsResult;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.ec2.model.DescribeSecurityGroupsRequest;
+import com.amazonaws.services.ec2.model.DescribeSecurityGroupsResult;
+import com.amazonaws.services.ec2.model.DescribeSubnetsRequest;
+import com.amazonaws.services.ec2.model.DescribeSubnetsResult;
+import com.amazonaws.services.ec2.model.DescribeVpcsRequest;
+import com.amazonaws.services.ec2.model.DescribeVpcsResult;
 import com.amazonaws.services.ec2.model.DryRunResult;
 import com.amazonaws.services.ec2.model.Filter;
 import com.amazonaws.services.ec2.model.Image;
@@ -24,6 +31,9 @@ import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.InstanceTypeOffering;
 import com.amazonaws.services.ec2.model.LocationType;
 import com.amazonaws.services.ec2.model.Reservation;
+import com.amazonaws.services.ec2.model.SecurityGroup;
+import com.amazonaws.services.ec2.model.Subnet;
+import com.amazonaws.services.ec2.model.Vpc;
 import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancing;
 import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancingClientBuilder;
 import com.amazonaws.services.elasticloadbalancingv2.model.Action;
@@ -58,13 +68,11 @@ import com.amazonaws.services.route53.model.GetHostedZoneRequest;
 import com.amazonaws.services.route53.model.GetHostedZoneResult;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
-import com.amazonaws.services.securitytoken.model.AWSSecurityTokenServiceException;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -73,8 +81,8 @@ import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeID;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -84,6 +92,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -93,13 +102,7 @@ public class AWSCloudImpl implements CloudAPI {
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
 
   public AmazonElasticLoadBalancing getELBClient(Provider provider, String regionCode) {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    return getELBClientInternal(config, regionCode);
-  }
-
-  private AmazonElasticLoadBalancing getELBClientInternal(
-      Map<String, String> config, String regionCode) {
-    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(config);
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
     return AmazonElasticLoadBalancingClientBuilder.standard()
         .withRegion(regionCode)
         .withCredentials(credentialsProvider)
@@ -108,27 +111,21 @@ public class AWSCloudImpl implements CloudAPI {
 
   // TODO use aws sdk 2.x and switch to async
   public AmazonEC2 getEC2Client(Provider provider, String regionCode) {
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    return getEC2ClientInternal(config, regionCode);
-  }
-
-  private AmazonEC2 getEC2ClientInternal(Map<String, String> config, String regionCode) {
-    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(config);
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
     return AmazonEC2ClientBuilder.standard()
         .withRegion(regionCode)
         .withCredentials(credentialsProvider)
         .build();
   }
 
-  // TODO: move to some common utils
-  private static AWSCredentialsProvider getCredsOrFallbackToDefault(Map<String, String> config) {
-    String accessKeyId = config.get("AWS_ACCESS_KEY_ID");
-    String secretAccessKey = config.get("AWS_SECRET_ACCESS_KEY");
-    if (!Strings.isNullOrEmpty(accessKeyId) && !Strings.isNullOrEmpty(secretAccessKey)) {
+  private AWSCredentialsProvider getCredsOrFallbackToDefault(Provider provider) {
+    String accessKeyId = provider.getProviderDetails().getCloudInfo().getAws().awsAccessKeyID;
+    String secretAccessKey =
+        provider.getProviderDetails().getCloudInfo().getAws().awsAccessKeySecret;
+    if (checkKeysExists(provider)) {
       return new AWSStaticCredentialsProvider(
           new BasicAWSCredentials(accessKeyId, secretAccessKey));
     } else {
-
       // If database creds do not exist we will fallback use default chain.
       return new DefaultAWSCredentialsProviderChain();
     }
@@ -670,25 +667,24 @@ public class AWSCloudImpl implements CloudAPI {
     return new NodeID(name, uuid);
   }
 
-  public GetCallerIdentityResult getStsClientOrBadRequest(Map<String, String> configMap) {
+  public GetCallerIdentityResult getStsClientOrBadRequest(Provider provider) {
     try {
-      AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(configMap);
+      AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
       AWSSecurityTokenService stsClient =
           AWSSecurityTokenServiceClientBuilder.standard()
               .withCredentials(credentialsProvider)
               .build();
       return stsClient.getCallerIdentity(new GetCallerIdentityRequest());
-    } catch (AWSSecurityTokenServiceException e) {
+    } catch (SdkClientException e) {
       LOG.error("AWS Provider validation failed: ", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "AWS access and secret keys validation failed: " + e.getMessage());
     }
   }
 
-  public boolean dryRunDescribeInstanceOrBadRequest(
-      Map<String, String> configMap, String regionCode) {
+  public boolean dryRunDescribeInstanceOrBadRequest(Provider provider, String regionCode) {
     try {
-      AmazonEC2 ec2Client = getEC2ClientInternal(configMap, regionCode);
+      AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
       DryRunResult<DescribeInstancesRequest> dryRunResult =
           ec2Client.dryRun(new DescribeInstancesRequest());
       if (!dryRunResult.isSuccessful()) {
@@ -712,10 +708,9 @@ public class AWSCloudImpl implements CloudAPI {
     }
   }
 
-  public GetHostedZoneResult getHostedZoneOrBadRequest(
-      Map<String, String> configMap, String hostedZoneId) {
+  public GetHostedZoneResult getHostedZoneOrBadRequest(Provider provider, String hostedZoneId) {
     try {
-      AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(configMap);
+      AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
       AmazonRoute53 client =
           AmazonRoute53ClientBuilder.standard().withCredentials(credentialsProvider).build();
       GetHostedZoneRequest request = new GetHostedZoneRequest().withId(hostedZoneId);
@@ -738,5 +733,54 @@ public class AWSCloudImpl implements CloudAPI {
       throw new PlatformServiceException(
           BAD_REQUEST, "AMI details extraction failed: " + e.getMessage());
     }
+  }
+
+  public SecurityGroup describeSecurityGroupsOrBadRequest(Provider provider, Region region) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeSecurityGroupsRequest request =
+          new DescribeSecurityGroupsRequest().withGroupIds(region.getSecurityGroupId());
+      DescribeSecurityGroupsResult result = ec2Client.describeSecurityGroups(request);
+      return result.getSecurityGroups().get(0);
+    } catch (AmazonServiceException e) {
+      LOG.error("Security group details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Security group extraction failed: " + e.getMessage());
+    }
+  }
+
+  public Vpc describeVpcOrBadRequest(Provider provider, Region region) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeVpcsRequest request = new DescribeVpcsRequest().withVpcIds(region.getVnetName());
+      DescribeVpcsResult result = ec2Client.describeVpcs(request);
+      return result.getVpcs().get(0);
+    } catch (AmazonServiceException e) {
+      LOG.error("Vpc details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Vpc details extraction failed: " + e.getMessage());
+    }
+  }
+
+  public List<Subnet> describeSubnetsOrBadRequest(Provider provider, Region region) {
+    try {
+      AmazonEC2 ec2Client = getEC2Client(provider, region.code);
+      DescribeSubnetsRequest request =
+          new DescribeSubnetsRequest()
+              .withSubnetIds(
+                  region.zones.stream().map(zone -> zone.subnet).collect(Collectors.toList()));
+      DescribeSubnetsResult result = ec2Client.describeSubnets(request);
+      return result.getSubnets();
+    } catch (AmazonServiceException e) {
+      LOG.error("Subnet details extraction failed: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Subnet details extraction failed: " + e.getMessage());
+    }
+  }
+
+  public boolean checkKeysExists(Provider provider) {
+    AWSCloudInfo cloudInfo = provider.getProviderDetails().getCloudInfo().getAws();
+    return !StringUtils.isEmpty(cloudInfo.awsAccessKeyID)
+        && !StringUtils.isEmpty(cloudInfo.awsAccessKeySecret);
   }
 }

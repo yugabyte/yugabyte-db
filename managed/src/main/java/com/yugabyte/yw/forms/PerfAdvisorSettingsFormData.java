@@ -75,4 +75,24 @@ public class PerfAdvisorSettingsFormData {
   @ApiModelProperty(value = "Perf advisor rejected connections check interval")
   @Min(1)
   private Integer rejectedConnIntervalMins;
+
+  @ApiModelProperty(value = "Perf Advisor hot shard write skew threshold")
+  @Min(1)
+  private Double hotShardWriteSkewThresholdPct;
+
+  @ApiModelProperty(value = "Perf Advisor hot shard read skew threshold")
+  @Min(1)
+  private Double hotShardReadSkewThresholdPct;
+
+  @ApiModelProperty(value = "Perf Advisor hot shard check interval")
+  @Min(1)
+  private Integer hotShardIntervalMins;
+
+  @ApiModelProperty(value = "Perf advisor hot shard minimal writes")
+  @Min(1)
+  private Integer hotShardMinimalWrites;
+
+  @ApiModelProperty(value = "Perf advisor hot shard minimal reads")
+  @Min(1)
+  private Integer hotShardMinimalReads;
 }
