@@ -5787,7 +5787,7 @@ Status CatalogManager::DeleteTable(
     return Status::OK();
   }
 
-  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
+  if (table->IgnoreHideRequest()) {
     return Status::OK();
   }
 
@@ -5900,7 +5900,7 @@ Status CatalogManager::DeleteTableInternal(
 
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
-  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
+  if (table->IgnoreHideRequest()) {
     return Status::OK();
   }
 
