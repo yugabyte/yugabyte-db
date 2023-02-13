@@ -90,11 +90,10 @@ After a transaction is committed, the following two fields are set:
 
 The Provisional Records are written to all the replicas of the tablets responsible for the keys being modified in a transaction. When a node with the tablet that has received the provisional records or is about to receive the provisional records fails, a new leader is elected for the tablet within a few seconds(`~2s`) as described in [Leader Failure](../../core-functions/high-availability/#tablet-peer-leader-failure). The transaction simply proceeds further with the newly elected leader. In this case, the time taken for the transaction to complete increases by the time taken for the leader election.
 
-The transaction manager (typically, the node the client is connected to) sends heartbeats to the tablets containing the provisional records of the transaction. When the coordinator fails, the heartbeats stop and the provisional records remain uncommitted in the respective tablets.  Provisional records that do not get heartbeats become stale after certain time. Clients connected to the failed coordinator will receive an error message: 
+The transaction manager (typically, the node the client is connected to) maintains the transaction-id to client mapping and sends heartbeats to the tablets containing the provisional records of the transaction. When the manager fails, the heartbeats stop and the provisional records remain uncommitted in the respective tablets.  Provisional records that do not get heartbeats become stale after certain time. Clients connected to the failed coordinator will receive an error message: 
 
-```sql
+```output.sql
 FATAL:  57P01: terminating connection due to unexpected postmaster exit
-LOCATION:  secure_read, be-secure.c:199
 FATAL:  XX000: Network error: recvmsg error: Connection refused
 ```
-At this juncture, it would be the responsibility of the client to retry the transaction. Other clients with transactions that were waiting on the transactions handled by the failed coordinator, will have to wait for the transaction's provisional records and locks to expire and then proceed normally. In this case, the time taken for the other transactions to complete increases by about `5s`.
+As the client is unaware of the transaction-id and the client to transaction-id mapping cannot be regenerated, it would be the responsibility of the client to retry the transaction. Other clients with transactions that were waiting on the transactions handled by the failed coordinator, will have to wait for the transaction's provisional records and locks to expire and then proceed normally.
