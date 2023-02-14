@@ -61,7 +61,7 @@ sudo yum groupinstall -y 'Development Tools'
 sudo yum -y install epel-release libatomic rsync
 ```
 
-# Python 3
+### Python 3
 
 {{% readfile "includes/python.md" %}}
 
