@@ -56,13 +56,13 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
 1. Navigate to **Universes** and select your universe.
 
-1. Select **Nodes** to view the total read and write operations for each node, as shown in the following illustration:
+1. Select **Nodes** to view the total read and write operations for each node. <!-- , as shown in the following illustration: -->
 
    <!-- ![Read and write operations with 3 nodes](/images/ce/multisync-managed-nodes.png) -->
 
    Note that both the reads and the writes are approximately the same across all the nodes, indicating uniform load.
 
-1. Select **Metrics** to view charts such as YSQL operations per second and latency, as shown in the following illustration:
+1. Select **Metrics** to view charts such as YSQL operations per second and latency. <!-- , as shown in the following illustration: -->
 
    <!-- ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png) -->
 
@@ -97,11 +97,11 @@ Set a particular zone in the region to which you are connected as preferred, as 
 
 1. Click **Save**.
 
-To verify that the load is moving to the preferred zone in the region, select **Nodes**, as per the following illustration:
+To verify that the load is moving to the preferred zone in the region, select **Nodes**. <!-- , as per the following illustration: -->
 
 <!-- ![Read and write operations with preferred region](/images/ce/multisync-managed-nodes-preferred.png) -->
 
-When complete, the load is handled exclusively by the preferred region, as per the following illustration:
+When complete, the load is handled exclusively by the preferred region. <!-- , as per the following illustration: -->
 
 <!-- ![Performance charts with preferred region](/images/ce/multisync-managed-charts-preferred.png) -->
 
