@@ -27,7 +27,7 @@ export const ProvidersField: FC<ProvidersFieldProps> = ({ disabled }) => {
     control
     // formState: { errors }
   } = useFormContext<CloudConfigFormValue>();
-  const { data } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList);
+  const { data } = useQuery(QUERY_KEY.getProvidersList,  api.fetchProviderList_Deprecated);
   const providersList = data || [];
 
   return (

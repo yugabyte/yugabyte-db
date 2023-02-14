@@ -147,7 +147,9 @@ export const NTPConfig: FC<NTPConfigProps> = ({
                   <YBMultiEntryInput
                     isDisabled={disabled || !isAllReqCompleted}
                     isLoading={!isAllReqCompleted}
-                    placeholder={isAllReqCompleted ? "Add NTP Servers" : "Loading NTP servers list..."}
+                    placeholder={
+                      isAllReqCompleted ? 'Add NTP Servers' : 'Loading NTP servers list...'
+                    }
                     defaultOptions={configured_ntp_servers.map((t: any) => {
                       return { value: t, label: t };
                     })}

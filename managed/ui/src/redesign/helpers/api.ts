@@ -1,8 +1,12 @@
 import axios, { Canceler } from 'axios';
+import {
+  YBProviderMutation,
+  YBProvider
+} from '../../components/configRedesign/providerRedesign/types';
+import { HostInfo, Provider as Provider_Deprecated } from './dtos';
 import { ROOT_URL } from '../../config';
 import {
   AvailabilityZone,
-  Provider,
   Region,
   Universe,
   UniverseDetails,
@@ -13,10 +17,14 @@ import {
   UniverseConfigure,
   HAConfig,
   HAReplicationSchedule,
-  HAPlatformInstance
+  HAPlatformInstance,
+  ResourceCreationResponse
 } from './dtos';
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 
-// define unique names to use them as query keys
+/**
+ * @deprecated Use query key factories for more flexable key organization
+ */
 export enum QUERY_KEY {
   fetchUniverse = 'fetchUniverse',
   getProvidersList = 'getProvidersList',
@@ -38,6 +46,30 @@ export enum QUERY_KEY {
   getGflagByName = 'getGlagByName'
 }
 
+// --------------------------------------------------------------------------------------
+// React Query Key Factories
+// --------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------
+// TODO: Upgrade React Query to 3.17+ to get the change for supporting
+//       annotating these as readonly query keys. (PLAT-4896)
+
+export const providerQueryKey = {
+  ALL: ['provider'],
+  detail: (providerUUID: string) => [...providerQueryKey.ALL, providerUUID]
+};
+
+export const hostInfoQueryKey = {
+  ALL: ['hostInfo']
+};
+
+export const universeQueryKey = {
+  ALL: ['universe']
+};
+export const runtimeConfigQueryKey = {
+  ALL: ['runtimeConfig'],
+  customerScope: (customerUUID: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUUID]
+};
+
 class ApiService {
   private cancellers: Record<string, Canceler> = {};
 
@@ -45,6 +77,17 @@ class ApiService {
     const customerId = localStorage.getItem('customerId');
     return customerId || '';
   }
+
+  fetchHostInfo = () => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/host_info`;
+    return axios.get<HostInfo>(requestURL).then((response) => response.data);
+  };
+
+  fetchRuntimeConfigs = (scope?: string, includeInherited = false) => {
+    const configScope = scope || DEFAULT_RUNTIME_GLOBAL_SCOPE;
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/runtime_config/${configScope}?includeInherited=${includeInherited}`;
+    return axios.get(requestURL).then((response) => response.data);
+  };
 
   findUniverseByName = (universeName: string): Promise<string[]> => {
     // auto-cancel previous request, if any
@@ -60,25 +103,61 @@ class ApiService {
       .then((resp) => resp.data);
   };
 
+  fetchUniverseList = (): Promise<Universe[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes`;
+    return axios.get<Universe[]>(requestUrl).then((response) => response.data);
+  };
+
   fetchUniverse = (universeUUID: string | undefined): Promise<Universe> => {
     if (universeUUID) {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUUID}`;
       return axios.get<Universe>(requestUrl).then((resp) => resp.data);
     }
-    return Promise.reject('Querying universe failed: No universe UUID provided.');
+    return Promise.reject('Failed to fetch universe: No universe UUID provided.');
   };
 
-  getProvidersList = (): Promise<Provider[]> => {
+  createProvider = (providerConfigMutation: YBProviderMutation) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
+    return axios
+      .post<ResourceCreationResponse>(requestURL, providerConfigMutation)
+      .then((resp) => resp.data);
+  };
+
+  fetchProviderList = (): Promise<YBProvider[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
-    return axios.get<Provider[]>(requestUrl).then((resp) => resp.data);
+    return axios.get<YBProvider[]>(requestUrl).then((resp) => resp.data);
   };
 
-  getRegionsList = (providerId?: string): Promise<Region[]> => {
+  deleteProvider = (providerUUID: string | undefined) => {
+    if (providerUUID) {
+      const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
+      return axios.delete(requestURL);
+    }
+    return Promise.reject('Failed to delete provider: No provider UUID provided.');
+  };
+
+  /**
+   * @Deprecated This function uses an old provider type.
+   */
+  fetchProviderList_Deprecated = (): Promise<Provider_Deprecated[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
+    return axios.get<Provider_Deprecated[]>(requestUrl).then((resp) => resp.data);
+  };
+
+  fetchProvider = (providerUUID: string | undefined): Promise<YBProvider> => {
+    if (providerUUID) {
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
+      return axios.get<YBProvider>(requestUrl).then((resp) => resp.data);
+    }
+    return Promise.reject('Failed to fetch provider: No provider UUID provided.');
+  };
+
+  fetchProviderRegions = (providerId?: string): Promise<Region[]> => {
     if (providerId) {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/regions`;
       return axios.get<Region[]>(requestUrl).then((resp) => resp.data);
     } else {
-      return Promise.reject('Querying regions failed: no provider ID provided');
+      return Promise.reject('Failed to fetch provider regions: No provider UUID provided');
     }
   };
 

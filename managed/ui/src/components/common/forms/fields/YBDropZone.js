@@ -24,7 +24,12 @@ export default class YBDropZone extends Component {
           }`}
         >
           <Dropzone className={this.props.className} name={this.props.name} onDrop={this.onDrop}>
-            <p>{title}</p>
+            {({ getRootProps, getInputProps }) => (
+              <div {...getRootProps()}>
+                <input {...getInputProps()} />
+                {title && <p>{title}</p>}
+              </div>
+            )}
           </Dropzone>
           {touched && error && <span className="help-block standard-error">{error}</span>}
           {input.value && <span className="drop-zone-file">{input.value.name}</span>}
@@ -59,8 +64,17 @@ export class YBDropZoneWithLabel extends Component {
             touched && error ? 'has-error' : ''
           } ${input.value ? 'has-value' : ''}`}
         >
-          <Dropzone className={this.props.className} name={this.props.input.name} onDrop={this.onDrop}>
-            <p>{title}</p>
+          <Dropzone
+            className={this.props.className}
+            name={this.props.input.name}
+            onDrop={this.onDrop}
+          >
+            {({ getRootProps, getInputProps }) => (
+              <div {...getRootProps()}>
+                <input {...getInputProps()} />
+                {title && <p>{title}</p>}
+              </div>
+            )}
           </Dropzone>
           {input.value && <span className="drop-zone-file">{input.value.name}</span>}
         </div>
