@@ -67,7 +67,8 @@ source /opt/rh/rh-python38/enable
 
 ### CMake 3
 
-[CMake][cmake] 3.17.3 or higher is required.
+{{% readfile "includes/cmake.md" %}}
+
 The package manager has that, but we still need to link the name `cmake` to `cmake3`.
 Do similarly for `ctest`.
 
@@ -76,8 +77,6 @@ sudo yum install -y cmake3
 sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
 sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ```
-
-[cmake]: https://cmake.org
 
 ### /opt/yb-build
 
