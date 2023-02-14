@@ -81,7 +81,7 @@ sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 
 ### /opt/yb-build
 
-By default, when running build, thirdparty libraries are not built, and pre-built libraries are downloaded.
+By default, when running build, third-party libraries are not built, and pre-built libraries are downloaded.
 We also use [Linuxbrew][linuxbrew] to provide some of the third-party dependencies on CentOS.
 The build scripts automatically install these in directories under `/opt/yb-build`.
 In order for the build script to write under those directories, it needs proper permissions.
@@ -99,7 +99,7 @@ However, those cases may require additional, undocumented steps.
 
 ### Ninja (optional)
 
-It is recommended to use [Ninja][ninja] for faster build.
+Use [Ninja][ninja] for faster builds.
 
 ```sh
 sudo yum install -y ninja-build
@@ -121,7 +121,7 @@ export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 
 ### GCC (optional)
 
-To be able to compile with GCC, install the following packages, substituting the version number to the GCC version you plan on using.
+To compile with GCC, install the following packages, and adjust the version numbers to match the GCC version you plan to use.
 
 ```sh
 sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
@@ -145,14 +145,14 @@ source /opt/rh/rh-maven35/enable
 
 ### Build release package (optional)
 
-Additional packages are needed in order to build yugabyted-ui:
+Install the following additional packages to build yugabyted-ui:
 
 ```sh
 sudo yum install -y npm golang
 ```
 
-ulimits may need to be modified.
-For example, build may fail with "too many open files".
+You may need to modify ulimits.
+For example, the build may fail with "too many open files".
 In that case, increase the nofile limit in `/etc/security/limits.conf`:
 
 ```sh
