@@ -975,7 +975,7 @@ docker stop replicated-statsd
 ```
 
 ```sh
-docker rm -f replicated replicated-ui replicated-operator \ replicated-premkit replicated-statsd retraced-api retraced-processor \ retraced-cron retraced-nsqd retraced-postgres
+docker rm -f replicated replicated-ui replicated-operator replicated-premkit replicated-statsd retraced-api retraced-processor retraced-cron retraced-nsqd retraced-postgres
 ```
 
 ```sh
@@ -991,7 +991,7 @@ yum remove -y replicated replicated-ui replicated-operator
 ```
 
 ```sh
-rm -rf /var/lib/replicated* /etc/replicated* /etc/init/replicated* \ /etc/default/replicated* /etc/systemd/system/replicated* \ /etc/sysconfig/replicated* \ /etc/systemd/system/multi-user.target.wants/replicated* \ /run/replicated*
+rm -rf /var/lib/replicated* /etc/replicated* /etc/init/replicated*  /etc/default/replicated* /etc/systemd/system/replicated* /etc/sysconfig/replicated* /etc/systemd/system/multi-user.target.wants/replicated* /run/replicated*
 ```
 
 ```sh
@@ -999,4 +999,12 @@ rpm -qa | grep -i docker
 yum remove docker-ce
 rpm -qa | grep -i docker
 yum remove docker-ce-cli
+```
+
+Finally, execute the following commands to delete the `/opt/yugabyte` directory on the node to prevent failure if later you decide to install YugabyteDB Anywhere on a node that was previously removed using the preceding instructions:
+
+```sh
+rm -rf /var/lib/containerd
+rm -rf /home/replicated
+rm -rf /opt/containerd 
 ```
