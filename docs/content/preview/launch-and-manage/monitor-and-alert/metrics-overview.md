@@ -114,7 +114,7 @@ Yugabyte exports other server metrics which do not conform to the preceding synt
 
 ## Table metrics
 
-YugabyteDB exports metrics for tables on master and tablet servers. The comprehensive list of table metrics is listed below.
+YugabyteDB exports table-level metrics on master and tablet servers. The comprehensive list of table metrics is in the [All table metrics](#all-table-metrics) table below.
 
 Table metrics are identified by `"type": "server"` in the JSON API endpoint. In the Prometheus Exposition Format endpoint, they're identified by `export_types` of `tserver_export` and `master_export`.
 
@@ -127,11 +127,11 @@ Table metrics have the following attributes:
 To identify the component to which a metric belongs:
 
 * Metrics starting with `log_` are for WAL (write-ahead logging).
-* Metrics starting with `rocskdb_` are for YugabyteDB's DocDB storage layer, which uses a highly modified RocksDB.
+* Metrics starting with `rocksdb_` are for YugabyteDB's DocDB storage layer, which uses a highly modified RocksDB.
 
 ### All table metrics
 
-The following table shows all `yb_tserver` and `yb_master` table metrics. The most commonly used metrics are listed in **bold text**.
+The following table shows all `yb_tserver` and `yb_master` table metrics. The most commonly used table metrics are listed in **bold text**.
 
 | Metric | Unit | Type |
 | :----- | :--- | :--- |
@@ -158,5 +158,168 @@ The following table shows all `yb_tserver` and `yb_master` table metrics. The mo
 
 ## Tablet metrics
 
+YugabyteDB exports tablet-level metrics on master and tablet servers. The comprehensive list of tablet metrics is in the [All table metrics](#all-table-metrics) table below.
+
+Tablet metrics are identified by `"type": "server"` in the JSON API endpoint. In the Prometheus Exposition Format endpoint, they're identified by `export_types` of `tserver_export` and `master_export`.
+
+Tablet metrics have the following attributes:
+
+* `table_name` is the name of the table of which this tablet is a part.
+* `namespace_name` is the namespace of which the tablet's table is a part. Namespaces are logical constructs that can contain one or more tables.
+* `table_id` is the YugabyteDB-generated unique ID for the table of which this tablet is a part.
+
+To identify the component to which a metric belongs:
+
+* Metrics starting with `log_` are for WAL (write-ahead logging).
+* Metrics starting with `ql_` are for the table's query layer.
+* Metrics starting with `rocksdb_` are for YugabyteDB's DocDB storage layer, which uses a highly modified RocksDB.
+
+### All tablet metrics
+
+The following table shows all `yb_tserver` and `yb_master` tablet metrics. The most commonly used tablet metrics are listed in **bold text**.
+
+| Metric | Unit | Type |
+| :----- | :--- | :--- |
+| **all_operations_inflight** | operations | gauge |
+| alter_schema_operations_inflight | operations | gauge |
+| change_auto_flags_config_operations_inflight | operations | gauge |
+| consistent_prefix_read_requests | requests | counter |
+| empty_operations_inflight | operations | gauge |
+| **follower_lag_ms** | milliseconds | gauge |
+| **follower_memory_pressure_rejections** | rejections | counter |
+| history_cutoff_operations_inflight | operations | gauge |
+| is_raft_leader | indicator | gauge |
+| **leader_memory_pressure_rejections** | rejections | counter |
+| **log_bytes_logged** | bytes | counter |
+| log_cache_disk_reads | reads | counter |
+| **log_cache_num_ops** | operations | gauge |
+| **log_cache_size** | bytes | gauge |
+| **log_reader_bytes_read** | bytes | counter |
+| log_reader_entries_read | entries | counter |
+| log_wal_size | bytes | gauge |
+| majority_done_ops | operations | gauge |
+| **majority_sst_files_rejections** | rejections | counter |
+| mem_tracker | bytes | gauge |
+| mem_tracker_BlockBasedTable_IntentsDB | bytes | gauge |
+| mem_tracker_BlockBasedTable_RegularDB | bytes | gauge |
+| mem_tracker_IntentsDB | bytes | gauge |
+| mem_tracker_IntentsDB_MemTable | bytes | gauge |
+| mem_tracker_log_cache | bytes | gauge |
+| mem_tracker_operation_tracker | bytes | gauge |
+| mem_tracker_OperationsFromDisk | bytes | gauge |
+| mem_tracker_RegularDB_MemTable | bytes | gauge |
+| not_leader_rejections | rejections | counter |
+| **operation_memory_pressure_rejections** | rejections | counter |
+| pgsql_consistent_prefix_read_rows | rows | counter |
+| raft_term | current consensus term | gauge |
+| restart_read_requests | requests | counter |
+| rocksdb_block_cache_add | blocks | counter |
+| rocksdb_block_cache_add_failures | blocks | counter |
+| rocksdb_block_cache_bytes_read | bytes | counter |
+| rocksdb_block_cache_bytes_write | bytes | counter |
+| rocksdb_block_cache_data_hit | blocks | counter |
+| rocksdb_block_cache_data_miss | blocks | counter |
+| rocksdb_block_cache_filter_hit | blocks | counter |
+| rocksdb_block_cache_filter_miss | blocks | counter |
+| **rocksdb_block_cache_hit** | blocks | counter |
+| rocksdb_block_cache_index_hit | blocks | counter |
+| rocksdb_block_cache_index_miss | blocks | counter |
+| **rocksdb_block_cache_miss** | blocks | counter |
+| rocksdb_block_cache_multi_touch_add | blocks | counter |
+| rocksdb_block_cache_multi_touch_bytes_read | bytes | counter |
+| rocksdb_block_cache_multi_touch_bytes_write | bytes | counter |
+| rocksdb_block_cache_multi_touch_hit | blocks | counter |
+| rocksdb_block_cache_single_touch_add | blocks | counter |
+| rocksdb_block_cache_single_touch_bytes_read | bytes | counter |
+| rocksdb_block_cache_single_touch_bytes_write | bytes | counter |
+| rocksdb_block_cache_single_touch_hit | blocks | counter |
+| rocksdb_block_cachecompressed_add | blocks | counter |
+| rocksdb_block_cachecompressed_add_failures | blocks | counter |
+| rocksdb_block_cachecompressed_hit | blocks | counter |
+| rocksdb_block_cachecompressed_miss | blocks | counter |
+| **rocksdb_bloom_filter_checked** | blocks | counter |
+| rocksdb_bloom_filter_prefix_checked | blocks | counter |
+| rocksdb_bloom_filter_prefix_useful | blocks | counter |
+| **rocksdb_bloom_filter_useful** | blocks | counter |
+| rocksdb_bytes_read | bytes | counter |
+| rocksdb_bytes_written | bytes | counter |
+| **rocksdb_compact_read_bytes** | bytes | counter |
+| **rocksdb_compact_write_bytes** | bytes | counter |
+| rocksdb_compaction_files_filtered | files | counter |
+| rocksdb_compaction_files_not_filtered | files | counter |
+| rocksdb_compaction_key_drop_new | keys | counter |
+| rocksdb_compaction_key_drop_obsolete | keys | counter |
+| rocksdb_compaction_key_drop_user | keys | counter |
+| **rocksdb_current_version_num_sst_files** | files | gauge |
+| **rocksdb_current_version_sst_files_size** | bytes | gauge |
+| rocksdb_current_version_sst_files_uncompressed_size | bytes | gauge |
+| rocksdb_db_iter_bytes_read | bytes | counter |
+| **rocksdb_db_mutex_wait_micros** | microseconds | counter |
+| rocksdb_filter_operation_time_nanos | nanoseconds | counter |
+| **rocksdb_flush_write_bytes** | bytes | counter |
+| rocksdb_getupdatessince_calls | calls | counter |
+| rocksdb_l0_hit | keys | counter |
+| rocksdb_l0_num_files_stall_micros | microseconds | counter |
+| rocksdb_l0_slowdown_micros | microseconds | counter |
+| rocksdb_l1_hit | keys | counter |
+| rocksdb_l2andup_hit | keys | counter |
+| rocksdb_memtable_compaction_micros | microseconds | counter |
+| rocksdb_memtable_hit | keys | counter |
+| rocksdb_memtable_miss | keys | counter |
+| rocksdb_merge_operation_time_nanos | nanoseconds | counter |
+| rocksdb_no_file_closes | files | counter |
+| rocksdb_no_file_errors | files | counter |
+| rocksdb_no_file_opens | files | counter |
+| rocksdb_no_table_cache_iterators | iterators | counter |
+| rocksdb_num_iterators | iterators | counter |
+| rocksdb_number_block_not_compressed | blocks | counter |
+| **rocksdb_number_db_next** | keys | counter |
+| rocksdb_number_db_next_found | keys | counter |
+| **rocksdb_number_db_prev** | keys | counter |
+| rocksdb_number_db_prev_found | keys | counter |
+| **rocksdb_number_db_seek** | keys | counter |
+| rocksdb_number_db_seek_found | keys | counter |
+| rocksdb_number_deletes_filtered | deletes | counter |
+| rocksdb_number_direct_load_table_properties | properties | counter |
+| rocksdb_number_keys_read | keys | counter |
+| rocksdb_number_keys_updated | keys | counter |
+| rocksdb_number_keys_written | keys | counter |
+| rocksdb_number_merge_failures | failures | counter |
+| rocksdb_number_multiget_bytes_read | bytes | counter |
+| rocksdb_number_multiget_get | calls | counter |
+| rocksdb_number_multiget_keys_read | keys | counter |
+| rocksdb_number_reseeks_iteration | seeks | counter |
+| rocksdb_number_superversion_acquires | nr | counter |
+| rocksdb_number_superversion_cleanups | nr | counter |
+| rocksdb_number_superversion_releases | nr | counter |
+| rocksdb_rate_limit_delay_millis | milliseconds | counter |
+| rocksdb_row_cache_hit | rows | counter |
+| rocksdb_row_cache_miss | rows | counter |
+| rocksdb_sequence_number | rows | counter |
+| **rocksdb_stall_micros** | microseconds | counter |
+| rocksdb_total_sst_files_size | bytes | gauge |
+| rocksdb_wal_bytes | bytes | counter |
+| rocksdb_wal_synced | syncs | counter |
+| rocksdb_write_other | writes | counter |
+| rocksdb_write_self | writes | counter |
+| rocksdb_write_wal | writes | counter |
+| rows_inserted | rows | counter |
+| **snapshot_operations_inflight** | operations | gauge |
+| split_operations_inflight | operations | gauge |
+| transaction_not_found | transactions | counter |
+
 ## Cluster metrics
 
+YugabyteDB exports cluster-level metrics. The comprehensive list of cluster metrics is in the [All cluster metrics](#all-cluster-metrics) table below.
+
+Cluster metrics are identified by `"type": "server"` in the JSON API endpoint. In the Prometheus Exposition Format endpoint, they're identified by `export_types` of `master_export`.
+
+### All cluster metrics
+
+The following table shows all `yb_master` cluster metrics. The most commonly used cluster metrics are listed in **bold text**.
+
+| Metric | Unit | Type |
+| :----- | :--- | :--- |
+| **is_load_balancing_enabled** | indicator | gauge |
+| **num_tablet_servers_dead** | entries | gauge |
+| **num_tablet_servers_live** | entries | gauge |
