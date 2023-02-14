@@ -53,8 +53,7 @@ INSERT INTO txndemo SELECT id,10 FROM generate_series(1,5) AS id;
 
 ### Identifying the Key location
 For the purpose of the examples, you would need to identify which node holds a specific row, so that you
-can kill the correct node to see what is happening. For this one needs to get the hash code of the primary key using the `yb_hash_code(id)` function and co-relate with the `yb-admin` output to figure out where that 
-key is located. For the examples we will focus on the row with `k1=1`.
+can kill the correct node to see what is happening. For this one needs to get the hash code of the primary key using the `yb_hash_code(id)` function and co-relate with the `yb-admin` output to figure out where that key is located. For the examples we will focus on the row with `k1=1`.
 
 ```sql
 SELECT id, upper(to_hex(yb_hash_code(id))) AS hash FROM generate_series(1,5) AS id;
@@ -120,8 +119,13 @@ Commit the transaction.
 yugabyte@yugabyte=# COMMIT;
 COMMIT
 Time: 6.243 ms
-```    
-We can see that even though the node `127.0.0.2` failed after receiving the provisional write, the transaction has succeeded.
+yugabyte@yugabyte=# SELECT * from txndemo where k1=1;
+ k1 | k2
+----+----
+  1 | 20
+(1 row)
+```
+We can see that even though the node `127.0.0.2` failed after receiving the provisional write, the transaction has succeeded(value has been updated to `20`).
 
 ## Failure Scenario 2
 In this example, you are going to see how a transaction successfully completes when the node that is about to receive a provisional write fails.
@@ -166,8 +170,13 @@ UPDATE 1
 Time: 1728.246 ms (00:01.728)
 COMMIT
 Time: 2.964 ms
+yugabyte@yugabyte=# SELECT * from txndemo where k1=1;
+ k1 | k2
+----+----
+  1 | 30
+(1 row)
 ```    
-You can see that even though the node `127.0.0.2` failed before receiving the provisional write, the transaction has succeeded. This is because a new leader (node:`127.0.0.3`) was quickly elected.
+You can see that even though the node `127.0.0.2` failed before receiving the provisional write, the transaction has succeeded(value has been updated to `30`). This is because a new leader (node:`127.0.0.3`) was quickly elected.
     
 ## Failure of Transaction Manager(Coordinator)
 The node to which a client connects to, acts as the coordinator for the transaction. You have seen how YugabyteDB is inherently resilient to node failures in the above two scenarios. In this example you will see how a transaction will abort when the coordinator fails. More details on the role of the transaction manager can be found in [Transactional I/O](../../architecture/transactions/transactional-io-path/#client-requests-transaction) section.
