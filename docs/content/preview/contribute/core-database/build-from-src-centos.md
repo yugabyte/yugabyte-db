@@ -92,8 +92,8 @@ sudo mkdir /opt/yb-build
 sudo chown "$(whoami)" /opt/yb-build
 ```
 
-Alternatively, the build options `--no-download-thirdparty` and/or `--no-linuxbrew` can be specified.
-However, those cases may require additional, undocumented steps.
+Alternatively, specify the build options `--no-download-thirdparty` and/or `--no-linuxbrew`.
+Note that those options may require additional, undocumented steps.
 
 [linuxbrew]: https://github.com/linuxbrew/brew
 
