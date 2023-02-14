@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import {
-  RadioOrientation,
   YBRadioGroupField,
   YBLabel,
-  YBTooltip
+  YBTooltip,
+  RadioGroupOrientation
 } from '../../../../../../components';
 import { UniverseFormData, MasterPlacementMode, CloudType } from '../../../utils/dto';
 import { MASTER_PLACEMENT_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
@@ -62,7 +62,7 @@ export const MasterPlacementField = ({ isPrimary }: MasterPlacementFieldProps): 
             name={MASTER_PLACEMENT_FIELD}
             control={control}
             value={masterPlacement}
-            orientation={RadioOrientation.Vertical}
+            orientation={RadioGroupOrientation.VERTICAL}
             onChange={(e) => {
               setValue(MASTER_PLACEMENT_FIELD, e.target.value as MasterPlacementMode);
             }}

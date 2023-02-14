@@ -17,7 +17,7 @@ import { ListKeyManagementConfigurations } from './ListKeyManagementConfiguratio
 import * as Yup from 'yup';
 
 import {
-  regionsData,
+  AWS_REGIONS,
   GCP_KMS_REGIONS,
   GCP_KMS_REGIONS_FLATTENED
 } from '../PublicCloud/views/providerRegionsData';
@@ -25,7 +25,7 @@ import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
-const awsRegionList = regionsData.map((region, index) => {
+const awsRegionList = AWS_REGIONS.map((region, index) => {
   return {
     value: region.destVpcRegion,
     label: region.destVpcRegion

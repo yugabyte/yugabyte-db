@@ -89,4 +89,14 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "The timeout for downloading the Helm chart while importing a release using HTTP",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> useNewProviderUI =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.provider_redesign",
+          ScopeType.CUSTOMER,
+          "Use Redesigned Provider UI",
+          "The redesigned provider UI adds a provider list view, a provider details "
+              + "view and improves the provider creation form for AWS, AZU, GCP, and K8s",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

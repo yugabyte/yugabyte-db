@@ -2,7 +2,7 @@
 import React from 'react';
 import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
-import { StorageConfiguration } from '../../config';
+import { StorageConfiguration } from '..';
 import {
   addCustomerConfig,
   addCustomerConfigResponse,
@@ -18,22 +18,25 @@ import { openDialog, closeDialog } from '../../../actions/modal';
 import { toast } from 'react-toastify';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 
-const customerConfigToasterHandler = (errorMessageObject) => {
+// TODO: Add specific types or replace with hooks.
+//       This file was converted to Typescript to resolve type errors
+//       when using this component in Typescript files.
+const customerConfigToasterHandler = (errorMessageObject: any) => {
   isNonEmptyObject(errorMessageObject)
     ? Object.keys(errorMessageObject).forEach((errorKey) => {
-      toast.error(
-        <ul>
-          {errorMessageObject[errorKey].map((error) => (
-            // eslint-disable-next-line react/jsx-key
-            <li>{error}</li>
-          ))}
-        </ul>
-      );
-    })
+        toast.error(
+          <ul>
+            {errorMessageObject[errorKey].map((error: any) => (
+              // eslint-disable-next-line react/jsx-key
+              <li>{error}</li>
+            ))}
+          </ul>
+        );
+      })
     : toast.error(errorMessageObject);
 };
 
-const mapStateToProps = (state) => {
+const mapStateToProps = (state: any) => {
   return {
     addConfig: state.customer.addConfig,
     editConfig: state.customer.editConfig,
@@ -44,15 +47,14 @@ const mapStateToProps = (state) => {
   };
 };
 
-const mapDispatchToProps = (dispatch) => {
+const mapDispatchToProps = (dispatch: any) => {
   return {
-    addCustomerConfig: (config) => {
-      return dispatch(addCustomerConfig(config)).then((response) => {
+    addCustomerConfig: (config: any) => {
+      return dispatch(addCustomerConfig(config)).then((response: any) => {
         if (response.error) {
           const errorMessageObject =
             response.payload?.response?.data?.error || response.payload.message;
           customerConfigToasterHandler(errorMessageObject);
-          
         } else {
           toast.success('Successfully added the backup configuration.');
         }
@@ -60,17 +62,16 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    setInitialValues: (initialValues) => {
+    setInitialValues: (initialValues: any) => {
       return dispatch(setInitialValues(initialValues));
     },
 
-    editCustomerConfig: (config) => {
-      return dispatch(editCustomerConfig(config)).then((response) => {
+    editCustomerConfig: (config: any) => {
+      return dispatch(editCustomerConfig(config)).then((response: any) => {
         if (response.error) {
           const errorMessageObject =
             response.payload?.response?.data?.error || response.payload.message;
           customerConfigToasterHandler(errorMessageObject);
-          
         } else {
           toast.success('Successfully updated the backup configuration.');
         }
@@ -78,19 +79,19 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    deleteCustomerConfig: (configUUID) => {
-      return dispatch(deleteCustomerConfig(configUUID)).then((response) => {
+    deleteCustomerConfig: (configUUID: string) => {
+      return dispatch(deleteCustomerConfig(configUUID)).then((response: any) => {
         return dispatch(deleteCustomerConfigResponse(response.payload));
       });
     },
 
     fetchCustomerConfigs: () => {
-      dispatch(fetchCustomerConfigs()).then((response) => {
+      dispatch(fetchCustomerConfigs()).then((response: any) => {
         dispatch(fetchCustomerConfigsResponse(response.payload));
       });
     },
 
-    showDeleteStorageConfig: (configName) => {
+    showDeleteStorageConfig: (configName: any) => {
       dispatch(openDialog('delete' + configName + 'StorageConfig'));
     },
 
@@ -100,14 +101,12 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-
-
 const storageConfigForm = reduxForm({
   form: 'storageConfigForm',
   enableReinitialize: true
 });
 
-export default connect(
+export default connect<{}, {}, any>(
   mapStateToProps,
   mapDispatchToProps
 )(storageConfigForm(StorageConfiguration));
