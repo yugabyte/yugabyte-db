@@ -4,9 +4,12 @@ on:
   push:
     branches: [ "master" ]
     paths: 
-      - 'drivers/golang'
+      - 'drivers/golang/**'
+
   pull_request:
     branches: [ "master" ]
+    paths: 
+      - 'drivers/golang/**'
 
 jobs:
   build:
