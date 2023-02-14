@@ -61,7 +61,7 @@ The following example installs Python 3.8.
 
 ```sh
 sudo yum -y install rh-python38
-# You may also want to add the following line to your .bashrc or equivalent.
+# Also add the following line to your .bashrc or equivalent.
 source /opt/rh/rh-python38/enable
 ```
 
@@ -113,7 +113,7 @@ Use [Ccache][ccache] for faster builds.
 
 ```sh
 sudo yum install -y ccache
-# You may also want to add the following line to your .bashrc or equivalent.
+# Also add the following line to your .bashrc or equivalent.
 export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 ```
 
@@ -135,7 +135,7 @@ Both requirements can be satisfied by the package manager.
 
 ```sh
 sudo yum install -y java-1.8.0-openjdk rh-maven35
-# You may also want to add the following line to your .bashrc or equivalent.
+# Also add the following line to your .bashrc or equivalent.
 source /opt/rh/rh-maven35/enable
 ```
 
