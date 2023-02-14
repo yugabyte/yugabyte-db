@@ -49,7 +49,7 @@ type: docs
 
 {{< note title="Note" >}}
 
-CentOS 7 is the recommended Linux distribution for development and production platform for YugabyteDB.
+AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
