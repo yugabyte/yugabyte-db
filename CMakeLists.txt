@@ -111,6 +111,13 @@ endif()
 yb_put_vars_into_cache(YB_BUILD_TESTS)
 message("YB_BUILD_TESTS=${YB_BUILD_TESTS}")
 
+if(NOT DEFINED YB_BUILD_FUZZ_TARGETS)
+  message("Will not build fuzz targets by default")
+  set(YB_BUILD_FUZZ_TARGETS OFF)
+endif()
+yb_put_vars_into_cache(YB_BUILD_FUZZ_TARGETS)
+message("YB_BUILD_FUZZ_TARGETS=${YB_BUILD_FUZZ_TARGETS}")
+
 parse_build_root_basename()
 if("${YB_BUILD_TYPE}" STREQUAL "")
   message(FATAL_ERROR "YB_BUILD_TYPE still not set after parse_build_root_basename")

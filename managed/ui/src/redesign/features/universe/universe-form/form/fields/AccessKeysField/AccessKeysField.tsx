@@ -7,6 +7,7 @@ import { Box, MenuItem } from '@material-ui/core';
 import { YBLabel, YBSelectField } from '../../../../../../components';
 import { AccessKey, UniverseFormData } from '../../../utils/dto';
 import { ACCESS_KEY_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface AccessKeysFieldProps {
   disabled?: boolean;
@@ -15,6 +16,7 @@ interface AccessKeysFieldProps {
 export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const classes = useFormFieldStyles();
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
@@ -45,10 +47,10 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
 
   return (
     <Box display="flex" width="100%" data-testid="AccessKeysField-Container">
-      <YBLabel dataTestId={'AccessKeysField-Label'}>
+      <YBLabel dataTestId={'AccessKeysField-Label'} width="224px">
         {t('universeForm.advancedConfig.accessKey')}
       </YBLabel>
-      <Box flex={1}>
+      <Box flex={1} className={classes.advancedConfigTextBox}>
         <YBSelectField
           rules={{
             required: !disabled
@@ -62,7 +64,6 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
           }}
           name={ACCESS_KEY_FIELD}
           control={control}
-          fullWidth
           disabled={disabled}
         >
           {accessKeysList.map((item: AccessKey) => (

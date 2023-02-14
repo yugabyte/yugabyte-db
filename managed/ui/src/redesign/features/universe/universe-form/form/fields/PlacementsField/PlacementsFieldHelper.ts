@@ -24,9 +24,11 @@ import {
   REPLICATION_FACTOR_FIELD,
   INSTANCE_TYPE_FIELD,
   DEVICE_INFO_FIELD,
-  DEDICATED_NODES_FIELD,
   MASTERS_IN_DEFAULT_REGION_FIELD,
   DEFAULT_REGION_FIELD,
+  MASTER_PLACEMENT_FIELD,
+  MASTER_DEVICE_INFO_FIELD,
+  MASTER_INSTANCE_TYPE_FIELD,
   TOAST_AUTO_DISMISS_INTERVAL,
   RESET_AZ_FIELD
 } from '../../../utils/constants';
@@ -150,10 +152,13 @@ export const useNodePlacements = () => {
   const totalNodes = useWatch({ name: TOTAL_NODES_FIELD });
   const replicationFactor = useWatch({ name: REPLICATION_FACTOR_FIELD });
   const instanceType = useWatch({ name: INSTANCE_TYPE_FIELD });
+  // Placement is based on T-Server Device Info in case of dedicated mode
   const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
-  const dedicatedNodes = useWatch({ name: DEDICATED_NODES_FIELD });
   const defaultRegion = useWatch({ name: DEFAULT_REGION_FIELD });
   const defaultMasterRegion = useWatch({ name: MASTERS_IN_DEFAULT_REGION_FIELD });
+  const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
+  const masterDeviceInfo =  useWatch({ name: MASTER_DEVICE_INFO_FIELD });
+  const masterInstanceType =  useWatch({ name: MASTER_INSTANCE_TYPE_FIELD });
   const resetAZ = useWatch({ name: RESET_AZ_FIELD });
 
   const prevPropsCombination = useRef({
@@ -162,9 +167,11 @@ export const useNodePlacements = () => {
     totalNodes: Number(totalNodes),
     replicationFactor,
     deviceInfo,
-    dedicatedNodes,
     defaultRegion,
-    defaultMasterRegion
+    defaultMasterRegion,
+    masterPlacement,
+    masterDeviceInfo,
+    masterInstanceType
   });
 
   let payload: any = {};
@@ -261,9 +268,11 @@ export const useNodePlacements = () => {
       totalNodes: Number(totalNodes),
       replicationFactor,
       deviceInfo,
-      dedicatedNodes,
       defaultRegion,
-      defaultMasterRegion
+      defaultMasterRegion,
+      masterPlacement,
+      masterDeviceInfo,
+      masterInstanceType
     };
     if (_.isEmpty(regionList)) {
       setValue(PLACEMENTS_FIELD, [], { shouldValidate: true });
@@ -281,7 +290,6 @@ export const useNodePlacements = () => {
     }
 
     prevPropsCombination.current = propsCombination;
-  }, [instanceType, regionList, totalNodes, replicationFactor, deviceInfo, resetAZ]);
-
+  }, [instanceType, regionList, totalNodes, replicationFactor, deviceInfo, masterPlacement, masterDeviceInfo, masterInstanceType, resetAZ]);
   return { isLoading: isFetching };
 };

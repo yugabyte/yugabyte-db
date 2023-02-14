@@ -14,7 +14,7 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -24,7 +24,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 /**
  * Tests for `COMMENT ON ...` PostgreSQL queries.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgCommentOn extends BasePgSQLTest {
   @Test
   public void testSupportedVariants() throws Exception {

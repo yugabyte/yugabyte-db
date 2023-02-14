@@ -20,14 +20,18 @@ import {
   ClusterModes,
   ClusterType,
   CloudType,
+  MasterPlacementMode,
   UniverseConfigure,
   UniverseFormData,
   UniverseDetails
 } from './utils/dto';
 import {
-  PROVIDER_FIELD,
   DEVICE_INFO_FIELD,
+  MASTER_DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
+  MASTER_INSTANCE_TYPE_FIELD,
+  MASTER_PLACEMENT_FIELD,
+  PROVIDER_FIELD,
   REGIONS_FIELD,
   REPLICATION_FACTOR_FIELD,
   TOAST_AUTO_DISMISS_INTERVAL,
@@ -75,8 +79,8 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
         }
       },
       onError: (error) => {
-        console.log(error);
-        transitToUniverse(); //redirect to /universes if universe with uuid doesnot exists
+        console.error(error);
+        transitToUniverse();
       }
     }
   );
@@ -89,7 +93,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
       response && transitToUniverse(uuid);
     } catch (error) {
       toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
-      console.log(error);
+      console.error(error);
     }
   };
 
@@ -105,6 +109,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
       const primaryIndex = payload.clusters.findIndex(
         (c: Cluster) => c.clusterType === ClusterType.PRIMARY
       );
+      const masterPlacement = _.get(formData, MASTER_PLACEMENT_FIELD);
       //update fields which are allowed to edit
       const userIntent = payload.clusters[primaryIndex].userIntent;
       userIntent.regionList = _.get(formData, REGIONS_FIELD);
@@ -113,6 +118,13 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
       userIntent.instanceType = _.get(formData, INSTANCE_TYPE_FIELD);
       userIntent.deviceInfo = _.get(formData, DEVICE_INFO_FIELD);
       userIntent.instanceTags = transformTagsArrayToObject(_.get(formData, USER_TAGS_FIELD, []));
+      userIntent.dedicatedNodes = masterPlacement === MasterPlacementMode.DEDICATED;
+
+      // Update master instance type and device information in case of dedicated mode
+      if (userIntent.dedicatedNodes) {
+        userIntent.masterInstanceType = _.get(formData, MASTER_INSTANCE_TYPE_FIELD);
+        userIntent.masterDeviceInfo = _.get(formData, MASTER_DEVICE_INFO_FIELD);
+      }
       payload.clusters[primaryIndex].placementInfo.cloudList[0].regionList = getPlacements(
         formData
       );
@@ -130,7 +142,10 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
         else if (updateOptions.includes(UPDATE_ACTIONS.FULL_MOVE)) setFMModal(true);
         else submitEditUniverse(finalPayload);
       } else submitEditUniverse(finalPayload);
-    } else console.log("'Nothing to update - no fields changed'");
+    } else
+      toast.warn('Nothing to update - no fields changed', {
+        autoClose: TOAST_AUTO_DISMISS_INTERVAL
+      });
   };
 
   return (

@@ -4,6 +4,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import java.util.Map;
+import java.util.Objects;
 
 import com.google.common.base.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -251,6 +252,9 @@ public interface CloudInfoInterface {
   }
 
   public static ProviderDetails maskProviderDetails(Provider provider) {
+    if (Objects.isNull(provider.details)) {
+      return null;
+    }
     JsonNode detailsJson = Json.toJson(provider.details);
     ProviderDetails details = Json.fromJson(detailsJson, ProviderDetails.class);
     get(details, true, provider.getCloudCode());
@@ -258,6 +262,9 @@ public interface CloudInfoInterface {
   }
 
   public static RegionDetails maskRegionDetails(Region region) {
+    if (Objects.isNull(region.details)) {
+      return null;
+    }
     JsonNode detailsJson = Json.toJson(region.details);
     RegionDetails details = Json.fromJson(detailsJson, RegionDetails.class);
     get(details, true, region.provider.getCloudCode());
@@ -265,6 +272,9 @@ public interface CloudInfoInterface {
   }
 
   public static AvailabilityZoneDetails maskAvailabilityZoneDetails(AvailabilityZone zone) {
+    if (Objects.isNull(zone.details)) {
+      return null;
+    }
     JsonNode detailsJson = Json.toJson(zone.details);
     AvailabilityZoneDetails details = Json.fromJson(detailsJson, AvailabilityZoneDetails.class);
     get(details, true, zone.region.provider.getCloudCode());

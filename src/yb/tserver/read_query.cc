@@ -36,7 +36,6 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
-#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
 
@@ -66,11 +65,6 @@ DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
     "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
 
-METRIC_DEFINE_coarse_histogram(server, read_time_wait,
-                               "Read Time Wait",
-                               yb::MetricUnit::kMicroseconds,
-                               "Number of microseconds read queries spend waiting for safe time");
-
 namespace yb {
 namespace tserver {
 
@@ -93,12 +87,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
       TabletServerIf* server, ReadTabletProvider* read_tablet_provider, const ReadRequestPB* req,
       ReadResponsePB* resp, rpc::RpcContext context)
       : server_(*server), read_tablet_provider_(*read_tablet_provider), req_(req), resp_(resp),
-        context_(std::move(context)) {
-    auto metric_entity = server->MetricEnt();
-    if (metric_entity) {
-      read_time_wait_ = METRIC_read_time_wait.Instantiate(metric_entity);
-    }
-  }
+        context_(std::move(context)) {}
 
   void Perform() {
     RespondIfFailed(DoPerform());
@@ -176,8 +165,6 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   bool reading_from_non_leader_ = false;
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
-
-  scoped_refptr<Histogram> read_time_wait_;
 };
 
 bool ReadQuery::transactional() const {
@@ -413,8 +400,9 @@ Status ReadQuery::DoPerform() {
 }
 
 Status ReadQuery::DoPickReadTime(server::Clock* clock) {
+  auto* metrics = abstract_tablet_->system() ? nullptr : tablet()->metrics();
   MonoTime start_time;
-  if (read_time_wait_) {
+  if (metrics) {
     start_time = MonoTime::Now();
   }
   if (!read_time_) {
@@ -449,9 +437,9 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
              : VERIFY_RESULT(abstract_tablet_->SafeTime(
                    require_lease_, read_time_.read, context_.GetClientDeadline())));
   }
-  if (read_time_wait_) {
+  if (metrics) {
     auto safe_time_wait = MonoTime::Now() - start_time;
-    read_time_wait_->Increment(safe_time_wait.ToMicroseconds());
+    metrics->read_time_wait->Increment(safe_time_wait.ToMicroseconds());
   }
   return Status::OK();
 }

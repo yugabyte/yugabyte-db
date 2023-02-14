@@ -463,6 +463,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return !l->started_hiding_or_deleting();
   }
 
+  // If the table is already hidden then treat it as a duplicate hide request.
+  bool IgnoreHideRequest() {
+    auto l = LockForRead();
+    if (l->started_hiding()) {
+      LOG(INFO) << "Table " << id() << " is already hidden. Duplicate request.";
+      return true;
+    }
+    return false;
+  }
+
   std::string ToString() const override;
   std::string ToStringWithState() const;
 

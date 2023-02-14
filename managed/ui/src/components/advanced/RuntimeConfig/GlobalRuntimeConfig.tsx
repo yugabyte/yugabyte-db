@@ -1,5 +1,5 @@
 import React, { FC, useEffect } from 'react';
-import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/helpers/dtos';
+import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/utils/dtos';
 import { ConfigData } from '../ConfigData';
 
 import '../AdvancedConfig.scss';
