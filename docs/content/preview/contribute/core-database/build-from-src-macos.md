@@ -41,7 +41,7 @@ type: docs
   <li >
     <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Ubuntu
+      AlmaLinux
     </a>
   </li>
 
