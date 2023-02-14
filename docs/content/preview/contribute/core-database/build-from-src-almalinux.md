@@ -98,7 +98,8 @@ Use [Ninja][ninja] for faster builds.
 The latest release can be downloaded:
 
 ```sh
-latest_zip_url=$(curl -Ls "https://api.github.com/repos/ninja-build/ninja/releases/latest" | grep browser_download_url | grep ninja-linux.zip | cut -d \" -f 4)
+latest_zip_url=$(curl -Ls "https://api.github.com/repos/ninja-build/ninja/releases/latest" \
+                 | grep browser_download_url | grep ninja-linux.zip | cut -d \" -f 4)
 curl -Ls "$latest_zip_url" | zcat | sudo tee /usr/local/bin/ninja >/dev/null
 sudo chmod +x /usr/local/bin/ninja
 ```
