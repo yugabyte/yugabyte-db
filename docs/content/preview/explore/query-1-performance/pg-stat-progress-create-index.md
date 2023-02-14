@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-You can add a new index to an existing table using the YSQL [`CREATE INDEX`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement. YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) and its enabled by default, that is, you can build indexes on non-empty tables online, without failing other concurrent writes. YugabyteDB also supports the [`CREATE INDEX NONCONCURRENTLY`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) command that can be used to disable online index backfill.
+You can add a new index to an existing table using the YSQL [`CREATE INDEX`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement. YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) and its enabled by default, that is, you can build indexes on non-empty tables online, without failing other concurrent writes. YugabyteDB also supports the [`CREATE INDEX NONCONCURRENTLY`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
 
 ### pg_stat_progress_create_index
 
@@ -49,11 +49,48 @@ The `pg_stat_progress_create_index` view includes the following YugabyteDB-speci
 - In YugabyteDB, the `pg_stat_progress_create_index` view is a local view; it only has entries for CREATE INDEX commands issued by local YSQL clients.
 
 - In PostgreSQL, `tuples_done` and `tuples_total` refer to the tuples of the _index_. However, in YugabyteDB, these fields refer to the tuples of the _indexed table_. This applies only to partial indexes, where the reported progress will be less than the actual progress. `tuples_total` is an estimate that is retrieved from `pg_class.reltuples`.
-Additionally, the values for `tuples_done` and `tuples_total` for temporary indexes are not displayed unlike in PostgreSQL, because these columns reflect tuples of the indexed table.
+- In YugabyteDB, the values for `tuples_done` and `tuples_total` for temporary indexes are not displayed unlike PostgreSQL, because these columns reflect tuples of the indexed table.
 
-## Examples
+## Example
 
-<!-- To be added -->
+The following example demonstrate the possible phases (initializing, backfilling) for the CREATE INDEX operation using the `pg_stat_progress_create_index` view.
+
+{{< note title="Setup" >}}
+
+Local single-node cluster. See [Set up YugabyteDB universe](../../../explore/#set-up-yugabytedb-universe).
+
+{{< /note >}}
+
+- From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell, and create an index on an existing table as follows:
+
+    ```sql
+    CREATE TABLE employees (id int, name text, department text);
+    CREATE INDEX ON customers(customer_name);
+    ```
+
+- On a separate parallel YSQL connection on the same node, select from the view to see the progress of the command as follows:
+
+    ```sql
+    SELECT * FROM pg_stat_progress_create_index;
+    ```
+
+    ```output
+    pid   | datid | datname  | relid | index_relid |       command             |    phase     | lockers_total | lockers_done | current_locker_pid | blocks_total | blocks_done | tuples_total | tuples_done | partitions_total | partitions_done
+    ------+-------+----------+-------+-------------+---------------------------+--------------+---------------+--------------+--------------------+--------------+-------------+--------------+-------------+------------------+-----------------
+    78841 | 13291 | yugabyte | 16384 |       16390 | CREATE INDEX CONCURRENTLY | initializing |               |              |                    |              |             |       100000 |           0 |                0 |               0
+    (1 row)
+    ```
+
+    ```sql
+    SELECT * FROM pg_stat_progress_create_index;
+    ```
+
+    ```output
+    pid   | datid | datname  | relid | index_relid |          command          |    phase    | lockers_total | lockers_done | current_locker_pid | blocks_total | blocks_done | tuples_total | tuples_done | partitions_total | partitions_done
+    ------+-------+----------+-------+-------------+---------------------------+-------------+---------------+--------------+--------------------+--------------+-------------+--------------+-------------+------------------+-----------------
+    77444 | 13291 | yugabyte | 16404 |       16412 | CREATE INDEX CONCURRENTLY | backfilling |               |              |                    |              |             |       100000 |       49904 |                0 |               0
+    (1 row)
+    ```
 
 ## Learn more
 
