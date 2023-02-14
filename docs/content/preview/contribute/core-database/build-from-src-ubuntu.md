@@ -95,4 +95,4 @@ sudo apt-get install -y maven
 
 ### Build release package
 
-Currently, you can only build release packages in [CentOS](../build-from-src-centos) and [macOS](../build-from-src-macos).
+Currently, you can only build release packages in [CentOS](../build-from-src-centos), [AlmaLinux](../build-from-src-almalinux), and [macOS](../build-from-src-macos).
