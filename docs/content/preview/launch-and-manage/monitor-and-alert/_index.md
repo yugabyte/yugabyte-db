@@ -1,9 +1,9 @@
 ---
-title: Monitoring and alerts
-headerTitle: Monitoring and alerts
+title: Monitor YugabyteDB
+headerTitle: Monitor YugabyteDB
 linkTitle: Monitor
 description: Overview of monitoring and alerts for YugabyteDB databases
-image: /images/section_icons/manage/enterprise.png
+image: /images/section_icons/explore/monitoring.png
 headcontent:
 menu:
   preview:
