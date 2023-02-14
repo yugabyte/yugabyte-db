@@ -1717,8 +1717,7 @@ YbAllowNegativeCacheEntries(int cache_id,
 			return !implicit_prefetch_entries;
 
 		case RELNAMENSP:
-			return !implicit_prefetch_entries &&
-				   IsSystemNamespace(namespace_id) &&
+			return IsSystemNamespace(namespace_id) &&
 				   !YBCIsInitDbModeEnvVarSet();
 	}
 	return isTempOrTempToastNamespace(namespace_id);
