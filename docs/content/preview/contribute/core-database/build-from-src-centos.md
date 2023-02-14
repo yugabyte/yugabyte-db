@@ -151,8 +151,7 @@ Install the following additional packages to build yugabyted-ui:
 sudo yum install -y npm golang
 ```
 
-You may need to modify ulimits.
-For example, the build may fail with "too many open files".
+The build may fail with "too many open files".
 In that case, increase the nofile limit in `/etc/security/limits.conf`:
 
 ```sh
