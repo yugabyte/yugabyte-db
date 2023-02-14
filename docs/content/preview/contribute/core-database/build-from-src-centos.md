@@ -56,7 +56,8 @@ sudo yum install -y centos-release-scl epel-release git libatomic rsync which
 
 ### Python 3
 
-Python 3.7 or higher is required.
+{{% readfile "includes/python.md" %}}
+
 The following example installs Python 3.8.
 
 ```sh
