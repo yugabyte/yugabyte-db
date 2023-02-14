@@ -62,7 +62,7 @@ The following example installs Python 3.8.
 ```sh
 sudo yum -y install rh-python38
 # You may also want to add the following line to your .bashrc or equivalent.
-scl load rh-python38
+source /opt/rh/rh-python38/enable
 ```
 
 ### CMake 3
@@ -141,7 +141,7 @@ Both requirements can be satisfied by the package manager.
 ```sh
 sudo yum install -y java-1.8.0-openjdk rh-maven35
 # You may also want to add the following line to your .bashrc or equivalent.
-scl load rh-maven35
+source /opt/rh/rh-maven35/enable
 ```
 
 ## Build the code
