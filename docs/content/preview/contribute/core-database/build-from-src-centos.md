@@ -109,7 +109,7 @@ sudo yum install -y ninja-build
 
 ### Ccache (optional)
 
-It is recommended to use [Ccache][ccache] for faster build.
+Use [Ccache][ccache] for faster builds.
 
 ```sh
 sudo yum install -y ccache
