@@ -81,16 +81,18 @@ public class CloudProviderApiController extends AuthenticatedController {
       hidden = true,
       response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID) {
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    cloudProviderHandler.delete(customer, provider);
+
+    UUID taskUUID = cloudProviderHandler.delete(customer, providerUUID);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
-            Audit.ActionType.Delete);
-    return YBPSuccess.withMessage("Deleted provider: " + providerUUID);
+            Audit.ActionType.Delete,
+            null,
+            taskUUID);
+    return new YBPTask(taskUUID, providerUUID).asResult();
   }
 
   @ApiOperation(

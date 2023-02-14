@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-
 import { OverviewMetrics } from '../../metrics';
 import {
   queryMetrics,
@@ -12,10 +11,10 @@ import {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    queryMetrics: (queryParams, panelType) => {
+    queryMetrics: (queryParams, panelType, isMasterMetrics = false) => {
       dispatch(queryMetrics(queryParams)).then((response) => {
         if (!response.error) {
-          dispatch(queryMetricsSuccess(response.payload, panelType));
+          dispatch(queryMetricsSuccess(response.payload, panelType, isMasterMetrics));
         } else {
           dispatch(queryMetricsFailure(response.payload, panelType));
         }

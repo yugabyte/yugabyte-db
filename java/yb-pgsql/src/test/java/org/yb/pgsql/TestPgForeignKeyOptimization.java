@@ -5,7 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.Metrics;
 
 import java.sql.Connection;
@@ -13,7 +13,7 @@ import java.sql.Statement;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-@RunWith(YBTestRunnerNonTsanOnly.class)
+@RunWith(YBTestRunner.class)
 public class TestPgForeignKeyOptimization extends BasePgSQLTest {
   // Start server in RF=1 mode to simplify metrics analysis.
   @Override

@@ -236,7 +236,12 @@ public class PerfAdvisorControllerTest extends FakePerfAdvisorDBTest {
             .setQuerySkewMinQueries(200)
             .setQuerySkewIntervalMins(8)
             .setRejectedConnThreshold(9)
-            .setRejectedConnIntervalMins(15);
+            .setRejectedConnIntervalMins(15)
+            .setHotShardWriteSkewThresholdPct(800.0)
+            .setHotShardReadSkewThresholdPct(800.0)
+            .setHotShardIntervalMins(10)
+            .setHotShardMinimalWrites(600)
+            .setHotShardMinimalReads(600);
 
     Result result =
         doRequestWithAuthTokenAndBody(

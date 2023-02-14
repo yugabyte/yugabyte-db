@@ -8,15 +8,16 @@
  */
 
 import React, { FC, useState } from 'react';
-import { YBModalForm } from '../../common/forms';
-import { YBButton, YBCheckBox } from '../../common/forms/fields';
-import { Field, FieldArray, FormikProps } from 'formik';
-
-import { useMutation } from 'react-query';
-import { validateHelmYAML } from '../../../actions/universe';
+import { useMutation, useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { Alert, Col, Row } from 'react-bootstrap';
 import { isEmpty } from 'lodash';
+import { Field, FieldArray, FormikProps } from 'formik';
+import { YBModalForm } from '../../common/forms';
+import { YBLoading } from '../../common/indicators';
+import { YBButton, YBCheckBox, YBModal } from '../../common/forms/fields';
+import { validateHelmYAML, fetchNodeDetails } from '../../../actions/universe';
 import {
   createErrorMessage,
   isEmptyObject,
@@ -25,7 +26,7 @@ import {
   isDefinedNotNull
 } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
-import { useSelector } from 'react-redux';
+
 import Close from '../../universes/images/close.svg';
 import './HelmOverrides.scss';
 
@@ -98,6 +99,13 @@ interface HelmOverridesModalProps {
   editValues?: Record<string, any>;
   editMode?: boolean;
   forceUpdate?: boolean;
+}
+
+interface NodeOverridesModalProps {
+  visible: boolean;
+  nodeId: string;
+  universeId:string;
+  onClose: () => void;
 }
 
 type validation_errors_initial_schema = {
@@ -345,3 +353,44 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
     />
   );
 };
+
+export const NodeOverridesModal: FC<NodeOverridesModalProps> = ({
+  visible,
+  onClose,
+  nodeId,
+  universeId
+}) => {
+
+  const { data, isLoading, isError } = useQuery(
+    ["NODE_DETAILS", universeId, nodeId],
+    () => fetchNodeDetails(universeId,nodeId)
+  );
+
+  const nodeDetails = data as unknown as Record<string,any>;
+
+  const renderAppliedOverrides = () => {
+    if(isLoading) return <YBLoading/>;
+
+    if(isError) return <Alert bsStyle="danger">Oops! Something went wrong. Please try again.</Alert>;
+    
+    return <textarea disabled={true} className='overrides-textarea'>{nodeDetails.data.kubernetesOverrides}</textarea>;
+  };
+
+  return (
+    <YBModal
+      title={<>Kubernetes Overrides <span>{`(${nodeId})`}</span></>}
+      visible={visible}
+      onHide={onClose}
+      showCancelButton={true}
+      cancelLabel={'OK'}
+    >
+      <Row>
+      {
+        renderAppliedOverrides()
+      }
+      </Row>
+      
+    </YBModal>
+  );
+};
+

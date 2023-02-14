@@ -24,6 +24,11 @@ export enum CloudType {
   other = 'other'
 }
 
+export enum MasterPlacementMode {
+  COLOCATED = 'COLOCATED',
+  DEDICATED = 'DEDICATED'
+}
+
 export interface CommunicationPorts {
   masterHttpPort: number;
   masterRpcPort: number;
@@ -95,9 +100,12 @@ export interface UserIntent {
   replicationFactor: number;
   regionList: string[];
   instanceType: string | null;
+  masterInstanceType?: string | null;
   numNodes: number;
+  masterNumNodes?: number;
   ybSoftwareVersion: string | null;
   deviceInfo: DeviceInfo | null;
+  masterDeviceInfo?: DeviceInfo | null;
   enableYSQL: boolean;
   enableYSQLAuth: boolean;
   enableYCQL: boolean;
@@ -180,6 +188,7 @@ export interface UniverseDetails {
   communicationPorts: CommunicationPorts;
   cmkArn: string;
   deviceInfo: DeviceInfo | null;
+  masterDeviceInfo: DeviceInfo | null;
   encryptionAtRestConfig: EncryptionAtRestConfig;
   errorString: string | null;
   expectedUniverseVersion: number;
@@ -206,6 +215,7 @@ export interface Resources {
   memSizeGB: number;
   numCores: number;
   numNodes: number;
+  masterNumNodes?: number;
   pricePerHour: number;
   volumeCount: number;
   volumeSizeGB: number;
@@ -426,17 +436,21 @@ export interface CloudConfigFormValue {
   provider: ProviderMin | null;
   regionList: string[]; // array of region IDs
   numNodes: number;
+  masterNumNodes?: number;
   replicationFactor: number;
   autoPlacement?: boolean;
   placements: Placement[];
   defaultRegion?: string | null;
   resetAZConfig?: boolean;
   mastersInDefaultRegion?: boolean;
+  masterPlacement?: MasterPlacementMode;
 }
 
 export interface InstanceConfigFormValue {
   instanceType: string | null;
+  masterInstanceType?: string | null;
   deviceInfo: DeviceInfo | null;
+  masterDeviceInfo?: DeviceInfo | null;
   assignPublicIP: boolean;
   useTimeSync: boolean;
   enableClientToNodeEncrypt: boolean;
@@ -453,7 +467,6 @@ export interface InstanceConfigFormValue {
   ycqlConfirmPassword?: string;
   enableYEDIS: boolean;
   kmsConfig: string | null;
-  dedicatedNodes?: boolean;
 }
 
 export interface AdvancedConfigFormValue {
@@ -511,17 +524,21 @@ export const DEFAULT_CLOUD_CONFIG: CloudConfigFormValue = {
   provider: null,
   regionList: [],
   numNodes: 3,
+  masterNumNodes: 3,
   replicationFactor: 3,
   autoPlacement: true, // "AUTO" is the default value when creating new universe
   placements: [],
   defaultRegion: null,
-  resetAZConfig: false,
-  mastersInDefaultRegion: false
+  mastersInDefaultRegion: false,
+  masterPlacement: MasterPlacementMode.COLOCATED,
+  resetAZConfig: false
 };
 
 export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   instanceType: null,
+  masterInstanceType: null,
   deviceInfo: null,
+  masterDeviceInfo: null,
   assignPublicIP: true,
   useTimeSync: true,
   enableClientToNodeEncrypt: true,
@@ -538,7 +555,6 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   ycqlConfirmPassword: '',
   enableYEDIS: false,
   kmsConfig: null,
-  dedicatedNodes: false
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
@@ -730,6 +746,7 @@ export interface UniverseResource {
   memSizeGB: number;
   numCores: number;
   numNodes: number;
+  masterNumNodes?: number;
   pricePerHour: number;
   pricingKnown: boolean;
   volumeCount: number;

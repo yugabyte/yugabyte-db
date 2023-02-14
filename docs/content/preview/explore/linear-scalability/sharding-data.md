@@ -53,9 +53,9 @@ YugabyteDB currently supports two ways of sharding data: [hash](#hash-sharding) 
 For additional information about sharding in YugabyteDB, see the following:
 
 - [Architecture: sharding](../../../architecture/docdb-sharding/)
-- [Data sharding in a distributed SQL database](https://blog.yugabyte.com/how-data-sharding-works-in-a-distributed-sql-database/)
-- [Analysis of four data sharding strategies in a distributed SQL database](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
-- [Overcoming MongoDB sharding and replication limitations with YugabyteDB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
+- [Data sharding in a distributed SQL database](https://www.yugabyte.com/blog/how-data-sharding-works-in-a-distributed-sql-database/)
+- [Analysis of four data sharding strategies in a distributed SQL database](https://www.yugabyte.com/blog/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
+- [Overcoming MongoDB sharding and replication limitations with YugabyteDB](https://www.yugabyte.com/blog/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
 
 ### Hash sharding
 

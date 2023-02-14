@@ -16,6 +16,14 @@ On this page:
 
 ## Releases
 
+### February 13, 2023
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version [2.17.1](../../releases/release-notes/v2.17/#v2.17.1.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.14.6](../../releases/release-notes/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use this version by default.
+
 ### February 8, 2023
 
 **New Features**
@@ -361,6 +369,4 @@ The following **AWS regions** are available:
 ### Known issues in Cloud Shell
 
 - If [Cloud Shell](../cloud-connect/connect-cloud-shell/) stops responding, close the browser tab and restart Cloud Shell.
-- Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected by your browser.
 - Occasionally, Cloud Shell will take longer than normal to load; subsequent loads will be faster.

@@ -485,7 +485,7 @@ class AwsCloud(AbstractCloud):
         self.wait_for_server_ports(host_info["private_ip"], host_info["name"], server_ports)
 
     def mount_disk(self, host_info, vol_id, label):
-        logging.info("Mounting volume {} on host {} in zone {}; label {}".format(
+        logging.info("Mounting volume {} on host {}; label {}".format(
                      vol_id, host_info['id'], label))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.attach_volume(

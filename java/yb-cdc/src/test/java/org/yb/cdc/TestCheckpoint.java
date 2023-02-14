@@ -23,9 +23,9 @@ import org.yb.client.GetCheckpointResponse;
 import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
 import org.junit.Test;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestCheckpoint extends CDCBaseClass {
   private final static Logger LOG = LoggerFactory.getLogger(TestCheckpoint.class);
 

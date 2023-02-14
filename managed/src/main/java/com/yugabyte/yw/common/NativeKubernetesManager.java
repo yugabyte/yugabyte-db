@@ -22,7 +22,6 @@ import io.fabric8.kubernetes.client.dsl.RollableScalableResource;
 import io.fabric8.kubernetes.client.dsl.base.PatchContext;
 import io.fabric8.kubernetes.client.dsl.base.PatchType;
 import lombok.extern.slf4j.Slf4j;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -30,14 +29,17 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
+import javax.inject.Inject;
 
 import com.google.common.collect.ImmutableMap;
 
 @Singleton
 @Slf4j
 public class NativeKubernetesManager extends KubernetesManager {
+
   private KubernetesClient getClient(Map<String, String> config) {
     if (config.containsKey("KUBECONFIG") && !config.get("KUBECONFIG").isEmpty()) {
       try {
@@ -239,6 +241,7 @@ public class NativeKubernetesManager extends KubernetesManager {
 
   @Override
   public boolean expandPVC(
+      UUID universeUUID,
       Map<String, String> config,
       String namespace,
       String helmReleaseName,

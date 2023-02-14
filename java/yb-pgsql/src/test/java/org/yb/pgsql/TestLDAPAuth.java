@@ -32,12 +32,11 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
-import org.yb.util.YBTestRunnerNonTsanOnly;
 import com.yugabyte.util.PSQLException;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 @CreateDS(name = "myDS",
     partitions = {
         @CreatePartition(name = "test", suffix = "dc=myorg,dc=com")
