@@ -113,11 +113,6 @@ It is recommended to use [Ccache][ccache] for faster build.
 
 ```sh
 sudo yum install -y ccache
-```
-
-Set `YB_CCACHE_DIR` in your `.bashrc` or equivalent:
-
-```sh
 # You may also want to add the following line to your .bashrc or equivalent.
 export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 ```
