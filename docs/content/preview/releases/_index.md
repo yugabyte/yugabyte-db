@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB releases overview
 headerTitle: YugabyteDB releases overview
-linkTitle: YugabyteDB releases
+linkTitle: Releases
 description: An overview of the preview and current stable YugabyteDB database releases, and upcoming releases.
 image: /images/section_icons/index/quick_start.png
 aliases:

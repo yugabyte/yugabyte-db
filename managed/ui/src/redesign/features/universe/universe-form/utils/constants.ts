@@ -7,14 +7,18 @@ export const REGIONS_FIELD = 'cloudConfig.regionList';
 export const REPLICATION_FACTOR_FIELD = 'cloudConfig.replicationFactor';
 export const AUTO_PLACEMENT_FIELD = 'cloudConfig.autoPlacement';
 export const TOTAL_NODES_FIELD = 'cloudConfig.numNodes';
+export const MASTER_TOTAL_NODES_FIELD = 'cloudConfig.masterNumNodes';
 export const PLACEMENTS_FIELD = 'cloudConfig.placements';
 export const DEFAULT_REGION_FIELD = 'cloudConfig.defaultRegion';
 export const MASTERS_IN_DEFAULT_REGION_FIELD = 'cloudConfig.mastersInDefaultRegion';
+export const MASTER_PLACEMENT_FIELD = 'cloudConfig.masterPlacement';
 export const RESET_AZ_FIELD = 'cloudConfig.resetAZConfig';
 
 //Instance config
 export const INSTANCE_TYPE_FIELD = 'instanceConfig.instanceType';
+export const MASTER_INSTANCE_TYPE_FIELD = 'instanceConfig.masterInstanceType';
 export const DEVICE_INFO_FIELD = 'instanceConfig.deviceInfo';
+export const MASTER_DEVICE_INFO_FIELD = 'instanceConfig.masterDeviceInfo';
 export const ASSIGN_PUBLIC_IP_FIELD = 'instanceConfig.assignPublicIP';
 export const YSQL_FIELD = 'instanceConfig.enableYSQL';
 export const YSQL_AUTH_FIELD = 'instanceConfig.enableYSQLAuth';
@@ -31,7 +35,6 @@ export const ROOT_CERT_FIELD = 'instanceConfig.rootCA';
 export const NODE_TO_NODE_ENCRYPT_FIELD = 'instanceConfig.enableNodeToNodeEncrypt';
 export const EAR_FIELD = 'instanceConfig.enableEncryptionAtRest';
 export const KMS_CONFIG_FIELD = 'instanceConfig.kmsConfig';
-export const DEDICATED_NODES_FIELD = 'instanceConfig.dedicatedNodes';
 
 //Advanced config
 export const SYSTEMD_FIELD = 'advancedConfig.useSystemd';
@@ -66,14 +69,17 @@ export const PRIMARY_FIELDS = [
   REPLICATION_FACTOR_FIELD,
   AUTO_PLACEMENT_FIELD,
   TOTAL_NODES_FIELD,
+  MASTER_TOTAL_NODES_FIELD,
   PLACEMENTS_FIELD,
   DEFAULT_REGION_FIELD,
   MASTERS_IN_DEFAULT_REGION_FIELD,
   INSTANCE_TYPE_FIELD,
+  MASTER_INSTANCE_TYPE_FIELD,
   GFLAGS_FIELD,
   USER_TAGS_FIELD,
   SOFTWARE_VERSION_FIELD,
   DEVICE_INFO_FIELD,
+  MASTER_DEVICE_INFO_FIELD,
   ASSIGN_PUBLIC_IP_FIELD,
   SYSTEMD_FIELD,
   TIME_SYNC_FIELD,
@@ -97,9 +103,9 @@ export const PRIMARY_FIELDS = [
   COMMUNICATION_PORTS_FIELD,
   ACCESS_KEY_FIELD,
   CUSTOMIZE_PORT_FIELD,
-  DEDICATED_NODES_FIELD,
   UNIVERSE_OVERRIDES_FIELD,
-  AZ_OVERRIDES_FIELD
+  AZ_OVERRIDES_FIELD,
+  MASTER_PLACEMENT_FIELD
 ];
 
 export const ASYNC_FIELDS = [
@@ -127,7 +133,8 @@ export const ASYNC_FIELDS = [
   CLIENT_TO_NODE_ENCRYPT_FIELD,
   ACCESS_KEY_FIELD,
   ROOT_CERT_FIELD,
-  EAR_FIELD
+  EAR_FIELD,
+  MASTER_PLACEMENT_FIELD
 ];
 
 export const ASYNC_COPY_FIELDS = [

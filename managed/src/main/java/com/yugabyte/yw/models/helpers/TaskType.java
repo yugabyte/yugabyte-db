@@ -477,7 +477,9 @@ public enum TaskType {
 
   InstallNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent.class),
 
-  WaitForNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent.class);
+  WaitForNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent.class),
+
+  CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class);
 
   private final Class<? extends ITask> taskClass;
 

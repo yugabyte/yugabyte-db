@@ -35,6 +35,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
@@ -52,9 +53,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
@@ -70,7 +69,6 @@ import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
-import java.io.File;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -127,36 +125,22 @@ public class CloudProviderHandler {
   @Inject private GCPInitializer gcpInitializer;
   @Inject private AZUInitializer azuInitializer;
 
-  public void delete(Customer customer, Provider provider) {
-    providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doDelete(customer, provider));
-  }
+  public UUID delete(Customer customer, UUID providerUUID) {
+    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
+    params.providerUUID = providerUUID;
+    params.customer = customer;
 
-  private void doDelete(Customer customer, Provider provider) {
-    if (customer.getUniversesForProvider(provider.uuid).size() > 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
-    }
+    UUID taskUUID = commissioner.submit(TaskType.CloudProviderDelete, params);
+    Provider provider = Provider.getOrBadRequest(customer.uuid, providerUUID);
+    CustomerTask.create(
+        customer,
+        providerUUID,
+        taskUUID,
+        CustomerTask.TargetType.Provider,
+        CustomerTask.TaskType.Delete,
+        provider.name);
 
-    // Clear the key files in the DB.
-    String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.uuid);
-    // We would delete only the files for k8s provider
-    // others are already taken care off during access key deletion.
-    FileData.deleteFiles(keyFileBasePath, provider.code.equals(CloudType.kubernetes.toString()));
-
-    // TODO: move this to task framework
-    for (AccessKey accessKey : AccessKey.getAll(provider.uuid)) {
-      final String provisionInstanceScript = provider.details.provisionInstanceScript;
-      if (!provisionInstanceScript.isEmpty()) {
-        new File(provisionInstanceScript).delete();
-      }
-      accessManager.deleteKeyByProvider(
-          provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
-      accessKey.delete();
-    }
-
-    NodeInstance.deleteByProvider(provider.uuid);
-    InstanceType.deleteInstanceTypesForProvider(provider, config, configHelper);
-    provider.delete();
+    return taskUUID;
   }
 
   @Transactional

@@ -19,7 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.master.MasterDdlOuterClass;
 
 import java.sql.ResultSet;
@@ -29,7 +29,7 @@ import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgRangePresplit extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRangePresplit.class);
 

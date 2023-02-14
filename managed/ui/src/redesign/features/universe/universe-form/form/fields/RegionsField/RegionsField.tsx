@@ -9,6 +9,7 @@ import { YBLabel, YBAutoComplete } from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import { UniverseFormData } from '../../../utils/dto';
 import { PROVIDER_FIELD, REGIONS_FIELD } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface RegionsFieldProps {
   disabled?: boolean;
@@ -18,6 +19,7 @@ const getOptionLabel = (option: Record<string, string>): string => option?.name;
 
 export const RegionsField = ({ disabled }: RegionsFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
+  const classes = useFormFieldStyles();
   const { t } = useTranslation();
 
   //watchers
@@ -69,7 +71,7 @@ export const RegionsField = ({ disabled }: RegionsFieldProps): ReactElement => {
               <YBLabel dataTestId="RegionsField-Label">
                 {t('universeForm.cloudConfig.regionsField')}
               </YBLabel>
-              <Box flex={1}>
+              <Box flex={1} className={classes.defaultTextBox}>
                 <YBAutoComplete
                   multiple={true}
                   loading={isFetching}

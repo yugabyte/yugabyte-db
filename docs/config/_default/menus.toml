@@ -495,6 +495,14 @@
     showSection = true
     hideLink = true
 
+[[preview_releases]]
+  name = "YBA Releases"
+  weight = 3
+  identifier = "yba-release-notes"
+  [preview_releases.params]
+    showSection = true
+    hideLink = true
+
 ########## Menus (in preview) for FAQ section
 
 [[preview_faq]]
