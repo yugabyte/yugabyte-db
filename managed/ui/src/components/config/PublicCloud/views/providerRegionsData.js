@@ -1,5 +1,5 @@
 // These should match the metadata in devops under opscli/ybops/data/aws-metadata.yml
-export const regionsData = [
+export const AWS_REGIONS = [
   {
     destVpcRegion: 'ap-northeast-1',
     zones: ['ap-northeast-1a', 'ap-northeast-1c', 'ap-northeast-1d']

@@ -70,7 +70,7 @@
 }
 
 .editor-container {
-  padding-bottom: 40px;
+  padding-bottom: 60px;
 }
 
 .config-provider-row {
@@ -193,14 +193,13 @@
   }
 }
 
-.on-prem-provider-form-container{
-  .form-item-label{
+.on-prem-provider-form-container {
+  .form-item-label {
     min-width: 200px !important;
   }
-  .form-right-aligned-labels
-  {
+  .form-right-aligned-labels {
     display: block;
-    &>.form-group{
+    & > .form-group {
       display: flex;
       align-items: center;
     }

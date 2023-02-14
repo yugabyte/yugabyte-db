@@ -401,8 +401,8 @@ class YBClient {
                                      const std::string& namespace_id,
                                      bool *delete_in_progress);
 
-  YBNamespaceAlterer* NewNamespaceAlterer(const std::string& namespace_name,
-                                          const std::string& namespace_id);
+  [[nodiscard]] std::unique_ptr<YBNamespaceAlterer> NewNamespaceAlterer(
+      const std::string& namespace_name, const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
   Status ReservePgsqlOids(const std::string& namespace_id,
@@ -421,8 +421,8 @@ class YBClient {
                                const std::string& role_name);
 
   // List all namespace identifiers.
-Result<std::vector<NamespaceInfo>> ListNamespaces();
-Result<std::vector<NamespaceInfo>> ListNamespaces(
+  Result<std::vector<NamespaceInfo>> ListNamespaces();
+  Result<std::vector<NamespaceInfo>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
 
   // Get namespace information.

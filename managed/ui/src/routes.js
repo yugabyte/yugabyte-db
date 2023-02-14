@@ -27,7 +27,6 @@ import Alerts from './pages/Alerts';
 import Backups from './pages/Backups';
 import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
-import DataCenterConfiguration from './pages/DataCenterConfiguration';
 import TableDetail from './pages/TableDetail';
 import Help from './pages/Help';
 import Profile from './pages/Profile';
@@ -39,6 +38,8 @@ import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { ReplicationDetails } from './components/xcluster';
 import UniverseNewView from './pages/UniverseNewView';
+import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
  */
@@ -260,9 +261,9 @@ export default (store) => {
         </Route>
         <Route path="/metrics" component={Metrics} />
         <Route path="/config" component={DataCenterConfiguration}>
-          <Route path="/config/:tab" component={DataCenterConfiguration} />
-          <Route path="/config/:tab/:section" component={DataCenterConfiguration} />
-          <Route path="/config/:tab/:section/:uuid" component={DataCenterConfiguration} />
+          <Route path=":configTab" component={DataCenterConfiguration} />
+          <Route path=":configTab/:section" component={DataCenterConfiguration} />
+          <Route path=":configTab/:section/:providerUUID" component={DataCenterConfiguration} />
         </Route>
         <Route path="/alerts" component={Alerts} />
         <Route path="/backups" component={Backups} />
