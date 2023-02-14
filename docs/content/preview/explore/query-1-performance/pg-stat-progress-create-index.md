@@ -12,15 +12,17 @@ menu:
 type: docs
 ---
 
-YugabyteDB can build indexes on non-empty tables online, without failing other concurrent writes. When you add a new index to a table that is already populated with data, you can use the YSQL [`CREATE INDEX`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement to enable building these indexes in an online manner, without requiring downtime. For details how online backfill of indexes works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+You can add a new index to an existing table using the YSQL [`CREATE INDEX`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement. YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) and its enabled by default, that is, you can build indexes on non-empty tables online, without failing other concurrent writes. YugabyteDB also supports the [`CREATE INDEX NONCONCURRENTLY`](../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) command that can be used to disable online index backfill.
 
-YugabyteDB supports the PostgreSQL `pg_stat_progress_create` view to report the progress of the CREATE INDEX command execution. Whenever [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/) is running, the `pg_stat_progress_create_index` view contains one row for each client connection that is currently running a CREATE INDEX command.
+### pg_stat_progress_create_index
+
+YugabyteDB supports the PostgreSQL `pg_stat_progress_create` view to report the progress of the CREATE INDEX command execution. Whenever [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/) is running, the `pg_stat_progress_create_index` view contains one row for each client connection that is currently running a CREATE INDEX command, and the row entry is cleared after the completion of command execution.
 
 The `pg_stat_progress_create_index` view can provide the following details:
 
 - number of rows processed during an index backfill.
 - the current phase of the command with `initializing` or `backfilling` as the possible phases.
-- index progress report for all the different configurations of an index or index build such as Nonconcurrent indexes, GIN indexes, Partial indexes, and Include indexes.
+- index progress report for all the different configurations of an index or index build such as non-concurrent index builds, GIN indexes, partial indexes, and include indexes.
 
 The following table describes the view columns:
 
@@ -46,7 +48,7 @@ The `pg_stat_progress_create_index` view includes the following YugabyteDB-speci
 
 - In YugabyteDB, the `pg_stat_progress_create_index` view is a local view; it only has entries for CREATE INDEX commands issued by local YSQL clients.
 
-- In PostgreSQL, `tuples_done` and `tuples_total` refer to the tuples of the _index_. However, in YugabyteDB, because it is currently easier to get indexed table counts (and there's no effortless way to retrieve the index counts), these fields refer to the tuples of the _indexed table_. This discrepancy is only evident for partial indexes, where the reported progress will be less than the actual progress. `tuples_total` is an estimate that is retrieved from `pg_class.reltuples`.
+- In PostgreSQL, `tuples_done` and `tuples_total` refer to the tuples of the _index_. However, in YugabyteDB, these fields refer to the tuples of the _indexed table_. This applies only to partial indexes, where the reported progress will be less than the actual progress. `tuples_total` is an estimate that is retrieved from `pg_class.reltuples`.
 Additionally, the values for `tuples_done` and `tuples_total` for temporary indexes are not displayed unlike in PostgreSQL, because these columns reflect tuples of the indexed table.
 
 ## Examples
