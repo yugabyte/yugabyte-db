@@ -61,6 +61,7 @@
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_rewrite.h"
+#include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
@@ -2950,6 +2951,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 
 		case DbRoleSettingRelationId:    switch_fallthrough(); // pg_db_role_setting
+		case TableSpaceRelationId:       switch_fallthrough(); // pg_tablespace
 		case YBCatalogVersionRelationId: switch_fallthrough(); // pg_yb_catalog_version
 		case YbProfileRelationId:        switch_fallthrough(); // pg_yb_profile
 		case YbRoleProfileRelationId:                          // pg_yb_role_profile
