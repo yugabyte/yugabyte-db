@@ -1,12 +1,12 @@
 ---
 title: YugabyteDB metrics
 headerTitle: YugabyteDB metrics
-linkTitle: Metrics overview
-description: Learn about YugabyteDB database metrics
+linkTitle: Metrics
+description: Learn about the many available YugabyteDB database metrics
 menu:
   preview:
     identifier: metrics-overview
-    parent: explore-observability
+    parent: monitor-and-alert
     weight: 200
 type: docs
 ---
