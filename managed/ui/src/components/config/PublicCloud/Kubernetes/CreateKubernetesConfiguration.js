@@ -9,14 +9,14 @@ import JsYaml from 'js-yaml';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { YBButton, YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
+import { toast } from 'react-toastify';
 
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import { readUploadedFile } from '../../../../utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
-import { specialChars } from '../../constants';
-import { toast } from 'react-toastify';
+import { ACCEPTABLE_CHARS } from '../../constants';
 
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
 const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
@@ -25,7 +25,6 @@ const redhatImageRegistry = 'registry.connect.redhat.com/yugabytedb/yugabyte';
 class CreateKubernetesConfiguration extends Component {
   createProviderConfig = (vals, setSubmitting) => {
     const { type } = this.props;
-
     const self = this;
     const pullSecretFile = vals.pullSecret;
     const providerName = vals.accountName;
@@ -36,8 +35,8 @@ class CreateKubernetesConfiguration extends Component {
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find(
       (providerType) => providerType.code === type
     );
-
     const providerKubeConfig = vals.kubeConfig ? readUploadedFile(vals.kubeConfig, false) : {};
+
     // Loop thru regions and check for config files
     vals.regionList.forEach((region, rIndex) => {
       region.zoneList.forEach((zone, zIndex) => {
@@ -218,7 +217,7 @@ class CreateKubernetesConfiguration extends Component {
     const validationSchema = Yup.object().shape({
       accountName: Yup.string()
         .required('Config name is Required')
-        .matches(specialChars, 'Config Name cannot contain special characters except - and _'),
+        .matches(ACCEPTABLE_CHARS, 'Config Name cannot contain special characters except - and _'),
 
       serviceAccount: Yup.string().required('Service Account name is Required'),
 
@@ -283,13 +282,13 @@ class CreateKubernetesConfiguration extends Component {
                 <div className="editor-container">
                   <Row>
                     {showPrefillKubeConfigLink && (
-                        <YBButton
-                          btnText="Fetch suggested config"
-                          btnClass="btn btn-orange fetch-kube-config-but"
-                          onClick={() => {
-                            this.fillFormWithKubeConfig(props);
-                          }}
-                        />
+                      <YBButton
+                        btnText="Fetch suggested config"
+                        btnClass="btn btn-orange fetch-kube-config-but"
+                        onClick={() => {
+                          this.fillFormWithKubeConfig(props);
+                        }}
+                      />
                     )}
                     <Col lg={8}>
                       <Row
@@ -330,7 +329,6 @@ class CreateKubernetesConfiguration extends Component {
                           <Field
                             name="kubeConfig"
                             component={YBFormDropZone}
-                            className="upload-file-button"
                             title={'Upload Kube Config file'}
                           />
                         </Col>
@@ -382,7 +380,6 @@ class CreateKubernetesConfiguration extends Component {
                           <Field
                             name="pullSecret"
                             component={YBFormDropZone}
-                            className="upload-file-button"
                             title={'Upload Pull Secret file'}
                           />
                         </Col>

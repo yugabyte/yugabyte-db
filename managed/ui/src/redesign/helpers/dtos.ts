@@ -1,6 +1,28 @@
 import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
+export interface HostInfo {
+  aws:
+    | {
+        'instance-id': string;
+        privateIp: string;
+        region: string;
+        'vpc-id': string;
+      }
+    | string;
+  gcp:
+    | {
+        network: string;
+        project: string;
+      }
+    | string;
+}
+
+export interface ResourceCreationResponse {
+  resourceUUID: string;
+  taskUUID: string;
+}
+
 export interface PlacementAZ {
   uuid: string;
   name: string;
@@ -105,10 +127,11 @@ export interface UserIntent {
   instanceTags: FlagsObject | FlagsArray;
 }
 
-export enum ClusterType {
-  PRIMARY = 'PRIMARY',
-  ASYNC = 'ASYNC'
-}
+export const ClusterType = {
+  PRIMARY: 'PRIMARY',
+  ASYNC: 'ASYNC'
+} as const;
+export type ClusterType = typeof ClusterType[keyof typeof ClusterType];
 
 export interface Cluster {
   placementInfo: {
