@@ -467,7 +467,7 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
                                kTableReadRpcWaitTime, kGreaterThanZero))),
                    ImmutableMap.of(
                        kTotalReadRpcCount, kGreaterThanZero,
-                       kTotalWriteRpcCount, 308.0,
+                       kTotalWriteRpcCount, 1.0,
                        kTotalRpcWaitTime, kGreaterThanZero));
 
       // DELETE using index
@@ -541,7 +541,7 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
                                kTableReadRpcWaitTime, kShouldNotExist))),
                    ImmutableMap.of(
                        kTotalReadRpcCount, 2.0,
-                       kTotalWriteRpcCount, 206.0,
+                       kTotalWriteRpcCount, 1.0,
                        kTotalRpcWaitTime, kGreaterThanZero));
       stmt.execute("ROLLBACK");
 
@@ -575,7 +575,7 @@ public class TestPgExplainAnalyze extends BasePgSQLTest {
                                kTableReadRpcWaitTime, kShouldNotExist))),
                    ImmutableMap.of(
                        kTotalReadRpcCount, kGreaterThanZero,
-                       kTotalWriteRpcCount, 2.0,
+                       kTotalWriteRpcCount, 1.0,
                        kTotalRpcWaitTime, kGreaterThanZero));
 
       testExplainOneQuery(stmt, String.format(
