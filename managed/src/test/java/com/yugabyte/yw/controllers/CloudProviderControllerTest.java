@@ -870,9 +870,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  @Ignore
-  // TODO(vipulbansal)(PLAT-7130): Ignoring this test for now, will update
-  // and come up with new test case in the subsequent diffs.
   public void testCreateAwsProviderWithInValidAWSCredentials() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
