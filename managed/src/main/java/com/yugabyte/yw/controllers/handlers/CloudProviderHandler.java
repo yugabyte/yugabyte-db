@@ -157,9 +157,7 @@ public class CloudProviderHandler {
     }
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(providerCode.toString());
-    if (validate
-        && cloudAPI != null
-        && !cloudAPI.isValidCreds(reqProvider, getFirstRegionCode(reqProvider))) {
+    if (cloudAPI != null && !cloudAPI.isValidCreds(reqProvider, getFirstRegionCode(reqProvider))) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format("Invalid %s Credentials.", providerCode.toString().toUpperCase()));
@@ -744,8 +742,7 @@ public class CloudProviderHandler {
     boolean updatedProviderConfig = false;
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
-    if (validate
-        && cloudAPI != null
+    if (cloudAPI != null
         && !cloudAPI.isValidCreds(editProviderReq, getFirstRegionCode(editProviderReq))) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid %s Credentials.", provider.code.toUpperCase()));
