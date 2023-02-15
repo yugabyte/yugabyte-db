@@ -247,8 +247,8 @@ class KeyManagementConfiguration extends Component {
           data['HC_VAULT_ADDRESS'] = values.HC_VAULT_ADDRESS;
           data['HC_VAULT_TOKEN'] = values.HC_VAULT_TOKEN;
           data['HC_VAULT_KEY_NAME'] = values.HC_VAULT_KEY_NAME
-          ? values.HC_VAULT_KEY_NAME
-          : 'key_yugabyte';
+            ? values.HC_VAULT_KEY_NAME
+            : 'key_yugabyte';
           data['HC_VAULT_MOUNT_PATH'] = values.HC_VAULT_MOUNT_PATH
             ? values.HC_VAULT_MOUNT_PATH
             : 'transit/';
@@ -442,29 +442,33 @@ class KeyManagementConfiguration extends Component {
             <YBInfoTip title="AWS KMS Endpoint (Optional)" content="Enter your AWS KMS Endpoint." />
           </Col>
         </Row>
-        {!isEdit && <Row>
-          <div className={'bottom-form-field'}>
-            <OverlayTrigger
+        {!isEdit && (
+          <Row>
+            <div className={'bottom-form-field'}>
+              <OverlayTrigger
                 placement="top"
                 overlay={
-                  !!values.cmk_id ? <Tooltip className="high-index">
-                    Custom policy file is not needed when Customer Master Key ID is specified.
-                  </Tooltip> : <></>
+                  !!values.cmk_id ? (
+                    <Tooltip className="high-index">
+                      Custom policy file is not needed when Customer Master Key ID is specified.
+                    </Tooltip>
+                  ) : (
+                    <></>
+                  )
                 }
               >
                 <div>
-                <Field
-                  component={YBFormDropZone}
-                  name={'cmkPolicyContent'}
-                  title={'Upload CMK Policy'}
-                  className="upload-file-button"
-                  disableClick={!!values.cmk_id}
-                />
+                  <Field
+                    component={YBFormDropZone}
+                    name={'cmkPolicyContent'}
+                    title={'Upload CMK Policy'}
+                    disableClick={!!values.cmk_id}
+                  />
                 </div>
               </OverlayTrigger>
-            
-          </div>
-        </Row>}
+            </div>
+          </Row>
+        )}
       </Fragment>
     );
   };
@@ -577,7 +581,6 @@ class KeyManagementConfiguration extends Component {
               component={YBFormDropZone}
               name={'GCP_CONFIG'}
               title={'Upload GCP Credentials (json)'}
-              className="upload-file-button"
               acceptedFiles={['.txt']}
             />
           </Col>

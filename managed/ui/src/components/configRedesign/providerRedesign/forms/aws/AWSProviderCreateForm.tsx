@@ -33,6 +33,7 @@ import {
 } from '../../constants';
 import { RegionList } from '../../components/RegionList';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
+import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { NTPConfigField } from '../../components/NTPConfigField';
 import { addItem, deleteItem, editItem, readFileAsText } from '../utils';
 import { FormContainer } from '../components/FormContainer';
@@ -87,16 +88,16 @@ const KeyPairManagement = {
 } as const;
 type KeyPairManagement = typeof KeyPairManagement[keyof typeof KeyPairManagement];
 
-// const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
-//   {
-//     value: KeyPairManagement.YBA_MANAGED,
-//     label: 'Use YugabyteDB Anywhere to manage key pairs'
-//   },
-//   {
-//     value: KeyPairManagement.CUSTOM_KEY_PAIR,
-//     label: 'Provide custom key pair information'
-//   }
-// ];
+const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
+  {
+    value: KeyPairManagement.YBA_MANAGED,
+    label: 'Use YugabyteDB Anywhere to manage key pairs'
+  },
+  {
+    value: KeyPairManagement.CUSTOM_KEY_PAIR,
+    label: 'Provide custom key pair information'
+  }
+];
 
 const VPC_SETUP_OPTIONS: OptionProps[] = [
   {
@@ -278,10 +279,10 @@ export const AWSProviderCreateForm = ({
     'providerCredentialType',
     defaultValues.providerCredentialType
   );
-  // const keyPairManagement = formMethods.watch(
-  //   'sshKeypairManagement',
-  //   defaultValues.sshKeypairManagement
-  // );
+  const keyPairManagement = formMethods.watch(
+    'sshKeypairManagement',
+    defaultValues.sshKeypairManagement
+  );
   const enableHostedZone = formMethods.watch('enableHostedZone', defaultValues.enableHostedZone);
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
 
@@ -389,7 +390,7 @@ export const AWSProviderCreateForm = ({
                   fullWidth
                 />
               </FormField>
-              {/* <FormField>
+              <FormField>
                 <FieldLabel>Key Pair Management</FieldLabel>
                 <YBRadioGroupField
                   name="sshKeypairManagement"
@@ -415,7 +416,7 @@ export const AWSProviderCreateForm = ({
                     />
                   </FormField>
                 </>
-              )} */}
+              )}
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>
