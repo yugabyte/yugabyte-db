@@ -17,6 +17,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.forms.PlatformResults.withData;
 
+import com.cronutils.utils.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -36,6 +37,7 @@ import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -47,6 +49,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.Users.UserType;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.annotation.Transactional;
@@ -55,6 +58,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.File;
@@ -65,6 +69,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -198,7 +203,6 @@ public class SessionController extends AbstractPlatformController {
 
   @Data
   static class LogData {
-
     final List<String> lines;
   }
 
@@ -680,6 +684,56 @@ public class SessionController extends AbstractPlatformController {
                 return internalServerError(errorMsg);
               }
             });
+  }
+
+  @Data
+  @ApiModel("Current admin notification messages")
+  static class AdminNotifications {
+    @ApiModelProperty(value = "Messages", accessMode = AccessMode.READ_ONLY)
+    final List<AdminNotification> messages = new ArrayList<>();
+  }
+
+  @Data
+  @ApiModel("Admin notification")
+  static class AdminNotification {
+    @ApiModelProperty(value = "Notification code", accessMode = AccessMode.READ_ONLY)
+    private final String code;
+
+    @ApiModelProperty(
+        value = "Notification message with HTML markup",
+        accessMode = AccessMode.READ_ONLY)
+    private final String htmlMessage;
+  }
+
+  @ApiOperation(value = "getAdminNotifications", response = AdminNotifications.class)
+  @With(TokenAuthenticator.class)
+  public Result getAdminNotifications(UUID customerUUID) {
+    AdminNotifications notifications = new AdminNotifications();
+    notifications.getMessages().addAll(getAlertingNotifications(customerUUID));
+    return PlatformResults.withData(notifications);
+  }
+
+  private List<AdminNotification> getAlertingNotifications(UUID customerUUID) {
+    CustomerConfig alertingConfig = CustomerConfig.getAlertConfig(customerUUID);
+    if (alertingConfig == null) {
+      return Collections.emptyList();
+    }
+    AlertingData alertingData = Json.fromJson(alertingConfig.data, AlertingData.class);
+    if (StringUtils.isEmpty(alertingData.alertingEmail)) {
+      return Collections.emptyList();
+    }
+    CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
+    if (smtpConfig != null) {
+      return Collections.emptyList();
+    }
+    return Collections.singletonList(
+        new AdminNotification(
+            "__yb_missing_smtp_config__",
+            "With the recent upgrade of YugabyteDB Anywhere, "
+                + "you must configure SMTP server settings to receive health check "
+                + "alert email notifications. Please visit "
+                + "<a href=\"/admin/alertConfig/health-alerting?hide-notifications=true\">"
+                + "this page</a> to configure them."));
   }
 
   private Users getCurrentUser() {
