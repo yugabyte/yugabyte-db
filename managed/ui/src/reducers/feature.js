@@ -45,7 +45,7 @@ const initialStateFeatureReleased = {
   supportBundle: true,
   enableThirdpartyUpgrade: false,
   enableYbc: true,
-  enableMultiRegionConfig: true,
+  enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
   enableRunTimeConfig: true,
