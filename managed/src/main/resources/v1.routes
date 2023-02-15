@@ -20,6 +20,7 @@ GET     /logout                                                                c
 + nocsrf
 POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register(generateApiToken: Boolean ?= false)
 GET     /customers/:cUUID/password_policy                                      com.yugabyte.yw.controllers.SessionController.getPasswordPolicy(cUUID: java.util.UUID)
+GET     /customers/:cUUID/admin_notifications                                  com.yugabyte.yw.controllers.SessionController.getAdminNotifications(cUUID: java.util.UUID)
 GET     /ui_theme                                                              com.yugabyte.yw.controllers.SessionController.getUITheme()
 
 # -- Session specific Public API:
@@ -28,7 +29,6 @@ GET     /customer_count                                                        c
 GET     /app_version                                                           com.yugabyte.yw.controllers.SessionController.appVersion()
 GET     /logs/:maxLines                                                        com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: Integer)
 GET     /logs                                                                  com.yugabyte.yw.controllers.SessionController.getFilteredLogs(maxLines: Integer ?= 10000, universeName: String ?= null, queryRegex: String ?= null, startDate: String ?= null, endDate: String ?= null)
-
 # --
 
 POST    /logging_config                                                        com.yugabyte.yw.controllers.LoggingConfigController.setLoggingSettings()

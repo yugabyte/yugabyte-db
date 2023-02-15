@@ -105,6 +105,21 @@
       },
       "type" : "object"
     },
+    "Admin notification" : {
+      "properties" : {
+        "code" : {
+          "description" : "Notification code",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "htmlMessage" : {
+          "description" : "Notification message with HTML markup",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "Alert" : {
       "description" : "Alert definition. Used to send an alert notification.",
       "properties" : {
@@ -3337,6 +3352,19 @@
         }
       },
       "required" : [ "tablespaceInfos" ],
+      "type" : "object"
+    },
+    "Current admin notification messages" : {
+      "properties" : {
+        "messages" : {
+          "description" : "Messages",
+          "items" : {
+            "$ref" : "#/definitions/Admin notification"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        }
+      },
       "type" : "object"
     },
     "CustomCertInfo" : {
@@ -11858,6 +11886,29 @@
         } ],
         "summary" : "List access keys for all providers of a customer",
         "tags" : [ "Access Keys" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/admin_notifications" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getAdminNotifications",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Current admin notification messages"
+            }
+          }
+        },
+        "summary" : "getAdminNotifications",
+        "tags" : [ "Session management" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_channel_templates" : {
