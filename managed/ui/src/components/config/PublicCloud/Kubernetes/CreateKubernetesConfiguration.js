@@ -110,7 +110,7 @@ class CreateKubernetesConfiguration extends Component {
         // TODO: fetch the service account name from the kubeconfig.
 
         if (isNonEmptyObject(pullSecretFile)) {
-          const pullSecretYaml = JsYaml.safeLoad(configs[0]);
+          const pullSecretYaml = JsYaml.load(configs[0]);
           Object.assign(providerConfig, {
             KUBECONFIG_IMAGE_PULL_SECRET_NAME:
               pullSecretYaml.metadata && pullSecretYaml.metadata.name,
