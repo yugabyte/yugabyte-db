@@ -28,7 +28,7 @@ import {
 import { KUBERNETES_PROVIDER_OPTIONS } from './constants';
 import { RegionList } from '../../components/RegionList';
 import { YBButton } from '../../../../common/forms/fields';
-// import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
+import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField } from '../../../../../redesign/components';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { addItem, deleteItem, editItem, handleAsyncError, readFileAsText } from '../utils';
@@ -248,7 +248,7 @@ export const K8sProviderCreateForm = ({
                   fullWidth
                 />
               </FormField>
-              {/* <FormField>
+              <FormField>
                 <FieldLabel>Kube Config</FieldLabel>
                 <YBDropZoneField
                   name="kubeConfigContent"
@@ -267,7 +267,7 @@ export const K8sProviderCreateForm = ({
                   multipleFiles={false}
                   showHelpText={false}
                 />
-              </FormField> */}
+              </FormField>
             </FieldGroup>
             <FieldGroup
               heading="Regions"

@@ -13,7 +13,7 @@ import { useFieldArray, useFormContext } from 'react-hook-form';
 import { K8sRegionField } from './ConfigureK8sRegionModal';
 import { K8sCertIssuerType, K8sCertIssuerTypeLabel, K8sRegionFieldLabel } from './constants';
 import { OptionProps, YBInputField, YBRadioGroupField } from '../../../../../redesign/components';
-// import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
+import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 
 interface ConfigureK8sAvailabilityZoneFieldProps {
   isSubmitting: boolean;
@@ -86,7 +86,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                 fullWidth
               />
             </div>
-            {/* <div className={classes.formField}>
+            <div className={classes.formField}>
               <div>{K8sRegionFieldLabel.KUBE_CONFIG_CONTENT}</div>
               <YBDropZoneField
                 name={`zones.${index}.kubeConfigContent`}
@@ -95,7 +95,7 @@ export const ConfigureK8sAvailabilityZoneField = ({
                 multipleFiles={false}
                 showHelpText={false}
               />
-            </div> */}
+            </div>
             <div className={classes.formField}>
               <div>{K8sRegionFieldLabel.KUBE_DOMAIN}</div>
               <YBInputField
