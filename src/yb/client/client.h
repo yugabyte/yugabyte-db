@@ -786,6 +786,9 @@ class YBClient {
   // version that does not support AutoFlags.
   Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
 
+  Result<master::StatefulServiceInfoPB> GetStatefulServiceLocation(
+      StatefulServiceKind service_kind);
+
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const std::shared_ptr<YBTable>& table,
       const std::string& partition_key,

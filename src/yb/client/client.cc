@@ -2360,5 +2360,20 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   return status;
 }
 
+Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
+    StatefulServiceKind service_kind) {
+  master::GetStatefulServiceLocationRequestPB req;
+  master::GetStatefulServiceLocationResponsePB resp;
+  req.set_service_kind(service_kind);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetStatefulServiceLocation);
+
+  RSTATUS_DCHECK(resp.has_service_info(), IllegalState, "No service info in response");
+  RSTATUS_DCHECK(
+      resp.service_info().has_permanent_uuid(), IllegalState, "No permanent uuid in response");
+
+  return std::move(resp.service_info());
+}
+
 }  // namespace client
 }  // namespace yb
