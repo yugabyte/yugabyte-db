@@ -989,6 +989,18 @@ google::protobuf::RepeatedField<int> TableInfo::GetHostedStatefulServices() cons
   return l->pb.hosted_stateful_services();
 }
 
+bool TableInfo::AttachedYCQLIndexDeletionInProgress(const std::string& index_table_id) const {
+  auto l = LockForRead();
+  const auto& indices = l->pb.indexes();
+  const auto index_info_it = std::find_if(
+      indices.begin(), indices.end(), [&index_table_id](const IndexInfoPB& index_info) {
+        return index_info.table_id() == index_table_id;
+      });
+  return index_info_it != indices.end() &&
+         index_info_it->index_permissions() >=
+             IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING;
+}
+
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   VLOG_WITH_FUNC(2) << "Setting state for " << name() << " to "
                     << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
