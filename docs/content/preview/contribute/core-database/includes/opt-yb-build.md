@@ -1,3 +1,9 @@
+<!--
++++
+private = true
++++
+-->
+
 By default, when running build, third-party libraries are not built, and pre-built libraries are downloaded.
 We also use [Linuxbrew][linuxbrew] to provide some of the third-party dependencies.
 The build scripts automatically install these in directories under `/opt/yb-build`.
