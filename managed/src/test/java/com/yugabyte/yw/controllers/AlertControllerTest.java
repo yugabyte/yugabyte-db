@@ -48,8 +48,17 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static org.hamcrest.MatcherAssert.*;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.in;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -80,8 +89,11 @@ import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
+import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
 import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
+import com.yugabyte.yw.forms.AlertTemplateVariablesList;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
@@ -1502,12 +1514,16 @@ public class AlertControllerTest extends FakeDBApplication {
             "GET", "/api/customers/" + customer.getUuid() + "/alert_template_variables", authToken);
     assertThat(result.status(), equalTo(OK));
     JsonNode variableJson = Json.parse(contentAsString(result));
-    List<AlertTemplateVariable> queriedVariables =
-        Arrays.asList(Json.fromJson(variableJson, AlertTemplateVariable[].class));
+    AlertTemplateVariablesList queriedVariables =
+        Json.fromJson(variableJson, AlertTemplateVariablesList.class);
 
-    assertThat(queriedVariables, hasSize(1));
-    AlertTemplateVariable queriedVariable = queriedVariables.get(0);
+    assertThat(queriedVariables.getCustomVariables(), hasSize(1));
+    AlertTemplateVariable queriedVariable = queriedVariables.getCustomVariables().get(0);
     assertThat(queriedVariable, equalTo(variable));
+
+    assertThat(
+        queriedVariables.getSystemVariables(),
+        containsInAnyOrder(AlertTemplateSystemVariable.values()));
   }
 
   @Test
@@ -1608,9 +1624,22 @@ public class AlertControllerTest extends FakeDBApplication {
             authToken);
     assertThat(result.status(), equalTo(OK));
     JsonNode templateJson = Json.parse(contentAsString(result));
-    AlertChannelTemplates resultTemplates =
-        Json.fromJson(templateJson, AlertChannelTemplates.class);
-    assertThat(resultTemplates, equalTo(templates));
+    AlertChannelTemplatesExt resultTemplates =
+        Json.fromJson(templateJson, AlertChannelTemplatesExt.class);
+    assertThat(resultTemplates.getChannelTemplates(), equalTo(templates));
+    assertThat(
+        resultTemplates.getDefaultTitleTemplate(),
+        equalTo(
+            "YugabyteDB Anywhere {{ yugabyte_alert_severity }} alert"
+                + " {{ yugabyte_alert_policy_name }} {{ yugabyte_alert_status }} for"
+                + " {{ yugabyte_alert_source_name }}\n"));
+    assertThat(
+        resultTemplates.getDefaultTextTemplate(),
+        equalTo(
+            "{{ yugabyte_alert_policy_name }} alert with severity level "
+                + "'{{ yugabyte_alert_severity }}' for {{ yugabyte_alert_source_type }} "
+                + "'{{ yugabyte_alert_source_name }}' is {{ yugabyte_alert_status }}.\n\n"
+                + "{{ yugabyte_alert_message }}\n"));
   }
 
   @Test
@@ -1627,9 +1656,16 @@ public class AlertControllerTest extends FakeDBApplication {
             "GET", "/api/customers/" + customer.getUuid() + "/alert_channel_templates", authToken);
     assertThat(result.status(), equalTo(OK));
     JsonNode templatesJson = Json.parse(contentAsString(result));
+    List<AlertChannelTemplatesExt> listedTemplatesWithDefault =
+        Arrays.asList(Json.fromJson(templatesJson, AlertChannelTemplatesExt[].class));
     List<AlertChannelTemplates> listedTemplates =
-        Arrays.asList(Json.fromJson(templatesJson, AlertChannelTemplates[].class));
+        listedTemplatesWithDefault
+            .stream()
+            .map(AlertChannelTemplatesExt::getChannelTemplates)
+            .filter(t -> t.getTextTemplate() != null)
+            .collect(Collectors.toList());
     assertThat(listedTemplates, containsInAnyOrder(templates, templates2));
+    assertThat(listedTemplatesWithDefault, hasSize(4));
   }
 
   @Test

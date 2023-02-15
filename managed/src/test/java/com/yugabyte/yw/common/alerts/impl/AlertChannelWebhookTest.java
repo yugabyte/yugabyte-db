@@ -7,15 +7,18 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
 import com.yugabyte.yw.common.alerts.AlertChannelWebHookParams;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -38,10 +41,18 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
 
   private AlertChannelWebHook channel;
 
+  AlertChannelTemplateService alertChannelTemplateService;
+
+  AlertChannelTemplatesExt alertChannelTemplatesExt;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     channel = app.injector().instanceOf(AlertChannelWebHook.class);
+
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
+    alertChannelTemplatesExt =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.WebHook);
   }
 
   @Test
@@ -58,7 +69,7 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
       channelConfig.setParams(params);
 
       Alert alert = ModelFactory.createAlert(defaultCustomer);
-      channel.sendNotification(defaultCustomer, alert, channelConfig, null);
+      channel.sendNotification(defaultCustomer, alert, channelConfig, alertChannelTemplatesExt);
 
       RecordedRequest request = server.takeRequest();
       assertThat(request.getPath(), is(WEBHOOK_TEST_PATH));
@@ -74,7 +85,7 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
               "{}:{configuration_uuid:\\\""
                   + alert.getConfigurationUuid()
                   + "\\\", "
-                  + "definition_name:\\\"Alert 1\\\"}"));
+                  + "definition_name:\\\"alertConfiguration\\\"}"));
       assertThat(requestJson.get("commonLabels").isObject(), equalTo(true));
       assertThat(requestJson.get("commonAnnotations").isObject(), equalTo(true));
 
@@ -83,14 +94,14 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
       assertThat(alertJson.get("labels"), equalTo(requestJson.get("commonLabels")));
       assertThat(alertJson.get("annotations"), equalTo(requestJson.get("commonAnnotations")));
       assertThat(alertJson.get("startsAt").asText(), notNullValue());
-      assertThat(alertJson.get("endsAt"), nullValue());
+      assertTrue(alertJson.get("endsAt").isNull());
       assertThat(alertJson.get("status").asText(), equalTo("firing"));
 
       JsonNode groupLabelsJson = requestJson.get("groupLabels");
       assertThat(
           groupLabelsJson.get("configuration_uuid").asText(),
           equalTo(alert.getConfigurationUuid().toString()));
-      assertThat(groupLabelsJson.get("definition_name").asText(), equalTo(alert.getName()));
+      assertThat(groupLabelsJson.get("definition_name").asText(), equalTo("alertConfiguration"));
     }
   }
 
@@ -109,7 +120,9 @@ public class AlertChannelWebhookTest extends FakeDBApplication {
       Alert alert = ModelFactory.createAlert(defaultCustomer);
 
       assertThat(
-          () -> channel.sendNotification(defaultCustomer, alert, channelConfig, null),
+          () ->
+              channel.sendNotification(
+                  defaultCustomer, alert, channelConfig, alertChannelTemplatesExt),
           thrown(
               PlatformNotificationException.class,
               "Error sending WebHook message for alert Alert 1: "
