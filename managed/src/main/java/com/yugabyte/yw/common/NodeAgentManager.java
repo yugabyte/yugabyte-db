@@ -414,23 +414,31 @@ public class NodeAgentManager {
    * @param nodeAgent the node agent record to be created.
    * @return the updated node agent record along with cert and key in the config.
    */
-  public NodeAgent create(NodeAgent nodeAgent) {
+  /**
+   * Create a node agent record in the DB.
+   *
+   * @param nodeAgent nodeAgent the node agent record to be created.
+   * @param includeCertContents if it is true, server cert and key contents are included.
+   * @return the updated node agent record along with cert and key in the config.
+   */
+  public NodeAgent create(NodeAgent nodeAgent, boolean includeCertContents) {
     nodeAgent.config = new HashMap<>();
     nodeAgent.state = State.REGISTERING;
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
     Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
     nodeAgent.updateCertDirPath(certDirPath);
-    X509Certificate serverCert = serverPair.getLeft();
-    KeyPair serverKeyPair = serverPair.getRight();
-    nodeAgent.config =
-        ImmutableMap.<String, String>builder()
-            .putAll(nodeAgent.config)
-            .put(NodeAgent.SERVER_CERT_PROPERTY, CertificateHelper.getAsPemString(serverCert))
-            .put(
-                NodeAgent.SERVER_KEY_PROPERTY,
-                CertificateHelper.getAsPemString(serverKeyPair.getPrivate()))
-            .build();
+    ImmutableMap.Builder<String, String> builder =
+        ImmutableMap.<String, String>builder().putAll(nodeAgent.config);
+    if (includeCertContents) {
+      X509Certificate serverCert = serverPair.getLeft();
+      KeyPair serverKeyPair = serverPair.getRight();
+      builder.put(NodeAgent.SERVER_CERT_PROPERTY, CertificateHelper.getAsPemString(serverCert));
+      builder.put(
+          NodeAgent.SERVER_KEY_PROPERTY,
+          CertificateHelper.getAsPemString(serverKeyPair.getPrivate()));
+    }
+    nodeAgent.config = builder.build();
     return nodeAgent;
   }
 

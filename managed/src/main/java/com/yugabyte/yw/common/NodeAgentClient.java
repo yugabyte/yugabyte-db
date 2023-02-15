@@ -23,6 +23,7 @@ import com.yugabyte.yw.nodeagent.Server.FileInfo;
 import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import com.yugabyte.yw.nodeagent.Server.PingResponse;
 import com.yugabyte.yw.nodeagent.Server.UpdateRequest;
+import com.yugabyte.yw.nodeagent.Server.UpdateResponse;
 import com.yugabyte.yw.nodeagent.Server.UpgradeInfo;
 import com.yugabyte.yw.nodeagent.Server.UploadFileRequest;
 import com.yugabyte.yw.nodeagent.Server.UploadFileResponse;
@@ -354,6 +355,8 @@ public class NodeAgentClient {
     cmdParams.add(String.valueOf(nodeAgent.port));
     cmdParams.add("--node_agent_cert_path");
     cmdParams.add(nodeAgent.getCaCertFilePath().toString());
+    cmdParams.add("--node_agent_home");
+    cmdParams.add(nodeAgent.home);
     if (sensitiveCmdParams == null) {
       cmdParams.add("--node_agent_auth_token");
       cmdParams.add(getNodeAgentJWT(nodeAgent));
@@ -541,9 +544,11 @@ public class NodeAgentClient {
             .build());
   }
 
-  public void finalizeUpgrade(NodeAgent nodeAgent) {
+  public String finalizeUpgrade(NodeAgent nodeAgent) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
-    stub.update(UpdateRequest.newBuilder().setState(State.UPGRADED.name()).build());
+    UpdateResponse response =
+        stub.update(UpdateRequest.newBuilder().setState(State.UPGRADED.name()).build());
+    return response.getHome();
   }
 }
