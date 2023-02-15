@@ -92,9 +92,10 @@ The Provisional Records are written to all the replicas of the tablets responsib
 
 When the transaction manager (typically, the node the client is connected to) does not receive a heartbeat from the client, it automatically cancels that transaction, so those provisional records would no longer block conflicting transactions waiting on the same keys. The transaction manager also maintains the transaction-id to client mapping and sends heartbeats to the transaction status tablet containing the information about the the transaction. When the manager fails, the heartbeats stop and the provisional records remain uncommitted in the respective tablets. Transactions that do not get heartbeats at the transaction status tablet become stale after certain time. Clients connected to the failed manager will receive an error message: 
 
-```output.sql
-FATAL:  57P01: terminating connection due to unexpected postmaster exit
-FATAL:  XX000: Network error: recvmsg error: Connection refused
-```
+  ```output.sql
+  FATAL:  57P01: terminating connection due to unexpected postmaster exit
+  FATAL:  XX000: Network error: recvmsg error: Connection refused
+  ```
+
 As the client is unaware of the transaction-id and the client to transaction-id mapping cannot be regenerated, it would be the responsibility of the client to retry the transaction. Other clients with transactions that were waiting on the transactions handled by the failed manager, will have to wait for the transaction's provisional records and locks to expire and then proceed normally.
 

@@ -33,13 +33,13 @@ Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a si
 
 Create the Table.
 
-```sql
-CREATE TABLE txndemo (
-    k1 int,
-    k2 int,
-    PRIMARY KEY(k1)
-);
-```
+    ```sql
+    CREATE TABLE txndemo (
+        k1 int,
+        k2 int,
+        PRIMARY KEY(k1)
+    );
+    ```
 
 Insert some sample data and determine the hashcode of the primary keys.
 
@@ -52,33 +52,33 @@ INSERT INTO txndemo SELECT id,10 FROM generate_series(1,5) AS id;
 For the examples, you need to identify which node holds a specific row, so that you
 can shut down the correct node to see what is happening. You can get the hash code of the primary key using the `yb_hash_code(id)` function, and correlate it with the `yb-admin` output to figure out where that key is located. The examples on this page use the row with `k1=1`.
 
-```sql
-SELECT id, upper(to_hex(yb_hash_code(id))) AS hash FROM generate_series(1,5) AS id;
-```
+    ```sql
+    SELECT id, upper(to_hex(yb_hash_code(id))) AS hash FROM generate_series(1,5) AS id;
+    ```
 
-```output
- id | hash
-----+------
-  1 | 1210
-  2 | C0C4
-  3 | FCA0
-  4 | 9EAF
-  5 | A73
-(5 rows)
-```
+    ```output
+    id | hash
+    ----+------
+    1 | 1210
+    2 | C0C4
+    3 | FCA0
+    4 | 9EAF
+    5 | A73
+    (5 rows)
+    ```
 
 List the nodes:
 
-```sh
-$ yb-admin list_tablets ysql.yugabyte txndemo
-```
+    ```sh
+    $ yb-admin list_tablets ysql.yugabyte txndemo
+    ```
 
-```output.sh
-Tablet-UUID                        Key Range         Leader-IP       Leader-UUID
-7e2dfb66a4654aa5b2fb133b446aaabc   [0x0000, 0x5554]  127.0.0.2:9100  4739b43f76184e1cab003b88686df290
-a9b4675fdaaa4d4b949adc5e53d183bf   [0x5555, 0xAAA9]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
-a8c50129f63642459a02ed4ee492a1f3   [0x0000, 0x5554]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
-```
+    ```output.sh
+    Tablet-UUID                        Key Range         Leader-IP       Leader-UUID
+    7e2dfb66a4654aa5b2fb133b446aaabc   [0x0000, 0x5554]  127.0.0.2:9100  4739b43f76184e1cab003b88686df290
+    a9b4675fdaaa4d4b949adc5e53d183bf   [0x5555, 0xAAA9]  127.0.0.3:9100  7402fbc9c6384d80bb7bcd09b89dbca9
+    a8c50129f63642459a02ed4ee492a1f3   [0x0000, 0x5554]  127.0.0.1:9100  6789e52b1c334844a66078fe9fdf95fa
+    ```
 
 From the hash ranges listed on the tablet-servers page at <http://localhost:7000/tablet-servers> and the [yb-admin](../../../admin/yb-admin/) output, you can determine that the row with `k1=1` whose hash code is `1210` resides on node `127.0.0.2`, as that node has the tablet containing the key range `[0x0000, 0x5554]`.
 
@@ -329,11 +329,11 @@ The transaction has failed: the row did not get the intended value of `40`, and 
 
 You can shut down the local cluster that you created as follows:
 
-```sh
-yugabyted destroy --base_dir=/tmp/ybd1
-yugabyted destroy --base_dir=/tmp/ybd2
-yugabyted destroy --base_dir=/tmp/ybd3
-```
+    ```sh
+    yugabyted destroy --base_dir=/tmp/ybd1
+    yugabyted destroy --base_dir=/tmp/ybd2
+    yugabyted destroy --base_dir=/tmp/ybd3
+    ```
 
 ## Conclusion
 
