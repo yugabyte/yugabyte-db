@@ -256,6 +256,7 @@ extern int log_min_duration_sample;
 extern int	log_min_duration_statement;
 extern int	log_temp_files;
 extern double log_statement_sample_rate;
+extern double log_xact_sample_rate;
 
 extern int	yb_bnl_batch_size;
 extern bool  yb_bnl_enable_hashing;

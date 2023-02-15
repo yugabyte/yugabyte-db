@@ -507,6 +507,7 @@ int         log_min_duration_sample = -1;
 int			log_min_duration_statement = -1;
 int			log_temp_files = -1;
 double      log_statement_sample_rate = 1.0;
+double      log_xact_sample_rate = 0;
 int			trace_recovery_messages = LOG;
 
 int			temp_file_limit = -1;
@@ -3774,6 +3775,18 @@ static struct config_real ConfigureNamesReal[] =
 		&RetryBackoffMultiplier,
 		2.0, 1.0, 1e10,
 		check_backoff_multiplier, NULL, NULL
+	},
+
+	{
+		{"log_transaction_sample_rate", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Set the fraction of transactions to log for new transactions."),
+			gettext_noop("Logs all statements from a fraction of transactions. "
+						 "Use a value between 0.0 (never log) and 1.0 (log all "
+						 "statements for all transactions).")
+		},
+		&log_xact_sample_rate,
+		0.0, 0.0, 1.0,
+		NULL, NULL, NULL
 	},
 
 	{
