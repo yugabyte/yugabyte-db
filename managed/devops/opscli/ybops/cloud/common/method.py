@@ -191,6 +191,8 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="Node agent cert path")
         self.parser.add_argument("--node_agent_auth_token", required=False,
                                  help="Node agent auth token")
+        self.parser.add_argument("--node_agent_home", required=False,
+                                 help="Node agent home path")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -252,6 +254,8 @@ class AbstractInstancesMethod(AbstractMethod):
             updated_args["node_agent_cert_path"] = args.node_agent_cert_path
         if args.node_agent_auth_token:
             updated_args["node_agent_auth_token"] = args.node_agent_auth_token
+        if args.node_agent_home:
+            updated_args["node_agent_home"] = args.node_agent_home
 
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)

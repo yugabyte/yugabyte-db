@@ -311,7 +311,8 @@ func (s *RPCServer) Update(
 	default:
 		err = fmt.Errorf("Unhandled state - %s", state)
 	}
-	return &pb.UpdateResponse{}, err
+	res := &pb.UpdateResponse{Home: util.MustGetHomeDirectory()}
+	return res, err
 }
 
 /* End of gRPC methods. */

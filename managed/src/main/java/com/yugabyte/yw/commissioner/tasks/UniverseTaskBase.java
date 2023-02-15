@@ -129,6 +129,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Restore;
@@ -1059,6 +1060,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         params.customerUuid = provider.customerUUID;
         params.azUuid = node.azUuid;
         params.universeUUID = universe.universeUUID;
+        params.nodeAgentHome = NodeAgent.ROOT_NODE_AGENT_HOME;
         InstallNodeAgent task = createTask(InstallNodeAgent.class);
         task.initialize(params);
         subTaskGroup.addSubTask(task);
