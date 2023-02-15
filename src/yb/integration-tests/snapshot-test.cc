@@ -28,6 +28,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
@@ -502,8 +503,20 @@ TEST_F(SnapshotTest, SnapshotRemoteBootstrap) {
   }
 
   ASSERT_OK(cluster_->CleanTabletLogs());
-
+  const MonoDelta kTimeout = 20s * kTimeMultiplier;
   ASSERT_OK(ts0->Start());
+  ASSERT_OK(ts0->WaitStarted());
+  // Get the map of tserverdetails and the set of all_tablet_ids in order to use them
+  // for ts0 to catch up with the rest of replicas after remote bootstrapping
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  master::MasterClusterProxy master_proxy(&client->proxy_cache(), leader_master->bound_rpc_addr());
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
+  std::set<TabletId> all_tablet_ids = itest::GetClusterTabletIds(cluster_.get());
+  // wait for all replicas of ts0 to be bootstrapped and catch up
+  for (auto tablet_id : all_tablet_ids) {
+    ASSERT_OK(WaitForAllPeersToCatchup(tablet_id, TServerDetailsVector(ts_map), kTimeout));
+  }
   ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
 }
 
