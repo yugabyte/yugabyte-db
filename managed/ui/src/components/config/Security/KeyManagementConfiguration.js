@@ -445,7 +445,6 @@ class KeyManagementConfiguration extends Component {
               component={YBFormDropZone}
               name={'cmkPolicyContent'}
               title={'Upload CMK Policy'}
-              className="upload-file-button"
             />
           </div>
         </Row>
@@ -540,7 +539,6 @@ class KeyManagementConfiguration extends Component {
               component={YBFormDropZone}
               name={'GCP_CONFIG'}
               title={'Upload GCP Credentials (json)'}
-              className="upload-file-button"
               acceptedFiles={['.txt']}
             />
           </Col>
