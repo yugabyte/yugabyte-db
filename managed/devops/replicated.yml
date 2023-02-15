@@ -288,7 +288,7 @@ components:
                   {{repl end}}
                   static_configs:
                     - targets: [
-                      '{{repl ConfigOption "docker_gateway" }}:{{repl if ConfigOptionEquals "https_enabled" "1"}}9443{{repl else}}9000{{repl end}}}'
+                      '{{repl ConfigOption "docker_gateway" }}:{{repl if ConfigOptionEquals "https_enabled" "1"}}9443{{repl else}}9000{{repl end}}'
                     ]
 
                 - job_name: "node"
