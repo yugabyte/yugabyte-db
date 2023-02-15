@@ -248,7 +248,7 @@ public class CustomerController extends AuthenticatedController {
       } else if (smtpConfig != null && alertingFormData.smtpData != null) {
         smtpConfig.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.smtpData));
         customerConfigService.edit(smtpConfig);
-      } // In case we want to reset the smtpData and use the default mailing server.
+      } // In case we want to reset the smtpData
       else if (request.has("smtpData") && alertingFormData.smtpData == null) {
         if (smtpConfig != null) {
           smtpConfig.delete();
