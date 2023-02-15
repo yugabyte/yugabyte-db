@@ -329,6 +329,7 @@ class CreateKubernetesConfiguration extends Component {
                           <Field
                             name="kubeConfig"
                             component={YBFormDropZone}
+                            className="upload-file-button"
                             title={'Upload Kube Config file'}
                           />
                         </Col>
@@ -380,6 +381,7 @@ class CreateKubernetesConfiguration extends Component {
                           <Field
                             name="pullSecret"
                             component={YBFormDropZone}
+                            className="upload-file-button"
                             title={'Upload Pull Secret file'}
                           />
                         </Col>

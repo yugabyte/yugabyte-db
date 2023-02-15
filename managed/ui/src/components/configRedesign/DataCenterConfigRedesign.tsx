@@ -34,7 +34,7 @@ import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 
 interface ReactRouterProps {
   location: LocationShape;
-  params: { configTab?: string; section?: string; providerUUID?: string };
+  params: { tab?: string; section?: string; uuid?: string };
 }
 
 export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps) => {
@@ -45,8 +45,8 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
 
   // Validate URL param
   if (
-    params.configTab !== undefined &&
-    !Object.values(ConfigTabKey).includes(params.configTab as ConfigTabKey)
+    params.tab !== undefined &&
+    !Object.values(ConfigTabKey).includes(params.tab as ConfigTabKey)
   ) {
     return <YBErrorIndicator customErrorMessage="404 Page Not Found." />;
   }
@@ -54,7 +54,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
   const defaultTab = isAvailable(currentCustomer.data.features, 'config.infra')
     ? ConfigTabKey.INFRA
     : ConfigTabKey.BACKUP;
-  const activeTab = params.configTab ?? defaultTab;
+  const activeTab = params.tab ?? defaultTab;
   const activeSection = params.section ?? 's3';
   return (
     <div>
@@ -81,10 +81,10 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 key="aws-tab"
                 unmountOnExit={true}
               >
-                {params.providerUUID === undefined ? (
+                {params.uuid === undefined ? (
                   <InfraProvider providerCode={ProviderCode.AWS} />
                 ) : (
-                  <ProviderDetails providerUUID={params.providerUUID} />
+                  <ProviderDetails providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -93,10 +93,10 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 key="gcp-tab"
                 unmountOnExit={true}
               >
-                {params.providerUUID === undefined ? (
+                {params.uuid === undefined ? (
                   <InfraProvider providerCode={ProviderCode.GCP} />
                 ) : (
-                  <ProviderDetails providerUUID={params.providerUUID} />
+                  <ProviderDetails providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -105,10 +105,10 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 key="azure-tab"
                 unmountOnExit={true}
               >
-                {params.providerUUID === undefined ? (
+                {params.uuid === undefined ? (
                   <InfraProvider providerCode={ProviderCode.AZU} />
                 ) : (
-                  <ProviderDetails providerUUID={params.providerUUID} />
+                  <ProviderDetails providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -117,13 +117,13 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 key="tanzu-tab"
                 unmountOnExit={true}
               >
-                {params.providerUUID === undefined ? (
+                {params.uuid === undefined ? (
                   <InfraProvider
                     providerCode={ProviderCode.KUBERNETES}
                     kubernetesProviderType={KubernetesProviderType.TANZU}
                   />
                 ) : (
-                  <ProviderDetails providerUUID={params.providerUUID} />
+                  <ProviderDetails providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -132,13 +132,13 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 key="openshift-tab"
                 unmountOnExit={true}
               >
-                {params.providerUUID === undefined ? (
+                {params.uuid === undefined ? (
                   <InfraProvider
                     providerCode={ProviderCode.KUBERNETES}
                     kubernetesProviderType={KubernetesProviderType.OPEN_SHIFT}
                   />
                 ) : (
-                  <ProviderDetails providerUUID={params.providerUUID} />
+                  <ProviderDetails providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -147,13 +147,13 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 key="k8s-tab"
                 unmountOnExit={true}
               >
-                {params.providerUUID === undefined ? (
+                {params.uuid === undefined ? (
                   <InfraProvider
                     providerCode={ProviderCode.KUBERNETES}
                     kubernetesProviderType={KubernetesProviderType.MANAGED_SERVICE}
                   />
                 ) : (
-                  <ProviderDetails providerUUID={params.providerUUID} />
+                  <ProviderDetails providerUUID={params.uuid} />
                 )}
               </Tab>
               <Tab
@@ -162,12 +162,12 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
                 key="onprem-tab"
                 unmountOnExit={true}
               >
-                {params.providerUUID === undefined ? (
+                {params.uuid === undefined ? (
                   <Box padding="25px" minHeight="400px" bgcolor="white">
                     <OnPremConfigurationContainer isRedesign={true} />
                   </Box>
                 ) : (
-                  <ProviderDetails providerUUID={params.providerUUID} />
+                  <ProviderDetails providerUUID={params.uuid} />
                 )}
               </Tab>
             </YBTabsPanel>
