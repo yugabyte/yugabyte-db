@@ -36,4 +36,4 @@ body:
     placeholder: |
       **The YugabyteDB version with build number (if available)**
   validations:
-    required: true
+    required: false
