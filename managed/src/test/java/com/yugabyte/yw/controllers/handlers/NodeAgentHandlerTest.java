@@ -88,6 +88,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
     assertNotNull(nodeAgent.uuid);
     UUID nodeAgentUuid = nodeAgent.uuid;
