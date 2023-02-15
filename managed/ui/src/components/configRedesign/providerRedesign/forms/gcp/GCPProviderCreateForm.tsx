@@ -21,7 +21,7 @@ import {
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { NTPConfigField } from '../../components/NTPConfigField';
 import { RegionList } from '../../components/RegionList';
-// import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
+import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import {
   ASYNC_ERROR,
   NTPSetupType,
@@ -83,16 +83,16 @@ const KeyPairManagement = {
 } as const;
 type KeyPairManagement = typeof KeyPairManagement[keyof typeof KeyPairManagement];
 
-// const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
-//   {
-//     value: KeyPairManagement.YBA_MANAGED,
-//     label: 'Use YugabyteDB Anywhere to manage key pairs'
-//   },
-//   {
-//     value: KeyPairManagement.CUSTOM_KEY_PAIR,
-//     label: 'Provide custom key pair information'
-//   }
-// ];
+const KEY_PAIR_MANAGEMENT_OPTIONS: OptionProps[] = [
+  {
+    value: KeyPairManagement.YBA_MANAGED,
+    label: 'Use YugabyteDB Anywhere to manage key pairs'
+  },
+  {
+    value: KeyPairManagement.CUSTOM_KEY_PAIR,
+    label: 'Provide custom key pair information'
+  }
+];
 
 const VPC_SETUP_OPTIONS: OptionProps[] = [
   {
@@ -308,14 +308,14 @@ export const GCPProviderCreateForm = ({
   const onDeleteRegionSubmit = (currentRegion: CloudVendorRegionField) =>
     deleteItem(currentRegion, regions, setRegions);
 
-  // const providerCredentialType = formMethods.watch(
-  //   'providerCredentialType',
-  //   defaultValues.providerCredentialType
-  // );
-  // const keyPairManagement = formMethods.watch(
-  //   'sshKeypairManagement',
-  //   defaultValues.sshKeypairManagement
-  // );
+  const providerCredentialType = formMethods.watch(
+    'providerCredentialType',
+    defaultValues.providerCredentialType
+  );
+  const keyPairManagement = formMethods.watch(
+    'sshKeypairManagement',
+    defaultValues.sshKeypairManagement
+  );
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   return (
     <Box display="flex" justifyContent="center">
@@ -337,7 +337,7 @@ export const GCPProviderCreateForm = ({
                   orientation={RadioGroupOrientation.HORIZONTAL}
                 />
               </FormField>
-              {/* {providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT && (
+              {providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT && (
                 <FormField>
                   <FieldLabel>Service Account</FieldLabel>
                   <YBDropZoneField
@@ -348,7 +348,7 @@ export const GCPProviderCreateForm = ({
                     showHelpText={false}
                   />
                 </FormField>
-              )} */}
+              )}
               <FormField>
                 <FieldLabel>GCE Project Name (Optional Override)</FieldLabel>
                 <YBInputField control={formMethods.control} name="gceProject" fullWidth />
@@ -412,7 +412,7 @@ export const GCPProviderCreateForm = ({
                   fullWidth
                 />
               </FormField>
-              {/* <FormField>
+              <FormField>
                 <FieldLabel>Key Pair Management</FieldLabel>
                 <YBRadioGroupField
                   name="sshKeypairManagement"
@@ -438,7 +438,7 @@ export const GCPProviderCreateForm = ({
                     />
                   </FormField>
                 </>
-              )} */}
+              )}
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>

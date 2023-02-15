@@ -53,7 +53,7 @@ export default class AddCertificateForm extends Component {
 
   readUploadedFileAsText = (inputFile, isRequired) => {
     const fileReader = new FileReader();
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       fileReader.onloadend = () => {
         resolve(fileReader.result);
       };
@@ -213,7 +213,7 @@ export default class AddCertificateForm extends Component {
       if (!values.vaultAddr) {
         errors.vaultAddr = 'Vault Address is Required';
       } else {
-        const exp = new RegExp(/^(?:http(s)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/);
+        const exp = new RegExp(/^(?:http(s)?:\/\/)?[\w.-]+:\d{1,5}(\/)?$/);
         if (!exp.test(values.vaultAddr))
           errors.vaultAddr = 'Vault Address must be a valid URL with port number';
       }
@@ -492,14 +492,12 @@ export default class AddCertificateForm extends Component {
                     <Field
                       name="certContent"
                       component={YBFormDropZone}
-                      className="upload-file-button"
                       title="Upload Root Certificate"
                       required
                     />
                     <Field
                       name="keyContent"
                       component={YBFormDropZone}
-                      className="upload-file-button"
                       title="Upload Key"
                       required
                     />
@@ -525,7 +523,6 @@ export default class AddCertificateForm extends Component {
                     <Field
                       name="certContent"
                       component={YBFormDropZone}
-                      className="upload-file-button"
                       title="Upload Root Certificate"
                       required
                     />
@@ -626,7 +623,6 @@ export default class AddCertificateForm extends Component {
                     <Field
                       name="certContent"
                       component={YBFormDropZone}
-                      className="upload-file-button"
                       title="Upload Root Certificate"
                       required
                     />
