@@ -39,14 +39,7 @@ export const DataCenterConfiguration = (props: any) => {
       {shouldShowRedesignedUI ? (
         <DataCenterConfigRedesign {...props} />
       ) : (
-        <DataCenterConfigurationContainer
-          {...props}
-          params={{
-            tab: props.params.configTab,
-            section: props.params.section,
-            uuid: props.params.providerUUID
-          }}
-        />
+        <DataCenterConfigurationContainer {...props} />
       )}
     </>
   );
