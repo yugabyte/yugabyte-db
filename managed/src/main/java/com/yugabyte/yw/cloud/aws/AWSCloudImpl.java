@@ -118,6 +118,18 @@ public class AWSCloudImpl implements CloudAPI {
         .build();
   }
 
+  public AmazonRoute53 getRoute53Client(Provider provider) {
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
+    return AmazonRoute53ClientBuilder.standard().withCredentials(credentialsProvider).build();
+  }
+
+  public AWSSecurityTokenService getStsClient(Provider provider) {
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
+    return AWSSecurityTokenServiceClientBuilder.standard()
+        .withCredentials(credentialsProvider)
+        .build();
+  }
+
   private AWSCredentialsProvider getCredsOrFallbackToDefault(Provider provider) {
     String accessKeyId = provider.getProviderDetails().getCloudInfo().getAws().awsAccessKeyID;
     String secretAccessKey =
@@ -669,11 +681,7 @@ public class AWSCloudImpl implements CloudAPI {
 
   public GetCallerIdentityResult getStsClientOrBadRequest(Provider provider) {
     try {
-      AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
-      AWSSecurityTokenService stsClient =
-          AWSSecurityTokenServiceClientBuilder.standard()
-              .withCredentials(credentialsProvider)
-              .build();
+      AWSSecurityTokenService stsClient = getStsClient(provider);
       return stsClient.getCallerIdentity(new GetCallerIdentityRequest());
     } catch (SdkClientException e) {
       LOG.error("AWS Provider validation failed: ", e);
@@ -699,7 +707,7 @@ public class AWSCloudImpl implements CloudAPI {
     }
   }
 
-  public String getPrivateKeyOrBadRequest(String privateKeyString) {
+  public String getPrivateKeyAlgoOrBadRequest(String privateKeyString) {
     try {
       return CertificateHelper.getPrivateKey(privateKeyString).getAlgorithm();
     } catch (RuntimeException e) {
@@ -710,12 +718,10 @@ public class AWSCloudImpl implements CloudAPI {
 
   public GetHostedZoneResult getHostedZoneOrBadRequest(Provider provider, String hostedZoneId) {
     try {
-      AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
-      AmazonRoute53 client =
-          AmazonRoute53ClientBuilder.standard().withCredentials(credentialsProvider).build();
+      AmazonRoute53 route53Client = getRoute53Client(provider);
       GetHostedZoneRequest request = new GetHostedZoneRequest().withId(hostedZoneId);
-      return client.getHostedZone(request);
-    } catch (AmazonServiceException | PlatformServiceException e) {
+      return route53Client.getHostedZone(request);
+    } catch (AmazonServiceException e) {
       LOG.error("Hosted Zone validation failed: ", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Hosted Zone validation failed: " + e.getMessage());
