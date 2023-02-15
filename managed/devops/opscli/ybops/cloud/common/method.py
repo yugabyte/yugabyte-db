@@ -1667,9 +1667,9 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Could not find host {} to reboot".format(
                 args.search_pattern))
-        if not host_info['is_running']:
+        if not host_info.get('is_running'):
             raise YBOpsRuntimeError("Host must be running to be rebooted, currently in '{}' state"
-                                    .format(host_info['instance_state']))
+                                    .format(host_info.get('instance_state')))
         logging.info("Rebooting instance {}".format(args.search_pattern))
 
         # Get Sudo SSH User
