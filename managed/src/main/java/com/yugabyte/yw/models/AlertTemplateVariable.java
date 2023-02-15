@@ -13,6 +13,7 @@ import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import javax.persistence.Entity;
@@ -85,5 +86,9 @@ public class AlertTemplateVariable extends Model {
 
   public static ExpressionList<AlertTemplateVariable> createQuery() {
     return find.query().where();
+  }
+
+  public static List<AlertTemplateVariable> list(UUID customerUuid) {
+    return AlertTemplateVariable.createQuery().eq("customerUUID", customerUuid).findList();
   }
 }

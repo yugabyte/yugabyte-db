@@ -250,6 +250,39 @@
       "required" : [ "configurationType", "configurationUuid", "createTime", "customerUUID", "definitionUuid", "labels", "message", "name", "severity", "severityIndex", "sourceName", "sourceUUID", "state", "stateIndex" ],
       "type" : "object"
     },
+    "Alert channel templates with defaults" : {
+      "properties" : {
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "defaultTextTemplate" : {
+          "description" : "Default text template",
+          "type" : "string"
+        },
+        "defaultTitleTemplate" : {
+          "description" : "Default title template",
+          "type" : "string"
+        },
+        "textTemplate" : {
+          "description" : "Notification text template",
+          "type" : "string"
+        },
+        "titleTemplate" : {
+          "description" : "Notification title template",
+          "type" : "string"
+        },
+        "type" : {
+          "description" : "Channel type",
+          "enum" : [ "Email", "Slack", "PagerDuty", "WebHook" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "textTemplate", "type" ],
+      "type" : "object"
+    },
     "AlertApiFilter" : {
       "properties" : {
         "configurationTypes" : {
@@ -519,6 +552,13 @@
           "minimum" : 0,
           "type" : "integer"
         },
+        "labels" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Labels",
+          "type" : "object"
+        },
         "maintenanceWindowUuids" : {
           "description" : "Maintenance window UUIDs, applied to this alert config",
           "items" : {
@@ -724,6 +764,13 @@
           "format" : "int32",
           "minimum" : 0,
           "type" : "integer"
+        },
+        "labels" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Labels",
+          "type" : "object"
         },
         "maintenanceWindowUuids" : {
           "description" : "Maintenance window UUIDs, applied to this alert config",
@@ -1133,6 +1180,25 @@
         }
       },
       "required" : [ "variables" ],
+      "type" : "object"
+    },
+    "AlertTemplateVariablesList" : {
+      "properties" : {
+        "customVariables" : {
+          "items" : {
+            "$ref" : "#/definitions/AlertTemplateVariable"
+          },
+          "type" : "array"
+        },
+        "systemVariables" : {
+          "items" : {
+            "enum" : [ "YUGABYTE_ALERT_STATUS", "YUGABYTE_ALERT_SEVERITY", "YUGABYTE_ALERT_TYPE", "YUGABYTE_ALERT_EXPRESSION", "YUGABYTE_CUSTOMER_CODE", "YUGABYTE_CUSTOMER_NAME", "YUGABYTE_CUSTOMER_UUID", "YUGABYTE_ALERT_SOURCE_UUID", "YUGABYTE_ALERT_SOURCE_TYPE", "YUGABYTE_ALERT_SOURCE_NAME", "YUGABYTE_ALERT_POLICY_TYPE", "YUGABYTE_ALERT_POLICY_NAME", "YUGABYTE_ALERT_POLICY_UUID", "YUGABYTE_ALERT_MESSAGE", "YUGABYTE_ALERT_START_TIME", "YUGABYTE_ALERT_END_TIME", "YUGABYTE_ALERT_CHANNEL_NAME", "YUGABYTE_ALERT_LABELS_JSON" ],
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "customVariables", "systemVariables" ],
       "type" : "object"
     },
     "AlertingData" : {
@@ -11927,7 +11993,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/AlertChannelTemplates"
+                "$ref" : "#/definitions/Alert channel templates with defaults"
               },
               "type" : "array"
             }
@@ -11989,7 +12055,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/AlertChannelTemplates"
+              "$ref" : "#/definitions/Alert channel templates with defaults"
             }
           }
         },
@@ -12697,10 +12763,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/AlertTemplateVariable"
-              },
-              "type" : "array"
+              "$ref" : "#/definitions/AlertTemplateVariablesList"
             }
           }
         },
@@ -12741,7 +12804,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Crete or update alert template variables",
+        "summary" : "Create or update alert template variables",
         "tags" : [ "Alerts" ]
       }
     },

@@ -5,11 +5,14 @@ package com.yugabyte.yw.common.alerts.impl;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
-import com.yugabyte.yw.models.AlertChannelTemplates;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
+import java.util.List;
 import javax.inject.Inject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -23,17 +26,24 @@ public class AlertChannelSlack extends AlertChannelWebBase {
   public static final String SLACK_WS_KEY = "yb.alert.slack.ws";
 
   @Inject
-  public AlertChannelSlack(WSClientRefresher wsClientRefresher) {
-    super(wsClientRefresher);
+  public AlertChannelSlack(
+      WSClientRefresher wsClientRefresher,
+      AlertTemplateVariableService alertTemplateVariableService) {
+    super(wsClientRefresher, alertTemplateVariableService);
   }
 
   @Override
   public void sendNotification(
-      Customer customer, Alert alert, AlertChannel channel, AlertChannelTemplates channelTemplates)
+      Customer customer,
+      Alert alert,
+      AlertChannel channel,
+      AlertChannelTemplatesExt channelTemplates)
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelSlackParams params = (AlertChannelSlackParams) channel.getParams();
-    String text = getNotificationText(alert, channel, channelTemplates);
+    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
+    Context context = new Context(channel, channelTemplates, variables);
+    String text = getNotificationText(alert, context);
 
     SlackMessage message = new SlackMessage();
     message.username = params.getUsername();

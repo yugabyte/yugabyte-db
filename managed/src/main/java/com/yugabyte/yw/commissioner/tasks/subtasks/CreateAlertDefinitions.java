@@ -52,7 +52,7 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
               .collect(Collectors.toList());
 
       // Just need to save - service will create definition itself.
-      alertConfigurationService.save(configurations);
+      alertConfigurationService.save(customer.getUuid(), configurations);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
       log.warn(msg, e.getMessage());
