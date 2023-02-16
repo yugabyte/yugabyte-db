@@ -259,6 +259,8 @@ Test options:
   --extra-daemon-flags, --extra-daemon-args <extra_daemon_flags>
     Extra flags to pass to mini-cluster daemons (master/tserver). Note that bash-style quoting won't
     work here -- they are naively split on spaces.
+  --(with|no)-fuzz-targets
+    Build|Do not build fuzz targets. By default - do not build.
 
 Debug options:
 
@@ -811,6 +813,7 @@ collect_java_tests=false
 
 # This will be set to true/false based on --no-tests / --with-tests.
 build_tests=""
+build_fuzz_targets=""
 
 # The default value of this parameter will be set based on whether we're running on Jenkins.
 reduce_log_output=""
@@ -1257,6 +1260,12 @@ while [[ $# -gt 0 ]]; do
     --with-tests)
       build_tests=true
     ;;
+    --no-fuzz-targets)
+      build_fuzz_targets=false
+    ;;
+    --with-fuzz-targets)
+      build_fuzz_targets=true
+    ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
     ;;
@@ -1384,6 +1393,15 @@ if [[ -n ${build_tests} ]]; then
     cmake_opts+=( -DYB_BUILD_TESTS=ON )
   else
     cmake_opts+=( -DYB_BUILD_TESTS=OFF )
+  fi
+fi
+
+if [[ -n ${build_fuzz_targets} ]]; then
+  force_run_cmake=true
+  if [[ ${build_fuzz_targets} == "true" ]]; then
+    cmake_opts+=( -DYB_BUILD_FUZZ_TARGETS=ON )
+  else
+    cmake_opts+=( -DYB_BUILD_FUZZ_TARGETS=OFF )
   fi
 fi
 

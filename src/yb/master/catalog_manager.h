@@ -1049,6 +1049,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ReportYsqlDdlTxnStatusResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  Status GetStatefulServiceLocation(
+      const GetStatefulServiceLocationRequestPB* req,
+      GetStatefulServiceLocationResponsePB* resp);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;

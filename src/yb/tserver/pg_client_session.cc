@@ -1137,8 +1137,8 @@ Status PgClientSession::FetchSequenceTuple(
   auto psql_write = client::YBPgsqlWriteOp::NewFetchSequence(table, &context->sidecars());
 
   auto* write_request = psql_write->mutable_request();
-  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
-
+  RETURN_NOT_OK(
+      (SetCatalogVersion<PgFetchSequenceTupleRequestPB, PgsqlWriteRequestPB>(req, write_request)));
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 

@@ -43,11 +43,12 @@ export function getQueryMetrics(queryParams) {
     .then((resp) => resp.data);
 }
 
-export function queryMetricsSuccess(result, panelType) {
+export function queryMetricsSuccess(result, panelType, isMasterMetrics = false) {
   return {
     type: QUERY_METRICS_SUCCESS,
     payload: result,
-    panelType: panelType
+    panelType: panelType,
+    isMasterMetrics: isMasterMetrics
   };
 }
 
@@ -79,6 +80,5 @@ export function togglePrometheusQuery() {
 }
 
 export function getGrafanaJson() {
-  return axios
-    .get(`${ROOT_URL}/grafana_dashboard`);
+  return axios.get(`${ROOT_URL}/grafana_dashboard`);
 }

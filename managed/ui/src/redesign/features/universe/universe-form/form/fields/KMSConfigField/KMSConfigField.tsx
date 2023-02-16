@@ -7,6 +7,7 @@ import { YBLabel, YBAutoComplete } from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import { DEFAULT_INSTANCE_CONFIG, KmsConfig, UniverseFormData } from '../../../utils/dto';
 import { KMS_CONFIG_FIELD, EAR_FIELD } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 const renderOption = (op: Record<string, string>): string => {
   const option = (op as unknown) as KmsConfig;
@@ -24,6 +25,7 @@ interface KMSConfigFieldProps {
 
 export const KMSConfigField: FC<KMSConfigFieldProps> = ({ disabled }) => {
   const { setValue, control } = useFormContext<UniverseFormData>();
+  const classes = useFormFieldStyles();
   const { t } = useTranslation();
 
   //watchers
@@ -58,7 +60,7 @@ export const KMSConfigField: FC<KMSConfigFieldProps> = ({ disabled }) => {
             <YBLabel dataTestId="KMSConfigField-Label">
               {t('universeForm.instanceConfig.kmsConfig')}
             </YBLabel>
-            <Box flex={1}>
+            <Box flex={1} className={classes.defaultTextBox}>
               <YBAutoComplete
                 disabled={disabled}
                 loading={isLoading}

@@ -145,14 +145,11 @@ The following diagram provides a graphical representation of the upgrade procedu
 
 The following table provides the terminology mapping between the upgrade diagram and the upgrade procedure description:
 
-| Diagram        | Procedure description                                        |
-| -------------- | ------------------------------------------------------------ |
-| HA             | High availability                                            |
-| Sync           | Synchronization                                              |
-| Primary system | Active instance                                              |
-| Failover       | Standby instance                                             |
-| Version A      | Original YugabyteDB Anywhere version that is subject to upgrade |
-| Version B      | Newer YugabyteDB Anywhere version to which to upgrade        |
+| Diagram   | Procedure description                                        |
+| --------- | ------------------------------------------------------------ |
+| HA        | High availability                                            |
+| Version A | Original YugabyteDB Anywhere version that is subject to upgrade |
+| Version B | Newer YugabyteDB Anywhere version to which to upgrade        |
 
 ## Remove a standby instance
 

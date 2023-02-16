@@ -548,6 +548,9 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
 DEFINE_test_flag(int32, delay_ysql_ddl_rollback_secs, 0,
                  "Number of seconds to sleep before rolling back a failed ddl transaction");
 
+DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
+                 "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
+
 DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
@@ -4144,6 +4147,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         std::make_shared<AsyncAddTableToTablet>(master_, AsyncTaskPool(), tablets[0], table);
     table->AddTask(call);
     WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
+    if (FLAGS_TEST_duplicate_addtabletotablet_request) {
+      auto duplicate_call =
+          std::make_shared<AsyncAddTableToTablet>(master_, AsyncTaskPool(), tablets[0], table);
+      table->AddTask(duplicate_call);
+      WARN_NOT_OK(
+          ScheduleTask(duplicate_call), "Failed to send duplicate AddTableToTablet request");
+    }
   }
 
   if (req.has_creator_role_name()) {
@@ -5787,7 +5797,7 @@ Status CatalogManager::DeleteTable(
     return Status::OK();
   }
 
-  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
+  if (table->IgnoreHideRequest()) {
     return Status::OK();
   }
 
@@ -5900,7 +5910,7 @@ Status CatalogManager::DeleteTableInternal(
 
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
-  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
+  if (table->IgnoreHideRequest()) {
     return Status::OK();
   }
 
@@ -12833,6 +12843,58 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(const ReportYsqlDdlTxnStatusReques
       }), "Could not submit YsqlDdlTxnCompleteCallback to thread pool");
     }
   }
+  return Status::OK();
+}
+
+Status CatalogManager::GetStatefulServiceLocation(
+    const GetStatefulServiceLocationRequestPB* req, GetStatefulServiceLocationResponsePB* resp) {
+  VLOG(4) << "GetStatefulServiceLocation: " << req->ShortDebugString();
+
+  SCHECK(req->has_service_kind(), InvalidArgument, "Service kind is not specified");
+
+  const auto service_table_name = GetStatefulServiceTableName(req->service_kind());
+
+  TableIdentifierPB table_identifier;
+  table_identifier.set_table_name(service_table_name);
+  table_identifier.mutable_namespace_()->set_name(kSystemNamespaceName);
+
+  auto table_result = FindTable(table_identifier);
+  if (!VERIFY_RESULT(DoesTableExist(table_result)) || table_result.get()->IsCreateInProgress()) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS_FORMAT(NotFound, "Stateful Service of kind $0 does not exist", req->service_kind()));
+  }
+
+  auto& table = table_result.get();
+
+  auto tablets = table->GetTablets();
+  if (tablets.size() != 1) {
+    DCHECK(false) << "Stateful Service of kind " << req->service_kind()
+                  << " has more than one tablet: " << tablets.size();
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS_FORMAT(
+            NotFound, "Stateful Service of kind $0 expected to have one tablet, but $1 were found",
+            req->service_kind(), tablets.size()));
+  }
+
+  auto ts_result = tablets[0]->GetLeader();
+  if (!ts_result.ok()) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS_FORMAT(
+            TryAgain, "Leader not found for Stateful Service of kind $0: ", req->service_kind(),
+            ts_result.status().ToString()));
+  }
+
+  auto tsinfo_pb = ts_result.get()->GetTSInformationPB();
+  auto* service_info = resp->mutable_service_info();
+  service_info->set_permanent_uuid(tsinfo_pb->tserver_instance().permanent_uuid());
+  auto& registration = tsinfo_pb->registration().common();
+  service_info->mutable_private_rpc_addresses()->CopyFrom(registration.private_rpc_addresses());
+  service_info->mutable_broadcast_addresses()->CopyFrom(registration.broadcast_addresses());
+  service_info->mutable_cloud_info()->CopyFrom(registration.cloud_info());
+
   return Status::OK();
 }
 

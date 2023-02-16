@@ -24,6 +24,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Lists;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.swagger.PlatformModelConverter;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
@@ -127,6 +129,7 @@ public class SwaggerGenTest extends FakeDBApplication {
 
   public static void main(String[] args) throws IOException {
     String expectedSwagger = getCurrentSpec(args[0]);
+    excludeDeprecated(args);
     SwaggerGenTest swaggerGenTest = new SwaggerGenTest();
     try {
       swaggerGenTest.startPlay();
@@ -155,5 +158,12 @@ public class SwaggerGenTest extends FakeDBApplication {
       throw new RuntimeException(exception);
     }
     return expectedSwagger;
+  }
+
+  private static void excludeDeprecated(String[] args) {
+    PlatformModelConverter.excludeYbaDeprecatedOption = "";
+    if (args.length > 2 && args[1].equalsIgnoreCase("--exclude_deprecated")) {
+      PlatformModelConverter.excludeYbaDeprecatedOption = args[2];
+    }
   }
 }

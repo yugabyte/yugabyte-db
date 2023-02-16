@@ -220,6 +220,17 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // missing because we didn't have the time to write it out.
   Status RebuildFooterByScanning();
 
+  Status RebuildFooterByScanning(const ReadEntriesResult& read_entries);
+
+  // Restore footer_builder and log_index for log's active_segment.Similar to
+  // RebuildFooterByScanning(), this is also only used in the case of crash.
+  // The difference is, instead of rebuilding its footer and closing this
+  // uncompleted segment, we restore footer_builder_ and log_index_'s progress,
+  // and then reuse this segment as writable active_segment.
+  Status RestoreFooterBuilderAndLogIndex(LogSegmentFooterPB* footer_builder,
+                                         LogIndex* log_index,
+                                         const ReadEntriesResult& read_entries);
+
   // Copies log segment up to up_to_op_id into new segment at dest_path.
   Status CopyTo(
       Env* env, const WritableFileOptions& writable_file_options, const std::string& dest_path,
@@ -280,6 +291,10 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   int64_t readable_to_offset() const {
     return readable_to_offset_.load(std::memory_order_acquire);
+  }
+
+  bool footer_was_rebuilt() const {
+    return footer_was_rebuilt_;
   }
 
  private:
@@ -395,8 +410,14 @@ class WritableLogSegment {
   WritableLogSegment(std::string path,
                      std::shared_ptr<WritableFile> writable_file);
 
+  // This initializer method avoids writing header to disk when creating a WritableLogSegment
+  // from a ReadableLogSegment.
+  Status ReuseHeader(const LogSegmentHeaderPB& new_header,
+                            int64_t first_entry_offset,
+                            int64_t written_offset);
+
   // Opens the segment by writing the header.
-  Status WriteHeaderAndOpen(const LogSegmentHeaderPB& new_header);
+  Status WriteHeader(const LogSegmentHeaderPB& new_header);
 
   // Closes the segment by writing the index, the footer, and then actually closing the
   // underlying WritableFile.
@@ -449,6 +470,10 @@ class WritableLogSegment {
   int64_t written_offset() const {
     return written_offset_;
   }
+
+  // Write header without data. This help us to simulate crash
+  // in the middle of writing a entry
+  Status TEST_WriteCorruptedEntryBatchAndSync();
 
  private:
 

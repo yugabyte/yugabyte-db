@@ -94,20 +94,41 @@ export const useFormMainStyles = makeStyles((theme) => ({
 export const useSectionStyles = makeStyles((theme) => ({
   sectionContainer: {
     display: 'flex',
-    padding: theme.spacing(2, 0),
+    padding: theme.spacing(5, 0),
     flexDirection: 'column',
     borderBottom: `1px solid ${theme.palette.ybacolors.ybGrayHover}`
   },
   sectionHeaderFont: {
-    fontFamily: 'Rubik,Helvetica Neue,sans-serif',
-    fontWeight: 500,
+    fontFamily: 'Inter',
+    fontWeight: 700,
     fontSize: theme.spacing(2.25)
+  },
+  subsectionHeaderFont: {
+    fontFamily: 'Inter',
+    fontWeight: 600,
+    fontSize: "15px"
   }
 }));
 
-export const useFormFieldStyles = makeStyles(() => ({
+export const useFormFieldStyles = makeStyles((theme) => ({
   itemDisabled: {
     cursor: 'not-allowed',
     opacity: 0.5
+  },
+  labelFont: {
+    fontFamily: 'Inter',
+    fontSize: "13px",
+    fontWeight: theme.typography.fontWeightMedium as number
+  },
+  defaultTextBox: {
+    maxWidth: theme.spacing(50),
+    minWidth: theme.spacing(45)
+  },
+  advancedConfigTextBox: {
+    maxWidth: theme.spacing(58.5),
+    minWidth: theme.spacing(50)
+  },
+  instanceConfigTextBox: {
+    maxWidth: theme.spacing(47.75)
   }
 }));

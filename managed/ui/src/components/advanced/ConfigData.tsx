@@ -7,7 +7,7 @@ import { YBCheckBox } from '../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../common/indicators';
 import { EditConfig } from './EditConfig';
 import { ResetConfig } from './ResetConfig';
-import { RunTimeConfigData } from '../../redesign/helpers/dtos';
+import { RunTimeConfigData } from '../../redesign/utils/dtos';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 

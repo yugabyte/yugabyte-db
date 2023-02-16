@@ -302,7 +302,7 @@ YugabyteDB Anywhere obtains the replication lag using Prometheus metrics from th
 
 {{< /note >}}
 
-You can also federate metrics from YugabyteDB Anywhere and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/):
+You can also federate metrics from YugabyteDB Anywhere and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/):
 
 - Scrape metrics from YugabyteDB Anywhere
 - Configurable alerting rules
@@ -403,7 +403,7 @@ You can create a support bundle as follows:
 
 ## Collect core dumps in Kubernetes environments
 
-When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prerequisites#specify-ulimit-and-remember-the-location-of-core-dumps). 
+When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prerequisites#specify-ulimit-and-remember-the-location-of-core-dumps).
 
 The process of collecting core dumps depends on the value of the sysctl `kernel.core_pattern`, which you can inspect within a Kubernetes pod or node by executing the following command:
 
@@ -413,7 +413,7 @@ cat /proc/sys/kernel/core_pattern
 
 The value of `core_pattern` can be a literal path or it can contain a pipe symbol:
 
-- If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, cores are copied by the YugabyteDB node to a persistent volume directory that you can inspect using the following command: 
+- If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, cores are copied by the YugabyteDB node to a persistent volume directory that you can inspect using the following command:
 
   ```sh
   kubectl exec -it -n <namespace> <pod_name> -c yb-cleanup -- ls -lht /var/yugabyte/cores
@@ -447,4 +447,4 @@ Typically, the maximum follower lag of a healthy universe is a few seconds at mo
 - Node issues, such as network problems between nodes, an unhealthy state of nodes, or inability of the node's YB-Master or YB-TServer process to properly serve requests. The lag usually persists until the issue is resolved.
 - Issues during a rolling upgrade, when the YB-Master or YB-TServer process is stopped, upgrade on the associated process is performed, then the process is restarted. During the downtime, writes to the database continue to occur, but the associated YB-Master or YB-TServer are left behind. The lag gradually decreases after the YB-Master or YB-TServer has restarted and can serve requests again. However, if an upgrade is performed on a universe that is not in a healthy state to begin with (for example, a node is down or is experiencing an unexpected problem), a failure is likely to occur due to the follower lag threshold not being reached within the specified timeframe after the processes have restarted. Note that the default value for the follower lag threshold is 1 minute and the overall time allocated for the process to catch up is 15 minutes. To remedy the situation, perform the following:
   - Bring the node back to a healthy state by stopping and restarting the node, or removing it and adding a new one).
-  - Ensure that the YB-Master and YB-TServer processes are running correctly on the node. 
+  - Ensure that the YB-Master and YB-TServer processes are running correctly on the node.

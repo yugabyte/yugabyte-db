@@ -58,7 +58,7 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
         }
       },
       onError: (error) => {
-        console.log(error);
+        console.error(error);
         transitToUniverse(); //redirect to /universes if universe with uuid doesnot exists
       }
     }

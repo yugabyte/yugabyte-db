@@ -99,6 +99,9 @@ DEFINE_test_flag(int32, txn_status_moved_rpc_send_delay_ms, 0,
 DEFINE_test_flag(int32, old_txn_status_abort_delay_ms, 0,
                  "Inject delay before sending abort to old transaction status tablet.");
 
+DEFINE_test_flag(uint64, override_transaction_priority, 0,
+                 "Override priority of transactions if nonzero.");
+
 METRIC_DEFINE_counter(server, transaction_promotions,
                       "Number of transactions being promoted to global transactions",
                       yb::MetricUnit::kTransactions,
@@ -200,7 +203,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         transaction_(transaction),
         read_point_(manager->clock()),
         child_(Child::kFalse) {
-    metadata_.priority = RandomUniformInt<uint64_t>();
+    metadata_.priority =
+        PREDICT_FALSE(FLAGS_TEST_override_transaction_priority != 0)
+            ? FLAGS_TEST_override_transaction_priority
+            : RandomUniformInt<uint64_t>();
     metadata_.locality = locality;
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
@@ -266,6 +272,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void SetPriority(uint64_t priority) {
+    if (PREDICT_FALSE(FLAGS_TEST_override_transaction_priority != 0)) {
+      priority = FLAGS_TEST_override_transaction_priority;
+    }
     metadata_.priority = priority;
   }
 
@@ -357,14 +366,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     {
       UNIQUE_LOCK(lock, mutex_);
-      auto promotion_started = StartPromotionToGlobalIfNecessary(ops_info);
-      if (!promotion_started.ok()) {
-        QueueWaiter(std::move(waiter));
-        NotifyWaitersAndRelease(&lock, promotion_started.status(), "Nonlocal transaction");
-        return false;
-      }
-      const bool defer = !ready_ || *promotion_started;
-
       if (!status_.ok()) {
         auto status = status_;
         lock.unlock();
@@ -375,6 +376,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         return false;
       }
 
+      auto promotion_started = StartPromotionToGlobalIfNecessary(ops_info);
+      if (!promotion_started.ok()) {
+        QueueWaiter(std::move(waiter));
+        NotifyWaitersAndRelease(&lock, promotion_started.status(), "Nonlocal transaction");
+        return false;
+      }
+
+      const bool defer = !ready_ || *promotion_started;
       if (!defer || initial) {
         PrepareOpsGroups(initial, ops_info->groups);
       }
@@ -1663,9 +1672,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       switch (transaction_status) {
         case TransactionStatus::PROMOTED:
           {
-            auto promoting_state = TransactionState::kPromoting;
+            auto state = TransactionState::kPromoting;
             if (!state_.compare_exchange_strong(
-                    promoting_state, TransactionState::kRunning, std::memory_order_acq_rel)) {
+                    state, TransactionState::kRunning, std::memory_order_acq_rel) &&
+                state != TransactionState::kAborted) {
               LOG_WITH_PREFIX(DFATAL) << "Transaction status promoted but not in promoting state";
             }
           }
@@ -1866,18 +1876,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     manager_->rpcs().Unregister(handle);
 
     if (!status.ok()) {
-      auto state = state_.load(std::memory_order_acquire);
-      if (state == TransactionState::kRunning) {
-        // We haven't started committing yet, so we still have time to retry.
-        auto rpc = PrepareUpdateTransactionStatusLocationRpc(weak_transaction, id, tablet_id,
-                                                             participant_tablet, request_template);
-        LOG(INFO) << request_template.DebugString();
-
-        lock.unlock();
-        manager_->rpcs().RegisterAndStart(rpc, handle);
-        return;
-      }
-
       SetErrorUnlocked(status, "Move transaction status");
     }
 

@@ -701,28 +701,33 @@ DefineIndex(Oid relationId,
 						   get_tablespace_name(tablespaceId));
 	}
 
-	/* Use tablegroup of the indexed table, if any. */
-	Oid tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
-		YbGetTableProperties(rel)->tablegroup_oid :
-		InvalidOid;
-
-	if (OidIsValid(tablegroupId) && stmt->split_options)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("Cannot use TABLEGROUP with SPLIT.")));
-	}
-
-
 	/*
 	 * Get whether the indexed table is colocated
 	 * (either via database or a tablegroup).
+	 * If the indexed table is colocated, then this index is colocated as well.
 	 */
 	bool is_colocated =
 		IsYBRelation(rel) &&
 		!IsBootstrapProcessingMode() &&
 		!YbIsConnectedToTemplateDb() &&
 		YbGetTableProperties(rel)->is_colocated;
+	
+	/* Use tablegroup of the indexed table, if any. */
+	Oid tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
+		YbGetTableProperties(rel)->tablegroup_oid :
+		InvalidOid;
+
+	if (stmt->split_options)
+	{
+		if (MyDatabaseColocated && is_colocated)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("cannot create colocated index with split option")));
+		else if (OidIsValid(tablegroupId))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("cannot use TABLEGROUP with SPLIT")));
+	}
 
 	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
 
@@ -1151,7 +1156,7 @@ DefineIndex(Oid relationId,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
-					 !concurrent, tablegroupId, colocation_id);
+					 !concurrent, is_colocated, tablegroupId, colocation_id);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 

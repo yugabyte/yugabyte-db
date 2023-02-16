@@ -5,7 +5,7 @@ import _ from 'lodash';
 
 import lightBulbIcon from '../images/lightbulb.svg';
 import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
-import { CpuMeasureRecommendation } from '../../../redesign/helpers/dtos';
+import { CpuMeasureRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -36,9 +36,7 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
   };
 
   useEffect(() => {
-    if (
-      !_.isEqual(previousData, data)
-    ) {
+    if (!_.isEqual(previousData, data)) {
       const chartData = [avgNodeConnections, maxNodeConnections];
       const layout = {
         showlegend: false,
@@ -48,7 +46,7 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
         margin: {
           l: 165,
           b: 30,
-          t: 10,
+          t: 10
         },
         hovermode: 'closest'
       };
@@ -77,9 +75,11 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
           </span>
         </div>
       </div>
-      <span className="queryText"> {t('clusterDetail.performance.chartTitle.CpuUsagePercentage')}</span>
-      <div id="cpuSkewGraph" >
-      </div>
+      <span className="queryText">
+        {' '}
+        {t('clusterDetail.performance.chartTitle.CpuUsagePercentage')}
+      </span>
+      <div id="cpuSkewGraph"></div>
     </div>
   );
 };

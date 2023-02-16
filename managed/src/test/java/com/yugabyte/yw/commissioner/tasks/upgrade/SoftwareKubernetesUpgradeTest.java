@@ -197,6 +197,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
 
@@ -206,6 +207,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
     verify(mockKubernetesManager, times(6))
         .helmUpgrade(
+            expectedUniverseUUID.capture(),
             expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
@@ -242,6 +244,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
@@ -250,6 +253,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
     verify(mockKubernetesManager, times(6))
         .helmUpgrade(
+            expectedUniverseUUID.capture(),
             expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedNodePrefix.capture(),

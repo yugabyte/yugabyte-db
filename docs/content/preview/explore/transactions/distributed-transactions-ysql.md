@@ -31,7 +31,9 @@ type: docs
 
 </ul>
 
-The best way to understand distributed transactions in YugabyteDB is through examples. Before you can start, you need to [create a YugabyteDB universe](../../#set-up-yugabytedb-universe).
+The best way to understand distributed transactions in YugabyteDB is through examples.
+
+{{% explore-setup-single %}}
 
 ## Create a table
 

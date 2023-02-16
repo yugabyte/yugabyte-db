@@ -136,7 +136,7 @@ public class ShellProcessHandler {
     response.code = ERROR_CODE_GENERIC_ERROR;
     String description =
         context.getDescription() == null
-            ? StringUtils.abbreviateMiddle(String.join(" ", command), " ... ", 140)
+            ? StringUtils.abbreviateMiddle(String.join(" ", redactedCommand), " ... ", 140)
             : context.getDescription();
     response.description = description;
 

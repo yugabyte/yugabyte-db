@@ -350,6 +350,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
 
+  void InvalidatePgTableCache();
+
   std::string log_prefix_;
 
   // Bind address of postgres proxy under this tserver.

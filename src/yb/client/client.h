@@ -401,8 +401,8 @@ class YBClient {
                                      const std::string& namespace_id,
                                      bool *delete_in_progress);
 
-  YBNamespaceAlterer* NewNamespaceAlterer(const std::string& namespace_name,
-                                          const std::string& namespace_id);
+  [[nodiscard]] std::unique_ptr<YBNamespaceAlterer> NewNamespaceAlterer(
+      const std::string& namespace_name, const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
   Status ReservePgsqlOids(const std::string& namespace_id,
@@ -421,8 +421,8 @@ class YBClient {
                                const std::string& role_name);
 
   // List all namespace identifiers.
-Result<std::vector<NamespaceInfo>> ListNamespaces();
-Result<std::vector<NamespaceInfo>> ListNamespaces(
+  Result<std::vector<NamespaceInfo>> ListNamespaces();
+  Result<std::vector<NamespaceInfo>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
 
   // Get namespace information.
@@ -785,6 +785,9 @@ Result<std::vector<NamespaceInfo>> ListNamespaces(
   // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
   // version that does not support AutoFlags.
   Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
+
+  Result<master::StatefulServiceInfoPB> GetStatefulServiceLocation(
+      StatefulServiceKind service_kind);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const std::shared_ptr<YBTable>& table,
