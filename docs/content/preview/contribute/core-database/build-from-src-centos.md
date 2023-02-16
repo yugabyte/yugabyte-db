@@ -7,7 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 menu:
   preview:
-    identifier: build-from-src-2-centos
+    identifier: build-from-src-3-centos
     parent: core-database
     weight: 2912
 type: docs

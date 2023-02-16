@@ -9,7 +9,7 @@ aliases:
   - /preview/contribute/core-database/build-from-src
 menu:
   preview:
-    identifier: build-from-src-4-almalinux
+    identifier: build-from-src-1-almalinux
     parent: core-database
     weight: 2912
 type: docs

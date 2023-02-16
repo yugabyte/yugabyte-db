@@ -7,7 +7,7 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 menu:
   preview:
-    identifier: build-from-src-3-ubuntu
+    identifier: build-from-src-4-ubuntu
     parent: core-database
     weight: 2912
 type: docs
