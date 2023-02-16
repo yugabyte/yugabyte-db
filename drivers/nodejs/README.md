@@ -46,3 +46,7 @@ const results: QueryResultRow = await client?.query<QueryResultRow>(`
     $$) as (a agtype);
 `)!
 ```
+### For more information about [Apache AGE](https://age.apache.org/)
+* Apache Age : https://age.apache.org/
+* Github : https://github.com/apache/age
+* Document : https://age.apache.org/age-manual/master/index.html
