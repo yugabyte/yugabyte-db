@@ -3,6 +3,10 @@
 package main
 
 import (
+	"node-agent/app/executor"
+	"node-agent/app/scheduler"
+	"node-agent/app/server"
+	"node-agent/app/task"
 	"node-agent/cli"
 	"node-agent/util"
 )
@@ -27,8 +31,14 @@ func setDefaultConfigs() {
 	}
 }
 
-// Entry for CLI.
+// Entry for all commands.
 func main() {
+	executor.Init(server.Context())
+	defer executor.GetInstance().WaitOnShutdown()
+	scheduler.Init(server.Context())
+	defer scheduler.GetInstance().WaitOnShutdown()
+	task.InitTaskManager(server.Context())
+	defer server.CancelFunc()()
 	setDefaultConfigs()
 	cli.Execute()
 }

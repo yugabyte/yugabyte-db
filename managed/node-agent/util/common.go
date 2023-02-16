@@ -71,8 +71,8 @@ const (
 )
 
 var (
-	homeDirectory   *string
-	onceLoadHomeDir = &sync.Once{}
+	nodeAgentHome         string
+	onceLoadNodeAgentHome = &sync.Once{}
 )
 
 type Handler func(context.Context) (any, error)
@@ -182,17 +182,14 @@ func PlatformValidateNodeInstanceEndpoint(cuuid string, azid string) string {
 
 // Returns the home directory.
 func MustGetHomeDirectory() string {
-	if homeDirectory == nil {
-		onceLoadHomeDir.Do(func() {
-			homeDirName, err := os.UserHomeDir()
-			if err != nil {
-				panic("Unable to fetch the Home Directory")
-			} else {
-				homeDirectory = &homeDirName
-			}
-		})
-	}
-	return *homeDirectory + nodeAgentDir
+	onceLoadNodeAgentHome.Do(func() {
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			panic(fmt.Sprintf("Unable to fetch the Home Directory - %s", err.Error()))
+		}
+		nodeAgentHome = userHome + nodeAgentDir
+	})
+	return nodeAgentHome
 }
 
 // Returns the Path to Preflight Checks script

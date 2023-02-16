@@ -264,11 +264,14 @@ public class NodeAgentClient {
       return throwable;
     }
 
-    public void waitFor() {
+    public void waitFor() throws Throwable {
       try {
         latch.await();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
+      }
+      if (throwable != null) {
+        throw throwable;
       }
     }
   }
@@ -451,15 +454,14 @@ public class NodeAgentClient {
     if (StringUtils.isNotBlank(user)) {
       builder.setUser(user);
     }
-    stub.executeCommand(builder.build(), responseObserver);
-    responseObserver.waitFor();
-    Throwable throwable = responseObserver.getThrowable();
-    if (throwable != null) {
+    try {
+      stub.executeCommand(builder.build(), responseObserver);
+      responseObserver.waitFor();
+      return responseObserver.getStdOut();
+    } catch (Throwable e) {
       log.error("Error in running command. Error: {}", responseObserver.stdErr);
-      throw new RuntimeException(
-          "Command execution failed. Error: " + throwable.getMessage(), throwable);
+      throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
     }
-    return responseObserver.getStdOut();
   }
 
   public void uploadFile(NodeAgent nodeAgent, String inputFile, String outputFile) {
@@ -496,7 +498,7 @@ public class NodeAgentClient {
       }
       requestObserver.onCompleted();
       responseObserver.waitFor();
-    } catch (Exception e) {
+    } catch (Throwable e) {
       throw new RuntimeException(
           String.format(
               "Error in uploading file %s to %s. Error: %s", inputFile, outputFile, e.getMessage()),
@@ -521,7 +523,7 @@ public class NodeAgentClient {
       }
       stub.downloadFile(builder.build(), responseObserver);
       responseObserver.waitFor();
-    } catch (IOException e) {
+    } catch (Throwable e) {
       throw new RuntimeException(
           String.format(
               "Error in downloading file %s to %s. Error: %s",

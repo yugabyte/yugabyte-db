@@ -11,12 +11,12 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"node-agent/app/executor"
 	"node-agent/app/task"
 	pb "node-agent/generated/service"
 	"node-agent/model"
 	"node-agent/util"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
 
@@ -130,25 +130,21 @@ func (s *RPCServer) ExecuteCommand(
 	var res *pb.ExecuteCommandResponse
 	cmd := req.GetCommand()
 	username := req.GetUser()
-	task := task.NewShellTaskWithUser("RemoteCommand", username, cmd[0], cmd[1:])
-	out, err := task.Process(stream.Context())
+	shellTask := task.NewShellTaskWithUser("RemoteCommand", username, cmd[0], cmd[1:])
+	out, err := shellTask.Process(stream.Context())
 	if err == nil {
 		res = &pb.ExecuteCommandResponse{
 			Data: &pb.ExecuteCommandResponse_Output{
-				Output: out,
+				Output: out.Info.String(),
 			},
 		}
 	} else {
 		util.FileLogger().Errorf("Error in running command: %s - %s", cmd, err.Error())
-		rc := 1
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			rc = exitErr.ExitCode()
-		}
 		res = &pb.ExecuteCommandResponse{
 			Data: &pb.ExecuteCommandResponse_Error{
 				Error: &pb.Error{
-					Code:    int32(rc),
-					Message: out,
+					Code:    int32(out.ExitStatus.Code),
+					Message: out.ExitStatus.Error.String(),
 				},
 			},
 		}
@@ -159,6 +155,77 @@ func (s *RPCServer) ExecuteCommand(
 		return status.Error(codes.Internal, err.Error())
 	}
 	return nil
+}
+
+// SubmitTask submits an async task on the server.
+func (s *RPCServer) SubmitTask(
+	ctx context.Context,
+	req *pb.SubmitTaskRequest,
+) (*pb.SubmitTaskResponse, error) {
+	cmd := req.GetCommand()
+	taskID := req.GetTaskId()
+	username := req.GetUser()
+	shellTask := task.NewShellTaskWithUser("RemoteCommand", username, cmd[0], cmd[1:])
+	err := task.GetTaskManager().Submit(taskID, shellTask)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.SubmitTaskResponse{}, nil
+}
+
+// DescribeTask describes a submitted task.
+// Client needs to retry on DeadlineExeeced error.
+func (s *RPCServer) DescribeTask(
+	req *pb.DescribeTaskRequest,
+	stream pb.NodeAgent_DescribeTaskServer,
+) error {
+	taskID := req.GetTaskId()
+	err := task.GetTaskManager().Subscribe(
+		stream.Context(),
+		taskID,
+		func(taskState executor.TaskState, callbackData *task.TaskCallbackData) error {
+			var res *pb.DescribeTaskResponse
+			if callbackData.ExitCode == 0 {
+				res = &pb.DescribeTaskResponse{
+					State: taskState.String(),
+					Data: &pb.DescribeTaskResponse_Output{
+						Output: callbackData.Info,
+					},
+				}
+			} else {
+				res = &pb.DescribeTaskResponse{
+					State: taskState.String(),
+					Data: &pb.DescribeTaskResponse_Error{
+						Error: &pb.Error{
+							Code:    int32(callbackData.ExitCode),
+							Message: callbackData.Error,
+						},
+					},
+				}
+			}
+			err := stream.Send(res)
+			if err != nil {
+				util.FileLogger().Errorf("Error in sending response - %s", err.Error())
+				return err
+			}
+			return nil
+		})
+	if err != nil && err != io.EOF {
+		return status.Error(codes.Internal, err.Error())
+	}
+	return nil
+}
+
+// AbortTask aborts a running task.
+func (s *RPCServer) AbortTask(
+	ctx context.Context,
+	req *pb.AbortTaskRequest,
+) (*pb.AbortTaskResponse, error) {
+	taskID, err := task.GetTaskManager().AbortTask(req.GetTaskId())
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.AbortTaskResponse{TaskId: taskID}, nil
 }
 
 // UploadFile handles upload file to a specified file.
