@@ -16,7 +16,7 @@ type: docs
 
 - The node that has received the provisional write fails (Handled by YugabyteDB)
 - The node that is about to receive the provisional write fails (Handled by YugabyteDB)
-- The transaction coordinator fails (Retry by client)
+- The transaction manager fails (Retry by client)
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -240,9 +240,9 @@ In this example, you are going to see how a transaction completes when the node 
 
 The transaction has succeeded: even though the node at `127.0.0.2` failed after receiving the provisional write, the value has been updated to `30`. The transaction succeeded because a new leader (the node at `127.0.0.3`) was quickly elected.
 
-## Transaction manager (coordinator) failure
+## Transaction Manager failure
 
-The node to which a client connects acts as the coordinator for the transaction. You have seen how YugabyteDB is inherently resilient to node failures in the above two scenarios. In this example, you will see how a transaction will abort when the coordinator fails. More details on the role of the transaction manager can be found in [Transactional I/O](../../architecture/transactions/transactional-io-path/#client-requests-transaction) section.
+The node to which a client connects acts as the manager for the transaction. You have seen how YugabyteDB is inherently resilient to node failures in the above two scenarios. In this example, you will see how a transaction will abort when the manager fails. More details on the role of the transaction manager can be found in [Transactional I/O](../../architecture/transactions/transactional-io-path/#client-requests-transaction) section.
 
 1. List the nodes.
 
@@ -323,7 +323,7 @@ The node to which a client connects acts as the coordinator for the transaction.
     (1 row)
     ```
 
-The transaction has failed: the row did not get the intended value of `40`, and still has the old value of `30`. When the transaction coordinator fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to retry the transaction.
+The transaction has failed: the row did not get the intended value of `40`, and still has the old value of `30`. When the transaction manager fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to retry the transaction.
 
 ### Clean up
 
