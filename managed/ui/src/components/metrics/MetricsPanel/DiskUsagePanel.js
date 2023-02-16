@@ -116,7 +116,7 @@ export default class DiskUsagePanel extends Component {
                 </>
               )}
               <span className="gray-text metric-right-subtitle">
-                {space.used.toFixed(2)} GB of {Math.round(space.free)} GB used
+                {Number(space.used).toFixed(2)} GB of {Math.round(space.free)} GB used
               </span>
               <Graph value={value} unit={'percent'} />
             </div>
@@ -133,7 +133,8 @@ export default class DiskUsagePanel extends Component {
                     </span>
                   )}
                   <span className="gray-text metric-right-subtitle">
-                    {masterSpace.used.toFixed(2)} GB of {Math.round(masterSpace.free)} GB used
+                    {Number(masterSpace.used).toFixed(2)} GB of {Math.round(masterSpace.free)} GB
+                    used
                   </span>
                   <Graph value={masterValue} unit={'percent'} />
                 </>
