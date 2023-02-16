@@ -150,14 +150,14 @@ func interactiveConfigHandler(cmd *cobra.Command) {
 	checkConfigAndUpdate(util.NodeIpKey, "Node IP")
 	checkConfigAndUpdate(util.NodeNameKey, "Node Name")
 
-	err = server.RetrieveUser(apiToken)
+	err = server.RetrieveUser(ctx, apiToken)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(
 			"Error fetching the current user with the API key - %s", err.Error())
 	}
 	providersHandler := task.NewGetProvidersHandler(apiToken)
 	// Get Providers from the platform (only on-prem providers displayed)
-	err = executor.GetInstance(ctx).ExecuteTask(ctx, providersHandler.Handle)
+	err = executor.GetInstance().ExecuteTask(ctx, providersHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Error fetching the providers - %s", err)
 	}
@@ -182,7 +182,7 @@ func interactiveConfigHandler(cmd *cobra.Command) {
 
 	instanceTypesHandler := task.NewGetInstanceTypesHandler(apiToken)
 	// Get Instance Types for the provider from the platform.
-	err = executor.GetInstance(ctx).
+	err = executor.GetInstance().
 		ExecuteTask(ctx, instanceTypesHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Error fetching the instance types - %s", err.Error())
