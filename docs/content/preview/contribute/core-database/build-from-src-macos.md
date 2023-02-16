@@ -18,6 +18,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      AlmaLinux
+    </a>
+  </li>
+
+  <li >
     <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link active">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
@@ -35,13 +42,6 @@ type: docs
     <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
-    </a>
-  </li>
-
-  <li >
-    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      AlmaLinux
     </a>
   </li>
 
