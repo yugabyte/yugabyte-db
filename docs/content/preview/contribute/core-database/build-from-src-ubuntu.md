@@ -7,13 +7,20 @@ image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 menu:
   preview:
-    identifier: build-from-src-3-ubuntu
+    identifier: build-from-src-4-ubuntu
     parent: core-database
     weight: 2912
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      AlmaLinux
+    </a>
+  </li>
 
   <li >
     <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
@@ -40,7 +47,7 @@ type: docs
 
 {{< note title="Note" >}}
 
-CentOS 7 is the recommended Linux development and production platform for YugabyteDB.
+AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
@@ -88,4 +95,4 @@ sudo apt-get install -y maven
 
 ### Build release package
 
-Currently, you can only build release packages in [CentOS](../build-from-src-centos) and [macOS](../build-from-src-macos).
+Currently, you can only build release packages in [CentOS](../build-from-src-centos), [AlmaLinux](../build-from-src-almalinux), and [macOS](../build-from-src-macos).
