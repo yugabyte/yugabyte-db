@@ -17,6 +17,9 @@
  * under the License.
  */
 
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
 plugins {
     `java-library`
     antlr
@@ -36,6 +39,9 @@ dependencies {
 
     testImplementation("org.testcontainers:testcontainers:1.15.3")
     testImplementation("org.postgresql:postgresql:42.2.20")
+
+    testImplementation("org.slf4j:slf4j-api:1.7.5")
+    testImplementation("org.slf4j:slf4j-simple:1.7.5")
 }
 
 tasks.generateGrammarSource {
@@ -50,5 +56,16 @@ tasks.generateGrammarSource {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform();
+    testLogging {
+        // set options for log level LIFECYCLE
+        events(TestLogEvent.FAILED,
+            TestLogEvent.PASSED,
+            TestLogEvent.SKIPPED,
+            TestLogEvent.STANDARD_OUT)
+        exceptionFormat = TestExceptionFormat.FULL
+        showExceptions  = true
+        showCauses = true
+        showStackTraces  = true
+    }
 }

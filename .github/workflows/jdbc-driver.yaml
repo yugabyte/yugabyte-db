@@ -1,0 +1,32 @@
+name: JDBC Driver Tests
+
+on:
+  push:
+    branches: [ "master", "PG11" ]
+      
+  pull_request:
+    branches: [ "master", "PG11" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        distributions: ['zulu', 'temurin', 'microsoft']
+
+    defaults:
+      run:
+        working-directory: drivers/jdbc
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: ${{ matrix.distributions }}
+        java-version: '17'
+
+    - name: Build and Test
+      run: gradle build
