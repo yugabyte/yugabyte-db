@@ -33,7 +33,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-
+#include "yb/master/ts_manager.h"
 #include "yb/rocksdb/db.h"
 
 #include "yb/server/skewed_clock.h"
@@ -3000,6 +3000,11 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
     }
     return false;
   }, 10s, "Wait leader change"));
+
+  master::TSManager& ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->ts_manager();
+  ASSERT_OK(WaitFor([this, &ts_manager]() -> Result<bool> {
+    return ts_manager.GetAllDescriptors().size() == NumTabletServers();
+  }, 10s, "Wait all TServers to be registered"));
 
   ASSERT_OK(tools::RunBackupCommand(
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
