@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import _ from 'lodash';
 import { withRouter } from 'react-router';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
@@ -99,7 +100,7 @@ class AuthenticatedComponent extends Component {
 
   closeNotificationsModal = () => {
     const { adminNotifications } = this.props;
-    adminNotifications?.data?.messages?.forEach((message) => {
+    _.forEach(adminNotifications?.data?.messages || [], (message) => {
       if (this.state.hideNotificationsChecked) {
         localStorage.setItem(message.code, 'hidden');
       }
@@ -113,14 +114,18 @@ class AuthenticatedComponent extends Component {
     const sidebarHidden =
       getPromiseState(currentCustomer).isSuccess() &&
       isHidden(currentCustomer.data.features, 'menu.sidebar');
-    const showNotifications = getPromiseState(adminNotifications).isSuccess() &&
-      !notificationsHidden && adminNotifications?.data?.messages?.length > 0 &&
+    const showNotifications =
+      getPromiseState(adminNotifications).isSuccess() &&
+      !notificationsHidden &&
+      adminNotifications?.data?.messages?.length > 0 &&
       !location.query['hide-notifications'];
     let notificationText = '';
     if (showNotifications) {
-      adminNotifications?.data?.messages?.forEach((message) => {
-        if (localStorage.getItem(message.code) === null &&
-            localStorage.getItem(message.code) !== 'hidden') {
+      _.forEach(adminNotifications?.data?.messages || [], (message) => {
+        if (
+          localStorage.getItem(message.code) === null &&
+          localStorage.getItem(message.code) !== 'hidden'
+        ) {
           notificationText += `<span>${message.htmlMessage}</span>`;
         }
       });
@@ -140,16 +145,19 @@ class AuthenticatedComponent extends Component {
         className={sidebarHidden ? 'full-height-container sidebar-hidden' : 'full-height-container'}
       >
         {this.props.children}
-          <YBModal
-            title="Notification"
-            visible={notificationVisible}
-            onHide={this.closeNotificationsModal}
-            showCancelButton={true}
-            cancelLabel={'Close'}
-            footerAccessory={notificationMessageStatus}
-          >
-            <div onClick={this.notificationLinkHandler} dangerouslySetInnerHTML={{__html: notificationText}} />
-          </YBModal>
+        <YBModal
+          title="Notification"
+          visible={notificationVisible}
+          onHide={this.closeNotificationsModal}
+          showCancelButton={true}
+          cancelLabel={'Close'}
+          footerAccessory={notificationMessageStatus}
+        >
+          <div
+            onClick={this.notificationLinkHandler}
+            dangerouslySetInnerHTML={{ __html: notificationText }}
+          />
+        </YBModal>
       </div>
     );
   }
