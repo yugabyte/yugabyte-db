@@ -11,6 +11,7 @@
 
 package com.yugabyte.yw.common.kms.util;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import javax.crypto.KeyGenerator;
@@ -260,5 +261,13 @@ public class HashicorpEARServiceUtil {
     VaultSecretEngineBase vaultSecretEngine =
         VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
     updateAuthConfigObj(configUUID, vaultSecretEngine, authConfig);
+  }
+
+  public static List<String> getMetadataFields() {
+    return Arrays.asList(
+        HashicorpVaultConfigParams.HC_VAULT_ADDRESS,
+        HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+        HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+        HashicorpVaultConfigParams.HC_VAULT_KEY_NAME);
   }
 }
