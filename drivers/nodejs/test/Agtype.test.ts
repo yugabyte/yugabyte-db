@@ -20,7 +20,7 @@
 import { AGTypeParse } from '../src'
 
 describe('Parsing', () => {
-  it('Vertex', async () => {
+  it('Vertex', () => {
     expect(
       AGTypeParse('{"id": 844424930131969, "label": "Part", "properties": {"part_num": "123", "number": 3141592653589793, "float": 3.141592653589793}}::vertex')
     ).toStrictEqual(new Map<string, any>(Object.entries({
@@ -34,7 +34,7 @@ describe('Parsing', () => {
     })))
   })
 
-  it('Edge', async () => {
+  it('Edge', () => {
     expect(
       AGTypeParse('{"id": 1125899906842625, "label": "used_by", "end_id": 844424930131970, "start_id": 844424930131969, "properties": {"quantity": 1}}::edge')
     ).toStrictEqual(new Map(Object.entries({
@@ -46,7 +46,7 @@ describe('Parsing', () => {
     })))
   })
 
-  it('Path', async () => {
+  it('Path', () => {
     expect(
       AGTypeParse('[{"id": 844424930131969, "label": "Part", "properties": {"part_num": "123"}}::vertex, {"id": 1125899906842625, "label": "used_by", "end_id": 844424930131970, "start_id": 844424930131969, "properties": {"quantity": 1}}::edge, {"id": 844424930131970, "label": "Part", "properties": {"part_num": "345"}}::vertex]::path')
     ).toStrictEqual([
@@ -70,7 +70,7 @@ describe('Parsing', () => {
     ])
   })
 
-  it('Null Properties', async () => {
+  it('Null Properties', () => {
     expect(
       AGTypeParse('{"id": 1688849860263937, "label": "car", "properties": {}}::vertex')
     ).toStrictEqual(new Map<string, any>(Object.entries({
