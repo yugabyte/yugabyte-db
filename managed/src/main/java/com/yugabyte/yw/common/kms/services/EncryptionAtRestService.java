@@ -324,4 +324,6 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   public void refreshService(UUID configUUID) {
     // Do Nothing - optionally override sub classes when required.
   }
+
+  public abstract ObjectNode getKeyMetadata(UUID configUUID);
 }
