@@ -2,14 +2,10 @@ name: Go Driver Tests
 
 on:
   push:
-    branches: [ "master" ]
-    paths: 
-      - 'drivers/golang/**'
+    branches: [ "master", PG11 ]
 
   pull_request:
-    branches: [ "master" ]
-    paths: 
-      - 'drivers/golang/**'
+    branches: [ "master", PG11 ]
 
 jobs:
   build:
