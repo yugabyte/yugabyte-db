@@ -191,6 +191,8 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="Node agent cert path")
         self.parser.add_argument("--node_agent_auth_token", required=False,
                                  help="Node agent auth token")
+        self.parser.add_argument("--node_agent_home", required=False,
+                                 help="Node agent home path")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -252,6 +254,8 @@ class AbstractInstancesMethod(AbstractMethod):
             updated_args["node_agent_cert_path"] = args.node_agent_cert_path
         if args.node_agent_auth_token:
             updated_args["node_agent_auth_token"] = args.node_agent_auth_token
+        if args.node_agent_home:
+            updated_args["node_agent_home"] = args.node_agent_home
 
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)
@@ -295,7 +299,7 @@ class AbstractInstancesMethod(AbstractMethod):
             host_lookup_count += 1
 
         host_port_user = get_host_port_user(self.extra_vars)
-        raise YBOpsRecoverableError("Timed out waiting for instance: '{0}'. {}@{}:{} using {}"
+        raise YBOpsRecoverableError("Timed out waiting for instance: '{}'. {}@{}:{} using {}"
                                     .format(args.search_pattern, host_port_user["user"],
                                             host_port_user["host"], host_port_user["port"],
                                             host_port_user["connection_type"]))
@@ -1739,9 +1743,9 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Could not find host {} to reboot".format(
                 args.search_pattern))
-        if not host_info['is_running']:
+        if not host_info.get('is_running'):
             raise YBOpsRuntimeError("Host must be running to be rebooted, currently in '{}' state"
-                                    .format(host_info['instance_state']))
+                                    .format(host_info.get('instance_state')))
         logging.info("Rebooting instance {}".format(args.search_pattern))
 
         # Get Sudo SSH User

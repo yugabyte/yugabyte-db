@@ -1100,6 +1100,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  bool is_unique_index,
                                  const bool skip_index_backfill,
                                  bool if_not_exist,
+                                 bool is_colocated_via_database,
                                  const PgObjectId& tablegroup_oid,
                                  const YBCPgOid& colocation_id,
                                  const PgObjectId& tablespace_oid,
@@ -1107,7 +1108,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
-      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, colocation_id,
+      is_colocated_via_database, tablegroup_oid, colocation_id,
       tablespace_oid, false /* is_matview */, PgObjectId() /* matview_pg_table_id */);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {

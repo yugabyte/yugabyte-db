@@ -65,6 +65,8 @@ CREATE INDEX idx_range ON tab_range_nonkey2 (a);
 INSERT INTO tab_range_nonkey2 (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
 EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey2 WHERE a = 1;
 SELECT * FROM tab_range_nonkey2 WHERE a = 1;
+/*+IndexScan(tab_range_nonkey2 idx_range)*/EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
+/*+IndexScan(tab_range_nonkey2 idx_range)*/SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
 UPDATE tab_range_nonkey2 SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey2;
 DELETE FROM tab_range_nonkey2 WHERE a > 3;
@@ -84,6 +86,8 @@ CREATE INDEX idx_range2 ON tab_range_nonkey_noco (a);
 INSERT INTO tab_range_nonkey_noco (a, b) VALUES (0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5);
 EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
+SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
 UPDATE tab_range_nonkey_noco SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey_noco;
 DELETE FROM tab_range_nonkey_noco WHERE a > 3;
@@ -211,6 +215,14 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 
 \dt
 \di
+
+-- Test colocated tables/indexes with SPLIT INTO/SPLIT AT
+CREATE TABLE invalid_tbl_split_into (k INT) SPLIT INTO 10 TABLETS;
+CREATE TABLE invalid_tbl_split_at (k INT) SPLIT AT VALUES ((100));
+CREATE TABLE test_tbl (k INT);
+CREATE INDEX invalid_idx_split_into ON test_tbl (k) SPLIT INTO 10 TABLETS;
+CREATE INDEX invalid_idx_split_at ON test_tbl (k) SPLIT AT VALUES ((100));
+DROP TABLE test_tbl;
 
 -- drop database
 \c yugabyte

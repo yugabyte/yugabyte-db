@@ -567,4 +567,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> helmTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.helm.timeout_secs",
+          ScopeType.UNIVERSE,
+          "Helm Timeout in Seconds",
+          "Timeout used for internal universe-level helm operations like install/upgrade in secs",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

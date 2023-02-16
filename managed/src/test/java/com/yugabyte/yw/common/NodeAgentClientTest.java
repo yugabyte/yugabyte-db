@@ -69,6 +69,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
     payload.ip = "10.20.30.40";
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     nodeAgentHandler.enableConnectionValidation(false);
     nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
     nodeAgentImpl =

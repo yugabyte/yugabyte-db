@@ -157,6 +157,53 @@ SPLIT INTO 3 TABLETS;
 ALTER TABLE public.chat_user OWNER TO yugabyte_test;
 
 --
+-- Name: hash_tbl_pk_with_include_clause; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16583'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16582'::pg_catalog.oid);
+
+CREATE TABLE public.hash_tbl_pk_with_include_clause (
+    k2 text NOT NULL,
+    v double precision,
+    k1 integer NOT NULL,
+    CONSTRAINT hash_tbl_pk_with_include_clause_pkey PRIMARY KEY((k1, k2) HASH) INCLUDE (v)
+)
+SPLIT INTO 8 TABLETS;
+
+
+ALTER TABLE public.hash_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+
+--
+-- Name: hash_tbl_pk_with_multiple_included_columns; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16594'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16593'::pg_catalog.oid);
+
+CREATE TABLE public.hash_tbl_pk_with_multiple_included_columns (
+    col1 integer NOT NULL,
+    col2 integer NOT NULL,
+    col3 integer,
+    col4 integer,
+    CONSTRAINT hash_tbl_pk_with_multiple_included_columns_pkey PRIMARY KEY((col1) HASH, col2 ASC) INCLUDE (col3, col4)
+)
+SPLIT INTO 3 TABLETS;
+
+
+ALTER TABLE public.hash_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+
+--
 -- Name: p1; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
@@ -234,6 +281,52 @@ SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (3
 
 
 ALTER TABLE public.pre_split_range OWNER TO yugabyte_test;
+
+--
+-- Name: range_tbl_pk_with_include_clause; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16577'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16576'::pg_catalog.oid);
+
+CREATE TABLE public.range_tbl_pk_with_include_clause (
+    k2 text NOT NULL,
+    v double precision,
+    k1 integer NOT NULL,
+    CONSTRAINT range_tbl_pk_with_include_clause_pkey PRIMARY KEY(k1 ASC, k2 ASC) INCLUDE (v)
+)
+SPLIT AT VALUES ((1, '1'), (100, '100'));
+
+
+ALTER TABLE public.range_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+
+--
+-- Name: range_tbl_pk_with_multiple_included_columns; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16589'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16588'::pg_catalog.oid);
+
+CREATE TABLE public.range_tbl_pk_with_multiple_included_columns (
+    col1 integer NOT NULL,
+    col2 integer NOT NULL,
+    col3 integer,
+    col4 integer,
+    CONSTRAINT range_tbl_pk_with_multiple_included_columns_pkey PRIMARY KEY(col1 ASC, col2 ASC) INCLUDE (col3, col4)
+);
+
+
+ALTER TABLE public.range_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
 
 --
 -- Name: rls_private; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1007,6 +1100,22 @@ COPY public.chat_user ("chatID") FROM stdin;
 
 
 --
+-- Data for Name: hash_tbl_pk_with_include_clause; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.hash_tbl_pk_with_include_clause (k2, v, k1) FROM stdin;
+\.
+
+
+--
+-- Data for Name: hash_tbl_pk_with_multiple_included_columns; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.hash_tbl_pk_with_multiple_included_columns (col1, col2, col3, col4) FROM stdin;
+\.
+
+
+--
 -- Data for Name: p1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -1027,6 +1136,22 @@ COPY public.p2 (k, v) FROM stdin;
 --
 
 COPY public.pre_split_range (id, customer_id, company_name, contact_name, contact_title, address, city, region, postal_code, country, phone, fax, more_col1, more_col2, more_col3) FROM stdin;
+\.
+
+
+--
+-- Data for Name: range_tbl_pk_with_include_clause; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.range_tbl_pk_with_include_clause (k2, v, k1) FROM stdin;
+\.
+
+
+--
+-- Data for Name: range_tbl_pk_with_multiple_included_columns; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.range_tbl_pk_with_multiple_included_columns (col1, col2, col3, col4) FROM stdin;
 \.
 
 
@@ -1329,6 +1454,13 @@ CREATE UNIQUE INDEX hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_
 
 
 --
+-- Name: non_unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE UNIQUE INDEX non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
+
+
+--
 -- Name: tbl8_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
@@ -1389,6 +1521,13 @@ CREATE INDEX tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT 
 --
 
 CREATE INDEX tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT VALUES ((100.5), (1.5));
+
+
+--
+-- Name: unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+CREATE UNIQUE INDEX unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
 
 
 --

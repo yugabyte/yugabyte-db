@@ -548,6 +548,9 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
 DEFINE_test_flag(int32, delay_ysql_ddl_rollback_secs, 0,
                  "Number of seconds to sleep before rolling back a failed ddl transaction");
 
+DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
+                 "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
+
 DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
@@ -4144,6 +4147,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         std::make_shared<AsyncAddTableToTablet>(master_, AsyncTaskPool(), tablets[0], table);
     table->AddTask(call);
     WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
+    if (FLAGS_TEST_duplicate_addtabletotablet_request) {
+      auto duplicate_call =
+          std::make_shared<AsyncAddTableToTablet>(master_, AsyncTaskPool(), tablets[0], table);
+      table->AddTask(duplicate_call);
+      WARN_NOT_OK(
+          ScheduleTask(duplicate_call), "Failed to send duplicate AddTableToTablet request");
+    }
   }
 
   if (req.has_creator_role_name()) {
@@ -5787,7 +5797,7 @@ Status CatalogManager::DeleteTable(
     return Status::OK();
   }
 
-  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
+  if (table->IgnoreHideRequest()) {
     return Status::OK();
   }
 
@@ -5900,7 +5910,7 @@ Status CatalogManager::DeleteTableInternal(
 
   scoped_refptr<TableInfo> table = VERIFY_RESULT(FindTable(req->table()));
 
-  if (CatalogManagerUtil::IsDuplicateDeleteTableRequest(table)) {
+  if (table->IgnoreHideRequest()) {
     return Status::OK();
   }
 

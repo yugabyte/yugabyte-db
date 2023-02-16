@@ -39,6 +39,7 @@ type CommonInfo struct {
 	Version  string `json:"version"`
 	ArchType string `json:"archType"`
 	OSType   string `json:"osType"`
+	Home     string `json:"home"`
 	Port     int    `json:"port"`
 }
 

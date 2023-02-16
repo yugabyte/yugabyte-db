@@ -136,14 +136,31 @@ Status QLRocksDBStorage::GetIterator(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const QLValuePB& ybctid,
+    const QLValuePB& min_ybctid,
+    const QLValuePB& max_ybctid,
     YQLRowwiseIteratorIf::UniPtr* iter) const {
-  DocKey range_doc_key(doc_read_context.get().schema);
-  RETURN_NOT_OK(range_doc_key.DecodeFrom(ybctid.binary_value()));
+  DocKey lower_doc_key(doc_read_context.get().schema);
+  RETURN_NOT_OK(lower_doc_key.DecodeFrom(min_ybctid.binary_value()));
+
+  DocKey upper_doc_key(doc_read_context.get().schema);
+  RETURN_NOT_OK(upper_doc_key.DecodeFrom(max_ybctid.binary_value()));
+  upper_doc_key.AddRangeComponent(KeyEntryValue(KeyEntryType::kHighest));
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
+
+  std::vector<KeyEntryValue> empty_vec;
   RETURN_NOT_OK(doc_iter->Init(
-      DocPgsqlScanSpec(doc_read_context.get().schema, stmt_id, range_doc_key)));
+      DocPgsqlScanSpec(doc_read_context.get().schema, stmt_id,
+        empty_vec, /* hashed_components */
+        empty_vec /* range_components */,
+        nullptr /* condition */,
+        boost::none /* hash_code */,
+        boost::none /* max_hash_code */,
+        nullptr /* where_expr */,
+        lower_doc_key,
+        true /* is_forward_scan */,
+        lower_doc_key,
+        upper_doc_key)));
   *iter = std::move(doc_iter);
   return Status::OK();
 }

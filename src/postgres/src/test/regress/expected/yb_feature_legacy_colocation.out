@@ -593,6 +593,17 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
 (11 rows)
 
+-- Test colocated tables/indexes with SPLIT INTO/SPLIT AT
+CREATE TABLE invalid_tbl_split_into (k INT) SPLIT INTO 10 TABLETS;
+ERROR:  cannot create colocated table with split option
+CREATE TABLE invalid_tbl_split_at (k INT) SPLIT AT VALUES ((100));
+ERROR:  cannot create colocated table with split option
+CREATE TABLE test_tbl (k INT);
+CREATE INDEX invalid_idx_split_into ON test_tbl (k) SPLIT INTO 10 TABLETS;
+ERROR:  cannot create colocated index with split option
+CREATE INDEX invalid_idx_split_at ON test_tbl (k) SPLIT AT VALUES ((100));
+ERROR:  cannot create colocated index with split option
+DROP TABLE test_tbl;
 -- drop database
 \c yugabyte
 DROP DATABASE colocation_test;

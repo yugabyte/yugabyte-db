@@ -68,7 +68,7 @@ public class RecommendationGarbageCollectorTest extends FakePerfAdvisorDBTest {
   @Test
   public void testStart_enabled() throws InterruptedException {
     PerformanceRecommendation toClean = createRecommendationToClean(true);
-    Mockito.doReturn(Duration.ofMillis(100)).when(recommendationGarbageCollector).gcCheckInterval();
+    Mockito.doReturn(Duration.ofMillis(30)).when(recommendationGarbageCollector).gcCheckInterval();
     recommendationGarbageCollector.start();
     Thread.sleep(200);
 

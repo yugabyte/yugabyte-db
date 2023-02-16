@@ -5,7 +5,6 @@ package com.yugabyte.yw.common.certmgmt;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.google.inject.Inject;
 import com.google.common.base.Strings;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -14,7 +13,6 @@ import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.FileData;
-
 import io.ebean.annotation.EnumValue;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -79,7 +77,6 @@ import org.bouncycastle.util.io.pem.PemReader;
 import org.flywaydb.play.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
 import play.libs.Json;
 
 /** Helper class for Certificates */
