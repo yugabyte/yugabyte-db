@@ -7,10 +7,12 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.UniversePerfAdvisorRun;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Date;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -19,20 +21,23 @@ import org.yb.perf_advisor.services.db.PerformanceRecommendationService;
 
 @Singleton
 @Slf4j
-public class RecommendationGarbageCollector {
+public class PerfAdvisorGarbageCollector {
 
   // Counter names
   static final String RECOMMENDATION_METRIC_NAME = "ybp_recommendation_gc_count";
-  static final String NUM_REC_GC_RUNS = "ybp_recommendation_gc_run_count";
-  static final String NUM_REC_GC_ERRORS = "ybp_recommendation_gc_error_count";
+
+  static final String PA_RUN_METRIC_NAME = "ybp_perf_advisor_run_gc_count";
+  static final String NUM_REC_GC_RUNS = "ybp_pa_gc_run_count";
+  static final String NUM_REC_GC_ERRORS = "ybp_pa_gc_error_count";
 
   // Counter label
   static final String CUSTOMER_UUID_LABEL = "customer_uuid";
 
   // Counters
   private static Counter PURGED_PERF_RECOMMENDATION_COUNT;
-  private static Counter NUM_RECOMMENDATION_GC_RUNS_COUNT;
-  private static Counter NUM_RECOMMENDATION_GC_ERRORS_COUNT;
+  private static Counter PURGED_PERF_ADVISOR_RUNS_COUNT;
+  private static Counter NUM_PA_GC_RUNS_COUNT;
+  private static Counter NUM_PA_GC_ERRORS_COUNT;
 
   static {
     registerMetrics();
@@ -43,7 +48,7 @@ public class RecommendationGarbageCollector {
   private final PerformanceRecommendationService performanceRecommendationService;
 
   @Inject
-  public RecommendationGarbageCollector(
+  public PerfAdvisorGarbageCollector(
       PlatformScheduler platformScheduler,
       RuntimeConfGetter confGetter,
       PerformanceRecommendationService perfService) {
@@ -60,13 +65,15 @@ public class RecommendationGarbageCollector {
                 "Number of old completed perf-advisor recommendations purged for a customer")
             .labelNames(CUSTOMER_UUID_LABEL)
             .register(CollectorRegistry.defaultRegistry);
-    NUM_RECOMMENDATION_GC_RUNS_COUNT =
-        Counter.build(
-                NUM_REC_GC_RUNS, "Number of times performance_recommendation gc checks are run")
+    PURGED_PERF_ADVISOR_RUNS_COUNT =
+        Counter.build(PA_RUN_METRIC_NAME, "Number of old perf advisor runs purged for a customer")
+            .labelNames(CUSTOMER_UUID_LABEL)
             .register(CollectorRegistry.defaultRegistry);
-    NUM_RECOMMENDATION_GC_ERRORS_COUNT =
-        Counter.build(
-                NUM_REC_GC_ERRORS, "Number of failed performance_recommendation delete attempts")
+    NUM_PA_GC_RUNS_COUNT =
+        Counter.build(NUM_REC_GC_RUNS, "Number of times perf advisor gc checks are run")
+            .register(CollectorRegistry.defaultRegistry);
+    NUM_PA_GC_ERRORS_COUNT =
+        Counter.build(NUM_REC_GC_ERRORS, "Number of failed perf advisor gc attempts")
             .register(CollectorRegistry.defaultRegistry);
   }
 
@@ -89,26 +96,35 @@ public class RecommendationGarbageCollector {
     try {
       Customer.getAll().forEach(this::checkCustomerAndPurgeRecs);
     } catch (Exception e) {
-      log.error("Error running PA recommendation garbage collector", e);
+      log.error("Error running PA recommendation garbage collection", e);
     }
   }
 
   @VisibleForTesting
   void checkCustomerAndPurgeRecs(Customer c) {
-    Instant createdInstantTimestamp = Instant.now().minus(perfRecommendationRetentionDuration(c));
-    PerformanceRecommendationFilter filter =
-        PerformanceRecommendationFilter.builder()
-            .createdInstantBefore(createdInstantTimestamp)
-            .isStale(true)
-            .build();
-    NUM_RECOMMENDATION_GC_RUNS_COUNT.inc();
+    NUM_PA_GC_RUNS_COUNT.inc();
     try {
-      int numRowsGCdInThisRun = this.performanceRecommendationService.delete(filter);
-      PURGED_PERF_RECOMMENDATION_COUNT.labels(c.getUuid().toString()).inc(numRowsGCdInThisRun);
-      log.info("Garbage collected {} rows", numRowsGCdInThisRun);
+      Instant createdInstantTimestamp = Instant.now().minus(perfRecommendationRetentionDuration(c));
+      PerformanceRecommendationFilter filter =
+          PerformanceRecommendationFilter.builder()
+              .createdInstantBefore(createdInstantTimestamp)
+              .isStale(true)
+              .build();
+
+      int numPerfRecommendationsDeleted = this.performanceRecommendationService.delete(filter);
+      PURGED_PERF_RECOMMENDATION_COUNT
+          .labels(c.getUuid().toString())
+          .inc(numPerfRecommendationsDeleted);
+      log.info("Garbage collected {} performance recommendations", numPerfRecommendationsDeleted);
+
+      Instant scheduledInstantTimestamp = Instant.now().minus(perfAdvisorRunRetentionDuration(c));
+      int numPaRunsDeleted =
+          UniversePerfAdvisorRun.deleteOldRuns(c.getUuid(), Date.from(scheduledInstantTimestamp));
+      PURGED_PERF_ADVISOR_RUNS_COUNT.labels(c.getUuid().toString()).inc(numPaRunsDeleted);
+      log.info("Garbage collected {} performance advisor runs", numPaRunsDeleted);
     } catch (Exception e) {
-      log.error("Error deleting rows: {}", e);
-      NUM_RECOMMENDATION_GC_ERRORS_COUNT.inc();
+      log.error("Error deleting rows", e);
+      NUM_PA_GC_ERRORS_COUNT.inc();
     }
   }
 
@@ -125,5 +141,9 @@ public class RecommendationGarbageCollector {
   private Duration perfRecommendationRetentionDuration(Customer customer) {
     return confGetter.getConfForScope(
         customer, CustomerConfKeys.perfRecommendationRetentionDuration);
+  }
+
+  private Duration perfAdvisorRunRetentionDuration(Customer customer) {
+    return confGetter.getConfForScope(customer, CustomerConfKeys.perfAdvisorRunRetentionDuration);
   }
 }

@@ -73,6 +73,16 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
+  public static final ConfKeyInfo<Duration> perfAdvisorRunRetentionDuration =
+      new ConfKeyInfo<>(
+          "yb.perf_advisor.cleanup.pa_run_retention_duration",
+          ScopeType.CUSTOMER,
+          "Perf Advisor Run Retention Duration",
+          "Conf key that represents the duration of time the perf-advisor run is valid. "
+              + "Once this duration is exceeded, PA run entry is deleted.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Boolean> showUICost =
       new ConfKeyInfo<>(
           "yb.ui.show_cost",

@@ -1,9 +1,10 @@
 package com.yugabyte.yw.commissioner;
 
-import static com.yugabyte.yw.commissioner.RecommendationGarbageCollector.CUSTOMER_UUID_LABEL;
-import static com.yugabyte.yw.commissioner.RecommendationGarbageCollector.NUM_REC_GC_ERRORS;
-import static com.yugabyte.yw.commissioner.RecommendationGarbageCollector.NUM_REC_GC_RUNS;
-import static com.yugabyte.yw.commissioner.RecommendationGarbageCollector.RECOMMENDATION_METRIC_NAME;
+import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.CUSTOMER_UUID_LABEL;
+import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.NUM_REC_GC_ERRORS;
+import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.NUM_REC_GC_RUNS;
+import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.PA_RUN_METRIC_NAME;
+import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.RECOMMENDATION_METRIC_NAME;
 import static io.prometheus.client.CollectorRegistry.defaultRegistry;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.notNullValue;
@@ -14,9 +15,11 @@ import static org.mockito.Mockito.spy;
 import com.yugabyte.yw.common.FakePerfAdvisorDBTest;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.UniversePerfAdvisorRun;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -25,13 +28,14 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.perf_advisor.models.PerformanceRecommendation;
 
 @RunWith(MockitoJUnitRunner.class)
-public class RecommendationGarbageCollectorTest extends FakePerfAdvisorDBTest {
+public class PerfAdvisorGarbageCollectorTest extends FakePerfAdvisorDBTest {
 
   private void checkCounters(
       Customer customer,
       Double expectedNumRuns,
       Double expectedErrors,
-      Double expectedPerfRecommendationGC) {
+      Double expectedPerfRecommendationGC,
+      Double expectedPerfAdvisorRunGC) {
     assertEquals(
         expectedNumRuns, defaultRegistry.getSampleValue(getTotalCounterName(NUM_REC_GC_RUNS)));
     assertEquals(
@@ -42,16 +46,22 @@ public class RecommendationGarbageCollectorTest extends FakePerfAdvisorDBTest {
             getTotalCounterName(RECOMMENDATION_METRIC_NAME),
             new String[] {CUSTOMER_UUID_LABEL},
             new String[] {customer.getUuid().toString()}));
+    assertEquals(
+        expectedPerfAdvisorRunGC,
+        defaultRegistry.getSampleValue(
+            getTotalCounterName(PA_RUN_METRIC_NAME),
+            new String[] {CUSTOMER_UUID_LABEL},
+            new String[] {customer.getUuid().toString()}));
   }
 
-  private RecommendationGarbageCollector recommendationGarbageCollector;
+  private PerfAdvisorGarbageCollector recommendationGarbageCollector;
 
   @Before
   public void setUp() {
     defaultRegistry.clear();
-    RecommendationGarbageCollector.registerMetrics();
+    PerfAdvisorGarbageCollector.registerMetrics();
     recommendationGarbageCollector =
-        spy(app.injector().instanceOf(RecommendationGarbageCollector.class));
+        spy(app.injector().instanceOf(PerfAdvisorGarbageCollector.class));
   }
 
   @Test
@@ -84,29 +94,34 @@ public class RecommendationGarbageCollectorTest extends FakePerfAdvisorDBTest {
 
     toClean = performanceRecommendationService.get(toClean.getId());
     assertThat(toClean, notNullValue());
-    checkCounters(customer, 1.0, 0.0, 0.0);
+    checkCounters(customer, 1.0, 0.0, 0.0, 0.0);
   }
 
   @Test
   public void testPurge() {
     PerformanceRecommendation toClean = createRecommendationToClean(true);
 
+    UniversePerfAdvisorRun run =
+        UniversePerfAdvisorRun.create(customer.getUuid(), universe.getUniverseUUID(), true);
+    run.setScheduleTime(Date.from(Instant.now().minus(31, ChronoUnit.DAYS)));
+    run.save();
+
     recommendationGarbageCollector.checkCustomerAndPurgeRecs(customer);
 
     toClean = performanceRecommendationService.get(toClean.getId());
     assertThat(toClean, nullValue());
-    checkCounters(customer, 1.0, 0.0, 1.0);
+    checkCounters(customer, 1.0, 0.0, 1.0, 1.0);
   }
 
   // Test that if delete fails we increment error counter
   @Test
   public void testPurge_invalidData() {
     RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
-    recommendationGarbageCollector = new RecommendationGarbageCollector(null, confGetter, null);
+    recommendationGarbageCollector = new PerfAdvisorGarbageCollector(null, confGetter, null);
 
     recommendationGarbageCollector.checkCustomerAndPurgeRecs(customer);
 
-    checkCounters(customer, 1.0, 1.0, null);
+    checkCounters(customer, 1.0, 1.0, null, null);
   }
 
   private String getTotalCounterName(String name) {
