@@ -1,13 +1,15 @@
 ---
-title: Build from source code on CentOS
+title: Build from source code on AlmaLinux
 headerTitle: Build the source code
 linkTitle: Build the source
-description: Build YugabyteDB from source code on CentOS.
+description: Build YugabyteDB from source code on AlmaLinux.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
+aliases:
+  - /preview/contribute/core-database/build-from-src
 menu:
   preview:
-    identifier: build-from-src-3-centos
+    identifier: build-from-src-1-almalinux
     parent: core-database
     weight: 2912
 type: docs
@@ -16,7 +18,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link active">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       AlmaLinux
     </a>
@@ -30,7 +32,7 @@ type: docs
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link active">
+    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
@@ -51,8 +53,6 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
-The following instructions are for CentOS 7.
-
 ## Install necessary packages
 
 Update packages on your system, install development tools and additional packages:
@@ -60,32 +60,33 @@ Update packages on your system, install development tools and additional package
 ```sh
 sudo yum update -y
 sudo yum groupinstall -y 'Development Tools'
-sudo yum install -y centos-release-scl epel-release git libatomic rsync which
+sudo yum -y install epel-release libatomic rsync
 ```
 
 ### Python 3
 
 {{% readfile "includes/python.md" %}}
 
-The following example installs Python 3.8.
+The following example installs Python 3.9.
 
 ```sh
-sudo yum -y install rh-python38
-# Also add the following line to your .bashrc or equivalent.
-source /opt/rh/rh-python38/enable
+sudo yum install -y python39
+```
+
+In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one.
+
+```sh
+sudo alternatives --set python3 /usr/bin/python3.9
+sudo alternatives --display python3
+python3 -V
 ```
 
 ### CMake 3
 
 {{% readfile "includes/cmake.md" %}}
 
-The package manager has that, but we still need to link the name `cmake` to `cmake3`.
-Do similarly for `ctest`.
-
 ```sh
 sudo yum install -y cmake3
-sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
-sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ```
 
 ### /opt/yb-build
@@ -96,8 +97,13 @@ sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 
 Use [Ninja][ninja] for faster builds.
 
+The latest release can be downloaded:
+
 ```sh
-sudo yum install -y ninja-build
+latest_zip_url=$(curl -Ls "https://api.github.com/repos/ninja-build/ninja/releases/latest" \
+                 | grep browser_download_url | grep ninja-linux.zip | cut -d \" -f 4)
+curl -Ls "$latest_zip_url" | zcat | sudo tee /usr/local/bin/ninja >/dev/null
+sudo chmod +x /usr/local/bin/ninja
 ```
 
 [ninja]: https://ninja-build.org
@@ -119,7 +125,7 @@ export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 To compile with GCC, install the following packages, and adjust the version numbers to match the GCC version you plan to use.
 
 ```sh
-sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
+sudo yum install -y gcc-toolset-11 gcc-toolset-11-libatomic-devel
 ```
 
 ### Java
@@ -129,9 +135,7 @@ sudo yum install -y devtoolset-11 devtoolset-11-libatomic-devel
 Both requirements can be satisfied by the package manager.
 
 ```sh
-sudo yum install -y java-1.8.0-openjdk rh-maven35
-# Also add the following line to your .bashrc or equivalent.
-source /opt/rh/rh-maven35/enable
+sudo yum install -y java-1.8.0-openjdk maven
 ```
 
 ## Build the code
@@ -146,19 +150,10 @@ Install the following additional packages to build yugabyted-ui:
 sudo yum install -y npm golang
 ```
 
-The build may fail with "too many open files".
-In that case, increase the nofile limit in `/etc/security/limits.conf`:
-
-```sh
-echo '* - nofile 1048576' | sudo tee -a /etc/security/limits.conf
-```
-
-Start a new shell session, and check the limit increase with `ulimit -n`.
-
 Run the `yb_release` script to build a release package:
 
 ```output.sh
 $ ./yb_release
 ......
-2023-02-10 23:19:46,459 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-44b735cc69998d068d561f4b6f337b318fbc2424-release-clang15-centos-x86_64.tar.gz'
+2023-02-14 04:14:16,092 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-b8e42eecde0e45a743d51e244dbd9662a6130cd6-release-clang15-centos-x86_64.tar.gz'
 ```
