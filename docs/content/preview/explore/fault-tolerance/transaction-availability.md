@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-[Transactions](../../../architecture/transactions/distributed-txns/) are critical to many applications and need to work through different failure scenarios. YugabyteDB provides [high availability](../../../architecture/core-functions/high-availability/) (HA) of transactions by replicating the uncommitted values, a.k.a [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records) across the [fault domains](../../../architecture/docdb-replication/replication/#fault-domains). The following examples demonstrate how YugabyteDB transactions survive common failure scenarios that could happen when a transaction is being processed. Some of the scenarios are:
+[Transactions](../../../architecture/transactions/distributed-txns/) are critical to many applications and need to work through different failure scenarios. YugabyteDB provides [high availability](../../../architecture/core-functions/high-availability/) (HA) of transactions by replicating the uncommitted values, a.k.a [provisional records](../../../architecture/transactions/distributed-txns/#provisional-records) across the [fault domains](../../../architecture/docdb-replication/replication/#fault-domains). The following examples demonstrate how YugabyteDB transactions survive common failure scenarios(eg. Node crashes) that could happen when a transaction is being processed. Some of the scenarios are:
 
 - The node that has received the provisional write fails (Handled by YugabyteDB)
 - The node that is about to receive the provisional write fails (Handled by YugabyteDB)
@@ -238,7 +238,7 @@ In this example, you are going to see how a transaction completes when the node 
     (1 row)
     ```
 
-The transaction has succeeded: even though the node at `127.0.0.2` failed after receiving the provisional write, the value has been updated to `30`. The transaction succeeded because a new leader (the node at `127.0.0.3`) was quickly elected.
+The transaction has succeeded: even though the node at `127.0.0.2` failed before receiving the provisional write, the value has been updated to `30`. The transaction succeeded because a new leader (the node at `127.0.0.3`) was quickly elected.
 
 ## Transaction Manager failure
 
@@ -337,6 +337,6 @@ yugabyted destroy --base_dir=/tmp/ybd3
 
 ## Conclusion
 
-Replication is a first-class feature in YugabyteDB and naturally handles node failures during transactions. During a transaction manager failure, even though provisional records are replicated, the maintains the correlation between the client and a transaction ID, of which the client is unaware.
+Replication is a first-class feature in YugabyteDB and naturally handles node failures during transactions. Only during a transaction manager failure, even though provisional records are replicated, the client has to restart the transaction as it is unaware of the transaction id.
 
 To better understand how YugabyteDB handles failures during transaction processing, and the potential impact of failures, see the [Distributed transactions](../../../architecture/transactions/distributed-txns/#impact-of-failures) page.
