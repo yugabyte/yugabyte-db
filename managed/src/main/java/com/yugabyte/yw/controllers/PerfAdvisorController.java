@@ -34,6 +34,7 @@ import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Audit.TargetType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.UniversePerfAdvisorRun;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
@@ -42,6 +43,7 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
@@ -317,7 +319,7 @@ public class PerfAdvisorController extends AuthenticatedController {
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
     }
 
-    RunResult result = perfAdvisorScheduler.runPerfAdvisor(universe);
+    RunResult result = perfAdvisorScheduler.runPerfAdvisor(customer, universe);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -330,6 +332,23 @@ public class PerfAdvisorController extends AuthenticatedController {
     } else {
       throw new PlatformServiceException(PRECONDITION_FAILED, result.getFailureReason());
     }
+  }
+
+  @ApiOperation(value = "Get last performance advisor run details", response = YBPSuccess.class)
+  public Result getLatestRun(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (!customer.getCustomerId().equals(universe.customerId)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
+    }
+
+    Optional<UniversePerfAdvisorRun> lastRun =
+        UniversePerfAdvisorRun.getLastRun(customerUUID, universeUUID, false);
+    if (lastRun.isPresent()) {
+      return PlatformResults.withData(lastRun.get());
+    }
+    throw new PlatformServiceException(NOT_FOUND, "No perf advisor run found for universe");
   }
 
   private <T> T convertException(Callable<T> operation, String operationName) {
