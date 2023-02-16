@@ -643,6 +643,9 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   Status s = ShutdownAndRebuildTablet();
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
   ASSERT_FALSE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
+
+  // Verify that the BlockBasedTable mem tracker is still attached to the server mem tracker.
+  ASSERT_TRUE(mini_server_->server()->mem_tracker()->FindChild("BlockBasedTable") != nullptr);
 }
 
 TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
