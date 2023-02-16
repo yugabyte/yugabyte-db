@@ -13,7 +13,7 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
-import com.yugabyte.yw.commissioner.RecommendationGarbageCollector;
+import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -90,7 +90,7 @@ public class AppInit {
       SupportBundleCleanup supportBundleCleanup,
       NodeAgentPoller nodeAgentPoller,
       YbcUpgrade ybcUpgrade,
-      RecommendationGarbageCollector perfRecGC,
+      PerfAdvisorGarbageCollector perfRecGC,
       SnapshotCleanup snapshotCleanup,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
