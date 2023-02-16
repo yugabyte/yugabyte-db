@@ -494,12 +494,22 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(const Slice& new_target) {
     auto begin = GetSearchSpaceLowerBound(i);
     SetGroup(i, begin->begin_idx());
 
+    auto current_it = current_scan_target_ranges_[i];
+    auto lower_incl = current_it->lower_inclusive();
+    auto upper_incl = current_it->upper_inclusive();
+
     if (is_forward_scan_) {
       current_scan_target_ranges_[i]->lower().AppendToKey(&current_scan_target_);
+      if (!lower_incl) {
+        KeyEntryValue(KeyEntryType::kHighest).AppendToKey(&current_scan_target_);
+      }
     } else {
       current_scan_target_ranges_[i]->upper().AppendToKey(&current_scan_target_);
+      if (!upper_incl) {
+        KeyEntryValue(KeyEntryType::kLowest).AppendToKey(&current_scan_target_);
+      }
     }
-  }
+    }
 
   current_scan_target_.AppendKeyEntryType(KeyEntryType::kGroupEnd);
   VLOG(2) << "After " << __PRETTY_FUNCTION__ << " current_scan_target_ is "
