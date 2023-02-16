@@ -97,5 +97,5 @@ FATAL:  57P01: terminating connection due to unexpected postmaster exit
 FATAL:  XX000: Network error: recvmsg error: Connection refused
 ```
 
-As the client is unaware of the transaction-id, since the client to transaction-id mapping cannot be regenerated, it would be the responsibility of the client to retry the transaction. Other clients with transactions that were blocked on the provisional records written by the failed manager will have to wait for the transaction to be expired due to heartbeat timeout and then proceed normally.
+As the client is unaware of the transaction-id, since the client to transaction-id mapping cannot be regenerated, it would be the responsibility of the client to restart the transaction. Other clients with transactions that were blocked on the provisional records written by the failed manager will have to wait for the transaction to be expired due to heartbeat timeout and then proceed normally.
 

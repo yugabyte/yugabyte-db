@@ -322,7 +322,7 @@ The node to which a client connects acts as the manager for the transaction. Yug
     (1 row)
     ```
 
-The transaction fails; the row did not get the intended value of `40`, and still has the old value of `30`. When the transaction manager fails before a commit occurs, the transaction is lost. At this point, it's the application's responsibility to retry the transaction.
+The transaction has failed: the row did not get the intended value of `40`, and still has the old value of `30`. When the transaction manager fails before a commit happens, the transaction is lost. At this point, it's the application's responsibility to restart the transaction.
 
 ### Clean up
 
