@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -622,11 +623,8 @@ public class ReleaseManager {
 
       // If there is an error for one release, there is still a possibility that the user has
       // imported multiple
-      // releases locally, and that the other ones have been named properly. We err on the cautious
-      // side, and
-      // immediately throw a Runtime Exception. The user will be able to import local releases only
-      // if all of
-      // them are properly formatted, and none otherwise.
+      // releases locally, and that the other ones have been named properly. We skip the release
+      // with the error, and continue with the other releases.
 
       if (!localReleases.isEmpty()) {
 
@@ -636,8 +634,10 @@ public class ReleaseManager {
         Pattern ybVersionPatternRequired =
             Pattern.compile("^(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?$");
 
-        for (String version : localReleases.keySet()) {
+        Map<String, ReleaseMetadata> successfullyAddedReleases =
+            new HashMap<String, ReleaseMetadata>();
 
+        for (String version : localReleases.keySet()) {
           String associatedFilePath = localReleases.get(version).filePath;
 
           String associatedChartPath = localReleases.get(version).chartPath;
@@ -661,61 +661,75 @@ public class ReleaseManager {
           Matcher versionPatternMatcherInPackageNameChartPath =
               ybVersionPattern.matcher(chartPackageName);
 
-          if (!versionPatternMatcher.find()) {
-
-            throw new RuntimeException(
-                "The version name in the folder of the imported local release is improperly "
-                    + "formatted. Please check to make sure that the folder with the version name "
-                    + "is named correctly.");
-          }
-
-          if (!versionPatternMatcherInPackageNameFilePath.find()) {
-
-            throw new RuntimeException(
-                "In the file path, the version of DB in your package name in the imported "
-                    + "local release is improperly formatted. Please "
-                    + " check to make sure that you have named the .tar.gz file with "
-                    + " the appropriate DB version.");
-          }
-
-          if (!filePackageName.contains(version)) {
-
-            throw new RuntimeException(
-                "The version of DB that you have specified in the folder name in the "
-                    + "imported local release does not match the version of DB in the "
-                    + "package name in the imported local release (specifed through the "
-                    + "file path). Please make sure that you have named the directory and "
-                    + ".tar.gz file appropriately so that the DB version in the package "
-                    + "name matches the DB version in the folder name.");
-          }
-
-          if (!associatedChartPath.equals("")) {
-
-            if (!versionPatternMatcherInPackageNameChartPath.find()) {
+          try {
+            if (!versionPatternMatcher.find()) {
 
               throw new RuntimeException(
-                  "In the chart path, the version of DB in your package name in the imported "
+                  "The version name in the folder of the imported local release is improperly "
+                      + "formatted. Please check to make sure that the folder with the version"
+                      + " name is named correctly.");
+            }
+
+            if (!versionPatternMatcherInPackageNameFilePath.find()) {
+
+              throw new RuntimeException(
+                  "In the file path, the version of DB in your package name in the imported "
                       + "local release is improperly formatted. Please "
                       + " check to make sure that you have named the .tar.gz file with "
                       + " the appropriate DB version.");
             }
 
-            if (!chartPackageName.contains(version)) {
+            if (!filePackageName.contains(version)) {
 
               throw new RuntimeException(
                   "The version of DB that you have specified in the folder name in the "
                       + "imported local release does not match the version of DB in the "
                       + "package name in the imported local release (specifed through the "
-                      + "chart path). Please make sure that you have named the directory and "
+                      + "file path). Please make sure that you have named the directory and "
                       + ".tar.gz file appropriately so that the DB version in the package "
                       + "name matches the DB version in the folder name.");
             }
+
+            if (!associatedChartPath.equals("")) {
+
+              if (!versionPatternMatcherInPackageNameChartPath.find()) {
+
+                throw new RuntimeException(
+                    "In the chart path, the version of DB in your package name in the imported "
+                        + "local release is improperly formatted. Please "
+                        + " check to make sure that you have named the .tar.gz file with "
+                        + " the appropriate DB version.");
+              }
+
+              if (!chartPackageName.contains(version)) {
+
+                throw new RuntimeException(
+                    "The version of DB that you have specified in the folder name in the "
+                        + "imported local release does not match the version of DB in the "
+                        + "package name in the imported local release (specifed through the "
+                        + "chart path). Please make sure that you have named the directory and "
+                        + ".tar.gz file appropriately so that the DB version in the package "
+                        + "name matches the DB version in the folder name.");
+              }
+            }
+          } catch (RuntimeException e) {
+            log.error(
+                "Error verifying file and directory names for local release, "
+                    + "skipping this release: [ {} ]",
+                version,
+                e);
+            continue;
           }
+
           // Add gFlag metadata for newly added release.
           addGFlagsMetadataFiles(version, localReleases.get(version));
+
+          // Release has been added successfully.
+          successfullyAddedReleases.put(version, localReleases.get(version));
         }
-        log.info("Importing local releases: [ {} ]", Json.toJson(localReleases));
-        localReleases.forEach(currentReleases::put);
+
+        log.info("Importing local releases: [ {} ]", Json.toJson(successfullyAddedReleases));
+        successfullyAddedReleases.forEach(currentReleases::put);
         configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
       }
     }
