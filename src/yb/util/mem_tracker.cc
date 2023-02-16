@@ -480,6 +480,7 @@ void MemTracker::UnregisterFromParent() {
 
 void MemTracker::UnregisterChild(const std::string& id) {
   std::lock_guard<std::mutex> lock(child_trackers_mutex_);
+  VLOG(1) << "Unregistering child tracker " << id << " from " << id_;
   child_trackers_.erase(id);
 }
 

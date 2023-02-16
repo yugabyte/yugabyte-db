@@ -895,6 +895,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   std::shared_ptr<MemTracker> mem_tracker_;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> regulardb_mem_tracker_;
+  std::shared_ptr<MemTracker> intentdb_mem_tracker_;
 
   MetricEntityPtr tablet_metrics_entity_;
   MetricEntityPtr table_metrics_entity_;

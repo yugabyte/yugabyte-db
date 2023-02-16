@@ -1223,9 +1223,10 @@ TEST_F(QLTabletTest, BlockCacheMemTracking) {
   ASSERT_OK(client_->DeleteTable(kTable1Name, true));
   std::this_thread::sleep_for(kSleepTime);
 
-  // after table deletion, assert that there is no longer a block cache memtracker
+  // after table deletion, assert that there are no longer any tablet-level block cache memtrackers
   block_cache_tracker = server_tracker->FindChild(kBlockTrackerName);
-  ASSERT_FALSE(block_cache_tracker);
+  ASSERT_TRUE(block_cache_tracker);
+  ASSERT_TRUE(block_cache_tracker->ListChildren().empty());
 }
 
 // Checks history cutoff for cluster against previous state.
