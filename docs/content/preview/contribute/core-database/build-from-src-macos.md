@@ -4,7 +4,7 @@ headerTitle: Build the source code
 linkTitle: Build the source
 description: Build YugabyteDB from source code on macOS.
 image: /images/section_icons/index/quick_start.png
-headcontent: Build the source code on macOS, CentOS, and Ubuntu.
+headcontent: Build the source code.
 menu:
   preview:
     identifier: build-from-src-1-macos
