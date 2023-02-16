@@ -231,7 +231,7 @@ EOF
   sudo systemctl daemon-reload
   #To enable the node-agent service on reboot.
   sudo systemctl enable yb-node-agent
-  sudo systemctl start yb-node-agent
+  sudo systemctl restart yb-node-agent
   echo "* Started the systemd service"
   echo "* Run 'systemctl status yb-node-agent' to check\
  the status of the yb-node-agent"

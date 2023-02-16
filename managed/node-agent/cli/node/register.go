@@ -90,6 +90,7 @@ func unregisterHandler(apiToken string) error {
 }
 
 func registerCmdHandler(cmd *cobra.Command, args []string) {
+	ctx := server.Context()
 	config := util.CurrentConfig()
 	apiToken, err := cmd.Flags().GetString("api_token")
 	if err != nil {
@@ -133,7 +134,7 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Unable to store skip_verify_cert value - %s", err.Error())
 	}
-	err = server.RetrieveUser(apiToken)
+	err = server.RetrieveUser(ctx, apiToken)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Error fetching the current user with the API key - %s", err)
 	}

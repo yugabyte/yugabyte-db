@@ -8,16 +8,17 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-import os
+import logging
 import shlex
 import time
 import traceback
+import uuid
 
 from ansible.module_utils._text import to_native
 from grpc import secure_channel, ssl_channel_credentials, metadata_call_credentials, \
-    composite_channel_credentials, AuthMetadataPlugin
+    composite_channel_credentials, AuthMetadataPlugin, RpcError, StatusCode
 from ybops.node_agent.server_pb2 import DownloadFileRequest, ExecuteCommandRequest, FileInfo, \
-    PingRequest, UploadFileRequest
+    PingRequest, UploadFileRequest, SubmitTaskRequest, DescribeTaskRequest, AbortTaskRequest
 from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 
 SERVER_READY_RETRY_LIMIT = 60
@@ -88,6 +89,16 @@ class RpcShellClient(object):
     def exec_command(self, cmd, **kwargs):
         """
         Run a command on the remote host.
+        Optional 'async' arg can be passed for long running commands.
+        """
+
+        if kwargs.get('async', False):
+            return self.exec_command_async(cmd, **kwargs)
+        return self.exec_command_sync(cmd, **kwargs)
+
+    def exec_command_sync(self, cmd, **kwargs):
+        """
+        Run a sync short running command on the remote host.
         """
 
         output = RpcShellOutput()
@@ -124,6 +135,68 @@ class RpcShellClient(object):
             output.rc = 1
             output.stderr = str(e)
         return output
+
+    def exec_command_async(self, cmd, **kwargs):
+        """
+        Run an async long running command on the remote host.
+        """
+
+        output = RpcShellOutput()
+        task_id = kwargs.get('task_id', str(uuid.uuid4()))
+        try:
+            timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            bash = kwargs.get('bash', False)
+            if isinstance(cmd, str):
+                if bash:
+                    cmd_args_list = ["/bin/bash", "-c", cmd]
+                else:
+                    cmd_args_list = shlex.split(to_native(cmd, errors='surrogate_or_strict'))
+            else:
+                if bash:
+                    # Need to join with spaces, but surround arguments with spaces
+                    # using "'" character.
+                    cmd_str = ' '.join(
+                        list(map(lambda part: part if ' ' not in part else "'" + part + "'", cmd)))
+                    cmd_args_list = ["/bin/bash", "-c", cmd_str]
+                else:
+                    cmd_args_list = cmd
+            stub = NodeAgentStub(self.channel)
+            stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
+                                              command=cmd_args_list),
+                            timeout=timeout_sec)
+            while True:
+                try:
+                    for response in stub.DescribeTask(
+                            DescribeTaskRequest(taskId=task_id),
+                            timeout=timeout_sec):
+                        if response.HasField('error'):
+                            output.rc = response.error.code
+                            output.stderr = response.error.message if output.stderr is None \
+                                else output.stderr + response.error.message
+                        else:
+                            output.stdout = response.output if output.stdout is None \
+                                else output.stdout + response.output
+                    break
+                except RpcError as e:
+                    if e.code() == StatusCode.DEADLINE_EXCEEDED:
+                        logging.info("Reconnecting for task {} as client timed out".format(task_id))
+                        continue
+                    raise e
+        except Exception as e:
+            traceback.print_exc()
+            self.abort_task(task_id, **kwargs)
+            output.rc = 1
+            output.stderr = str(e)
+        return output
+
+    def abort_task(self, task_id, **kwargs):
+        try:
+            timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            stub = NodeAgentStub(self.channel)
+            stub.AbortTask(AbortTaskRequest(taskId=task_id), timeout=timeout_sec)
+        except Exception:
+            # Ignore error.
+            logging.error("Failed to abort remote task {}".format(task_id))
 
     def read_iterfile(self, user, in_path, out_path, chmod=0, chunk_size=1024):
         file_info = FileInfo()
