@@ -2526,7 +2526,12 @@ pg_decode_message_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 	appendStringInfo(ctx->out, "%s%s", data->ht, data->ht);
 
-	if (data->nr_changes > 1)
+	/*
+	 * Non-transactional message contains only one object. Comma is not
+	 * required. Avoid printing a comma for non-transactional messages that was
+	 * provided in a transaction.
+	 */
+	if (transactional && data->nr_changes > 1)
 		appendStringInfoChar(ctx->out, ',');
 
 	appendStringInfo(ctx->out, "{%s%s%s%s\"kind\":%s\"message\",%s", data->nl, data->ht, data->ht, data->ht, data->sp, data->nl);
