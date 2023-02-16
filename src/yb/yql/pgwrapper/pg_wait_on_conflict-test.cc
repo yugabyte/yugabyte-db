@@ -49,6 +49,7 @@ DECLARE_int32(wait_queue_poll_interval_ms);
 DECLARE_uint64(force_single_shard_waiter_retry_ms);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(transactions_status_poll_interval_ms);
+DECLARE_int32(TEST_sleep_amidst_iterating_blockers_ms);
 DECLARE_int32(ysql_max_write_restart_attempts);
 
 using namespace std::literals;
@@ -857,6 +858,41 @@ TEST_F(PgWaitQueueContentionStressTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentReader
   finished_readers.WaitFor(60s * kTimeMultiplier);
   finished_readers.Reset(0);
   thread_holder.Stop();
+}
+
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDelayedProbeAnalysis)) {
+  // Flag TEST_sleep_amidst_iterating_blockers_ms puts the thread to sleep in each iteration while
+  // looping over the computed wait-for probes and sending information requests. The test ensures
+  // that concurrent changes to the wait-for probes are safe. Concurrent changes to the wait-for
+  // probes are forced by having multiple transactions contend for locks in a sequential order.
+  SetAtomicFlag(200 * kTimeMultiplier, &FLAGS_TEST_sleep_amidst_iterating_blockers_ms);
+  auto setup_conn = ASSERT_RESULT(Connect());
+
+  constexpr int kClients = 5;
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("insert into foo select generate_series(0, 5), 0"));
+  TestThreadHolder thread_holder;
+
+  CountDownLatch num_clients_done(kClients);
+
+  for (int i = 0; i < kClients; i++) {
+    thread_holder.AddThreadFunctor([this, i, &num_clients_done] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+      for(int j = 0 ; j < kClients ; j++) {
+        if (conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", j).ok()) {
+          ASSERT_TRUE(conn.CommitTransaction().ok());
+          LOG(INFO) << "Commit succeeded - thread=" << i << ", subtxn=" << j;
+        }
+      }
+
+      num_clients_done.CountDown();
+      ASSERT_TRUE(num_clients_done.WaitFor(15s * kTimeMultiplier));
+    });
+  }
+
+  thread_holder.WaitAndStop(25s * kTimeMultiplier);
 }
 
 } // namespace pgwrapper
