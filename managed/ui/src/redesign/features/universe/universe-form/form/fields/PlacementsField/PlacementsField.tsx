@@ -6,12 +6,13 @@ import { YBButton, YBSelect, YBLabel, YBCheckbox, YBInput } from '../../../../..
 import { YBLoadingCircleIcon } from '../../../../../../../components/common/indicators';
 import { PlacementStatus } from './PlacementStatus';
 import { useGetAllZones, useGetUnusedZones, useNodePlacements } from './PlacementsFieldHelper';
-import { Placement, UniverseFormData, CloudType } from '../../../utils/dto';
+import { Placement, UniverseFormData, CloudType, MasterPlacementMode } from '../../../utils/dto';
 import {
   REPLICATION_FACTOR_FIELD,
   PLACEMENTS_FIELD,
   PROVIDER_FIELD,
-  RESET_AZ_FIELD
+  RESET_AZ_FIELD,
+  MASTER_PLACEMENT_FIELD
 } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
@@ -32,6 +33,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
   //watchers
   const replicationFactor = useWatch({ name: REPLICATION_FACTOR_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
+  const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
 
   //custom hooks
   const allZones = useGetAllZones(); //returns all AZ
@@ -42,6 +44,7 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
     control,
     name: PLACEMENTS_FIELD
   });
+  const isDedicatedNodes = masterPlacement === MasterPlacementMode.DEDICATED;
 
   const renderHeader = (
     <Box flex={1} mt={1} display="flex" flexDirection="row" data-testid="PlacementsField-Container">
@@ -54,11 +57,13 @@ export const PlacementsField = ({ disabled, isPrimary }: PlacementsFieldProps): 
         <YBLabel dataTestId="PlacementsField-IndividualUnitLabel">
           {provider?.code === CloudType.kubernetes
             ? t('universeForm.cloudConfig.azPodsLabel')
+            : isDedicatedNodes
+            ? t('universeForm.cloudConfig.azTServerNodesLabel')
             : t('universeForm.cloudConfig.azNodesLabel')}
         </YBLabel>
       </Box>
       {isPrimary && (
-        <Box flexShrink={1} width="76px">
+        <Box flexShrink={1} width="42px">
           <YBLabel dataTestId="PlacementsField-PreferredLabel">
             {t('universeForm.cloudConfig.preferredAZLabel')}
           </YBLabel>
