@@ -111,4 +111,21 @@ public class KubernetesInfo implements CloudInfoInterface {
     this.kubernetesPullSecret = CommonUtils.getMaskedValue(kubernetesPullSecret);
     this.kubernetesPullSecretName = CommonUtils.getMaskedValue(kubernetesPullSecretName);
   }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    KubernetesInfo kubernetesInfo = (KubernetesInfo) providerCloudInfo;
+    // If the modify request contains masked value, overwrite those using
+    // the existing ebean entity.
+    if (this.kubernetesImagePullSecretName != null
+        && this.kubernetesImagePullSecretName.contains("*")) {
+      this.kubernetesImagePullSecretName = kubernetesInfo.kubernetesImagePullSecretName;
+    }
+    if (this.kubernetesPullSecret != null && this.kubernetesPullSecret.contains("*")) {
+      this.kubernetesPullSecret = kubernetesInfo.kubernetesPullSecret;
+    }
+    if (this.kubernetesPullSecretName != null && this.kubernetesPullSecretName.contains("*")) {
+      this.kubernetesPullSecretName = kubernetesInfo.kubernetesPullSecretName;
+    }
+  }
 }

@@ -12,11 +12,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
-import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 
@@ -137,5 +134,30 @@ public class GCPCloudInfo implements CloudInfoInterface {
     this.gceApplicationCredentialsPath = CommonUtils.getMaskedValue(gceApplicationCredentialsPath);
     this.gceApplicationCredentials =
         CommonUtils.getMaskedValue(gceApplicationCredentials, toMaskFieldsInCreds);
+  }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    GCPCloudInfo gcpCloudInfo = (GCPCloudInfo) providerCloudInfo;
+    // If the modify request contains masked value, overwrite those using
+    // the existing ebean entity.
+    if (this.gceApplicationCredentialsPath != null
+        && this.gceApplicationCredentialsPath.contains("*")) {
+      this.gceApplicationCredentialsPath = gcpCloudInfo.gceApplicationCredentialsPath;
+    }
+
+    if (gceApplicationCredentials != null) {
+      // If any of the fields in the cred is masked, copy those from the cred saved in bean.
+      ObjectNode editCredNodeValue = (ObjectNode) this.gceApplicationCredentials;
+      ObjectNode providerCredNodeValue = (ObjectNode) gcpCloudInfo.gceApplicationCredentials;
+
+      for (String key : toMaskFieldsInCreds) {
+        String keyValue = editCredNodeValue.get(key).toString();
+        if (keyValue.contains("*")) {
+          editCredNodeValue.put(key, providerCredNodeValue.get(key));
+        }
+      }
+      this.gceApplicationCredentials = editCredNodeValue;
+    }
   }
 }
