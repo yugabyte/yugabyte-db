@@ -394,6 +394,7 @@ message PgPerformOptionsPB {
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
   CachingInfo caching_info = 17;
+  bool read_from_followers = 18;
 }
 
 message PgPerformRequestPB {
