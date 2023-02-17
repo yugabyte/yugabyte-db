@@ -738,10 +738,6 @@ Status PgSession::GetIndexBackfillProgress(std::vector<PgObjectId> index_ids,
   return pg_client_.GetIndexBackfillProgress(index_ids, backfill_statuses);
 }
 
-bool PgSession::ShouldUseFollowerReads() const {
-  return pg_txn_manager_->ShouldUseFollowerReads();
-}
-
 void PgSession::SetTimeout(const int timeout_ms) {
   pg_client_.SetTimeout(timeout_ms * 1ms);
 }

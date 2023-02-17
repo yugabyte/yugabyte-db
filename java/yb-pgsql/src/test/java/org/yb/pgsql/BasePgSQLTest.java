@@ -48,6 +48,7 @@ import org.yb.master.MasterDdlOuterClass;
 
 import java.io.File;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
@@ -571,8 +572,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                                       ts.getLocalhostIP(),
                                       ts.getPgsqlWebPort()));
       Scanner scanner = new Scanner(url.openConnection().getInputStream());
-      JsonParser parser = new JsonParser();
-      JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+      JsonElement tree = JsonParser.parseString(scanner.useDelimiter("\\A").next());
       JsonObject obj = tree.getAsJsonObject();
       YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
       if (ysqlStat != null) {
@@ -628,30 +628,51 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     verifyStatementStats(stmt, sql, statName, numLoopsAfterReset, oldValue);
   }
 
-  private JsonArray[] getRawMetric(
-      Function<MiniYBDaemon, Integer> portFetcher) throws Exception {
+  private URL[] getMetricSources(
+      Collection<MiniYBDaemon> servers, Function<MiniYBDaemon, Integer> portFetcher)
+        throws MalformedURLException {
+    URL[] result = new URL[servers.size()];
+    int index = 0;
+    for (MiniYBDaemon s : servers) {
+      result[index++] = new URL(String.format(
+          "http://%s:%d/metrics", s.getLocalhostIP(), portFetcher.apply(s)));
+    }
+    return result;
+  }
+
+  protected URL[] getTSMetricSources() throws MalformedURLException {
+    return getMetricSources(miniCluster.getTabletServers().values(), (s) -> s.getWebPort());
+  }
+
+  protected URL[] getYSQLMetricSources() throws MalformedURLException {
+    return getMetricSources(miniCluster.getTabletServers().values(), (s) -> s.getPgsqlWebPort());
+  }
+
+  protected URL[] getMasterMetricSources() throws MalformedURLException {
+    return getMetricSources(miniCluster.getMasters().values(), (s) -> s.getWebPort());
+  }
+
+  private JsonArray[] getRawMetric(URL[] sources) throws Exception {
     Collection<MiniYBDaemon> servers = miniCluster.getTabletServers().values();
     JsonArray[] result = new JsonArray[servers.size()];
     int index = 0;
-    for (MiniYBDaemon ts : servers) {
-      URLConnection connection = new URL(String.format("http://%s:%d/metrics",
-          ts.getLocalhostIP(),
-          portFetcher.apply(ts))).openConnection();
+    for (URL url : sources) {
+      URLConnection connection = url.openConnection();
       connection.setUseCaches(false);
       Scanner scanner = new Scanner(connection.getInputStream());
       result[index++] =
-          new JsonParser().parse(scanner.useDelimiter("\\A").next()).getAsJsonArray();
+          JsonParser.parseString(scanner.useDelimiter("\\A").next()).getAsJsonArray();
       scanner.close();
     }
     return result;
   }
 
   protected JsonArray[] getRawTSMetric() throws Exception {
-    return getRawMetric((ts) -> ts.getWebPort());
+    return getRawMetric(getTSMetricSources());
   }
 
   protected JsonArray[] getRawYSQLMetric() throws Exception {
-    return getRawMetric((ts) -> ts.getPgsqlWebPort());
+    return getRawMetric(getYSQLMetricSources());
   }
 
   protected AggregatedValue getMetric(String metricName) throws Exception {
@@ -668,10 +689,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return value;
   }
 
-  protected Long getTserverMetricCountForTable(String metricName, String tableName)
-      throws Exception {
+  protected long getMetricCountForTable(
+      URL[] sources, String metricName, String tableName) throws Exception {
     long count = 0;
-    for (JsonArray rawMetric : getRawTSMetric()) {
+    for (JsonArray rawMetric : getRawMetric(sources)) {
       for (JsonElement elem : rawMetric.getAsJsonArray()) {
         JsonObject obj = elem.getAsJsonObject();
         if (obj.get("type").getAsString().equals("tablet") &&
@@ -691,13 +712,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return count;
   }
 
-  protected AggregatedValue getTServerMetric(String metricName) throws Exception {
+  protected long getTserverMetricCountForTable(
+      String metricName, String tableName) throws Exception {
+    return getMetricCountForTable(getTSMetricSources(), metricName, tableName);
+  }
+
+  protected AggregatedValue getServerMetric(URL[] sources, String metricName) throws Exception {
     AggregatedValue value = new AggregatedValue();
-    for (JsonArray rawMetric : getRawTSMetric()) {
+    for (JsonArray rawMetric : getRawMetric(sources)) {
       for (JsonElement elem : rawMetric.getAsJsonArray()) {
         JsonObject obj = elem.getAsJsonObject();
         if (obj.get("type").getAsString().equals("server")) {
-          assertEquals(obj.get("id").getAsString(), "yb.tabletserver");
           Metrics.Histogram histogram = new Metrics(obj).getHistogram(metricName);
           value.count += histogram.totalCount;
           value.value += histogram.totalSum;
@@ -705,6 +730,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
     }
     return value;
+  }
+
+  protected AggregatedValue getReadRPCMetric(URL[] sources) throws Exception {
+    return getServerMetric(sources, "handler_latency_yb_tserver_TabletServerService_Read");
+  }
+
+  protected AggregatedValue getTServerMetric(String metricName) throws Exception {
+    return getServerMetric(getTSMetricSources(), metricName);
   }
 
   protected List<String> getTabletsForTable(

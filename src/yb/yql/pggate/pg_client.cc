@@ -399,9 +399,6 @@ class PgClient::Impl {
       if (op->is_read()) {
         auto& read_op = down_cast<PgsqlReadOp&>(*op);
         union_op.ref_read(&read_op.read_request());
-        if (read_op.read_from_followers()) {
-          union_op.set_read_from_followers(true);
-        }
       } else {
         auto& write_op = down_cast<PgsqlWriteOp&>(*op);
         if (write_op.write_time()) {

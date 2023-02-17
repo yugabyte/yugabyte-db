@@ -312,8 +312,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return pg_client_;
   }
 
-  bool ShouldUseFollowerReads() const;
-
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
 

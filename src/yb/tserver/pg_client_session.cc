@@ -267,13 +267,14 @@ Result<PgClientSessionOperations> PrepareOperations(
       session->Abort();
     }
   });
+  const auto read_from_followers = req.options().read_from_followers();
   for (const auto& op : req.ops()) {
     if (op.has_read()) {
       const auto& read = op.read();
       RETURN_NOT_OK(GetTable(read.table_id(), table_cache, &table));
       const auto read_op = std::make_shared<client::YBPgsqlReadOp>(
           table, const_cast<PgsqlReadRequestPB*>(&read));
-      if (op.read_from_followers()) {
+      if (read_from_followers) {
         read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
       }
       ops.push_back(read_op);
@@ -650,6 +651,9 @@ PgClientSession::SetupSession(
   const auto& options = req.options();
   PgClientSessionKind kind;
   if (options.use_catalog_session()) {
+    SCHECK(!options.read_from_followers(),
+           InvalidArgument,
+           "Reading catalog from followers is not allowed");
     kind = PgClientSessionKind::kCatalog;
     EnsureSession(kind);
   } else if (options.ddl_mode()) {

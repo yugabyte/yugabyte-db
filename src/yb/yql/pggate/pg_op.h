@@ -116,14 +116,6 @@ class PgsqlReadOp : public PgsqlOp {
     return true;
   }
 
-  void set_read_from_followers() {
-    read_from_followers_ = true;
-  }
-
-  bool read_from_followers() const {
-    return read_from_followers_;
-  }
-
   PgsqlOpPtr DeepCopy(const std::shared_ptr<void>& shared_ptr) const;
 
   std::string RequestToString() const override;
@@ -132,7 +124,6 @@ class PgsqlReadOp : public PgsqlOp {
   Status InitPartitionKey(const PgTableDesc& table) override;
 
   LWPgsqlReadRequestPB read_request_;
-  bool read_from_followers_ = false;
 };
 
 using PgsqlReadOpPtr = std::shared_ptr<PgsqlReadOp>;

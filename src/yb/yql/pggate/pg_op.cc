@@ -126,7 +126,6 @@ PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<void>& shared_ptr) const 
   auto result = ArenaMakeShared<PgsqlReadOp>(
       std::shared_ptr<Arena>(shared_ptr, &arena()), &arena(), is_region_local());
   result->read_request() = read_request();
-  result->read_from_followers_ = read_from_followers_;
   return result;
 }
 

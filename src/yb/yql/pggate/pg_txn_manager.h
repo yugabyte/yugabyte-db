@@ -75,7 +75,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool IsDdlMode() const { return ddl_mode_; }
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
-  bool ShouldUseFollowerReads() const { return read_time_for_follower_reads_.is_valid(); }
 
   uint64_t SetupPerformOptions(tserver::PgPerformOptionsPB* options);
 
