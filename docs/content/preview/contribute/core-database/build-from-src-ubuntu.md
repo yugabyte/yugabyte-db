@@ -66,11 +66,13 @@ packages=(
   curl
   gettext
   git
+  locales
   ninja-build
   pkg-config
   rsync
 )
 sudo apt install -y "${packages[@]}"
+sudo locale-gen en_US.UTF-8
 ```
 
 ### Python 3
