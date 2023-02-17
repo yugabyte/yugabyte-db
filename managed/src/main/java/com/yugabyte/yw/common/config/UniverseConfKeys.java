@@ -289,4 +289,11 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Excluded Queries",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.StringListType);
+  public static final ConfKeyInfo<Boolean> nodeUIHttpsEnabled =
+      new ConfKeyInfo<>(
+          "yb.node_ui.https.enabled",
+          ScopeType.UNIVERSE,
+          "Enable https on Master/TServer UI",
+          "Allow https on Master/TServer UI for a universe",
+          ConfDataType.BooleanType);
 }

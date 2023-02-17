@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
@@ -62,13 +65,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Http.Status;
-
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -83,9 +79,12 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Status;
 
 public class UniverseCRUDHandler {
 
@@ -620,8 +619,12 @@ public class UniverseCRUDHandler {
             taskParams.cmkArn = new String(cmkArnBytes);
           }
         }
+        boolean isNodeUIHttpsEnabled =
+            runtimeConfigFactory.forUniverse(universe).getBoolean("yb.node_ui.https.enabled");
         if (Universe.shouldEnableHttpsUI(
-            primaryIntent.enableNodeToNodeEncrypt, primaryIntent.ybSoftwareVersion)) {
+            primaryIntent.enableNodeToNodeEncrypt,
+            primaryIntent.ybSoftwareVersion,
+            isNodeUIHttpsEnabled)) {
           universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
       }

@@ -1077,13 +1077,14 @@ public class Universe extends Model {
     return universe;
   }
 
-  // Allow https when software version given is >= 2.17.1.0-b14.
+  // Allow https when software version given is >= 2.17.1.0-b14 and isNodeUIHttpsEnabled is true.
   // Invalid software versions will not allow https.
   // compareYbVersions() returns 0 if incorrect software version is passed, hence the strictly
   // greater.
   public static boolean shouldEnableHttpsUI(
-      boolean enableNodeToNodeEncrypt, String ybSoftwareVersion) {
-    return enableNodeToNodeEncrypt
+      boolean enableNodeToNodeEncrypt, String ybSoftwareVersion, boolean isNodeUIHttpsEnabled) {
+    return isNodeUIHttpsEnabled
+        && enableNodeToNodeEncrypt
         && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
   }
 }

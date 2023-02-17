@@ -159,12 +159,14 @@ public class TlsToggle extends UpgradeTaskBase {
 
   protected void updateUniverseHttpsEnabledUI() {
     int nodeToNodeChange = getNodeToNodeChange();
-
+    boolean isNodeUIHttpsEnabled =
+        runtimeConfigFactory.forUniverse(getUniverse()).getBoolean("yb.node_ui.https.enabled");
     // HTTPS_ENABLED_UI will piggyback node-to-node encryption.
     if (nodeToNodeChange != 0) {
       String httpsEnabledUI =
           (nodeToNodeChange > 0
-                  && Universe.shouldEnableHttpsUI(true, getUserIntent().ybSoftwareVersion))
+                  && Universe.shouldEnableHttpsUI(
+                      true, getUserIntent().ybSoftwareVersion, isNodeUIHttpsEnabled))
               ? "true"
               : "false";
       saveUniverseDetails(
