@@ -1,5 +1,6 @@
 import React, { FC, useEffect, useState } from 'react';
 import { MenuItem, Dropdown } from 'react-bootstrap';
+import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { fetchCustomersList } from '../../../api/admin';
@@ -17,7 +18,12 @@ export const CustomerRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
   resetRuntimeConfigs
 }) => {
   const { t } = useTranslation();
-  const customers = useQuery(['customers'], () => fetchCustomersList().then((res) => res.data));
+  const customers = useQuery(['customers'], () =>
+    fetchCustomersList().then((res: any) => res.data)
+  );
+  const currentUserInfo = useSelector((state: any) => state.customer.currentUser.data);
+  const currentCustomerInfo = useSelector((state: any) => state.customer.currentCustomer.data);
+  const isSuperAdmin = ['SuperAdmin'].includes(currentUserInfo.role);
   const [customerDropdownValue, setcustomerDropdownValue] = useState<string>();
   const [customerUUID, setCustomerUUID] = useState<string>();
 
@@ -29,6 +35,7 @@ export const CustomerRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
   useEffect(() => {
     resetRuntimeConfigs();
     if (customerUUID) {
+      // Super admin should be able to fetch runtime configs of all customers in case of multi-tenancy
       fetchRuntimeConfigs(customerUUID);
     }
   }, [customerUUID]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -42,18 +49,25 @@ export const CustomerRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
     return <YBLoading />;
   }
 
-  const customersList = customers.data;
+  let customersList = customers.data;
   if (customersList.length <= 0) {
     return (
       <YBErrorIndicator customErrorMessage={t('admin.advanced.globalConfig.CustomerConfigError')} />
     );
+  } else if (customersList.length > 0) {
+    if (!isSuperAdmin) {
+      customersList = customersList.filter(
+        (customer: any) => customer?.uuid === currentCustomerInfo?.uuid
+      );
+    }
+    if (customerDropdownValue === undefined) {
+      setcustomerDropdownValue(customersList[0].name);
+    }
+    if (customerUUID === undefined) {
+      setCustomerUUID(customersList[0].uuid);
+    }
   }
-  if (customersList.length > 0 && customerDropdownValue === undefined) {
-    setcustomerDropdownValue(customersList[0].name);
-  }
-  if (customersList.length > 0 && customerUUID === undefined) {
-    setCustomerUUID(customersList[0].uuid);
-  }
+
   return (
     <div className="customer-runtime-config-container">
       <div className="customer-runtime-config-container__display">
