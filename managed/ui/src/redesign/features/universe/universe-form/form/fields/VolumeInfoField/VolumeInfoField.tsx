@@ -75,6 +75,11 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
 
+  //fetch run time configs
+  const { data: providerRuntimeConfigs } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
+    api.fetchRunTimeConfigs(true, provider?.uuid)
+  );
+
   // Update field is based on master or tserver field in dedicated mode
   const UPDATE_FIELD = isDedicatedMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
@@ -89,8 +94,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   //update volume info after istance changes
   useUpdateEffect(() => {
     if (!instance) return;
-
-    let deviceInfo = getDeviceInfoFromInstance(instance);
+    let deviceInfo = getDeviceInfoFromInstance(instance, providerRuntimeConfigs);
 
     //retain old volume size if its edit mode or not ephemeral storage
     if (fieldValue && deviceInfo && !isEphemeralAwsStorageInstance(instance) && isEditMode) {
