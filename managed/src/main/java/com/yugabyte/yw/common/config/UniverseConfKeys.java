@@ -567,6 +567,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Clean orphan(non-scheduled) snapshots on Yugaware startup/restart",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeUIHttpsEnabled =
+      new ConfKeyInfo<>(
+          "yb.node_ui.https.enabled",
+          ScopeType.UNIVERSE,
+          "Enable https on Master/TServer UI",
+          "Allow https on Master/TServer UI for a universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> helmTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.helm.timeout_secs",
