@@ -33,8 +33,8 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const;
   Result<std::shared_ptr<QLRowBlock>> GenerateAndCacheData() const;
 
-  // Remove a table from the system.partitions vtable.
-  void RemoveFromCache(const TableId& table_id) const;
+  // Remove tables from the system.partitions vtable.
+  void RemoveFromCache(const std::vector<TableId>& table_ids) const;
 
   // Filter only tablets that have relevant system.partitions changes from a list of tablets that
   // have heartbeated in and are being processed.
