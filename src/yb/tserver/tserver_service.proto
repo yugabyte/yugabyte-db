@@ -189,7 +189,7 @@ message GetTransactionStatusResponsePB {
   // as invalid hybrid time.
   repeated fixed64 coordinator_safe_time = 6;
 
-  repeated AbortedSubTransactionSetPB aborted_subtxn_set = 7;
+  repeated SubtxnSetPB aborted_subtxn_set = 7;
 }
 
 message UpdateTransactionWaitingForStatusRequestPB {

@@ -880,7 +880,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   std::future<Status> SendHeartBeatOnRollback(
       const CoarseTimePoint& deadline, const internal::RemoteTabletPtr& status_tablet,
       rpc::Rpcs::Handle* handle,
-      const AbortedSubTransactionSet& aborted_sub_txn_set) {
+      const SubtxnSet& aborted_sub_txn_set) {
     DCHECK(status_tablet);
 
     return MakeFuture<Status>([&, handle](auto callback) {
@@ -1082,7 +1082,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   rpc::RpcCommandPtr PrepareHeartbeatRPC(
       CoarseTimePoint deadline, const internal::RemoteTabletPtr& status_tablet,
       TransactionStatus status, UpdateTransactionCallback callback,
-      std::optional<AbortedSubTransactionSet> aborted_set_for_rollback_heartbeat =
+      std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat =
         std::nullopt) {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet->tablet_id());

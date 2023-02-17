@@ -1549,7 +1549,7 @@ class TransactionParticipant::Impl
     TransactionApplyData data = {
         .leader_term = term,
         .transaction_id = *id,
-        .aborted = AbortedSubTransactionSet(),
+        .aborted = SubtxnSet(),
         .op_id = OpId(),
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
@@ -1571,7 +1571,7 @@ class TransactionParticipant::Impl
     TransactionApplyData apply_data = {
       .leader_term = data.leader_term,
       .transaction_id = id,
-      .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(data.state.aborted().set())),
+      .aborted = VERIFY_RESULT(SubtxnSet::FromPB(data.state.aborted().set())),
       .op_id = data.op_id,
       .commit_ht = commit_time,
       .log_ht = data.hybrid_time,

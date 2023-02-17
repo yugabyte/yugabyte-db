@@ -74,12 +74,12 @@ enum RowMarkType {
   ROW_MARK_ABSENT = 15;
 }
 
-message AbortedSubTransactionSetPB {
+message SubtxnSetPB {
   repeated uint32 set = 1;
 }
 
 message SubTransactionMetadataPB {
   optional uint32 subtransaction_id = 1;
 
-  optional AbortedSubTransactionSetPB aborted = 2;
+  optional SubtxnSetPB aborted = 2;
 }
