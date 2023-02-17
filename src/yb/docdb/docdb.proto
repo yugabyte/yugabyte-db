@@ -89,7 +89,7 @@ message ApplyTransactionStatePB {
   optional fixed64 commit_ht = 3;
 
   // Set of aborted subtransactions.
-  optional AbortedSubTransactionSetPB aborted = 4;
+  optional SubtxnSetPB aborted = 4;
 }
 
 message ColumnPackingPB {

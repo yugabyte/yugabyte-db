@@ -259,7 +259,7 @@ struct IntentKeyValueForCDC {
 struct ApplyTransactionState {
   std::string key;
   IntraTxnWriteId write_id = 0;
-  AbortedSubTransactionSet aborted;
+  SubtxnSet aborted;
 
   bool active() const {
     return !key.empty();
@@ -279,7 +279,7 @@ struct ApplyTransactionState {
     return ApplyTransactionState {
       .key = pb.key(),
       .write_id = pb.write_id(),
-      .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(pb.aborted().set())),
+      .aborted = VERIFY_RESULT(SubtxnSet::FromPB(pb.aborted().set())),
     };
   }
 };
