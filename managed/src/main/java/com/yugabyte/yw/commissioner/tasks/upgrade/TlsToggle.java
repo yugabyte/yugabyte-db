@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -160,12 +161,14 @@ public class TlsToggle extends UpgradeTaskBase {
 
   protected void updateUniverseHttpsEnabledUI() {
     int nodeToNodeChange = getNodeToNodeChange();
-
+    boolean isNodeUIHttpsEnabled =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.nodeUIHttpsEnabled);
     // HTTPS_ENABLED_UI will piggyback node-to-node encryption.
     if (nodeToNodeChange != 0) {
       String httpsEnabledUI =
           (nodeToNodeChange > 0
-                  && Universe.shouldEnableHttpsUI(true, getUserIntent().ybSoftwareVersion))
+                  && Universe.shouldEnableHttpsUI(
+                      true, getUserIntent().ybSoftwareVersion, isNodeUIHttpsEnabled))
               ? "true"
               : "false";
       saveUniverseDetails(
