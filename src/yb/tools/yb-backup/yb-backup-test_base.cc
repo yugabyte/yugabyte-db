@@ -24,7 +24,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_admin.proxy.h"
 
-#include "yb/tools/yb-backup-test_base_ent.h"
+#include "yb/tools/yb-backup/yb-backup-test_base.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/path_util.h"
