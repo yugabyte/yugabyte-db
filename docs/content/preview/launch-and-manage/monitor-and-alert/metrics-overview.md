@@ -29,8 +29,8 @@ Each node in a YugabyteDB cluster exports metrics through JSON and Prometheus Ex
 
 ### YSQL query-related metrics
 
-|     | Description | API endpoint |
-| :-: | :---------- | :----------- |
+| pg_view type  | Description | API endpoint |
+| :-----------: | :---------- | :----------- |
 | pg_stat_statement | Per Node <br/> Historical view aggregated by normalizing queries. <br/> Equivalent view on YBA/YBM is _Slow Queries_. | :13000/statements |
 | pg_stat_activity | Per Node <br/> Current normalized view of queries running on the node. <br/> Equivalent view on YBA/YBM is _Live Queries_. | :13000/rpcz |
 
@@ -70,7 +70,6 @@ Service metric names are of the form `<metric_type>_<server_type>_<service_type>
 * `yb_ysqlserver` - YSQL metrics
 * `yb_consesus` - RAFT consensus metrics
 * `yb_cdc` - Change Data Capture metrics
-* `yb_server` - ???
 
 **service_type** is the logical service name for a given server type:
 
@@ -103,9 +102,6 @@ Service metric names are of the form `<metric_type>_<server_type>_<service_type>
 * yb_cdc service names:
   * CDCService
 
-* yb_server service names:
-  * GenericService
-
 **service_method** (optional) identifies service methods, which are specific functions performed by the service.
 
 ### Other server metrics
@@ -114,7 +110,7 @@ Yugabyte exports other server metrics which do not conform to the preceding synt
 
 ## Table metrics
 
-YugabyteDB exports table-level metrics on master and tablet servers. The comprehensive list of table metrics is in the [All table metrics](#all-table-metrics) table below.
+YugabyteDB exports table-level metrics on master and tablet servers. For a comprehensive list of table metrics, see the [All table metrics](#all-table-metrics) table.
 
 Table metrics are identified by `"type": "server"` in the JSON API endpoint. In the Prometheus Exposition Format endpoint, they're identified by `export_types` of `tserver_export` and `master_export`.
 
@@ -158,7 +154,7 @@ The following table shows all `yb_tserver` and `yb_master` table metrics. The mo
 
 ## Tablet metrics
 
-YugabyteDB exports tablet-level metrics on master and tablet servers. The comprehensive list of tablet metrics is in the [All table metrics](#all-table-metrics) table below.
+YugabyteDB exports tablet-level metrics on master and tablet servers. For a comprehensive list of table metrics, see the [All table metrics](#all-table-metrics) table.
 
 Tablet metrics are identified by `"type": "server"` in the JSON API endpoint. In the Prometheus Exposition Format endpoint, they're identified by `export_types` of `tserver_export` and `master_export`.
 
@@ -310,7 +306,7 @@ The following table shows all `yb_tserver` and `yb_master` tablet metrics. The m
 
 ## Cluster metrics
 
-YugabyteDB exports cluster-level metrics. The comprehensive list of cluster metrics is in the [All cluster metrics](#all-cluster-metrics) table below.
+YugabyteDB exports cluster-level metrics. For a comprehensive list of table metrics, see the [All table metrics](#all-table-metrics) table.
 
 Cluster metrics are identified by `"type": "server"` in the JSON API endpoint. In the Prometheus Exposition Format endpoint, they're identified by `export_types` of `master_export`.
 
