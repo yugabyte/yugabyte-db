@@ -412,6 +412,7 @@ export interface GraphFilter {
   selectedRegionClusterUUID?: string | null;
   selectedRegionCode?: string | null;
   selectedZoneName?: string | null;
+  currentSelectedNodeType: string | null;
 }
 
 export interface MetricSettings {

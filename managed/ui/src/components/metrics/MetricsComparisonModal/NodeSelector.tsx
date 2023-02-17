@@ -1,18 +1,20 @@
 import React, { FC } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
-import { MetricConsts } from '../../metrics/constants';
-import { isNonEmptyObject, isNonEmptyString } from '../../../utils/ObjectUtils';
+import { MetricConsts, NodeType } from '../../metrics/constants';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { getReadOnlyCluster } from '../../../utils/UniverseUtils';
 
 interface NodeSelectorData {
-  selectedUniverse: any | null;
-  nodeItemChanged: any;
-  nodeItemChangedOld: any;
+  nodeItemChanged: (nodeName: string, zoneName: string | null) => void;
+  nodeItemChangedOld: (nodeName: string) => void;
+  currentSelectedNodeType?: string;
+  isDedicatedNodes: boolean;
+  isTopKMetricsEnabled: boolean;
   selectedNode: string;
-  otherSelectedNode?: string | null;
+  selectedRegionCode: string;
   selectedRegionClusterUUID: string | null;
   selectedZoneName: string | null;
-  isTopKMetricsEnabled: boolean;
-  selectedRegionCode: string;
+  selectedUniverse: any | null;
 }
 
 export const NodeSelector: FC<NodeSelectorData> = ({
@@ -20,17 +22,19 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   nodeItemChanged,
   nodeItemChangedOld,
   selectedNode,
-  otherSelectedNode,
   selectedRegionClusterUUID,
   selectedZoneName,
+  isDedicatedNodes,
   isTopKMetricsEnabled,
-  selectedRegionCode
+  selectedRegionCode,
+  currentSelectedNodeType
 }) => {
   let nodeItems: any[] = [];
   let nodeItemsElement: any = [];
   let zone = '';
   let renderItem = null;
   let nodeData = null;
+  let hasSelectedReadReplica = false;
   const isDisabled = selectedUniverse === MetricConsts.ALL;
 
   if (
@@ -50,6 +54,10 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   }
 
   if (isTopKMetricsEnabled) {
+    const readReplicaCluster = getReadOnlyCluster(selectedUniverse.universeDetails.clusters);
+    const readReplicaClusterUUID = readReplicaCluster?.uuid;
+    hasSelectedReadReplica = selectedRegionClusterUUID === readReplicaClusterUUID;
+
     // Show nodes based on the region selected (we filter this by cluster id)
     if (selectedRegionClusterUUID) {
       nodeItems = nodeItems.filter((nodeItem: any) =>
@@ -60,18 +68,24 @@ export const NodeSelector: FC<NodeSelectorData> = ({
       );
     }
 
+    // Show nodes based on node type in case of Primary cluster
+    if (currentSelectedNodeType !== NodeType.ALL && !hasSelectedReadReplica) {
+      nodeItems = nodeItems.filter((nodeItem: any) =>
+        currentSelectedNodeType === NodeType.MASTER
+          ? nodeItem.dedicatedTo === NodeType.MASTER.toUpperCase()
+          : nodeItem.dedicatedTo === NodeType.TSERVER.toUpperCase() || nodeItem.isTserver
+      );
+    }
+
     // eslint-disable-next-line react/display-name
     nodeItemsElement = nodeItems?.map((nodeItem: any, nodeIdx: number) => {
       let zoneNameElement = null;
       let zoneDividerElement = null;
       const nodeKey = `${nodeItem.nodeName}-node-${nodeIdx}`;
       const zoneKey = `${nodeItem.cloudInfo.az}-zone-${nodeIdx}`;
-      let isZoneDivider = false;
       // Logic to decide when AZ and divider needs to be shown
       if (zone !== nodeItem.cloudInfo.az) {
-        zoneDividerElement = isNonEmptyString(zone) ? (
-          <div id="zone-divider" className="divider" />
-        ) : null;
+        zoneDividerElement = <div id="zone-divider" className="divider" />;
         zoneNameElement = (
           <MenuItem
             onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItem.cloudInfo.az)}
@@ -87,15 +101,14 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             <span className="cluster-az-name">{nodeItem.cloudInfo.az}</span>
           </MenuItem>
         );
-        isZoneDivider = true;
         zone = nodeItem.cloudInfo.az;
       }
 
       return (
         // eslint-disable-next-line react/jsx-key
         <>
+          {zoneDividerElement}
           {zoneNameElement}
-          {nodeItems.length > 1 && isZoneDivider ? zoneDividerElement : null}
           <MenuItem
             onSelect={() => nodeItemChanged(nodeItem.nodeName, null)}
             key={nodeKey}
@@ -107,10 +120,17 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             eventKey={nodeIdx}
             active={selectedNode === nodeItem.nodeName}
           >
-            <span className={'node-name'}>{nodeItem.nodeName}</span>
+            <span className={'node-name'}>
+              {nodeItem.nodeName}
+              &nbsp;
+            </span>
+            {isDedicatedNodes ? (
+              <span className={'node-type-label'}>
+                {nodeItem.dedicatedTo?.toLowerCase() ?? NodeType.TSERVER.toLowerCase()}
+              </span>
+            ) : null}
             &nbsp;&nbsp;
             <span className={'node-ip-address'}>{nodeItem.cloudInfo.private_ip}</span>
-            {nodeItem.nodeName === otherSelectedNode ? 'Already selected' : ''}
           </MenuItem>
         </>
       );
@@ -143,7 +163,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     }
 
     nodeData = (
-      <div className="node-picker">
+      <div className="node-picker-container">
         <Dropdown
           id="nodeFilterDropdown"
           className="node-filter-dropdown"
@@ -151,12 +171,9 @@ export const NodeSelector: FC<NodeSelectorData> = ({
           title={isDisabled ? 'Select a specific universe to view the zones and nodes' : ''}
         >
           <Dropdown.Toggle className="dropdown-toggle-button node-filter-dropdown__border-topk">
-            <span className="default-node-value">{renderItem}</span>
+            <span className="default-value">{renderItem}</span>
           </Dropdown.Toggle>
-          <Dropdown.Menu>
-            {nodeItemsElement.length > 1 ? <div id="all-divider" className="divider" /> : null}
-            {nodeItemsElement.length > 1 && nodeItemsElement}
-          </Dropdown.Menu>
+          <Dropdown.Menu>{nodeItemsElement.length > 1 && nodeItemsElement}</Dropdown.Menu>
         </Dropdown>
       </div>
     );
@@ -209,7 +226,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
       <div className="node-picker">
         <Dropdown id="nodeFilterDropdown" className="node-filter-dropdown">
           <Dropdown.Toggle className="dropdown-toggle-button node-filter-dropdown__border">
-            <span className="default-node-value">{renderItem}</span>
+            <span className="default-value">{renderItem}</span>
           </Dropdown.Toggle>
           <Dropdown.Menu>{nodeItemsElement.length > 1 && nodeItemsElement}</Dropdown.Menu>
         </Dropdown>
