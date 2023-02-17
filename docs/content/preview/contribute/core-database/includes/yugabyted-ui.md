@@ -9,3 +9,4 @@ By default, it is not built unless the build option is specified or a release pa
 To build it, [npm][npm] and [Go][go] 1.18 or higher are required.
 
 [npm]: https://www.npmjs.com
+[go]: https://go.dev
