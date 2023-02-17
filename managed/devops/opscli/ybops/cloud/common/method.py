@@ -1825,6 +1825,7 @@ class RunHooks(AbstractInstancesMethod):
             else:
                 ssh_user = DEFAULT_SSH_USER
 
+        self.update_ansible_vars_with_args(args)
         host_info = self.cloud.get_host_info(args)
         self.extra_vars.update(
             self.get_server_host_port(
