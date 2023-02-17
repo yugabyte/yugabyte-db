@@ -131,19 +131,23 @@ The `maven` package satisfies both requirements.
 sudo apt install -y maven
 ```
 
-## Build the code
+### yugabyted-ui
 
-{{% readfile "includes/build-the-code.md" %}}
-
-### Build release package (optional)
-
-Install the following additional packages to build yugabyted-ui:
+{{% readfile "includes/yugabyted-ui.md" %}}
 
 ```sh
 sudo apt install -y npm golang-1.18
 # Also add the following line to your .bashrc or equivalent.
 export PATH="/usr/lib/go-1.18/bin:$PATH"
 ```
+
+## Build the code
+
+{{% readfile "includes/build-the-code.md" %}}
+
+### Build release package (optional)
+
+(See [yugabyted-ui requirement](#yugabyted-ui).)
 
 Install the following additional packages:
 

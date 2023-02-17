@@ -134,17 +134,21 @@ sudo yum install -y java-1.8.0-openjdk rh-maven35
 source /opt/rh/rh-maven35/enable
 ```
 
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
+```sh
+sudo yum install -y npm golang
+```
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
 ### Build release package (optional)
 
-Install the following additional packages to build yugabyted-ui:
-
-```sh
-sudo yum install -y npm golang
-```
+(See [yugabyted-ui requirement](#yugabyted-ui).)
 
 The build may fail with "too many open files".
 In that case, increase the nofile limit in `/etc/security/limits.conf`:

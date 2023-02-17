@@ -138,17 +138,21 @@ Both requirements can be satisfied by the package manager.
 sudo yum install -y java-1.8.0-openjdk maven
 ```
 
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
+```sh
+sudo yum install -y npm golang
+```
+
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
 ### Build release package (optional)
 
-Install the following additional packages to build yugabyted-ui:
-
-```sh
-sudo yum install -y npm golang
-```
+(See [yugabyted-ui requirement](#yugabyted-ui).)
 
 Run the `yb_release` script to build a release package:
 
