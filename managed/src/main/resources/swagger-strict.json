@@ -6738,12 +6738,6 @@
           "description" : "Provider cloud code",
           "type" : "string"
         },
-        "config" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
         "customerUUID" : {
           "description" : "Customer uuid",
           "format" : "uuid",
@@ -6762,10 +6756,6 @@
         "hostVpcRegion" : {
           "type" : "string"
         },
-        "keyPairName" : {
-          "description" : "Transient property - only present in mutate API request",
-          "type" : "string"
-        },
         "name" : {
           "description" : "Provider name",
           "type" : "string"
@@ -6775,10 +6765,6 @@
             "$ref" : "#/definitions/Region"
           },
           "type" : "array"
-        },
-        "sshPrivateKeyContent" : {
-          "description" : "Transient property - only present in mutate API request",
-          "type" : "string"
         },
         "uuid" : {
           "description" : "Provider uuid",
