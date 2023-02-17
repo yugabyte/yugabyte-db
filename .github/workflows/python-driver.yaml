@@ -2,14 +2,10 @@ name: Python Driver Tests
 
 on:
   push:
-    branches: [ "master" ]
-    paths: 
-      - 'drivers/python/**'
+    branches: [ "master", "PG11" ]
       
   pull_request:
-    branches: [ "master" ]
-    paths: 
-      - 'drivers/python/**'
+    branches: [ "master", "PG11" ]
 
 jobs:
   build:
