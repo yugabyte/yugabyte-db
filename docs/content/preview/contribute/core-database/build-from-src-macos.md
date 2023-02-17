@@ -101,7 +101,7 @@ echo 'export PATH="/usr/local/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
 
 {{% readfile "includes/build-the-code.md" %}}
 
-### Build release package
+### Build release package (optional)
 
 (See [yugabyted-ui requirement](#yugabyted-ui).)
 
