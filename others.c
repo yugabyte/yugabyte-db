@@ -2,8 +2,17 @@
 #include <stdlib.h>
 #include <locale.h>
 #include "access/genam.h"
+#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/sysattr.h"
+
+#if PG_VERSION_NUM >= 120000
+
 #include "access/table.h"
+
+#endif
+
+#include "catalog/indexing.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
@@ -811,6 +820,29 @@ ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
 
 	PG_RETURN_DATUM(result);
 }
+
+#if PG_VERSION_NUM < 120000
+
+static Datum
+FunctionCall0Coll(FmgrInfo *flinfo, Oid collation)
+{
+	FunctionCallInfoData fcinfo_data;
+	FunctionCallInfo fcinfo = &fcinfo_data;
+	Datum		result;
+
+	InitFunctionCallInfoData(*fcinfo, flinfo, 0, collation, NULL, NULL);
+
+	result = FunctionCallInvoke(fcinfo);
+
+	/* Check for null result, since caller is clearly not expecting one */
+	if (fcinfo->isnull)
+		elog(ERROR, "function %u returned NULL", flinfo->fn_oid);
+
+	return result;
+}
+
+#endif
+
 
 PG_FUNCTION_INFO_V1(orafce_sys_guid);
 

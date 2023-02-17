@@ -65,11 +65,27 @@ check_sys_guid_source(char **newval, void **extra, GucSource source)
 	else
 		return false;
 
+#if PG_VERSION_NUM >= 160000
+
 	result = (char *) guc_malloc(LOG, 32);
 	if (!result)
 		return false;
 
 	strcpy(result, canonicalstr);
+	guc_free(*newval);
+	*newval = result;
+
+#else
+
+	result = (char *) malloc(32);
+	if (!result)
+		return false;
+
+	strcpy(result, canonicalstr);
+	free(*newval);
+	*newval = result;
+
+#endif
 
 	return true;
 }
