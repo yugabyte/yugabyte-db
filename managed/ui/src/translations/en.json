@@ -62,6 +62,7 @@
         "azHeader": "Availability Zones",
         "azNameLabel": "Name",
         "azNodesLabel": "Nodes",
+        "azTServerNodesLabel": "TServer Nodes",
         "azPodsLabel": "Pods",
         "defaultRegion": "Default Region",
         "masterPlacement": "Master Placement",
