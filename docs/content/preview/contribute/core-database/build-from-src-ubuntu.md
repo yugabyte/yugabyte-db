@@ -91,8 +91,7 @@ The CMake version in the package manager is too old (3.16), so manually download
 
 ```sh
 mkdir ~/tools
-cd ~/tools
-curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.tar.gz" | tar xz
+curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.tar.gz" | tar xzC ~/tools
 # Also add the following line to your .bashrc or equivalent.
 export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"
 ```
