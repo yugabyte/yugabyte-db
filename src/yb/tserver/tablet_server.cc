@@ -605,16 +605,22 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 }
 
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
-    bool size_only, GetTserverCatalogVersionInfoResponsePB *resp) const {
+    const GetTserverCatalogVersionInfoRequestPB& req,
+    GetTserverCatalogVersionInfoResponsePB *resp) const {
   std::lock_guard<simple_spinlock> l(lock_);
-  if (size_only) {
+  if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
   } else {
+    const auto db_oid = req.db_oid();
     for (const auto it : ysql_db_catalog_version_map_) {
-      auto* entry = resp->add_entries();
-      entry->set_db_oid(it.first);
-      entry->set_shm_index(it.second.shm_index);
-      entry->set_current_version(it.second.current_version);
+      if (db_oid == kInvalidOid || db_oid == it.first) {
+        auto* entry = resp->add_entries();
+        entry->set_db_oid(it.first);
+        entry->set_shm_index(it.second.shm_index);
+        if (db_oid != kInvalidOid) {
+          break;
+        }
+      }
     }
   }
   return Status::OK();

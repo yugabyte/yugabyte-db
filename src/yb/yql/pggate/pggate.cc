@@ -1654,18 +1654,23 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
     return tserver_shared_object_->ysql_catalog_version();
   }
   if (!catalog_version_db_index_) {
-    // If db_oid is for a newly created database, it may not yet have an entry allocated in
-    // shared memory yet. Let's wait with 500ms interval until the entry shows up or until
-    // a 10-second timeout.
+    // If db_oid is for a newly created database, it may not have an entry allocated in shared
+    // memory. It can also be a race condition case where the database db_oid we are trying to
+    // connect to is recently dropped from another node. Let's wait with 500ms interval until the
+    // entry shows up or until a 10-second timeout.
     auto status = LoggedWaitFor(
-        [this, db_oid]() -> Result<bool> {
+        [this, &db_oid]() -> Result<bool> {
           auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
-              false /* size_only */));
-          for (const auto& entry : info.entries()) {
-            if (entry.db_oid() == *db_oid) {
-              catalog_version_db_index_.emplace(*db_oid, entry.shm_index());
-              break;
-            }
+              false /* size_only */, *db_oid));
+          // If db_oid does not have an entry allocated in shared memory,
+          // info.entries_size() will be 0.
+          DCHECK_LE(info.entries_size(), 1) << info.ShortDebugString();
+          if (info.entries_size() == 1) {
+            RSTATUS_DCHECK_EQ(
+                info.entries(0).db_oid(), *db_oid, InternalError,
+                Format("Expected database $0, got: $1",
+                       *db_oid, info.entries(0).db_oid()));
+            catalog_version_db_index_.emplace(*db_oid, info.entries(0).shm_index());
           }
           return catalog_version_db_index_ ? true : false;
         },
@@ -1678,7 +1683,8 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
         status,
         Format("Failed to find suitable shared memory index for db $0: $1$2",
                *db_oid, status.ToString(),
-               status.IsTimedOut() ? ", there may be too many databases" : ""));
+               status.IsTimedOut() ? ", there may be too many databases or "
+               "the database might have been dropped" : ""));
 
     // For correctness return 0 because any loaded catalog cache prior to this call may
     // be older than the current catalog version and needs to be refreshed.
@@ -1695,7 +1701,8 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
 }
 
 Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
-  const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(true /* size_only */));
+  const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
+      true /* size_only */, kPgInvalidOid /* db_oid */));
   return info.num_entries();
 }
 
