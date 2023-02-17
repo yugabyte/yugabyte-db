@@ -164,7 +164,8 @@ bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
     return false;
   }
 
-  if (controller->timeout().Initialized() && controller->timeout() > 3600s) {
+  // Sanity check to make sure timeout is setup and has some sensible value (to prevent infinity).
+  if (controller->timeout().Initialized() && controller->timeout() > 7200s) {
     LOG(DFATAL) << "Too big timeout specified: " << controller->timeout();
   }
 

@@ -82,7 +82,7 @@ using namespace std::literals;
     } \
   } while (false)
 
-DEFINE_uint64(remote_bootstrap_idle_timeout_ms, 180000,
+DEFINE_uint64(remote_bootstrap_idle_timeout_ms, 2 * yb::MonoTime::kMillisecondsPerHour,
               "Amount of time without activity before a remote bootstrap "
               "session will expire, in millis");
 TAG_FLAG(remote_bootstrap_idle_timeout_ms, hidden);
