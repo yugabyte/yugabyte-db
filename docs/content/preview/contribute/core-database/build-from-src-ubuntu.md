@@ -78,8 +78,7 @@ sudo apt install -y "${packages[@]}"
 {{% readfile "includes/python.md" %}}
 
 ```sh
-sudo apt install -y python3.9 python3.9-venv
-sudo ln -sf python3.9 /usr/bin/python3
+sudo apt install -y python3 python3-venv
 ```
 
 ### CMake 3
