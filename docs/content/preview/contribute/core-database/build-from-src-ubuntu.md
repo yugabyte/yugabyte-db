@@ -51,7 +51,7 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
-The following instructions are for Ubuntu 20.04.
+The following instructions are for Ubuntu 20.04 or Ubuntu 22.04.
 
 ## Install necessary packages
 
@@ -78,7 +78,7 @@ sudo apt install -y "${packages[@]}"
 {{% readfile "includes/python.md" %}}
 
 ```sh
-sudo apt install -y python3 python3-venv
+sudo apt install -y libffi-dev python3 python3-dev python3-venv
 ```
 
 ### CMake 3
