@@ -97,7 +97,7 @@ cluster.shutdown()
 
 #### Use SSL
 
-To run the application with SSL, create the cluster connection with additional SSL parameters and imports described as follows:
+To run the application with SSL, create the cluster connection with additional SSL imports and parameters described as follows:
 
 ```python
 # Include additional imports.
