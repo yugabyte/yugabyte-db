@@ -51,31 +51,64 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
+The following instructions are for Ubuntu 20.04.
+
 ## Install necessary packages
 
 Update packages on your system, install development tools and additional packages:
 
 ```sh
-sudo apt-get update
+sudo apt update
+sudo apt upgrade -y
 packages=(
   autoconf
-  cmake
+  build-essential
   curl
   gettext
   git
-  libtool
-  locales
   ninja-build
-  patchelf
   pkg-config
-  python3-pip
-  python3-venv
   rsync
-  zip
 )
-sudo apt-get install -y "${packages[@]}"
-sudo locale-gen en_US.UTF-8
+sudo apt install -y "${packages[@]}"
 ```
+
+### Python 3
+
+{{% readfile "includes/python.md" %}}
+
+```sh
+sudo apt install -y python3.9 python3.9-venv
+sudo ln -sf python3.9 /usr/bin/python3
+```
+
+### CMake 3
+
+{{% readfile "includes/cmake.md" %}}
+
+The CMake version in the package manager is too old (3.16), so manually download a release.
+
+```sh
+mkdir ~/tools
+cd ~/tools
+curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.tar.gz" | tar xz
+# Also add the following line to your .bashrc or equivalent.
+export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"
+```
+
+### /opt/yb-build
+
+{{% readfile "includes/opt-yb-build.md" %}}
+
+### Ninja (optional)
+
+Use [Ninja][ninja] for faster builds.
+
+```sh
+sudo apt install -y ninja-build
+```
+
+[ninja]: https://ninja-build.org
 
 ### Java
 
@@ -84,13 +117,42 @@ sudo locale-gen en_US.UTF-8
 The `maven` package satisfies both requirements.
 
 ```sh
-sudo apt-get install -y maven
+sudo apt install -y maven
 ```
 
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
 
-### Build release package
+### Build release package (optional)
 
-Currently, you can only build release packages in [CentOS](../build-from-src-centos), [AlmaLinux](../build-from-src-almalinux), and [macOS](../build-from-src-macos).
+Install the following additional packages to build yugabyted-ui:
+
+```sh
+sudo apt install -y npm golang-1.18
+# Also add the following line to your .bashrc or equivalent.
+export PATH="/usr/lib/go-1.18/bin:$PATH"
+```
+
+The build may fail with "too many open files".
+In that case, increase the nofile limit in `/etc/security/limits.conf`:
+
+```sh
+echo '* - nofile 1048576' | sudo tee -a /etc/security/limits.conf
+```
+
+Start a new shell session, and check the limit increase with `ulimit -n`.
+
+Install the following additional packages:
+
+```sh
+sudo apt install -y file patchelf
+```
+
+Run the `yb_release` script to build a release package:
+
+```output.sh
+$ ./yb_release
+......
+2023-02-17 01:26:37,156 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-ede2a2619ea8470064a5a2c0d7fa510dbee3ce81-release-clang15-ubuntu20-x86_64.tar.gz'
+```
