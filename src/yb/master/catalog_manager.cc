@@ -402,9 +402,11 @@ DEFINE_test_flag(int32, num_missing_tablets, 0, "Simulates missing tablets in a 
 TAG_FLAG(TEST_num_missing_tablets, runtime);
 
 DEFINE_int32(partitions_vtable_cache_refresh_secs, 0,
-             "Amount of time to wait before refreshing the system.partitions cached vtable. "
-             "If generate_partitions_vtable_on_changes is set, then this background task will "
-             "update the cache using the internal map, but won't do any generating of the vtable.");
+    "Amount of time to wait before refreshing the system.partitions cached vtable. "
+    "If generate_partitions_vtable_on_changes is true and this flag is > 0, then this background "
+    "task will update the cached vtable using the internal map. "
+    "If generate_partitions_vtable_on_changes is false and this flag is > 0, then this background "
+    "task will be responsible for regenerating and updating the entire cached vtable.");
 
 DEFINE_int32(txn_table_wait_min_ts_count, 1,
              "Minimum Number of TS to wait for before creating the transaction status table."
@@ -2025,27 +2027,28 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   // table that has failed to successfully create.
   table->AbortTasksAndClose();
   table->WaitTasksCompletion();
+  {
+    LockGuard lock(mutex_);
 
-  LockGuard lock(mutex_);
+    // Call AbortMutation() manually, as otherwise the lock won't be released.
+    for (const auto& tablet : tablets) {
+      tablet->mutable_metadata()->AbortMutation();
+    }
+    table->mutable_metadata()->AbortMutation();
+    auto tablet_map_checkout = tablet_map_.CheckOut();
+    for (const TabletId& tablet_id_to_erase : tablet_ids_to_erase) {
+      CHECK_EQ(tablet_map_checkout->erase(tablet_id_to_erase), 1)
+          << "Unable to erase tablet " << tablet_id_to_erase << " from tablet map.";
+    }
 
-  // Call AbortMutation() manually, as otherwise the lock won't be released.
-  for (const auto& tablet : tablets) {
-    tablet->mutable_metadata()->AbortMutation();
+    auto table_ids_map_checkout = table_ids_map_.CheckOut();
+    table_names_map_.erase({table_namespace_id, table_name});  // Not present if PGSQL table.
+    CHECK_EQ(table_ids_map_checkout->erase(table_id), 1)
+        << "Unable to erase table with id " << table_id << " from table ids map.";
   }
-  table->mutable_metadata()->AbortMutation();
-  auto tablet_map_checkout = tablet_map_.CheckOut();
-  for (const TabletId& tablet_id_to_erase : tablet_ids_to_erase) {
-    CHECK_EQ(tablet_map_checkout->erase(tablet_id_to_erase), 1)
-        << "Unable to erase tablet " << tablet_id_to_erase << " from tablet map.";
-  }
-
-  auto table_ids_map_checkout = table_ids_map_.CheckOut();
-  table_names_map_.erase({table_namespace_id, table_name}); // Not present if PGSQL table.
-  CHECK_EQ(table_ids_map_checkout->erase(table_id), 1)
-      << "Unable to erase table with id " << table_id << " from table ids map.";
-
   if (IsYcqlTable(*table)) {
-    GetYqlPartitionsVtable().RemoveFromCache(table->id());
+    // Don't process while holding on to mutex_ (#16109).
+    GetYqlPartitionsVtable().RemoveFromCache({table->id()});
   }
   return CheckIfNoLongerLeaderAndSetupError(s, resp);
 }
@@ -5738,24 +5741,33 @@ Status CatalogManager::DeleteTableInternal(
   // Also exclude hidden tables, that were already removed from this map.
   if (std::any_of(tables.begin(), tables.end(), [](auto& t) { return t.remove_from_name_map; })) {
     TRACE("Removing tables from by-name map");
-    LockGuard lock(mutex_);
-    for (const auto& table : tables) {
-      if (table.remove_from_name_map) {
-        TableInfoByNameMap::key_type key = {table.info->namespace_id(), table.info->name()};
-        if (table_names_map_.erase(key) != 1) {
-          LOG(WARNING) << "Could not remove table from map: " << key.first << "." << key.second;
+    vector<TableId> removed_ycql_tables;
+    {
+      LockGuard lock(mutex_);
+      for (const auto& table : tables) {
+        if (table.remove_from_name_map) {
+          TableInfoByNameMap::key_type key = {table.info->namespace_id(), table.info->name()};
+          if (table_names_map_.erase(key) != 1) {
+            LOG(WARNING) << "Could not remove table from map: " << key.first << "." << key.second;
+          }
+
+          // Remove matviews from matview to pg table id map
+          matview_pg_table_ids_map_.erase(table.info->id());
+
+          // Keep track of deleted ycql tables.
+          if (IsYcqlTable(*table.info)) {
+            removed_ycql_tables.push_back(table.info->id());
+          }
         }
-
-        // Also remove from the system.partitions table.
-        GetYqlPartitionsVtable().RemoveFromCache(table.info->id());
-
-        // Remove matviews from matview to pg table id map
-        matview_pg_table_ids_map_.erase(table.info->id());
       }
+      // We commit another map to increment its version and reset cache.
+      // Since table_name_map_ does not have version.
+      table_ids_map_.Commit();
     }
-    // We commit another map to increment its version and reset cache.
-    // Since table_name_map_ does not have version.
-    table_ids_map_.Commit();
+    if (!removed_ycql_tables.empty()) {
+      // Also remove from the system.partitions table.
+      GetYqlPartitionsVtable().RemoveFromCache(removed_ycql_tables);
+    }
   }
 
   for (const auto& table : tables) {
@@ -11878,8 +11890,13 @@ Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tab
 }
 
 void CatalogManager::RebuildYQLSystemPartitions() {
-  if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() ||
-      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges()) {
+  // This task will keep running, but only want it to do anything if
+  // FLAGS_partitions_vtable_cache_refresh_secs is explicitly set to some value >0.
+  const bool use_bg_thread_to_update_cache =
+      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
+      FLAGS_partitions_vtable_cache_refresh_secs > 0;
+
+  if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() || use_bg_thread_to_update_cache) {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.IsInitializedAndIsLeader()) {
       if (system_partitions_tablet_ != nullptr) {

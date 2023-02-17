@@ -1958,7 +1958,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const;
 
-  const YQLPartitionsVTable& GetYqlPartitionsVtable() const;
+  // Get the ycql system.partitions vtable. Note that this has EXCLUDES(mutex_), in order to
+  // maintain lock ordering.
+  const YQLPartitionsVTable& GetYqlPartitionsVtable() const EXCLUDES(mutex_);
 
   void InitializeTableLoadState(
       const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);
