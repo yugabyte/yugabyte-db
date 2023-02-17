@@ -442,7 +442,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 ApplyIntentsContext::ApplyIntentsContext(
     const TransactionId& transaction_id,
     const ApplyTransactionState* apply_state,
-    const AbortedSubTransactionSet& aborted,
+    const SubtxnSet& aborted,
     HybridTime commit_ht,
     HybridTime log_ht,
     const KeyBounds* key_bounds,
@@ -613,7 +613,7 @@ RemoveIntentsContext::RemoveIntentsContext(const TransactionId& transaction_id, 
 Result<bool> RemoveIntentsContext::Entry(
     const Slice& key, const Slice& value, bool metadata, rocksdb::DirectWriteHandler* handler) {
   if (reached_records_limit()) {
-    SetApplyState(key, 0, AbortedSubTransactionSet());
+    SetApplyState(key, 0, SubtxnSet());
     return true;
   }
 

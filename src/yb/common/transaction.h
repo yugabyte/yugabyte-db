@@ -60,7 +60,7 @@ Result<TransactionId> FullyDecodeTransactionId(const Slice& slice);
 // from slice.
 Result<TransactionId> DecodeTransactionId(Slice* slice);
 
-using AbortedSubTransactionSet = UnsignedIntSet<SubTransactionId>;
+using SubtxnSet = UnsignedIntSet<SubTransactionId>;
 
 // True for transactions present on the consumer's participant that originated on the producer.
 YB_STRONGLY_TYPED_BOOL(IsExternalTransaction);
@@ -76,13 +76,13 @@ struct TransactionStatusResult {
   HybridTime status_time;
 
   // Set of thus-far aborted subtransactions in this transaction.
-  AbortedSubTransactionSet aborted_subtxn_set;
+  SubtxnSet aborted_subtxn_set;
 
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
-      AbortedSubTransactionSet aborted_subtxn_set_);
+      SubtxnSet aborted_subtxn_set_);
 
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
@@ -138,7 +138,7 @@ class RequestScope;
 
 struct TransactionLocalState {
   HybridTime commit_ht;
-  AbortedSubTransactionSet aborted_subtxn_set;
+  SubtxnSet aborted_subtxn_set;
 };
 
 class TransactionStatusManager {
@@ -254,7 +254,7 @@ class NODISCARD_CLASS RequestScope {
 // and finally on transaction commit.
 struct SubTransactionMetadata {
   SubTransactionId subtransaction_id = kMinSubTransactionId;
-  AbortedSubTransactionSet aborted;
+  SubtxnSet aborted;
 
   void ToPB(SubTransactionMetadataPB* dest) const;
 

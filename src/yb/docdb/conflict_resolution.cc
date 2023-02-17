@@ -71,7 +71,7 @@ struct TransactionData {
   uint64_t priority;
   Status failure;
 
-  void RemoveAbortedSubtransactions(const AbortedSubTransactionSet& aborted_subtxn_set) {
+  void RemoveAbortedSubtransactions(const SubtxnSet& aborted_subtxn_set) {
     auto it = subtransactions->begin();
     while (it != subtransactions->end()) {
       if (aborted_subtxn_set.Test(it->first)) {
@@ -1038,7 +1038,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   }
 
   bool CheckConflictWithPending(const TransactionData& transaction_data) override {
-    // We remove aborted subtransactions when processing the AbortedSubtransactionSet stored
+    // We remove aborted subtransactions when processing the SubtxnSet stored
     // locally or returned by the status tablet. If this is now empty, then all potentially
     // conflicting intents have been aborted and there is no longer a conflict with this
     // transaction.
