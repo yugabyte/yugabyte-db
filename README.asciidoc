@@ -810,6 +810,7 @@ Note that oracle.length has a limitation that it works only in units of characte
 This functions returns global unique id. It calls specified functions from "uuid-ossp" extension, and then
 this function should be installed before function sys_guid is used. By default this function uses function
 uuid_generate_v1, but function uuid_generate_v1mc, uuid_generate_v4 can be used too (by setting orafce.sys_guid_source).
+oracle.sys_guid can use builin gen_random_uuid func too. In this case the extension "uuid-ossp" is not required.
 
 == VARCHAR2 and NVARCHAR2 Support
 

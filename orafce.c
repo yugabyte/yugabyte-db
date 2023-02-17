@@ -62,6 +62,8 @@ check_sys_guid_source(char **newval, void **extra, GucSource source)
 		canonicalstr = "uuid_generate_v1mc";
 	else if (pg_strcasecmp(value, "uuid_generate_v4") == 0)
 		canonicalstr = "uuid_generate_v1";
+	else if (pg_strcasecmp(value, "gen_random_uuid") == 0)
+		canonicalstr = "gen_random_uuid";
 	else
 		return false;
 

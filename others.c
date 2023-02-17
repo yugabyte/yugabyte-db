@@ -58,6 +58,7 @@ static FmgrInfo uuid_generate_func_finfo;
 
 /* The oid of function should be valid in oene transaction */
 static LocalTransactionId uuid_generate_func_lxid = InvalidLocalTransactionId;
+static char uuid_generate_func_name[30] = "";
 
 static Datum ora_greatest_least(FunctionCallInfo fcinfo, bool greater);
 
@@ -116,64 +117,77 @@ get_extension_schema(Oid ext_oid)
 	return result;
 }
 
-
-
 static Oid
 get_uuid_generate_func_oid(bool *reset_fmgr)
 {
-	if (uuid_generate_func_lxid != MyProc->lxid)
+	Oid			result = InvalidOid;
+
+	if (uuid_generate_func_lxid != MyProc->lxid ||
+		uuid_generate_func_oid == InvalidOid ||
+		strcmp(orafce_sys_guid_source, uuid_generate_func_name) != 0)
 	{
-		Oid uuid_ossp_oid = InvalidOid;
-		Oid uuid_ossp_namespace_oid = InvalidOid;
-		CatCList   *catlist;
-		int			i;
-
-		uuid_ossp_oid = get_extension_oid("uuid-ossp", true);
-		if (!OidIsValid(uuid_ossp_oid))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("extension \"uuid-ossp\" is not installed"),
-					 errhint("the extension \"uuid-ossp\" should be installed before using \"sys_guid\" function")));
-
-		uuid_ossp_namespace_oid = get_extension_schema(uuid_ossp_oid);
-		Assert(OidIsValid(uuid_ossp_namespace_oid));
-
-		/* Search syscache by name only */
-		catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(orafce_sys_guid_source));
-
-		for (i = 0; i < catlist->n_members; i++)
+		if (strcmp(orafce_sys_guid_source, "gen_random_uuid") == 0)
 		{
-			HeapTuple	proctup = &catlist->members[i]->tuple;
-			Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+			/* generated uuid can have not nice features, but uses buildin functionality */
+			result = fmgr_internal_function("gen_random_uuid");
+		}
+		else
+		{
+			Oid uuid_ossp_oid = InvalidOid;
+			Oid uuid_ossp_namespace_oid = InvalidOid;
+			CatCList   *catlist;
+			int			i;
 
-			/*
-			 * Consider only procs in specified namespace,
-			 * with zero arguments and uuid type as result
-			 */
-			if (procform->pronamespace != uuid_ossp_namespace_oid ||
-				 procform->pronargs != 0 || procform->prorettype != UUIDOID)
-				continue;
+			uuid_ossp_oid = get_extension_oid("uuid-ossp", true);
+			if (!OidIsValid(uuid_ossp_oid))
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("extension \"uuid-ossp\" is not installed"),
+						 errhint("the extension \"uuid-ossp\" should be installed before using \"sys_guid\" function")));
+
+			uuid_ossp_namespace_oid = get_extension_schema(uuid_ossp_oid);
+			Assert(OidIsValid(uuid_ossp_namespace_oid));
+
+			/* Search syscache by name only */
+			catlist = SearchSysCacheList1(PROCNAMEARGSNSP,
+										  CStringGetDatum(orafce_sys_guid_source));
+
+			for (i = 0; i < catlist->n_members; i++)
+			{
+				HeapTuple	proctup = &catlist->members[i]->tuple;
+				Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+				/*
+				 * Consider only procs in specified namespace,
+				 * with zero arguments and uuid type as result
+				 */
+				if (procform->pronamespace != uuid_ossp_namespace_oid ||
+					 procform->pronargs != 0 || procform->prorettype != UUIDOID)
+					continue;
 
 #if PG_VERSION_NUM >= 120000
 
-			uuid_generate_func_oid = procform->oid;
+				result = procform->oid;
 
 #else
 
-			uuid_generate_func_oid = HeapTupleGetOid(proctup);
+				result = HeapTupleGetOid(proctup);
 
 #endif
 
-			break;
+				break;
+			}
+
+			ReleaseSysCacheList(catlist);
 		}
 
-		ReleaseSysCacheList(catlist);
-
 		/* should be available if extension uuid-ossp is installed */
-		if (!OidIsValid(uuid_generate_func_oid))
-			elog(ERROR, "function \"uuid_generate_v1()\" doesn't exist");
+		if (!OidIsValid(result))
+			elog(ERROR, "function \"%s\" doesn't exist", orafce_sys_guid_source);
 
 		uuid_generate_func_lxid = MyProc->lxid;
+		uuid_generate_func_oid = result;
+		strcpy(uuid_generate_func_name, orafce_sys_guid_source);
 		*reset_fmgr = true;
 	}
 	else
@@ -865,9 +879,13 @@ orafce_sys_guid(PG_FUNCTION_ARGS)
 
 	funcoid = get_uuid_generate_func_oid(&reset_fmgr);
 
-	fmgr_info_cxt(funcoid, &uuid_generate_func_finfo, TopTransactionContext);
+	if (reset_fmgr)
+		fmgr_info_cxt(funcoid,
+					   &uuid_generate_func_finfo,
+					  TopTransactionContext);
 
-	uuid =  DatumGetUUIDP(FunctionCall0Coll(&uuid_generate_func_finfo, InvalidOid));
+	uuid =  DatumGetUUIDP(FunctionCall0Coll(&uuid_generate_func_finfo,
+										    InvalidOid));
 
 	result = palloc(VARHDRSZ + UUID_LEN);
 	SET_VARSIZE(result, VARHDRSZ + UUID_LEN);
