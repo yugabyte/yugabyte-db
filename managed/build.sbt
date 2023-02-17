@@ -569,7 +569,7 @@ lazy val swagger = project
         // or use '--exclude_deprecated 2020-12-21' (YYYY-MM-DD format) to drop since date
         // or use '--exclude_deprecated all' to drop all deprecated APIs
         (Test / runMain )
-          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerStrictJson --exclude_deprecated 24m"),
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerStrictJson --exclude_deprecated all"),
       )
     }.value
   )
