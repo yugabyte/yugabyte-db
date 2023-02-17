@@ -717,6 +717,11 @@ public class CloudProviderHandler {
   private UUID doEditProvider(
       Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     provider.setVersion(editProviderReq.getVersion());
+    // We cannot change the provider type for the given provider.
+    if (!provider.getCloudCode().equals(editProviderReq.getCloudCode())) {
+      throw new PlatformServiceException(BAD_REQUEST, "Changing provider type is not supported!");
+    }
+    CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     boolean providerDataUpdated =
@@ -761,7 +766,10 @@ public class CloudProviderHandler {
     boolean updatedKubeConfig = maybeUpdateKubeConfig(provider, providerConfig);
     boolean providerDataUpdated =
         updatedProviderConfig || updatedKubeConfig || updatedProviderDetails;
-    provider.save();
+    if (providerDataUpdated) {
+      // Should not increment the version number in case of no change.
+      provider.save();
+    }
     return providerDataUpdated;
   }
 

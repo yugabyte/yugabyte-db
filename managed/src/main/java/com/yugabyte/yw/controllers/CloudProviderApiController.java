@@ -131,7 +131,7 @@ public class CloudProviderApiController extends AuthenticatedController {
               "There %s %d universe%s using this provider, cannot modify",
               universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
     }
-    JsonNode requestBody = request().body().asJson();
+    JsonNode requestBody = mayBeMassageRequest(request().body().asJson(), true);
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
         cloudProviderHandler.editProvider(customer, provider, editProviderReq, validate);
@@ -153,7 +153,7 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
   public Result create(UUID customerUUID, boolean validate) {
-    JsonNode requestBody = mayBeMassageRequest(request().body().asJson());
+    JsonNode requestBody = mayBeMassageRequest(request().body().asJson(), false);
     Provider reqProvider =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -337,10 +337,13 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   // v2 API version 1 backward compatiblity support.
-  public JsonNode mayBeMassageRequest(JsonNode requestBody) {
+  public JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean forEdit) {
     JsonNode config = requestBody.get("config");
     if (config == null) {
       return requestBody;
+    }
+    if (forEdit) {
+      ((ObjectNode) requestBody).remove("config");
     }
     String providerCode = requestBody.get("code").asText();
     ObjectMapper mapper = Json.mapper();
@@ -350,12 +353,18 @@ public class CloudProviderApiController extends AuthenticatedController {
       for (JsonNode region : regions) {
         ObjectNode regionWithProviderCode = mapper.createObjectNode();
         regionWithProviderCode.put("providerCode", providerCode);
+        if (region.has("config") && forEdit) {
+          ((ObjectNode) region).remove("config");
+        }
         regionWithProviderCode.setAll((ObjectNode) region);
         JsonNode zones = region.get("zones");
         ArrayNode zonesNode = mapper.createArrayNode();
         if (zones != null && zones.isArray()) {
           for (JsonNode zone : zones) {
             ObjectNode zoneWithProviderCode = mapper.createObjectNode();
+            if (zone.has("config") && forEdit) {
+              ((ObjectNode) zone).remove("config");
+            }
             zoneWithProviderCode.put("providerCode", providerCode);
             zoneWithProviderCode.setAll((ObjectNode) zone);
             zonesNode.add(zoneWithProviderCode);
