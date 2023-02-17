@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
@@ -21,6 +22,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.PerfAdvisorSettingsFormData;
 import com.yugabyte.yw.forms.PerfAdvisorSettingsWithDefaults;
+import com.yugabyte.yw.models.UniversePerfAdvisorRun;
 import com.yugabyte.yw.models.Users;
 import java.time.Instant;
 import java.util.UUID;
@@ -271,6 +273,28 @@ public class PerfAdvisorControllerTest extends FakePerfAdvisorDBTest {
 
     assertThat(updated.getUniverseSettings(), equalTo(settings));
     assertThat(updated.getDefaultSettings(), notNullValue());
+  }
+
+  @Test
+  public void testGetLatestRun() {
+    UniversePerfAdvisorRun lastRun =
+        UniversePerfAdvisorRun.create(customer.getUuid(), universe.getUniverseUUID(), true);
+    lastRun.setScheduleTime(nowWithoutMillis());
+    lastRun.save();
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/universes/"
+                + universe.getUniverseUUID()
+                + "/last_run",
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode json = Json.parse(contentAsString(result));
+    UniversePerfAdvisorRun queried = Json.fromJson(json, UniversePerfAdvisorRun.class);
+
+    assertThat(lastRun, equalTo(queried));
   }
 
   private StateChangeAuditInfo createAuditInfo(
