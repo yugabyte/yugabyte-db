@@ -4253,3 +4253,8 @@ CREATE FUNCTION dbms_sql.describe_columns_f(c int, OUT col_cnt int, OUT desc_t d
 CREATE PROCEDURE dbms_sql.describe_columns(c int, INOUT col_cnt int, INOUT desc_t dbms_sql.desc_rec[]) AS 'MODULE_PATHNAME', 'dbms_sql_describe_columns_f' LANGUAGE c;
 
 SELECT pg_extension_config_dump('utl_file.utl_file_dir', '');
+
+CREATE OR REPLACE FUNCTION oracle.sys_guid()
+RETURNS bytea
+AS 'MODULE_PATHNAME','orafce_sys_guid'
+LANGUAGE C VOLATILE;

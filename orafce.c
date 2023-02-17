@@ -27,6 +27,8 @@
 char  *nls_date_format = NULL;
 char  *orafce_timezone = NULL;
 
+extern char *orafce_sys_guid_source;
+
 
 #if PG_VERSION_NUM >= 150000
 
@@ -47,6 +49,30 @@ orafce_shmem_request(void)
 
 #endif
 
+static bool
+check_sys_guid_source(char **newval, void **extra, GucSource source)
+{
+	char	   *value = *newval;
+	const char *canonicalstr;
+	char	   *result;
+
+	if (pg_strcasecmp(value, "uuid_generate_v1") == 0)
+		canonicalstr = "uuid_generate_v1";
+	else if (pg_strcasecmp(value, "uuid_generate_v1mc") == 0)
+		canonicalstr = "uuid_generate_v1mc";
+	else if (pg_strcasecmp(value, "uuid_generate_v4") == 0)
+		canonicalstr = "uuid_generate_v1";
+	else
+		return false;
+
+	result = (char *) guc_malloc(LOG, 32);
+	if (!result)
+		return false;
+
+	strcpy(result, canonicalstr);
+
+	return true;
+}
 
 void
 _PG_init(void)
@@ -91,6 +117,15 @@ _PG_init(void)
 									PGC_USERSET,
 									0,
 									NULL, NULL, NULL);
+
+	DefineCustomStringVariable("orafce.sys_guid_source",
+									"Specify function from uuid-ossp extension used for making result.",
+									NULL,
+									&orafce_sys_guid_source,
+									"uuid_generate_v1",
+									PGC_USERSET,
+									0,
+									check_sys_guid_source, NULL, NULL);
 
 	EmitWarningsOnPlaceholders("orafce");
 }

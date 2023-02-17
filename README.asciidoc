@@ -794,6 +794,7 @@ bitand, nanvl, sinh, cosh, tanh, oracle.substr and oracle.mod.
 * oracle.mod(int, int) - Oracle compatibility mod, If the second parameter is zero, it returns the first parameter
 * oracle.remainder(int, int) - returns remainder of number divided by another number
 * oracle.remainder(numeric, numeric) - returns remainder of number divided by another number
+* oracle.sys_guid() - returns bytea - 16 bytes of global uniq id
 
 You might need to set search_path to 'oracle, pg_catalog, "$user", public'
 because oracle.substr, oracle.lpad, oracle.rpad, oracle.ltrim, oracle.rtrim, oracle.btrim, oracle.length are installed side-by-side with pg_catalog.substr, pg_catalog.lpad, pg_catalog.rpad, pg_catalog.ltrim, pg_catalog.rtrim, pg_catalog.btrim, pg_catalog.length respectively.
@@ -803,6 +804,12 @@ Functions oracle.decode, oracle.greatest and oracle.least must always be prefixe
 Note that in case of lpad and rpad, parameters string and fill can be of types CHAR, VARCHAR, TEXT, VARCHAR2 or NVARCHAR2 (note that the last two are orafce-provided types). The default fill character is a half-width space. Similarly for ltrim, rtrim and btrim.
 
 Note that oracle.length has a limitation that it works only in units of characters because PostgreSQL CHAR type only supports character semantics.
+
+== oracle.sys_guid() function
+
+This functions returns global unique id. It calls specified functions from "uuid-ossp" extension, and then
+this function should be installed before function sys_guid is used. By default this function uses function
+uuid_generate_v1, but function uuid_generate_v1mc, uuid_generate_v4 can be used too (by setting orafce.sys_guid_source).
 
 == VARCHAR2 and NVARCHAR2 Support
 

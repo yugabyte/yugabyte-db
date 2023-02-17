@@ -1,8 +1,14 @@
 #include "postgres.h"
 #include <stdlib.h>
 #include <locale.h>
+#include "access/genam.h"
+#include "access/htup_details.h"
+#include "access/table.h"
+#include "catalog/pg_extension.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "commands/extension.h"
 #include "fmgr.h"
 #include "lib/stringinfo.h"
 #include "nodes/nodeFuncs.h"
@@ -10,14 +16,19 @@
 #include "nodes/primnodes.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
+#include "storage/lock.h"
+#include "storage/proc.h"
 #include "utils/array.h"
 #include "utils/arrayaccess.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
 #include "utils/datum.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "utils/uuid.h"
 #include "orafce.h"
 #include "builtins.h"
 
@@ -31,7 +42,138 @@ static size_t multiplication = 1;
 
 text *def_locale = NULL;
 
+char *orafce_sys_guid_source;
+
+static Oid uuid_generate_func_oid = InvalidOid;
+static FmgrInfo uuid_generate_func_finfo;
+
+/* The oid of function should be valid in oene transaction */
+static LocalTransactionId uuid_generate_func_lxid = InvalidLocalTransactionId;
+
 static Datum ora_greatest_least(FunctionCallInfo fcinfo, bool greater);
+
+static Oid
+get_extension_schema(Oid ext_oid)
+{
+	Oid			result;
+	Relation	rel;
+	SysScanDesc scandesc;
+	HeapTuple	tuple;
+	ScanKeyData entry[1];
+
+#if PG_VERSION_NUM >= 120000
+
+	rel = table_open(ExtensionRelationId, AccessShareLock);
+
+	ScanKeyInit(&entry[0],
+				Anum_pg_extension_oid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(ext_oid));
+
+#else
+
+	rel = heap_open(ExtensionRelationId, AccessShareLock);
+
+	ScanKeyInit(&entry[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(ext_oid));
+
+#endif
+
+	scandesc = systable_beginscan(rel, ExtensionOidIndexId, true,
+								  NULL, 1, entry);
+
+	tuple = systable_getnext(scandesc);
+
+	/* We assume that there can be at most one matching tuple */
+	if (HeapTupleIsValid(tuple))
+		result = ((Form_pg_extension) GETSTRUCT(tuple))->extnamespace;
+	else
+		result = InvalidOid;
+
+	systable_endscan(scandesc);
+
+#if PG_VERSION_NUM >= 120000
+
+	table_close(rel, AccessShareLock);
+
+#else
+
+	heap_close(rel, AccessShareLock);
+
+#endif
+
+	return result;
+}
+
+
+
+static Oid
+get_uuid_generate_func_oid(bool *reset_fmgr)
+{
+	if (uuid_generate_func_lxid != MyProc->lxid)
+	{
+		Oid uuid_ossp_oid = InvalidOid;
+		Oid uuid_ossp_namespace_oid = InvalidOid;
+		CatCList   *catlist;
+		int			i;
+
+		uuid_ossp_oid = get_extension_oid("uuid-ossp", true);
+		if (!OidIsValid(uuid_ossp_oid))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("extension \"uuid-ossp\" is not installed"),
+					 errhint("the extension \"uuid-ossp\" should be installed before using \"sys_guid\" function")));
+
+		uuid_ossp_namespace_oid = get_extension_schema(uuid_ossp_oid);
+		Assert(OidIsValid(uuid_ossp_namespace_oid));
+
+		/* Search syscache by name only */
+		catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(orafce_sys_guid_source));
+
+		for (i = 0; i < catlist->n_members; i++)
+		{
+			HeapTuple	proctup = &catlist->members[i]->tuple;
+			Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+
+			/*
+			 * Consider only procs in specified namespace,
+			 * with zero arguments and uuid type as result
+			 */
+			if (procform->pronamespace != uuid_ossp_namespace_oid ||
+				 procform->pronargs != 0 || procform->prorettype != UUIDOID)
+				continue;
+
+#if PG_VERSION_NUM >= 120000
+
+			uuid_generate_func_oid = procform->oid;
+
+#else
+
+			uuid_generate_func_oid = HeapTupleGetOid(proctup);
+
+#endif
+
+			break;
+		}
+
+		ReleaseSysCacheList(catlist);
+
+		/* should be available if extension uuid-ossp is installed */
+		if (!OidIsValid(uuid_generate_func_oid))
+			elog(ERROR, "function \"uuid_generate_v1()\" doesn't exist");
+
+		uuid_generate_func_lxid = MyProc->lxid;
+		*reset_fmgr = true;
+	}
+	else
+		*reset_fmgr = false;
+
+	Assert(OidIsValid(uuid_generate_func_oid));
+
+	return uuid_generate_func_oid;
+}
 
 PG_FUNCTION_INFO_V1(ora_lnnvl);
 
@@ -668,4 +810,36 @@ ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
 	PG_FREE_IF_COPY(array, 1);
 
 	PG_RETURN_DATUM(result);
+}
+
+PG_FUNCTION_INFO_V1(orafce_sys_guid);
+
+/*
+ * Implementation of sys_guid() function
+ *
+ * Oracle uses guid based on mac address. The calculation is not too
+ * difficult, but there are lot of depenedencies necessary for taking
+ * mac address. Instead to making some static dependecies orafce uses
+ * dynamic dependency on "uuid-ossp" extension, and calls choosed function
+ * from this extension.
+ */
+Datum
+orafce_sys_guid(PG_FUNCTION_ARGS)
+{
+	bool		reset_fmgr;
+	Oid			funcoid;
+	pg_uuid_t  *uuid;
+	bytea	   *result;
+
+	funcoid = get_uuid_generate_func_oid(&reset_fmgr);
+
+	fmgr_info_cxt(funcoid, &uuid_generate_func_finfo, TopTransactionContext);
+
+	uuid =  DatumGetUUIDP(FunctionCall0Coll(&uuid_generate_func_finfo, InvalidOid));
+
+	result = palloc(VARHDRSZ + UUID_LEN);
+	SET_VARSIZE(result, VARHDRSZ + UUID_LEN);
+	memcpy(VARDATA(result), uuid->data, UUID_LEN);
+
+	PG_RETURN_BYTEA_P(result);
 }
