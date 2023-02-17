@@ -150,15 +150,6 @@ sudo yum install -y npm golang
 
 (See [yugabyted-ui requirement](#yugabyted-ui).)
 
-The build may fail with "too many open files".
-In that case, increase the nofile limit in `/etc/security/limits.conf`:
-
-```sh
-echo '* - nofile 1048576' | sudo tee -a /etc/security/limits.conf
-```
-
-Start a new shell session, and check the limit increase with `ulimit -n`.
-
 Run the `yb_release` script to build a release package:
 
 ```output.sh
@@ -166,3 +157,5 @@ $ ./yb_release
 ......
 2023-02-10 23:19:46,459 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-44b735cc69998d068d561f4b6f337b318fbc2424-release-clang15-centos-x86_64.tar.gz'
 ```
+
+{{% readfile "includes/ulimit.md" %}}

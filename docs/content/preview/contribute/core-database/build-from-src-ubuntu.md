@@ -155,15 +155,6 @@ Install the following additional packages:
 sudo apt install -y file patchelf
 ```
 
-The build may fail with "too many open files".
-In that case, increase the nofile limit in `/etc/security/limits.conf`:
-
-```sh
-echo '* - nofile 1048576' | sudo tee -a /etc/security/limits.conf
-```
-
-Start a new shell session, and check the limit increase with `ulimit -n`.
-
 Run the `yb_release` script to build a release package:
 
 ```output.sh
@@ -171,3 +162,5 @@ $ ./yb_release
 ......
 2023-02-17 01:26:37,156 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-ede2a2619ea8470064a5a2c0d7fa510dbee3ce81-release-clang15-ubuntu20-x86_64.tar.gz'
 ```
+
+{{% readfile "includes/ulimit.md" %}}
