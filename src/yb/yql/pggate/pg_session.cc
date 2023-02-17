@@ -52,6 +52,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "yb/util/trace.h"
+
 using namespace std::literals;
 
 DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
@@ -186,6 +188,7 @@ class PgSession::RunHelper {
         !force_non_bufferable && op->is_write()) {
         if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
           LOG(INFO) << "Buffering operation: " << op->ToString();
+          VTRACE_TO(1, Trace::NewTrace(), " TEST ", " test ");
         }
         return buffer.Add(table,
                           PgsqlWriteOpPtr(std::move(op), down_cast<PgsqlWriteOp*>(op.get())),
@@ -212,6 +215,7 @@ class PgSession::RunHelper {
 
     if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
       LOG(INFO) << "Applying operation: " << op->ToString();
+      VTRACE_TO(1, Trace::NewTrace(), " TEST ", " test ");
     }
 
     const auto row_mark_type = GetRowMarkType(*op);
@@ -537,6 +541,7 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
     LOG(INFO) << "Flushing buffered operations, using "
               << (transactional ? "transactional" : "non-transactional")
               << " session (num ops: " << ops.size() << ")";
+    VTRACE_TO(1, Trace::NewTrace(), " TEST ", " test ");
   }
 
   if (transactional) {

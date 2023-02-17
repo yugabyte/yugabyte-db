@@ -24,6 +24,7 @@ SUBDIRS = \
 		intagg		\
 		intarray	\
 		isn		\
+		jsonlog		\
 		lo		\
 		ltree		\
 		oid2name	\

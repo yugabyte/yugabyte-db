@@ -88,6 +88,8 @@
 #include "libpq/yb_pqcomm_extensions.h"
 #include "utils/rel.h"
 
+#include "yb/yql/pggate/ybc_pggate.h"
+
 /* ----------------
  *		global variables
  * ----------------
@@ -5261,10 +5263,15 @@ PostgresMain(int argc, char *argv[],
 				pq_getmsgend(&input_message);
 				MemoryContext oldcontext = GetCurrentMemoryContext();
 
+				int traceId = createNewTrace();
+
 				PG_TRY();
 				{
 					if (!am_walsender || !exec_replication_command(query_string))
-                      yb_exec_simple_query(query_string, oldcontext);
+					{
+						yb_exec_simple_query(query_string, oldcontext);
+						addTrace(traceId, "message");
+					}
 				}
 				PG_CATCH();
 				{
@@ -5303,6 +5310,9 @@ PostgresMain(int argc, char *argv[],
 				PG_END_TRY();
 
 				send_ready_for_query = true;
+
+				dumpTrace(traceId);
+				destroyTrace(traceId);
 			}
 			break;
 

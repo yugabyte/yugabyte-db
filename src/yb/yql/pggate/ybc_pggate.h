@@ -661,6 +661,14 @@ void YBCRegisterSysTableForPrefetching(
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
+int createNewTrace();
+
+bool destroyTrace(int traceIdx);
+
+void dumpTrace(int traceIdx);
+
+void addTrace(int traceIdx, const char* message);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

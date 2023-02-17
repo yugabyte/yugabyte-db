@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "yb/client/tablet_server.h"
 #include "yb/client/table_info.h"
@@ -51,6 +52,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+#include "yb/util/trace.h"
 
 DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
     "Timeout for YSQL's yb-client read/write "
@@ -145,6 +148,8 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
   }
   return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
 }
+
+std::vector<scoped_refptr<Trace>> traceObjects;
 
 } // namespace
 
@@ -1497,6 +1502,27 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
     return YBCStatusOK();
   }
   return ToYBCStatus(res.status());
+}
+
+int createNewTrace() {
+  traceObjects.push_back(Trace::NewTrace());
+  return 0;
+}
+
+bool destroyTrace(int traceIdx) {
+  // traceObjects[traceIdx] = NULL;
+  return true;
+}
+
+void dumpTrace(int traceIdx) {
+//  LOG(INFO) << traceObjects[traceIdx]->DumpToString(0);
+//  LOG(INFO) << Trace::NewTrace() -> DumpToString(0);
+  return;
+}
+
+void addTrace(int traceIdx, const char* message) {
+  traceIdx = 0;
+  VTRACE_TO(1, traceObjects[traceIdx], "Selected $0", message);
 }
 
 } // extern "C"

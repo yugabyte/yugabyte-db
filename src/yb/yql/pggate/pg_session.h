@@ -43,6 +43,8 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
+#include "yb/util/trace.h"
+
 namespace yb {
 namespace pggate {
 
