@@ -187,6 +187,8 @@ set(YB_TEST_LINK_LIBS
   ql-dml-test-base
   test_admin_client
   tools_test_utils
+  yb-backup-test_base
+  pg_wrapper_test_base
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
 ADD_YB_TEST(yb-bulk_load-test)
@@ -211,16 +213,14 @@ ADD_YB_TEST(ldb_test)
 ADD_YB_TEST(rocksdb_dump_test)
 ADD_YB_TEST(data-patcher-test)
 ADD_YB_TEST_DEPENDENCIES(data-patcher-test data-patcher)
+ADD_YB_TEST(yb-backup/yb-backup-test)
+ADD_YB_TEST(yb-backup/yb-backup-cross-feature-test)
 
 
 # Additional tests
 if(YB_ENT_CURRENT_SOURCE_DIR)
   # Set the test source file folder.
   set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
-
-  set(YB_TEST_LINK_LIBS
-    ${TOOLS_EXTENSIONS_TEST_LINK_LIBS}
-    ${YB_TEST_LINK_LIBS})
 
   foreach(test ${TOOLS_EXTENSIONS_TESTS})
     ADD_YB_TEST(${test})
@@ -232,10 +232,10 @@ add_executable(run-with-timeout run-with-timeout.cc)
 target_link_libraries(run-with-timeout yb_util)
 
 set(YB_BACKUP_TEST_BASE_SRCS
-    ${TOOLS_LIB_SRCS_EXTENSIONS})
+    yb-backup/yb-backup-test_base.cc)
 set(YB_BACKUP_TEST_BASE_DEPS
     pg_wrapper_test_base
     admin-test-base)
-ADD_YB_TEST_LIBRARY(yb-backup-test_base_ent
+ADD_YB_TEST_LIBRARY(yb-backup-test_base
                     SRCS ${YB_BACKUP_TEST_BASE_SRCS}
                     DEPS ${YB_BACKUP_TEST_BASE_DEPS})

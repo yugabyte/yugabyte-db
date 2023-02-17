@@ -37,14 +37,12 @@ set(INTEGRATION_TESTS_LIB_EXTENSIONS cdc_test_util PARENT_SCOPE)
 
 set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   secure_connection_test
-  snapshot-test
   transaction-ent-test
   encryption-test
   cdc_service-int-test
   cdc_service-txn-test
   cdcsdk_stream-test
   cdcsdk_ysql-test
-  cql-backup-test
   twodc_ysql-test
   twodc-test
   xcluster_safe_time-itest

@@ -21,7 +21,7 @@
 #include "yb/master/master_client.pb.h"
 
 #include "yb/tools/tools_test_utils.h"
-#include "yb/tools/yb-backup-test_base_ent.h"
+#include "yb/tools/yb-backup/yb-backup-test_base.h"
 
 #include "yb/rpc/rpc_controller.h"
 
