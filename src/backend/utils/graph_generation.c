@@ -41,12 +41,33 @@
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
+#include "commands/graph_commands.h"
 #include "commands/label_commands.h"
 #include "utils/graphid.h"
-#include "commands/graph_commands.h"
 #include "utils/load/age_load.h"
 #include "utils/load/ag_load_edges.h"
 #include "utils/load/ag_load_labels.h"
+
+
+int64 get_nextval_internal(graph_cache_data* graph_cache, 
+                           label_cache_data* label_cache);
+/*
+ * Auxiliary function to get the next internal value in the graph,
+ * so a new object (node or edge) graph id can be composed.
+ */
+
+int64 get_nextval_internal(graph_cache_data* graph_cache, 
+                           label_cache_data* label_cache) 
+{
+    Oid obj_seq_id;
+    char* label_seq_name_str;
+
+    label_seq_name_str = NameStr(label_cache->seq_name);
+    obj_seq_id = get_relname_relid(label_seq_name_str, 
+                                   graph_cache->namespace);
+    
+    return nextval_internal(obj_seq_id, true);
+}
 
 
 PG_FUNCTION_INFO_V1(create_complete_graph);
@@ -125,7 +146,6 @@ Datum create_complete_graph(PG_FUNCTION_ARGS)
     if (!graph_exists(graph_name_str))
     {
         DirectFunctionCall1(create_graph, CStringGetDatum(graph_name));
-
     }
 
     graph_id = get_graph_oid(graph_name_str);
@@ -194,10 +214,138 @@ Datum create_complete_graph(PG_FUNCTION_ARGS)
             insert_edge_simple(graph_id, edge_name_str,
                             object_graph_id, start_vertex_graph_id,
                             end_vertex_graph_id, props);
-            
         }
     }
-
     PG_RETURN_VOID();
 }
 
+
+PG_FUNCTION_INFO_V1(age_create_barbell_graph);
+
+/* 
+ * The barbell graph is two complete graphs connected by a bridge path
+ * Syntax:
+ * ag_catalog.age_create_barbell_graph(graph_name Name,
+ *                                     m int,
+ *                                     n int, 
+ *                                     vertex_label_name Name DEFAULT = NULL,
+ *                                     vertex_properties agtype DEFAULT = NULL,
+ *                                     edge_label_name Name DEAULT = NULL,
+ *                                     edge_properties agtype DEFAULT = NULL)
+ * Input:
+ * 
+ * graph_name - Name of the graph to be created.
+ * m - number of vertices in one complete graph.
+ * n - number of vertices in the bridge path.
+ * vertex_label_name - Name of the label to assign each vertex to.
+ * vertex_properties - Property values to assign each vertex. Default is NULL
+ * edge_label_name - Name of the label to assign each edge to.
+ * edge_properties - Property values to assign each edge. Default is NULL
+ * 
+ * https://en.wikipedia.org/wiki/Barbell_graph
+ */
+
+Datum age_create_barbell_graph(PG_FUNCTION_ARGS) 
+{
+    FunctionCallInfo arguments;
+    Oid graph_oid;
+    Name graph_name;
+    char* graph_name_str;
+
+    int64 start_node_index, end_node_index, nextval;
+
+    Name node_label_name = NULL;
+    int32 node_label_id;
+    char* node_label_str;
+
+    Name edge_label_name;
+    int32 edge_label_id;
+    char* edge_label_str;
+    
+    graphid object_graph_id;
+    graphid start_node_graph_id;
+    graphid end_node_graph_id;
+
+    graph_cache_data* graph_cache;
+    label_cache_data* edge_cache;
+
+    agtype* properties = NULL;
+
+    arguments = fcinfo;
+
+    // create two separate complete graphs
+    DirectFunctionCall4(create_complete_graph, arguments->arg[0], 
+                                               arguments->arg[1],
+                                               arguments->arg[5], 
+                                               arguments->arg[3]);
+    DirectFunctionCall4(create_complete_graph, arguments->arg[0], 
+                                               arguments->arg[1],
+                                               arguments->arg[5], 
+                                               arguments->arg[3]);
+
+    // Handling remaining arguments 
+    /*
+     * graph_name: doesn't need to validate, since the create_complete_graph
+     * function already does that. 
+    */ 
+    graph_name = PG_GETARG_NAME(0);
+    graph_name_str = NameStr(*graph_name);
+    graph_oid = get_graph_oid(graph_name_str);
+
+    /*
+     * int64 bridge_size: currently only stays at zero.
+     * to do: implement bridge with variable number of nodes.
+    */ 
+    if (PG_ARGISNULL(2) || PG_GETARG_INT32(2) < 0 )
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("Bridge size must not be NULL or lower than 0")));
+    }
+
+    // node label: if null, gets default label, which is "_ag_label_vertex"
+    if (PG_ARGISNULL(3)) 
+    {
+        namestrcpy(node_label_name, AG_DEFAULT_LABEL_VERTEX);
+    }
+    else 
+    {
+        node_label_name = PG_GETARG_NAME(3);
+    }
+    node_label_str = NameStr(*node_label_name);
+    node_label_id = get_label_id(node_label_str, graph_oid);
+
+    /* 
+     * edge_label: doesn't need to validate, since the create_complete_graph
+     * function already does that. 
+     */
+    edge_label_name = PG_GETARG_NAME(5);
+    edge_label_str = NameStr(*edge_label_name);
+    edge_label_id = get_label_id(edge_label_str, graph_oid);
+
+    /*
+     * Fetching caches to get next values for graph id's, and access nodes
+     * to be connected with edges.
+     */ 
+    graph_cache = search_graph_name_cache(graph_name_str);
+    edge_cache = search_label_name_graph_cache(edge_label_str,graph_oid);
+
+    // connect a node from each graph
+    start_node_index = 1; // first created node, from the first complete graph
+    end_node_index = arguments->arg[1]*2; // last created node, second graph
+
+    // next index to be assigned to a node or edge
+    nextval = get_nextval_internal(graph_cache, edge_cache);
+
+    // build the graph id's of the edge to be created
+    object_graph_id = make_graphid(edge_label_id, nextval);
+    start_node_graph_id = make_graphid(node_label_id, start_node_index);
+    end_node_graph_id = make_graphid(node_label_id, end_node_index);
+    properties = create_empty_agtype();
+
+    // connect two nodes
+    insert_edge_simple(graph_oid, edge_label_str,
+                       object_graph_id, start_node_graph_id,
+                       end_node_graph_id, properties);
+    
+    PG_RETURN_VOID();
+}
