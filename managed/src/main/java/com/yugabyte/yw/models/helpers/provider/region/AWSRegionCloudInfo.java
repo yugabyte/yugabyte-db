@@ -62,4 +62,9 @@ public class AWSRegionCloudInfo implements CloudInfoInterface {
   public void withSensitiveDataMasked() {
     // pass
   }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    // Pass
+  }
 }

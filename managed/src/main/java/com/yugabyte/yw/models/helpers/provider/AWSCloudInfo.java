@@ -82,4 +82,17 @@ public class AWSCloudInfo implements CloudInfoInterface {
     this.awsAccessKeyID = CommonUtils.getMaskedValue(awsAccessKeyID);
     this.awsAccessKeySecret = CommonUtils.getMaskedValue(awsAccessKeySecret);
   }
+
+  @JsonIgnore
+  public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
+    AWSCloudInfo awsCloudInfo = (AWSCloudInfo) providerCloudInfo;
+    // If the modify request contains masked value, overwrite those using
+    // the existing ebean entity.
+    if (this.awsAccessKeyID != null && this.awsAccessKeyID.contains("*")) {
+      this.awsAccessKeyID = awsCloudInfo.awsAccessKeyID;
+    }
+    if (this.awsAccessKeySecret != null && this.awsAccessKeySecret.contains("*")) {
+      this.awsAccessKeySecret = awsCloudInfo.awsAccessKeySecret;
+    }
+  }
 }
