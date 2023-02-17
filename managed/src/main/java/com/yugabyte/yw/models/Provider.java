@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 
 import io.ebean.ExpressionList;
@@ -88,8 +89,11 @@ public class Provider extends Model {
     this.customerUUID = id;
   }
 
-  /** @deprecated - Use details.metadata instead */
-  @ApiModelProperty(hidden = true)
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @ApiModelProperty(
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Use details.metadata instead")
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   @Encrypted
@@ -124,18 +128,22 @@ public class Provider extends Model {
 
   // Custom keypair name to use when spinning up YB nodes.
   // Default: created and managed by YB.
-  // Todo: Mark these fields as hidden post terraform client changes.
-  @Deprecated
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
   @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  @ApiModelProperty(
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Use allAccessKeys[0].keyInfo.keyPairName instead")
   public String keyPairName = null;
 
   // Custom SSH private key component.
   // Default: created and managed by YB.
-  // Todo: Mark these fields as hidden post terraform client changes.
-  @Deprecated
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
   @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  @ApiModelProperty(
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Use allAccessKeys[0].keyInfo.sshPrivateKeyContent instead")
   public String sshPrivateKeyContent = null;
 
   @Deprecated
@@ -168,25 +176,44 @@ public class Provider extends Model {
 
   // Custom SSH user to login to machines.
   // Default: created and managed by YB.
-  @Deprecated
-  @ApiModelProperty(hidden = true)
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @Transient
+  @ApiModelProperty(
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Use details.SshUser instead")
+  public String sshUser = null;
+
+  // Custom SSH user to login to machines.
+  // Default: created and managed by YB.
   public void setSshUser(String sshUser) {
     this.details.sshUser = sshUser;
   }
 
-  @Deprecated
-  @ApiModelProperty(hidden = true)
+  // Port to open for connections on the instance.
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @Transient
+  @ApiModelProperty(
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Use details.SshPort instead")
+  public Integer sshPort = 22;
+
   public void setSshPort(Integer sshPort) {
     this.details.sshPort = sshPort;
   }
 
-  /**
-   * Whether provider should use airgapped install. Default: false.
-   *
-   * @deprecated - Use details.airGapInstall
-   */
-  @Deprecated
-  @ApiModelProperty(hidden = true)
+  // Whether provider should use airgapped install.
+  // Default: false.
+  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @Transient
+  @ApiModelProperty(
+      value =
+          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+              + "Use details.airGapInstall")
+  public boolean airGapInstall = false;
+
+  // Whether provider should use airgapped install. Default: false.
   public void setAirGapInstall(boolean v) {
     details.airGapInstall = v;
   }

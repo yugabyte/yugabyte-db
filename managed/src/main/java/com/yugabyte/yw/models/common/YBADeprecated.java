@@ -16,7 +16,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD})
+@Target({ElementType.METHOD, ElementType.FIELD})
 public @interface YBADeprecated {
   // Date in yyyy-MM-dd format
   public String sinceDate();

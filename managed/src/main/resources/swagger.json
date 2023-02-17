@@ -6728,6 +6728,10 @@
           "readOnly" : true,
           "type" : "boolean"
         },
+        "airGapInstall" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.airGapInstall",
+          "type" : "boolean"
+        },
         "allAccessKeys" : {
           "items" : {
             "$ref" : "#/definitions/AccessKey"
@@ -6742,6 +6746,7 @@
           "additionalProperties" : {
             "type" : "string"
           },
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.metadata instead",
           "type" : "object"
         },
         "customerUUID" : {
@@ -6763,7 +6768,7 @@
           "type" : "string"
         },
         "keyPairName" : {
-          "description" : "Transient property - only present in mutate API request",
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use allAccessKeys[0].keyInfo.keyPairName instead",
           "type" : "string"
         },
         "name" : {
@@ -6776,8 +6781,17 @@
           },
           "type" : "array"
         },
+        "sshPort" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.SshPort instead",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "sshPrivateKeyContent" : {
-          "description" : "Transient property - only present in mutate API request",
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use allAccessKeys[0].keyInfo.sshPrivateKeyContent instead",
+          "type" : "string"
+        },
+        "sshUser" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.SshUser instead",
           "type" : "string"
         },
         "uuid" : {
@@ -6913,10 +6927,23 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "securityGroupId" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Moved to regionDetails.cloudInfo aws/azure securityGroupId property",
+          "type" : "string"
+        },
         "uuid" : {
           "description" : "Region UUID",
           "format" : "uuid",
           "readOnly" : true,
+          "type" : "string"
+        },
+        "vnetName" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Moved to regionDetails.cloudInfo aws/azure vnet property",
+          "type" : "string"
+        },
+        "ybImage" : {
+          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Moved to details.cloudInfo aws/gcp/azure ybImage property",
+          "example" : "TODO",
           "type" : "string"
         },
         "zones" : {
