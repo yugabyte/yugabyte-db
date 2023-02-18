@@ -423,7 +423,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
   }
 };
 
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
   // Remember the number of pre-existing databases.
@@ -579,7 +579,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion)) {
  * (2) the yugabyte session drops the database from another node
  * (3) the test session runs its first query
  */
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionDropDB)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersionDropDB) {
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
   RestartClusterWithDBCatalogVersionMode();
@@ -609,7 +609,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionDropDB)) {
 // Test running a SQL script that makes the table pg_yb_catalog_version
 // one row per database when per-database catalog version is prematurely
 // turned on. This should not cause any master CHECK failure.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersionPrematureOn) {
   // Manually switch back to non-per-db catalog version mode.
   RestartClusterWithoutDBCatalogVersionMode();
   auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
@@ -654,17 +654,17 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn
 }
 
 // Test various global DDL statements in a single-tenant cluster setting.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionGlobalDDL)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersionGlobalDDL) {
   TestDBCatalogVersionGlobalDDLHelper(false /* disable_global_ddl */);
 }
 
 // Test disabling global DDL statements in a multi-tenant cluster setting.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionDisableGlobalDDL)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersionDisableGlobalDDL) {
   TestDBCatalogVersionGlobalDDLHelper(true /* disable_global_ddl */);
 }
 
 // Test system procedure yb_increment_all_db_catalog_versions works as expected.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(IncrementAllDBCatalogVersions)) {
+TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
   RestartClusterWithDBCatalogVersionMode();
@@ -705,7 +705,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(IncrementAllDBCatalogVersio
 
 // Test yb_fix_catalog_version_table, that will sync up pg_yb_catalog_version
 // with pg_database according to 'per_database_mode' argument.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(FixCatalogVersionTable)) {
+TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   RestartClusterWithDBCatalogVersionMode();
   auto conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
   // Prepare the table pg_yb_catalog_version for per-db catalog version mode.
@@ -769,7 +769,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(FixCatalogVersionTable)) {
 
 // This test exercises the wrap around logic in tserver shared memory free
 // slot allocation algorithm for a newly created database.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(RecyleManyDatabases)) {
+TEST_F(PgCatalogVersionTest, RecyleManyDatabases) {
   RestartClusterWithDBCatalogVersionMode();
   auto conn = ASSERT_RESULT(ConnectToDB("template1"));
   const auto initial_count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
@@ -808,7 +808,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(RecyleManyDatabases)) {
   }
 }
 
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
+TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   const string kDatabaseName = "yugabyte";
 
   auto conn1 = ASSERT_RESULT(ConnectToDB(kDatabaseName));

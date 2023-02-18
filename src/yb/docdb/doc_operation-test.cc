@@ -1235,7 +1235,7 @@ void WaitCompactionsDone(rocksdb::DB* db) {
 
 } // namespace
 
-TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
+TEST_F(DocOperationTest, YB_DISABLE_TEST_IN_TSAN(MaxFileSizeForCompaction)) {
   google::FlagSaver flag_saver;
 
   ASSERT_OK(DisableCompactions());

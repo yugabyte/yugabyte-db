@@ -58,7 +58,7 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(AlterTableWithConcurrentTxnTest, YB_DISABLE_TEST_IN_TSAN(TServerLeaderChange)) {
+TEST_F(AlterTableWithConcurrentTxnTest, TServerLeaderChange) {
   auto resource_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(resource_conn.Execute("CREATE TABLE p (a INT PRIMARY KEY)"));
   ASSERT_OK(resource_conn.Execute("INSERT INTO p VALUES (1)"));

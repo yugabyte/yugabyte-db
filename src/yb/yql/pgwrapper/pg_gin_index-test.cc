@@ -53,7 +53,7 @@ class PgGinIndexTest : public LibPqTestBase {
 };
 
 // Test creating a ybgin index on an array whose element type is unsupported for primary key.
-TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(UnsupportedArrayElementType)) {
+TEST_F(PgGinIndexTest, UnsupportedArrayElementType) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a tsvector[])", kTableName));
   auto status = conn_->ExecuteFormat("CREATE INDEX $0 ON $1 USING ybgin (a)",
                                      kIndexName, kTableName);
@@ -79,7 +79,7 @@ TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(UnsupportedArrayElementType)) {
 }
 
 // Test SPLIT option.
-TEST_F(PgGinIndexTest, YB_DISABLE_TEST_IN_TSAN(SplitOption)) {
+TEST_F(PgGinIndexTest, SplitOption) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (v tsvector)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('ab bc'), ('cd ef gh')", kTableName));
 

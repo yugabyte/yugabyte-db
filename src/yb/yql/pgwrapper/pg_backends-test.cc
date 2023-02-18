@@ -153,7 +153,7 @@ class PgBackendsTest : public LibPqTestBase {
 };
 
 // Requests on already-satisfied versions should create jobs that finish quickly.
-TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(AlreadySatisfiedVersion)) {
+TEST_F(PgBackendsTest, AlreadySatisfiedVersion) {
   BumpCatalogVersion(2);
 
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
@@ -168,7 +168,7 @@ TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(AlreadySatisfiedVersion)) {
 }
 
 // Requests on cached versions should not create jobs.
-TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(CachedVersion)) {
+TEST_F(PgBackendsTest, CachedVersion) {
   BumpCatalogVersion(2);
 
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
@@ -188,7 +188,7 @@ TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(CachedVersion)) {
 
 // Requests on a future version should be rejected.  If they were accepted, master would be
 // busy-waiting, and it would not be easy to cancel the job.
-TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(FutureVersion)) {
+TEST_F(PgBackendsTest, FutureVersion) {
   // Use timeout of zero because invalid argument should return immediately.
   auto res = client_->WaitForYsqlBackendsCatalogVersion(
       "yugabyte", 999, MonoDelta::kZero /* timeout */);
@@ -200,7 +200,7 @@ TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(FutureVersion)) {
 }
 
 // If usable cached version is not found but usable cached job is, a new job should not be created.
-TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(CachedJob)) {
+TEST_F(PgBackendsTest, CachedJob) {
   uint64_t master_catalog_version = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got master catalog version " << master_catalog_version;
 
@@ -233,7 +233,7 @@ TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(CachedJob)) {
 }
 
 // Check the backends counting on a tserver.
-TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(WaitAllBackends)) {
+TEST_F(PgBackendsTest, WaitAllBackends) {
   const uint64_t orig_cat_ver = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got master catalog version " << orig_cat_ver;
 
@@ -265,7 +265,7 @@ TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(WaitAllBackends)) {
 }
 
 // Check that the backends counting ignores other databases.
-TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(WaitOnlySameDatabase)) {
+TEST_F(PgBackendsTest, WaitOnlySameDatabase) {
   std::vector<PGConn> conns;
   std::vector<std::string> db_names = {"postgres", "template1", "yugabyte"};
   std::mt19937 rng{std::random_device()()};
@@ -305,7 +305,7 @@ TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(WaitOnlySameDatabase)) {
 
 // Test that multiple waiters immediately resolve.  This tests the condition variable broadcast in
 // the implementation.
-TEST_F(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(MultipleWaiters)) {
+TEST_F(PgBackendsTest, MultipleWaiters) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("BEGIN"));
 
@@ -367,7 +367,7 @@ class PgBackendsTestConnLimit : public PgBackendsTest {
   }
 };
 
-TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(ConnectionLimit), PgBackendsTestConnLimit) {
+TEST_F_EX(PgBackendsTest, ConnectionLimit, PgBackendsTestConnLimit) {
   LOG_WITH_FUNC(INFO) << "Beginning test";
   const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
   // zero is initially cached by the YsqlBackendsManager, so a version of zero means the following
@@ -423,7 +423,7 @@ class PgBackendsTestPgTimeout : public PgBackendsTest {
 
 // Test ysql_yb_wait_for_backends_catalog_version_timeout.
 TEST_F_EX(PgBackendsTest,
-          YB_DISABLE_TEST_IN_TSAN(PgTimeout),
+          PgTimeout,
           PgBackendsTestPgTimeout) {
   LOG(INFO) << "Start connection that will be behind";
   PGConn conn_begin = ASSERT_RESULT(Connect());
@@ -472,7 +472,7 @@ class PgBackendsTestRf3 : public PgBackendsTest {
 };
 
 // Cached version and jobs are lost when master loses leadership.
-TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(CacheLost), PgBackendsTestRf3) {
+TEST_F_EX(PgBackendsTest, CacheLost, PgBackendsTestRf3) {
   LOG(INFO) << "Start connection that will be behind";
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -529,7 +529,7 @@ TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(CacheLost), PgBackendsTestRf3)
 }
 
 // Waiting should be on all tservers' backends.
-TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(WaitAllTservers), PgBackendsTestRf3) {
+TEST_F_EX(PgBackendsTest, WaitAllTservers, PgBackendsTestRf3) {
   const uint64_t orig_cat_ver = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got master catalog version " << orig_cat_ver;
 
@@ -684,7 +684,7 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
 // Simulate an online schema change situation by having concurrent threads accessing a function and
 // one thread modifying the function while waiting for all backends to have up-to-date version
 // before moving on to the next modification.
-TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentAlterFunc), PgBackendsTestRf3) {
+TEST_F_EX(PgBackendsTest, ConcurrentAlterFunc, PgBackendsTestRf3) {
   ASSERT_OK(TestConcurrentAlterFunc(
       [this](uint64_t cat_ver) -> Status {
 #if !ISSUE_5030_IS_FIXED
@@ -708,7 +708,7 @@ TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentAlterFunc), PgBacken
 // It is expected to mess up.  In the extreme case, it may not mess up if the random number
 // generator gave 0s sleeps for the writer threads, but the chance of that happening is so small it
 // is not something to worry about.
-TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentAlterFuncNegative), PgBackendsTestRf3) {
+TEST_F_EX(PgBackendsTest, ConcurrentAlterFuncNegative, PgBackendsTestRf3) {
   ASSERT_OK(TestConcurrentAlterFunc(
       [](uint64_t cat_ver) -> Status {
         LOG(INFO) << "Not waiting for backends catalog version " << cat_ver
@@ -720,7 +720,7 @@ TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentAlterFuncNegative), 
 }
 
 // Renaming the database should not interrupt the progress of WaitForYsqlBackendsCatalogVersion.
-TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(RenameDatabase), PgBackendsTestRf3) {
+TEST_F_EX(PgBackendsTest, RenameDatabase, PgBackendsTestRf3) {
   LOG(INFO) << "Create database and get its oid";
   constexpr auto kDbPrefix = "before";
   ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0_0", kDbPrefix));
@@ -893,7 +893,7 @@ class PgBackendsTestRf3DeadFast : public PgBackendsTestRf3 {
   static constexpr int kTsDeadSec = 30;
 };
 
-TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_IN_TSAN(LostHeartbeats), PgBackendsTestRf3DeadFast) {
+TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3DeadFast) {
   constexpr auto kUser = "eve";
   ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUser));
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0tab (i int)", kUser));
@@ -1051,14 +1051,14 @@ Status PgBackendsTestRf3DeadFaster::TestTserverUnresponsive(bool keep_alive) {
 
 TEST_F_EX(
     PgBackendsTest,
-    YB_DISABLE_TEST_IN_TSAN(TserverUnresponsiveShutdown),
+    TserverUnresponsiveShutdown,
     PgBackendsTestRf3DeadFaster) {
   ASSERT_OK(TestTserverUnresponsive(false /* keep_alive */));
 }
 
 TEST_F_EX(
     PgBackendsTest,
-    YB_DISABLE_TEST_IN_TSAN(TserverUnresponsiveNoShutdown),
+    TserverUnresponsiveNoShutdown,
     PgBackendsTestRf3DeadFaster) {
   ASSERT_OK(TestTserverUnresponsive(true /* keep_alive */));
 }
@@ -1195,14 +1195,14 @@ Result<int> PgBackendsTestRf3Block::TestLeaderChangeInFlight(bool expect_retry) 
   return res;
 }
 
-TEST_P(PgBackendsTestRf3Block, YB_DISABLE_TEST_IN_TSAN(LeaderChangeInFlight)) {
+TEST_P(PgBackendsTestRf3Block, LeaderChangeInFlight) {
   auto num_lagging_backends = ASSERT_RESULT(TestLeaderChangeInFlight(true /* expect_retry */));
   ASSERT_EQ(0, num_lagging_backends);
 }
 
 // Negative test for the above LeaderChangeInFlight test where leadership loss handling is disabled.
 // This proves that the above test is showing something meaningful.
-TEST_P(PgBackendsTestRf3BlockNoLeaderLock, YB_DISABLE_TEST_IN_TSAN(LeaderChangeInFlightNegative)) {
+TEST_P(PgBackendsTestRf3BlockNoLeaderLock, LeaderChangeInFlightNegative) {
   auto res = TestLeaderChangeInFlight(false /* expect_retry */);
   // It is possible (but rare as of D19621) for there to be an issue for processing the request on a
   // master that lost leadership.
@@ -1225,7 +1225,7 @@ INSTANTIATE_TEST_CASE_P(, PgBackendsTestRf3BlockNoLeaderLock, ::testing::Range(1
 //    state to win.  (It is not guaranteed that TerminateJob to kComplete will be attempted because
 //    job could be cleared or leadership changed beforehand.)
 // 1. Expect a retry request to show up on the new leader; otherwise, don't expect that.
-TEST_F(PgBackendsTestRf3Block, YB_DISABLE_TEST_IN_TSAN(LeaderChangeInFlightLater)) {
+TEST_F(PgBackendsTestRf3Block, LeaderChangeInFlightLater) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("BEGIN"));
 

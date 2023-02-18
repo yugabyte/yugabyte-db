@@ -15,12 +15,12 @@ package org.yb.pgsql;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 /**
  * Runs the pg_regress test suite on colocation queries to test colocation database behaviors.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressColocation extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {

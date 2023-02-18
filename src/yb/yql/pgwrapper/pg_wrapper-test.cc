@@ -125,7 +125,7 @@ using PgWrapperTestAuth = PgWrapperTestHelper<ConnectionStrategy<true, false>>;
 using PgWrapperTestSecure = PgWrapperTestHelper<ConnectionStrategy<false, true>>;
 using PgWrapperTestAuthSecure = PgWrapperTestHelper<ConnectionStrategy<true, true>>;
 
-TEST_F(PgWrapperTestAuth, YB_DISABLE_TEST_IN_TSAN(TestConnectionAuth)) {
+TEST_F(PgWrapperTestAuth, TestConnectionAuth) {
   ASSERT_NO_FATALS(RunPsqlCommand(
       "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
@@ -136,7 +136,7 @@ TEST_F(PgWrapperTestAuth, YB_DISABLE_TEST_IN_TSAN(TestConnectionAuth)) {
   ));
 }
 
-TEST_F(PgWrapperTestSecure, YB_DISABLE_TEST_IN_TSAN(TestConnectionTLS)) {
+TEST_F(PgWrapperTestSecure, TestConnectionTLS) {
   ASSERT_NO_FATALS(RunPsqlCommand(
       "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
@@ -149,7 +149,7 @@ TEST_F(PgWrapperTestSecure, YB_DISABLE_TEST_IN_TSAN(TestConnectionTLS)) {
 }
 
 
-TEST_F(PgWrapperTestAuthSecure, YB_DISABLE_TEST_IN_TSAN(TestConnectionAuthTLS)) {
+TEST_F(PgWrapperTestAuthSecure, TestConnectionAuthTLS) {
   ASSERT_NO_FATALS(RunPsqlCommand(
       "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
@@ -161,7 +161,7 @@ TEST_F(PgWrapperTestAuthSecure, YB_DISABLE_TEST_IN_TSAN(TestConnectionAuthTLS)) 
   ));
 }
 
-TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestStartStop)) {
+TEST_F(PgWrapperTest, TestStartStop) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (200, 'bar')"));
@@ -177,7 +177,7 @@ TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestStartStop)) {
   ));
 }
 
-TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestCompactHistoryWithTxn)) {
+TEST_F(PgWrapperTest, TestCompactHistoryWithTxn) {
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(60));
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
@@ -259,7 +259,7 @@ TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestCompactHistoryWithTxn)) {
   read_txn_thread.join();
 }
 
-TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(InsertSelect)) {
+TEST_F(PgWrapperTest, InsertSelect) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT, v TEXT)"));
 
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (1, 'abc')"));
@@ -292,7 +292,7 @@ class PgWrapperOneNodeClusterTest : public YBMiniClusterTestBase<ExternalMiniClu
 
 };
 
-TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
+TEST_F(PgWrapperOneNodeClusterTest, TestPostgresPid) {
   MonoDelta timeout = 15s;
   int tserver_count = 1;
 
@@ -426,7 +426,7 @@ class PgWrapperFlagsTest : public PgWrapperTest {
 };
 
 // Verify the gFlag defaults match the guc defaults for PG gFlags.
-TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagDefaults)) {
+TEST_F(PgWrapperFlagsTest, VerifyGFlagDefaults) {
   vector<CommandLineFlagInfo> flags;
   GetAllFlags(&flags);
 
@@ -498,7 +498,7 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
 };
 
 TEST_F_EX(
-    PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestGFlagOverrides), PgWrapperOverrideFlagsTest) {
+    PgWrapperFlagsTest, TestGFlagOverrides, PgWrapperOverrideFlagsTest) {
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_max_connections", "42"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_log_min_duration_statement", "13"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
@@ -528,7 +528,7 @@ class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
 };
 
 TEST_F_EX(
-    PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestAutoFlagOnNewCluster), PgWrapperAutoFlagsTest) {
+    PgWrapperFlagsTest, TestAutoFlagOnNewCluster, PgWrapperAutoFlagsTest) {
   // New clusters should start with Target value
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "true"));
@@ -547,7 +547,7 @@ class PgWrapperAutoFlagsDisabledTest : public PgWrapperAutoFlagsTest {
 };
 
 TEST_F_EX(
-    PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestAutoFlagOnOldCluster),
+    PgWrapperFlagsTest, TestAutoFlagOnOldCluster,
     PgWrapperAutoFlagsDisabledTest) {
   // Old clusters that have upgraded to new version should have Initial value
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));

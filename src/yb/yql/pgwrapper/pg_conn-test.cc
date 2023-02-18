@@ -35,7 +35,7 @@ class PgConnTest : public LibPqTestBase {
 };
 
 // Test libpq connection to various database names.
-TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(DatabaseNames)) {
+TEST_F(PgConnTest, DatabaseNames) {
   PGConn conn = ASSERT_RESULT(Connect());
 
   for (const std::string& db_name : names) {
@@ -45,7 +45,7 @@ TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(DatabaseNames)) {
 }
 
 // Test libpq connection to various user names.
-TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(UserNames)) {
+TEST_F(PgConnTest, UserNames) {
   PGConn conn = ASSERT_RESULT(Connect());
 
   for (const std::string& user_name : names) {
@@ -55,7 +55,7 @@ TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(UserNames)) {
 }
 
 // Test libpq connection using URI connection string.
-TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(Uri)) {
+TEST_F(PgConnTest, Uri) {
   const std::string& host = pg_ts->bind_host();
   const uint16_t port = pg_ts->pgsql_rpc_port();
   {
@@ -104,7 +104,7 @@ TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(Uri)) {
   }
 }
 
-TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(PastDeadline)) {
+TEST_F(PgConnTest, PastDeadline) {
   const std::string conn_str = Format("host=$0 port=$1 dbname=yugabyte user=yugabyte",
                                       pg_ts->bind_host(), pg_ts->pgsql_rpc_port());
   Result<PGConn> res = PGConn::Connect(
@@ -158,7 +158,7 @@ class PgConnTestAuthPassword : public PgConnTest {
   }
 };
 
-TEST_F_EX(PgConnTest, YB_DISABLE_TEST_IN_TSAN(UriPassword), PgConnTestAuthPassword) {
+TEST_F_EX(PgConnTest, UriPassword, PgConnTestAuthPassword) {
   TestUriAuth();
 }
 
@@ -170,7 +170,7 @@ class PgConnTestAuthMd5 : public PgConnTest {
   }
 };
 
-TEST_F_EX(PgConnTest, YB_DISABLE_TEST_IN_TSAN(UriMd5), PgConnTestAuthMd5) {
+TEST_F_EX(PgConnTest, UriMd5, PgConnTestAuthMd5) {
   TestUriAuth();
 }
 
@@ -181,7 +181,7 @@ class PgConnTestLimit : public PgConnTest {
   }
 };
 
-TEST_F_EX(PgConnTest, YB_DISABLE_TEST_IN_TSAN(ConnectionLimit), PgConnTestLimit) {
+TEST_F_EX(PgConnTest, ConnectionLimit, PgConnTestLimit) {
   LOG(INFO) << "First connection";
   PGConn conn = ASSERT_RESULT(Connect());
 
