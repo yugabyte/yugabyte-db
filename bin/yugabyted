@@ -1360,6 +1360,9 @@ class ControlScript(object):
         if self.configs.saved_data.get("use_cassandra_authentication"):
             yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
 
+        if self.configs.saved_data.get("dns_enabled"):
+            yb_tserver_cmd.extend(["--use_node_hostname_for_local_tserver=true"])
+
         self.processes = {
             "master": YBProcessManager(
                 "master", yb_master_cmd, self.configs.saved_data.get("log_dir"),
@@ -1368,15 +1371,6 @@ class ControlScript(object):
                 "tserver", yb_tserver_cmd, self.configs.saved_data.get("log_dir"),
                 self.configs.saved_data.get("data_dir")),
         }
-
-        # if self.configs.temp_data.get("ui"):
-        #     yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
-        #         [
-        #             "-database_host={}".format(bind_ip)
-        #         ]
-        #     self.processes["yugabyted-ui"] = ProcessManager(
-        #         "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
-        #         self.configs.saved_data.get("data_dir"))
 
         for p in self.processes.values():
             pid = p.get_pid()
@@ -2636,12 +2630,21 @@ class ControlScript(object):
         # Regex expression for validating IPv6
         ipv6_regex = "((([0-9a-fA-F]){1,4})\\:){7}([0-9a-fA-F]){1,4}"
 
+        # Regex expression for validating DNS names
+        dns_regex = "^((?!-)[A-Za-z0-9-]" + "{1,63}(?<!-)\\.)" +"+[A-Za-z]{2,6}"
+
         ipv4_pattern = re.compile(ipv4_regex)
         ipv6_pattern = re.compile(ipv6_regex)
+        dns_pattern = re.compile(dns_regex)
 
         # Checking if it is not a valid IPv4 or IPv6 addresses
-        if not (re.search(ipv4_pattern, ip) or re.search(ipv6_pattern, ip)):
+        if not (re.search(ipv4_pattern, ip) or
+                re.search(ipv6_pattern, ip) or
+                re.search(dns_pattern, ip)):
             return False
+
+        if re.search(dns_pattern, ip):
+            self.configs.saved_data["dns_enabled"] = True
 
         return True
 
@@ -3135,8 +3138,12 @@ class ControlScript(object):
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
 
-            args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
+            if args.ui is not None:
+                args.ui = self.parse_bool(args.ui)
+            else:
+                args.ui = self.configs.saved_data.get("ui")
+
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)
             elif os.environ.get("YB_DISABLE_CALLHOME") is not None:
@@ -3161,15 +3168,6 @@ class ControlScript(object):
                 if self.setup_env_init.is_exists('YCQL_USER') or \
                         self.setup_env_init.is_exists('YCQL_PASSWORD'):
                     args.use_cassandra_authentication = True
-
-            # Output.log("Downloading the Yugabyted UI Binaries.")
-            # if args.ui and not self.download_extract_yugabyted_ui_binary():
-            #     Output.print_out('WARNING: UI disabled - Unable to download ui binaries.')
-            #     args.ui = False
-
-            # if args.ui and not self.java_installed():
-            #     Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
-            #     args.ui = False
 
             self.configs.temp_data["background"] = args.background
             self.configs.saved_data["ui"] = args.ui
@@ -3392,7 +3390,7 @@ class ControlScript(object):
                 "--callhome", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--ui", choices=BOOL_CHOICES, default="true", metavar="",
+                "--ui", choices=BOOL_CHOICES, metavar="",
                 help="Toggle enabling or disabling webserver UI. Default true.")
             cur_parser.add_argument(
                 "--ysql_enable_auth", choices=BOOL_CHOICES,
@@ -3560,6 +3558,7 @@ class Configs(object):
             "database_password": None,
             "current_masters": "",
             "ui": True,
+            "dns_enabled": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
