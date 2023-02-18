@@ -182,7 +182,7 @@ class PgDdlAtomicityTest : public LibPqTestBase {
   }
 };
 
-TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestDatabaseGC)) {
+TEST_F(PgDdlAtomicityTest, TestDatabaseGC) {
   TableName test_name = "test_pgsql";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -197,7 +197,7 @@ TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestDatabaseGC)) {
   VerifyNamespaceNotExists(client.get(), test_name);
 }
 
-TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestCreateDbFailureAndRestartGC)) {
+TEST_F(PgDdlAtomicityTest, TestCreateDbFailureAndRestartGC) {
   NamespaceName test_name = "test_pgsql";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -217,7 +217,7 @@ TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestCreateDbFailureAndRestart
   VerifyNamespaceNotExists(client.get(), test_name);
 }
 
-TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableGC)) {
+TEST_F(PgDdlAtomicityTest, TestIndexTableGC) {
   TableName test_name = "test_pgsql_table";
   TableName test_name_idx = test_name + "_idx";
 
@@ -246,7 +246,7 @@ TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableGC)) {
 }
 
 TEST_F(
-    PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(TestRaceIndexDeletionAndReadQueryOnColocatedDB)) {
+    PgDdlAtomicityTest, TestRaceIndexDeletionAndReadQueryOnColocatedDB) {
   TableName table_name = "test_pgsql_table";
   TableName index_name = Format("$0_idx", table_name);
   NamespaceName db_name = "test_db";
@@ -319,7 +319,7 @@ class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
   }
 };
 
-TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(AlterDropTableRollback)) {
+TEST_F(PgDdlAtomicitySanityTest, AlterDropTableRollback) {
   const auto tables = {kRenameTable, kRenameCol, kAddCol, kDropTable};
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -348,7 +348,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(AlterDropTableRollback)
   ASSERT_OK(conn.Execute(DropTableStmt(kDropTable)));
 }
 
-TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(PrimaryKeyRollback)) {
+TEST_F(PgDdlAtomicitySanityTest, PrimaryKeyRollback) {
   TableName add_pk_table = "add_pk_table";
   TableName drop_pk_table = "drop_pk_table";
 
@@ -379,7 +379,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(PrimaryKeyRollback)) {
   ASSERT_NOK(conn.Execute("INSERT INTO " + drop_pk_table + " VALUES (1), (1)"));
 }
 
-TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(DdlRollbackMasterRestart)) {
+TEST_F(PgDdlAtomicitySanityTest, DdlRollbackMasterRestart) {
   const auto tables_to_create = {kRenameTable, kRenameCol, kAddCol, kDropTable};
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -420,7 +420,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(DdlRollbackMasterRestar
   }
 }
 
-TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(TestYsqlTxnStatusReporting)) {
+TEST_F(PgDdlAtomicitySanityTest, TestYsqlTxnStatusReporting) {
   const auto tables_to_create = {kRenameTable, kRenameCol, kAddCol, kDropTable};
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
@@ -504,7 +504,7 @@ class PgDdlAtomicityParallelDdlTest : public PgDdlAtomicitySanityTest {
   }
 };
 
-TEST_F(PgDdlAtomicityParallelDdlTest, YB_DISABLE_TEST_IN_TSAN(TestParallelDdl)) {
+TEST_F(PgDdlAtomicityParallelDdlTest, TestParallelDdl) {
   constexpr size_t kNumIterations = 10;
   const auto tablename = "test_table"s;
   auto conn = ASSERT_RESULT(Connect());
@@ -642,7 +642,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   ASSERT_NOK(conn.Execute(DropTableStmt(kAddCol)));
 }
 
-TEST_F(PgDdlAtomicityTest, YB_DISABLE_TEST_IN_TSAN(FailureRecoveryTestWithAbortedTxn)) {
+TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
   // Make TransactionParticipant::Impl::CheckForAbortedTransactions and TabletLoader::Visit deadlock
   // on the mutex. GH issue #15849.
 
@@ -717,7 +717,7 @@ class PgDdlAtomicityConcurrentDdlTest : public PgDdlAtomicitySanityTest {
   const string table_ = "test";
 };
 
-TEST_F(PgDdlAtomicityConcurrentDdlTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDdl)) {
+TEST_F(PgDdlAtomicityConcurrentDdlTest, ConcurrentDdl) {
   const string kCreateAndAlter = "create_and_alter_test";
   const string kCreateAndDrop = "create_and_drop_test";
   const string kDropAndAlter = "drop_and_alter_test";
@@ -769,7 +769,7 @@ class PgDdlAtomicityTxnTest : public PgDdlAtomicitySanityTest {
   }
 };
 
-TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(CreateAlterDropTest)) {
+TEST_F(PgDdlAtomicityTxnTest, CreateAlterDropTest) {
   string ddl_statements = CreateTableStmt(table()) + "; " +
                           AddColumnStmt(table()) +  "; " +
                           RenameColumnStmt(table()) + "; " +
@@ -781,7 +781,7 @@ TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(CreateAlterDropTest)) {
   VerifyTableNotExists(client.get(), kDatabase, table(), 10);
 }
 
-TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(CreateDropTest)) {
+TEST_F(PgDdlAtomicityTxnTest, CreateDropTest) {
   string ddl_statements = CreateTableStmt(table()) + "; " +
                           DropTableStmt(table()) + "; ";
   runFailingDdlTransaction(ddl_statements);
@@ -790,7 +790,7 @@ TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(CreateDropTest)) {
   VerifyTableNotExists(client.get(), kDatabase, table(), 10);
 }
 
-TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(CreateAlterTest)) {
+TEST_F(PgDdlAtomicityTxnTest, CreateAlterTest) {
   string ddl_statements = CreateTableStmt(table()) + "; " +
                           AddColumnStmt(table()) +  "; " +
                           RenameColumnStmt(table()) + "; " +
@@ -801,7 +801,7 @@ TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(CreateAlterTest)) {
   VerifyTableNotExists(client.get(), kDatabase, table(), 10);
 }
 
-TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(AlterDropTest)) {
+TEST_F(PgDdlAtomicityTxnTest, AlterDropTest) {
   CreateTable(table());
   string ddl_statements = RenameColumnStmt(table()) + "; " + DropTableStmt(table()) + "; ";
   runFailingDdlTransaction(ddl_statements);
@@ -811,7 +811,7 @@ TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(AlterDropTest)) {
   ASSERT_OK(VerifySchema(client.get(), kDatabase, table(), {"key"}));
 }
 
-TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(AddColRenameColTest)) {
+TEST_F(PgDdlAtomicityTxnTest, AddColRenameColTest) {
   CreateTable(table());
   string ddl_statements = AddColumnStmt(table()) + "; " + RenameColumnStmt(table()) + "; ";
   runFailingDdlTransaction(ddl_statements);
@@ -821,7 +821,7 @@ TEST_F(PgDdlAtomicityTxnTest, YB_DISABLE_TEST_IN_TSAN(AddColRenameColTest)) {
   ASSERT_OK(VerifySchema(client.get(), kDatabase, table(), {"key"}));
 }
 
-TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(DmlWithAddColTest)) {
+TEST_F(PgDdlAtomicitySanityTest, DmlWithAddColTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string& table = "dml_with_add_col_test";
   CreateTable(table);
@@ -866,7 +866,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(DmlWithAddColTest)) {
 
 // Test that DML transactions concurrent with an aborted DROP TABLE transaction
 // can commit successfully (both before and after the rollback is complete).`
-TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(DmlWithDropTableTest)) {
+TEST_F(PgDdlAtomicitySanityTest, DmlWithDropTableTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string& table = "dml_with_drop_test";
   CreateTable(table);
@@ -994,7 +994,7 @@ class PgDdlAtomicityNegativeTestColocated : public PgDdlAtomicityNegativeTestBas
   }
 };
 
-TEST_F(PgDdlAtomicityNegativeTestColocated, YB_DISABLE_TEST_IN_TSAN(ColocatedTest)) {
+TEST_F(PgDdlAtomicityNegativeTestColocated, ColocatedTest) {
   negativeTest();
   negativeDropTableTxnTest();
 }
@@ -1018,7 +1018,7 @@ class PgDdlAtomicityNegativeTestTablegroup : public PgDdlAtomicityNegativeTestBa
   const string kTablegroup = "test_tgroup";
 };
 
-TEST_F(PgDdlAtomicityNegativeTestTablegroup, YB_DISABLE_TEST_IN_TSAN(TablegroupTest)) {
+TEST_F(PgDdlAtomicityNegativeTestTablegroup, TablegroupTest) {
   negativeTest();
   negativeDropTableTxnTest();
 }
@@ -1038,7 +1038,7 @@ class PgDdlAtomicitySnapshotTest : public PgDdlAtomicitySanityTest {
   std::unique_ptr<client::YBClient> client_;
 };
 
-TEST_F(PgDdlAtomicitySnapshotTest, YB_DISABLE_TEST_IN_TSAN(SnapshotTest)) {
+TEST_F(PgDdlAtomicitySnapshotTest, SnapshotTest) {
   // Create requisite tables.
   const auto tables_to_create = {kAddCol, kDropTable};
 

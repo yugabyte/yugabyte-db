@@ -34,6 +34,11 @@ public class TestPgForeignKeyBatching extends BasePgSQLTestWithRpcMetric {
     return flagMap;
   }
 
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return getPerfMaxRuntime(1200, 1200, 1200, 2000, 1200);
+  }
+
   @Test
   public void testInsertBatching() throws Exception {
     try (Statement stmt = connection.createStatement()) {

@@ -42,7 +42,7 @@ import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
@@ -51,7 +51,7 @@ import java.util.*;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value= YBTestRunnerNonTsanOnly.class)
+@RunWith(value= YBTestRunner.class)
 public class TestReadReplica extends BaseMiniClusterTest {
 
   protected static final Logger LOG = LoggerFactory.getLogger(TestReadReplica.class);

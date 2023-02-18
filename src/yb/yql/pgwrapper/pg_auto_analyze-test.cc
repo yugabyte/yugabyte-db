@@ -70,7 +70,7 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 
 } // namespace
 
-TEST_F(PgAutoAnalyzeTest, YB_DISABLE_TEST_IN_TSAN(CheckTableMutationsCount)) {
+TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
   auto conn = ASSERT_RESULT(Connect());
   std::string table1_name = "accounts";
   std::string table2_name = "depts";

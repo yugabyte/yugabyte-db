@@ -105,7 +105,7 @@ class PgSingleTServerTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert)) {
+TEST_F(PgSingleTServerTest, ManyRowsInsert) {
   constexpr int kRows = RegularBuildVsDebugVsSanitizers(100000, 10000, 1000);
   auto conn = ASSERT_RESULT(Connect());
 
@@ -133,7 +133,7 @@ class PgMiniBigPrefetchTest : public PgSingleTServerTest {
   }
 };
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigRead), PgMiniBigPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, BigRead, PgMiniBigPrefetchTest) {
   constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
   constexpr int kBlockSize = 1000;
   constexpr int kReads = 3;
@@ -141,7 +141,7 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigRead), PgMiniBigPrefet
   Run(kRows, kBlockSize, kReads);
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigReadWithCompaction),
+TEST_F_EX(PgSingleTServerTest, BigReadWithCompaction,
           PgMiniBigPrefetchTest) {
   constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
   constexpr int kBlockSize = 1000;
@@ -150,7 +150,7 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigReadWithCompaction),
   Run(kRows, kBlockSize, kReads, /* compact= */ true);
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, SmallRead, PgMiniBigPrefetchTest) {
   constexpr int kRows = 10;
   constexpr int kBlockSize = kRows;
   constexpr int kReads = 1;
@@ -166,13 +166,13 @@ constexpr int kScanReads = 3;
 
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, Scan, PgMiniBigPrefetchTest) {
   FLAGS_ysql_enable_packed_row = false;
   FLAGS_ysql_enable_packed_row_for_colocated_table = false;
   Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanWithPackedRow), PgMiniBigPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
   constexpr int kNumColumns = 10;
 
   FLAGS_ysql_enable_packed_row = true;
@@ -192,11 +192,11 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanWithPackedRow), PgMin
       /* compact= */ false, /* aggregate = */ false);
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, ScanWithCompaction, PgMiniBigPrefetchTest) {
   Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ true, /* select= */ true);
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanSkipPK), PgMiniBigPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, ScanSkipPK, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 2;
   constexpr int kNumKeyColumns = 5;
 
@@ -222,7 +222,7 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanSkipPK), PgMiniBigPre
       /* compact= */ false, /* aggregate = */ false);
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanBigPK), PgMiniBigPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, ScanBigPK, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 4;
   constexpr auto kNumRepetitions = 10;
 
@@ -244,7 +244,7 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanBigPK), PgMiniBigPref
       /* compact= */ false, /* aggregate = */ false);
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanSkipValues), PgMiniBigPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, ScanSkipValues, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 4;
   constexpr auto kNumExtraColumns = 10;
 
@@ -270,7 +270,7 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanSkipValues), PgMiniBi
 }
 
 
-TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
+TEST_F(PgSingleTServerTest, BigValue) {
   constexpr size_t kValueSize = 32_MB;
   constexpr int kKey = 42;
   const std::string kValue = RandomHumanReadableString(kValueSize);
@@ -302,7 +302,7 @@ class PgSmallPrefetchTest : public PgSingleTServerTest {
   }
 };
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(SingleRowScan), PgSmallPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, SingleRowScan, PgSmallPrefetchTest) {
   constexpr int kRows = RegularBuildVsDebugVsSanitizers(10000, 1000, 100);
   constexpr int kBlockSize = 100;
   constexpr int kReads = 3;
@@ -311,7 +311,7 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(SingleRowScan), PgSmallPr
 }
 
 TEST_F_EX(
-    PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(TestPagingInSerializableIsolation),
+    PgSingleTServerTest, TestPagingInSerializableIsolation,
     PgSmallPrefetchTest) {
   // This test is related to #14284, #13041. As part of a regression, the read time set in the
   // paging state returned by the tserver to YSQL, was sent back by YSQL in subsequent read
@@ -335,7 +335,7 @@ TEST_F_EX(
 }
 
 TEST_F_EX(
-    PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(TestDeferrablePagingInSerializableIsolation),
+    PgSingleTServerTest, TestDeferrablePagingInSerializableIsolation,
     PgSmallPrefetchTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (key INT PRIMARY KEY, v INT)"));
@@ -456,7 +456,7 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns)) {
   }
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ColocatedJoinPerformance),
+TEST_F_EX(PgSingleTServerTest, ColocatedJoinPerformance,
           PgSmallPrefetchTest) {
   const std::string kDatabaseName = "testdb";
   constexpr int kNumRows = RegularBuildVsDebugVsSanitizers(10000, 1000, 100);
@@ -550,13 +550,13 @@ class PgBackwardIndexScanTest : public PgSingleTServerTest {
 };
 
 TEST_F_EX(PgSingleTServerTest,
-          YB_DISABLE_TEST_IN_TSAN(BackwardIndexScanNoIntents),
+          BackwardIndexScanNoIntents,
           PgBackwardIndexScanTest) {
   BackwardIndexScanTest(/* uncommitted_intents */ false);
 }
 
 TEST_F_EX(PgSingleTServerTest,
-          YB_DISABLE_TEST_IN_TSAN(BackwardIndexScanWithIntents),
+          BackwardIndexScanWithIntents,
           PgBackwardIndexScanTest) {
   BackwardIndexScanTest(/* uncommitted_intents */ true);
 }
@@ -636,7 +636,7 @@ class PgRocksDbIteratorLoggingTest : public PgSingleTServerTest {
 };
 
 TEST_F_EX(PgSingleTServerTest,
-          YB_DISABLE_TEST_IN_TSAN(IteratorLogPkOnly), PgRocksDbIteratorLoggingTest) {
+          IteratorLogPkOnly, PgRocksDbIteratorLoggingTest) {
   RunIteratorLoggingTest({
     .num_non_pk_columns = 0,
     .num_rows = 5,
@@ -647,7 +647,7 @@ TEST_F_EX(PgSingleTServerTest,
 }
 
 TEST_F_EX(PgSingleTServerTest,
-          YB_DISABLE_TEST_IN_TSAN(IteratorLogTwoNonPkCols), PgRocksDbIteratorLoggingTest) {
+          IteratorLogTwoNonPkCols, PgRocksDbIteratorLoggingTest) {
   RunIteratorLoggingTest({
     .num_non_pk_columns = 2,
     .num_rows = 5,

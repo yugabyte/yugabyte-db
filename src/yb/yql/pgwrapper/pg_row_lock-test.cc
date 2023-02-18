@@ -222,7 +222,7 @@ TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForKeyShar
       TestStatement::kDelete);
 }
 
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(RowLockWithoutTransaction)) {
+TEST_F(PgRowLockTest, RowLockWithoutTransaction) {
   auto conn = ASSERT_RESULT(Connect());
 
   auto status = conn.Execute(
@@ -243,7 +243,7 @@ class PgMiniTestNoTxnRetry : public PgRowLockTest {
 // A test performing manual transaction control on system tables.
 // ------------------------------------------------------------------------------------------------
 
-TEST_F_EX(PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestNoTxnRetry) {
+TEST_F_EX(PgRowLockTest, SystemTableTxnTest, PgMiniTestNoTxnRetry) {
 
   // Resolving conflicts between transactions on a system table.
   //
@@ -744,139 +744,139 @@ class PgRowLockTxnHelperSnapshotTest
 };
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(ReferencedTableUpdateSerializable),
+          ReferencedTableUpdateSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestReferencedTableUpdate();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(ReferencedTableUpdateSnapshot),
+          ReferencedTableUpdateSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestReferencedTableUpdate();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(RowKeyShareLockSerializable),
+          RowKeyShareLockSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestRowKeyShareLock();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(RowKeyShareLockSnapshot),
+          RowKeyShareLockSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestRowKeyShareLock();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(RowLockConflictMatrixSerializable),
+          RowLockConflictMatrixSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestRowLockConflictMatrix();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(RowLockConflictMatrixSnapshot),
+          RowLockConflictMatrixSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestRowLockConflictMatrix();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(CursorRowKeyShareLockSerializable),
+          CursorRowKeyShareLockSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestRowKeyShareLock("cur_name");
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(CursorRowKeyShareLockSnapshot),
+          CursorRowKeyShareLockSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestRowKeyShareLock("cur_name");
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(CursorRowLockConflictMatrixSerializable),
+          CursorRowLockConflictMatrixSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestRowLockConflictMatrix("cur_name");
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(CursorRowLockConflictMatrixSnapshot),
+          CursorRowLockConflictMatrixSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestRowLockConflictMatrix("cur_name");
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithPushdown),
+          SameColumnUpdateSerializableWithPushdown,
           PgMiniTestTxnHelperSerializable) {
   TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithPushdown),
+          SameColumnUpdateSnapshotWithPushdown,
           PgRowLockTxnHelperSnapshotTest) {
   TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithoutPushdown),
+          SameColumnUpdateSerializableWithoutPushdown,
           PgMiniTestTxnHelperSerializable) {
   TestSameColumnUpdate(false /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithoutPushdown),
+          SameColumnUpdateSnapshotWithoutPushdown,
           PgRowLockTxnHelperSnapshotTest) {
   TestSameColumnUpdate(false /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSerializable),
+          DuplicateInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSnapshot),
+          DuplicateInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestDuplicateInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSerializable),
+          DuplicateUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateUniqueIndexInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSnapshot),
+          DuplicateUniqueIndexInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestDuplicateUniqueIndexInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSerializable),
+          DuplicateNonUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateNonUniqueIndexInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSnapshot),
+          DuplicateNonUniqueIndexInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestDuplicateNonUniqueIndexInsert();
 }
 
 TEST_F_EX(
-  PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(SnapshotInOperatorLock),
+  PgRowLockTest, SnapshotInOperatorLock,
   PgRowLockTxnHelperSnapshotTest) {
   TestInOperatorLock();
 }
 
 TEST_F_EX(
-    PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(SerializableInOperatorLock),
+    PgRowLockTest, SerializableInOperatorLock,
     PgMiniTestTxnHelperSerializable) {
   TestInOperatorLock();
 }
 
 TEST_F_EX(
-    PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(PartialKeyRowLockConflict),
+    PgRowLockTest, PartialKeyRowLockConflict,
     PgMiniTestTxnHelperSerializable) {
   auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
   auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));

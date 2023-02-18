@@ -78,7 +78,7 @@ Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
 
 // The test checks that multiple writes into single table with single tablet
 // are performed with single RPC. Multiple scenarios are checked.
-TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(GeneralOptimization)) {
+TEST_F(PgOpBufferingTest, GeneralOptimization) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CreateTable(&conn));
 
@@ -134,7 +134,7 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(GeneralOptimization)) {
 
 // The test checks that buffering mechanism splits operations into batches with respect to
 // 'ysql_session_max_batch_size' configuration parameter. This parameter can be changed via GUC.
-TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(MaxBatchSize)) {
+TEST_F(PgOpBufferingTest, MaxBatchSize) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CreateTable(&conn));
   const size_t max_batch_size = 10;
@@ -173,7 +173,7 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(MaxBatchSize)) {
 
 // The test checks that buffering mechanism flushes currently buffered operations in case of
 // adding new operation for a row which already has a buffered operation on it.
-TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(ConflictingOps)) {
+TEST_F(PgOpBufferingTest, ConflictingOps) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CreateTable(&conn));
   ASSERT_OK(SetMaxBatchSize(&conn, 5));
@@ -195,7 +195,7 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(ConflictingOps)) {
 
 // The test checks that the 'duplicate key value violates unique constraint' error is correctly
 // handled for buffered operations. In the test row with existing ybctid is used (conflict by PK).
-TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(PKConstraintConflict)) {
+TEST_F(PgOpBufferingTest, PKConstraintConflict) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CreateTable(&conn));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(1)", kTable));
@@ -217,7 +217,7 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(PKConstraintConflict)) {
 // The test checks that the 'duplicate key value violates unique constraint' error is correctly
 // handled for buffered operations. In the test row with existing value for column with unique
 // index is used (conflict by unique index).
-TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(UniqueIndexConstraintConflict)) {
+TEST_F(PgOpBufferingTest, UniqueIndexConstraintConflict) {
   auto conn = ASSERT_RESULT(Connect());
   const std::string index_constraint = "index_constraint";
   ASSERT_OK(CreateTable(&conn));
@@ -239,7 +239,7 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(UniqueIndexConstraintConflict)
 // handled in case buffer contains multiple operations which violates different constraints.
 // In this case the first error should be reported. And also no operations should be flushed
 // after error detection.
-TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(MultipleConstraintsConflict)) {
+TEST_F(PgOpBufferingTest, MultipleConstraintsConflict) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CreateTable(&conn));
   const std::string aux_table = "aux_test";
@@ -265,7 +265,7 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(MultipleConstraintsConflict)) 
 
 // The test checks that insert into table with FK constraint raises non error in case of
 // non-transactional writes is activated.
-TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(FKCheckWithNonTxnWrites)) {
+TEST_F(PgOpBufferingTest, FKCheckWithNonTxnWrites) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
   ASSERT_OK(conn.Execute("CREATE TABLE ref_t(k INT PRIMARY KEY,"
@@ -286,7 +286,7 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(FKCheckWithNonTxnWrites)) {
 
 // The test checks that transaction will be rolled back after completion of all in-flight
 // operations.
-TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(TxnRollbackWithInFlightOperations)) {
+TEST_F(PgOpBufferingTest, TxnRollbackWithInFlightOperations) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t(k TEXT PRIMARY KEY)"));
   constexpr size_t kMaxItems = 10000;
