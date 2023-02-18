@@ -130,7 +130,7 @@ class PgTxnRF1Test : public PgTxnTest {
   }
 };
 
-TEST_F_EX(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(SelectRF1ReadOnlyDeferred), PgTxnRF1Test) {
+TEST_F_EX(PgTxnTest, SelectRF1ReadOnlyDeferred, PgTxnRF1Test) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE test (key INT)"));
@@ -141,7 +141,7 @@ TEST_F_EX(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(SelectRF1ReadOnlyDeferred), PgTxnRF
   ASSERT_OK(conn.Execute("COMMIT"));
 }
 
-TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflicts)) {
+TEST_F(PgTxnTest, SerializableReadWriteConflicts) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
   constexpr double kPriorityBound = 0.5;
@@ -160,7 +160,7 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflicts)) {
 // Test concurrently insert increasing values, and in parallel perform read of several recent
 // values.
 // Checking that reads could be serialized.
-TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(ReadRecentSet)) {
+TEST_F(PgTxnTest, ReadRecentSet) {
   auto conn = ASSERT_RESULT(Connect());
   constexpr int kWriters = 16;
   constexpr int kReaders = 16;
@@ -311,7 +311,7 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(ReadRecentSet)) {
 //
 // Important note -- sync point only works in debug mode. Non-debug test runs may not catch these
 // issues as reliably.
-TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(SelectForUpdateExclusiveRead)) {
+TEST_F(PgTxnTest, SelectForUpdateExclusiveRead) {
   constexpr int kNumThreads = 10;
   constexpr int kNumSleepSeconds = 1;
   TestThreadHolder thread_holder;

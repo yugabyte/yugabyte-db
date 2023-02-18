@@ -26,7 +26,7 @@ class AlterSchemaAbortTxnTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(AlterSchemaAbortTxnTest, YB_DISABLE_TEST_IN_TSAN(AlterSchemaFailure)) {
+TEST_F(AlterSchemaAbortTxnTest, AlterSchemaFailure) {
   auto resource_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(resource_conn.Execute("CREATE TABLE p (a INT, b INT)"));
   ASSERT_OK(resource_conn.Execute("INSERT INTO p VALUES (1)"));

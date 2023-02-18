@@ -1939,7 +1939,7 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   }
 }
 
-TEST_F(RemoteBootstrapITest, YB_DISABLE_TEST_IN_TSAN(TestRBSWithLazySuperblockFlush)) {
+TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   vector<string> ts_flags;
   // Enable lazy superblock flush.
   ts_flags.push_back("--lazily_flush_superblock=true");

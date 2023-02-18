@@ -2,13 +2,13 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Statement;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-@RunWith(YBTestRunnerNonTsanOnly.class)
+@RunWith(YBTestRunner.class)
 public class TestPgPushdownEfficiency extends BasePgSQLTestWithRpcMetric {
 
   @Test

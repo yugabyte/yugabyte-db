@@ -241,7 +241,7 @@ class LoadBalancerTablegroupsTest : public LoadBalancerColocatedTablesTest {
   }
 };
 
-TEST_F(LoadBalancerTablegroupsTest, YB_DISABLE_TEST_IN_TSAN(GlobalLoadBalancingWithTablegroups)) {
+TEST_F(LoadBalancerTablegroupsTest, GlobalLoadBalancingWithTablegroups) {
   // Start with 3 tables, 1 table per tablegroup.
   TestGlobalLoadBalancingWithColocatedTables();
 }
@@ -299,7 +299,7 @@ class LoadBalancerLegacyColocatedDBColocatedTablesTest : public LoadBalancerColo
 };
 
 TEST_F(LoadBalancerLegacyColocatedDBColocatedTablesTest,
-       YB_DISABLE_TEST_IN_TSAN(GlobalLoadBalancingWithLegacyColocatedDBColocatedTables)) {
+       GlobalLoadBalancingWithLegacyColocatedDBColocatedTables) {
   // Start with 3 legacy colocated databases with one table each, so 3 tablets in total.
   TestGlobalLoadBalancingWithColocatedTables();
 }

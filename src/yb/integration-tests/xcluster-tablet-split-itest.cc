@@ -895,7 +895,7 @@ class XClusterAutomaticTabletSplitITest : public XClusterTabletSplitITest {
 
 // This test is very flaky in TSAN as we spend a long time waiting for children tablets to be
 // ready, and will often then time out.
-TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_IN_TSAN(AutomaticTabletSplitting)) {
+TEST_F(XClusterAutomaticTabletSplitITest, AutomaticTabletSplitting) {
   constexpr auto num_active_tablets = 6;
 
   // Setup a new thread for continuous writing to producer.
