@@ -12,3 +12,4 @@ systemd_option: false
 yb_home_dir: "/home/{{ user_name }}"
 pg_max_mem_mb: 0
 install_retry_count: 5
+vm_max_map_count: 262144
