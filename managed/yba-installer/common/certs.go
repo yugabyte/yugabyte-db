@@ -13,7 +13,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -80,35 +79,26 @@ func generateCert(
 		log.Fatal(fmt.Sprintf("Failed to generate serial number: %v.", err))
 	}
 
-	subjectName := "Yugabyte Self-Signed CA"
-	if !isCA {
-		subjectName = host
-	}
 	resultCert = &x509.Certificate{
 		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{subjectName},
-		},
-		NotBefore:   notBefore,
-		NotAfter:    notAfter,
-		KeyUsage:    keyUsage,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IsCA:        isCA,
+		NotBefore:    notBefore,
+		NotAfter:     notAfter,
+		KeyUsage:     keyUsage,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IsCA:         isCA,
 	}
-
-	if !isCA {
+	if isCA {
+		resultCert.Subject.Organization = []string{"Yugabyte Self-Signed CA"}
+		resultCert.BasicConstraintsValid = true
+	} else {
 		hosts := strings.Split(host, ",")
 		for _, h := range hosts {
 			if ip := net.ParseIP(h); ip != nil {
-				(*resultCert).IPAddresses = append((*resultCert).IPAddresses, ip)
+				resultCert.IPAddresses = append(resultCert.IPAddresses, ip)
 			} else {
-				(*resultCert).DNSNames = append((*resultCert).DNSNames, h)
+				resultCert.DNSNames = append(resultCert.DNSNames, h)
 			}
 		}
-	}
-
-	if isCA {
-		(*resultCert).BasicConstraintsValid = true
 	}
 
 	var issuer *x509.Certificate
