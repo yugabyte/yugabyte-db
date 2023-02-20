@@ -139,9 +139,9 @@ libraryDependencies ++= Seq(
   "org.flywaydb" %% "flyway-play" % "4.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
-  "org.yaml" % "snakeyaml" % "1.29",
+  "org.yaml" % "snakeyaml" % "1.33",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.5.6",
+  "org.springframework.security" % "spring-security-core" % "5.8.1",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
