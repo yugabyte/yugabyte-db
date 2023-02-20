@@ -109,6 +109,9 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
       const primaryIndex = payload.clusters.findIndex(
         (c: Cluster) => c.clusterType === ClusterType.PRIMARY
       );
+      const asyncIndex = payload.clusters.findIndex(
+        (c: Cluster) => c.clusterType === ClusterType.ASYNC
+      );
       const masterPlacement = _.get(formData, MASTER_PLACEMENT_FIELD);
       //update fields which are allowed to edit
       const userIntent = payload.clusters[primaryIndex].userIntent;
@@ -119,6 +122,14 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
       userIntent.deviceInfo = _.get(formData, DEVICE_INFO_FIELD);
       userIntent.instanceTags = transformTagsArrayToObject(_.get(formData, USER_TAGS_FIELD, []));
       userIntent.dedicatedNodes = masterPlacement === MasterPlacementMode.DEDICATED;
+
+      //if async cluster exists
+      if (asyncIndex > -1) {
+        //copy user tags value from primary to read replica
+        payload.clusters[asyncIndex].userIntent.instanceTags = transformTagsArrayToObject(
+          _.get(formData, USER_TAGS_FIELD, [])
+        );
+      }
 
       // Update master instance type and device information in case of dedicated mode
       if (userIntent.dedicatedNodes) {
