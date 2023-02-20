@@ -307,7 +307,7 @@ public class Region extends Model {
   public static List<Region> fetchValidRegions(
       UUID customerUUID, UUID providerUUID, int minZoneCount) {
     String regionQuery =
-        " select r.uuid, r.code, r.name"
+        " select r.uuid, r.code, r.name, r.provider_uuid"
             + "   from region r join provider p on p.uuid = r.provider_uuid "
             + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
             + "  where p.uuid = :p_UUID and p.customer_uuid = :c_UUID"
@@ -315,7 +315,8 @@ public class Region extends Model {
             + " having count(zone.uuid) >= "
             + minZoneCount;
 
-    RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
+    RawSql rawSql =
+        RawSqlBuilder.parse(regionQuery).columnMapping("r.provider_uuid", "provider.uuid").create();
     Query<Region> query = Ebean.find(Region.class);
     query.setRawSql(rawSql);
     query.setParameter("p_UUID", providerUUID);
