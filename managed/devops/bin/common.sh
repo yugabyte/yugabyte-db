@@ -325,6 +325,7 @@ activate_virtualenv() {
   export SITE_PACKAGES=$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
   PYTHON_EXECUTABLE="python"
   log "Using virtualenv python executable now."
+  run_pip install --upgrade pip > /dev/null
 
   # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
   unset PYTHONPATH
