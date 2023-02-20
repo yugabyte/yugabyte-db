@@ -215,10 +215,10 @@ export const UniverseForm: FC<UniverseFormProps> = ({
             <SecurityConfiguration />
             <AdvancedConfiguration />
             <GFlags />
-            <UserTags />
             <HelmOverrides />
           </>
         )}
+        <UserTags />
       </>
     );
   };

@@ -61,7 +61,7 @@ export const CloudConfiguration: FC = () => {
     : null;
 
   return (
-    <Box className={classes.sectionContainer} data-testid="cloud-config-section">
+    <Box className={classes.sectionContainer} data-testid="CloudConfiguration-Container">
       <Box display="flex" flexDirection="row">
         <Box>
           <Grid container spacing={3}>
