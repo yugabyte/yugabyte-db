@@ -71,6 +71,9 @@ export const TotalNodesField = ({ disabled }: TotalNodesFieldProps): ReactElemen
           name={TOTAL_NODES_FIELD}
           type="number"
           disabled={disabled}
+          rules={{
+            required: !disabled ? (t('universeForm.validation.fieldRequired') as string) : ''
+          }}
           inputProps={{
             'data-testid': 'TotalNodesField-TServer-Input',
             min: replicationFactor
