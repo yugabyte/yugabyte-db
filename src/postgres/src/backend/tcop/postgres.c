@@ -2703,6 +2703,8 @@ quickdie(SIGNAL_ARGS)
 	 * Ideally this should be ereport(FATAL), but then we'd not get control
 	 * back...
 	 */
+
+#ifndef THREAD_SANITIZER
 	ereport(WARNING,
 			(errcode(ERRCODE_CRASH_SHUTDOWN),
 			 errmsg("terminating connection because of crash of another server process"),
@@ -2712,10 +2714,7 @@ quickdie(SIGNAL_ARGS)
 					   " shared memory."),
 			 errhint("In a moment you should be able to reconnect to the"
 					 " database and repeat your command.")));
-
-	if (IsYugaByteEnabled()) {
-		YBOnPostgresBackendShutdown();
-	}
+#endif
 
 	/*
 	 * We DO NOT want to run proc_exit() or atexit() callbacks -- we're here
@@ -2750,9 +2749,8 @@ die(SIGNAL_ARGS)
 		ProcDiePending = true;
 	}
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
 		YBCInterruptPgGate();
-	}
 
 	/* If we're still here, waken anything waiting on the process latch */
 	SetLatch(MyLatch);
