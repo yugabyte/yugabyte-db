@@ -78,6 +78,7 @@ namespace yb {
 class DeletedColumnPB;
 
 static const int kNoDefaultTtl = -1;
+static const int kYbHashCodeColId = std::numeric_limits<int16_t>::max() - 1;
 
 // Struct for storing information about deleted columns for cleanup.
 struct DeletedColumn {
@@ -795,6 +796,18 @@ class Schema {
     }
     cotable_id_ = cotable_id;
     UpdateDocKeyOffsets();
+  }
+
+  bool has_yb_hash_code() const {
+    return num_hash_key_columns() > 0;
+  }
+
+  size_t num_dockey_components() const {
+    return num_key_columns() + has_yb_hash_code();
+  }
+
+  size_t get_dockey_component_idx(size_t col_idx) const {
+    return col_idx == kYbHashCodeColId ? 0 : col_idx + has_yb_hash_code();
   }
 
   // Gets the colocation ID of the non-primary table this schema belongs to in a

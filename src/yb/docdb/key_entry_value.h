@@ -27,6 +27,7 @@
 
 #include "yb/docdb/docdb_encoding_fwd.h"
 
+#include "yb/gutil/integral_types.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/net/inetaddress.h"
@@ -96,6 +97,7 @@ class KeyEntryValue {
 
   bool IsString() const;
   bool IsInt32() const;
+  bool IsUInt16Hash() const;
   bool IsInt64() const;
   bool IsFloat() const;
   bool IsDouble() const;
@@ -110,6 +112,7 @@ class KeyEntryValue {
   bool IsTimestamp() const;
 
   const std::string& GetString() const;
+  uint16_t GetUInt16Hash() const;
   int32_t GetInt32() const;
   int64_t GetInt64() const;
   float GetFloat() const;

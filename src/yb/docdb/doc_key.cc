@@ -1283,15 +1283,9 @@ Result<bool> DocKeyDecoder::HasPrimitiveValue(AllowSpecial allow_special) {
   return docdb::HasPrimitiveValue(&input_, allow_special);
 }
 
-Status DocKeyDecoder::DecodeToRangeGroup() {
+Status DocKeyDecoder::DecodeToKeys() {
   RETURN_NOT_OK(DecodeCotableId());
   RETURN_NOT_OK(DecodeColocationId());
-  if (VERIFY_RESULT(DecodeHashCode())) {
-    while (VERIFY_RESULT(HasPrimitiveValue())) {
-      RETURN_NOT_OK(DecodeKeyEntryValue());
-    }
-  }
-
   return Status::OK();
 }
 
