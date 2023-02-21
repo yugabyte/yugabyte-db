@@ -77,20 +77,14 @@ export const Header: FC = () => {
               {t('common.analytics')}
             </Typography>
           </Route>
-          <Route path={`/overview`}>
+          <Route path={`/cluster`}>
             <Typography variant="h4" color="inherit">
-              {t('common.overview')}
+              {t('common.cluster')}
             </Typography>
           </Route>
           <Route path={`/databases`}>
             <Typography variant="h4" color="inherit">
               {t('common.databases')}
-            </Typography>
-          </Route>
-          <Route path={`/cluster`}>
-            {/* <ProjectPicker /> */}
-            <Typography variant="h4">
-                {t('common.cluster')}
             </Typography>
           </Route>
           <Route path={`/performance`}>

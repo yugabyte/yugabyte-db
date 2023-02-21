@@ -2,7 +2,7 @@ import React, { FC } from 'react';
 import { Switch, Route, useRouteMatch } from 'react-router-dom';
 import { OverviewDetails } from '@app/features/clusters/details/overview/OverviewDetails';
 
-export const OverviewRouting: FC = () => {
+export const ClusterRouting: FC = () => {
   const { path } = useRouteMatch<App.RouteParams>();
 
   return (
