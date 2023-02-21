@@ -6,6 +6,7 @@ import { YBLabel, YBToggle, YBTooltip } from '../../../../../../components';
 import { UniverseFormData, ExposingServiceTypes } from '../../../utils/dto';
 import { EXPOSING_SERVICE_FIELD } from '../../../utils/constants';
 import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface NetworkAccessFieldProps {
   disabled: boolean;
@@ -14,6 +15,7 @@ interface NetworkAccessFieldProps {
 export const NetworkAccessField = ({ disabled }: NetworkAccessFieldProps): ReactElement => {
   const { setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const classes = useFormFieldStyles();
   // Tooltip text
   const networkAccessTooltipText = t('universeForm.advancedConfig.enableNetworkAccessHelper');
   //watchers
@@ -28,7 +30,7 @@ export const NetworkAccessField = ({ disabled }: NetworkAccessFieldProps): React
 
   return (
     <Box display="flex" width="100%" data-testid="NetworkAccessField-Container">
-      <YBLabel dataTestId="NetworkAccessField-Label" width="224px">
+      <YBLabel dataTestId="NetworkAccessField-Label" className={classes.advancedConfigLabel}>
         {t('universeForm.advancedConfig.enableNetworkAccess')}
         &nbsp;
         <YBTooltip title={networkAccessTooltipText}>

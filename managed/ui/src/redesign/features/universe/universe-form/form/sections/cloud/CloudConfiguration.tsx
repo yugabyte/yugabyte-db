@@ -3,7 +3,7 @@ import { useQuery } from 'react-query';
 import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
-import { Box, Grid, Typography } from '@material-ui/core';
+import { Box, Grid, makeStyles, Typography } from '@material-ui/core';
 import {
   DefaultRegionField,
   MasterPlacementField,
@@ -20,8 +20,15 @@ import { getPrimaryCluster } from '../../../utils/helpers';
 import { ClusterModes, ClusterType, RunTimeConfigEntry } from '../../../utils/dto';
 import { useSectionStyles } from '../../../universeMainStyle';
 
+const useStyles = makeStyles((theme) => ({
+  placementFieldContainer: {
+    width: theme.spacing(70)
+  }
+}));
+
 export const CloudConfiguration: FC = () => {
   const classes = useSectionStyles();
+  const helperClasses = useStyles();
   const { t } = useTranslation();
   const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
   const customerUUID = currentCustomer?.data?.uuid;
@@ -55,7 +62,7 @@ export const CloudConfiguration: FC = () => {
 
   return (
     <Box className={classes.sectionContainer} data-testid="cloud-config-section">
-      <Box flex={1} display="flex" flexDirection="row">
+      <Box display="flex" flexDirection="row">
         <Box>
           <Grid container spacing={3}>
             <Grid item lg={12}>
@@ -97,7 +104,7 @@ export const CloudConfiguration: FC = () => {
             </Grid>
           </Grid>
         </Box>
-        <Box ml={5}>
+        <Box ml={5} className={helperClasses.placementFieldContainer}>
           <Grid container spacing={3}>
             <Grid item lg={12}>
               <PlacementsField disabled={false} isPrimary={isPrimary} />
