@@ -44,6 +44,8 @@ var installCmd = &cobra.Command{
 			log.Info("Completed installing component " + name)
 		}
 
+		common.WaitForYBAReady()
+
 		var statuses []common.Status
 		for _, service := range services {
 			status := service.Status()
