@@ -6,7 +6,7 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-use_chrony: false
+use_chrony: true
 air_gap: false
 systemd_option: false
 yb_home_dir: "/home/{{ user_name }}"
