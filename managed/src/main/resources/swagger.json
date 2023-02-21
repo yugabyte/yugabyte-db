@@ -6174,7 +6174,7 @@
           "description" : "Path to x86_64 package",
           "type" : "string"
         },
-        "x86_64Checksum" : {
+        "x86_64_checksum" : {
           "description" : "Checksum for x86_64 package",
           "type" : "string"
         }
