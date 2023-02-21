@@ -4868,6 +4868,7 @@
           "type" : "string"
         },
         "kubernetesServiceAccount" : {
+          "description" : "DEPRECATED: kubernetes service account is not needed.",
           "type" : "string"
         },
         "kubernetesStorageClass" : {
@@ -5161,6 +5162,7 @@
           "type" : "string"
         },
         "kubernetesServiceAccount" : {
+          "description" : "DEPRECATED: kubernetes service account is not needed.",
           "type" : "string"
         },
         "kubernetesStorageClass" : {

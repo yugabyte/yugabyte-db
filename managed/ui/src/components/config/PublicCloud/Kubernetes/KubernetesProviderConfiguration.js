@@ -82,7 +82,6 @@ class KubernetesProviderConfiguration extends Component {
           zones: region.zones,
           configPath: providerData.config['KUBECONFIG'],
           namespace: providerData.config['KUBECONFIG_NAMESPACE'],
-          serviceAccount: providerData.config['KUBECONFIG_SERVICE_ACCOUNT'],
           type: providerTypeMetadata?.name
         };
       })
