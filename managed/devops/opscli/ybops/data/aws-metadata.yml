@@ -111,6 +111,10 @@ regions:
     cidr_prefix: "10.112"
     image: ami-0d8c35ca5db3d075d
     arm_image: ami-0ca3c60f15c43d0da
+  ap-southeast-3:
+    cidr_prefix: "10.113"
+    image: ami-0763197ed84a0b1b5
+    arm_image: ami-0803d123f92fe63b6
 sg_rules:
   - ip_protocol: tcp
     from_port: 22

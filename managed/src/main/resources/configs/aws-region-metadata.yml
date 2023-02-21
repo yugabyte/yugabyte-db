@@ -86,3 +86,7 @@ eu-north-1:
   name: Europe (Stockholm)
   latitude: 59.329323
   longitude: 18.068581
+ap-southeast-3:
+  name: Asia Pacific (Jakarta)
+  latitude: -6.200000
+  longitude: 106.816666
