@@ -95,7 +95,6 @@ class CreateKubernetesConfiguration extends Component {
             : providerTypeMetadata
             ? providerTypeMetadata.code
             : 'gke',
-          KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
           KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
         };
 
@@ -202,7 +201,6 @@ class CreateKubernetesConfiguration extends Component {
       // preselect the only available provider type, if any
       providerType: providerTypeOptions.length === 1 ? providerTypeOptions[0] : null,
       accountName: '',
-      serviceAccount: '',
       pullSecret: null,
       regionCode: '',
       zoneLabel: '',
@@ -224,8 +222,6 @@ class CreateKubernetesConfiguration extends Component {
       accountName: Yup.string()
         .required('Config name is Required')
         .matches(ACCEPTABLE_CHARS, 'Config Name cannot contain special characters except - and _'),
-
-      serviceAccount: Yup.string(),
 
       kubeConfig: Yup.mixed().nullable(),
 
@@ -344,19 +340,6 @@ class CreateKubernetesConfiguration extends Component {
                             content={
                               'Use this setting to set a kube config for all regions and zones.'
                             }
-                          />
-                        </Col>
-                      </Row>
-                      <Row className="config-provider-row">
-                        <Col lg={3}>
-                          <div className="form-item-custom-label">Service Account</div>
-                        </Col>
-                        <Col lg={7}>
-                          <Field
-                            name="serviceAccount"
-                            placeholder="Service Account name"
-                            component={YBFormInput}
-                            className={'kube-provider-input-field'}
                           />
                         </Col>
                       </Row>

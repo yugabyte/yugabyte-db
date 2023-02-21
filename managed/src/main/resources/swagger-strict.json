@@ -4852,9 +4852,6 @@
         "kubernetesPullSecretName" : {
           "type" : "string"
         },
-        "kubernetesServiceAccount" : {
-          "type" : "string"
-        },
         "kubernetesStorageClass" : {
           "type" : "string"
         }
@@ -5143,9 +5140,6 @@
           "type" : "string"
         },
         "kubernetesPullSecretName" : {
-          "type" : "string"
-        },
-        "kubernetesServiceAccount" : {
           "type" : "string"
         },
         "kubernetesStorageClass" : {

@@ -761,4 +761,57 @@ public class ShellKubernetesManager extends KubernetesManager {
 
     return execCommandProcessErrors(config, commandList);
   }
+
+  /**
+   * Best effort to get the user associated with the kubeconfig provided by config. We leverage the
+   * command `kubectl config get-users` and assume the first user found is the user we care about.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @return the first user in the kubeconfig.
+   */
+  @Override
+  public String getKubeconfigUser(Map<String, String> config) {
+    List<String> commandList =
+        new ArrayList<String>(Arrays.asList("kubectl", "config", "get-users"));
+    ShellResponse response = execCommand(config, commandList);
+    response.processErrors();
+
+    // Best effort to return the first user we find.
+    for (String rawKubeconfigUser : response.message.split("\n")) {
+      // Skip the header.
+      if (rawKubeconfigUser.equalsIgnoreCase("name")) {
+        continue;
+      }
+      return rawKubeconfigUser;
+    }
+    // No users found
+    return "";
+  }
+
+  /**
+   * Best effort to get the cluster associated with the kubeconfig provided by config. We leverage
+   * the command `kubectl config get-clusters` and assume the first cluster found is the user we
+   * care about.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @return the first cluster in the kubeconfig.
+   */
+  @Override
+  public String getKubeconfigCluster(Map<String, String> config) {
+    List<String> commandList =
+        new ArrayList<String>(Arrays.asList("kubectl", "config", "get-clusters"));
+    ShellResponse response = execCommand(config, commandList);
+    response.processErrors();
+
+    // Best effort to return the first cluster we find.
+    for (String rawKubeconfigCluster : response.message.split("\n")) {
+      // Skip the header.
+      if (rawKubeconfigCluster.equalsIgnoreCase("name")) {
+        continue;
+      }
+      return rawKubeconfigCluster;
+    }
+    // No clusters found
+    return "";
+  }
 }
