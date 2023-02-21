@@ -142,8 +142,8 @@ public class ReleaseManager {
       public String x86_64;
 
       @ApiModelProperty(value = "Checksum for x86_64 package")
-      @JsonAlias("x86_64_checksum")
-      public String x86_64Checksum;
+      @JsonAlias("x86_64Checksum")
+      public String x86_64_checksum;
 
       @ApiModelProperty(value = "Path to the Helm chart package")
       @Constraints.Pattern(
