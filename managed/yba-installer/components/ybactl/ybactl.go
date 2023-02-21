@@ -45,10 +45,8 @@ func (yc *YbaCtlComponent) Install() error {
 		common.MkdirAll(usrBin, 0755)
 		common.CreateSymlink(common.YbactlInstallDir(), usrBin, common.GoBinaryName)
 		log.Info("Installed yba-ctl at " + usrBin + ". Please ensure this is in your PATH env, or " +
-			" move yba-ctl into a directory that is already in your path.")
+			"move yba-ctl into a directory that is already in your path.")
 	}
-
-	common.WaitForYBAReady()
 
 	yc.MarkYBAInstallDone()
 	return nil
