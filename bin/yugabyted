@@ -394,14 +394,30 @@ class ControlScript(object):
 
         self.start_processes()
 
+    # Kills all processes related to yugabyted
+    def kill_all_procs(self):
+        pid = self.script.get_pid()
+        if pid:
+            pgid = os.getpgid(pid)
+            if not pgid:
+                Output.log("PGID could not be found for {} process".format(SCRIPT_NAME) +
+                    "with PID {}. Is {} running?".format(pid, SCRIPT_NAME))
+                return ("No PGID", pid)
+            else:
+                try:
+                    os.killpg(pgid, SIGTERM)
+                except OSError as err:
+                    return (err, pid)
+        self.script.delete_pidfile()
+        return (None, pid)
+
     # Kills currently running yugabyted process if it exists.
     def stop(self, *args):
-        (err, pid) = self.script.kill()
+        (err, pid) = self.kill_all_procs()
         if err:
-            Output.print_out(
+            Output.log_error_and_exit(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
                     SCRIPT_NAME, err, self.script.pidfile))
-            sys.exit(1)
         elif pid:
             self.script.wait_until_stop(pid)
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
@@ -416,7 +432,7 @@ class ControlScript(object):
 
     # Destroy the YugabyteDB cluster.
     def destroy(self):
-        (err, pid) = self.script.kill()
+        (err, pid) = self.kill_all_procs()
         if err:
             Output.log_error_and_exit(
                 "Failed to shut down {}: {}. Please check PID in {}".format(
@@ -3742,7 +3758,6 @@ class ProcessManager(object):
         def temp_func():
             return self.is_proc_running(pid)
         retry_op(temp_func, timeout=60)
-        time.sleep(2)
         return
 
     # Delete corresponding pidfile for this process.
