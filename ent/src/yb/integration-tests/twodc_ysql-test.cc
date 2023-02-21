@@ -17,6 +17,7 @@
 #include <utility>
 #include <chrono>
 #include <boost/assign.hpp>
+#include "yb/integration-tests/xcluster_ysql_test_base.h"
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
@@ -156,12 +157,11 @@ struct TwoDCYsqlTestParams {
   int batch_size;
 };
 
-class TwoDCYsqlTest : public TwoDCTestBase
-                    , public testing::WithParamInterface<TwoDCYsqlTestParams> {
+class TwoDCYsqlTest : public XClusterYsqlTest,
+                      public testing::WithParamInterface<TwoDCYsqlTestParams> {
  public:
   void SetUp() override {
-    YB_SKIP_TEST_IN_TSAN();
-    TwoDCTestBase::SetUp();
+    XClusterYsqlTest::SetUp();
     FLAGS_ysql_legacy_colocated_database_creation = false;
   }
 
@@ -190,7 +190,7 @@ class TwoDCYsqlTest : public TwoDCTestBase
     opts.num_tablet_servers = replication_factor;
     opts.num_masters = num_masters;
 
-    RETURN_NOT_OK(InitClusters(opts, true /* init_postgres */));
+    RETURN_NOT_OK(InitClusters(opts));
 
     return Status::OK();
   }
@@ -1226,7 +1226,6 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransaction
 
 class TwoDCYSqlTestStressTest : public TwoDCYSqlTestConsistentTransactionsTest {
   void SetUp() override {
-    YB_SKIP_TEST_IN_TSAN();
     FLAGS_rpc_workers_limit = 8;
     FLAGS_tablet_server_svc_queue_length = 10;
     TwoDCYSqlTestConsistentTransactionsTest::SetUp();
@@ -2741,7 +2740,6 @@ TEST_P(TwoDCYsqlTest, SetupReplicationWithMaterializedViews) {
 }
 
 TEST_P(TwoDCYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
-  YB_SKIP_TEST_IN_TSAN();
   FLAGS_ysql_enable_packed_row = true;
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
