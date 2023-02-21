@@ -328,7 +328,7 @@ func HandleUpgradeScript(ctx context.Context, config *util.Config) error {
 		util.DefaultShell,
 		[]string{
 			util.UpgradeScriptPath(),
-			"--type",
+			"--command",
 			"upgrade",
 		},
 	)

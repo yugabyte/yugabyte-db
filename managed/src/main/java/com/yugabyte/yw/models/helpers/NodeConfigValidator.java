@@ -390,6 +390,7 @@ public class NodeConfigValidator {
             "ssh",
             "-i",
             keyInfo.privateKey,
+            "-oStrictHostKeyChecking=no",
             "-p",
             Integer.toString(provider.details.sshPort),
             String.format("%s@%s", sshUser, nodeData.ip),
