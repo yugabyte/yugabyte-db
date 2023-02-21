@@ -568,6 +568,11 @@ PgIsolationLevel PgSession::GetIsolationLevel() {
   return pg_txn_manager_->GetPgIsolationLevel();
 }
 
+bool PgSession::IsHashBatchingEnabled() {
+  return yb_enable_hash_batch_in &&
+      GetIsolationLevel() != PgIsolationLevel::SERIALIZABLE;
+}
+
 Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
