@@ -61,9 +61,10 @@ struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  HybridTime used_in_txn_limit;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, catalog_read_time);
+    return YB_STRUCT_TO_STRING(status, catalog_read_time, used_in_txn_limit);
   }
 };
 
