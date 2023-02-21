@@ -21,40 +21,42 @@ export const UserTagsField = (_: UserTagsFieldProps): ReactElement => {
 
   return (
     <Grid container direction="column" data-testid="UserTagsField-Container">
-      <Box display="flex" flexDirection="column" mb={fields?.length ? 2 : 0}>
+      <Box display="flex" flexDirection="column" mb={fields?.length ? 2 : 0} gridGap="8px">
         {fields.map((field, index) => {
           return (
-            <Grid container key={field.id} spacing={1} alignItems="center">
-              <Grid item xs>
-                <YBInputField
-                  name={`${USER_TAGS_FIELD}.${index}.name` as FieldArrayPath<InstanceTag>}
-                  control={control}
-                  fullWidth
-                  inputProps={{
-                    'data-testid': `UniverseNameField-NameInput${index}`
-                  }}
-                />
+            <Box>
+              <Grid container key={field.id} spacing={1} alignItems="center">
+                <Grid item xs>
+                  <YBInputField
+                    name={`${USER_TAGS_FIELD}.${index}.name` as FieldArrayPath<InstanceTag>}
+                    control={control}
+                    fullWidth
+                    inputProps={{
+                      'data-testid': `UniverseNameField-NameInput${index}`
+                    }}
+                  />
+                </Grid>
+                <Grid item xs>
+                  <YBInputField
+                    name={`${USER_TAGS_FIELD}.${index}.value` as FieldArrayPath<InstanceTag>}
+                    control={control}
+                    fullWidth
+                    inputProps={{
+                      'data-testid': `UniverseNameField-ValueInput${index}`
+                    }}
+                  />
+                </Grid>
+                <Grid item>
+                  <IconButton
+                    color="primary"
+                    data-testid={`UniverseNameField-RemoveButton${index}`}
+                    onClick={() => remove(index)}
+                  >
+                    <CloseIcon />
+                  </IconButton>
+                </Grid>
               </Grid>
-              <Grid item xs>
-                <YBInputField
-                  name={`${USER_TAGS_FIELD}.${index}.value` as FieldArrayPath<InstanceTag>}
-                  control={control}
-                  fullWidth
-                  inputProps={{
-                    'data-testid': `UniverseNameField-ValueInput${index}`
-                  }}
-                />
-              </Grid>
-              <Grid item>
-                <IconButton
-                  color="primary"
-                  data-testid={`UniverseNameField-RemoveButton${index}`}
-                  onClick={() => remove(index)}
-                >
-                  <CloseIcon />
-                </IconButton>
-              </Grid>
-            </Grid>
+            </Box>
           );
         })}
       </Box>

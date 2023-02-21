@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
-import { Box, Grid, MenuItem } from '@material-ui/core';
+import { Box, Grid, MenuItem, makeStyles } from '@material-ui/core';
 import { YBLabel, YBSelect } from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import {
@@ -11,7 +11,7 @@ import {
   getStorageTypeOptions,
   getIopsByStorageType
 } from './VolumeInfoFieldHelper';
-import { StorageType, UniverseFormData, CloudType, VolumeType } from '../../../utils/dto';
+import { StorageType, UniverseFormData, CloudType } from '../../../utils/dto';
 import {
   DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
@@ -20,12 +20,23 @@ import {
   INSTANCE_TYPE_FIELD
 } from '../../../utils/constants';
 
+const useStyles = makeStyles((theme) => ({
+  storageTypeLabelField: {
+    minWidth: theme.spacing(21.25)
+  },
+  storageTypeSelectField: {
+    maxWidth: theme.spacing(35.25),
+    minWidth: theme.spacing(30)
+  }
+}));
+
 interface StorageTypeFieldProps {
   disableStorageType: boolean;
 }
 
 export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType }) => {
   const { t } = useTranslation();
+  const classes = useStyles();
 
   // watchers
   const fieldValue = useWatch({ name: DEVICE_INFO_FIELD });
@@ -99,20 +110,20 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType
   const storageType = fieldValue.storageType;
 
   const renderStorageType = () => {
-    if (
-      [CloudType.gcp, CloudType.azu].includes(provider?.code) ||
-      volumeType === VolumeType.EBS ||
-      masterVolumeType === VolumeType.EBS
-    )
+    if ([CloudType.gcp, CloudType.azu].includes(provider?.code))
       return (
         <Box display="flex">
-          <YBLabel dataTestId="VolumeInfoFieldDedicated-Common-StorageTypeLabel">
+          <YBLabel
+            dataTestId="VolumeInfoFieldDedicated-Common-StorageTypeLabel"
+            className={classes.storageTypeLabelField}
+          >
             {provider?.code === CloudType.aws
               ? t('universeForm.instanceConfig.ebs')
               : t('universeForm.instanceConfig.ssd')}
           </YBLabel>
           <Box flex={1}>
             <YBSelect
+              className={classes.storageTypeSelectField}
               fullWidth
               disabled={disableStorageType}
               value={storageType}
