@@ -94,7 +94,7 @@ export const MainLayout: FC = () => {
               <Route path={'/debug'} component={GettingStarted} />
               <Route exact path={'/'} render={() => {
                   return (
-                    <Redirect to="/cluster" />
+                    <Redirect to="/cluster/tabOverview" />
                   )
               }
 

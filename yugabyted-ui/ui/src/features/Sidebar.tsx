@@ -205,7 +205,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
     <>
       <div className={clsx(classes.filler, isCollapsed && classes.collapsed)} />
       <div className={clsx(classes.sidebar, isCollapsed && classes.collapsed)}>
-        <Link to="/cluster" className={classes.linkRow}>
+        <Link to="/" className={classes.linkRow}>
           <YBLogo className={classes.logoIcon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
             {t('common.appTitle')}
@@ -227,7 +227,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         )} */}
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/cluster`}
+          to={`/cluster/tabOverview`}
           isActive={(_, location) => /^\/cluster/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
