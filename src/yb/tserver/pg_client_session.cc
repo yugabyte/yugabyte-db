@@ -303,6 +303,7 @@ struct PerformData {
   PgClientSessionOperations ops;
   PgTableCache* table_cache;
   PgClientSession::UsedReadTimePtr used_read_time;
+  HybridTime used_in_txn_limit;
 
   void FlushDone(client::FlushStatus* flush_status) {
     auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
@@ -344,6 +345,9 @@ struct PerformData {
       }
       op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
     }
+    if (used_in_txn_limit) {
+      resp->set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
+    }
 
     return Status::OK();
   }
@@ -355,6 +359,14 @@ client::YBSessionPtr CreateSession(
   result->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
   result->set_allow_local_calls_in_curr_thread(false);
   return result;
+}
+
+HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
+  if (!options.has_in_txn_limit_ht()) {
+    return HybridTime();
+  }
+  auto in_txn_limit = HybridTime::FromPB(options.in_txn_limit_ht().value());
+  return in_txn_limit ? in_txn_limit : clock->Now();
 }
 
 } // namespace
@@ -584,7 +596,10 @@ Status PgClientSession::FinishTransaction(
 
 Status PgClientSession::Perform(
     const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-  auto session_info = VERIFY_RESULT(SetupSession(req, context->GetClientDeadline()));
+  VLOG_WITH_PREFIX(5) << "Perform req=" << req.ShortDebugString();
+  const auto in_txn_limit = GetInTxnLimit(req.options(), clock_.get());
+  VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
+  auto session_info = VERIFY_RESULT(SetupSession(req, context->GetClientDeadline(), in_txn_limit));
   auto* session = session_info.first;
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &table_cache_));
   auto data = std::make_shared<PerformData>(PerformData {
@@ -594,7 +609,8 @@ Status PgClientSession::Perform(
     .context = std::move(*context),
     .ops = std::move(ops),
     .table_cache = &table_cache_,
-    .used_read_time = session_info.second
+    .used_read_time = session_info.second,
+    .used_in_txn_limit = in_txn_limit
   });
   session->FlushAsync([data](client::FlushStatus* flush_status) {
     data->FlushDone(flush_status);
@@ -629,7 +645,8 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
 }
 
 Result<std::pair<client::YBSession*, PgClientSession::UsedReadTimePtr>>
-PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint deadline) {
+PgClientSession::SetupSession(
+    const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit) {
   const auto& options = req.options();
   PgClientSessionKind kind;
   if (options.use_catalog_session()) {
@@ -696,12 +713,12 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
     session->DeferReadPoint();
   }
 
+  // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not
+  // cause any issue, but should we reset for safety?
   if (!options.ddl_mode() && !options.use_catalog_session()) {
     txn_serial_no_ = options.txn_serial_no();
-
-    const auto in_txn_limit = HybridTime::FromPB(options.in_txn_limit_ht());
     if (in_txn_limit) {
-      VLOG_WITH_PREFIX(3) << "In txn limit: " << in_txn_limit;
+      // TODO: Shouldn't the below logic for DDL transactions as well?
       session->SetInTxnLimit(in_txn_limit);
     }
   }

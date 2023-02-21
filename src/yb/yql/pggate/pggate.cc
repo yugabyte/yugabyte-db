@@ -190,21 +190,22 @@ class PrecastRequestSender {
  public:
   Result<PgDocResponse> Send(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, bool force_non_bufferable) {
+      HybridTime in_txn_limit, bool force_non_bufferable) {
     if (!collecting_mode_) {
       auto future = VERIFY_RESULT(session->RunAsync(
-          ops, ops_count, table, &in_txn_limit, force_non_bufferable));
-      return PgDocResponse(std::move(future), in_txn_limit);
+          ops, ops_count, table, in_txn_limit, force_non_bufferable));
+      return PgDocResponse(std::move(future));
     }
-    // For now PrecastRequestSender can work with zero in txn limit only.
-    // Zero read time means that current time should be used as in txn limit.
-    RSTATUS_DCHECK(!in_txn_limit, IllegalState, "Only zero read time is expected");
+    // For now PrecastRequestSender can work only with a new in txn limit set to the current time
+    // for each batch of ops. It doesn't use a single in txn limit for all read ops in a statement.
+    // TODO: Expalin why is this the case because it differs from requirement 1 in
+    // src/yb/yql/pggate/README
+    RSTATUS_DCHECK(!in_txn_limit, IllegalState, "Only zero is expected");
     for (auto end = ops + ops_count; ops != end; ++ops) {
       ops_.emplace_back(*ops, table);
     }
     if (!provider_state_) {
-      provider_state_ = std::make_shared<ResponseProvider::State>(
-          rpc::CallResponsePtr(), 0 /* in_txn_limit */);
+      provider_state_ = std::make_shared<ResponseProvider::State>();
     }
     return PgDocResponse(std::make_unique<ResponseProvider>(provider_state_));
   }
@@ -231,8 +232,8 @@ class PrecastRequestSender {
           }
           auto& info = *i++;
           return PgSession::TableOperation{.operation = &info.operation, .table = info.table};
-        }), &provider_state_->in_txn_limit, false /* force_non_bufferable */));
-    provider_state_->response = VERIFY_RESULT(perform_future.Get());
+        }), HybridTime(), false /* force_non_bufferable */));
+    *provider_state_ = VERIFY_RESULT(perform_future.Get());
     return Status::OK();
   }
 
@@ -256,7 +257,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, bool force_non_bufferable) {
+      HybridTime in_txn_limit, bool force_non_bufferable) {
     return precast_sender.Send(session, ops, ops_count, table, in_txn_limit, force_non_bufferable);
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.

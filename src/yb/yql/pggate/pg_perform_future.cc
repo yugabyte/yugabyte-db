@@ -36,13 +36,15 @@ bool PerformFuture::Ready() const {
   return Valid() && future_.wait_for(0ms) == std::future_status::ready;
 }
 
-Result<rpc::CallResponsePtr> PerformFuture::Get() {
+Result<PerformFuture::Data> PerformFuture::Get() {
   PgSession* session = nullptr;
   std::swap(session, session_);
   auto result = future_.get();
   session->TrySetCatalogReadPoint(result.catalog_read_time);
   RETURN_NOT_OK(session->PatchStatus(result.status, relations_));
-  return result.response;
+  return Data{
+      .response = std::move(result.response),
+      .used_in_txn_limit = result.used_in_txn_limit};
 }
 
 } // namespace pggate

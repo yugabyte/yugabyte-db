@@ -34,6 +34,8 @@
 #include "yb/util/thread.h"
 #include "yb/util/yb_partition.h"
 
+#include "yb/server/skewed_clock.h"
+
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -117,6 +119,11 @@ Slice YbctidAsSlice(uint64_t ybctid) {
 
 void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
                      PgApiContext* context) {
+  // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
+  // However, this is added to allow simulating and testing of some known bugs until we remove
+  // HybridClock usage.
+  server::SkewedClock::Register();
+
   InitThreading();
 
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";

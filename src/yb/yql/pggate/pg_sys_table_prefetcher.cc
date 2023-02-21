@@ -295,14 +295,14 @@ class Loader {
             }
             return result;
           }),
-          nullptr /* read_time */, false /* force_non_bufferable */));
+          HybridTime() /* in_txn_limit */, false /* force_non_bufferable */));
       auto call_resp = VERIFY_RESULT(response.Get());
       Status remove_predicate_status;
       ResultFunctorAdapter<bool, OperationInfo&> remove_predicate(
           &remove_predicate_status,
           [&call_resp, data_container](OperationInfo& op_info) -> Result<bool> {
             auto& op = op_info.ReadOperation();
-            auto sidecar = VERIFY_RESULT(call_resp->GetSidecarHolder(
+            auto sidecar = VERIFY_RESULT(call_resp.response->GetSidecarHolder(
                 op.response()->rows_data_sidecar()));
             InsertData(data_container,
                        op_info.table->id(),

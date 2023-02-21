@@ -52,6 +52,7 @@ namespace pggate {
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
+YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
 
 class PgTxnManager;
 class PgSession;
@@ -227,8 +228,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   Result<PerformFuture> RunAsync(
-      const OperationGenerator& generator, uint64_t* read_time,
-      bool force_non_bufferable);
+      const OperationGenerator& generator, HybridTime in_txn_limit, bool force_non_bufferable);
 
   // Smart driver functions.
   // -------------
@@ -329,9 +329,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   class RunHelper;
 
-  Result<PerformFuture> Perform(BufferableOperations ops,
-                                UseCatalogSession use_catalog_session,
-                                bool ensure_read_time_set_for_current_txn_serial_no = false);
+  struct PerformOptions {
+    UseCatalogSession use_catalog_session = UseCatalogSession::kFalse;
+    EnsureReadTimeIsSet ensure_read_time_is_set = EnsureReadTimeIsSet::kFalse;
+    HybridTime in_txn_limit = {};
+  };
+
+  Result<PerformFuture> Perform(BufferableOperations ops, PerformOptions&& options);
 
   void ProcessPerformOnTxnSerialNo(uint64_t txn_serial_no,
                                    bool force_set_read_time_for_current_txn_serial_no,
