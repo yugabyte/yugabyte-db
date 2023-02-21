@@ -6,6 +6,7 @@ import { YBLabel, YBToggleField, YBTooltip } from '../../../../../../components'
 import { UniverseFormData } from '../../../utils/dto';
 import { IPV6_FIELD } from '../../../utils/constants';
 import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface IPV6FieldProps {
   disabled: boolean;
@@ -14,11 +15,12 @@ interface IPV6FieldProps {
 export const IPV6Field = ({ disabled }: IPV6FieldProps): ReactElement => {
   const { control } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const classes = useFormFieldStyles();
   const IPV6TooltipText = t('universeForm.advancedConfig.enableIPV6Helper');
 
   return (
     <Box display="flex" width="100%" data-testid="IPV6Field-Container">
-      <YBLabel dataTestId="IPV6Field-Label" width="224px">
+      <YBLabel dataTestId="IPV6Field-Label" className={classes.advancedConfigLabel}>
         {t('universeForm.advancedConfig.enableIPV6')}
         &nbsp;
         <YBTooltip title={IPV6TooltipText}>

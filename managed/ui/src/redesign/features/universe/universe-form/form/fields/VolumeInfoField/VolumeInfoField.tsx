@@ -46,6 +46,13 @@ interface VolumeInfoFieldProps {
 const useStyles = makeStyles((theme) => ({
   volumeInfoTextField: {
     width: theme.spacing(15.5)
+  },
+  storageTypeLabelField: {
+    minWidth: theme.spacing(21.25)
+  },
+  storageTypeSelectField: {
+    maxWidth: theme.spacing(35.25),
+    minWidth: theme.spacing(30)
   }
 }));
 
@@ -243,17 +250,20 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     )
       return (
         <Grid container spacing={2}>
-          <Grid item lg={6} xs={12}>
+          <Grid item lg={6}>
             <Box mt={1}>
               <Box display="flex">
-                <YBLabel dataTestId="VolumeInfoField-StorageTypeLabel">
+                <YBLabel
+                  dataTestId="VolumeInfoField-StorageTypeLabel"
+                  className={classes.storageTypeLabelField}
+                >
                   {provider?.code === CloudType.aws
                     ? t('universeForm.instanceConfig.ebs')
                     : t('universeForm.instanceConfig.ssd')}
                 </YBLabel>
-                <Box flex={1} width="max-content">
+                <Box flex={1}>
                   <YBSelect
-                    fullWidth
+                    className={classes.storageTypeSelectField}
                     disabled={disableStorageType}
                     value={fieldValue.storageType}
                     inputProps={{
@@ -288,7 +298,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
     return (
       <Grid container spacing={2}>
-        <Grid item lg={6} sm={12}>
+        <Grid item lg={6}>
           <Box display="flex" mt={2}>
             <YBLabel dataTestId="VolumeInfoField-DiskIopsLabel">
               {t('universeForm.instanceConfig.provisionedIops')}
@@ -315,7 +325,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     if (![StorageType.GP3, StorageType.UltraSSD_LRS].includes(fieldValue.storageType)) return null;
     return (
       <Grid container spacing={2}>
-        <Grid item lg={6} sm={12}>
+        <Grid item lg={6}>
           <Box display="flex" mt={1}>
             <YBLabel dataTestId="VolumeInfoField-ThroughputLabel">
               {t('universeForm.instanceConfig.provisionedThroughput')}

@@ -10,7 +10,6 @@ import {
 } from '../../../../../../components';
 import { UniverseFormData, MasterPlacementMode, CloudType } from '../../../utils/dto';
 import { MASTER_PLACEMENT_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
 
 interface MasterPlacementFieldProps {
   isPrimary: boolean;
@@ -54,8 +53,6 @@ export const MasterPlacementField = ({ isPrimary }: MasterPlacementFieldProps): 
           <Box>
             <YBLabel dataTestId="MasterPlacement-Label">
               {t('universeForm.cloudConfig.masterPlacement')}
-              &nbsp;
-              <img alt="More" src={InfoMessageIcon} />
             </YBLabel>
           </Box>
           <Box flex={1}>
