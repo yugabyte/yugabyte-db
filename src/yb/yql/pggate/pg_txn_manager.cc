@@ -230,22 +230,12 @@ uint64_t PgTxnManager::NewPriority(TxnPriorityRequirement txn_priority_requireme
                           txn_priority_regular_upper_bound);
 }
 
-Status PgTxnManager::CalculateIsolation(bool read_only_op,
-                                        TxnPriorityRequirement txn_priority_requirement,
-                                        uint64_t* in_txn_limit) {
+Status PgTxnManager::CalculateIsolation(
+    bool read_only_op, TxnPriorityRequirement txn_priority_requirement) {
   if (ddl_mode_) {
     VLOG_TXN_STATE(2);
     return Status::OK();
   }
-
-  auto se = ScopeExit([this, in_txn_limit] {
-    if (in_txn_limit) {
-      if (!*in_txn_limit) {
-        *in_txn_limit = clock_->Now().ToUint64();
-      }
-      in_txn_limit_ = HybridTime(*in_txn_limit);
-    }
-  });
 
   VLOG_TXN_STATE(2);
   if (!txn_in_progress_) {
@@ -368,7 +358,6 @@ void PgTxnManager::ResetTxnAndSession() {
   txn_in_progress_ = false;
   isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   priority_ = 0;
-  in_txn_limit_ = HybridTime();
   ++txn_serial_no_;
   active_sub_transaction_id_ = 0;
 
@@ -418,9 +407,6 @@ uint64_t PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options)
   options->set_txn_serial_no(txn_serial_no_);
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
 
-  if (txn_in_progress_ && in_txn_limit_) {
-    options->set_in_txn_limit_ht(in_txn_limit_.ToUint64());
-  }
   if (use_saved_priority_) {
     options->set_use_existing_priority(true);
   } else {

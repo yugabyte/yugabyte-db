@@ -303,15 +303,15 @@ Result<rpc::CallResponsePtr> Run(
     PgSession* session,
     const std::vector<OperationInfo>& ops,
     const Settings& settings) {
-  auto response = VERIFY_RESULT(settings.should_use_cache
+  auto result = VERIFY_RESULT(settings.should_use_cache
       ? session->RunAsyncCacheable(
-            make_lw_function(MakeGenerator(ops)), nullptr /* in_txn_limit */,
+            make_lw_function(MakeGenerator(ops)), HybridTime(),
             BuildCacheKey(arena,
                           session->catalog_read_time(),
                           ops,
                           settings.latest_known_ysql_catalog_version))
-      : session->RunAsync(make_lw_function(MakeGenerator(ops)), nullptr /* in_txn_limit */));
-  return response.Get();
+      : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime()));
+  return VERIFY_RESULT(result.Get()).response;
 }
 
 // Helper class to load data from all registered tables
