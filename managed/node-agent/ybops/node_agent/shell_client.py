@@ -85,6 +85,7 @@ class RpcShellClient(object):
 
         if self.connected:
             self.channel.close()
+            self.connected = False
 
     def exec_command(self, cmd, **kwargs):
         """
