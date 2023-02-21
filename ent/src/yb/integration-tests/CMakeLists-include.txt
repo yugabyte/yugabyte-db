@@ -26,6 +26,7 @@ set(INTEGRATION_TESTS_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/external_mini_cluster_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/twodc_test_base.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdcsdk_test_base.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/xcluster_ysql_test_base.cc
   PARENT_SCOPE)
 
 # Additional tests support.
@@ -46,4 +47,5 @@ set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   twodc_ysql-test
   twodc-test
   xcluster_safe_time-itest
+  xcluster_dr-itest
   PARENT_SCOPE)

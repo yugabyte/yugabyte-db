@@ -372,5 +372,6 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   do { \
     if (::yb::IsTsan()) { \
       GTEST_SKIP() << "Skipping test in TSAN"; \
+      return; \
     } \
   } while (false)
