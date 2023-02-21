@@ -44,6 +44,8 @@ set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   cdc_service-txn-test
   cdcsdk_stream-test
   cdcsdk_ysql-test
+  cdcsdk_before_image-test
+  cdcsdk_tablet_split-test
   twodc_ysql-test
   twodc-test
   xcluster_safe_time-itest
