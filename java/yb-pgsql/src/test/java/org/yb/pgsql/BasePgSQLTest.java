@@ -44,6 +44,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.TreeMap;
@@ -2130,6 +2132,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
       return sb.toString().trim();
     }
+  }
+
+  static final Pattern roundtrips_pattern = Pattern.compile("Storage Read Requests: (\\d+)\\s*$");
+
+  protected Long getNumStorageRoundtrips(Statement stmt, String query) throws Exception {
+    try (ResultSet rs = stmt.executeQuery(
+        "EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF) " + query)) {
+      while (rs.next()) {
+        String line = rs.getString(1);
+        Matcher m = roundtrips_pattern.matcher(line);
+        if (m.find()) {
+          return Long.parseLong(m.group(1));
+        }
+      }
+    }
+    return null;
   }
 
   protected Long getNumDocdbRequests(Statement stmt, String query) throws Exception {

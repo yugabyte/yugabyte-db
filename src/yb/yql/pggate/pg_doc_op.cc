@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "yb/common/row_mark.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -630,13 +631,150 @@ bool PgDocReadOp::GetNextPermutation(std::vector<const LWPgsqlExpressionPB *>* p
   }
   return true;
 }
+void PgDocReadOp::BindExprsRegular(
+    LWPgsqlReadRequestPB* read_req,
+    const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
+    const std::vector<const LWPgsqlExpressionPB*>& range_values) {
+  DCHECK(!IsHashBatchingPossible());
+  size_t index = 0;
+  // Bind all hash column values.
+  for (auto& partition_column : *read_req->mutable_partition_column_values()) {
+    partition_column = *hashed_values[index++];
+  }
 
-void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB *>& exprs,
-                                  LWPgsqlReadRequestPB* read_req) const {
+  // Deal with any range columns that are in this tuple IN.
+  // Create an equality condition for each column
+  for (auto range_idx : permutation_range_column_indexes_) {
+    auto* pgexpr = range_values[range_idx - table_->num_hash_key_columns()];
+    DCHECK(pgexpr != nullptr);
+
+    read_req->mutable_condition_expr()->mutable_condition()->set_op(QL_OP_AND);
+    auto* op = read_req->mutable_condition_expr()->mutable_condition()->add_operands();
+    auto* pgcond = op->mutable_condition();
+    pgcond->set_op(QL_OP_EQUAL);
+    pgcond->add_operands()->set_column_id(table_.ColumnForIndex(range_idx).id());
+    *pgcond->add_operands() = *pgexpr;
+  }
+}
+
+void PgDocReadOp::BindExprsToBatch(
+    const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
+    const std::vector<const LWPgsqlExpressionPB*>& range_values) {
+  auto partition_key = table_->partition_schema().EncodePgsqlHash(hashed_values);
+  DCHECK(partition_key.ok());
+  auto partition = client::FindPartitionStartIndex(table_->GetPartitionList(), *partition_key);
+
+  if (hash_in_conds_.empty()) {
+    hash_in_conds_.resize(table_->GetPartitionListSize(), nullptr);
+  }
+
+  // Identify the vector to which the key should be added.
+  if (!hash_in_conds_[partition]) {
+    hash_in_conds_[partition] = read_op_->arena().NewArenaObject<LWPgsqlExpressionPB>();
+    PrepareInitialHashConditionList(partition);
+  }
+
+  DCHECK(hash_in_conds_[partition]->has_condition());
+  auto* op = hash_in_conds_[partition]->mutable_condition()->mutable_operands();
+  auto* rhs_values_list = op->back().mutable_value()->mutable_list_value();
+
+  // Add new hash keys to the end of the array in the format (yb_hash_code, hk1, hk2 .... hkn)
+  auto* tup_elements = rhs_values_list->add_elems()->mutable_tuple_value();
+  auto* new_elem = tup_elements->add_elems();
+  new_elem->set_int32_value(table_->partition_schema().DecodeMultiColumnHashValue(*partition_key));
+  for (auto elem : hashed_values) {
+    auto new_elem = tup_elements->add_elems();
+    if(elem->has_value()) {
+        DCHECK(elem->has_value());
+        *new_elem = elem->value();
+    }
+  }
+
+  for (auto range_idx : permutation_range_column_indexes_) {
+    auto* elem = range_values[range_idx - table_->num_hash_key_columns()];
+    DCHECK(elem != nullptr);
+    if(elem->has_value()) {
+      auto* new_elem = tup_elements->add_elems();
+      *new_elem = elem->value();
+    }
+  }
+}
+
+bool PgDocReadOp::HasNextBatch() {
+  while (next_batch_partition_ < hash_in_conds_.size() &&
+         hash_in_conds_[next_batch_partition_] == nullptr) {
+    next_batch_partition_++;
+  }
+  return next_batch_partition_ < hash_in_conds_.size();
+}
+
+static bool IsHashInCondition(const LWPgsqlExpressionPB& cond) {
+  if (cond.has_condition() && cond.condition().op() == QL_OP_IN) {
+    auto first_elem = cond.condition().operands().begin();
+    return first_elem->has_tuple() &&
+           first_elem->tuple().elems().begin()->has_column_id() &&
+           first_elem->tuple().elems().begin()->column_id() == kYbHashCodeColId;
+  }
+  return false;
+}
+
+Result<bool> PgDocReadOp::BindNextBatchToRequest(LWPgsqlReadRequestPB* read_req) {
+  DCHECK(read_req != nullptr);
+
+  if (!HasNextBatch()) {
+    return true;
+  }
+
+  auto current_partition = next_batch_partition_;
+
+  auto* cond = hash_in_conds_[current_partition];
+
+  LWPgsqlExpressionPB* cond_bind_expr = nullptr;
+
+  if (!read_req->has_condition_expr()) {
+    read_req->mutable_condition_expr()->mutable_condition()->set_op(QL_OP_AND);
+    cond_bind_expr = read_req->mutable_condition_expr()->mutable_condition()->add_operands();
+  } else {
+    bool hash_in_found = false;
+    for (auto& cond_it :
+         *read_req->mutable_condition_expr()->mutable_condition()->mutable_operands()) {
+      // See if it already has a hash IN condition from a previous binding and clear it.
+      if (IsHashInCondition(cond_it)) {
+        cond_it.clear_condition();
+        cond_bind_expr = &cond_it;
+        hash_in_found = true;
+        break;
+      }
+    }
+
+    if (!hash_in_found) {
+      cond_bind_expr = read_req->mutable_condition_expr()->mutable_condition()->add_operands();
+    }
+  }
+
+  cond_bind_expr->CopyFrom(*cond);
+  read_req->clear_partition_column_values();
+
+  VERIFY_RESULT(SetLowerUpperBound(read_req, current_partition));
+
+  next_batch_partition_++;
+  return false;
+}
+
+bool PgDocReadOp::IsHashBatchingPossible() {
+  if (PREDICT_FALSE(!is_hash_batched_.has_value())) {
+    is_hash_batched_ = pg_session_->IsHashBatchingEnabled() &&
+        total_permutation_count_ < FLAGS_ysql_hash_batch_permutation_limit;
+  }
+  return *is_hash_batched_;
+}
+
+void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB*>& exprs,
+                                  LWPgsqlReadRequestPB* read_req) {
   const size_t hash_column_count = table_->num_hash_key_columns();
-  std::vector<const LWPgsqlExpressionPB *> hash_exprs(hash_column_count,
+  std::vector<const LWPgsqlExpressionPB*> hash_exprs(hash_column_count,
     nullptr);
-  std::vector<std::pair<size_t, const LWPgsqlExpressionPB *>> range_exprs;
+  std::vector<const LWPgsqlExpressionPB*> range_exprs(table_->num_range_key_columns(), nullptr);
   auto cond_iter = read_op_->read_request().partition_column_values().begin();
   size_t index = 0;
   for (auto* expr : exprs) {
@@ -659,7 +797,7 @@ void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB *>
         if (tup_c_idx < hash_column_count) {
           hash_exprs[tup_c_idx] = pgexpr;
         } else {
-          range_exprs.emplace_back(tup_c_idx, pgexpr);
+          range_exprs[tup_c_idx - hash_column_count] = pgexpr;
         }
         val_it++;
       }
@@ -671,42 +809,80 @@ void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB *>
     index++;
   }
 
-  index = 0;
-  // Bind all hash column values.
-  for (auto it = read_req->mutable_partition_column_values()->begin();
-       it != read_req->mutable_partition_column_values()->end();
-       ++it) {
-    *it = *hash_exprs[index++];
-  }
-
-  // Deal with any range columns that are in this tuple IN.
-  // Create an equality condition for each column
-  for (auto [c_idx, pgexpr] : range_exprs) {
-    read_req->mutable_condition_expr()->mutable_condition()->set_op(QL_OP_AND);
-    auto* op = read_req->mutable_condition_expr()->mutable_condition()->add_operands();
-    auto* pgcond = op->mutable_condition();
-    pgcond->set_op(QL_OP_EQUAL);
-    pgcond->add_operands()->set_column_id(table_.ColumnForIndex(c_idx).id());
-    *pgcond->add_operands() = *pgexpr;
+  if (IsHashBatchingPossible()) {
+    BindExprsToBatch(hash_exprs, range_exprs);
+  } else {
+    BindExprsRegular(read_req, hash_exprs, range_exprs);
   }
 }
 
-bool PgDocReadOp::PopulateNextHashPermutationOps() {
+Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
   InitializeHashPermutationStates();
 
   std::vector<const LWPgsqlExpressionPB*> current_permutation;
   current_permutation.reserve(partition_exprs_.size());
-  // Fill inactive operators with new hash permutations.
+  // Bind new hash permutations.
+
   while (HasNextPermutation()) {
-    auto* read_req = PrepareReadReq();
-    if (!read_req) {
+    LWPgsqlReadRequestPB* read_req = nullptr;
+    if (!IsHashBatchingPossible() &&
+        (read_req = PrepareReadReq()) == nullptr) {
       return false;
     }
     current_permutation.clear();
     GetNextPermutation(&current_permutation);
-  BindPermutation(current_permutation, read_req);
+
+    // read_req is nullptr if batching is on as we don't want to
+    // bind the permutation to a request yet. We instead want to bind
+    // it to one of the batches we are building up.
+    BindPermutation(current_permutation, read_req);
   }
+
+  // If batching is enabled, we have built up all our batches and now
+  // we can bind each batch to a request.
+  if (IsHashBatchingPossible()) {
+    LWPgsqlReadRequestPB* read_req = nullptr;
+    while (HasNextBatch()) {
+      read_req = PrepareReadReq();
+      if (!read_req) {
+        return false;
+      }
+      VERIFY_RESULT(BindNextBatchToRequest(read_req));
+    }
+  }
+
+  MoveInactiveOpsOutside();
   return true;
+}
+
+// Add the list of column ids as a tuple. Subsequently every tuple of hash key columns that are
+// added will be in the same order as the column ids.
+void PgDocReadOp::PrepareInitialHashConditionList(size_t partition) {
+  DCHECK(hash_in_conds_[partition] != nullptr);
+  hash_in_conds_[partition]->mutable_condition()->set_op(QL_OP_IN);
+  auto* add_targets =
+    hash_in_conds_[partition]->mutable_condition()->add_operands()->mutable_tuple();
+
+  // YB columns adheres to the following order --> hash key columns and then range key columns
+  // We also follow the same order. However, each hash key tuple also contains the yb_hash_code
+  // as the first element as docDB scans require that. Hence, in order to match that column id
+  // we add the column id of yb_hash_code. However, yb_hash_code has no column id. And hence we
+  // assign kFirstColumnIdRep -1 as the column id for yb_hash_code.
+  auto* yb_hash_code = add_targets->add_elems();
+  yb_hash_code->set_column_id(kYbHashCodeColId);
+  for (size_t i = 0; i < table_->num_hash_key_columns(); i++) {
+    auto& col = table_.ColumnForIndex(i);
+    auto* hash_column = add_targets->add_elems();
+    hash_column->set_column_id(col.id());
+  }
+  for (auto c_idx : permutation_range_column_indexes_) {
+    auto& col = table_.ColumnForIndex(c_idx);
+    auto* range_column = add_targets->add_elems();
+    range_column->set_column_id(col.id());
+  }
+
+  // RHS of IN condition
+  hash_in_conds_[partition]->mutable_condition()->add_operands();
 }
 
 // Collect hash expressions to prepare for generating permutations.
@@ -719,13 +895,27 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   }
 
   // Initialize partition_exprs_.
-  // Reorganize the input arguments from Postgres to prepre for permutation generation.
+  // Reorganize the input arguments from Postgres to prepare for permutation generation.
   auto hash_column_count = table_->num_hash_key_columns();
   partition_exprs_.resize(hash_column_count);
   auto c_idx = 0;
   for (const auto& col_expr : read_op_->read_request().partition_column_values()) {
     if (col_expr.has_condition()) {
-      auto it = ++col_expr.condition().operands().begin();
+      auto it = col_expr.condition().operands().begin();
+
+      // Populate permutation_range_column_indexes_.
+      if (it->has_tuple()) {
+        for (const auto& lhs_elem : it->tuple().elems()) {
+          // Get the value for this column in the tuple.
+          size_t tup_c_idx = lhs_elem.column_id() - table_->schema().first_column_id();
+
+          if (tup_c_idx >= hash_column_count) {
+            permutation_range_column_indexes_.emplace_back(tup_c_idx);
+          }
+        }
+      }
+
+      ++it;
       for (const auto& expr : it->condition().operands()) {
         partition_exprs_[c_idx].push_back(&expr);
       }
@@ -734,6 +924,9 @@ void PgDocReadOp::InitializeHashPermutationStates() {
     }
     ++c_idx;
   }
+
+  // Make sure permutation_range_column_indexes_ is ordered.
+  std::sort(permutation_range_column_indexes_.begin(), permutation_range_column_indexes_.end());
 
   // Calculate the total number of permutations to be generated.
   total_permutation_count_ = 1;
@@ -751,16 +944,23 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   // TODO(neil) The control variable "ysql_request_limit" should be applied to ALL statements, but
   // at the moment, the number of operators never exceeds the number of tablets except for hash
   // permutation operation, so the work on this GFLAG can be done when it is necessary.
-  auto max_op_count = std::min(total_permutation_count_,
-      implicit_cast<size_t>(FLAGS_ysql_request_limit));
+  auto max_op_count =
+      std::min(IsHashBatchingPossible() ?
+               static_cast<int32_t>(table_->GetPartitionListSize()) : total_permutation_count_,
+               implicit_cast<size_t>(FLAGS_ysql_request_limit));
   ClonePgsqlOps(max_op_count);
 
   // Clear the original partition expressions as it will be replaced with hash permutations.
   for (size_t op_index = 0; op_index < max_op_count; ++op_index) {
     auto& read_request = GetReadReq(op_index);
     read_request.mutable_partition_column_values()->clear();
-    for (size_t i = 0; i < hash_column_count; ++i) {
-      read_request.add_partition_column_values();
+    if (IsHashBatchingPossible()) {
+      read_request.clear_hash_code();
+      read_request.clear_max_hash_code();
+    } else {
+      for (size_t i = 0; i < hash_column_count; ++i) {
+        read_request.add_partition_column_values();
+      }
     }
     pgsql_ops_[op_index]->set_active(false);
   }

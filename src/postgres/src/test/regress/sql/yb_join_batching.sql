@@ -239,6 +239,21 @@ DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
 
+create table g1(h int, r int, primary key(h hash, r asc));
+create table g2(h int, r int, primary key(h hash, r asc));
+create table main(h1 int, h2 int, r1 int, r2 int, primary key((h1,h2) hash, r1 asc, r2 asc));
+insert into main select i/1000, (i/100) % 10, (i/10) % 10, i % 10 from generate_series(1,9999) i;
+insert into g1 values (1,3), (5,7);
+insert into g2 values (2,4), (6,8);
+
+/*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ explain (costs off) select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
+
+/*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
+
+drop table g1;
+drop table g2;
+drop table main;
+
 /*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan on) Set(enable_material off) Leading((q3 (q2 q1)))*/EXPLAIN (COSTS OFF) SELECT c.column_name, c.is_nullable = 'YES', c.udt_name, c.character_maximum_length, c.numeric_precision,
 	c.numeric_precision_radix, c.numeric_scale, c.datetime_precision, 8 * typlen, c.column_default, pd.description,
 	c.identity_increment
