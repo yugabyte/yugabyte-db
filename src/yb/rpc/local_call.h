@@ -33,7 +33,8 @@ class LocalOutboundCall : public OutboundCall {
   LocalOutboundCall(const RemoteMethod* remote_method,
                     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                     AnyMessagePtr response_storage, RpcController* controller,
-                    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback);
+                    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback,
+                    ThreadPool* callback_thread_pool);
 
   Status SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) override;
 

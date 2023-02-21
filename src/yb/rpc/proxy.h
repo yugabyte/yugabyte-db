@@ -183,7 +183,7 @@ class Proxy {
 
   void AsyncLocalCall(
       const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
-      RpcController* controller, ResponseCallback callback);
+      RpcController* controller, ResponseCallback callback, bool force_run_callback_on_reactor);
 
   void AsyncRemoteCall(
       const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
