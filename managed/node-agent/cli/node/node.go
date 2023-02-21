@@ -36,7 +36,7 @@ func checkConfigAndUpdate(key string, desc string) {
 				val,
 			)
 		} else {
-			fmt.Printf("* The current value of %s is not set; Enter new value or enter to skip: ", desc)
+			fmt.Printf("* The current value of %s is not set; Enter value: ", desc)
 		}
 		var newVal string
 		fmt.Scanln(&newVal)
@@ -45,6 +45,7 @@ func checkConfigAndUpdate(key string, desc string) {
 			if val != "" {
 				break
 			}
+			fmt.Println()
 		} else {
 			err := config.Update(key, newVal)
 			if err != nil {
