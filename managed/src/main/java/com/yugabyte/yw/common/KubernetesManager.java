@@ -618,4 +618,8 @@ public abstract class KubernetesManager {
 
   public abstract String getStorageClass(
       Map<String, String> config, String storageClassName, String namespace, String outputFormat);
+
+  public abstract String getKubeconfigUser(Map<String, String> config);
+
+  public abstract String getKubeconfigCluster(Map<String, String> config);
 }

@@ -440,4 +440,16 @@ public class NativeKubernetesManager extends KubernetesManager {
     // TODO Auto-generated method stub
     return null;
   }
+
+  @Override
+  public String getKubeconfigUser(Map<String, String> config) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getKubeconfigCluster(Map<String, String> config) {
+    // TODO Auto-generated method stub
+    return null;
+  }
 }
