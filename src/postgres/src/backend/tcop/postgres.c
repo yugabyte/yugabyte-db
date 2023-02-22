@@ -5247,6 +5247,9 @@ PostgresMain(int argc, char *argv[],
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
 			yb_run_with_explain_analyze = false;
+			if (IsYsqlUpgrade &&
+				yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
+				yb_catalog_version_type = CATALOG_VERSION_UNSET;
 		}
 
 		switch (firstchar)
