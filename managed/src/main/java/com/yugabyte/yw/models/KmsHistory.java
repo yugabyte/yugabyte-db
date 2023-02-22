@@ -12,6 +12,7 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.ebean.Ebean;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -81,6 +82,7 @@ public class KmsHistory extends Model {
     return keyHistory;
   }
 
+  @JsonIgnore
   public static void setKeyRefStatus(
       UUID targetUUID,
       UUID confidUUID,
