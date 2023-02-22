@@ -81,6 +81,7 @@ static double hist_bucket_min;
 static double hist_bucket_max;
 static int hist_bucket_count_user;
 static int hist_bucket_count_total;
+int64 	   hist_bucket_timings[MAX_RESPONSE_BUCKET + 2][2];	/* Start and end timings */
 
 /* The array to store outer layer query id*/
 uint64	   *nested_queryids;
@@ -96,13 +97,19 @@ static bool system_init = false;
 static struct rusage rusage_start;
 static struct rusage rusage_end;
 
+/* Application name and length; set each time when an entry is created locally */
+char app_name[APPLICATIONNAME_LEN];
+int	app_name_len;
+
 
 /* Query buffer, store queries' text. */
 static char *pgsm_explain(QueryDesc *queryDesc);
 
 static void extract_query_comments(const char *query, char *comments, size_t max_len);
+static void set_histogram_bucket_timings(void);
 static void histogram_bucket_timings(int index, int64 *b_start, int64 *b_end);
 static int	get_histogram_bucket(double q_time);
+
 static bool IsSystemInitialized(void);
 static double time_diff(struct timeval end, struct timeval start);
 static void request_additional_shared_resources(void);
@@ -204,6 +211,8 @@ volatile bool callback_setup = false;
 
 static void pgsm_update_entry(pgsmEntry *entry,
 					const char *query,
+					char *comments,
+					int comments_len,
 					PlanInfo * plan_info,
 					SysInfo * sys_info,
 					ErrorInfo * error_info,
@@ -269,48 +278,7 @@ _PG_init(void)
 	/* Inilize the GUC variables */
 	init_guc();
 
-	/* Validate histogram values and find the max number of histogram buckets that can be created */
-	{
-		int64 b2_start;
-		int64 b2_end;
-		int b_count = hist_bucket_count_user;
-
-		hist_bucket_min = PGSM_HISTOGRAM_MIN;
-		hist_bucket_max = PGSM_HISTOGRAM_MAX;
-		hist_bucket_count_user = PGSM_HISTOGRAM_BUCKETS_USER;
-
-		if (PGSM_HISTOGRAM_BUCKETS_USER >= 2)
-		{
-			for (; hist_bucket_count_user > 0; hist_bucket_count_user--)
-			{
-				histogram_bucket_timings(2, &b2_start, &b2_end);
-
-				/*
-				 * The first bucket size will always be one or greater as we're doing min value + e^0; and e^0 = 1.
-				 * Checking if histograms buckets overlap. That can only happen if the second bucket size is zero
-				 * as we using exponential bucket sizes. Therefore, if the second bucket size is greater than 1, we'll
-				 * never have overlapping buckets.
-				 */
-				if (b2_start != b2_end)
-				{
-					break;
-				}
-			}
-
-			/*
-			* Important that we keep user bucket count separate for calculations, but must add 1
-			* for max outlier queries. However, for min, bucket should only be added
-			* if the minimum value provided by user is greater than 0
-			*/
-			hist_bucket_count_total = (hist_bucket_count_user + (int)(hist_bucket_max < INT_MAX) + (int)(hist_bucket_min > 0));
-
-			if (b_count != hist_bucket_count_user)
-				ereport(WARNING,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("pg_stat_monitor: Histogram buckets are overlapping."),
-						 errdetail("Histogram bucket size is set to %d [not including outlier buckets].", hist_bucket_count_user)));
-		}
-	}
+	set_histogram_bucket_timings();
 
 #if PG_VERSION_NUM >= 140000
 
@@ -750,6 +718,8 @@ pgsm_ExecutorEnd(QueryDesc *queryDesc)
 
 		pgsm_update_entry(entry,								/* entry */
 						  NULL,									/* query */
+						  NULL,									/* comments */
+						  0,									/* comments length */
 						  plan_ptr,								/* PlanInfo */
 						  &sys_info, 							/* SysInfo */
 						  NULL,									/* ErrorInfo */
@@ -911,6 +881,8 @@ pgsm_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 		if(entry)
 		pgsm_update_entry(entry,								/* entry */
 						  NULL,									/* query */
+						  NULL,									/* comments */
+						  0,									/* comments length */
 						  NULL,									/* PlanInfo */
 						  NULL, 								/* SysInfo */
 						  NULL,									/* ErrorInfo */
@@ -1141,6 +1113,8 @@ pgsm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		/* The plan details are captured when the query finishes */
 		pgsm_update_entry(entry,								/* entry */
 						  (char *)query_text,					/* query */
+						  NULL,									/* comments */
+						  0,									/* comments length */
 						  NULL,									/* PlanInfo */
 						  &sys_info, 							/* SysInfo */
 						  NULL,									/* ErrorInfo */
@@ -1317,6 +1291,8 @@ get_client_ip_address_integer(void)
 static void
 pgsm_update_entry(pgsmEntry *entry,
 				  const char *query,
+				  char *comments,
+				  int comments_len,
 				  PlanInfo * plan_info,
 				  SysInfo * sys_info,
 				  ErrorInfo * error_info,
@@ -1334,8 +1310,6 @@ pgsm_update_entry(pgsmEntry *entry,
 	int			message_len = error_info ? strlen(error_info->message) : 0;
 	int			sqlcode_len = error_info ? strlen(error_info->sqlcode) : 0;
 	int			plan_text_len = plan_info ? plan_info->plan_len : 0;
-	char		app_name[APPLICATIONNAME_LEN] = "";
-	int			app_name_len = 0;
 
 	/* Start collecting data for next bucket and reset all counters */
 	if (reset)
@@ -1349,17 +1323,9 @@ pgsm_update_entry(pgsmEntry *entry,
 			SpinLockAcquire(&e->mutex);
 
 		/* Extract comments if enabled and only when the query has completed with or without error */
-		if (PGSM_EXTRACT_COMMENTS && query && kind == PGSM_STORE)
-		{
-			char comments[512] = {0};
-			int	comments_len;
-
-			extract_query_comments(query, comments, sizeof(comments));
-			comments_len = strlen(comments);
-
-			if (comments_len > 0)
-				_snprintf(e->counters.info.comments, comments, comments_len + 1, COMMENTS_LEN);
-		}
+		if (PGSM_EXTRACT_COMMENTS && kind == PGSM_STORE
+			&& !e->counters.info.comments[0] && comments_len > 0)
+			_snprintf(e->counters.info.comments, comments, comments_len + 1, COMMENTS_LEN);
 
 		if (kind == PGSM_PLAN || kind == PGSM_STORE)
 		{
@@ -1435,15 +1401,13 @@ pgsm_update_entry(pgsmEntry *entry,
 		/* Only should process this once when storing the data */
 		if (kind == PGSM_STORE)
 		{
-			app_name_len = pg_get_application_name(app_name, APPLICATIONNAME_LEN);
-
 			if (app_name_len > 0 && !e->counters.info.application_name[0])
 				_snprintf(e->counters.info.application_name, app_name, app_name_len + 1, APPLICATIONNAME_LEN);
 
 			e->counters.info.num_relations = num_relations;
 			_snprintf2(e->counters.info.relations, relations, num_relations, REL_LEN);
 
-			if (exec_nested_level > 0)
+			if (exec_nested_level > 0 && e->counters.info.parentid == 0 && PGSM_TRACK == PGSM_TRACK_ALL)
 			{
 				if (exec_nested_level >= 0 && exec_nested_level < max_stack_depth)
 				{
@@ -1544,10 +1508,14 @@ pgsm_update_entry(pgsmEntry *entry,
 				e->counters.jitinfo.jit_emission_count++;
 			e->counters.jitinfo.jit_emission_time += INSTR_TIME_GET_MILLISEC(jitusage->emission_counter);
 
-			memcpy((void *)&e->counters.jitinfo.instr_generation_counter, &jitusage->generation_counter, sizeof(instr_time));
-			memcpy((void *)&e->counters.jitinfo.instr_inlining_counter, &jitusage->inlining_counter, sizeof(instr_time));
-			memcpy((void *)&e->counters.jitinfo.instr_optimization_counter, &jitusage->optimization_counter, sizeof(instr_time));
-			memcpy((void *)&e->counters.jitinfo.instr_emission_counter, &jitusage->emission_counter, sizeof(instr_time));
+			/* Only do this for local storage scenarios */
+			if (kind != PGSM_STORE)
+			{
+				memcpy((void *)&e->counters.jitinfo.instr_generation_counter, &jitusage->generation_counter, sizeof(instr_time));
+				memcpy((void *)&e->counters.jitinfo.instr_inlining_counter, &jitusage->inlining_counter, sizeof(instr_time));
+				memcpy((void *)&e->counters.jitinfo.instr_optimization_counter, &jitusage->optimization_counter, sizeof(instr_time));
+				memcpy((void *)&e->counters.jitinfo.instr_emission_counter, &jitusage->emission_counter, sizeof(instr_time));
+			}
 		}
 
 		if (kind == PGSM_STORE)
@@ -1736,6 +1704,8 @@ pgsm_store(pgsmEntry *entry)
 	BufferUsage bufusage;
 	WalUsage    walusage;
 	JitInstrumentation jitusage;
+	char comments[COMMENTS_LEN] = {0};
+	int	comments_len;
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
@@ -1753,6 +1723,42 @@ pgsm_store(pgsmEntry *entry)
 	entry->key.bucket_id = bucketid;
 	query = entry->query_text.query_pointer;
 	query_len = strlen(query);
+
+	/* Let's do all the leg work here before we acquire any locks */
+	extract_query_comments(query, comments, sizeof(comments));
+	comments_len = strlen(comments);
+
+	/* bufusage */
+	bufusage.shared_blks_hit = entry->counters.blocks.shared_blks_hit;
+	bufusage.shared_blks_read = entry->counters.blocks.shared_blks_read;
+	bufusage.shared_blks_dirtied = entry->counters.blocks.shared_blks_dirtied;
+	bufusage.shared_blks_written = entry->counters.blocks.shared_blks_written;
+	bufusage.local_blks_hit = entry->counters.blocks.local_blks_hit;
+	bufusage.local_blks_read = entry->counters.blocks.local_blks_read;
+	bufusage.local_blks_dirtied = entry->counters.blocks.local_blks_dirtied;
+	bufusage.local_blks_written = entry->counters.blocks.local_blks_written;
+	bufusage.temp_blks_read = entry->counters.blocks.temp_blks_read;
+	bufusage.temp_blks_written = entry->counters.blocks.temp_blks_written;
+
+	memcpy(&bufusage.blk_read_time, &entry->counters.blocks.instr_blk_read_time, sizeof(instr_time));
+	memcpy(&bufusage.blk_write_time, &entry->counters.blocks.instr_blk_write_time, sizeof(instr_time));
+
+	#if PG_VERSION_NUM >= 150000
+		memcpy(&bufusage.temp_blk_read_time, &entry->counters.blocks.instr_temp_blk_read_time, sizeof(instr_time));
+		memcpy(&bufusage.temp_blk_write_time, &entry->counters.blocks.instr_temp_blk_write_time, sizeof(instr_time));
+	#endif
+
+	/* walusage */
+	walusage.wal_records = entry->counters.walusage.wal_records;
+	walusage.wal_fpi = entry->counters.walusage.wal_fpi;
+	walusage.wal_bytes = entry->counters.walusage.wal_bytes;
+
+	/* jit */
+	jitusage.created_functions = entry->counters.jitinfo.jit_functions;
+	memcpy(&jitusage.generation_counter, &entry->counters.jitinfo.instr_generation_counter, sizeof(instr_time));
+	memcpy(&jitusage.inlining_counter, &entry->counters.jitinfo.instr_inlining_counter, sizeof(instr_time));
+	memcpy(&jitusage.optimization_counter, &entry->counters.jitinfo.instr_optimization_counter, sizeof(instr_time));
+	memcpy(&jitusage.emission_counter, &entry->counters.jitinfo.instr_emission_counter, sizeof(instr_time));
 
 	/*
 	 * Acquire a share lock to start with. We'd have to acquire exclusive
@@ -1826,6 +1832,11 @@ pgsm_store(pgsmEntry *entry)
 
 			return;
 		}
+		else
+		{
+			/* If we got a new entry, reset the oom value false */
+			pgsm->pgsm_oom = false;
+		}
 
 		/* If we already have the pointer set, free this one */
 		if (DsaPointerIsValid(shared_hash_entry->query_text.query_pos))
@@ -1841,41 +1852,10 @@ pgsm_store(pgsmEntry *entry)
 		snprintf(shared_hash_entry->username, sizeof(shared_hash_entry->username), "%s", entry->username);
 	}
 
-	/* bufusage */
-	bufusage.shared_blks_hit = entry->counters.blocks.shared_blks_hit;
-	bufusage.shared_blks_read = entry->counters.blocks.shared_blks_read;
-	bufusage.shared_blks_dirtied = entry->counters.blocks.shared_blks_dirtied;
-	bufusage.shared_blks_written = entry->counters.blocks.shared_blks_written;
-	bufusage.local_blks_hit = entry->counters.blocks.local_blks_hit;
-	bufusage.local_blks_read = entry->counters.blocks.local_blks_read;
-	bufusage.local_blks_dirtied = entry->counters.blocks.local_blks_dirtied;
-	bufusage.local_blks_written = entry->counters.blocks.local_blks_written;
-	bufusage.temp_blks_read = entry->counters.blocks.temp_blks_read;
-	bufusage.temp_blks_written = entry->counters.blocks.temp_blks_written;
-
-	memcpy(&bufusage.blk_read_time, &entry->counters.blocks.instr_blk_read_time, sizeof(instr_time));
-	memcpy(&bufusage.blk_write_time, &entry->counters.blocks.instr_blk_write_time, sizeof(instr_time));
-
-	#if PG_VERSION_NUM >= 150000
-		memcpy(&bufusage.temp_blk_read_time, &entry->counters.blocks.instr_temp_blk_read_time, sizeof(instr_time));
-		memcpy(&bufusage.temp_blk_write_time, &entry->counters.blocks.instr_temp_blk_write_time, sizeof(instr_time));
-	#endif
-
-	/* walusage */
-	walusage.wal_records = entry->counters.walusage.wal_records;
-	walusage.wal_fpi = entry->counters.walusage.wal_fpi;
-	walusage.wal_bytes = entry->counters.walusage.wal_bytes;
-
-	/* jit */
-	jitusage.created_functions = entry->counters.jitinfo.jit_functions;
-	memcpy(&jitusage.generation_counter, &entry->counters.jitinfo.instr_generation_counter, sizeof(instr_time));
-	memcpy(&jitusage.inlining_counter, &entry->counters.jitinfo.instr_inlining_counter, sizeof(instr_time));
-	memcpy(&jitusage.optimization_counter, &entry->counters.jitinfo.instr_optimization_counter, sizeof(instr_time));
-	memcpy(&jitusage.emission_counter, &entry->counters.jitinfo.instr_emission_counter, sizeof(instr_time));
-
-
 	pgsm_update_entry(shared_hash_entry,						/* entry */
 						query,									/* query */
+						comments,								/* comments */
+						comments_len,							/* comments length */
 						&entry->counters.planinfo,				/* PlanInfo */
 						&entry->counters.sysinfo, 				/* SysInfo */
 						&entry->counters.error,					/* ErrorInfo */
@@ -3551,6 +3531,57 @@ unpack_sql_state(int sql_state)
 	return buf;
 }
 
+/* Validate histogram values and find the max number of histogram buckets that can be created */
+static void
+set_histogram_bucket_timings(void)
+{
+	int64 b2_start;
+	int64 b2_end;
+	int b_count;
+
+	hist_bucket_min = PGSM_HISTOGRAM_MIN;
+	hist_bucket_max = PGSM_HISTOGRAM_MAX;
+	hist_bucket_count_user = PGSM_HISTOGRAM_BUCKETS_USER;
+	b_count = hist_bucket_count_user;
+
+	if (PGSM_HISTOGRAM_BUCKETS_USER >= 2)
+	{
+		for (; hist_bucket_count_user > 0; hist_bucket_count_user--)
+		{
+			histogram_bucket_timings(2, &b2_start, &b2_end);
+
+			/*
+			 * The first bucket size will always be one or greater as we're doing min value + e^0; and e^0 = 1.
+			 * Checking if histograms buckets overlap. That can only happen if the second bucket size is zero
+			 * as we using exponential bucket sizes. Therefore, if the second bucket size is greater than 1, we'll
+			 * never have overlapping buckets.
+			 */
+			if (b2_start != b2_end)
+			{
+				break;
+			}
+		}
+
+		if (b_count != hist_bucket_count_user)
+			ereport(WARNING,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("pg_stat_monitor: Histogram buckets are overlapping."),
+						errdetail("Histogram bucket size is set to %d [not including outlier buckets].", hist_bucket_count_user)));
+	}
+
+	/*
+	* Important that we keep user bucket count separate for calculations, but must add 1
+	* for max outlier queries. However, for min, bucket should only be added
+	* if the minimum value provided by user is greater than 0
+	*/
+	hist_bucket_count_total = (hist_bucket_count_user + (int)(hist_bucket_max < HISTOGRAM_MAX_TIME) + (int)(hist_bucket_min > 0));
+
+	for(b_count = 0; b_count < hist_bucket_count_total; b_count++)
+	{
+		histogram_bucket_timings(b_count, &hist_bucket_timings[b_count][HISTOGRAM_START], &hist_bucket_timings[b_count][HISTOGRAM_END]);
+	}
+}
+
 /*
  * Given an index, return the histogram start and end times.
  */
@@ -3566,14 +3597,14 @@ histogram_bucket_timings(int index, int64 *b_start, int64 *b_end)
 	/*
 	 * We must not skip any queries that fall outside the user defined
 	 * histogram buckets. So capturing min/max outliers.
-	*/
+	 */
 	if (index == 0 && q_min > 0)
 	{
 		*b_start = 0;
 		*b_end = q_min;
 		return;
 	}
-	else if (index == (b_count - 1) && q_max < INT_MAX)
+	else if (index == (b_count - 1) && q_max < HISTOGRAM_MAX_TIME)
 	{
 		*b_start = q_max;
 		*b_end = -1;
@@ -3598,16 +3629,12 @@ histogram_bucket_timings(int index, int64 *b_start, int64 *b_end)
 static int
 get_histogram_bucket(double q_time)
 {
-	int64		b_start;
-	int64		b_end;
-	int			b_count = hist_bucket_count_total;
 	int			index = 0;
+	int64		exec_time = (int64)q_time;
 
-	for (index = 0; index < b_count; index++)
+	for (index = 0; index < hist_bucket_count_total; index++)
 	{
-		histogram_bucket_timings(index, &b_start, &b_end);
-
-		if (q_time >= b_start && q_time <= b_end)
+		if (exec_time >= hist_bucket_timings[index][HISTOGRAM_START] && exec_time <= hist_bucket_timings[index][HISTOGRAM_END])
 			return index;
 	}
 
@@ -3615,7 +3642,7 @@ get_histogram_bucket(double q_time)
 	 * So haven't found a histogram bucket for this query. That's only possible for the
 	 * last bucket as its end time is less than 0.
 	 */
-	return (b_count - 1);
+	return (hist_bucket_count_total - 1);
 }
 
 /*

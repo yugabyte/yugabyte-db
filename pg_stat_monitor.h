@@ -74,6 +74,7 @@
 
 #define JUMBLE_SIZE				1024	/* query serialization buffer size */
 
+#define HISTOGRAM_MAX_TIME		INT_MAX
 #define MAX_RESPONSE_BUCKET 50
 #define INVALID_BUCKET_ID	-1
 #define MAX_BUCKETS			10
@@ -422,6 +423,8 @@ typedef struct pgsmSharedState
 								/* context to store stats in local
 								 * memory until they are pushed to shared hash
 								 */
+	int			resp_calls[MAX_RESPONSE_BUCKET + 2];	/* execution time's in
+													 	 * msec; including 2 outlier buckets */
 	bool pgsm_oom;
 } pgsmSharedState;
 
@@ -509,6 +512,13 @@ static const struct config_enum_entry track_options[] =
 	{"all", PGSM_TRACK_ALL, false},
 	{NULL, 0, false}
 };
+
+typedef enum
+{
+	HISTOGRAM_START,
+	HISTOGRAM_END,
+	HISTOGRAM_COUNT
+} HistogramTimingType;
 
 #define PGSM_MAX get_conf(0)->guc_variable
 #define PGSM_QUERY_MAX_LEN get_conf(1)->guc_variable
