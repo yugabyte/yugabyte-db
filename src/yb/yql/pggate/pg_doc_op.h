@@ -527,8 +527,10 @@ class PgDocReadOp : public PgDocOp {
   // Create one sampling operator per partition and arrange their execution in random order
   Result<bool> PopulateSamplingOps();
 
-  // Set partition boundaries to a given partition.
-  Status SetScanPartitionBoundary();
+  // Set partition boundaries to a given partition. Return true if new boundaries combined with
+  // old boundaries, if any, are non-empty range. Obviously, there's no need to send request with
+  // empty range boundaries, because the result will be empty.
+  Result<bool> SetScanPartitionBoundary();
 
   Status CompleteProcessResponse() override;
 
@@ -552,6 +554,8 @@ class PgDocReadOp : public PgDocOp {
 
   void SetDistinctScan();
 
+  // Set bounds on the request so it only affect specified partition
+  // Returns false if current bounds fully exclude the partition
   Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
 
   // Get the read_op for a specific operation index from pgsql_ops_.
