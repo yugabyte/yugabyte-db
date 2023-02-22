@@ -41,9 +41,9 @@ init_guc(void)
 	{
 		.guc_name = "pg_stat_monitor.pgsm_max",
 			.guc_desc = "Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor.",
-			.guc_default = 100,
-			.guc_min = 1,
-			.guc_max = 1000,
+			.guc_default = 256,
+			.guc_min = 10,
+			.guc_max = 10240,
 			.guc_restart = true,
 			.guc_unit = GUC_UNIT_MB,
 			.guc_value = &PGSM_MAX
@@ -95,7 +95,7 @@ init_guc(void)
 			.guc_desc = "Sets the maximum number of buckets.",
 			.guc_default = 10,
 			.guc_min = 1,
-			.guc_max = 10,
+			.guc_max = 20000,
 			.guc_restart = true,
 			.guc_unit = 0,
 			.guc_value = &PGSM_MAX_BUCKETS
