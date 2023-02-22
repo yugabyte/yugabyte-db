@@ -197,7 +197,6 @@ public class SwaggerGenTest extends FakeDBApplication {
       else{
         System.out.println("Runtime flags haven't changed");
       }
-      fail();
       System.out.println("Generating swagger spec:" + Arrays.toString(args));
       String swaggerSpec = swaggerGenTest.getSwaggerSpec();
       if (expectedSwagger.length() == swaggerSpec.length()) {
