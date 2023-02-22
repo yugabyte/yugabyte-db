@@ -729,5 +729,76 @@ TEST_F_EX(
   ASSERT_OK(ValidateConsumerRows(consumer_table1_->name(), 2 * kNumRecordsPerBatch));
 }
 
+class XClusterSingleClusterTest : public XClusterYsqlTest {
+ protected:
+  // Setup just the producer cluster table
+  void SetUp() override {
+    // Skip in TSAN as InitDB times out.
+    YB_SKIP_TEST_IN_TSAN();
+
+    FLAGS_enable_replicate_transaction_status_table = true;
+
+    XClusterYsqlTest::SetUp();
+    MiniClusterOptions opts;
+    opts.num_masters = kMasterCount;
+    opts.num_tablet_servers = kTServerCount;
+    ASSERT_OK(InitClusters(opts));
+
+    auto table_name = ASSERT_RESULT(CreateYsqlTable(
+        &producer_cluster_,
+        kDatabaseName,
+        "" /* schema_name */,
+        kTableName,
+        {} /*tablegroup_name*/,
+        kTabletCount));
+    ASSERT_OK(producer_client()->OpenTable(table_name, &producer_table_));
+
+    ASSERT_OK(producer_cluster_.client_->GetTablets(
+        producer_table_->name(), 0 /* max_tablets */, &producer_tablet_ids_, NULL));
+    ASSERT_EQ(producer_tablet_ids_.size(), kTabletCount);
+
+    YBTableName producer_tran_table_name(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    ASSERT_OK(producer_client()->OpenTable(producer_tran_table_name, &producer_tran_table_));
+  }
+
+  Status TestAbortInFlightTxn(bool include_transaction_table) {
+    auto& table_name = producer_table_->name();
+    auto conn = VERIFY_RESULT(producer_cluster_.ConnectToDB(table_name.namespace_name()));
+    std::string table_name_str = GetCompleteTableName(table_name);
+
+    RETURN_NOT_OK(conn.ExecuteFormat("BEGIN"));
+
+    for (uint32_t i = 0; i < 10; i++) {
+      RETURN_NOT_OK(
+          conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2)", table_name_str, kKeyColumnName, i));
+    }
+
+    std::vector<std::shared_ptr<client::YBTable>> tables = {producer_table_};
+    if (include_transaction_table) {
+      tables.emplace_back(producer_tran_table_);
+    }
+    RETURN_NOT_OK(BootstrapCluster(tables, &producer_cluster_));
+
+    auto s = conn.ExecuteFormat("COMMIT");
+
+    SCHECK(!s.ok(), IllegalState, "Commit should have failed");
+
+    return Status::OK();
+  }
+
+  std::shared_ptr<client::YBTable> producer_table_, producer_tran_table_;
+  std::vector<TabletId> producer_tablet_ids_;
+};
+
+TEST_F_EX(XClusterConsistencyTest, BootstrapAbortInFlightTxn, XClusterSingleClusterTest) {
+  ASSERT_OK(TestAbortInFlightTxn(false /* include_transaction_table */));
+  ASSERT_OK(TestAbortInFlightTxn(true /* include_transaction_table */));
+
+  WriteWorkload(producer_table_->name(), 0, 10, &producer_cluster_);
+  auto count = ASSERT_RESULT(GetRowCount(producer_table_->name(), &producer_cluster_));
+  ASSERT_EQ(count, 10);
+}
+
 }  // namespace enterprise
 }  // namespace yb
