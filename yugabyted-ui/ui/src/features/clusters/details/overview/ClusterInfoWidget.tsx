@@ -16,19 +16,16 @@ const useStyles = makeStyles((theme) => ({
     border: `1px solid ${theme.palette.grey[200]}`,
     width: '100%'
   },
-  container: {
-    justifyContent: 'space-between'
-  },
   label: {
     color: theme.palette.grey[600],
     fontWeight: theme.typography.fontWeightMedium as number,
     marginBottom: theme.spacing(0.75),
     textTransform: 'uppercase',
-    textAlign: 'center'
+    textAlign: 'start'
   },
   value: {
     paddingTop: theme.spacing(0.57),
-    textAlign: 'center'
+    textAlign: 'start'
   }
 }));
 
@@ -59,9 +56,11 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
 
   const clusterSpec = cluster?.spec;
   const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0;
-  const totalRamUsageMb = clusterSpec?.cluster_info?.node_info.memory_mb ?? 0;
+  const databaseVersion = cluster.info.software_version ?? '';
+  const totalRamUsageMb = clusterSpec.cluster_info.node_info.memory_mb ?? 0; // TODO: Use total memory instead of used memory
+  const totalDiskSize = clusterSpec.cluster_info.node_info.disk_size_gb ?? 0;
   const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
-  // const averageCpuUsage = clusterSpec?.cluster_info?.node_info.cpu_usage ?? 0;
+  const authentication = "Unknown" // TODO: Get authentication value from the API
 
   // Convert ram from MB to GB
   // const getTotalRamText = (value: number, numberOfNodes: number) => {
@@ -74,6 +73,12 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   const getRamUsageText = (ramUsageMb: number) => {
     ramUsageMb = roundDecimal(ramUsageMb)
     return t('units.MB', { value: ramUsageMb });
+  }
+
+  // Get text for disk usage
+  const getDiskSizeText = (diskSizeGb: number) => {
+    diskSizeGb = roundDecimal(diskSizeGb)
+    return t('units.GB', { value: diskSizeGb });
   }
 
   // Get text for encryption
@@ -92,24 +97,32 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
 
   return (
     <Paper className={classes.clusterInfo}>
-      <Grid container className={classes.container}>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.replicationFactor')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {numNodes}
-          </Typography>
-        </div>
-        <div>
+      <Grid container spacing={4}>
+        <Grid item xs={3}>
           <Typography variant="subtitle2" className={classes.label}>
             {t('clusters.faultTolerance')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
             {getFaultTolerance(clusterSpec?.cluster_info?.fault_tolerance, t)}
           </Typography>
-        </div>
-        <div>
+        </Grid>
+        <Grid item xs={3}>
+          <Typography variant="subtitle2" className={classes.label}>
+            {t('clusterDetail.overview.replicationFactor')}
+          </Typography>
+          <Typography variant="body2" className={classes.value}>
+            {numNodes}
+          </Typography>
+        </Grid>
+        <Grid item xs={3}>
+          <Typography variant="subtitle2" className={classes.label}>
+            {t('clusterDetail.overview.databaseVersion')}
+          </Typography>
+          <Typography variant="body2" className={classes.value}>
+            {`v${databaseVersion}`}
+          </Typography>
+        </Grid>
+        <Grid item xs={3}>
           <Typography variant="subtitle2" className={classes.label}>
             {t('clusters.encryption')}
           </Typography>
@@ -117,39 +130,39 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
             {getEncryptionText(clusterSpec?.encryption_info?.encryption_at_rest ?? false,
               clusterSpec?.encryption_info?.encryption_in_transit ?? false)}
           </Typography>
-        </div>
-        <div>
+        </Grid>
+        <Grid item xs={3}>
           <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.ramUsed')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {getRamUsageText(totalRamUsageMb)}
-          </Typography>
-        </div>
-        {/*<div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.totalRam')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {getRamUsageText(totalRamUsageMb)}
-          </Typography>
-        </div>*/}
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.totalCores')}
+            {t('clusterDetail.overview.totalvCPU')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
             {totalCores}
           </Typography>
-        </div>
-        <div>
+        </Grid>
+        <Grid item xs={3}>
           <Typography variant="subtitle2" className={classes.label}>
-            {t('clusters.dateCreated')}
+            {t('clusterDetail.overview.totalMemory')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {getDate(cluster?.info.metadata?.created_on)}
+            {getRamUsageText(totalRamUsageMb)}
           </Typography>
-        </div>
+        </Grid>
+        <Grid item xs={3}>
+          <Typography variant="subtitle2" className={classes.label}>
+            {t('clusterDetail.overview.totalDiskSize')}
+          </Typography>
+          <Typography variant="body2" className={classes.value}>
+          {getDiskSizeText(totalDiskSize)}
+          </Typography>
+        </Grid>
+        <Grid item xs={3}>
+          <Typography variant="subtitle2" className={classes.label}>
+            {t('clusterDetail.overview.authentication')}
+          </Typography>
+          <Typography variant="body2" className={classes.value}>
+            {authentication}
+          </Typography>
+        </Grid>
       </Grid>
     </Paper>
   );
