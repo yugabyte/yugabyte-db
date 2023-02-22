@@ -60,7 +60,9 @@ jobs:
             sudo tee -a /etc/postgresql/15/main/postgresql.conf
           sudo service postgresql start
           sudo psql -V
-          sudo -u postgres bash -c 'make installcheck USE_PGXS=1' 
+          export PG_TEST_PORT_DIR=${GITHUB_WORKSPACE}/src/pg_stat_monitor
+          echo $PG_TEST_PORT_DIR
+          sudo -E -u postgres bash -c 'make installcheck USE_PGXS=1'
         working-directory: src/pg_stat_monitor
 
       - name: Change dir permissions on fail
