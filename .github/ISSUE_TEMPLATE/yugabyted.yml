@@ -1,4 +1,4 @@
-name: Core-yugabyted
+name: yugabyted
 description: Create a yugabyted issue.
 title: "[DocDB] Title"
 labels: ["area/ecosystem", "area/ybd", "status/awaiting-triage"]
